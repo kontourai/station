@@ -12,6 +12,7 @@ import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
+import { FilePartPreview } from './FilePartPreview';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
@@ -221,6 +222,13 @@ export function StreamingMessageView({
           }
           if (part.type === 'ui-block' && part.uiBlock) {
             return <UIBlockRenderer key={i} block={part.uiBlock} />;
+          }
+          if (part.type === 'file') {
+            // An image a tool returned mid-turn (a screenshot the agent took)
+            // shows as it arrives, not only once the turn settles.
+            return (
+              <FilePartPreview key={i} part={part} allParts={contentParts} />
+            );
           }
           return null;
         })}

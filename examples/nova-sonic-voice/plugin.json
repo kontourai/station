@@ -1,24 +1,27 @@
 {
-  "id": "nova-sonic-voice",
   "name": "nova-sonic-voice",
   "displayName": "Nova Sonic Voice",
   "version": "0.1.0",
   "description": "Preview Amazon Nova Sonic voice provider shape; server relay is structural-only until the WS-to-Bedrock bridge exists.",
-  "providerTypes": ["conversational"],
-  "permissions": ["aws:bedrock"],
+  "entrypoint": "src/index.ts",
+  "permissions": ["plugin.server"],
   "serverModule": "plugin.mjs",
-  "clientBundle": "dist/index.js",
-  "config": {
-    "region": {
+  "settings": [
+    {
+      "key": "region",
       "label": "AWS Region",
       "type": "string",
       "default": "us-east-1"
     },
-    "model": {
+    {
+      "key": "model",
       "label": "Nova Sonic Model",
       "type": "select",
-      "options": ["us.amazon.nova-lite-v1:0", "us.amazon.nova-pro-v1:0"],
+      "options": [
+        { "label": "Nova Lite", "value": "us.amazon.nova-lite-v1:0" },
+        { "label": "Nova Pro", "value": "us.amazon.nova-pro-v1:0" }
+      ],
       "default": "us.amazon.nova-lite-v1:0"
     }
-  }
+  ]
 }

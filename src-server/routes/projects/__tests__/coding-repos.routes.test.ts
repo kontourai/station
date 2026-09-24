@@ -19,7 +19,11 @@ import { createCodingRoutes } from '../coding.js';
  * repo but contains several.
  */
 
-const app = createCodingRoutes(new FileTreeService());
+// #2412: every read names its Project; the workspace below is Project `w`.
+let workspace: string;
+const app = createCodingRoutes(new FileTreeService(), {
+  resolveProjectFolder: (slug) => (slug === 'w' ? workspace : undefined),
+});
 
 async function get(path: string) {
   const res = await app.request(path);
@@ -40,8 +44,6 @@ function initRepo(dir: string, branch: string) {
 }
 
 describe('coding multi-repo discovery (real git, no mocks)', () => {
-  let workspace: string;
-
   beforeAll(() => {
     // A workspace that is NOT itself a repo but contains several.
     workspace = mkdtempSync(join(tmpdir(), 'station-multirepo-'));
@@ -57,7 +59,9 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
   afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 
   test('discovers every nested repo under a non-repo workspace', async () => {
-    const res = await get(`/repos?path=${encodeURIComponent(workspace)}`);
+    const res = await get(
+      `/repos?projectSlug=w&path=${encodeURIComponent(workspace)}`,
+    );
     expect(res.status).toBe(200);
     expect(res.json.data.workspaceIsRepo).toBe(false);
     const byName = Object.fromEntries(
@@ -72,7 +76,7 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
 
   test('a workspace that IS a repo reports itself as the single repo', async () => {
     const res = await get(
-      `/repos?path=${encodeURIComponent(join(workspace, 'repo-a'))}`,
+      `/repos?projectSlug=w&path=${encodeURIComponent(join(workspace, 'repo-a'))}`,
     );
     expect(res.json.data.workspaceIsRepo).toBe(true);
     expect(res.json.data.repos).toHaveLength(1);
@@ -86,7 +90,7 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
     writeFileSync(join(repoB, 'src', 'a.ts'), 'export const a = 1;\n');
 
     const res = await get(
-      `/git/status?path=${encodeURIComponent(join(repoB, 'src'))}`,
+      `/git/status?projectSlug=w&path=${encodeURIComponent(join(repoB, 'src'))}`,
     );
     expect(res.status).toBe(200);
     expect(res.json.data.isRepo).toBe(true);
@@ -96,12 +100,16 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
   });
 
   test('the non-repo workspace root reports isRepo=false', async () => {
-    const res = await get(`/git/status?path=${encodeURIComponent(workspace)}`);
+    const res = await get(
+      `/git/status?projectSlug=w&path=${encodeURIComponent(workspace)}`,
+    );
     expect(res.json.data.isRepo).toBe(false);
   });
 
   test('git diff on a non-repo workspace returns empty (not an error)', async () => {
-    const res = await get(`/git/diff?path=${encodeURIComponent(workspace)}`);
+    const res = await get(
+      `/git/diff?projectSlug=w&path=${encodeURIComponent(workspace)}`,
+    );
     expect(res.status).toBe(200);
     expect(res.json.success).toBe(true);
     expect(res.json.data.diff).toBe('');
@@ -109,7 +117,7 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
 
   test('git branches on a non-repo workspace returns [] (not an error)', async () => {
     const res = await get(
-      `/git/branches?path=${encodeURIComponent(workspace)}`,
+      `/git/branches?projectSlug=w&path=${encodeURIComponent(workspace)}`,
     );
     expect(res.status).toBe(200);
     expect(res.json.success).toBe(true);

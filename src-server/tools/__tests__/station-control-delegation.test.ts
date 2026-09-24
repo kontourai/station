@@ -1459,6 +1459,105 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  /**
+   * #2436 HIGH-1: a Station that predates the approval command validates the
+   * body with a schema that has no `setApprovalMode`, and zod strips unknown
+   * keys. The pick must still reach such a Station through the channel it
+   * has always applied: `model.options.approvalMode`.
+   */
+  describe('an approval pick sent to another Station', () => {
+    async function olderRemoteSees(
+      path:
+        | '/api/orchestration/chat'
+        | '/api/orchestration/chat/conversation-1/continue',
+    ) {
+      const { continueForegroundMessageSchema, foregroundMessageObjectSchema } =
+        await import('../../routes/orchestration/orchestration.js');
+      const call = fetchMock.mock.calls.find(
+        ([url]) => String(url) === `${REMOTE_API}${path}`,
+      );
+      const body = bodyOf(call!);
+      // The pre-#2436 schemas: the same objects without the new keys.
+      const older =
+        path === '/api/orchestration/chat'
+          ? foregroundMessageObjectSchema.omit({
+              setApprovalMode: true,
+              setApprovalModeBasedOn: true,
+            })
+          : continueForegroundMessageSchema;
+      return { sent: body, parsed: older.parse(body) as Record<string, any> };
+    }
+
+    test('a /chat send carries it both as the command and on the options an older Station applies', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Tighten this',
+        conversationId: 'conversation-1',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      const { sent, parsed } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 7,
+      });
+      expect(parsed).not.toHaveProperty('setApprovalMode');
+      expect(parsed.target.model.options.approvalMode).toBe('ask');
+    });
+
+    test('a continue forwards it too, on both channels', async () => {
+      installRemoteStationFetch(
+        '/api/orchestration/chat/conversation-1/continue',
+        foregroundHandle(),
+        {
+          workingDirectory: '/srv/station',
+          existingSessionCwd: '/srv/station',
+        },
+      );
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage({
+        conversationId: 'conversation-1',
+        environment: { kind: 'saved', id: environmentId('environment-remote') },
+        message: 'Continue tighter',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
+        model: { options: { effort: 'low' } },
+      });
+      const { sent, parsed } = await olderRemoteSees(
+        '/api/orchestration/chat/conversation-1/continue',
+      );
+      expect(sent).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 3,
+      });
+      expect(parsed.model.options).toEqual({
+        effort: 'low',
+        approvalMode: 'ask',
+      });
+    });
+
+    test('a send with no pick adds no posture', async () => {
+      installRemoteStationFetch('/api/orchestration/chat', foregroundHandle());
+      const { executeExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'No pick',
+        conversationId: 'conversation-1',
+      });
+      const { sent } = await olderRemoteSees('/api/orchestration/chat');
+      expect(sent).not.toHaveProperty('setApprovalMode');
+      expect(sent.target).not.toHaveProperty('model');
+    });
+  });
+
   test('refuses a saved remote Environment before any handoff transport effect', async () => {
     const { handoffExecutionTargetMessage } = await import(
       '../station-control-delegation.js'
@@ -4250,5 +4349,82 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
         },
       );
     });
+  });
+});
+
+describe('#2324 a delegated task event carries a provider-triggered turn’s trigger', () => {
+  test('forwards trigger on the start and terminal of a turn the engine opened itself, and on nothing else', async () => {
+    const { projectDelegatedTaskEvent } = await import(
+      '../station-control-delegation.js'
+    );
+    const base = {
+      eventId: 'e',
+      provider: 'claude',
+      threadId: 'task:t',
+      createdAt: '2026-09-23T00:00:00.000Z',
+      turnId: 'provider:p',
+    };
+    const trigger = { metadata: { trigger: 'provider' } };
+    expect(
+      projectDelegatedTaskEvent(1, {
+        ...base,
+        method: 'turn.started',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'running',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(2, {
+        ...base,
+        method: 'turn.completed',
+        outputText: 'finished',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'message',
+      status: 'completed',
+      text: 'finished',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(3, {
+        ...base,
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'stopped',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'overloaded',
+        ...trigger,
+      }),
+    ).toMatchObject({ kind: 'runtime', trigger: 'provider' });
+    // A caller's turn, and a delta inside the provider turn, carry none.
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        turnId: 'user-turn',
+        method: 'turn.completed',
+      }),
+    ).not.toHaveProperty('trigger');
+    expect(
+      projectDelegatedTaskEvent(5, {
+        ...base,
+        method: 'content.text-delta',
+        delta: 'x',
+        ...trigger,
+      }),
+    ).not.toHaveProperty('trigger');
   });
 });

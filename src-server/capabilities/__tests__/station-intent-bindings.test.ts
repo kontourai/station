@@ -209,8 +209,10 @@ describe('createStationHostIntentBindings', () => {
 
     await resolution.execute(stationIntent('task dispatch', task.id));
 
+    // #2436: a board intent carries no request that may grant full access.
     expect(taskDispatcher.dispatch).toHaveBeenCalledWith(task.id, {
       sourceSurface: 'console-board',
+      fullAccessGrant: null,
     });
     expect(orchestrationDispatch).not.toHaveBeenCalled();
   });

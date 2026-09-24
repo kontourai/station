@@ -36,6 +36,38 @@ describe('client origin propagation', () => {
     ).toEqual({ clientOrigin: origin });
   });
 
+  it('#2324: passes a provider-triggered start straight through while a send holds a reservation', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    propagation.begin('thread-p', origin);
+    const providerStart = {
+      eventId: 'event-p',
+      provider: 'claude' as const,
+      threadId: 'thread-p',
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'turn.started' as const,
+      turnId: 'provider:p-1',
+      metadata: { trigger: 'provider' },
+    };
+    // Not held for the in-flight send, and never given its origin.
+    expect(propagation.apply(providerStart)).toEqual(providerStart);
+    // The send's own start is still held and bound on settle.
+    expect(
+      propagation.apply({
+        ...providerStart,
+        eventId: 'event-send',
+        turnId: 'send-1',
+        metadata: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      propagation.settle('thread-p', 'send-1', origin)?.clientOrigin,
+    ).toEqual(origin);
+    // Retiring the reservation drops nothing the provider turn owns.
+    propagation.begin('thread-p', origin);
+    propagation.retire('thread-p', undefined);
+    expect(propagation.apply(providerStart)).toEqual(providerStart);
+  });
+
   it('retires an in-flight origin when a terminal arrives without a start', () => {
     const propagation = new ClientOriginTurnPropagation();
     propagation.begin('thread-2', origin);

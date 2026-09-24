@@ -421,6 +421,28 @@ export function projectRuntimeEventsToMessages(
     return error ?? undefined;
   };
 
+  /**
+   * The images a tool returned, placed directly after the row that shows the
+   * call — the same place the live renderer puts them (`messageParts.ts`'s
+   * `upsertToolResultFiles`, built by the same {@link toolResultFileParts}). A
+   * screenshot the agent took belongs beside the call that took it, in the
+   * transcript rather than inside a collapsible tool row, and a `file` part
+   * breaks a tool-call run so it is never folded into a batch summary. The
+   * caller places them once per terminal event, so a repeat of the same
+   * terminal never doubles them.
+   */
+  const placeToolImages = (
+    toolPart: MessagePart,
+    ev: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ) => {
+    const files = toolResultFileParts(ev);
+    if (files.length === 0) return;
+    for (const list of [parts, ...messages.map((message) => message.parts)]) {
+      const index = list.indexOf(toolPart);
+      if (index >= 0) return void list.splice(index + 1, 0, ...files);
+    }
+  };
+
   for (const ev of events) {
     if (
       ev.method === 'turn.completed' ||
@@ -726,6 +748,7 @@ export function projectRuntimeEventsToMessages(
           // authoritative, later verdict.
           if (policyDenied) existing.approvalStatus = 'policy-denied';
           terminalToolsByEventId.set(ev.eventId, existing);
+          if (!completed) placeToolImages(existing, ev);
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
@@ -802,6 +825,7 @@ export function projectRuntimeEventsToMessages(
             flushReasoning();
             parts.push(part);
           }
+          placeToolImages(part, ev);
           // station#1569 (H1): a start-less `unresolved` row is settleable
           // too. The row is on the turn the event named when there was one,
           // otherwise on the open turn this fold just pushed it into.
@@ -1040,4 +1064,30 @@ export function projectRuntimeEventsToMessages(
     } = message.metadata;
     return { ...message, metadata };
   });
+}
+
+/**
+ * The `file` parts for the images a `tool.completed` carries. `url` is set
+ * only for a legacy/inline read; a normal read has the `blobRef` alone, which
+ * the client resolves through the authenticated attachment route.
+ */
+export function toolResultFileParts(ev: {
+  eventId: string;
+  toolCallId: string;
+  attachments?: readonly {
+    name: string;
+    mimeType: string;
+    dataUrl?: string;
+    blobRef?: string;
+  }[];
+}): MessagePart[] {
+  return (ev.attachments ?? []).map((attachment) => ({
+    type: 'file',
+    url: attachment.dataUrl,
+    blobRef: attachment.blobRef,
+    mediaType: attachment.mimeType,
+    name: attachment.name,
+    toolCallId: ev.toolCallId,
+    sourceEventId: ev.eventId,
+  }));
 }

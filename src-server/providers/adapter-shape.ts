@@ -18,6 +18,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
+import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
 export class ProviderTurnEndedError extends Error {
@@ -39,11 +40,42 @@ export class ProviderTurnEndedError extends Error {
  * surfaced honestly — instead of the fail-closed indeterminate path. An
  * adapter failure that MAY have reached the provider must stay a plain
  * error so callers keep refusing to retry it blindly.
+ *
+ * A send that races the session's still-running turn is the other expected
+ * source (#2415), and the adapter is the first layer to refuse it:
+ * `SessionExecutionCoordinator` serializes turn STARTS and refuses ("turn
+ * start in progress") only while another start is still being prepared or
+ * invoked, or was left indeterminate; an accepted turn that is still running
+ * does not block the claim. An adapter's "already has an active turn" guard
+ * must therefore throw this type. A plain error there is recorded as an
+ * indeterminate turn start, and that lingering boundary row reads as an
+ * in-flight turn that blocks later continuations of the thread.
+ *
+ * A send while the engine runs a turn it opened on its own is the third
+ * source (#2324): {@link ProviderTurnInProgressError}, retryable by its code.
  */
 export class SendTurnRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * #2324: a send refused because the engine is running a turn it opened on
+ * its own (`PROVIDER_TURN_TRIGGER`). Accepting it would fold the message
+ * into a reply nobody asked for. Retryable: the same send succeeds once that
+ * turn closes, so orchestration forwards the code and clients keep the
+ * message queued rather than dropping it.
+ */
+export class ProviderTurnInProgressError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'The agent is replying on its own; your message will be sent when it finishes.',
+    );
+    this.name = 'ProviderTurnInProgressError';
   }
 }
 

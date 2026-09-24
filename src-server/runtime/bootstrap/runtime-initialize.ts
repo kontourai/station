@@ -604,6 +604,10 @@ export async function initializeRuntime(
     // this Station's default applies to the next chat, not the next restart.
     resolveStationDefaultWorkspaceIsolation: async () =>
       (await configLoader.loadAppConfig()).defaultWorkspaceIsolation,
+    // #2409: what a Default approval pick resolves to on the server. Loaded
+    // per call for the same reason as the workspace default above.
+    resolveStationDefaultApprovalMode: async () =>
+      (await configLoader.loadAppConfig()).defaultApprovalMode,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched

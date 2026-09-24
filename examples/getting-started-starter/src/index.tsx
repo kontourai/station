@@ -1,5 +1,4 @@
 import {
-  type AgentSummary,
   type LayoutComponentProps,
   useAgents,
   useNavigation,
@@ -42,7 +41,7 @@ function GettingStartedHome({ onShowChat }: LayoutComponentProps) {
         </p>
         {agents.length > 0 ? (
           <ul className="starter-list">
-            {agents.map((agent: AgentSummary) => (
+            {agents.map((agent) => (
               <li key={agent.slug}>
                 <span>{agent.name}</span>
                 <code>{agent.slug}</code>

@@ -1,14 +1,13 @@
 /**
- * Local shim for @kontourai/station-shared knowledge types.
- * Import from here rather than directly from the shared package to keep
- * the plugin boundary clean.
+ * Knowledge types this example uses. The document and tree shapes are the
+ * SDK's own exports, so the example stays on the plugin boundary.
  */
 
 export type {
   KnowledgeDocumentMeta,
   KnowledgeSearchFilter,
   KnowledgeTreeNode,
-} from '@kontourai/station-shared';
+} from '@kontourai/station-sdk';
 
 export interface NoteFrontmatter {
   title?: string;

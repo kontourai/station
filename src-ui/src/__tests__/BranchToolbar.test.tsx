@@ -60,7 +60,8 @@ const state = {
 };
 
 vi.mock('../hooks/useGitStatus', () => ({
-  useGitStatus: (path: string | null) => {
+  // #2412: git reads name the Project first; the mock keys on the folder.
+  useGitStatus: (_projectSlug: string | null, path: string | null) => {
     state.statusPath = path;
     return {
       data: path ? (state.statusByRoot[path] ?? null) : null,

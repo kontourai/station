@@ -476,6 +476,12 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
+    pattern: 'scripts/test-realtime-wait-gate.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
     pattern: 'scripts/literal-swap-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
@@ -847,6 +853,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     supplemental: true,
     tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
     reason: 'glossary copy ratchet scans all src-ui sources by path',
+  },
+  {
+    // #2401: the example-manifest field check reads every examples/*/plugin.json
+    // by path, so no import edge reaches it. Supplemental: it ADDS the check to
+    // an examples change without replacing that change's own selection, which
+    // today escalates as an unmapped path.
+    pattern: 'examples/**',
+    supplemental: true,
+    tests: [
+      'src-server/services/plugins/__tests__/example-manifest-fields.test.ts',
+    ],
+    reason: 'example manifests are read by path, outside the import graph',
   },
   {
     pattern: 'justfile',

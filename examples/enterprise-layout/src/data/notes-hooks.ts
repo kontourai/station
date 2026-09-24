@@ -52,8 +52,7 @@ export function useNoteTree(): {
   const query = useKnowledgeTreeQuery(projectSlug ?? '', NAMESPACE, {
     enabled: !!projectSlug,
   });
-  const root = query.data as KnowledgeTreeNode | undefined;
-  return { data: root?.children ?? [], isLoading: query.isLoading };
+  return { data: query.data?.children ?? [], isLoading: query.isLoading };
 }
 
 export function useFilteredNotes(filter: {
@@ -76,7 +75,7 @@ export function useFilteredNotes(filter: {
     { enabled: !!projectSlug },
   );
   const needle = filter.query?.trim().toLowerCase();
-  const notes = ((query.data ?? []) as KnowledgeDocumentMeta[])
+  const notes = (query.data ?? [])
     .map(toNoteSummary)
     .filter(
       (note) =>

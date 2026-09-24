@@ -1051,26 +1051,6 @@ const CLIENT_SESSION_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'exited',
 ]);
 
-/**
- * #2334: whether this chat is KNOWN to have no live session: it never started
- * one, or its status says the session is over. Not the negation of
- * `chatSessionIsLive`: after a reload mid-turn the live status is not
- * restored (archive#3300), so liveness is merely unknown until the reconnect
- * snapshot, and unknown must not count as ended.
- */
-export function chatSessionKnownEnded(
-  session?: {
-    orchestrationSessionStarted?: boolean;
-    orchestrationStatus?: string;
-  } | null,
-): boolean {
-  if (!session || session.orchestrationSessionStarted !== true) return true;
-  return (
-    session.orchestrationStatus !== undefined &&
-    orchestrationStatusIsSessionSettled(session.orchestrationStatus)
-  );
-}
-
 /** Whether an `orchestrationStatus` means this chat's SESSION is over. */
 function orchestrationStatusIsSessionSettled(status: string): boolean {
   if (CLIENT_SESSION_TERMINAL_STATUSES.has(status)) return true;

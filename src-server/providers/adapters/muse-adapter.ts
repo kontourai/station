@@ -122,10 +122,15 @@ export interface MuseAdapterOptions {
    */
   turnTimeoutMs?: number;
   /**
-   * Idle limit in milliseconds: a full window with no verified protocol
-   * activity (non-empty streamed text, a newly started tool, or a newly
-   * identified tool result) AND no tool in flight ends the turn.
-   * Absent/invalid means the idle default below. Server-owned only.
+   * Declared idle limit in milliseconds: a full window with no verified
+   * protocol activity (non-empty streamed text, a newly started tool, or a
+   * newly identified tool result) AND no tool in flight ends the turn.
+   * Absent means NO idle bound: a silent turn is surfaced (the stall
+   * watchdog's `progressSilence`) and the user decides whether to Stop it
+   * (#2269). A declared value outside (0, 24 h] also means none, and is
+   * reported once on the first turn. When declared it is also the window
+   * after which a child still running after its turn settled is reaped.
+   * Server-owned only.
    */
   turnIdleTimeoutMs?: number;
   /**
@@ -138,36 +143,47 @@ export interface MuseAdapterOptions {
 
 /**
  * #2269 (owner direction 2026-09-22: Station does not kill live work on its
- * own schedule). Two bounds with distinct owners:
+ * own schedule). A live Muse turn has no Station-chosen bound. Two bounds
+ * apply only when a server-owned caller DECLARES them, and no production
+ * caller does (`station-runtime.ts` constructs this adapter with neither):
  *
- * - IDLE (default 30 min): a full window with no VERIFIED protocol activity
- *   (non-empty streamed text, a newly started tool, or a newly identified
- *   tool result) ends the turn — but never while a tool is in flight (a
- *   `tool.started` whose muse task has not finished, #2308) or background
- *   work the turn launched is pending (#2300): that is known in-progress
- *   work, not silence. Each verified activity reschedules the
+ * - IDLE (`turnIdleTimeoutMs`, no default): a full window with no VERIFIED
+ *   protocol activity (non-empty streamed text, a newly started tool, or a
+ *   newly identified tool result) ends the turn — but never while a tool is
+ *   in flight (a `tool.started` whose muse task has not finished, #2308) or
+ *   background work the turn launched is pending (#2300): that is known
+ *   in-progress work, not silence. Each verified activity reschedules the
  *   window, and the tool's task finishing (completed/failed/cancelled) or
- *   its result re-arms it. Invalid values fall back to this default
- *   (fail-closed, mirroring `resolveTurnStallWindowMs`).
- * - TOTAL: there is NO default. An absolute wall-clock ceiling applies only
- *   when a server-owned caller declares one (`turnTimeoutMs`). No production
- *   caller does today — `station-runtime.ts` constructs this adapter without
- *   it — so in production Muse turns have no total budget; tests and any
- *   future caller use it. Its expiry is attributed to that declared budget
- *   (`MUSE_TURN_TOTAL_TIMEOUT_CODE`). A fixed 2 h default used to apply here
- *   and killed a healthy turn whose bash tool completed every ~5 minutes.
+ *   its result re-arms it. Its expiry is `MUSE_TURN_IDLE_TIMEOUT_CODE`. A
+ *   30-minute default used to apply to every turn; it was the last timer
+ *   that ended a live turn Station had not been asked to bound. A silent
+ *   turn is now shown as silent (the stall watchdog's `progressSilence`,
+ *   "No output for …" with a Stop button) and the user decides.
+ * - TOTAL (`turnTimeoutMs`, no default): an absolute wall-clock ceiling from
+ *   turn start. Its expiry is `MUSE_TURN_TOTAL_TIMEOUT_CODE`. A fixed 2 h
+ *   default used to apply here and killed a healthy turn whose bash tool
+ *   completed every ~5 minutes.
  *
- * No request/child/user metadata can choose or extend either bound. Both are
- * capped at 24 h (well inside Node's setTimeout range).
+ * A declared value outside (0, 24 h] is refused (no bound) and reported once,
+ * never replaced by a bound nobody declared. No request/child/user metadata
+ * can choose or extend either bound. Both are capped at 24 h (well inside
+ * Node's setTimeout range).
+ *
+ * Separately, a child still running after its turn SETTLED is reaped one
+ * window after the settle (#2328/#2300, {@link MUSE_LINGERING_CHILD_REAP_MS},
+ * or the declared idle window). That bounds a process that outlived its
+ * turn, not a live turn.
  */
-export const MUSE_DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
+export const MUSE_LINGERING_CHILD_REAP_MS = 30 * 60_000;
 export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
 /**
- * Resolution of the IDLE bound: a positive finite number within the 24 h cap
- * is honored; anything else (absent, zero, negative, NaN, Infinity, above
- * the cap) resolves to the given default — never to "no bound". Exported for
- * unit tests. The TOTAL bound deliberately does not use this: it has no
- * default to fall back to (see {@link resolveMuseTurnBudget}).
+ * Resolution of the lingering-child reap window: a positive finite number
+ * within the 24 h cap is honored; anything else (absent, zero, negative,
+ * NaN, Infinity, above the cap) resolves to the given default — never to "no
+ * bound", because a child that outlived its turn holds the session's slot.
+ * Exported for unit tests. The declared turn bounds deliberately do not use
+ * this: they have no default to fall back to (see
+ * {@link resolveMuseTurnBudget}).
  */
 export function resolveMuseSupervisionBound(
   value: number | undefined,
@@ -185,7 +201,7 @@ export function resolveMuseSupervisionBound(
 }
 
 /**
- * The declared TOTAL budget, or `undefined` for none. Absent -> none. A
+ * A declared turn bound (TOTAL or IDLE), or `undefined` for none. Absent -> none. A
  * declared value that is not a positive finite number within the 24 h cap
  * also resolves to none (reported as `invalid`), rather than to a substitute
  * budget nobody declared: the only choices for a malformed declaration are
@@ -298,7 +314,7 @@ const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
  * dispatch cleanly and rethrow it. Any other error thrown from `sendTurn` is
  * converted to `foreground_message_indeterminate` (the turn MAY have
  * started), which is what the plain "already has an active turn" error
- * became before #2300.
+ * became before #2300 (and, for a still-running occupant, until #2415).
  */
 export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
@@ -716,7 +732,13 @@ export class MuseAdapter implements ProviderAdapterShape {
   /** A declared `turnTimeoutMs` that was refused; reported on the first turn. */
   private readonly refusedTurnTimeoutMs: unknown;
   private refusedTurnTimeoutReported = false;
-  private readonly turnIdleTimeoutMs: number;
+  /** The declared idle bound, or `undefined` for none (the default). */
+  private readonly turnIdleTimeoutMs: number | undefined;
+  /** A declared `turnIdleTimeoutMs` that was refused; reported on the first turn. */
+  private readonly refusedTurnIdleTimeoutMs: unknown;
+  private refusedTurnIdleTimeoutReported = false;
+  /** How long a child may outlive its settled turn before it is reaped. */
+  private readonly lingeringChildReapMs: number;
   /**
    * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
    * a mid-run env mutation cannot change what a session's later turns run
@@ -746,19 +768,23 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.env = options.env ?? process.env;
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
-    // The total budget has no default (see MUSE_DEFAULT_IDLE_TIMEOUT_MS's
+    // Neither turn bound has a default (see MUSE_LINGERING_CHILD_REAP_MS's
     // doc); a malformed declaration is kept to be reported, not replaced.
     const budget = resolveMuseTurnBudget(options.turnTimeoutMs);
     this.turnTimeoutMs = budget.budgetMs;
     this.refusedTurnTimeoutMs = budget.invalid
       ? options.turnTimeoutMs
       : undefined;
-    // The idle bound still fails CLOSED to its default: the old
-    // `Number.isFinite(...) || <= 0 → return (no timer)` shape silently
-    // disabled it on 0/NaN/negative/Infinity.
-    this.turnIdleTimeoutMs = resolveMuseSupervisionBound(
-      options.turnIdleTimeoutMs,
-      MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+    const idle = resolveMuseTurnBudget(options.turnIdleTimeoutMs);
+    this.turnIdleTimeoutMs = idle.budgetMs;
+    this.refusedTurnIdleTimeoutMs = idle.invalid
+      ? options.turnIdleTimeoutMs
+      : undefined;
+    // The reap window fails CLOSED to its default: a child that outlived its
+    // turn holds the session's slot, so "no bound" is not an option here.
+    this.lingeringChildReapMs = resolveMuseSupervisionBound(
+      this.turnIdleTimeoutMs,
+      MUSE_LINGERING_CHILD_REAP_MS,
     );
     let refusal: MuseProviderOverrideRefusal | undefined;
     this.providerOverride = resolveMuseProviderOverride(this.env, (refused) => {
@@ -782,19 +808,32 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Reports a refused `turnTimeoutMs` declaration once, on the first turn —
-   * deferred for the same reason as {@link reportProviderNoticeOnce}: this
-   * adapter is built before the runtime's logger is wired.
+   * Reports a refused `turnTimeoutMs` / `turnIdleTimeoutMs` declaration once,
+   * on the first turn — deferred for the same reason as
+   * {@link reportProviderNoticeOnce}: this adapter is built before the
+   * runtime's logger is wired.
    */
   private reportRefusedTurnBudgetOnce(): void {
-    if (this.refusedTurnTimeoutReported) return;
-    if (this.refusedTurnTimeoutMs === undefined) return;
     const logger = this.options.logger;
     if (!logger?.warn) return;
-    logger.warn(
-      `Ignoring Muse turnTimeoutMs=${String(this.refusedTurnTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no total budget.`,
-    );
-    this.refusedTurnTimeoutReported = true;
+    if (
+      !this.refusedTurnTimeoutReported &&
+      this.refusedTurnTimeoutMs !== undefined
+    ) {
+      logger.warn(
+        `Ignoring Muse turnTimeoutMs=${String(this.refusedTurnTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no total budget.`,
+      );
+      this.refusedTurnTimeoutReported = true;
+    }
+    if (
+      !this.refusedTurnIdleTimeoutReported &&
+      this.refusedTurnIdleTimeoutMs !== undefined
+    ) {
+      logger.warn(
+        `Ignoring Muse turnIdleTimeoutMs=${String(this.refusedTurnIdleTimeoutMs)}: not a positive number of milliseconds up to ${MUSE_MAX_SUPERVISION_TIMEOUT_MS}. Muse turns run with no idle bound.`,
+      );
+      this.refusedTurnIdleTimeoutReported = true;
+    }
   }
 
   /**
@@ -1013,8 +1052,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       // Station already tried to stop it and could not confirm it stopped
       // (Stop, stopSession, or a deadline reap left it termination-
       // unconfirmed), no prompt retry will succeed: the slot frees only if
-      // the process exits on its own or the idle reap, one window later,
-      // confirms stopping it. That is the definitive refusal, still a
+      // the process exits on its own or the lingering-child reap, one window
+      // later, confirms stopping it (with no declared idle bound, measured
+      // from the settle: an unconfirmed Stop is retried 30 minutes after the
+      // Stop, not after the turn's last activity). That is the definitive refusal, still a
       // pre-effect one so the dispatch is retired cleanly.
       if (occupant.settled && !occupant.terminationUnconfirmed) {
         throw this.refuseSend(
@@ -1030,8 +1071,16 @@ export class MuseAdapter implements ProviderAdapterShape {
           ),
         );
       }
-      throw new Error(
-        `Muse session already has an active turn: ${input.threadId}`,
+      // #2415: the occupant is a live turn. Refusing is certain and nothing
+      // was spawned, so this is a pre-effect refusal too; a plain error here
+      // was recorded as an indeterminate turn start, whose lingering
+      // boundary row blocked every later send on the thread. The thread id
+      // stays out of the message (see `refuseSend`).
+      throw this.refuseSend(
+        input.threadId,
+        new SendTurnRefusedError(
+          'This Muse session already has an active turn.',
+        ),
       );
     }
     this.reportProviderNoticeOnce();
@@ -1103,6 +1152,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       },
       startedAt: turnStartedAt,
       idleLimitMs: this.turnIdleTimeoutMs,
+      lingeringChildReapMs: this.lingeringChildReapMs,
       totalLimitMs: this.turnTimeoutMs,
       lastProgressAt: turnStartedAt,
       seenToolCallIds: [],
@@ -1162,12 +1212,14 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
         ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
         : {}),
+      // Each bound appears only when it was declared, because only then
+      // does anything enforce it. With neither (production), the
+      // declaration says exactly that: this turn has no Station-imposed
+      // bound, and the delegation projection shows "none declared".
       supervision: {
         provider: this.provider,
         turnId,
         startedAt: turnStartedAtIso,
-        // No declared budget -> no deadline and no total to declare; the
-        // delegation projection then forwards an idle-only supervision.
         ...(this.turnTimeoutMs === undefined
           ? {}
           : {
@@ -1176,7 +1228,9 @@ export class MuseAdapter implements ProviderAdapterShape {
               ).toISOString(),
               totalLimitMs: this.turnTimeoutMs,
             }),
-        idleLimitMs: this.turnIdleTimeoutMs,
+        ...(this.turnIdleTimeoutMs === undefined
+          ? {}
+          : { idleLimitMs: this.turnIdleTimeoutMs }),
       },
     };
     this.publish({
@@ -1936,18 +1990,19 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     // Parity with the pre-#2308 schedule for a settled turn: there, the idle
     // timer was always pending at settle, so a child that lingers after its
-    // terminal was reaped one idle window on. Several things now disarm it
-    // while a turn is live — a tool in flight (#2308), background work
-    // pending, and a turn held for its follow-up run (#2300), which never
-    // arms idle at all — so the invariant is restored here directly: a turn
-    // that settles with no idle timer gets one, from now (the disarmed time
-    // was work, not silence). Keyed on the missing timer rather than on the
-    // reasons it was missing, so a future reason to disarm idle cannot
-    // silently strand a lingering child (and with it the session's slot)
-    // again. A timer that already fired (the idle deadline that caused this
-    // settle) is still set, so it is not rescheduled. If the restored timer
-    // reaps a child whose background rows were closed here, the reap is
-    // announced (`scheduleIdleTimer`), not silent.
+    // terminal was reaped one idle window on. Several things now leave a
+    // live turn with no idle timer — no idle bound declared (the default,
+    // #2269), a tool in flight (#2308), background work pending, and a turn
+    // held for its follow-up run (#2300) — so the invariant is restored here
+    // directly: a turn that settles with no idle timer gets the
+    // lingering-child reap, from now (the time before was the turn's, not
+    // the child's). Keyed on the missing timer rather than on the reasons it
+    // was missing, so a future reason to disarm idle cannot silently strand
+    // a lingering child (and with it the session's slot) again. A timer that
+    // already fired (a declared idle deadline that caused this settle) is
+    // still set, so it is not rescheduled. If the reap ends a child whose
+    // background rows were closed here, it is announced
+    // (`scheduleIdleTimer`), not silent.
     if (!turn.idleTimeoutHandle) {
       this.scheduleIdleTimer(record, turn);
     }
@@ -2058,7 +2113,10 @@ export class MuseAdapter implements ProviderAdapterShape {
    *   (`turnTimeoutMs`), once, and never rescheduled. With no declaration a
    *   live turn is never ended on a Station-chosen schedule; a wedged child
    *   is visible as silence and stopped by the user.
-   * - IDLE is rescheduled by verified protocol activity alone
+   * - IDLE is armed only when the server declared an idle bound
+   *   (`turnIdleTimeoutMs`); with none (the default, #2269) a silent live
+   *   turn is surfaced as silence and stopped by the user. When declared it
+   *   is rescheduled by verified protocol activity alone
    *   (`noteVerifiedActivity`) and is not armed while a tool is in flight.
    *   Malformed/unknown/heartbeat/stderr frames and duplicate completion
    *   receipts never touch it.
@@ -2147,8 +2205,9 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * (Re)arms the idle deadline `idleLimitMs` from now. Called once at turn
-   * start and again on every verified protocol activity. Never called for
+   * (Re)arms the declared idle deadline `idleLimitMs` from now; a no-op when
+   * none was declared. Called once at turn start and again on every verified
+   * protocol activity. Never called for
    * anything else — notably never for approval state (muse has no approval
    * channel) and never by the total path.
    *
@@ -2166,6 +2225,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       turn.idleTimeoutHandle = undefined;
     }
     if (turn.settled) return;
+    // #2269: no declared idle bound (the default) means a silent live turn is
+    // never ended by Station. It is surfaced as silence instead — the stall
+    // watchdog's `progressSilence` keys on the same parent-visible events —
+    // and the user decides whether to Stop it.
+    if (turn.idleLimitMs === undefined) return;
     if (this.hasToolInFlight(turn)) return;
     // #2300: pending background work is known work too, and owner decision
     // 2 gives a held turn no post-terminal budget: it runs until muse
@@ -2181,17 +2245,23 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Starts the idle timer `idleLimitMs` from now. Only `armIdleDeadline`
-   * (live turns) and `settleTurn` (the restoration after closing in-flight
-   * tools or pending background work) call it. On a turn that already
-   * settled, the callback only reaps the lingering child — announced with a
-   * `runtime.warning` when settle closed background rows (#2300).
+   * Starts the per-turn idle timer from now: on a live turn, the declared
+   * idle bound (`idleLimitMs`, called from `armIdleDeadline` only when one was
+   * declared); on a settled turn, the lingering-child reap
+   * (`lingeringChildReapMs`, called from `settleTurn`). A live turn's timer
+   * that is still pending when the turn settles keeps running and reaps
+   * instead. On a settled turn the callback only reaps the lingering child —
+   * announced with a `runtime.warning` when settle closed background rows
+   * (#2300).
    */
   private scheduleIdleTimer(
     record: MuseSessionRecord,
     turn: MuseActiveTurn,
   ): void {
-    const idleLimitMs = turn.idleLimitMs;
+    const idleLimitMs = turn.settled
+      ? turn.lingeringChildReapMs
+      : turn.idleLimitMs;
+    if (idleLimitMs === undefined) return;
     const handle = setTimeout(() => {
       const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
       if (turn.settled) {
@@ -2203,7 +2273,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
         omitStderr: true,
         error: {
-          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity and no tool reported running (last activity at ${lastActivityIso}), so Station stopped it.`,
+          message: `Muse turn was idle for ${idleLimitMs}ms, the idle bound declared for it, with no verified protocol activity and no tool reported running (last activity at ${lastActivityIso}), so Station stopped it.`,
           code: MUSE_TURN_IDLE_TIMEOUT_CODE,
         },
       });

@@ -109,9 +109,12 @@ export function useNewPluginFlow(onDone: () => void) {
               : {}),
           });
         } catch (createError) {
+          // #2412: a 403 that names its own code is a different refusal (the
+          // Project's folder), and says so itself.
           if (
             needsSharedOverride &&
-            (createError as { status?: unknown }).status === 403
+            (createError as { status?: unknown }).status === 403 &&
+            (createError as { code?: unknown }).code === undefined
           ) {
             throw new Error(WORKTREE_OVERRIDE_REFUSED);
           }

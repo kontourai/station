@@ -532,12 +532,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // `useOrchestrationSessionsQuery` never carries remote environments'
   // sessions, so a remote row cannot resolve a cwd here at all). Referentially
   // stable for the panel's `memo()` wrap, like `openInboxChatSessionIds`.
-  const cwdByThreadId = useMemo(
+  // #2412: a git read names its Project, so only a session bound to one
+  // gets a git section; an unbound chat's folder is not read.
+  const gitLocationByThreadId = useMemo(
     () =>
       new Map(
         orchestrationSessions
-          .filter((session) => !!session.cwd)
-          .map((session) => [session.threadId, session.cwd as string]),
+          .filter((session) => !!session.cwd && !!session.projectSlug)
+          .map((session) => [
+            session.threadId,
+            {
+              projectSlug: session.projectSlug as string,
+              workingDir: session.cwd as string,
+            },
+          ]),
       ),
     [orchestrationSessions],
   );
@@ -753,7 +761,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionForHook,
     agentDefaultModelId,
     bindingStatus,
-    connectionApprovalModeDefault,
+    agentApprovalModeDefault,
     toolPolicyDelivery,
     effectiveModels,
     fileAttachmentsSupported,
@@ -2454,7 +2462,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         exiting: inboxPresence.exiting,
                         items: taskItems,
                         agents,
-                        cwdByThreadId,
+                        gitLocationByThreadId,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
@@ -2586,9 +2594,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       modelProviderLabel={modelProviderLabel}
                       modelProviders={modelProviders}
                       agentDefaultModelId={agentDefaultModelId ?? null}
-                      connectionApprovalModeDefault={
-                        connectionApprovalModeDefault
-                      }
+                      agentApprovalModeDefault={agentApprovalModeDefault}
                       stationApprovalModeDefault={
                         appConfig?.defaultApprovalMode
                       }

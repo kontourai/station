@@ -16,7 +16,6 @@ import {
 import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
-import { recordStreamPosition } from './streamPosition';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 interface OwnedStream {
@@ -357,7 +356,6 @@ export function ensureOrchestrationEventStream(
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
         cursor.adopt(raw.id);
-        recordStreamPosition(apiBase, parseStreamSequence(raw.id));
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
         applyOrchestrationSnapshot(payload, {
