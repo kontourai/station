@@ -21,6 +21,14 @@ export type SessionTransitionReason =
   | 'session_configured'
   | 'turn_started'
   | 'turn_completed'
+  /**
+   * #2324: a turn the engine opened on its own (see `PROVIDER_TURN_TRIGGER`)
+   * moved the session. Kept apart from `turn_started`/`turn_completed` so a
+   * consumer that must act on a caller's turn only once can tell a later
+   * unprompted reply apart.
+   */
+  | 'provider_turn_started'
+  | 'provider_turn_completed'
   | 'approval_requested'
   | 'review_requested'
   | 'input_requested'
@@ -45,6 +53,8 @@ export const SESSION_TRANSITION_REASONS: readonly SessionTransitionReason[] = [
   'session_configured',
   'turn_started',
   'turn_completed',
+  'provider_turn_started',
+  'provider_turn_completed',
   'approval_requested',
   'review_requested',
   'input_requested',

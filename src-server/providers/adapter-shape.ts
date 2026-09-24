@@ -17,6 +17,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
+import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
 export class ProviderTurnEndedError extends Error {
@@ -53,6 +54,24 @@ export class SendTurnRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * #2324: a send refused because the engine is running a turn it opened on
+ * its own (`PROVIDER_TURN_TRIGGER`). Accepting it would fold the message
+ * into a reply nobody asked for. Retryable: the same send succeeds once that
+ * turn closes, so orchestration forwards the code and clients keep the
+ * message queued rather than dropping it.
+ */
+export class ProviderTurnInProgressError extends SendTurnRefusedError {
+  readonly code = PROVIDER_TURN_IN_PROGRESS_CODE;
+
+  constructor() {
+    super(
+      'The agent is replying on its own; your message will be sent when it finishes.',
+    );
+    this.name = 'ProviderTurnInProgressError';
   }
 }
 

@@ -695,6 +695,15 @@ export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
 export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
 
 /**
+ * #2324: refusal code for a send that arrived while the engine is running a
+ * turn it opened on its own (a provider-triggered turn, see
+ * `PROVIDER_TURN_TRIGGER`). Accepting it would fold the message into a reply
+ * the user did not ask for. Retryable: the same send succeeds once that turn
+ * closes, so clients keep it queued and send it then.
+ */
+export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned

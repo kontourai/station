@@ -74,6 +74,7 @@ import type {
 } from '../adapter-shape.js';
 import {
   ProviderTurnEndedError,
+  ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
@@ -116,6 +117,15 @@ import {
   claudeResumeSessionId,
   claudeSourceResumeCursor,
 } from './claude-resume-cursor.js';
+import {
+  type ClaudeSdkTurnLedger,
+  claudeRunningTurnTerminalMetadata,
+  claudeSendBlockedBy,
+  endClaudeProviderTurn,
+  recordClaudeSteer,
+  recordClaudeTurnDispatched,
+  recordClaudeTurnStopRequested,
+} from './claude-sdk-turns.js';
 import {
   cleanupMaterializedSkills,
   defaultClaudeGlobalConfigDirs,
@@ -537,14 +547,13 @@ type ClaudeSessionRecord = {
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   pendingRequests: Map<string, PendingRequest>;
+  /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
-  /** Set only once the prompt has entered the live SDK queue. */
-  dispatchedTurnId?: string;
   /**
-   * Mirrors `ClaudeMessageState.interruptingTurnId`; same object at runtime.
-   * The SDK result mapper consumes it for the exact requested Stop only.
+   * #2324: mirrors `ClaudeMessageState.sdkTurns`; same object at runtime.
+   * The one owner of Claude turn identity (`claude-sdk-turns.ts`).
    */
-  interruptingTurnId?: string;
+  sdkTurns?: ClaudeSdkTurnLedger;
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
   /**
@@ -1431,47 +1440,32 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
     }
-    // #2415: a send that races a turn whose prompt is already in the SDK
-    // queue, and has not produced its result, is refused before any effect.
-    // Accepting it used to push a second prompt into the running query —
-    // Claude's mid-turn input path, i.e. an unannounced steer — while
-    // minting a new turn id that took over `activeTurnId`, so the running
-    // turn's later events and result were attributed to the new turn and the
-    // first turn never received a terminal of its own. A deliberate mid-turn
-    // message is `steerTurn`. Keyed on `dispatchedTurnId` (armed only once a
-    // prompt is queued, cleared by that turn's result), not `activeTurnId`,
-    // which is allocated before this method's async setup and so can outlive
-    // a setup that threw. A turn Stop was requested for is exempt, as
-    // before: `interruptTurn` closes it with `turn.aborted`, and the result
-    // mapper already handles a new turn queued before the stopped turn's
-    // result arrives.
-    if (
-      record.dispatchedTurnId !== undefined &&
-      record.interruptingTurnId !== record.dispatchedTurnId
-    ) {
+    this.refuseSendWhileTurnOwed(record);
+    return this.dispatchTurn(record, input, crypto.randomUUID());
+  }
+
+  /**
+   * #2415/#2324: a send is refused before any effect while the SDK still owes
+   * a result to a turn nobody stopped. Accepting it would push a second
+   * prompt into the running query — Claude's mid-turn input path, an
+   * unannounced steer — and the engine would fold it into the running reply.
+   * A deliberate mid-turn message is `steerTurn`.
+   *
+   * The turn ledger decides (`claudeSendBlockedBy`): each turn carries its
+   * own Stop mark, so a stopped turn awaiting its result does not block, but
+   * a send queued behind that Stop does. A turn the engine opened on its own
+   * refuses with the retryable `ProviderTurnInProgressError`: the same send
+   * succeeds once that reply ends. Checked again right before the prompt is
+   * queued, because a turn can open while this send's setup awaits the SDK.
+   */
+  private refuseSendWhileTurnOwed(record: ClaudeSessionRecord): void {
+    const blockedBy = claudeSendBlockedBy(record);
+    if (blockedBy === 'dispatched') {
       throw new SendTurnRefusedError(
         'This Claude session already has an active turn.',
       );
     }
-    const turnId = crypto.randomUUID();
-    record.activeTurnId = turnId;
-    try {
-      return await this.dispatchTurn(record, input, turnId);
-    } catch (error) {
-      // #2415 review: a setup that throws before this turn's prompt is
-      // queued (a rejected setPermissionMode/setModel/applyFlagSettings, or
-      // a closed queue) must not leave `activeTurnId` claiming a turn the
-      // engine never received. It goes back to whatever turn IS in the SDK
-      // — a stopped turn still owed its result, or none — so that result is
-      // attributed to it and clears it.
-      if (
-        record.activeTurnId === turnId &&
-        record.dispatchedTurnId !== turnId
-      ) {
-        record.activeTurnId = record.dispatchedTurnId;
-      }
-      throw error;
-    }
+    if (blockedBy === 'provider') throw new ProviderTurnInProgressError();
   }
 
   /** The rest of `sendTurn`, after the turn id is allocated. */
@@ -1480,10 +1474,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
     turnId: ReturnType<typeof crypto.randomUUID>,
   ): Promise<ProviderTurnStartResult> {
-    // archive#1182: a fresh turn has not reported anything yet — clear the
-    // previous turn's value so a turn that ends before any assistant
-    // message arrives publishes no `reportedModel` rather than a stale one.
-    record.lastReportedModel = undefined;
     const decodedAttachments = decodeChatAttachments(input.attachments);
     const content: string | ContentBlockParam[] =
       decodedAttachments.length === 0
@@ -1626,6 +1616,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
     }
 
+    // #2324: synchronous from here to the push — nothing can interleave.
+    this.refuseSendWhileTurnOwed(record);
     const enqueued = record.promptQueue.push({
       type: 'user',
       message: {
@@ -1641,7 +1633,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // An allocated ID is not enough to attribute an inbound SDK result: a
     // resume/init handshake can arrive while async setup above is in flight.
     // Arm completion provenance only after this turn's prompt is queued.
-    record.dispatchedTurnId = turnId;
+    recordClaudeTurnDispatched(record, turnId);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1765,9 +1757,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     const targetTurnId = turnId ?? record.activeTurnId;
     // Mark before calling the SDK: its async iterator may publish the
-    // `is_error` result before `interrupt()` resolves. The mapper consumes
-    // this marker only for this exact dispatched turn.
-    record.interruptingTurnId = targetTurnId;
+    // `is_error` result before `interrupt()` resolves. The mark is on this
+    // turn's own ledger entry, so only its result is read as the receipt.
+    recordClaudeTurnStopRequested(record, targetTurnId);
+    // #2324: read now — the receipt can clear the ledger entry before the
+    // SDK's interrupt resolves.
+    const terminalMetadata = claudeRunningTurnTerminalMetadata(record);
     // #2316: the interrupted turn's open approvals can never run their call.
     // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
     // later answer lands on them and no grant is minted for them.
@@ -1791,6 +1786,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       turnId: targetTurnId,
       method: 'turn.aborted',
       reason: 'interrupted',
+      ...(terminalMetadata ? { metadata: terminalMetadata } : {}),
     });
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
@@ -1806,17 +1802,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     // The SDK query was created with this still-open AsyncIterable. Pushing a
     // second SDKUserMessage is Query.streamInput's native mid-turn input path.
+    const steerUuid = crypto.randomUUID();
     const enqueued = record.promptQueue.push({
       type: 'user',
       message: { role: 'user', content: input },
       parent_tool_use_id: null,
       session_id: threadId,
-      uuid: crypto.randomUUID(),
+      uuid: steerUuid,
       timestamp: new Date().toISOString(),
     });
     if (!enqueued) {
       throw new ProviderTurnEndedError();
     }
+    // #2324: the engine reports this message by its uuid when it takes it;
+    // that is this turn continuing, never a new one.
+    recordClaudeSteer(record, steerUuid, turnId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -2734,6 +2734,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       await this.consumeMessagesInner(record);
     } finally {
+      // #2324: nothing runs once the iterator is gone. A turn the engine
+      // opened on its own and never reported the end of is closed here —
+      // turns Station dispatched get theirs from the failure that ended the
+      // iterator or from session.exited.
+      endClaudeProviderTurn({
+        provider: this.provider,
+        record,
+        publish: (event) => this.publish(event),
+        createdAt: new Date().toISOString(),
+      });
       // station#1558: the SDK iterator finishing or throwing means the
       // `claude` process is gone — every path out of it is a SESSION end, and
       // a `tool_use` still open at that point can never receive a result.

@@ -88,6 +88,7 @@ import { scrubBootInternalSecrets } from '../../utils/child-process-environment.
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
   ProviderTurnEndedError,
+  ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import {
@@ -877,6 +878,292 @@ describe('ClaudeAdapter', () => {
       await expect(b).rejects.toThrow('query ended');
       const c = await adapter.sendTurn({ threadId, input: 'C' });
       expect(c.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+  });
+
+  describe('#2415 verifier probes, closed by the #2324 turn ledger', () => {
+    const successResult = (sessionId: string, uuids?: string[]) => ({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'done',
+      stop_reason: 'end_turn',
+      num_turns: 1,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      uuid: `result-${crypto.randomUUID()}`,
+      session_id: sessionId,
+      ...(uuids
+        ? { user_message_uuid: uuids.at(-1), user_message_uuids: uuids }
+        : {}),
+    });
+    const interruptedResult = (sessionId: string) => ({
+      ...successResult(sessionId),
+      is_error: true,
+      result: 'interrupted',
+      stop_reason: null,
+    });
+    const collect = (adapter: ClaudeAdapter) => {
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      return events;
+    };
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    test('PROBE-A: a stopped turn that finishes on its own while the next send’s setup fails cannot wedge the session', async () => {
+      const controlled = createControlledMockQuery();
+      let rejectSetModel!: (error: Error) => void;
+      controlled.setModel.mockImplementationOnce(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectSetModel = reject;
+          }),
+      );
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'probe-a';
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        modelId: 'claude-sonnet-4-6',
+      });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = adapter.sendTurn({
+        threadId,
+        input: 'B',
+        modelId: 'claude-opus-4-6',
+      });
+      // A's natural completion raced the Stop: a SUCCESS result.
+      controlled.push(successResult(threadId));
+      await flush();
+      rejectSetModel(new Error('query ended'));
+      await expect(b).rejects.toThrow('query ended');
+      const c = await adapter.sendTurn({ threadId, input: 'C' });
+      expect(c.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+
+    test('PROBE-B: a send issued synchronously from a turn.completed listener is accepted', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = 'probe-b';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      controlled.push(successResult(threadId));
+      let completed: any;
+      for (let seen = 0; seen < 20; seen++) {
+        const event = (await iterator.next()).value;
+        if (event?.method === 'turn.completed') {
+          completed = event;
+          break;
+        }
+      }
+      expect(completed).toMatchObject({ turnId: a.turnId });
+      const next = await adapter.sendTurn({ threadId, input: 'follow-up' });
+      expect(next.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+
+    test('PROBE-C: after the stopped turn’s receipt, a send racing the turn queued behind the Stop is refused', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'probe-c';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = await adapter.sendTurn({ threadId, input: 'B' });
+      controlled.push(interruptedResult(threadId));
+      await flush();
+      await expect(
+        adapter.sendTurn({ threadId, input: 'D' }),
+      ).rejects.toBeInstanceOf(SendTurnRefusedError);
+      expect(b.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+
+    test('PROBE-D: the Stop exemption is the STOPPED turn’s — a send racing the send queued behind a pending Stop is refused', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'probe-d';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      // A's result has NOT arrived: its Stop is still pending.
+      await adapter.sendTurn({ threadId, input: 'B' });
+      await expect(
+        adapter.sendTurn({ threadId, input: 'D' }),
+      ).rejects.toBeInstanceOf(SendTurnRefusedError);
+      await adapter.stopSession(threadId);
+    });
+
+    test('a stopped turn’s SUCCESS result arriving after the next send is never published as that send’s completion', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events = collect(adapter);
+      const threadId = 'stopped-success-after-next-send';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = await adapter.sendTurn({ threadId, input: 'B' });
+      // Without uuids (an older CLI) the SDK still answers in order: A first.
+      controlled.push(successResult(threadId));
+      await flush();
+      expect(
+        events.filter((event) => event.method === 'turn.completed'),
+      ).toEqual([]);
+      // B's own result closes B.
+      controlled.push(successResult(threadId, [b.turnId]));
+      await flush();
+      expect(
+        events
+          .filter((event) => event.method === 'turn.completed')
+          .map((event) => event.turnId),
+      ).toEqual([b.turnId]);
+      await adapter.stopSession(threadId);
+    });
+
+    test('with uuids, a stopped turn’s success result is attributed by uuid even when a later send is running', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events = collect(adapter);
+      const threadId = 'stopped-success-by-uuid';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = await adapter.sendTurn({ threadId, input: 'B' });
+      controlled.push(successResult(threadId, [a.turnId]));
+      await flush();
+      controlled.push(successResult(threadId, [b.turnId]));
+      await flush();
+      expect(
+        events
+          .filter((event) => event.method === 'turn.completed')
+          .map((event) => event.turnId),
+      ).toEqual([b.turnId]);
+      await adapter.stopSession(threadId);
+    });
+  });
+
+  describe('#2324 a send while the engine runs a turn it opened itself', () => {
+    const replyFrame = (sessionId: string) => ({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'finished' },
+      },
+      uuid: `frame-${crypto.randomUUID()}`,
+      session_id: sessionId,
+    });
+    const providerResult = (sessionId: string) => ({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'finished',
+      stop_reason: 'end_turn',
+      num_turns: 1,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      origin: { kind: 'task-notification' },
+      uuid: `result-${crypto.randomUUID()}`,
+      session_id: sessionId,
+    });
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    test('is refused with the retryable provider-turn code, and accepted once that turn ends', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'provider-turn-refusal';
+      await adapter.startSession({ provider: 'claude', threadId });
+      controlled.push(replyFrame(threadId));
+      await flush();
+      const refusal = await adapter
+        .sendTurn({ threadId, input: 'during' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(refusal).toBeInstanceOf(ProviderTurnInProgressError);
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as { code?: string }).code).toBe(
+        'provider_turn_in_progress',
+      );
+      // No effect: nothing entered the SDK queue.
+      const queued = mockQuery.mock.calls[0][0].prompt[Symbol.asyncIterator]();
+      controlled.push(providerResult(threadId));
+      await flush();
+      const after = await adapter.sendTurn({ threadId, input: 'after' });
+      await expect(queued.next()).resolves.toMatchObject({
+        value: { uuid: after.turnId },
+      });
+      await adapter.stopSession(threadId);
+    });
+
+    test('a provider turn that opens while a send’s setup awaits the SDK refuses that send before its prompt is queued', async () => {
+      const controlled = createControlledMockQuery();
+      let resolveSetModel!: () => void;
+      controlled.setModel.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSetModel = resolve;
+          }),
+      );
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'provider-turn-during-setup';
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        modelId: 'claude-sonnet-4-6',
+      });
+      const send = adapter.sendTurn({
+        threadId,
+        input: 'during setup',
+        modelId: 'claude-opus-4-6',
+      });
+      controlled.push(replyFrame(threadId));
+      await flush();
+      resolveSetModel();
+      await expect(send).rejects.toBeInstanceOf(ProviderTurnInProgressError);
+      await adapter.stopSession(threadId);
+    });
+
+    test('Stop on a provider turn aborts it with its trigger, and a send after the Stop is accepted', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'provider-turn-stop';
+      await adapter.startSession({ provider: 'claude', threadId });
+      controlled.push(replyFrame(threadId));
+      await flush();
+      const started = events.find((event) => event.method === 'turn.started');
+      expect(started).toMatchObject({ metadata: { trigger: 'provider' } });
+      await expect(adapter.interruptTurn(threadId)).resolves.toMatchObject({
+        outcome: 'cancelled',
+        turnId: started.turnId,
+      });
+      expect(
+        events.find((event) => event.method === 'turn.aborted'),
+      ).toMatchObject({
+        turnId: started.turnId,
+        metadata: { trigger: 'provider' },
+      });
+      const next = await adapter.sendTurn({ threadId, input: 'after stop' });
+      expect(next.turnId).not.toBe(started.turnId);
       await adapter.stopSession(threadId);
     });
   });

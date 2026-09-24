@@ -21,6 +21,10 @@ import {
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
 import {
+  recordClaudeTurnDispatched,
+  recordClaudeTurnStopRequested,
+} from '../adapters/claude-sdk-turns.js';
+import {
   CLAUDE_BASH_DEFERRED_RESULT,
   CLAUDE_BASH_END_TURN_RESULT,
   CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
@@ -36,8 +40,18 @@ const ANSWERABILITY: SessionAnswerabilityObservation = {
   observedAt: '2026-08-10T00:00:00.000Z',
 };
 
-function makeRecord(overrides?: Partial<ClaudeMessageState>) {
-  return {
+/**
+ * A record whose SDK holds `dispatched` in order (the first running), each
+ * listed in `stopped` marked the way `interruptTurn` marks it — built through
+ * the ledger's own entry points, never by writing its fields.
+ */
+function makeRecord(
+  overrides?: Partial<ClaudeMessageState>,
+  turns: { dispatched?: string[]; stopped?: string[] } = {
+    dispatched: ['turn-1'],
+  },
+): ClaudeMessageState {
+  const record: ClaudeMessageState = {
     session: {
       provider: 'claude' as const,
       threadId: 'thread-activity',
@@ -45,11 +59,23 @@ function makeRecord(overrides?: Partial<ClaudeMessageState>) {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     },
-    activeTurnId: 'turn-1',
-    dispatchedTurnId: 'turn-1',
     lastSessionState: 'running' as const,
     ...overrides,
   };
+  return withClaudeTurns(record, turns);
+}
+
+function withClaudeTurns<T extends ClaudeMessageState>(
+  record: T,
+  turns: { dispatched?: string[]; stopped?: string[] },
+): T {
+  for (const turnId of turns.dispatched ?? []) {
+    recordClaudeTurnDispatched(record, turnId);
+    if (turns.stopped?.includes(turnId)) {
+      recordClaudeTurnStopRequested(record, turnId);
+    }
+  }
+  return record;
 }
 
 describe('claude-adapter-events', () => {
@@ -143,10 +169,9 @@ describe('claude-adapter-events', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
-      activeTurnId: 'turn-1',
-      dispatchedTurnId: 'turn-1',
       lastSessionState: 'running' as const,
-    };
+    } as ClaudeMessageState;
+    withClaudeTurns(record, { dispatched: ['turn-1'] });
 
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -242,10 +267,7 @@ describe('claude-adapter-events', () => {
   test('drops an after-turn-started handshake with an inherited active id before every completion consumer', () => {
     const publish = vi.fn();
     const logInfo = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-real',
-      dispatchedTurnId: 'turn-real',
-    });
+    const record = makeRecord(undefined, { dispatched: ['turn-real'] });
     const started = {
       eventId: 'turn-started',
       provider: 'claude' as const,
@@ -279,15 +301,12 @@ describe('claude-adapter-events', () => {
     expect(mapped.map((event) => event.method)).toEqual([
       'token-usage.updated',
     ]);
-    expect(record).toMatchObject({
-      activeTurnId: 'turn-real',
-      dispatchedTurnId: 'turn-real',
-    });
+    expect(record.activeTurnId).toBe('turn-real');
+    expect(record.sdkTurns?.running).toMatchObject({ turnId: 'turn-real' });
     expect(logInfo).toHaveBeenCalledWith(
       'Dropped Claude handshake result before lifecycle mapping',
       expect.objectContaining({
         inheritedActiveTurnId: 'turn-real',
-        dispatchedTurnId: 'turn-real',
         numTurns: 0,
       }),
     );
@@ -312,10 +331,7 @@ describe('claude-adapter-events', () => {
 
   test('clears dispatch provenance after a genuine completion so a later handshake cannot inherit a stale id', () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-a',
-      dispatchedTurnId: 'turn-a',
-    });
+    const record = makeRecord(undefined, { dispatched: ['turn-a'] });
 
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -337,7 +353,8 @@ describe('claude-adapter-events', () => {
       expect.objectContaining({ method: 'turn.completed', turnId: 'turn-a' }),
     );
     expect(record.activeTurnId).toBeUndefined();
-    expect(record.dispatchedTurnId).toBeUndefined();
+    expect(record.sdkTurns?.running).toBeUndefined();
+    expect(record.sdkTurns?.queued).toEqual([]);
 
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -383,10 +400,9 @@ describe('claude-adapter-events', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
       attemptedResumeCursor: 'd434e194-cc2e-4edc-8733-d8645c512fab',
-      activeTurnId: 'turn-dead',
-      dispatchedTurnId: 'turn-dead',
       lastSessionState: 'running' as const,
-    };
+    } as ClaudeMessageState;
+    withClaudeTurns(record, { dispatched: ['turn-dead'] });
 
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -427,10 +443,9 @@ describe('claude-adapter-events', () => {
   test("a requested interruption consumes Claude's null-stop-reason error result without replacing Stopped with Failed (#898)", () => {
     const publish = vi.fn();
     const logInfo = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-stopped',
-      dispatchedTurnId: 'turn-stopped',
-      interruptingTurnId: 'turn-stopped',
+    const record = makeRecord(undefined, {
+      dispatched: ['turn-stopped'],
+      stopped: ['turn-stopped'],
     });
 
     mapClaudeSdkMessage({
@@ -464,10 +479,9 @@ describe('claude-adapter-events', () => {
     );
     expect(record).toMatchObject({
       activeTurnId: undefined,
-      dispatchedTurnId: undefined,
-      interruptingTurnId: undefined,
       interruptedResultObserved: true,
     });
+    expect(record.sdkTurns?.running).toBeUndefined();
     expect(
       (record as ClaudeMessageState).terminalResultObserved,
     ).toBeUndefined();
@@ -482,10 +496,11 @@ describe('claude-adapter-events', () => {
 
   test("a stopped turn's delayed error result does not clear a newer dispatched turn (#921)", () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-new',
-      dispatchedTurnId: 'turn-new',
-      interruptingTurnId: 'turn-stopped',
+    // Stop was requested for the running turn, and a newer send queued
+    // behind it before its delayed error result arrived.
+    const record = makeRecord(undefined, {
+      dispatched: ['turn-stopped', 'turn-new'],
+      stopped: ['turn-stopped'],
     });
 
     mapClaudeSdkMessage({
@@ -515,10 +530,12 @@ describe('claude-adapter-events', () => {
     );
     expect(record).toMatchObject({
       activeTurnId: 'turn-new',
-      dispatchedTurnId: 'turn-new',
       interruptedResultObserved: true,
     });
-    expect(record.interruptingTurnId).toBeUndefined();
+    expect(record.sdkTurns?.running).toMatchObject({
+      turnId: 'turn-new',
+      stopRequested: false,
+    });
   });
 
   test('an is_error: true result with no `result` field falls back to joined errors (SDKResultError shape)', () => {
@@ -1384,10 +1401,7 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
   // Turn-scoped tracking: a tool call belongs to the turn that issued it.
   test("a stopped turn's open tool call is left tracked and its late result lands on the stopped turn", () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-a',
-      dispatchedTurnId: 'turn-a',
-    });
+    const record = makeRecord(undefined, { dispatched: ['turn-a'] });
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -1406,9 +1420,8 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
     });
     // Stop arrives, then a newer turn dispatches before A's delayed error
     // result lands (the #921 sequence).
-    record.interruptingTurnId = 'turn-a';
-    record.activeTurnId = 'turn-b';
-    record.dispatchedTurnId = 'turn-b';
+    recordClaudeTurnStopRequested(record, 'turn-a');
+    recordClaudeTurnDispatched(record, 'turn-b');
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -1460,10 +1473,7 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
 
   test("an older turn's delayed real tool_result lands on the turn that issued the call", () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-old',
-      dispatchedTurnId: 'turn-old',
-    });
+    const record = makeRecord(undefined, { dispatched: ['turn-old'] });
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -1480,8 +1490,6 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
         session_id: 's-1',
       } as any,
     });
-    record.activeTurnId = 'turn-next';
-    record.dispatchedTurnId = 'turn-next';
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -1498,13 +1506,17 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
         session_id: 's-1',
       } as any,
     });
-    // The next turn's completion leaves the older call alone.
+    // The turn's completion leaves its still-open call alone (a
+    // backgrounded Task can outlive its turn), and the next turn starts.
     expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
       'tool.started',
       'token-usage.updated',
       'turn.completed',
     ]);
+    expect(publish.mock.calls[2][0]).toMatchObject({ turnId: 'turn-old' });
     expect(record.activeToolCalls?.size).toBe(1);
+    recordClaudeTurnDispatched(record, 'turn-next');
+    expect(record.activeTurnId).toBe('turn-next');
     mapClaudeSdkMessage({
       provider: 'claude',
       record,
@@ -1757,10 +1769,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
 
   test('a turn with no assistant message publishes turn.completed with no reportedModel (never inherits a stale value)', () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-empty',
-      dispatchedTurnId: 'turn-empty',
-    });
+    const record = makeRecord(undefined, { dispatched: ['turn-empty'] });
 
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -2269,9 +2278,8 @@ describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
 // `tool_use` is provably never going to report.
 describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
   function recordWithOpenCalls() {
-    const record = makeRecord({
-      activeTurnId: 'turn-c',
-      dispatchedTurnId: 'turn-c',
+    const record = makeRecord(undefined, {
+      dispatched: ['turn-c'],
     }) as ClaudeMessageState;
     record.activeToolCalls = new Map([
       ['toolu-a', { toolName: 'Bash', turnId: 'turn-a' }],
@@ -2317,9 +2325,8 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
 
   test('never republishes a call its own tool_result already settled', () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-a',
-      dispatchedTurnId: 'turn-a',
+    const record = makeRecord(undefined, {
+      dispatched: ['turn-a'],
     }) as ClaudeMessageState;
     mapClaudeSdkMessage({
       provider: 'claude',
@@ -2373,9 +2380,8 @@ describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
   // reported for the same call id.
   test('a Task already settled by its own notification is not re-settled as unresolved', () => {
     const publish = vi.fn();
-    const record = makeRecord({
-      activeTurnId: 'turn-a',
-      dispatchedTurnId: 'turn-a',
+    const record = makeRecord(undefined, {
+      dispatched: ['turn-a'],
     }) as ClaudeMessageState;
     // The assistant's `tool_use` is what registers the call id — without it
     // the entry the defect lives in never exists.
