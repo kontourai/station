@@ -143,7 +143,9 @@ async function setup() {
   });
   services.push(service);
   const app = new Hono();
-  app.get(PUBLIC_STATION_HANDSHAKE_PATH, (c) => c.json(publicHandshakeResponse()));
+  app.get(PUBLIC_STATION_HANDSHAKE_PATH, (c) =>
+    c.json(publicHandshakeResponse()),
+  );
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
@@ -498,7 +500,9 @@ async function assertClientsConverged(
   expect(
     b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
     label,
-  ).toEqual(a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity);
+  ).toEqual(
+    a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
+  );
   const select = (
     chat: ReturnType<typeof a.activeChatsStore.getSnapshot>[string],
   ) => ({
@@ -563,9 +567,10 @@ function assertDeltaTextRenderedOnce(
   label: string,
 ) {
   if (!expectedText) return;
-  expect(countOccurrences(fullTranscriptText(messages), expectedText), label).toBe(
-    1,
-  );
+  expect(
+    countOccurrences(fullTranscriptText(messages), expectedText),
+    label,
+  ).toBe(1);
 }
 
 const RECONNECT_METHODS = [
@@ -746,10 +751,17 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       if (method === 'remount') {
         await b.settleTranscript();
       } else {
-        await assertClientsConverged(a, b, conversationId, expectedHead, label, {
-          includeOrchestrationStatus: false,
-          includePendingApprovals: false,
-        });
+        await assertClientsConverged(
+          a,
+          b,
+          conversationId,
+          expectedHead,
+          label,
+          {
+            includeOrchestrationStatus: false,
+            includePendingApprovals: false,
+          },
+        );
       }
       // A vs B is not compared here: while this turn is still open, its own
       // content is legitimately asymmetric between a client rendering it
@@ -1232,9 +1244,10 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         typeof entry.body === 'string' &&
         entry.body.includes('follow-up-199');
       const sends = requests.filter(isFollowupSend);
-      expect(sends.length, `${seedLabel} queued follow-up sent once/client`).toBe(
-        2,
-      );
+      expect(
+        sends.length,
+        `${seedLabel} queued follow-up sent once/client`,
+      ).toBe(2);
       const clientTurnIds = new Set(
         sends.map((entry) => {
           try {

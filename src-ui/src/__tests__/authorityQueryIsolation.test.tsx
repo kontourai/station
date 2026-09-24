@@ -614,7 +614,9 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     // is only armed once A's own initial verification has already settled.
     const authorityChangeDetails: string[] = [];
     const onAuthorityChange = (event: Event) => {
-      authorityChangeDetails.push(String((event as CustomEvent<string>).detail));
+      authorityChangeDetails.push(
+        String((event as CustomEvent<string>).detail),
+      );
     };
     window.addEventListener(
       'station:orchestration-authority-change',

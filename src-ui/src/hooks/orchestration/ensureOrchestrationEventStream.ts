@@ -402,7 +402,9 @@ export function ensureOrchestrationEventStream(
         let caughtUp: Partial<OrchestrationSnapshotPayload> = {};
         if (raw.data) {
           try {
-            caughtUp = JSON.parse(raw.data) as Partial<OrchestrationSnapshotPayload>;
+            caughtUp = JSON.parse(
+              raw.data,
+            ) as Partial<OrchestrationSnapshotPayload>;
           } catch {
             caughtUp = {};
           }
