@@ -70,6 +70,8 @@ export type OrchestrationSnapshotPayload = {
      * conversation, so this is how a turn running in a child reaches its chat.
      */
     conversationId?: string;
+    /** Durable current execution child, including when it is idle. */
+    currentSessionId?: string;
     /** #2456: see `OrchestrationSessionSummary.childWork`. Absent from older servers. */
     childWork?: SessionChildWork;
   }>;

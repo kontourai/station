@@ -102,6 +102,27 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(chats['thread-1'].status).toBe('error');
   });
 
+  test('an idle lineage snapshot replaces a stale current execution child', () => {
+    chats['thread-1'].currentSessionId = 'thread-1';
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            conversationId: 'thread-1',
+            currentSessionId: 'thread-1:session:new',
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].currentSessionId).toBe('thread-1:session:new');
+    expect(chats['thread-1'].conversationOpenPending).toBe(true);
+  });
+
   test('an ordinary (non-reconnect) snapshot never triggers a messages refetch', () => {
     applyOrchestrationSnapshot(
       {

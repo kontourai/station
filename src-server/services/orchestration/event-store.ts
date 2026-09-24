@@ -5142,6 +5142,28 @@ export class EventStore {
     return result;
   }
 
+  /** Durable child-work facts for cold process reconstruction, batched by thread. */
+  listChildWorkHistoryForThreads(
+    threadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
+    return this.groupMappedEventRowsByThread(
+      this.fetchInChunks(
+        [...new Set(threadIds)],
+        (chunk, placeholders) =>
+          this.db
+            .prepare(
+              `SELECT id, provider, thread_id, turn_id, method, payload,
+                    created_at, sequence, global_sequence
+             FROM orchestration_events
+             WHERE thread_id IN (${placeholders})
+               AND method IN ('child-work.updated', 'extension.notification', 'session.exited')
+             ORDER BY global_sequence ASC`,
+            )
+            .all(...chunk) as any[],
+      ),
+    );
+  }
+
   /**
    * Bounded authoritative facts for the session fold. This is intentionally
    * not a recent tail: a Flow or policy binding written before tens of

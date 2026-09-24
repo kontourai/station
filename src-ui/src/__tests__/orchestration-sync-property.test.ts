@@ -179,7 +179,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
     ),
   );
-  const b = await clientGraph(conversationId);
+  let b = await clientGraph(conversationId);
   await until(() =>
     Boolean(
       b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
@@ -199,6 +199,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       ? [Number(selectedSeed)]
       : []),
   ];
+  let executionThreadId = conversationId;
   for (const seed of seeds) {
     const random = mulberry32(seed);
     const trace: string[] = [];
@@ -218,11 +219,38 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     const deletedTailCursor = store.headGlobalSequence();
     store.deleteThread(draft);
     trace.push('draft.discard');
+    if (seed === 20) {
+      const child = `${conversationId}:session:continuation`;
+      store.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: child,
+        createdAt,
+      });
+      store.upsertSession({
+        provider: 'claude',
+        threadId: child,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      publish({
+        eventId: 'lineage-child-configured',
+        provider: 'claude',
+        threadId: child,
+        createdAt,
+        method: 'session.configured',
+        sessionId: child,
+        metadata: { agentSlug: 'claude', userId },
+      } as CanonicalRuntimeEvent);
+      executionThreadId = child;
+      trace.push('lineage.child');
+    }
     const turnId = `turn-${seed}`;
     publish({
       eventId: `${turnId}-start`,
       provider: 'claude',
-      threadId: conversationId,
+      threadId: executionThreadId,
       turnId,
       createdAt,
       method: 'turn.started',
@@ -239,7 +267,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       publish({
         eventId: `${turnId}-delta-${index}`,
         provider: 'claude',
-        threadId: conversationId,
+        threadId: executionThreadId,
         turnId,
         createdAt,
         method: 'content.text-delta',
@@ -252,7 +280,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       publish({
         eventId: `${turnId}-tool-start`,
         provider: 'claude',
-        threadId: conversationId,
+        threadId: executionThreadId,
         turnId,
         createdAt,
         method: 'tool.started',
@@ -263,7 +291,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       publish({
         eventId: `${turnId}-tool-done`,
         provider: 'claude',
-        threadId: conversationId,
+        threadId: executionThreadId,
         turnId,
         createdAt,
         method: 'tool.completed',
@@ -278,7 +306,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       publish({
         eventId: `${turnId}-request`,
         provider: 'claude',
-        threadId: conversationId,
+        threadId: executionThreadId,
         turnId,
         createdAt,
         method: 'request.opened',
@@ -292,7 +320,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       publish({
         eventId: `${turnId}-request-resolved`,
         provider: 'claude',
-        threadId: conversationId,
+        threadId: executionThreadId,
         turnId,
         createdAt,
         method: 'request.resolved',
@@ -381,7 +409,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     publish({
       eventId: `${turnId}-terminal`,
       provider: 'claude',
-      threadId: conversationId,
+      threadId: executionThreadId,
       turnId,
       createdAt,
       method: terminal,
@@ -404,12 +432,17 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         ).toBe(head),
       { timeout: 5_000 },
     );
-    b.ensure();
+    if (seed === 30) {
+      b = await clientGraph(conversationId);
+      trace.push('client.reload');
+    } else {
+      b.ensure();
+    }
     await until(() => requests.length > before);
     expect(
       requests.at(-1)?.headers.get('Last-Event-ID'),
       `seed=${seed} trace=${trace.join(',')}`,
-    ).toBe(String(cursor));
+    ).toBe(seed === 30 ? null : String(cursor));
     await vi.waitFor(
       () =>
         expect(

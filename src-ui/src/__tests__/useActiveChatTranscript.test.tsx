@@ -84,6 +84,84 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('a fresh mid-turn mount stitches the window with a later live delta', async () => {
+    const id = 'fresh-mid-turn';
+    const apiBase = 'http://fresh-mid-turn.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Fresh mount',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: {
+        conversationId: id,
+        asOfSequence: 2,
+        openTurn: {
+          turnId: 'turn-fresh',
+          threadId: id,
+          startedAt: '2026-09-24T00:00:00.000Z',
+        },
+      },
+      orchestrationTurnOpen: true,
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-fresh',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'content.text-delta', {
+            threadId: id,
+            turnId: 'turn-fresh',
+            itemId: 'answer',
+            delta: 'A',
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    recordSequencedLiveEvent(
+      apiBase,
+      {
+        ...event('e3', 'content.text-delta', {
+          threadId: id,
+          turnId: 'turn-fresh',
+          itemId: 'answer',
+          delta: 'B',
+        }).event,
+      } as Parameters<typeof recordSequencedLiveEvent>[1],
+      3,
+    );
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(view.result.current.openTurnProjected).toBe(true);
+      expect(
+        view.result.current.messages
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.content)
+          .join(''),
+      ).toBe('AB');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
   test('evicted live frames keep the transcript catching up until a newer window loads', async () => {
     const id = 'overflow-window';
     const apiBase = 'http://station-overflow.test';

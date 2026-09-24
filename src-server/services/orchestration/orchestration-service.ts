@@ -1528,16 +1528,30 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
-  /**
-   * #2456: process-local child work (engine subagents), served on session
-   * summaries beside `turnProgress` so the reconnect snapshot carries it.
-   */
+  /** Current running child work plus durable terminal outcomes. */
   private readonly childWork = new ChildWorkProjection();
   /** #2456: the one reader every session-summary emission path hands over. */
   private readonly readChildWork = (
     threadId: string,
     provider: string | undefined,
-  ) => this.childWork.read(threadId, provider);
+  ) => {
+    this.hydrateHistoricalChildWork([threadId]);
+    return this.childWork.read(threadId, provider);
+  };
+
+  private hydrateHistoricalChildWork(threadIds: readonly string[]): void {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return;
+    const cold = this.childWork.threadsNeedingHistoricalSeed(threadIds);
+    if (cold.length === 0) return;
+    const historical = eventStore.listChildWorkHistoryForThreads(cold);
+    for (const threadId of cold) {
+      this.childWork.seedHistoricalSettled(
+        threadId,
+        (historical.get(threadId) ?? []).map((row) => row.payload),
+      );
+    }
+  }
   /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
@@ -3533,12 +3547,14 @@ export class OrchestrationService {
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
+    const readableThreadSet = new Set(readableThreadIds);
     // archive#4466: batched over every readable thread in a fixed number of
     // SQL round trips instead of one `listSessionProjectionEvents` +
     // `countEventsByThread` pair per thread — this route is polled on the
     // Activity view's mount and stalled proportionally to the thread count
     // before this change.
     const eventStore = this.options.eventStore;
+    this.hydrateHistoricalChildWork(readableThreadIds);
     const eventsByThread =
       eventStore?.listSessionProjectionEventsForThreads(readableThreadIds) ??
       new Map<string, PersistedRuntimeEvent[]>();
@@ -3595,6 +3611,11 @@ export class OrchestrationService {
         const conversationFirstPromptedTurn =
           conversationFirstPromptedTurnByThread.get(threadId)?.payload;
         const conversationActivity = conversationActivityFor(threadId);
+        const currentSessionId = conversationActivity
+          ? this.conversationActivity?.currentSessionId(
+              conversationActivity.conversationId,
+            )
+          : undefined;
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
         return buildOrchestrationSessionSummary({
@@ -3609,6 +3630,9 @@ export class OrchestrationService {
             ? { openRequestIds: openRequestIdsByThread.get(threadId) ?? [] }
             : {}),
           ...(conversationActivity ? { conversationActivity } : {}),
+          ...(currentSessionId && readableThreadSet.has(currentSessionId)
+            ? { currentSessionId }
+            : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),

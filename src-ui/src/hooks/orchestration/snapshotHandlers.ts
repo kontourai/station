@@ -312,17 +312,9 @@ function planSnapshot(
       // Repaired exactly the way the live `session.started` path repairs it
       // (`handleOrchestrationEvent`), including re-proving the binding.
       //
-      // Only an OPEN row is adopted, and only because the server guarantees an
-      // open turn marks the conversation's CURRENT child: it refuses a new
-      // continuation child while the predecessor has an active turn
-      // (`canResolveConversationContinuation` requires `hasActiveTurn !== true`;
-      // context-boundary and handoff reservations require a terminal
-      // predecessor with no active turn — conversation-lineage.ts), and a
-      // crashed turn is closed with `turn.aborted` rather than left open
-      // (interrupted-turn-recovery.ts, station#2235). The live path instead
-      // gates on the server's own binding (`conversation.currentSessionId`);
-      // the snapshot carries no such binding, so this inference is only as
-      // good as those rules. An idle winner (rule 3) is never adopted.
+      // A current server names the durable child even after its turn ended;
+      // an older server without that field can only prove the child from an
+      // open turn. Re-prove a changed binding before sending to it.
       //
       // Known limitation, shared with the live repair (eventHandlers.ts sets
       // the same `conversationOpenPending: true`): the revalidator that clears
@@ -344,10 +336,11 @@ function planSnapshot(
         : session.hasActiveTurn === true
           ? session.threadId
           : undefined;
-      const adoptsOpenChild =
-        runningChild !== undefined &&
-        runningChild !== chatKey &&
-        chat?.currentSessionId !== runningChild;
+      const currentChild = session.currentSessionId ?? runningChild;
+      const adoptsCurrentChild =
+        currentChild !== undefined &&
+        chat?.currentSessionId !== currentChild &&
+        (currentChild !== chatKey || chat?.currentSessionId !== undefined);
       return {
         threadId: chatKey,
         updates: {
@@ -426,9 +419,9 @@ function planSnapshot(
               : session.status === 'running' && rowTurnIsOpen(session, record)
                 ? 'sending'
                 : 'idle',
-          ...(adoptsOpenChild
+          ...(adoptsCurrentChild
             ? {
-                currentSessionId: runningChild,
+                currentSessionId: currentChild,
                 conversationOpenPending: true,
                 conversationOpenFailed: false,
               }

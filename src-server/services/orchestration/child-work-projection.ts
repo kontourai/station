@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { settledChildWorkFromHistory } from './child-work-history.js';
 
 /**
  * #2456: the server's process-local child-work registry.
@@ -24,10 +25,9 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * persisted replay still delivers every delta, but the snapshot fallback only
  * sends session summaries, and before this the set was simply lost there.
  *
- * Process-local on purpose, like `TurnProgressTracker`: an engine's children
- * do not survive this process (the adapter holding them dies with it), so a
- * registry rebuilt from the log after a restart would report children
- * nobody is running.
+ * Running work is process-local, like `TurnProgressTracker`: an engine's
+ * children do not survive the adapter process. Durable terminal outcomes are
+ * restored separately on cold reads without reviving that running set.
  *
  * #2456 fix round (R2): every engine session gets a view, derived at READ
  * time from the engine capability matrix, not only sessions this process saw
@@ -54,8 +54,30 @@ export const STATION_UNMAPPED_SUBAGENT_ENGINES: Readonly<
 
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
-  /** reporterThreadId → createdAt of the last child-work delta it reported. */
+  /** reporterThreadId → createdAt of the last current or durable report. */
   private readonly observedAt = new Map<string, string>();
+  private readonly historicalSeeded = new Set<string>();
+
+  threadsNeedingHistoricalSeed(threadIds: readonly string[]): string[] {
+    return threadIds.filter((threadId) => !this.historicalSeeded.has(threadId));
+  }
+
+  /** Restore durable terminal outcomes, without reviving pre-restart work. */
+  seedHistoricalSettled(
+    threadId: string,
+    events: readonly CanonicalRuntimeEvent[],
+  ): void {
+    if (this.historicalSeeded.has(threadId)) return;
+    const { settlements, lastReportAt } = settledChildWorkFromHistory(
+      threadId,
+      events,
+    );
+    for (const settlement of settlements)
+      this.state = applyChildWorkDelta(this.state, settlement);
+    if (lastReportAt && !this.observedAt.has(threadId))
+      this.observedAt.set(threadId, lastReportAt);
+    this.historicalSeeded.add(threadId);
+  }
 
   /** Folds one live event. */
   observe(event: CanonicalRuntimeEvent): void {

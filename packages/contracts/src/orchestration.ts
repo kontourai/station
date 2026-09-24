@@ -768,6 +768,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * projection and for sessions with no conversation lineage.
    */
   conversationActivity?: ConversationTurnActivity;
+  /** Durable current execution child for this row's conversation, when read. */
+  currentSessionId?: string;
   /** Authoritative unresolved request ids when this summary carries a reader. */
   openRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;

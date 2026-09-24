@@ -472,6 +472,8 @@ export function buildOrchestrationSessionSummary(options: {
   turnProgress?: TurnProgressObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
+  /** Durable current execution child, supplied by a lineage-aware reader. */
+  currentSessionId?: string;
   /** Current unresolved requests; present even when the set is empty. */
   openRequestIds?: readonly string[];
   /**
@@ -628,6 +630,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
+      : {}),
+    ...(options.currentSessionId
+      ? { currentSessionId: options.currentSessionId }
       : {}),
     ...(options.openRequestIds
       ? { openRequestIds: [...options.openRequestIds] }
