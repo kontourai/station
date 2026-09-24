@@ -292,7 +292,13 @@ export type LiveSurfaceRouteErrorCode =
   | 'invalid-request'
   | 'request-too-large'
   | 'access-denied'
-  | 'principal-unresolved';
+  | 'principal-unresolved'
+  /**
+   * 503, retryable (#2433): the surface's authorizer cannot answer right now
+   * (an SSH device host's lookup queue is full). Not a refusal: the same
+   * request may succeed in a moment.
+   */
+  | 'surface-busy';
 
 // ---------------------------------------------------------------------------
 // Wire parsers (strict: unknown keys, wrong types and out-of-range values are
