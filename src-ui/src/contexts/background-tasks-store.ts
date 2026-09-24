@@ -46,6 +46,11 @@ export type BackgroundTaskState =
    * outcome.
    */
   | 'unresolved'
+  /**
+   * #2459: a stop was requested and the engine never confirmed it. Not
+   * `stopped` — that would claim the stop took effect.
+   */
+  | 'stopped-unconfirmed'
   | 'failed';
 
 export interface BackgroundTaskEntry {
@@ -56,7 +61,12 @@ export interface BackgroundTaskEntry {
   chatThreadId: string;
   title: string;
   detail?: string;
-  startedAt: number;
+  /**
+   * When the card's work started, on this client's clock basis. #2459:
+   * absent for a provider subagent whose spawning tool call this client never
+   * saw — no start was reported, and "now" is not one.
+   */
+  startedAt?: number;
   endedAt?: number;
   state: BackgroundTaskState;
   /** Transcript link for an agent/delegate card. */
@@ -112,8 +122,8 @@ const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
   completed: 'completed',
   failed: 'failed',
   cancelled: 'stopped',
-  // A stop nobody confirmed still reads as the stop the user asked for.
-  'stopped-unconfirmed': 'stopped',
+  // #2459: a stop nobody confirmed is not a stop that happened.
+  'stopped-unconfirmed': 'stopped-unconfirmed',
   unresolved: 'unresolved',
 };
 
@@ -132,7 +142,7 @@ function backgroundTaskEntryFromChildWork(
   item: ChildWorkItem,
   placement: {
     chatThreadId: string;
-    startedAt: number;
+    startedAt: number | undefined;
     title?: string;
   },
 ): BackgroundTaskEntry {
@@ -157,7 +167,9 @@ function backgroundTaskEntryFromChildWork(
     chatThreadId: placement.chatThreadId,
     title: placement.title || item.title || item.kindLabel || 'Background task',
     detail: item.kindLabel,
-    startedAt: placement.startedAt,
+    ...(placement.startedAt !== undefined
+      ? { startedAt: placement.startedAt }
+      : {}),
     state,
     ...(item.controls?.stop && item.reporterThreadId
       ? {
@@ -201,10 +213,18 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
     status: 'running',
     ...(task.description ? { title: task.description } : {}),
     ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
-    ...(task.sessionThreadId
+    // #2459: a stop only for a child that carried the seam itself, and only
+    // with a session to address it to. A session thread alone is not a seam:
+    // deriving one from it offered a Codex child a Stop wired to nothing.
+    ...(task.sessionThreadId && task.stop === 'provider-task-stop'
       ? { controls: { stop: 'provider-task-stop' as const } }
       : {}),
   };
+}
+
+/** A card's end for ordering: its end, else its start, else the oldest. */
+function settledAt(entry: BackgroundTaskEntry): number {
+  return entry.endedAt ?? entry.startedAt ?? 0;
 }
 
 /** Bounds a chat's finished list, dropping the oldest-ended entries first. */
@@ -215,7 +235,7 @@ function pruneFinished(
   const finishedIds = Object.values(entries)
     .filter((entry) => entry.chatThreadId === chatThreadId)
     .filter((entry) => entry.state !== 'running')
-    .sort((a, b) => (a.endedAt ?? a.startedAt) - (b.endedAt ?? b.startedAt))
+    .sort((a, b) => settledAt(a) - settledAt(b))
     .map((entry) => entry.id);
   const excess = finishedIds.length - FINISHED_LIMIT_PER_CHAT;
   if (excess <= 0) return entries;
@@ -644,18 +664,25 @@ export function selectChatBackgroundTasks(
       : undefined;
     return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
       chatThreadId,
-      startedAt: matchedTool?.startedAt ?? Date.now(),
+      // #2459: no spawning tool card, no start. `Date.now()` here was an
+      // invented start that reset on every recompute.
+      startedAt: matchedTool?.startedAt,
     });
   });
 
+  // An unknown start sorts last rather than posing as "now".
   const running = [
     ...visible.filter((entry) => entry.state === 'running'),
     ...providerEntries,
-  ].sort((a, b) => a.startedAt - b.startedAt);
+  ].sort(
+    (a, b) =>
+      (a.startedAt ?? Number.POSITIVE_INFINITY) -
+      (b.startedAt ?? Number.POSITIVE_INFINITY),
+  );
 
   const finished = visible
     .filter((entry) => entry.state !== 'running')
-    .sort((a, b) => (b.endedAt ?? b.startedAt) - (a.endedAt ?? a.startedAt));
+    .sort((a, b) => settledAt(b) - settledAt(a));
 
   return { running, finished };
 }

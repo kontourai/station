@@ -93,6 +93,8 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         backgrounded: true,
         spawnDepth: 2,
         sessionThreadId: threadId,
+        // #2459: the legacy Claude translator's per-task stop seam, carried.
+        stop: 'provider-task-stop',
       },
       {
         taskId: 'b',
@@ -100,6 +102,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         description: 'Lint',
         backgrounded: false,
         sessionThreadId: threadId,
+        stop: 'provider-task-stop',
       },
     ]);
 
@@ -163,6 +166,30 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       outputFile: '/tmp/a.jsonl',
     });
     expect(announcements()).toEqual(['⏹ Background task stopped']);
+  });
+
+  test('#2459: a settle with no observed outcome is never announced as finished', () => {
+    // The legacy tuple's unknown status translates to `unresolved`.
+    tuple('task/settled', {
+      taskId: 'a',
+      description: 'Mystery',
+      backgrounded: true,
+      status: 'timeout',
+      summary: 'partial notes',
+    });
+    handlers.applyChildWorkToChat(threadId, {
+      kind: 'settle',
+      producer: 'engine-subagent',
+      reporterThreadId: threadId,
+      childId: 'b',
+      status: 'stopped-unconfirmed',
+      result: { summary: 'still going?' },
+      identity: { title: 'Runaway', backgrounded: true },
+    });
+    expect(announcements()).toEqual([
+      'Background task ended — outcome unknown — Mystery\n\npartial notes',
+      'Background task stop requested — not confirmed — Runaway\n\nstill going?',
+    ]);
   });
 
   test('a reconnect snapshot view is authoritative: an omitted task stops reading as running, and its later real settle still announces', () => {
