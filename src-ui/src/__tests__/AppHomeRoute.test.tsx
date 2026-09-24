@@ -2,10 +2,17 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { type ReactNode, Suspense, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
+import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
@@ -207,15 +214,24 @@ const scheduleChunk = vi.hoisted(() => {
   return { state, promise, release: () => release() };
 });
 
+/**
+ * A dialog the routed view can hold open, standing in for the first-run
+ * chapter Home renders: the real `ResponsiveDialogSurface`, so its history
+ * layer is registered exactly as a real view's would be.
+ */
+const routeDialog = vi.hoisted(() => ({ open: false }));
+
 vi.mock('../app-shell/AppViewContent', () => ({
   AppViewContent: ({
     currentView,
     onNavigate,
     onShowHome,
+    homeContinuation,
   }: {
     currentView: unknown;
     onNavigate: (view: unknown) => void;
     onShowHome: () => void;
+    homeContinuation?: unknown;
   }) => (
     <>
       {/* Mirrors the real component's structure: the route body sits inside a
@@ -238,6 +254,18 @@ vi.mock('../app-shell/AppViewContent', () => ({
       <button type="button" onClick={onShowHome}>
         Go home
       </button>
+      <div data-testid="home-continuation">
+        {JSON.stringify(homeContinuation ?? null)}
+      </div>
+      {routeDialog.open && (
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Route dialog"
+          onClose={() => undefined}
+        >
+          <p>Open in the routed view</p>
+        </ResponsiveDialogSurface>
+      )}
     </>
   ),
 }));
@@ -422,6 +450,7 @@ function resetHooks() {
     dockMode: 'bottom',
   };
   hooks.regionModel = null;
+  routeDialog.open = false;
   registerRegionSurfaceHost.mockClear();
   coreUpdateStatus.data = undefined;
   window.history.replaceState({}, '', '/');
@@ -492,6 +521,99 @@ describe('App home route resolution', () => {
     );
     expect(setLayout).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2414. Creating the first project re-enters `pending` while that
+   * project's layouts load. Home had already rendered, so swapping it for the
+   * skeleton unmounted it — and the first-run chapter open inside it — for
+   * that moment. Node identity is what shows it stayed mounted.
+   */
+  test('Home stays mounted while the first project’s layouts load, and offers the continuation once they arrive', async () => {
+    const { rerender } = render(<App />);
+    await act(async () => undefined);
+    const home = screen.getByTestId('app-view-content');
+    expect(home.textContent).toBe('{"type":"home"}');
+
+    hooks.projects = {
+      data: [{ slug: 'first' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = { data: undefined, isLoading: true, isError: false };
+    await act(async () => rerender(<App />));
+
+    expect(
+      screen.queryByRole('status', { name: /loading your workspace/i }),
+    ).toBeNull();
+    expect(screen.getByTestId('app-view-content')).toBe(home);
+    // What `pending` withholds is the continuation, and it withholds it.
+    expect(screen.getByTestId('home-continuation').textContent).toBe('null');
+
+    hooks.layouts = {
+      data: [{ slug: 'code' }],
+      isLoading: false,
+      isError: false,
+    };
+    await act(async () => rerender(<App />));
+
+    expect(screen.getByTestId('app-view-content')).toBe(home);
+    expect(
+      JSON.parse(screen.getByTestId('home-continuation').textContent ?? ''),
+    ).toEqual({ type: 'layout', projectSlug: 'first', layoutSlug: 'code' });
+    expect(setLayout).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2414, the other half. The outlet still swaps the routed view for other
+   * states of `/` (here: the host became unavailable), and a dialog open in
+   * that view goes down with it. App wraps the view in the boundary that tells
+   * the dialog its view was removed rather than that it was closed, so its
+   * cleanup must not travel history — the traversal that, in a browser,
+   * cancelled a navigation started in that window. jsdom cannot show the
+   * cancellation, so this observes the traversal itself as a popstate.
+   */
+  test('a dialog in the routed view starts no history traversal when the outlet swaps the view away', async () => {
+    hooks.projects = {
+      data: [{ slug: 'dev' }],
+      isLoading: false,
+      isError: false,
+    };
+    hooks.layouts = {
+      data: [{ slug: 'code' }],
+      isLoading: false,
+      isError: false,
+    };
+    routeDialog.open = true;
+    const { rerender } = render(<App />);
+    await waitFor(() =>
+      expect(window.history.state?.__stationDialog).toBeTruthy(),
+    );
+    expect(screen.getByRole('dialog', { name: 'Route dialog' })).toBeTruthy();
+
+    const landed: string[] = [];
+    const onPopState = () => landed.push(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    try {
+      connectionState.status = 'error';
+      hooks.projects = { data: [], isLoading: false, isError: true };
+      await act(async () => rerender(<App />));
+      expect(
+        screen.getByText('This Station is unavailable right now'),
+      ).toBeTruthy();
+      expect(screen.queryByRole('dialog', { name: 'Route dialog' })).toBeNull();
+
+      // jsdom runs a traversal as two chained 0ms tasks; these are task
+      // turns that let one land, not a wait for time to pass.
+      for (let turn = 0; turn < 4; turn += 1) {
+        await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+      }
+      expect(landed).toEqual([]);
+      expect(window.location.pathname).toBe('/');
+    } finally {
+      window.removeEventListener('popstate', onPopState);
+    }
   });
 
   test('retrying a first-project layouts error invalidates projects and layout query keys', async () => {
