@@ -2339,6 +2339,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const requests: ReadonlyArray<readonly [string, string, unknown?]> = [
         ['GET', '/api/runs'],
         ['GET', '/api/runs/made-up-run'],
+        ['GET', '/api/analytics/usage-rollup?from=2026-09-01&to=2026-09-07'],
         ['GET', '/notifications'],
         ['POST', '/notifications', { title: 'Probe' }],
         ['GET', '/api/attention'],

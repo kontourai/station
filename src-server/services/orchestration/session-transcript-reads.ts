@@ -216,8 +216,15 @@ export class SessionTranscriptReads {
     }
     const pageSize = Math.min(Math.max(request.pageSize ?? 50, 1), 100);
     const after = decodeUsageCursor(request.cursor);
-    const rows = this.deps.listUsageReceiptEvents({
+    // #2561: the same owner set the transcript reads match, so a
+    // home-possession operator's rollup keeps its pre-principal (OS alias)
+    // rows and a personal device sees the shared conversation account.
+    // Receipts and their coverage evidence must select the same owners.
+    const owners = this.deps.transcriptOwnerConstraint?.(authority) ?? {
       ownerUserId: authority.userId,
+    };
+    const rows = this.deps.listUsageReceiptEvents({
+      ...owners,
       ...(authority.mode === 'hosted' && authority.tenantExecutionContext
         ? { tenantId: authority.tenantExecutionContext.tenantId }
         : {}),
@@ -285,7 +292,7 @@ export class SessionTranscriptReads {
     );
     const last = page.at(-1)?.event;
     const coverageEvidence = this.deps.listUsageCoverageEvents({
-      ownerUserId: authority.userId,
+      ...owners,
       ...(authority.mode === 'hosted'
         ? { tenantId: authority.tenantExecutionContext!.tenantId }
         : {}),

@@ -1112,8 +1112,9 @@ export function configureRuntimeRoutes(
   // #2561: its user is the cached OS alias, which owns no UI-created chat, so
   // it must never decide a session or conversation read. The callers left
   // read only `.mode` (personal vs hosted, which comes from the tenant context
-  // and registry, not the user), plus the pull-request and file-preview reads
-  // a separate change moves onto the principal. New session reads use
+  // and registry, not the user), except the hosted public share view (see
+  // there) and the pull-request and file-preview reads a separate change
+  // moves onto the principal. New session reads use
   // `conversationReadAuthorityForRequest`.
   const readAuthorityForRequest = (request: Request) =>
     sessionReadAuthorityFromRequest(
@@ -1432,6 +1433,7 @@ export function configureRuntimeRoutes(
   // before the chat block. A request whose principal cannot be resolved fails
   // here rather than reading as the OS alias.
   for (const path of [
+    '/api/analytics/usage-rollup',
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
     '/api/shares',
@@ -1901,7 +1903,7 @@ export function configureRuntimeRoutes(
     createAnalyticsRoutes(
       context.usageAggregator,
       undefined,
-      readAuthorityForRequest,
+      conversationReadAuthorityForRequest,
       () =>
         peerCredentialStore
           .list()
@@ -4578,6 +4580,7 @@ export function configureRuntimeRoutes(
     // not a hosted projection, even if an old shared home still contains
     // records; return the same empty inventory shape rather than exposing a
     // cross-tenant count or title.
+    // Only the deployment mode is read, which does not depend on the user.
     if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
       return routeContext.json({ success: true, data: [] });
     }
@@ -4796,6 +4799,7 @@ export function configureRuntimeRoutes(
       new WorkflowSidecarService({ logger: context.logger }),
       {
         getWorkspacePath: resolveWorkspacePath,
+        // Mode only: sidecars are refused when hosted, whoever asks.
         getSessionReadAuthority: readAuthorityForRequest,
       },
     ),
@@ -4812,6 +4816,7 @@ export function configureRuntimeRoutes(
       ),
       {
         getWorkspacePath: resolveWorkspacePath,
+        // Mode only: work items are refused when hosted, whoever asks.
         getSessionReadAuthority: readAuthorityForRequest,
         // Stateless service (package-root resolution only) — a separate
         // instance from the one `StationRuntime` wires into
@@ -5528,6 +5533,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/scheduler',
     createSchedulerRoutes(schedulerService, context.logger, {
+      // Mode only: the scheduler is hidden when hosted, whoever asks.
       readAuthorityForRequest,
     }),
   );
