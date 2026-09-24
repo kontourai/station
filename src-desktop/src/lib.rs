@@ -17226,9 +17226,16 @@ mod tests {
         // An attempt count of 10ms naps plus a 40ms probe each would run far
         // past this; the wall-clock bound ends near 1s.
         assert!(elapsed < Duration::from_millis(2_500), "{elapsed:?}");
-        // First contention, every 250ms, and a final probe: about 5-6. Probing
-        // on every nap would be about 20 at 50ms per iteration.
-        assert!((2..=8).contains(&probes.get()), "probes: {}", probes.get());
+        // First contention, every 250ms, and a final probe: about one per
+        // 250ms waited (5-6 here). Probing on every nap measured 14 here. The
+        // bound scales with the measured wait so a loaded host is not a
+        // false regression.
+        let probe_budget = u32::try_from(elapsed.as_millis().div_ceil(250)).unwrap() + 2;
+        assert!(
+            (2..=probe_budget).contains(&probes.get()),
+            "probes: {} (budget {probe_budget})",
+            probes.get()
+        );
         drop(held);
         std::fs::remove_dir_all(directory).unwrap();
     }
