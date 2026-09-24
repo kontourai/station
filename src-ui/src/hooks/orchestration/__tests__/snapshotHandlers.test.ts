@@ -123,6 +123,42 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(chats['thread-1'].conversationOpenPending).toBe(true);
   });
 
+  // station#2530 review 2 round 2: a brand-new client's very first snapshot
+  // has no prior `currentSessionId` to resolve a lineage child by — `chats`
+  // still carries whatever `initChat` seeded (the chat's own root key), and
+  // this payload's rows carry no `conversationId` at all (the exact shape a
+  // real server sends when the child's own binding event never carried
+  // `conversationId` metadata, and what the sync property test's seed 64
+  // reproduced). The root row's OWN `currentSessionId` naming the child is
+  // the only thing that can resolve the child's row to this chat.
+  test('a lineage child approval reaches pendingApprovals on a reload with no prior currentSessionId or conversationId', () => {
+    chats['thread-1'].currentSessionId = 'thread-1';
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'thread-1:session:child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'thread-1:session:child',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'thread-1:session:child',
+            openRequestIds: ['child-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['child-request']);
+  });
+
   test('an open activity record restores the exact turn even when the process status is ready', () => {
     applyOrchestrationSnapshot(
       {

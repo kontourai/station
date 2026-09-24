@@ -211,6 +211,28 @@ function selectSnapshotRows(
     if (!id) return undefined;
     return chats[id] ? id : keyByExecutionIdentity.get(id);
   };
+  // station#2530 review 2 round 2: a brand-new client's very first snapshot
+  // has no prior `currentSessionId` to seed `keyByExecutionIdentity` from —
+  // the client's own record still carries `initChat`'s bootstrap default
+  // (pointing at the chat's own root key). A row's OWN `currentSessionId` is
+  // the server's answer for which durable child is current for its
+  // conversation, and the root row carries it beside a `threadId` that
+  // ALREADY resolves (it IS the chat key). Fold that in first, so a lineage
+  // child neither the client's prior state nor this payload's `conversationId`
+  // (absent on an older server, and on this row when its own binding event
+  // carried no `conversationId` metadata) has ever named can still resolve to
+  // the same chat — and its `openRequestIds` reach `pendingApprovals` on the
+  // very snapshot that would otherwise be the client's only chance to see it.
+  for (const session of payload.sessions) {
+    const key = resolveChatKey(session.threadId);
+    if (
+      key &&
+      session.currentSessionId &&
+      !keyByExecutionIdentity.has(session.currentSessionId)
+    ) {
+      keyByExecutionIdentity.set(session.currentSessionId, key);
+    }
+  }
 
   const candidatesByChat = new Map<string, SnapshotSession[]>();
   for (const session of payload.sessions) {

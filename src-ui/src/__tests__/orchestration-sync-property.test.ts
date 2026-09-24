@@ -468,27 +468,33 @@ async function assertClientsConverged(
    *
    * `pendingApprovals` (the pre-#2309 legacy field, populated only through
    * `planSnapshot`'s bespoke `openRequestIds` union — NOT sourced from
-   * `conversationActivity`) is ALSO excluded here, disclosed rather than
-   * silently accepted: a 'reload' bounce (a brand-new client's very first
-   * connect snapshot) observed empty at seed 64 while A (never disconnected)
-   * still correctly showed a request opened on a lineage child two seeds
-   * earlier — even though `conversationActivity` (checked above, full
-   * equality) was already byte-identical between both clients at that same
-   * instant. Left open rather than fixed under this pass's time budget: the
-   * newer, server-authoritative `conversationActivity`/`serverTurnLive`
-   * path (what `PendingApprovalStrip` actually answers from, via
-   * `unansweredApprovalRequests(messages, events)` — never this field) is
-   * unaffected, so this looks like a secondary/vestigial-field gap rather
-   * than a user-facing approval-answering regression, but that has not been
-   * proven to the same standard as the fixes in this PR and deserves its
-   * own follow-up.
+   * `conversationActivity`) is NOT vestigial: `ChatMessageList`'s live-row
+   * copy, `home-view-model`'s "Needs attention" badge, `WorkflowPlanPanel`'s
+   * "Approval required (N)" count, `MessageBubble`'s pending-approval count
+   * and `ACPChatPanel` all read it directly. station#2530 review 2 round 2:
+   * a 'reload' bounce (a brand-new client's very first connect snapshot)
+   * observed it empty at seed 64 while A (never disconnected) still
+   * correctly showed a request opened on a lineage child two seeds earlier —
+   * even though `conversationActivity` (checked above, full equality) was
+   * already byte-identical between both clients at that same instant. Root
+   * cause: `selectSnapshotRows`' candidate matching resolves a lineage
+   * child's row to its chat via `keyByExecutionIdentity`, seeded only from
+   * the CLIENT's own prior `currentSessionId`/`conversationId` — a reloaded
+   * client's very first snapshot has neither yet (`initChat` seeds
+   * `currentSessionId` to the chat's own root key, and this payload's rows
+   * carry no `conversationId` at all), so the child's row never joined the
+   * union and its `openRequestIds` were silently dropped. Fixed by also
+   * seeding `keyByExecutionIdentity` from each row's OWN advertised
+   * `currentSessionId` (the root row names its current child, self-
+   * referentially, regardless of what the client knew beforehand) — see
+   * `selectSnapshotRows` in snapshotHandlers.ts. `pendingApprovals` is
+   * compared like every other field below now; seed 64 stays pinned as the
+   * regression that would catch a reoccurrence.
    */
   options: {
     includeOrchestrationStatus: boolean;
-    includePendingApprovals: boolean;
   } = {
     includeOrchestrationStatus: true,
-    includePendingApprovals: true,
   },
 ) {
   await vi.waitFor(
@@ -523,9 +529,7 @@ async function assertClientsConverged(
     status: chat.status,
     error: chat.error,
     openTurnId: chat.openTurnId,
-    ...(options.includePendingApprovals
-      ? { pendingApprovals: chat.pendingApprovals ?? [] }
-      : {}),
+    pendingApprovals: chat.pendingApprovals ?? [],
     queuedMessages: chat.queuedMessages,
     queueDrainHeldForOpen: chat.queueDrainHeldForOpen,
     queueDrainSettling: chat.queueDrainSettling,
@@ -767,10 +771,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
           conversationId,
           expectedHead,
           label,
-          {
-            includeOrchestrationStatus: false,
-            includePendingApprovals: false,
-          },
+          { includeOrchestrationStatus: false },
         );
       }
       // A vs B is not compared here: while this turn is still open, its own
