@@ -10,8 +10,9 @@
  *   content), and only while at least one phone is registered — a Station
  *   with no registration makes no reads and no gateway traffic;
  * - a `KeyedCoalescingWorker` that coalesces bursts (~1 s) into one read of
- *   the session read model, builds the card, and seals it separately to each
- *   registered phone that has not received it;
+ *   the session read model per reading principal — each phone sees exactly
+ *   the sessions its own paired device may read — builds that card, and
+ *   seals it separately to each registered phone that has not received it;
  * - one unref'd timer that re-flushes when a delivery failed (with backoff),
  *   when a device was held back by the per-device send interval, when a live
  *   card nears its expiry on the phone, and once shortly after boot;
@@ -308,11 +309,22 @@ interface AgentActivityLogger {
 
 type Cancel = () => void;
 
+export interface AgentActivitySessionReader {
+  principalId: string;
+  listSessions(): Promise<AgentActivitySessionRow[]>;
+}
+
 export interface AgentActivityPublisherOptions {
   eventBus: EventBus;
   devicePairing: AgentActivityDevicePairing;
   signingKey: { read(): PushSigningKey | null };
-  listSessions: () => Promise<AgentActivitySessionRow[]>;
+  /**
+   * Who a registered device reads as, and how to read the sessions it may
+   * see — the same read authority that device's own requests carry. Null
+   * when the device is no longer a readable paired device. Devices resolving
+   * to the same principal share one read per flush.
+   */
+  sessionReaderFor: (deviceId: string) => AgentActivitySessionReader | null;
   gateway: PushGatewayConfig;
   logger: AgentActivityLogger;
   /** Hosted mode or an invalid gateway URL: do not even subscribe. */
@@ -395,7 +407,11 @@ export function wireAgentActivityPublisher(
   const setTimer = options.setTimer ?? defaultSetTimer;
   const { logger, devicePairing } = options;
 
-  const snapshots = new Map<string, AgentActivitySnapshot>();
+  /** Per reading principal: what that principal's sessions were last seen as. */
+  const snapshotsByPrincipal = new Map<
+    string,
+    Map<string, AgentActivitySnapshot>
+  >();
   const devices = new Map<string, DeviceState>();
   const warned = new Set<string>();
   let lastUpdatedAt = 0;
@@ -428,7 +444,11 @@ export function wireAgentActivityPublisher(
     }
   }
 
-  function refreshSnapshots(rows: AgentActivitySessionRow[], at: number) {
+  function refreshSnapshots(
+    snapshots: Map<string, AgentActivitySnapshot>,
+    rows: AgentActivitySessionRow[],
+    at: number,
+  ) {
     const seen = new Set<string>();
     for (const row of rows) {
       const phase = agentActivityPhaseFor(row);
@@ -673,12 +693,35 @@ export function wireAgentActivityPublisher(
       return false;
     }
     const at = now();
-    refreshSnapshots(await options.listSessions(), at);
-    const card = buildAgentActivityCard({
-      sessions: [...snapshots.values()],
-      stationId: devicePairing.environmentId(),
-      now: at,
-    });
+    const stationId = devicePairing.environmentId();
+    // One card per reading principal: a phone's card holds exactly the
+    // sessions its own device may read. Devices sharing a principal share
+    // the read.
+    const cards = new Map<string, AgentActivityCard>();
+    const principalOf = new Map<string, string>();
+    for (const { deviceId, registration } of targets) {
+      if (registration.stationKey !== key.thumbprint) continue;
+      const reader = options.sessionReaderFor(deviceId);
+      if (!reader) continue;
+      principalOf.set(deviceId, reader.principalId);
+      if (cards.has(reader.principalId)) continue;
+      let snapshots = snapshotsByPrincipal.get(reader.principalId);
+      if (!snapshots) {
+        snapshots = new Map();
+        snapshotsByPrincipal.set(reader.principalId, snapshots);
+      }
+      refreshSnapshots(snapshots, await reader.listSessions(), at);
+      cards.set(
+        reader.principalId,
+        buildAgentActivityCard({
+          sessions: [...snapshots.values()],
+          stationId,
+          now: at,
+        }),
+      );
+    }
+    for (const principalId of [...snapshotsByPrincipal.keys()])
+      if (!cards.has(principalId)) snapshotsByPrincipal.delete(principalId);
     const due: Array<() => Promise<void>> = [];
     let updatedAt: number | undefined;
     for (const { deviceId, registration } of targets) {
@@ -693,6 +736,17 @@ export function wireAgentActivityPublisher(
         try {
           devicePairing.clearNativePush(deviceId, registration.token);
         } catch {}
+        continue;
+      }
+      const principalId = principalOf.get(deviceId);
+      const card = principalId ? cards.get(principalId) : undefined;
+      if (!card) {
+        // Not (or no longer) a device that may read sessions: send nothing.
+        warnOnce(
+          `unreadable:${deviceId}`,
+          'agent-activity: a registered device can no longer read sessions; not sending to it',
+        );
+        devices.delete(deviceId);
         continue;
       }
       const state = stateFor(deviceId, registration);

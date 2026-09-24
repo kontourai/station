@@ -1,7 +1,6 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
@@ -16,8 +15,6 @@ import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
-  agentActivityRowFromSummary,
-  agentActivityRowsWithEntries,
   resolvePushGatewayConfig,
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
@@ -48,6 +45,7 @@ import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
+import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -574,42 +572,33 @@ export function configureRuntimeSupportServices(
     gateway: pushGateway ?? { sendUrl: '', audience: '' },
     enabled: webPushEnabled && pushGateway !== null,
     logger: context.logger,
-    // The same personal-mode read authority the attention projection uses;
-    // hosted mode never reaches this (the publisher is disabled there).
-    listSessions: async () => {
-      const projects = new Map(
-        context.projectService
-          .listProjects()
-          .map((project) => [project.slug, project.name] as const),
-      );
-      const sessions = await context.orchestrationService.listSessionReadModel(
-        sessionReadAuthorityFromRequest(
-          getCachedUser().alias,
-          undefined,
-          undefined,
+    // Each phone reads what its own paired device may read (see
+    // agent-activity-session-reader.ts); hosted mode never reaches this.
+    sessionReaderFor: createAgentActivitySessionReader({
+      listDevices: () =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      listSessionReadModel: (authority) =>
+        context.orchestrationService.listSessionReadModel(authority),
+      listProjectionEvents: (threadIds) => {
+        const byThread = new Map<string, CanonicalRuntimeEvent[]>();
+        const persisted =
+          context.orchestrationEventStore?.listSessionProjectionEventsForThreads(
+            threadIds,
+          );
+        for (const [threadId, events] of persisted ?? [])
+          byThread.set(
+            threadId,
+            events.map((event) => event.payload),
+          );
+        return byThread;
+      },
+      projectNames: () =>
+        new Map(
+          context.projectService
+            .listProjects()
+            .map((project) => [project.slug, project.name] as const),
         ),
-      );
-      // Entry identity (which approval, which turn) comes from the same
-      // lifecycle projection events the read model folds.
-      return agentActivityRowsWithEntries(
-        sessions.map((session) =>
-          agentActivityRowFromSummary(session, (slug) => projects.get(slug)),
-        ),
-        (threadIds) => {
-          const byThread = new Map<string, CanonicalRuntimeEvent[]>();
-          const persisted =
-            context.orchestrationEventStore?.listSessionProjectionEventsForThreads(
-              threadIds,
-            );
-          for (const [threadId, events] of persisted ?? [])
-            byThread.set(
-              threadId,
-              events.map((event) => event.payload),
-            );
-          return byThread;
-        },
-      );
-    },
+    }),
   });
 
   const attentionProjection = new AttentionProjectionService(
