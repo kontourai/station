@@ -23,11 +23,13 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
 /**
  * Agents, declared as a Workspace Pane (#2050).
  *
- * The work the conversation on screen set running: its tool calls, its
- * delegated sessions and its provider subagents, from the same
- * background-task registry the Chat header's "N running" badge counts. The
- * pane and the sheet render ONE row component, so the tab is a placement of
- * that list rather than a second, drifting copy of it.
+ * The work the conversation on screen set running — its tool calls, its
+ * delegated sessions and its engine subagents — or, in its "All" scope
+ * (#2459), every conversation's child work, including a delegate started
+ * from the CLI with no chat open. Child work renders from the
+ * provider-neutral child-work contract, so it reads the same whatever engine
+ * reported it; tool calls keep the sheet's row. Which scope it shows is
+ * display state, not pane identity.
  *
  * Two declarations carry the design, both Activity's for Activity's reasons:
  *
@@ -45,7 +47,7 @@ export const WORKSPACE_AGENTS_PANE_DESCRIPTOR = descriptor({
   version: WORKSPACE_PANE_CONTRACT_VERSION,
   id: WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID,
   name: 'Agents',
-  description: 'Watch the work this conversation set running.',
+  description: 'Watch the agent work your conversations set running.',
   rendererId: WORKSPACE_AGENTS_PANE_RENDERER_ID,
   renderer: {
     kind: 'builtin-component',

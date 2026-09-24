@@ -2,6 +2,7 @@ import type { OrchestrationConversationStreamBinding } from '@kontourai/station-
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   handleRequestOpenedEvent,
@@ -148,6 +149,9 @@ export function handleOrchestrationEvent(
     // its chat was since rebound to a newer session (the guard below would
     // drop it), or the chat keeps the dead session's children.
     observeChildWorkLifecycle(event);
+    // #2459: the Agents pane's "All" scope — every session's engine
+    // subagents, including sessions no chat has open (a CLI delegate).
+    childWorkGlobalStore.ingest(apiBase, event);
   }
 
   if (replayThread) {
