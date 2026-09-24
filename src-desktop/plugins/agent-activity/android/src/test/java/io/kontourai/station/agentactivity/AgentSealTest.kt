@@ -33,6 +33,25 @@ class AgentSealTest {
     )
   }
 
+  /** NATIVE_PUSH_SEALED_TEST_VECTOR from @kontourai/station-contracts/native-push: the Station's own sealer output. */
+  @Test
+  fun opensTheStationsKnownAnswerVector() {
+    val stationSealed =
+      "AAECAwQFBgcICQoLPCCjaKCXnXLpY62pgNhJXLLntgXdSm5NCUrRtCxYLYowIZ_RnvAjqUWVTty5thkJzHVC-Cqywq" +
+      "5a83V4bMHPzMEE9krj4RZRLGSaXt-tIspZ6b0LAAZxUt-J7Lkd0pWvqpstj9IovGPBbFbTOxADRZgQA8KXrEv9Epk4" +
+      "v92HHn7JPXan2PXncWmCPMhLszi7aZiKW1BOo2i2fakHiqCGmPL7wmGvlrRe0wu42rns59Dk7qZN7MIdnBG6s7Mtsf" +
+      "ucdCXk2kytpusbdLKFziiv7ZUHpxdedNOHFM75qDQm-9h5AeWNygJiRiYuzmHBaCMw3OfcG-lZ5stICAgG5ehguzbg" +
+      "0Ly_uytKHqkbc85yX3Kq3bio89Tg21MVT2AyxIp7MTTseIr1_iewEBg7ZvDSp8ejP3xztv8nqAEtJqcNddn5pU8au1" +
+      "BI2ZPQSxBt4y1SoyrntKwktTh5k0hWvYF4z2kfyem1ZEL7EJ-UE6eFUhi0zS9J3sEi7b2EWLmuIwZGzPesvKU98Z3R" +
+      "AIwQSCF-p4xuCd_6RHD4H3GyIz-S5DR2Hi5J-fMXG9iYqDqa2NbJPAA9MnDsR4yJmZeI9d8_us1a4rLJPtFdqmqQdY" +
+      "yGxMFWrOh4YsInKEEUM74P"
+    val card = unseal(payloadKey, "AAECAwQFBgcICQoLDA0ODw", stationSealed)
+    assertEquals("waiting_for_approval", card?.get("activity_phase"))
+    assertEquals("Approval\tFix the flaky login test\tLogin App", card?.get("activity_line_0"))
+    assertEquals("Approval needed", card?.get("alert_title"))
+    assertEquals("11111111-1111-4111-8111-111111111111", card?.get("user_id"))
+  }
+
   @Test
   fun refusesAnythingThatDoesNotAuthenticate() {
     val flipped = sealed.substring(0, 20) + (if (sealed[20] == 'A') 'B' else 'A') + sealed.substring(21)
