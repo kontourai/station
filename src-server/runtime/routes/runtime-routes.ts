@@ -1027,7 +1027,9 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 
 /**
  * Candidate threads an attachment read may judge, matching the event store's
- * per-query bound, so authorization work stays constant per request.
+ * per-query bound. The read-predicate calls are therefore bounded at this;
+ * the number of store queries is up to one per readable owner, a count that
+ * comes from the caller and never from the reference.
  */
 const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
 
@@ -5149,9 +5151,11 @@ export function configureRuntimeRoutes(
         // One bounded, owner-narrowed query per owner the caller could read
         // (their own, shared personal-account owners, and the legacy alias
         // where the home-possession bridge admits it). The owner list comes
-        // from the caller, never from the reference, and the merged set keeps
-        // the store's per-query bound, so response time still cannot answer
-        // whether anyone else holds these bytes.
+        // from the caller, never from the reference, so a digest bound only
+        // to other people's threads costs the same as an unbound one.
+        // Ownerless rows come back with the first owner's query and count
+        // toward the bound; under an ownerless `deny` policy four of them
+        // could crowd out a later owner's readable thread.
         const owners = context.orchestrationService.attachmentCandidateOwnerIds(
           conversationReadAuthorityForRequest(request),
         );
