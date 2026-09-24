@@ -870,3 +870,27 @@ describe('AcpToolUpdateSupervisor — image bytes never ride text', () => {
     expect((events.at(-1) as any).output).toBe('[inline image data omitted]');
   });
 });
+
+describe('AcpToolUpdateSupervisor — redaction under a nearly spent budget', () => {
+  test('a data URL rawOutput is never tail-truncated into a base64 slice when little budget is left', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'tight' });
+    // rawInput takes almost the whole per-call budget, leaving rawOutput
+    // fewer bytes than the placeholder itself — the one path where the raw
+    // projector re-tails its input string.
+    supervisor.acceptUpdate({
+      toolCallId: 'tight',
+      hasRawInput: true,
+      rawInput: 'x'.repeat(ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall - 17),
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'tight',
+      hasRawOutput: true,
+      rawOutput: `data:image/png;base64,${'QUJD'.repeat(200)}WFla`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect(JSON.stringify(events)).not.toContain('WFla');
+    expect(JSON.stringify(events)).not.toContain('QUJD');
+  });
+});
