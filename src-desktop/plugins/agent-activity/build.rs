@@ -11,6 +11,12 @@ const COMMANDS: &[&str] = &[
 /// built only when STATION_IOS_LIVE_ACTIVITY=1, so TestFlight output stays
 /// unchanged until the push-enabled signing it needs exists (#2513 slice D).
 /// Without it the plugin still registers on iOS, with no native half.
+///
+/// Xcode runs cargo through `tauri ios xcode-script`, which does not pass the
+/// shell's environment through, so an iOS build sets it as cargo config:
+/// `tauri ios build ... -- --config <file>` where the file holds
+/// `[env] STATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }` (the
+/// same route STATION_MOBILE_DEFAULT_ENDPOINT takes in testflight-delivery).
 const IOS_FEATURE_ENV: &str = "STATION_IOS_LIVE_ACTIVITY";
 
 fn main() {
