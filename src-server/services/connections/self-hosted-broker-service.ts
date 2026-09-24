@@ -7,10 +7,18 @@ import {
   SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION,
   SELF_HOSTED_BROKER_INVITATION_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_CONNECTION_OFFER_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
   type SelfHostedBrokerClientGrantV1,
   type SelfHostedBrokerNativeClientGrantV2,
   type SelfHostedBrokerNativeClientSurfaceV2,
+  type SelfHostedBrokerNativeConnectionAnswerV2,
+  type SelfHostedBrokerNativeConnectionOfferV2,
+  type SelfHostedBrokerNativeConnectionOpenedV2,
+  type SelfHostedBrokerNativeConnectionOpenV2,
   type SelfHostedBrokerNativeRedemptionProofV2,
   type SelfHostedBrokerNativeRouteInvitationV2,
   type SelfHostedBrokerNativeScopeV2,
@@ -105,6 +113,25 @@ interface NativeInvitationRow {
   expires_at: number;
   grant_expires_at: number;
   consumed_at: number | null;
+}
+interface NativeGrantRow {
+  grant_id: string;
+  invitation_id: string;
+  station_id: string;
+  enrollment_id: string;
+  generation: number;
+  broker_origin: string;
+  signing_key_id: string;
+  signing_generation: number;
+  app_identifier: string;
+  channel: string;
+  client_instance_id: string;
+  key_thumbprint: string;
+  proof_public_key: string;
+  secret_hash: Uint8Array;
+  issued_at: number;
+  expires_at: number;
+  revoked_at: number | null;
 }
 export function createBrokerCredentialBundle(): BrokerCredentialBundle {
   return {
@@ -432,7 +459,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2, 3].includes(version.user_version)) {
+    if (![0, 1, 2, 3, 4].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -450,11 +477,14 @@ export class SelfHostedBrokerService {
               'broker_route_invitations',
               'broker_client_grants',
               'broker_connection_owners',
-              ...(version.user_version === 3
+              ...(version.user_version >= 3
                 ? [
                     'broker_native_route_invitations',
                     'broker_native_client_grants',
                   ]
+                : []),
+              ...(version.user_version === 4
+                ? ['broker_native_connections']
                 : []),
             ];
       const present = this.db
@@ -472,7 +502,7 @@ export class SelfHostedBrokerService {
       }
     }
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON');
-    // Versions 2 and 3 add only tables. Legacy pending rows have no
+    // Versions 2, 3 and 4 add only tables. Legacy pending rows have no
     // client-grant owner, so they remain usable solely by the legacy operator
     // routing key. Native grants have separate tables and are never accepted
     // by v1 signaling. DDL and version marker commit together.
@@ -537,8 +567,19 @@ export class SelfHostedBrokerService {
         revoked_at INTEGER);
       CREATE INDEX IF NOT EXISTS broker_native_grant_station
         ON broker_native_client_grants(station_id, expires_at);
+      CREATE TABLE IF NOT EXISTS broker_native_connections(
+        station_id TEXT NOT NULL, enrollment_id TEXT NOT NULL,
+        generation INTEGER NOT NULL, client_id TEXT NOT NULL, nonce TEXT NOT NULL,
+        grant_id TEXT NOT NULL, offer_sdp TEXT NOT NULL, answer_sdp TEXT,
+        station_proof TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY(station_id, client_id, nonce),
+        FOREIGN KEY(grant_id) REFERENCES broker_native_client_grants(grant_id));
+      CREATE INDEX IF NOT EXISTS broker_native_connection_expiry
+        ON broker_native_connections(expires_at);
+      CREATE INDEX IF NOT EXISTS broker_native_connection_grant
+        ON broker_native_connections(grant_id);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=3;
+      PRAGMA user_version=4;
       COMMIT;`);
     } catch (error) {
       try {
@@ -610,6 +651,20 @@ export class SelfHostedBrokerService {
       )
       .run(now, now);
   }
+  private retireUnavailableNativeConnections() {
+    const now = this.now();
+    this.db
+      .prepare(
+        `UPDATE broker_native_connections
+         SET offer_sdp='',answer_sdp=NULL,station_proof=NULL,expires_at=MIN(expires_at,?)
+         WHERE expires_at<=? OR EXISTS (
+           SELECT 1 FROM broker_native_client_grants g
+           WHERE g.grant_id=broker_native_connections.grant_id
+             AND (g.revoked_at IS NOT NULL OR g.expires_at<=?)
+         )`,
+      )
+      .run(now, now, now);
+  }
   provision(
     input: BrokerScope,
     ttlMs = 60_000,
@@ -662,6 +717,9 @@ export class SelfHostedBrokerService {
           )
           .run(scope.stationId, scope.routingGeneration);
       if (Number(written.changes) === 1) {
+        this.db
+          .prepare('DELETE FROM broker_native_connections WHERE station_id=?')
+          .run(scope.stationId);
         this.db
           .prepare('DELETE FROM broker_route_invitations WHERE station_id=?')
           .run(scope.stationId);
@@ -937,6 +995,15 @@ export class SelfHostedBrokerService {
         throw new Error('native_invitation_refused');
       this.db
         .prepare(
+          `DELETE FROM broker_native_connections
+           WHERE grant_id IN (
+             SELECT grant_id FROM broker_native_client_grants
+             WHERE expires_at<=? OR revoked_at IS NOT NULL
+           )`,
+        )
+        .run(this.now());
+      this.db
+        .prepare(
           'DELETE FROM broker_native_client_grants WHERE expires_at<=? OR revoked_at IS NOT NULL',
         )
         .run(this.now());
@@ -1181,7 +1248,325 @@ export class SelfHostedBrokerService {
           scope.routingGeneration,
         );
       if (changed.changes !== 1) throw new Error('grant_unavailable');
+      this.retireNativeGrantConnections(grantId);
     });
+  }
+  /** A native client can retire only its own grant using its bearer credential. */
+  retireOwnNativeClientGrant(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+  ) {
+    scope = validateNativeScope(scope);
+    surface = validateNativeSurface(surface);
+    return this.transaction(() => {
+      const { grant } = this.nativeRoutingOwner(
+        scope,
+        credential,
+        surface,
+        true,
+      );
+      if (grant.revoked_at === null) {
+        this.db
+          .prepare(
+            'UPDATE broker_native_client_grants SET revoked_at=? WHERE grant_id=? AND revoked_at IS NULL',
+          )
+          .run(this.now(), grant.grant_id);
+      }
+      this.retireNativeGrantConnections(grant.grant_id);
+      return { retired: true };
+    });
+  }
+  private retireNativeGrantConnections(grantId: string) {
+    const now = this.now();
+    this.db
+      .prepare(
+        `UPDATE broker_native_connections
+         SET offer_sdp='',answer_sdp=NULL,station_proof=NULL,
+             expires_at=MIN(expires_at,?)
+         WHERE grant_id=?`,
+      )
+      .run(now, grantId);
+  }
+  /** A native client opens one bounded offer under its exact install grant. */
+  openNativeConnection(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    input: SelfHostedBrokerNativeConnectionOpenV2,
+  ): SelfHostedBrokerNativeConnectionOpenedV2 {
+    scope = validateNativeScope(scope);
+    surface = validateNativeSurface(surface);
+    if (
+      !input ||
+      input.version !== SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION
+    )
+      throw new Error('invalid_native_connection');
+    assertText(input.nonce, 'nonce');
+    if (
+      typeof input.offerSdp !== 'string' ||
+      input.offerSdp.length === 0 ||
+      Buffer.byteLength(input.offerSdp) > SDP_LIMIT
+    )
+      throw new Error('offer_too_large');
+    return this.transaction(() => {
+      const { grant } = this.nativeRoutingOwner(scope, credential, surface);
+      const now = this.now();
+      this.retireUnavailableNativeConnections();
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_connections WHERE created_at + 330000 <=?',
+        )
+        .run(now);
+      const total = (
+        this.db
+          .prepare(
+            'SELECT count(*) n FROM broker_native_connections WHERE expires_at>?',
+          )
+          .get(now) as { n: number }
+      ).n;
+      const station = (
+        this.db
+          .prepare(
+            'SELECT count(*) n FROM broker_native_connections WHERE station_id=? AND expires_at>?',
+          )
+          .get(scope.stationId, now) as { n: number }
+      ).n;
+      const retained = (
+        this.db
+          .prepare('SELECT count(*) n FROM broker_native_connections')
+          .get() as { n: number }
+      ).n;
+      if (total >= 1024 || station >= 32 || retained >= 10240)
+        throw new Error('pending_limit');
+      const clientId = surface.clientInstanceId;
+      const replay = this.db
+        .prepare(
+          'SELECT 1 found FROM broker_native_connections WHERE station_id=? AND client_id=? AND nonce=?',
+        )
+        .get(scope.stationId, clientId, input.nonce);
+      if (replay) throw new Error('connection_replayed');
+      const expiresAt = now + 30_000;
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_connections VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        )
+        .run(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          clientId,
+          input.nonce,
+          grant.grant_id,
+          input.offerSdp,
+          null,
+          null,
+          now,
+          expiresAt,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
+        expiresAt,
+      };
+    });
+  }
+  /** The native bearer reads only signaling owned by its exact grant and surface. */
+  readNativeConnection(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    nonce: string,
+  ): SelfHostedBrokerNativeConnectionAnswerV2 | null {
+    scope = validateNativeScope(scope);
+    surface = validateNativeSurface(surface);
+    assertText(nonce, 'nonce');
+    return this.transaction(() => {
+      const { grant } = this.nativeRoutingOwner(scope, credential, surface);
+      const row = this.db
+        .prepare(
+          `SELECT answer_sdp,station_proof,expires_at
+           FROM broker_native_connections
+           WHERE station_id=? AND enrollment_id=? AND generation=?
+             AND client_id=? AND nonce=? AND grant_id=?`,
+        )
+        .get(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          surface.clientInstanceId,
+          nonce,
+          grant.grant_id,
+        ) as
+        | {
+            answer_sdp: string | null;
+            station_proof: string | null;
+            expires_at: number;
+          }
+        | undefined;
+      if (!row || row.expires_at <= this.now())
+        throw new Error('connection_unavailable');
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION,
+        answerSdp: row.answer_sdp,
+        stationProof: row.station_proof,
+        expiresAt: row.expires_at,
+      };
+    });
+  }
+  /** Only the opted-in Station connector can see native v2 offers. */
+  nativeOffers(
+    scope: BrokerScope,
+    connectorCredential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    limit = 1,
+  ): SelfHostedBrokerNativeConnectionOfferV2[] {
+    scope = validateBrokerScope(scope);
+    surface = validateNativeSurface(surface);
+    // Four maximum-size (128 KiB) offers plus metadata stay below the
+    // client's 1 MiB bounded response budget.
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4)
+      throw new Error('invalid_request');
+    return this.transaction(() => {
+      this.lease(scope, connectorCredential, 'connector');
+      this.retireUnavailableNativeConnections();
+      const rows = this.db
+        .prepare(
+          `SELECT c.client_id AS clientId,c.nonce,c.offer_sdp AS offerSdp,
+                  c.expires_at AS expiresAt,g.app_identifier AS appIdentifier,
+                  g.channel,g.client_instance_id AS clientInstanceId,
+                  g.key_thumbprint AS keyThumbprint,
+                  g.signing_key_id AS stationSigningKeyId,
+                  g.signing_generation AS stationSigningGeneration
+           FROM broker_native_connections c
+           JOIN broker_native_client_grants g ON g.grant_id=c.grant_id
+           WHERE c.station_id=? AND c.enrollment_id=? AND c.generation=?
+             AND c.answer_sdp IS NULL AND c.expires_at>?
+             AND g.revoked_at IS NULL AND g.expires_at>?
+             AND g.app_identifier=? AND g.channel=?
+             AND g.client_instance_id=? AND g.key_thumbprint=?
+           ORDER BY c.created_at,c.client_id LIMIT ?`,
+        )
+        .all(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          this.now(),
+          this.now(),
+          surface.appIdentifier,
+          surface.channel,
+          surface.clientInstanceId,
+          surface.keyThumbprint,
+          limit,
+        ) as {
+        clientId: string;
+        nonce: string;
+        offerSdp: string;
+        expiresAt: number;
+        appIdentifier: string;
+        channel: SelfHostedBrokerNativeClientSurfaceV2['channel'];
+        clientInstanceId: string;
+        keyThumbprint: string;
+        stationSigningKeyId: string;
+        stationSigningGeneration: number;
+      }[];
+      return rows.map((row) => ({
+        version: SELF_HOSTED_BROKER_NATIVE_CONNECTION_OFFER_VERSION,
+        scope: {
+          stationId: scope.stationId,
+          enrollmentId: scope.enrollmentId,
+          routingGeneration: scope.routingGeneration,
+        },
+        surface: {
+          kind: 'station-native',
+          appIdentifier: row.appIdentifier,
+          channel: row.channel,
+          clientInstanceId: row.clientInstanceId,
+          keyThumbprint: row.keyThumbprint,
+        },
+        stationSigningKeyId: row.stationSigningKeyId,
+        stationSigningGeneration: row.stationSigningGeneration,
+        clientId: row.clientId,
+        nonce: row.nonce,
+        offerSdp: row.offerSdp,
+        expiresAt: row.expiresAt,
+      }));
+    });
+  }
+  /** Connector answer admission rechecks the exact native surface and grant. */
+  answerNativeConnection(
+    scope: BrokerScope,
+    connectorCredential: BrokerCredential,
+    input: {
+      version: typeof SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION;
+      surface: SelfHostedBrokerNativeClientSurfaceV2;
+      stationSigningKeyId: string;
+      stationSigningGeneration: number;
+      clientId: string;
+      nonce: string;
+      answerSdp: string;
+      stationProof: string;
+    },
+  ) {
+    scope = validateBrokerScope(scope);
+    const surface = validateNativeSurface(input.surface);
+    if (input.version !== SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION)
+      throw new Error('invalid_native_connection');
+    if (
+      !SIGNING_KEY_ID.test(input.stationSigningKeyId) ||
+      !Number.isSafeInteger(input.stationSigningGeneration) ||
+      input.stationSigningGeneration < 1
+    )
+      throw new Error('invalid_signing_generation');
+    assertText(input.clientId, 'client_id');
+    assertText(input.nonce, 'nonce');
+    if (
+      input.clientId !== surface.clientInstanceId ||
+      typeof input.answerSdp !== 'string' ||
+      input.answerSdp.length === 0 ||
+      typeof input.stationProof !== 'string' ||
+      input.stationProof.length === 0 ||
+      Buffer.byteLength(input.answerSdp) > SDP_LIMIT ||
+      Buffer.byteLength(input.stationProof) > STATION_CONNECTION_PROOF_MAX_BYTES
+    )
+      throw new Error('answer_too_large');
+    this.transaction(() => {
+      this.lease(scope, connectorCredential, 'connector');
+      this.retireUnavailableNativeConnections();
+      const changed = this.db
+        .prepare(
+          `UPDATE broker_native_connections
+           SET answer_sdp=?,station_proof=?
+           WHERE station_id=? AND enrollment_id=? AND generation=?
+             AND client_id=? AND nonce=? AND answer_sdp IS NULL AND expires_at>?
+             AND EXISTS (
+               SELECT 1 FROM broker_native_client_grants g
+               WHERE g.grant_id=broker_native_connections.grant_id
+                 AND g.revoked_at IS NULL AND g.expires_at>?
+                 AND g.signing_key_id=? AND g.signing_generation=?
+                 AND g.app_identifier=? AND g.channel=?
+                 AND g.client_instance_id=? AND g.key_thumbprint=?
+             )`,
+        )
+        .run(
+          input.answerSdp,
+          input.stationProof,
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          input.clientId,
+          input.nonce,
+          this.now(),
+          this.now(),
+          input.stationSigningKeyId,
+          input.stationSigningGeneration,
+          surface.appIdentifier,
+          surface.channel,
+          surface.clientInstanceId,
+          surface.keyThumbprint,
+        );
+      if (changed.changes !== 1) throw new Error('connection_unavailable');
+    });
+    return { accepted: true };
   }
   /** Native inventory exposes binding metadata and state, never credentials or proof material. */
   listNativeClientGrants(
@@ -1292,6 +1677,55 @@ export class SelfHostedBrokerService {
       throw new Error('broker_credential_refused');
     return { lease, grantId: grant.grant_id };
   }
+  private nativeRoutingOwner(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    allowRevoked = false,
+  ) {
+    scope = validateNativeScope(scope);
+    surface = validateNativeSurface(surface);
+    if (
+      !credential ||
+      typeof credential.id !== 'string' ||
+      !ID.test(credential.id) ||
+      typeof credential.secret !== 'string' ||
+      !SECRET.test(credential.secret)
+    )
+      throw new Error('broker_credential_refused');
+    const lease = this.db
+      .prepare('SELECT * FROM broker_leases WHERE station_id=?')
+      .get(scope.stationId) as LeaseRow | undefined;
+    if (
+      !lease ||
+      lease.enrollment_id !== scope.enrollmentId ||
+      lease.generation !== scope.routingGeneration ||
+      lease.withdrawn_at !== null ||
+      lease.expires_at <= this.now()
+    )
+      throw new Error('broker_credential_refused');
+    const grant = this.db
+      .prepare('SELECT * FROM broker_native_client_grants WHERE grant_id=?')
+      .get(credential.id) as NativeGrantRow | undefined;
+    if (
+      !grant ||
+      grant.station_id !== scope.stationId ||
+      grant.enrollment_id !== scope.enrollmentId ||
+      grant.generation !== scope.routingGeneration ||
+      grant.app_identifier !== surface.appIdentifier ||
+      grant.channel !== surface.channel ||
+      grant.client_instance_id !== surface.clientInstanceId ||
+      grant.key_thumbprint !== surface.keyThumbprint ||
+      (!allowRevoked && grant.revoked_at !== null) ||
+      grant.expires_at <= this.now() ||
+      !timingSafeEqual(
+        Buffer.from(grant.secret_hash),
+        nativeGrantDigest(credential.secret),
+      )
+    )
+      throw new Error('broker_credential_refused');
+    return { lease, grant };
+  }
   renew(
     scope: BrokerScope,
     credential: BrokerCredential,
@@ -1369,6 +1803,9 @@ export class SelfHostedBrokerService {
         .prepare(
           'DELETE FROM broker_native_route_invitations WHERE station_id=?',
         )
+        .run(scope.stationId);
+      this.db
+        .prepare('DELETE FROM broker_native_connections WHERE station_id=?')
         .run(scope.stationId);
       this.db
         .prepare('DELETE FROM broker_native_client_grants WHERE station_id=?')

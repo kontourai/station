@@ -28,9 +28,10 @@ This tranche provisions one operator-owned routing credential for one Station an
 
 ## Native routing grant foundation (v2)
 
-The broker database upgrades additively from schema v2 to v3. Native invitation
-and grant metadata lives in separate tables; existing browser v1 wire records,
-Origin checks, and signaling behavior are unchanged. A native surface is
+The broker database upgrades additively from schema v2 through v4. Native
+invitation and grant metadata lives in separate tables, and native connection
+offers live in their own v4 table; existing browser v1 wire records, Origin
+checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
 actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
 and a P-256 proof-key thumbprint. The operator must choose that thumbprint from
@@ -55,8 +56,21 @@ Native grants can be independently inventoried and revoked by the broker
 service, and their stored credential is hashed. Native invitations and grants
 are retired with their Station routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
-does not enable native signaling, encrypted application traffic, or a native
-client; the existing v1 signaling handlers do not read native grant rows.
+adds versioned v2 native `open`, `read`, and `retire` operations. Host requests
+carry the exact Station/enrollment/routing generation and native surface with
+the grant bearer; they send no browser Origin or cookies. V2 offers contain an
+explicit protocol version, full surface, Station signing-key ID, and signing
+generation. They are stored separately and never appear in v1 offer pages.
+
+The Station connector exposes `pollNative()` only when a caller explicitly
+supplies a native offer adapter bound to one exact surface. Before that callback
+can allocate a peer, it checks the offer's Station key thumbprint and generation
+against current approved Station trust. The production Pion runtime does not
+register this adapter, and its ordinary `poll()` never reads native offers.
+Native signalling therefore does not enable application ingress, encrypted
+application traffic, or native UI onboarding. Several native installations can
+hold separate grants; connector fan-out across multiple native surfaces remains
+future work.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
@@ -93,6 +107,11 @@ response to 1 MiB and 15 seconds.
 | `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
 | `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
+| `/native/connections/open` | Native grant bearer | Exact v2 open record and native surface; no Origin or cookies |
+| `/native/connections/read` | Native grant bearer | Own attempt by nonce and exact surface; no Origin or cookies |
+| `/native/grants/retire` | Native grant bearer | Retires only the caller's native grant; no Origin or cookies |
+| `/native/connections/offers` | Connector | Versioned native offers for one exact surface |
+| `/native/connections/answer` | Connector | Answer SDP and Station proof for the bound native offer |
 | `/connections` | Routing | `connection: {clientId, nonce, offerSdp}` opens one attempt |
 | `/connections/offers` | Connector | `limit: 1`; returns at most one offer per page |
 | `/connections/answer` | Connector | Exact attempt IDs, answer SDP and opaque Station proof |

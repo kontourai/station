@@ -93,6 +93,49 @@ export interface SelfHostedBrokerNativeClientGrantV2 {
   readonly expiresAt: number;
 }
 
+/** A native client opens signaling only through its independently held grant. */
+export interface SelfHostedBrokerNativeConnectionOpenV2 {
+  readonly version: 'station-broker-native-connection-open/v2';
+  readonly nonce: string;
+  readonly offerSdp: string;
+}
+export interface SelfHostedBrokerNativeConnectionOpenedV2 {
+  readonly version: 'station-broker-native-connection-opened/v2';
+  readonly expiresAt: number;
+}
+export interface SelfHostedBrokerNativeConnectionReadV2 {
+  readonly version: 'station-broker-native-connection-read/v2';
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly nonce: string;
+}
+
+/** Broker-to-Station metadata is explicitly v2 and carries the full native surface. */
+export interface SelfHostedBrokerNativeConnectionOfferV2 {
+  readonly version: 'station-broker-native-connection-offer/v2';
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly stationSigningKeyId: string;
+  readonly stationSigningGeneration: number;
+  readonly clientId: string;
+  readonly nonce: string;
+  readonly offerSdp: string;
+  readonly expiresAt: number;
+}
+
+/** Native answer contents remain signaling-only; they do not enable app ingress. */
+export interface SelfHostedBrokerNativeConnectionAnswerV2 {
+  readonly version: 'station-broker-native-connection-answer/v2';
+  readonly answerSdp: string | null;
+  readonly stationProof: string | null;
+  readonly expiresAt: number;
+}
+export interface SelfHostedBrokerNativeGrantRetireV2 {
+  readonly version: 'station-broker-native-grant-retire/v2';
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+}
+
 export const SELF_HOSTED_BROKER_INVITATION_VERSION =
   'station-broker-route-invitation/v1' as const;
 export const SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION =
@@ -103,3 +146,15 @@ export const SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION =
   'station-broker-native-route-invitation/v2' as const;
 export const SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION =
   'station-broker-native-client-grant/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_OFFER_VERSION =
+  'station-broker-native-connection-offer/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPEN_VERSION =
+  'station-broker-native-connection-open/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION =
+  'station-broker-native-connection-opened/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION =
+  'station-broker-native-connection-read/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION =
+  'station-broker-native-connection-answer/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION =
+  'station-broker-native-grant-retire/v2' as const;
