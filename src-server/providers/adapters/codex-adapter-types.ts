@@ -1,4 +1,5 @@
 import type { ProviderSession } from '../adapter-shape.js';
+import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -145,4 +146,9 @@ export interface CodexSessionRecord {
   /** Forked cumulative usage includes source history and is withheld until a durable baseline exists. */
   withholdCumulativeUsage?: boolean;
   cumulativeUsageWithheldWarningPublished?: boolean;
+  /**
+   * #2458: this session's Codex subagents as child work
+   * (`codex-adapter-child-work.ts`). Created on first use.
+   */
+  childWork?: CodexChildWorkState;
 }
