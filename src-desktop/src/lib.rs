@@ -19,6 +19,8 @@ mod desktop_companion;
 #[cfg(not(mobile))]
 pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
+mod native_relay_redemption;
+#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
 mod service_state;

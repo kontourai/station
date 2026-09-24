@@ -80,21 +80,21 @@ impl NativeProofKeyOwner {
         )
     }
 
-    fn app_identifier(&self) -> &str {
+    pub(crate) fn app_identifier(&self) -> &str {
         &self.app_identifier
     }
 
-    fn channel_label(&self) -> &'static str {
+    pub(crate) fn channel_label(&self) -> &'static str {
         self.channel.keyring_label()
     }
 
-    fn client_instance_id(&self) -> String {
+    pub(crate) fn client_instance_id(&self) -> String {
         self.client_instance_id.to_string()
     }
 }
 
 impl NativeProofKeyChannel {
-    fn keyring_label(self) -> &'static str {
+    pub(crate) fn keyring_label(self) -> &'static str {
         match self {
             Self::Stable => "stable",
             Self::Beta => "beta",
@@ -111,6 +111,24 @@ pub(crate) struct P256PublicJwk {
     crv: String,
     x: String,
     y: String,
+}
+
+impl P256PublicJwk {
+    pub(crate) fn kty(&self) -> &str {
+        &self.kty
+    }
+
+    pub(crate) fn crv(&self) -> &str {
+        &self.crv
+    }
+
+    pub(crate) fn x(&self) -> &str {
+        &self.x
+    }
+
+    pub(crate) fn y(&self) -> &str {
+        &self.y
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -247,6 +265,42 @@ impl NativeRelayProofKeyVault {
 
     pub(crate) fn revoke(&self, owner: &NativeProofKeyOwner) -> ProofResult<()> {
         self.inner.revoke(owner)
+    }
+
+    pub(crate) fn sign_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRedemptionChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        self.inner.sign_es256_p1363(owner, challenge)
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct MemoryNativeRelayProofKeyVault {
+    inner: ProofKeyVault<MemorySecretBackend>,
+}
+
+#[cfg(test)]
+impl MemoryNativeRelayProofKeyVault {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: ProofKeyVault::new(MemorySecretBackend::default()),
+        }
+    }
+
+    pub(crate) fn create(
+        &self,
+        owner: &NativeProofKeyOwner,
+    ) -> ProofResult<NativeProofKeyPublicMetadata> {
+        self.inner.create(owner)
+    }
+
+    pub(crate) fn restore(
+        &self,
+        owner: &NativeProofKeyOwner,
+    ) -> ProofResult<NativeProofKeyPublicMetadata> {
+        self.inner.restore(owner)
     }
 
     pub(crate) fn sign_es256_p1363(
