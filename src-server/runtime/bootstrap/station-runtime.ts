@@ -3747,6 +3747,20 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    // #2443: route composition may have built these before the failure. The
+    // same order as shutdown(): browsers, then device sessions (their
+    // producers read the hub the toolchain stops), SSH device hosts, the
+    // toolchain, and the live-surface registry once every producer stopped.
+    if (await attempt(() => this.browserService?.shutdown()))
+      this.browserService = undefined;
+    if (await attempt(() => this.deviceSessions?.dispose()))
+      this.deviceSessions = undefined;
+    if (await attempt(() => this.deviceHosts?.dispose()))
+      this.deviceHosts = undefined;
+    if (await attempt(() => this.deviceToolchainService?.shutdown()))
+      this.deviceToolchainService = undefined;
+    if (await attempt(() => this.liveSurfaceRegistry?.dispose()))
+      this.liveSurfaceRegistry = undefined;
     await attempt(() => this.taskRoomAcceptanceControl?.close());
     this.taskRoomAcceptanceControl = undefined;
     const scheduler = this.schedulerService;

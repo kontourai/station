@@ -102,6 +102,48 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.approvalStatus).toBeUndefined();
   });
 
+  test('a tool-returned image lands right after its row as a blob reference, once', () => {
+    const ref = `sha256-${'c'.repeat(64)}`;
+    handleToolStartedEvent({
+      eventId: 'start-1',
+      provider: 'station-agent',
+      threadId,
+      createdAt: '2026-08-15T00:00:00.000Z',
+      method: 'tool.started',
+      itemId: 'tool-1',
+      toolCallId: 'tool-1',
+      toolName: 'screenshot',
+    } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+    const withImage = toolCompleted({
+      toolName: 'screenshot',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          size: 68,
+          blobRef: ref,
+        },
+      ],
+    });
+    handleToolCompletedEvent(withImage);
+    // A re-delivered terminal replaces rather than doubles its images.
+    handleToolCompletedEvent(withImage);
+
+    const parts =
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? [];
+    expect(parts.map((part) => part.type)).toEqual(['tool-invocation', 'file']);
+    expect(parts[1]).toEqual({
+      type: 'file',
+      blobRef: ref,
+      mediaType: 'image/png',
+      name: 'image-1.png',
+      toolCallId: 'tool-1',
+      sourceEventId: 'evt-1',
+    });
+  });
+
   test('keeps simultaneous terminal results with one call id distinct by source event id', () => {
     handleToolCompletedEvent(
       toolCompleted({

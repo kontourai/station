@@ -558,10 +558,11 @@ export function regionSurfaceOfPane(
 
 /**
  * The surface a descriptor is placed as, or null for a descriptor no region
- * surface renders. No production reader since #2154 retired the dock
- * catalog; kept for its ONE reader, the inventory pin
- * (`region-surface-panes.test.ts`), which asserts the descriptor→surface
- * fold both ways and that an instance-keyed descriptor folds to no surface.
+ * surface renders. Read by `DockOnlyWorkspacePaneNotice` (#2465: "Open in
+ * dock" for a dock-only pane a Project layout still holds) and by the
+ * inventory pin (`region-surface-panes.test.ts`), which asserts the
+ * descriptor→surface fold both ways and that an instance-keyed descriptor
+ * folds to no surface.
  */
 export function regionSurfaceOfDescriptor(descriptorId: string): string | null {
   for (const pane of REGION_SURFACE_PANES.values()) {

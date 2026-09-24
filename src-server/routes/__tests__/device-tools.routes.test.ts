@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { DEVICE_AX_RESPONSE_MAX_BYTES } from '@kontourai/station-contracts/device-tools';
 import type {
   MobileDeviceInventory,
   MobileDeviceSummary,
@@ -6,14 +7,24 @@ import type {
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../__test-utils__/read-json.js';
 import type { DeviceAccess } from '../../services/devices/device-access.js';
+import { DeviceToolError } from '../../services/devices/device-host-tools.js';
 import type { DeviceSocket } from '../../services/devices/device-live-surface-producer.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
+import { DeviceHostBusyError } from '../../services/devices/device-shares.js';
 import {
   type DeviceTool,
+  type DeviceToolRunner,
+  DeviceToolsError,
   DeviceToolsService,
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
 import {
+  createSshDeviceToolRunner,
+  type SshDeviceToolHost,
+  type SshToolRequest,
+} from '../../services/devices/hosts/ssh-device-tools.js';
+import {
+  claimAgentControl,
   claimHumanControl,
   LiveSurfaceRegistry,
 } from '../../services/live-surface/registry.js';
@@ -513,12 +524,12 @@ describe('route-seam validation', () => {
 });
 
 /**
- * #1973: device routes name their host. The drawer's tools run THIS
- * machine's xcrun/adb and read the local hub, so a device on an SSH device
- * host is refused `unsupported` — never run against a local device that
- * happens to share its UDID.
+ * #1973: device routes name their host. WITHOUT SSH device host services
+ * wired (`toolsFor`), a device on an SSH device host is refused
+ * `unsupported` — never run against a local device that happens to share
+ * its UDID. With them wired, see #2442 below.
  */
-describe('a device on an SSH device host (#1973)', () => {
+describe('a device on an SSH device host, no SSH host services wired (#1973)', () => {
   const REMOTE = 'ssh-0123456789ab';
   const remote = (leaf = '') =>
     `/hosts/${REMOTE}/devices/ios/${IOS}/tools${leaf}`;
@@ -622,5 +633,619 @@ describe('a device on an SSH device host (#1973)', () => {
     });
     await app.request(toolsPath(), { headers: { 'x-test-actor': 'operator' } });
     expect(asked).toEqual(['local:ios:view']);
+  });
+});
+
+/**
+ * #2442: with SSH device host services wired, the drawer runs on the
+ * device's OWN host through that host's service, behind the SAME access
+ * (D12, keyed by host, platform and device) and lease checks as `local`.
+ */
+describe('a device on an SSH device host, served by that host (#2442)', () => {
+  const REMOTE = 'ssh-0123456789ab';
+  const remotePath = (leaf = '', platform = 'ios', id = IOS) =>
+    `/hosts/${REMOTE}/devices/${platform}/${id}/tools${leaf}`;
+  const PROBE = new Request('http://station.test/', {
+    headers: { 'x-test-actor': 'operator' },
+  });
+
+  function remoteSetup(
+    options: {
+      access?: DeviceAccess;
+      run?: (
+        tool: DeviceTool,
+        args: readonly string[],
+        options?: { beforeRun?: () => Promise<void> },
+      ) => Promise<string>;
+      hubTree?: unknown;
+      /** Replaces the recording runner outright (e.g. the real SSH runner). */
+      runner?: DeviceToolRunner;
+    } = {},
+  ) {
+    const calls: { tool: DeviceTool; args: string[] }[] = [];
+    const localCalls: string[][] = [];
+    const run =
+      options.run ??
+      (async (_tool: DeviceTool, args: readonly string[]) =>
+        args.join(' ') === `simctl ui ${IOS} appearance` ? 'dark\n' : '');
+    const remoteTools = new DeviceToolsService({
+      hostId: REMOTE,
+      runner: options.runner ?? {
+        run: async (tool, args, runOptions) => {
+          calls.push({ tool, args: [...args] });
+          return run(tool, args, runOptions);
+        },
+      },
+      hub: {
+        connect: async () =>
+          options.hubTree === undefined
+            ? { ok: false as const, failure: 'hub-unavailable' as const }
+            : {
+                ok: true as const,
+                connection: {
+                  request: async () =>
+                    new Response(JSON.stringify(options.hubTree)),
+                } as never,
+              },
+      },
+    });
+    const localTools = new DeviceToolsService({
+      runner: {
+        run: async (_tool, args) => {
+          localCalls.push([...args]);
+          return '';
+        },
+      },
+      hub: {
+        connect: async () => ({ ok: false, failure: 'hub-unavailable' }),
+      },
+    });
+    const surfaces = new LiveSurfaceRegistry();
+    const remoteHost = {
+      inventory: vi.fn(
+        async (): Promise<MobileDeviceInventory> => ({
+          hostId: REMOTE,
+          state: 'ready',
+          observedAt: new Date().toISOString(),
+          devices: DEVICES.map((device) => ({ ...device, hostId: REMOTE })),
+        }),
+      ),
+      boot: vi.fn(),
+      attachStream: vi.fn(async () => {}),
+      shutdown: vi.fn(),
+      screenshot: vi.fn(),
+      connect: async () => ({
+        ok: true as const,
+        connection: {
+          baseUrl: 'http://127.0.0.1:43872',
+          request: async () => new Response(null, { status: 503 }),
+          openWebSocket: () => new IdleSocket() as never,
+        },
+      }),
+    };
+    const access = options.access ?? fakeAccess;
+    const remoteSessions = new DeviceSessionService({
+      hostId: REMOTE,
+      host: remoteHost as never,
+      endpoint: { onExit: () => () => {} },
+      surfaces,
+      access,
+    });
+    const app = createDeviceToolsRoutes({
+      isRequestPrincipalCurrent: () => true,
+      access,
+      tools: localTools,
+      toolsFor: (hostId) => (hostId === REMOTE ? remoteTools : undefined),
+      resolveHumanCaller: (c) => {
+        const human = c.req.header('x-test-human');
+        const [principal, device] = human ? human.split('/') : [];
+        return principal && device ? { principal, device } : null;
+      },
+      // As the runtime wires it: the lease of the session ON ITS HOST.
+      controlConflict: (caller, platform, deviceId, hostId) =>
+        hostId === REMOTE
+          ? deviceControlConflict(
+              { sessions: remoteSessions, surfaces },
+              platform,
+              deviceId,
+              caller,
+            )
+          : 'none',
+    });
+    const call = (
+      method: string,
+      path: string,
+      actor: string,
+      body?: unknown,
+      human = 'user:ada/device:1',
+    ) =>
+      app.request(path, {
+        method,
+        headers: {
+          'x-test-actor': actor,
+          'x-test-human': human,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    cleanups.push(async () => {
+      await remoteSessions.dispose();
+      await surfaces.dispose();
+    });
+    return { call, calls, localCalls, remoteSessions, surfaces };
+  }
+
+  test('reads and acts ON that host, through its own service; nothing runs locally', async () => {
+    const { call, calls, localCalls } = remoteSetup();
+    const read = await call('GET', remotePath(), 'operator');
+    expect(read.status).toBe(200);
+    expect((await readJson(read)).data).toMatchObject({
+      hostId: REMOTE,
+      appearance: { state: 'read', value: 'dark' },
+    });
+    const acted = await call('POST', remotePath('/actions'), 'operator', DARK);
+    expect(acted.status).toBe(200);
+    expect(calls.map((entry) => entry.args.join(' '))).toContain(
+      `simctl ui ${IOS} appearance dark`,
+    );
+    expect(localCalls).toEqual([]);
+  });
+
+  test('D12 is keyed by (host, platform, device): a share on the SSH host is not a share here, nor the reverse', async () => {
+    const asked: string[] = [];
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async (request, platform, deviceId, purpose, hostId) => {
+        asked.push(`${hostId}:${platform}:${deviceId}:${purpose}`);
+        if (request.headers.get('x-test-actor') === 'operator') return true;
+        return (
+          request.headers.get('x-test-actor') === 'shared-remote' &&
+          hostId === REMOTE &&
+          platform === 'ios' &&
+          deviceId === IOS
+        );
+      },
+    };
+    const { call, calls, localCalls } = remoteSetup({ access });
+    expect(
+      (await call('POST', remotePath('/actions'), 'shared-remote', DARK))
+        .status,
+    ).toBe(200);
+    const beforeRefusals = calls.length;
+    // The same UDID on THIS Station is not shared with them.
+    expect(
+      (
+        await call(
+          'POST',
+          `/hosts/local/devices/ios/${IOS}/tools/actions`,
+          'shared-remote',
+          DARK,
+        )
+      ).status,
+    ).toBe(403);
+    // Nor is an Android emulator on that host they were not given.
+    const refused = await call(
+      'GET',
+      remotePath('', 'android', 'emulator-5554'),
+      'shared-remote',
+    );
+    expect(refused.status).toBe(403);
+    expect(await readJson(refused)).toMatchObject({ code: 'access-denied' });
+    expect(calls.length).toBe(beforeRefusals);
+    expect(localCalls).toEqual([]);
+    expect(asked).toEqual([
+      `${REMOTE}:ios:${IOS}:drive`,
+      `local:ios:${IOS}:drive`,
+      `${REMOTE}:android:emulator-5554:view`,
+    ]);
+  });
+
+  test('the lease on THAT host: another person or any agent driving refuses the action, and nothing runs', async () => {
+    for (const holder of ['other-human', 'agent'] as const) {
+      const env = remoteSetup();
+      const session = await env.remoteSessions.open({
+        hostId: REMOTE,
+        platform: 'ios',
+        deviceId: IOS,
+      });
+      const entry = env.surfaces.get(session.surfaceId)!;
+      if (holder === 'other-human')
+        claimHumanControl(entry, {
+          kind: 'human',
+          principal: 'user:bob',
+          device: 'device:9',
+        });
+      else
+        expect(
+          (
+            await claimAgentControl(
+              entry,
+              { kind: 'agent', principal: 'user:ada', sessionId: 'session-1' },
+              'user:ada',
+              { request: PROBE },
+            )
+          ).ok,
+        ).toBe(true);
+      const refused = await env.call(
+        'POST',
+        remotePath('/actions'),
+        'operator',
+        DARK,
+      );
+      expect(refused.status, holder).toBe(409);
+      // An agent acting for this very person is still another controller.
+      expect(await readJson(refused), holder).toEqual({
+        success: false,
+        code: 'device-controlled-by-other',
+        heldBy: 'other',
+      });
+      expect(env.calls, holder).toEqual([]);
+    }
+  });
+
+  test('the caller holding that host’s lease themselves may act', async () => {
+    const env = remoteSetup();
+    const session = await env.remoteSessions.open({
+      hostId: REMOTE,
+      platform: 'ios',
+      deviceId: IOS,
+    });
+    claimHumanControl(env.surfaces.get(session.surfaceId)!, {
+      kind: 'human',
+      principal: 'user:ada',
+      device: 'device:1',
+    });
+    expect(
+      (await env.call('POST', remotePath('/actions'), 'operator', DARK)).status,
+    ).toBe(200);
+  });
+
+  test('a busy host is 503 device-host-busy, never a refusal — at the access check and at the tool', async () => {
+    const busyAccess = remoteSetup({
+      access: {
+        ...fakeAccess,
+        mayAccessDevice: async () => {
+          throw new DeviceHostBusyError();
+        },
+      },
+    });
+    for (const [method, path, body] of [
+      ['GET', remotePath('', 'android', 'emulator-5554'), undefined],
+      ['POST', remotePath('/actions', 'android', 'emulator-5554'), DARK],
+    ] as const) {
+      const response = await busyAccess.call(method, path, 'operator', body);
+      expect(response.status, method).toBe(503);
+      expect(await readJson(response)).toMatchObject({
+        code: 'device-host-busy',
+      });
+    }
+    expect(busyAccess.calls).toEqual([]);
+    const busyTool = remoteSetup({
+      run: async () => {
+        throw new DeviceHostBusyError();
+      },
+    });
+    const acted = await busyTool.call(
+      'POST',
+      remotePath('/actions'),
+      'operator',
+      DARK,
+    );
+    expect(acted.status).toBe(503);
+    expect(await readJson(acted)).toMatchObject({ code: 'device-host-busy' });
+    // A read degrades per value, like any tool failure, and says why.
+    const read = await busyTool.call('GET', remotePath(), 'operator');
+    expect(read.status).toBe(200);
+    expect((await readJson(read)).data.appearance).toEqual({
+      state: 'unreadable',
+      reason: 'device-host-busy',
+    });
+  });
+
+  test('the host’s own failures stay typed: not enabled 409, unreachable 503, deadline 504', async () => {
+    for (const [error, status, code] of [
+      [
+        new DeviceToolsError('device-host-not-enabled'),
+        409,
+        'device-host-not-enabled',
+      ],
+      [
+        new DeviceToolsError('device-host-unavailable'),
+        503,
+        'device-host-unavailable',
+      ],
+      [new DeviceToolError('tool-timeout', 'timed out'), 504, 'tool-timeout'],
+    ] as const) {
+      const env = remoteSetup({
+        run: async () => {
+          throw error;
+        },
+      });
+      const response = await env.call(
+        'POST',
+        remotePath('/actions'),
+        'operator',
+        DARK,
+      );
+      expect(response.status, code).toBe(status);
+      expect(await readJson(response)).toMatchObject({ code });
+    }
+  });
+
+  /**
+   * Review M2: an SSH host's runner may wait (its slot queue) between the
+   * route's admission and the first command. The runner here waits the way
+   * the registry does — the world changes during the wait — and then asks
+   * `beforeRun` before running, as `DeviceHostRegistry.runTool` does once
+   * the slot is granted.
+   */
+  function waitingRunner(duringWait: () => void | Promise<void>) {
+    const ran: string[] = [];
+    let waited = false;
+    return {
+      ran,
+      run: async (
+        _tool: DeviceTool,
+        args: readonly string[],
+        options?: { beforeRun?: () => Promise<void> },
+      ) => {
+        if (!waited) {
+          waited = true;
+          await duringWait();
+        }
+        await options?.beforeRun?.();
+        ran.push(args.join(' '));
+        return '';
+      },
+    };
+  }
+
+  test('a share revoked while the action waited for the host: 403, and nothing runs', async () => {
+    let shared = true;
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async (request, _platform, deviceId) =>
+        shared && request.headers.get('x-test-actor') === `shared:${deviceId}`,
+    };
+    const runner = waitingRunner(() => {
+      shared = false;
+    });
+    const env = remoteSetup({ access, run: runner.run });
+    const response = await env.call(
+      'POST',
+      remotePath('/actions'),
+      `shared:${IOS}`,
+      DARK,
+    );
+    expect(response.status).toBe(403);
+    expect(await readJson(response)).toMatchObject({ code: 'access-denied' });
+    expect(runner.ran).toEqual([]);
+  });
+
+  test('someone taking control while the action waited: 409 with heldBy, and nothing runs', async () => {
+    let entry: Parameters<typeof claimHumanControl>[0] | undefined;
+    const runner = waitingRunner(() => {
+      claimHumanControl(entry!, {
+        kind: 'human',
+        principal: 'user:bob',
+        device: 'device:9',
+      });
+    });
+    const env = remoteSetup({ run: runner.run });
+    const session = await env.remoteSessions.open({
+      hostId: REMOTE,
+      platform: 'ios',
+      deviceId: IOS,
+    });
+    entry = env.surfaces.get(session.surfaceId)!;
+    const response = await env.call(
+      'POST',
+      remotePath('/actions'),
+      'operator',
+      DARK,
+    );
+    expect(response.status).toBe(409);
+    expect(await readJson(response)).toEqual({
+      success: false,
+      code: 'device-controlled-by-other',
+      heldBy: 'other',
+    });
+    expect(runner.ran).toEqual([]);
+  });
+
+  test('a permission group is re-admitted ONCE, before its first command, and then runs whole', async () => {
+    const asked: string[] = [];
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async (request, platform, deviceId, purpose, hostId) => {
+        asked.push(`${hostId}:${platform}:${purpose}`);
+        return fakeAccess.mayAccessDevice(
+          request,
+          platform,
+          deviceId,
+          purpose,
+          hostId,
+        );
+      },
+    };
+    const runner = waitingRunner(() => {});
+    const env = remoteSetup({ access, run: runner.run });
+    const response = await env.call(
+      'POST',
+      remotePath('/actions', 'android', 'emulator-5554'),
+      'operator',
+      {
+        type: 'set-permission',
+        appId: 'com.example.app',
+        permission: 'contacts',
+        decision: 'grant',
+      },
+    );
+    expect(response.status).toBe(200);
+    // The admission, then the one re-admission — not one per command.
+    expect(asked).toEqual([
+      `${REMOTE}:android:drive`,
+      `${REMOTE}:android:drive`,
+    ]);
+    expect(runner.ran.filter((args) => args.includes(' pm grant '))).toEqual([
+      '-s emulator-5554 shell pm grant com.example.app android.permission.READ_CONTACTS',
+      '-s emulator-5554 shell pm grant com.example.app android.permission.WRITE_CONTACTS',
+    ]);
+  });
+
+  test('a host busy at the re-admission (its AVD lookup queued out) is 503, never a refusal', async () => {
+    let busy = false;
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async () => {
+        if (busy) throw new DeviceHostBusyError();
+        return true;
+      },
+    };
+    const runner = waitingRunner(() => {
+      busy = true;
+    });
+    const env = remoteSetup({ access, run: runner.run });
+    const response = await env.call(
+      'POST',
+      remotePath('/actions'),
+      'operator',
+      DARK,
+    );
+    expect(response.status).toBe(503);
+    expect(await readJson(response)).toMatchObject({
+      code: 'device-host-busy',
+    });
+    expect(runner.ran).toEqual([]);
+  });
+
+  test('a permission group whose re-admission finds the host busy: 503, and NO pm vector runs (round 3, D1)', async () => {
+    let busy = false;
+    let readmits = 0;
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async () => {
+        if (!busy) return true;
+        readmits += 1;
+        throw new DeviceHostBusyError();
+      },
+    };
+    const runner = waitingRunner(() => {
+      busy = true;
+    });
+    const env = remoteSetup({ access, run: runner.run });
+    for (const permission of ['contacts', 'photos']) {
+      const response = await env.call(
+        'POST',
+        remotePath('/actions', 'android', 'emulator-5554'),
+        'operator',
+        {
+          type: 'set-permission',
+          appId: 'com.example.app',
+          permission,
+          decision: 'grant',
+        },
+      );
+      expect(response.status, permission).toBe(503);
+      expect(await readJson(response)).toMatchObject({
+        code: 'device-host-busy',
+      });
+      // Asked once; the busy answer is what every later command got.
+      expect(readmits, permission).toBe(1);
+      readmits = 0;
+    }
+    expect(runner.ran.filter((args) => args.includes(' pm '))).toEqual([]);
+  });
+
+  test('the production path: a group through the real SSH runner whose re-admission finds the host busy answers 503, and no group run starts (final review R2)', async () => {
+    let busy = false;
+    const access: DeviceAccess = {
+      ...fakeAccess,
+      mayAccessDevice: async () => {
+        if (busy) throw new DeviceHostBusyError();
+        return true;
+      },
+    };
+    // The registry's side of runTool: the slot is granted (the world
+    // changed while waiting for it), then `beforeRun` decides before any
+    // ssh — exactly what DeviceHostRegistry.runTool does.
+    const groupRuns: SshToolRequest[] = [];
+    const host: SshDeviceToolHost = {
+      generation: () => 0,
+      runTool: async (_hostId, request, control) => {
+        busy = true;
+        await control?.beforeRun?.();
+        groupRuns.push(request);
+        return { ok: true, stdout: '' };
+      },
+    };
+    const env = remoteSetup({
+      access,
+      runner: createSshDeviceToolRunner(host, REMOTE),
+    });
+    const response = await env.call(
+      'POST',
+      remotePath('/actions', 'android', 'emulator-5554'),
+      'operator',
+      {
+        type: 'set-permission',
+        appId: 'com.example.app',
+        permission: 'contacts',
+        decision: 'grant',
+      },
+    );
+    expect(response.status).toBe(503);
+    expect(await readJson(response)).toMatchObject({
+      code: 'device-host-busy',
+    });
+    expect(groupRuns).toEqual([]);
+  });
+
+  test('a host this Station does not have is unknown-host (404), after the access check; nothing runs', async () => {
+    const { call, calls, localCalls } = remoteSetup();
+    const response = await call(
+      'GET',
+      `/hosts/ssh-aaaaaaaaaaaa/devices/ios/${IOS}/tools`,
+      'operator',
+    );
+    expect(response.status).toBe(404);
+    expect(await readJson(response)).toMatchObject({ code: 'unknown-host' });
+    expect(
+      (
+        await call(
+          'GET',
+          `/hosts/ssh-aaaaaaaaaaaa/devices/ios/${IOS}/tools`,
+          'contributor',
+        )
+      ).status,
+    ).toBe(403);
+    expect(calls).toEqual([]);
+    expect(localCalls).toEqual([]);
+  });
+
+  test('the accessibility tree from that host keeps the 256 KB response cap', async () => {
+    const { call } = remoteSetup({
+      hubTree: [
+        {
+          frame: { x: 0, y: 0, width: 400, height: 800 },
+          children: Array.from({ length: 500 }, (_, index) => ({
+            frame: { x: 10, y: index, width: 50, height: 20 },
+            AXLabel: '\u0001'.repeat(200),
+            type: 'Button',
+          })),
+        },
+      ],
+    });
+    const response = await call(
+      'GET',
+      remotePath('/accessibility'),
+      'operator',
+    );
+    expect(response.status).toBe(200);
+    const tree = (await readJson(response)).data;
+    expect(tree.truncated).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(tree), 'utf8')).toBeLessThanOrEqual(
+      DEVICE_AX_RESPONSE_MAX_BYTES,
+    );
   });
 });

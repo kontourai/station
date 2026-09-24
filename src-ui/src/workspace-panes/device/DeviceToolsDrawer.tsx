@@ -26,7 +26,6 @@ import {
 import {
   type DeviceToolsTarget,
   describeDeviceToolsFailure,
-  deviceToolsSupported,
   useDeviceAccessibilityTree,
   useDevicePermissions,
   useDeviceToolAction,
@@ -52,10 +51,14 @@ import './DeviceToolsDrawer.css';
 const UNREADABLE_COPY: Record<DeviceToolsUnreadableReason, string> = {
   unsupported: 'This device cannot report it.',
   'not-reported': 'The device did not report it.',
-  'tool-unavailable': 'The device tools are not installed on the Station host.',
+  'tool-unavailable':
+    'The device tools are not installed on the device’s host.',
   'tool-failed': 'Reading it from the device failed.',
   'tool-timeout': 'The device did not answer in time.',
   'hub-unavailable': 'The device helper did not answer.',
+  'device-host-busy': 'The device’s host is busy. Refresh to try again.',
+  'device-host-unavailable': 'The device’s host could not be reached.',
+  'device-host-not-enabled': 'Devices are not enabled on the device’s host.',
 };
 
 const PERMISSION_LABEL: Record<DevicePermission, string> = {
@@ -146,67 +149,11 @@ export interface DeviceToolsDrawerProps {
 }
 
 /**
- * The drawer. Its tools run THIS Station's `xcrun`/`adb` (and read the
- * local hub), so a device on an SSH device host (#1973) gets a clear
- * notice instead — nothing is requested, and the server refuses such a
- * request anyway (`unsupported`).
+ * The drawer. Its tools run on the device's own host: this Station's
+ * `xcrun`/`adb`, or an SSH device host's through that host's allowlisted
+ * tool mode (#2442) — the server decides, and says why when it cannot.
  */
 export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
-  return deviceToolsSupported(props.target) ? (
-    <LocalDeviceToolsDrawer {...props} />
-  ) : (
-    <RemoteHostToolsNotice {...props} />
-  );
-}
-
-function RemoteHostToolsNotice(props: DeviceToolsDrawerProps) {
-  const headingId = useId();
-  const drawerRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    drawerRef.current?.focus();
-  }, []);
-  return (
-    <aside
-      aria-labelledby={headingId}
-      className={`device-tools device-tools--${props.layout}`}
-      data-layout={props.layout}
-      data-testid="device-tools-drawer"
-      id={props.id}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.stopPropagation();
-          props.onClose();
-        }
-      }}
-      ref={drawerRef}
-      tabIndex={-1}
-    >
-      <div className="device-tools__header">
-        <h3 className="device-tools__title" id={headingId}>
-          Tools
-        </h3>
-        <Button
-          aria-label="Close tools"
-          className="device-tools__close"
-          onClick={props.onClose}
-          size="sm"
-          variant="ghost"
-        >
-          <CloseGlyph />
-        </Button>
-      </div>
-      <div className="device-tools__body">
-        <p className="device-tools__notice" role="status">
-          Device tools (appearance, location, permissions, push and
-          accessibility frames) are available only for simulators and emulators
-          on this Station. {props.deviceName} runs on an SSH device host.
-        </p>
-      </div>
-    </aside>
-  );
-}
-
-function LocalDeviceToolsDrawer(props: DeviceToolsDrawerProps) {
   const { requestScope, projectSlug, target } = props;
   const snapshot = useDeviceToolsSnapshot(requestScope, target, projectSlug);
   const action = useDeviceToolAction(requestScope, target, projectSlug);
@@ -806,12 +753,12 @@ export function DeviceAccessibilityOverlay(props: {
   rotation: DeviceFrameRotation;
   visible: boolean;
 }) {
-  // An SSH device host's device has no tree here (#1973): never polled.
+  // The tree is read through the device's OWN host's hub (#2442).
   const tree = useDeviceAccessibilityTree(
     props.requestScope,
     props.target,
     props.projectSlug,
-    props.visible && deviceToolsSupported(props.target),
+    props.visible,
   );
   const data = tree.data;
   if (!data || !props.visible) return null;

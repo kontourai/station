@@ -962,6 +962,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // loopback ephemeral port, killed when its session's stdin closes), in a
   // private HOME. No ssh, no network.
   'src-server/services/devices/hosts/__tests__/ssh-device-remote-script.test.ts',
+  // #2442: the device-host program's `tool` mode for real through `/bin/sh`
+  // and short-lived node children, with `adb`/`xcrun` stand-ins (sh scripts;
+  // one sleeps 5 s until the deadline kills it) in a private HOME, plus the
+  // Station side through the registry with an ssh stand-in that runs those
+  // same words locally. No ssh, no network, no device.
+  'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
   // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
   // localhost true` probe at load, then (only with key auth and a known host
   // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,

@@ -4,6 +4,7 @@ import {
   type MouseEvent,
   type ReactNode,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import type { Options } from 'react-markdown';
@@ -20,6 +21,7 @@ import { LazyMarkdown } from './chat/LazyMarkdown';
 import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
+import { LazyBoundary } from './LazyBoundary';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from './state';
 
@@ -135,18 +137,23 @@ function usePdfFrameUrl(item: PreviewItem, enabled: boolean) {
 }
 
 /**
- * Whether this browser renders PDFs itself. `pdfViewerEnabled` is false on
- * engines without a viewer (Android WebView); an engine that predates the
- * property is given the benefit of the doubt, since the frame then shows the
- * engine's own fallback rather than nothing.
+ * Whether the engine's own PDF viewer draws the file (in a frame) rather than
+ * pdf.js (on canvas). Only an explicit `pdfViewerEnabled === true` earns the
+ * frame: the native viewer has text selection and search, which the canvas
+ * does not. `false` is Android WebView, which has no viewer. An engine
+ * without the property at all predates it (Android WebView before 94, WebKit
+ * before 16.4) and may frame a PDF as a blank box with no fallback, while
+ * pdf.js draws on every one of them — so an unknown engine gets the canvas.
  */
-function canRenderPdfInline(): boolean {
+function engineShowsPdfs(): boolean {
   if (typeof navigator === 'undefined') return false;
   return (
     (navigator as Navigator & { pdfViewerEnabled?: boolean })
-      .pdfViewerEnabled !== false
+      .pdfViewerEnabled === true
   );
 }
+
+const loadPdfCanvasViewer = () => import('./PdfCanvasViewer');
 
 /**
  * A link inside an attached markdown file. The dialog has no conversation
@@ -215,9 +222,14 @@ export default function FilePreviewContent({
   useRetainedAttachmentObjectUrls([current.url]);
   const kind = filePreviewKind(current.mediaType);
   const isText = kind === 'markdown' || kind === 'json' || kind === 'text';
-  const pdfInline = kind === 'pdf' && canRenderPdfInline();
+  const pdfInline = kind === 'pdf' && engineShowsPdfs();
   const text = useItemText(current, isText);
   const pdfUrl = usePdfFrameUrl(current, pdfInline);
+  // One Blob per item: the canvas viewer re-parses whenever it changes.
+  const pdfBlob = useMemo(
+    () => (kind === 'pdf' && !pdfInline ? previewBlob(current) : undefined),
+    [current, kind, pdfInline],
+  );
   const name = current.name || 'Attachment';
 
   let body: ReactNode;
@@ -231,10 +243,16 @@ export default function FilePreviewContent({
           description="Station could not read this PDF. Download it to open it."
         />
       )
+    ) : pdfBlob ? (
+      <LazyBoundary
+        load={loadPdfCanvasViewer}
+        componentProps={{ blob: pdfBlob }}
+        pending={<SkeletonBlock count={3} label="Loading PDF preview" />}
+      />
     ) : (
       <Empty
-        label="This device can't show PDFs here"
-        description="Download the file to open it in another app."
+        label="Preview unavailable"
+        description="Station could not read this PDF. Download it to open it."
       />
     );
   } else if (isText) {
