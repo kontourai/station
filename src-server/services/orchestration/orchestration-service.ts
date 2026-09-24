@@ -4620,6 +4620,25 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * The owners whose threads `authority` could read, for narrowing an
+   * attachment's candidate threads before {@link canUserReadSession} judges
+   * each one. The same owner set transcript search binds, so the two reads
+   * cannot disagree about whose conversations are in scope. Not an
+   * authorization: `canUserReadSession` stays the final check.
+   */
+  attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    this.initialize();
+    const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
+    return [
+      ...new Set([
+        constraint.ownerUserId,
+        ...(constraint.ownerUserIds ?? []),
+        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
+      ]),
+    ];
+  }
+
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);

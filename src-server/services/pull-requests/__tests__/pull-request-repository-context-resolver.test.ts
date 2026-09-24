@@ -8,7 +8,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PullRequestRepositoryContextResolver } from '../pull-request-repository-context-resolver.js';
+
+const makeTempDir = trackTempDirs();
 
 const remote = async () => ({
   ok: true as const,
@@ -351,16 +354,14 @@ describe('PullRequestRepositoryContextResolver', () => {
    */
   test('an umbrella project resolves to the one child whose remote names the repository', async () => {
     let outside: string | undefined;
-    const umbrella = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
-    );
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
     try {
       // Checkouts carry a `.git` entry; a plain folder is never asked.
       for (const name of ['station', 'flow', 'notes', '.hidden'])
         mkdirSync(join(umbrella, name, '.git'), { recursive: true });
       mkdirSync(join(umbrella, 'plain-folder'));
       // A symlinked child points outside the project and is never followed.
-      outside = realpathSync(mkdtempSync(join(tmpdir(), 'station-outside-')));
+      outside = realpathSync(makeTempDir('station-outside-'));
       mkdirSync(join(outside, '.git'));
       symlinkSync(outside, join(umbrella, 'linked'));
       const asked: string[] = [];
@@ -451,9 +452,7 @@ describe('PullRequestRepositoryContextResolver', () => {
    * pull-request read for that project 404 as "ambiguous".
    */
   test('an umbrella lookup is reused for a short while, then read again', async () => {
-    const umbrella = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
-    );
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
     try {
       mkdirSync(join(umbrella, 'station', '.git'), { recursive: true });
       let reads = 0;
@@ -497,9 +496,7 @@ describe('PullRequestRepositoryContextResolver', () => {
   });
 
   test('an umbrella lookup runs at most eight git reads at once', async () => {
-    const umbrella = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
-    );
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
     try {
       for (let index = 0; index < 20; index += 1)
         mkdirSync(join(umbrella, `repo-${index}`, '.git'), { recursive: true });

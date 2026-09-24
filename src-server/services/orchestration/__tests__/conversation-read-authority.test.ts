@@ -1,17 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
-const directories: string[] = [];
-afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function session(store: EventStore, threadId: string, userId: string) {
   store.upsertSession({
@@ -33,8 +28,7 @@ function session(store: EventStore, threadId: string, userId: string) {
 }
 
 function fixture(childOwner: string) {
-  const directory = mkdtempSync(join(tmpdir(), 'conversation-read-'));
-  directories.push(directory);
+  const directory = makeTempDir('conversation-read-');
   const store = new EventStore(join(directory, 'orchestration.sqlite'));
   session(store, 'root', 'owner');
   store.reserveNextConversationSession({
