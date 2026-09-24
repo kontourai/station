@@ -188,6 +188,32 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
   });
 
+  // Review L1: the layer's maximize is mirrored into `lastDockMaximized`.
+  // "‹ Chat" wrote it back through the mirror; Back did not, so the next
+  // `focusSession` reopened Chat Full after a single look at a pane.
+  test('Back leaves the maximize memory as the layer found it, the same as "‹ Chat"', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    expect(navigationStore.lastDockMaximized).toBe(false);
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    expect(navigationStore.lastDockMaximized).toBe(true);
+    act(() => window.history.back());
+    await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
+    await waitFor(() => expect(navigationStore.lastDockMaximized).toBe(false));
+
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    act(() => current().closePhoneLayer());
+    await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
   test('a Chat that was maximized comes back maximized', async () => {
     window.history.replaceState({}, '', '/?dock=open&maximize=true');
     navigationStore.navigate('/', { dock: 'open', maximize: 'true' });

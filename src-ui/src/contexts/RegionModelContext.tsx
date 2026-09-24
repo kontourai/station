@@ -409,6 +409,8 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
   const phoneLayerRef = useRef<PhonePaneLayer | null>(null);
   const layerDockMemoryRef = useRef(false);
+  // Set by a layer's restore, applied at the end of the mirror effect.
+  const pendingDockMemoryRef = useRef<boolean | null>(null);
   // Whether the open layer maximized its region, so a Back the user cancels
   // can put the layer back exactly as it was.
   const layerMaximizedRef = useRef(false);
@@ -700,18 +702,18 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setPhoneLayer(null);
     const current = regionsRef.current;
     const next = restorePhonePaneLayer(current, layer);
-    if (next === current) return;
-    // A layer opened over a HIDDEN Chat region closes it again, and the
-    // mirror forwards the maximize a region closes FROM as
-    // `lastDockMaximized` (archive#945) — which here is the layer's own, not
-    // the user's. Hand the mirror the memory the layer found instead, so the
-    // next `focusSession` reopens Chat the way it would have.
-    if (current[layer.region].visible && !next[layer.region].visible)
-      mirroredRegionsRef.current = updateRegion(
-        mirroredRegionsRef.current,
-        layer.region,
-        { maximized: layerDockMemoryRef.current },
-      );
+    // The layer's maximize was mirrored into `lastDockMaximized`, and the
+    // way back writes it again whichever exit ran: "‹ Chat" through the
+    // mirror's restore write, a hidden Chat through the archive#945 close
+    // rule (the maximize a region closes FROM — the layer's own), Back not at
+    // all. None of those is the user's. The memory the layer found is put
+    // back AFTER the mirror has written (see the end of the mirror effect),
+    // so every exit leaves it the same.
+    if (next === current) {
+      navigationStore.lastDockMaximized = layerDockMemoryRef.current;
+      return;
+    }
+    pendingDockMemoryRef.current = layerDockMemoryRef.current;
     regionsRef.current = next;
     setRegions(next);
   }, [setPhoneLayer]);
@@ -927,6 +929,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           );
       }
     mirroredRegionsRef.current = regions;
+    if (pendingDockMemoryRef.current !== null) {
+      navigationStore.lastDockMaximized = pendingDockMemoryRef.current;
+      pendingDockMemoryRef.current = null;
+    }
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
 
   // Navigation remains an inbound source for deep links and browser history.
