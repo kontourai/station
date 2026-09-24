@@ -111,12 +111,13 @@ function rowTurnVerdict(
 function reconnectCatchUpUpdates(
   chat: Pick<ChatUIState, 'orchestrationHistoryRevision'> | undefined,
   hasOpenTurn: boolean,
+  openTurnStartedAt?: number,
 ): Partial<ChatUIState> {
   return {
     orchestrationHistoryRevision: (chat?.orchestrationHistoryRevision ?? 0) + 1,
     streamingMessage: undefined,
     ...(hasOpenTurn
-      ? { openTurnShellSuperseded: true, openTurnStartedAt: undefined }
+      ? { openTurnShellSuperseded: true, openTurnStartedAt }
       : {}),
   };
 }
@@ -337,6 +338,12 @@ function planSnapshot(
           ? session.threadId
           : undefined;
       const currentChild = session.currentSessionId ?? runningChild;
+      const snapshotTurnOpen = record
+        ? record.openTurn !== undefined
+        : session.hasActiveTurn === true;
+      const startedAt = record?.openTurn
+        ? Date.parse(record.openTurn.startedAt)
+        : undefined;
       const adoptsCurrentChild =
         currentChild !== undefined &&
         chat?.currentSessionId !== currentChild &&
@@ -386,9 +393,10 @@ function planSnapshot(
           // 'running' with no open turn (hasActiveTurn === false) must not
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
-          orchestrationStatus:
-            lastTurnEndMethod === 'runtime.error' &&
-            !rowTurnIsOpen(session, record)
+          orchestrationStatus: snapshotTurnOpen
+            ? 'running'
+            : lastTurnEndMethod === 'runtime.error' &&
+                !rowTurnIsOpen(session, record)
               ? 'errored'
               : lastTurnEndMethod === 'turn.aborted' &&
                   !rowTurnIsOpen(session, record)
@@ -409,16 +417,35 @@ function planSnapshot(
           ...(rowTurnVerdict(session, record) === undefined
             ? {}
             : { orchestrationTurnOpen: rowTurnVerdict(session, record) }),
+          ...(record
+            ? {
+                openTurnId: record.openTurn?.turnId,
+                openTurnStartedAt:
+                  startedAt !== undefined && Number.isFinite(startedAt)
+                    ? startedAt
+                    : undefined,
+              }
+            : {}),
           // #2309: liveness itself is the conversation's activity record
           // (applied to the store before this plan runs); this keeps the
           // coarse fields consistent with it for readers that still use them.
-          status:
-            lastTurnEndMethod === 'runtime.error' &&
-            !rowTurnIsOpen(session, record)
+          status: snapshotTurnOpen
+            ? 'sending'
+            : lastTurnEndMethod === 'runtime.error' &&
+                !rowTurnIsOpen(session, record)
               ? 'error'
               : session.status === 'running' && rowTurnIsOpen(session, record)
                 ? 'sending'
                 : 'idle',
+          ...(record?.openTurn
+            ? { error: undefined }
+            : lastTurnEndMethod === 'runtime.error'
+              ? session.lastRuntimeErrorMessage
+                ? { error: session.lastRuntimeErrorMessage }
+                : {}
+              : lastTurnEndMethod === 'turn.aborted'
+                ? { error: session.lastTurnAbortReason }
+                : { error: undefined }),
           ...(adoptsCurrentChild
             ? {
                 currentSessionId: currentChild,
@@ -571,6 +598,7 @@ export function applyOrchestrationSnapshot(
         ? reconnectCatchUpUpdates(
             snapshot[threadId],
             openTurnChatKeys.has(threadId),
+            updates.openTurnStartedAt,
           )
         : {}),
     });

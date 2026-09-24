@@ -123,6 +123,39 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(chats['thread-1'].conversationOpenPending).toBe(true);
   });
 
+  test('an open activity record restores the exact turn even when the process status is ready', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'thread-1',
+            conversationActivity: {
+              conversationId: 'thread-1',
+              asOfSequence: 9,
+              openTurn: {
+                threadId: 'thread-1',
+                turnId: 'turn-9',
+                startedAt: '2026-09-24T00:00:09.000Z',
+              },
+            },
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1']).toMatchObject({
+      status: 'sending',
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-9',
+      openTurnStartedAt: Date.parse('2026-09-24T00:00:09.000Z'),
+    });
+  });
+
   test('an ordinary (non-reconnect) snapshot never triggers a messages refetch', () => {
     applyOrchestrationSnapshot(
       {

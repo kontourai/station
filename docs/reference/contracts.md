@@ -64,6 +64,13 @@ absence means that server did not report this projection.
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
+`lastRuntimeErrorMessage` carries the current terminal error when the event
+fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
+reason. A later successful terminal clears them.
+
+`ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
+current conversation activity after a burst of coalesced runtime events. It
+updates liveness without advancing the event replay cursor.
 
 `ChildWorkSessionView` may include bounded `settled` items with a reported
 running set. A missing `children` view still means the server made no

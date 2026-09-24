@@ -15,6 +15,7 @@ vi.mock('../eventHandlers', () => ({
 
 const mocks = vi.hoisted(() => ({
   clearConversationActivity: vi.fn(),
+  applyConversationActivity: vi.fn(),
   capturedOnMessage: undefined as
     | ((raw: { event: string; data: string; id?: string }) => void)
     | undefined,
@@ -27,6 +28,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
     clearConversationActivity: mocks.clearConversationActivity,
+    applyConversationActivity: mocks.applyConversationActivity,
   },
 }));
 
@@ -218,6 +220,31 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       },
       { apiBase, isReconnectFallback: true },
     );
+  });
+
+  test('a trailing activity frame refreshes the current record without moving the cursor', () => {
+    const apiBase = 'http://api-trailing-activity';
+    mocks.applyConversationActivity.mockClear();
+    ensureOrchestrationEventStream(apiBase);
+    capturedOnMessage()({
+      event: 'orchestration:snapshot',
+      data: JSON.stringify({ sessions: [] }),
+      id: '1',
+    });
+    capturedOnMessage()({
+      event: 'orchestration:activity',
+      data: JSON.stringify({
+        conversation: {
+          conversationId: 'root',
+          currentSessionId: 'child',
+          activity: { conversationId: 'root', asOfSequence: 9 },
+        },
+      }),
+    });
+    expect(mocks.applyConversationActivity).toHaveBeenCalledWith({
+      conversationId: 'root',
+      asOfSequence: 9,
+    });
   });
 
   test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {

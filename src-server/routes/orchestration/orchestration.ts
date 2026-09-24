@@ -45,6 +45,7 @@ import {
   type ApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import {
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -4081,6 +4082,7 @@ export function createOrchestrationRoutes(
       // the rest of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
+      let stopActivityFlush: (() => void) | undefined;
       try {
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
@@ -4096,6 +4098,7 @@ export function createOrchestrationRoutes(
             // as present (suppressing push-on-completion) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
+            stopActivityFlush?.();
             unsub?.();
             releasePresence();
             resolve();
@@ -4129,16 +4132,67 @@ export function createOrchestrationRoutes(
         };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
+        let draining = false;
+        const drainPending = async () => {
+          if (draining) return;
+          draining = true;
+          try {
+            while (pending.length > 0) await writeAuthorized(pending.shift()!);
+          } finally {
+            draining = false;
+          }
+        };
         const forward = (frame: {
           event: string;
           data: string;
           id?: string;
         }) => {
-          if (caughtUp) {
-            writeAuthorized(frame).catch(() => {});
-          } else {
-            pending.push(frame);
+          pending.push(frame);
+          if (caughtUp) void drainPending().catch(() => {});
+        };
+        const dirtyActivityThreads = new Set<string>();
+        let activityFlushTimer: ReturnType<typeof setTimeout> | undefined;
+        stopActivityFlush = () => {
+          if (activityFlushTimer !== undefined)
+            clearTimeout(activityFlushTimer);
+          activityFlushTimer = undefined;
+          dirtyActivityThreads.clear();
+        };
+        const flushActivity = () => {
+          activityFlushTimer = undefined;
+          const threads = [...dirtyActivityThreads];
+          dirtyActivityThreads.clear();
+          for (const updatedThreadId of threads) {
+            if (
+              !orchestrationService.canUserReadSession(
+                updatedThreadId,
+                authority,
+              )
+            )
+              continue;
+            const conversation = orchestrationService.conversationStreamBinding(
+              {
+                threadId: updatedThreadId,
+                method: 'content.text-delta',
+                force: true,
+              },
+            );
+            if (conversation)
+              forward({
+                event: ORCHESTRATION_STREAM_ACTIVITY_EVENT,
+                data: JSON.stringify({ conversation }),
+              });
           }
+        };
+        const noteActivity = (updatedThreadId: string, hasBinding: boolean) => {
+          if (hasBinding) dirtyActivityThreads.delete(updatedThreadId);
+          else dirtyActivityThreads.add(updatedThreadId);
+          if (activityFlushTimer !== undefined)
+            clearTimeout(activityFlushTimer);
+          activityFlushTimer =
+            dirtyActivityThreads.size > 0
+              ? setTimeout(flushActivity, 100)
+              : undefined;
         };
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
@@ -4193,14 +4247,17 @@ export function createOrchestrationRoutes(
           const globalSequence = eventPayload?.eventId
             ? orchestrationService.readEventGlobalSequence(eventPayload.eventId)
             : undefined;
+          const conversation = orchestrationService.conversationStreamBinding({
+            threadId: eventThreadId,
+            method: eventPayload?.method,
+          });
+          if (globalSequence !== undefined && eventPayload?.method)
+            noteActivity(eventThreadId, conversation !== undefined);
           forward({
             event: SERVER_EVENTS.ORCHESTRATION_EVENT,
             data: JSON.stringify({
               ...(evt.data ?? {}),
-              conversation: orchestrationService.conversationStreamBinding({
-                threadId: eventThreadId,
-                method: eventPayload?.method,
-              }),
+              conversation,
             }),
             ...(globalSequence !== undefined
               ? { id: String(globalSequence) }
@@ -4368,10 +4425,10 @@ export function createOrchestrationRoutes(
           }),
           id: String(resolvedHead),
         });
+        // The one queue owns both buffered and subsequent live writes. This
+        // switch has no await, so a new frame cannot overtake the buffer.
         caughtUp = true;
-        for (const frame of pending) {
-          await writeAuthorized(frame);
-        }
+        void drainPending().catch(() => {});
 
         await clientGone;
         deps.logger.debug('Orchestration SSE client disconnected');
@@ -4390,6 +4447,7 @@ export function createOrchestrationRoutes(
         // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
         stopKeepAlive?.();
+        stopActivityFlush?.();
         unsub?.();
         releasePresence();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });

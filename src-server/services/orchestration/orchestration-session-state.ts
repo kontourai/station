@@ -534,6 +534,7 @@ export function buildOrchestrationSessionSummary(options: {
     extractDisplayTitle(events) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
     events,
@@ -626,6 +627,13 @@ export function buildOrchestrationSessionSummary(options: {
           lastEventAt: lastEvent.createdAt,
           lastEventMethod: lastEvent.method,
         }
+      : {}),
+    ...(lastRuntimeError
+      ? { lastRuntimeErrorMessage: lastRuntimeError.message }
+      : {}),
+    ...(lastEvent?.method === 'turn.aborted' &&
+    lastEvent.recoveryTerminal !== true
+      ? { lastTurnAbortReason: lastEvent.reason }
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.conversationActivity

@@ -373,4 +373,43 @@ describe('conversation activity through GET /events (#2309)', () => {
       settled: [{ childId: 'restart-child', status: 'completed' }],
     });
   });
+
+  test('a live coalesced burst ends with an idless current activity frame', async () => {
+    const response = await app(service).request('/events');
+    const reader = new StreamReader(response.body!);
+    await reader.until((wire) => wire.includes('orchestration:caughtUp'));
+    for (const event of [
+      {
+        eventId: 'burst-start',
+        provider: 'claude',
+        threadId: child,
+        turnId: 'burst-turn',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'Work',
+      },
+      ...Array.from({ length: 4 }, (_, index) => ({
+        eventId: `burst-delta-${index}`,
+        provider: 'claude',
+        threadId: child,
+        turnId: 'burst-turn',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method: 'content.text-delta',
+        itemId: 'answer',
+        delta: 'x',
+      })),
+    ] as CanonicalRuntimeEvent[])
+      publish(event);
+    await reader.until((wire) =>
+      wire.includes('event: orchestration:activity'),
+    );
+    const activityFrame = reader
+      .frames()
+      .find((frame) => frame.event === 'orchestration:activity');
+    await reader.close();
+    expect(activityFrame?.id).toBeUndefined();
+    expect(
+      JSON.parse(activityFrame!.data).conversation.activity.asOfSequence,
+    ).toBe(eventStore.headGlobalSequence());
+  });
 });

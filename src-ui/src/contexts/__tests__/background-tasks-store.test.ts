@@ -497,6 +497,46 @@ describe('reconcileBackgroundTasksSnapshot', () => {
     expect(state.entries['task:delegate-1']).toBeUndefined();
   });
 
+  test('seeds a finished delegate from a current server child-work outcome', () => {
+    const state = reconcileBackgroundTasksSnapshot(
+      createEmptyBackgroundTasksState(),
+      payload([
+        {
+          provider: 'claude',
+          threadId: 'task:delegate-finished',
+          status: 'ready',
+          hasActiveTurn: false,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          lastEventAt: '2026-09-24T00:00:03.000Z',
+          displayTitle: 'Explore files',
+          delegation: {
+            taskId: 'task:delegate-finished',
+            parentTaskId: 'chat-1',
+          },
+          childWork: {
+            asChild: {
+              producer: 'station-delegate',
+              reporterThreadId: 'task:delegate-finished',
+              childId: 'task:delegate-finished',
+              status: 'completed',
+              parent: { taskId: 'chat-1' },
+              startedAt: '2026-09-24T00:00:00.000Z',
+              endedAt: '2026-09-24T00:00:03.000Z',
+              controls: { stop: 'delegate-interrupt' },
+            },
+          },
+        },
+      ]),
+    );
+    expect(state.entries['task:delegate-finished']).toMatchObject({
+      title: 'Explore files',
+      state: 'completed',
+      startedAt: Date.parse('2026-09-24T00:00:00.000Z'),
+      endedAt: Date.parse('2026-09-24T00:00:03.000Z'),
+      chatThreadId: 'chat-1',
+    });
+  });
+
   test('hasActiveTurn === false demotes a client-tracked running delegate to stopped', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),

@@ -4045,6 +4045,7 @@ export class OrchestrationService {
   conversationStreamBinding(event: {
     threadId: string;
     method?: string;
+    force?: boolean;
   }):
     | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
     | undefined {

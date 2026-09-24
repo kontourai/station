@@ -114,6 +114,20 @@ async function clientGraph(conversationId: string) {
   const { childWorkGlobalStore } = await import(
     '../contexts/child-work-global-store'
   );
+  const { backgroundTasksStore } = await import(
+    '../contexts/background-tasks-store'
+  );
+  const { _setOutboundQueueStorage } = await import('../lib/outboundQueue');
+  const outboundData = new Map<string, unknown>();
+  _setOutboundQueueStorage({
+    getItem: async (key) => outboundData.get(key),
+    setItem: async (key, value) => {
+      outboundData.set(key, value);
+    },
+    updateItem: async (key, update) => {
+      outboundData.set(key, update(outboundData.get(key)));
+    },
+  });
   sdk.setClientCredentialResolver(() => ({
     origin: apiBase,
     credential: 'test-credential',
@@ -132,6 +146,7 @@ async function clientGraph(conversationId: string) {
     activeChatsStore,
     childWorkRegistrySnapshot,
     childWorkGlobalStore,
+    backgroundTasksStore,
     close,
     ensure: () => ensureOrchestrationEventStream(apiBase),
     disconnect: () => page.dispatchEvent(new Event('pagehide')),
@@ -193,7 +208,8 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   const selectedSeed = process.env.SYNC_FUZZ_SEED;
   const seeds = [
     // Pinned regressions: 0 deleted-tail/replacement/snapshot approvals and
-    // settled child; 12 runtime.error; 16 turn.aborted.
+    // settled child; 12 runtime.error; 16 turn.aborted; 20 lineage child;
+    // 30 reload; 40 finished delegate; 50 mid-turn; 199 queued follow-up.
     ...Array.from({ length: 200 }, (_, seed) => seed),
     ...(selectedSeed && Number.isSafeInteger(Number(selectedSeed))
       ? [Number(selectedSeed)]
@@ -203,6 +219,17 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   for (const seed of seeds) {
     const random = mulberry32(seed);
     const trace: string[] = [];
+    if (seed === 51) {
+      publish({
+        eventId: 'turn-50-late-complete',
+        provider: 'claude',
+        threadId: executionThreadId,
+        turnId: 'turn-50',
+        createdAt,
+        method: 'turn.completed',
+      } as CanonicalRuntimeEvent);
+      trace.push('prior-turn.completed');
+    }
     if (seed === 199) {
       a.activeChatsStore.updateChat(conversationId, {
         queuedMessages: ['follow-up-199'],
@@ -271,7 +298,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       store.headGlobalSequence(),
       `deleted-tail cursor seed=${seed} trace=${trace.join(',')}`,
     ).toBeGreaterThan(deletedTailCursor);
-    const deltaCount = seed % 3 === 0 ? 6 : 1;
+    const deltaCount = seed === 50 || seed % 3 === 0 ? 6 : 1;
     for (let index = 0; index < deltaCount; index++) {
       publish({
         eventId: `${turnId}-delta-${index}`,
@@ -409,36 +436,85 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       } as CanonicalRuntimeEvent);
       trace.push('child.settle');
     }
+    if (seed === 40) {
+      const delegateId = 'delegate-seed-40';
+      store.upsertSession({
+        provider: 'claude',
+        threadId: delegateId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      publish({
+        eventId: 'delegate-started',
+        provider: 'claude',
+        threadId: delegateId,
+        createdAt,
+        method: 'session.started',
+        sessionId: delegateId,
+        metadata: {
+          taskId: delegateId,
+          parentTaskId: conversationId,
+          delegation: { mode: 'isolated-child', depth: 1, maxDepth: 3 },
+          agentSlug: 'claude',
+          userId,
+        },
+      } as CanonicalRuntimeEvent);
+      publish({
+        eventId: 'delegate-turn-started',
+        provider: 'claude',
+        threadId: delegateId,
+        createdAt,
+        method: 'turn.started',
+        turnId: 'delegate-turn',
+        prompt: 'Delegate work',
+      } as CanonicalRuntimeEvent);
+      publish({
+        eventId: 'delegate-turn-completed',
+        provider: 'claude',
+        threadId: delegateId,
+        createdAt,
+        method: 'turn.completed',
+        turnId: 'delegate-turn',
+        outputText: 'Done',
+      } as CanonicalRuntimeEvent);
+      trace.push('delegate.start', 'delegate.complete');
+    }
     const terminal =
       seed % 17 === 16
         ? 'turn.aborted'
         : seed % 13 === 12
           ? 'runtime.error'
           : 'turn.completed';
-    publish({
-      eventId: `${turnId}-terminal`,
-      provider: 'claude',
-      threadId: executionThreadId,
-      turnId,
-      createdAt,
-      method: terminal,
-      ...(terminal === 'turn.aborted' ? { reason: 'interrupted' } : {}),
-      ...(terminal === 'runtime.error'
-        ? { severity: 'error', message: 'provider failed' }
-        : {}),
-    } as CanonicalRuntimeEvent);
-    trace.push(terminal);
+    if (seed !== 50) {
+      publish({
+        eventId: `${turnId}-terminal`,
+        provider: 'claude',
+        threadId: executionThreadId,
+        turnId,
+        createdAt,
+        method: terminal,
+        ...(terminal === 'turn.aborted' ? { reason: 'interrupted' } : {}),
+        ...(terminal === 'runtime.error'
+          ? { severity: 'error', message: 'provider failed' }
+          : {}),
+      } as CanonicalRuntimeEvent);
+      trace.push(terminal);
+    } else {
+      trace.push('turn.left-open');
+    }
     const head = store.headGlobalSequence();
     expect(head, `seed=${seed} trace=${trace.join(',')}`).toBeGreaterThan(
       deletedTailCursor,
     );
     await vi.waitFor(
-      () =>
-        expect(
-          a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
-            ?.asOfSequence,
-          `A seed=${seed} trace=${trace.join(',')}`,
-        ).toBe(head),
+      () => {
+        const activity =
+          a.activeChatsStore.getSnapshot()[conversationId]
+            ?.conversationActivity;
+        expect(activity?.asOfSequence).toBe(head);
+        if (seed === 50) expect(activity?.openTurn?.turnId).toBe(turnId);
+      },
       { timeout: 5_000 },
     );
     if (seed === 30) {
@@ -448,17 +524,23 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       b.ensure();
     }
     await until(() => requests.length > before);
+    const resumedId = requests.at(-1)?.headers.get('Last-Event-ID');
     expect(
-      requests.at(-1)?.headers.get('Last-Event-ID'),
-      `seed=${seed} trace=${trace.join(',')}`,
-    ).toBe(seed === 30 ? null : String(cursor));
+      seed === 30
+        ? resumedId === null
+        : seed === 51
+          ? [String(cursor), String(cursor - 1)].includes(resumedId ?? '')
+          : resumedId === String(cursor),
+      `seed=${seed} trace=${trace.join(',')} resumed=${resumedId}`,
+    ).toBe(true);
     await vi.waitFor(
-      () =>
-        expect(
-          b.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity
-            ?.asOfSequence,
-          `B seed=${seed} trace=${trace.join(',')}`,
-        ).toBe(head),
+      () => {
+        const activity =
+          b.activeChatsStore.getSnapshot()[conversationId]
+            ?.conversationActivity;
+        expect(activity?.asOfSequence).toBe(head);
+        if (seed === 50) expect(activity?.openTurn?.turnId).toBe(turnId);
+      },
       { timeout: 5_000 },
     );
     expect(
@@ -472,6 +554,9 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     ) => ({
       orchestrationTurnOpen: chat.orchestrationTurnOpen,
       orchestrationStatus: chat.orchestrationStatus,
+      status: chat.status,
+      error: chat.error,
+      openTurnId: chat.openTurnId,
       pendingApprovals: chat.pendingApprovals ?? [],
       queuedMessages: chat.queuedMessages,
       queueDrainHeldForOpen: chat.queueDrainHeldForOpen,
@@ -491,6 +576,16 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       b.childWorkGlobalStore.getPartition(apiBase).registry.items,
       `seed=${seed} trace=${trace.join(',')} global child work`,
     ).toEqual(a.childWorkGlobalStore.getPartition(apiBase).registry.items);
+    const delegates = (client: typeof a) =>
+      Object.fromEntries(
+        Object.entries(
+          client.backgroundTasksStore.getSnapshot().entries,
+        ).filter(([, entry]) => entry.kind === 'agent'),
+      );
+    expect(
+      delegates(b),
+      `seed=${seed} trace=${trace.join(',')} delegates`,
+    ).toEqual(delegates(a));
   }
   // A restored database can have the same numeric sequence as an older one.
   // The old cursor is then valid by number but foreign by durable identity.

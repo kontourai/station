@@ -575,30 +575,40 @@ export function reconcileBackgroundTasksSnapshot(
     const isActive = child.status === 'running';
 
     if (!existing) {
-      // A bare status snapshot carries no turn history — only seed a card
-      // for a delegate the snapshot itself says is still active. A finished
-      // one this client never saw live has nothing worth backfilling.
-      if (!isActive) continue;
+      // A current server's asChild carries the terminal fact and exact end.
+      // An older delegation-only row cannot backfill a finished card.
+      if (!isActive && !session.childWork?.asChild) continue;
       const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
-        startedAt: parseTime(session.createdAt, Date.now()),
+        startedAt: parseTime(child.startedAt ?? session.createdAt, Date.now()),
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
-        title: child.kindLabel
-          ? `Delegated task — ${child.kindLabel}`
-          : 'Delegated task',
+        title:
+          session.displayTitle ??
+          (child.kindLabel
+            ? `Delegated task — ${child.kindLabel}`
+            : 'Delegated task'),
       });
-      next = { ...next, entries: { ...next.entries, [entry.id]: entry } };
+      const settled =
+        !isActive && child.endedAt
+          ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }
+          : entry;
+      next = { ...next, entries: { ...next.entries, [entry.id]: settled } };
       continue;
     }
 
     if (existing.state === 'running' && !isActive) {
-      const endedAt = parseTime(session.lastEventAt, Date.now());
+      const endedAt = parseTime(
+        child.endedAt ?? session.lastEventAt,
+        Date.now(),
+      );
       const entries = {
         ...next.entries,
         [existing.id]: {
           ...existing,
-          state: 'stopped' as BackgroundTaskState,
+          state: session.childWork?.asChild
+            ? CHILD_WORK_CARD_STATE[child.status]
+            : ('stopped' as BackgroundTaskState),
           endedAt,
         },
       };

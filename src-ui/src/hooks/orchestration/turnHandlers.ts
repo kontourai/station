@@ -225,6 +225,10 @@ export function handleTurnStartedEvent(
           sendAwaitingTurnStart: undefined,
         }),
     status: 'sending',
+    // A new turn supersedes the previous turn's transient failure. Its
+    // failure card remains in the transcript until the durable projection
+    // reconciles it, but the current chat status must not inherit the error.
+    error: undefined,
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be
     // buffered, so a terminal event for a DIFFERENT turn cannot attach its

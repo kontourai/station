@@ -51,7 +51,10 @@ export type OrchestrationSnapshotPayload = {
     delegation?: OrchestrationDelegationContext;
     createdAt?: string;
     lastEventAt?: string;
+    displayTitle?: string;
     lastEventMethod?: CanonicalRuntimeEvent['method'];
+    lastRuntimeErrorMessage?: string;
+    lastTurnAbortReason?: string;
     /**
      * #2309: the activity of the conversation this row's session belongs
      * to — every execution child, not just this row's. Absent from older

@@ -1,4 +1,5 @@
 import {
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -436,6 +437,13 @@ export function ensureOrchestrationEventStream(
         });
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
+      } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
+        const payload = JSON.parse(raw.data) as {
+          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
+        };
+        activeChatsStore.applyConversationActivity(
+          payload.conversation?.activity,
+        );
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         if (parseStreamSequence(raw.id) !== undefined)
