@@ -586,6 +586,61 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
+  it('station#2530 review D7: a real A→B→A switch dispatches the orchestration-authority-change event, not just a direct-call reconstruction of it', async () => {
+    // ensureOrchestrationEventStream.recovery.test.ts drives the LISTENER
+    // side of this by dispatching the CustomEvent directly — it never
+    // renders `AuthorityQueryContext`, so it cannot prove the provider
+    // itself still fires it on a real switch. This test renders the real
+    // provider tree and drives the real switch path
+    // (`connections.setActiveConnection`, exactly what a Station switch in
+    // the app does), and would fail if the dispatch in
+    // `AuthorityQueryContext.tsx` were ever deleted.
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea-d7');
+    const { id: idB, url: urlB } = await addHome('homeb-d7');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+
+    // The FIRST ever verified namespace never dispatches — there is no
+    // prior verified namespace to announce a change FROM
+    // (`lastVerifiedNamespaceRef.current !== undefined`) — so the listener
+    // is only armed once A's own initial verification has already settled.
+    const authorityChangeDetails: string[] = [];
+    const onAuthorityChange = (event: Event) => {
+      authorityChangeDetails.push(String((event as CustomEvent<string>).detail));
+    };
+    window.addEventListener(
+      'station:orchestration-authority-change',
+      onAuthorityChange,
+    );
+    try {
+      await switchTo(idB);
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+      );
+      await waitFor(() => expect(authorityChangeDetails.length).toBe(1));
+
+      await switchTo(idA);
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+      );
+      await waitFor(() => expect(authorityChangeDetails.length).toBe(2));
+    } finally {
+      window.removeEventListener(
+        'station:orchestration-authority-change',
+        onAuthorityChange,
+      );
+    }
+    unmount();
+  });
+
   it('#2309: a re-verify of the SAME Station (a transient unverified gap) keeps the activity records', async () => {
     const harness = createHarness();
     harness.observationPlan.set('default', async () => OBS_DEFAULT);
