@@ -337,6 +337,44 @@ function keepMessage(message) {
  * is emptied rather than committed.
  */
 function redactMessage(message) {
+  return redactHostText(redactMessageShape(message));
+}
+
+/**
+ * Text the capturing HOST put into the stream, wherever it lands (a
+ * tool_result's content, `tool_use_result`, a summary):
+ * - a `ListAgents` listing names this machine's other live sessions, so its
+ *   peer block is replaced wholesale and the capture's own session name
+ *   (`claude-task-capture-<tmp>-<n> [<hex>]`) made generic;
+ * - a host PreToolUse hook's refusal (`Blocked: …`) carries that host's own
+ *   policy prose, so only the fact of the block is kept.
+ */
+function redactHostText(value) {
+  if (typeof value === 'string') {
+    return value
+      .replace(
+        /Peer sessions \(\d+\):[\s\S]*$/,
+        'Peer sessions (1):\n  example-peer [000000]  ·  interactive  ·  idle  ·  started 1d ago',
+      )
+      .replace(
+        /claude-task-capture-[A-Za-z0-9-]+(?: \[[0-9a-f]{6}\])?/g,
+        'example-session [000000]',
+      )
+      .replace(
+        /Blocked: [\s\S]*?(?=<\/tool_use_error>|$)/g,
+        'Blocked by a host hook.',
+      );
+  }
+  if (Array.isArray(value)) return value.map(redactHostText);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, redactHostText(entry)]),
+    );
+  }
+  return value;
+}
+
+function redactMessageShape(message) {
   // A thinking block's `signature` is an opaque blob that embeds request
   // identifiers; no mapper reads it.
   if (message.type === 'assistant' && Array.isArray(message.message?.content)) {
