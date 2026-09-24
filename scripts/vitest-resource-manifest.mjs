@@ -436,6 +436,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. Fix-forward: landed via #1478 without this classification; the
   // verification-policy gate caught it on the pull request.
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  // #2476: the session-directory check trusts only what `git worktree list`
+  // reports for the project checkout, so its test builds a real repository
+  // with a real registered worktree — a fixture would pin whatever the parser
+  // assumed rather than what git prints.
+  'src-server/services/projects/__tests__/session-workspace-directory.test.ts',
   // #2144 slice 5: the `settingsRow` literal reverse guard enumerates its
   // scan scope through one single-shot `git ls-files`, same shape and same
   // reason as the placement ratchet above — a glob pathspec silently drops

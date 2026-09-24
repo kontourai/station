@@ -195,6 +195,37 @@ describe('opening an instance-keyed pane in a region (#2049)', () => {
     expect(previewStateKeys()).toHaveLength(2);
   });
 
+  test('the same path in a session worktree and in the checkout are two previews (#2476)', async () => {
+    await mount();
+    act(() => {
+      current().panes.openFilePreview(
+        { ...PROJECT, path: 'src/app.ts' },
+        { region: 'right' },
+      );
+    });
+    act(() => {
+      current().panes.openFilePreview(
+        { ...PROJECT, path: 'src/app.ts', thread: 'thread-7' },
+        { region: 'right' },
+      );
+    });
+    const placed = current().model.regions.right.panes;
+    expect(placed).toHaveLength(2);
+    // The session is stored with the preview, so the pane reads its worktree.
+    expect(placed.map((id) => heldState(id).thread)).toEqual([
+      undefined,
+      'thread-7',
+    ]);
+    act(() => {
+      current().panes.openFilePreview({
+        ...PROJECT,
+        path: 'src/app.ts',
+        thread: 'thread-7',
+      });
+    });
+    expect(current().model.regions.right.panes).toEqual(placed);
+  });
+
   test('a refused open leaves no preview state behind', async () => {
     // A split is refused on every device — and the state written a moment
     // earlier must not survive a click that placed nothing. (This used to

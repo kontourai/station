@@ -1,5 +1,6 @@
-import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
@@ -27,6 +28,45 @@ interface PullRequestRepositoryContextInput {
   projectWorkingDirectory?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   requestedWorkingDirectory?: string;
+  /**
+   * Whether the checkout must be on a branch pushed to its upstream with a
+   * recorded base. Only opening a pull request FROM the current branch needs
+   * that; a read of pull request #N does not, and refusing it made the panel
+   * disappear for any checkout with work in progress (#2474). Default true.
+   */
+  requireBranchState?: boolean;
+  /**
+   * The repository the request is about (from the route), when it names one.
+   * A project whose directory is not itself a repository — an umbrella folder
+   * of checkouts — resolves to the ONE direct child whose remote names it
+   * (#2475).
+   */
+  repository?: { host: string; owner: string; name: string };
+}
+
+/** Bound on the checkouts an umbrella lookup inspects. */
+const UMBRELLA_MAX_CHILDREN = 256;
+/** How many `git remote -v` an umbrella lookup runs at once. */
+const UMBRELLA_GIT_CONCURRENCY = 8;
+
+/** `items.map(fn)` with at most `limit` calls in flight, results in order. */
+async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
 }
 
 const PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS = 5_000;
@@ -96,9 +136,25 @@ export class PullRequestRepositoryContextResolver {
         };
       }
     }
-    const remotes = await (this.deps.readRemotes ?? readCheckoutRemotes)(
+    let remotes = await (this.deps.readRemotes ?? readCheckoutRemotes)(
       workingDirectory,
     );
+    if (
+      remotes.ok &&
+      remotes.remotes.length === 0 &&
+      input.repository &&
+      !input.requestedWorkingDirectory &&
+      isolation?.mode !== 'worktree'
+    ) {
+      const child = await this.umbrellaChild(
+        workingDirectory,
+        input.repository,
+      );
+      if (child) {
+        workingDirectory = child.path;
+        remotes = { ok: true, remotes: child.remotes };
+      }
+    }
     if (!remotes.ok || remotes.remotes.length === 0)
       return remotes.ok
         ? {
@@ -145,6 +201,97 @@ export class PullRequestRepositoryContextResolver {
         available: false,
         reason: `Checkout uses unsupported forge ${unsupportedForge}`,
       };
+    const identity = {
+      repository: {
+        ...candidates[0].repository,
+        remote: candidates[0].remote.url,
+      },
+      workingDirectory,
+    };
+    const branchState = await this.readBranchState(
+      git,
+      workingDirectory,
+      candidates[0].remote,
+      isolation,
+    );
+    if ('refused' in branchState)
+      return input.requireBranchState === false
+        ? { available: true, context: identity }
+        : { available: false, reason: branchState.refused };
+    return {
+      available: true,
+      context: { ...identity, ...branchState },
+    };
+  }
+
+  /**
+   * The one direct child of an umbrella directory whose remotes name
+   * `repository`, or undefined when none or several do. Symlinks are not
+   * followed, so the lookup stays inside the project directory. Only children
+   * holding a `.git` entry are asked for remotes (one `stat` each, no spawn),
+   * and those asks run in parallel. A home directory is never scanned: its
+   * children are the user's Documents and Desktop, not checkouts, and on
+   * macOS merely stat-ing inside them can raise a privacy prompt.
+   */
+  private async umbrellaChild(
+    directory: string,
+    repository: { host: string; owner: string; name: string },
+  ): Promise<{ path: string; remotes: CheckoutRemote[] } | undefined> {
+    let home: string | undefined;
+    try {
+      home = realpathSync(homedir());
+    } catch {
+      // No home directory on this host: nothing to protect, keep scanning.
+    }
+    let entries: string[];
+    try {
+      if (realpathSync(directory) === home) return undefined;
+      entries = readdirSync(directory, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .map((entry) => entry.name)
+        .filter((name) => existsSync(join(directory, name, '.git')))
+        .slice(0, UMBRELLA_MAX_CHILDREN);
+    } catch {
+      return undefined;
+    }
+    const want = JSON.stringify([
+      repository.host.toLowerCase(),
+      repository.owner.toLowerCase(),
+      repository.name.toLowerCase(),
+    ]);
+    const read = this.deps.readRemotes ?? readCheckoutRemotes;
+    const found = await mapBounded(
+      entries,
+      UMBRELLA_GIT_CONCURRENCY,
+      async (name) => {
+        const path = join(directory, name);
+        const remotes = await read(path);
+        if (!remotes.ok || remotes.remotes.length === 0) return undefined;
+        const names = distinctRepositories(
+          remotes.remotes.map((remote) => ({
+            remote,
+            repository: providerRepository(remote.url),
+          })),
+        );
+        return names.length === 1 && names[0] === want
+          ? { path, remotes: remotes.remotes }
+          : undefined;
+      },
+    );
+    const matches = found.filter((match) => match !== undefined);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  /** The branch facts opening a pull request needs, or why they are missing. */
+  private async readBranchState(
+    git: typeof execGit,
+    workingDirectory: string,
+    remote: CheckoutRemote,
+    isolation: WorkspaceIsolationMetadata | undefined,
+  ): Promise<
+    | { refused: string }
+    | Pick<PullRequestRepositoryContext, 'branch' | 'baseRef' | 'head'>
+  > {
     try {
       const [branch, upstream, ahead, base] = await Promise.all([
         git(['rev-parse', '--abbrev-ref', 'HEAD'], {
@@ -166,7 +313,7 @@ export class PullRequestRepositoryContextResolver {
                 'symbolic-ref',
                 '--quiet',
                 '--short',
-                `refs/remotes/${candidates[0].remote.name}/HEAD`,
+                `refs/remotes/${remote.name}/HEAD`,
               ],
               {
                 cwd: workingDirectory,
@@ -178,48 +325,24 @@ export class PullRequestRepositoryContextResolver {
       const upstreamBranch = upstream.stdout.trim();
       const [aheadCount] = ahead.stdout.trim().split(/\s+/).map(Number);
       const baseRef = base.stdout.trim().replace(/^.*\//, '');
-      if (currentBranch === 'HEAD')
-        return { available: false, reason: 'Checkout is detached' };
+      if (currentBranch === 'HEAD') return { refused: 'Checkout is detached' };
       if (!upstreamBranch || !Number.isFinite(aheadCount) || aheadCount > 0)
-        return {
-          available: false,
-          reason: 'Current branch is not pushed to its upstream',
-        };
-      if (!baseRef)
-        return {
-          available: false,
-          reason: 'Checkout has no recorded base branch',
-        };
+        return { refused: 'Current branch is not pushed to its upstream' };
+      if (!baseRef) return { refused: 'Checkout has no recorded base branch' };
       const head = await upstreamHead(
         git,
         workingDirectory,
         currentBranch,
-        candidates[0].remote,
+        remote,
       );
       if (head === 'unknown')
         return {
-          available: false,
-          reason:
+          refused:
             'Cannot tell which repository the current branch is pushed to; open this pull request from a terminal',
         };
-      return {
-        available: true,
-        context: {
-          repository: {
-            ...candidates[0].repository,
-            remote: candidates[0].remote.url,
-          },
-          workingDirectory,
-          branch: currentBranch,
-          baseRef,
-          ...(head ? { head } : {}),
-        },
-      };
+      return { branch: currentBranch, baseRef, ...(head ? { head } : {}) };
     } catch {
-      return {
-        available: false,
-        reason: 'Checkout branch state is unavailable',
-      };
+      return { refused: 'Checkout branch state is unavailable' };
     }
   }
 
