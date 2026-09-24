@@ -109,7 +109,8 @@ export function findRealtimeWaits(added, lineOf) {
       pattern.test(entry.text),
     );
     if (!match) continue;
-    const above = entry.line > 1 ? (lineOf(entry.file, entry.line - 1) ?? '') : '';
+    const above =
+      entry.line > 1 ? (lineOf(entry.file, entry.line - 1) ?? '') : '';
     if (WAIVER.test(entry.text) || WAIVER.test(above)) continue;
     findings.push({ ...entry, kind: match.id });
   }
