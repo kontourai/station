@@ -7689,12 +7689,16 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     expect(childSettles(seen)).toEqual(['stopped-unconfirmed']);
     // The engine's own answer drains after the stop.
     for (const message of stopAnswer) query.push(message);
-    await until(
-      (event) =>
-        event.method === 'child-work.updated' &&
-        event.delta.kind === 'settle' &&
-        event.delta.status === 'cancelled',
-    );
+    const corrected = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.status === 'cancelled',
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(corrected, 'the drained outcome was never mapped').not.toBeNull();
     expect(childSettles(seen).slice(0, 2)).toEqual([
       'stopped-unconfirmed',
       'cancelled',
@@ -7717,7 +7721,11 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     );
     const opened = await until((event) => event.method === 'request.opened');
     query.end();
-    const result = await permission;
+    const result = await Promise.race([
+      permission,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(result, 'the child approval was never settled').not.toBeNull();
     expect(result).toMatchObject({ behavior: 'deny' });
     expect(result).not.toHaveProperty('interrupt');
     expect(
