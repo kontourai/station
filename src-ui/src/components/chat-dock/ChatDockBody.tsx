@@ -344,7 +344,9 @@ export function ChatDockBody({
    * the composer — three contradictory claims about a healthy conversation.
    */
   const conversationLoading =
-    resolvingOpen || (transcript.enabled && !transcript.settled);
+    resolvingOpen ||
+    transcript.catchingUp ||
+    (transcript.enabled && !transcript.settled);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -927,7 +929,14 @@ export function ChatDockBody({
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
                * fill this slot exists for while saying only what is known.
                */
-              <SkeletonList count={4} label="Loading conversation" />
+              <SkeletonList
+                count={4}
+                label={
+                  transcript.catchingUp
+                    ? 'Catching up conversation'
+                    : 'Loading conversation'
+                }
+              />
             ) : (
               <ChatEmptyState
                 agentSlug={renderedSession.agentSlug}

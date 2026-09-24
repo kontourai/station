@@ -762,11 +762,15 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     ...window,
     events: stitchedEvents,
     enabled,
+    catchingUp: !replay && serverWindow.catchingUp,
     openTurnProjected,
-    messages: enabled
-      ? messages
-      : EMPTY_MESSAGES === session.messages
+    messages:
+      enabled && !replay && serverWindow.catchingUp
         ? EMPTY_MESSAGES
-        : messages,
+        : enabled
+          ? messages
+          : EMPTY_MESSAGES === session.messages
+            ? EMPTY_MESSAGES
+            : messages,
   };
 }

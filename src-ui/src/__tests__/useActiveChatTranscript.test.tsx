@@ -81,6 +81,95 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('a fallback revision hides stale transcript until its new window settles', async () => {
+    const id = 'catching-up-turn';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Catch up',
+      orchestrationSessionStarted: true,
+    });
+    const firstPage = {
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'old',
+            prompt: 'Old question',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'turn.completed', {
+            threadId: id,
+            turnId: 'old',
+            outputText: 'Old answer',
+          }),
+          sequence: 2,
+        },
+      ],
+    };
+    fetchWindow.mockResolvedValueOnce(firstPage);
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript('http://station.test', chat),
+      {
+        initialProps: { chat: session() },
+      },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('Old answer');
+      let resolveReload: ((value: typeof firstPage) => void) | undefined;
+      fetchWindow.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveReload = resolve;
+          }),
+      );
+      act(() =>
+        activeChatsStore.updateChat(id, { orchestrationHistoryRevision: 1 }),
+      );
+      view.rerender({ chat: session() });
+      expect(view.result.current.catchingUp).toBe(true);
+      expect(view.result.current.messages).toEqual([]);
+      await waitFor(() => expect(resolveReload).toBeDefined());
+      await act(async () =>
+        resolveReload?.({
+          ...firstPage,
+          watermark: 3,
+          events: [
+            ...firstPage.events,
+            {
+              ...event('e3', 'turn.started', {
+                threadId: id,
+                turnId: 'new',
+                prompt: 'New question',
+              }),
+              sequence: 3,
+            },
+          ],
+        }),
+      );
+      await waitFor(() => expect(view.result.current.catchingUp).toBe(false));
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('New question');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
   test('stitches a live delta after the window watermark into one projected open turn', async () => {
     const id = 'stitch-open-turn';
     const apiBase = 'http://station-stitch.test';
