@@ -45,6 +45,7 @@ export type TurnAttentionOutcome =
 
 const handledTurns = new Set<string>();
 const userStoppedTurns = new Set<string>();
+const stallStoppedTurns = new Set<string>();
 const pendingTurns = new Map<string, ReturnType<typeof setTimeout>>();
 
 function turnKey(threadId: string, turnId: string): string {
@@ -74,6 +75,7 @@ export function resetTurnAttentionNotifications(): void {
   pendingTurns.clear();
   handledTurns.clear();
   userStoppedTurns.clear();
+  stallStoppedTurns.clear();
 }
 
 /**
@@ -144,7 +146,10 @@ export type TurnTerminal = {
   reason?: string;
 };
 
-function outcomeFor(terminal: TurnTerminal): TurnAttentionOutcome | undefined {
+function outcomeFor(
+  terminal: TurnTerminal,
+  key: string,
+): TurnAttentionOutcome | undefined {
   if (terminal.kind === 'completed') {
     if (terminal.providerTurn) {
       return terminal.closedWithoutResult ? undefined : 'replied';
@@ -152,7 +157,10 @@ function outcomeFor(terminal: TurnTerminal): TurnAttentionOutcome | undefined {
     return 'finished';
   }
   if (terminal.kind === 'aborted') {
-    return terminal.providerTurn ? 'reply-failed' : 'stopped';
+    if (terminal.providerTurn) return 'reply-failed';
+    // Only a settled stop says something stopped the turn. An abort nothing
+    // asked for is the engine failing, as the server's push reads it.
+    return stallStoppedTurns.has(key) ? 'stopped' : 'failed';
   }
   return terminal.providerTurn ? 'reply-failed' : 'failed';
 }
@@ -166,7 +174,7 @@ function isOwnStop(key: string, turnId: string, chatKey?: string): boolean {
 function show(terminal: TurnTerminal & { turnId: string }): void {
   const key = turnKey(terminal.threadId, terminal.turnId);
   settle(key);
-  const outcome = outcomeFor(terminal);
+  const outcome = outcomeFor(terminal, key);
   if (!outcome) return;
   const chatKey =
     activeChatsStore.getChatKeyForExecutionSession(terminal.threadId) ??
@@ -243,8 +251,12 @@ export function observeStopSettled(event: {
   turnId?: string;
   initiatedBy?: 'user' | 'stall';
 }): void {
-  if (!event.turnId || event.initiatedBy === 'stall') return;
+  if (!event.turnId) return;
   const key = turnKey(event.threadId, event.turnId);
+  if (event.initiatedBy === 'stall') {
+    remember(stallStoppedTurns, key);
+    return;
+  }
   remember(userStoppedTurns, key);
   if (pendingTurns.has(key)) settle(key);
 }

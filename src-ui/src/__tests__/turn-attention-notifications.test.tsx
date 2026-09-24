@@ -26,6 +26,7 @@ import {
   resetTurnAttentionNotifications,
   STOP_FACT_GRACE_MS,
 } from '../hooks/orchestration/turnAttentionNotifications';
+import { registerFullscreenChatSurface } from '../hooks/orchestration/chatForeground';
 
 const BG = 'chat-background';
 const FG = 'chat-foreground';
@@ -95,8 +96,16 @@ afterEach(() => {
   activeChatsStore.removeChat(BG);
   activeChatsStore.removeChat(FG);
   navigationStore.setActiveChat(null);
+  setVisibility('visible');
   vi.useRealTimers();
 });
+
+function setVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => state,
+  });
+}
 
 describe('tool call toasts', () => {
   test.each(['success', 'cancelled', 'unresolved'] as const)(
@@ -174,6 +183,28 @@ describe('end-of-turn toasts', () => {
     navigationStore.setDockState(false);
     startTurn('turn-1');
     emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
+  });
+
+  test('the chat on screen still toasts while the page is hidden', () => {
+    navigationStore.setActiveChat(BG);
+    setVisibility('hidden');
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(1);
+  });
+
+  test('a full-screen Chat on this chat counts as foreground with the dock closed', () => {
+    navigationStore.setActiveChat(BG);
+    navigationStore.setDockState(false);
+    const release = registerFullscreenChatSurface();
+    startTurn('turn-1');
+    emit({ method: 'turn.completed', turnId: 'turn-1', outputText: 'Done.' });
+    expect(toastCards()).toHaveLength(0);
+    release();
+    release();
+    startTurn('turn-2');
+    emit({ method: 'turn.completed', turnId: 'turn-2', outputText: 'Done.' });
     expect(toastCards()).toHaveLength(1);
   });
 
@@ -274,7 +305,7 @@ describe('end-of-turn toasts', () => {
     ).toBeTruthy();
   });
 
-  test('a turn stopped by something other than the user toasts why', () => {
+  test('an abort nothing asked for reads as a failure, with why', () => {
     startTurn('turn-1');
     emit({
       method: 'turn.aborted',
@@ -284,7 +315,7 @@ describe('end-of-turn toasts', () => {
     passGrace();
     expect(
       screen.getByText(
-        'Dev Agent (Codex) stopped: The engine ended before the turn started.',
+        'Dev Agent (Codex) failed: The engine ended before the turn started.',
       ),
     ).toBeTruthy();
   });

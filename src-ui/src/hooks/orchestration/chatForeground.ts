@@ -20,14 +20,19 @@ export function registerFullscreenChatSurface(): () => void {
 }
 
 /**
- * Is this chat the one on screen: a Chat surface is showing, and the chat it
- * shows is this one (by chat key, execution session, or conversation).
+ * Is this chat the one on screen: the page is visible, a Chat surface is
+ * showing, and the chat it shows is this one (by chat key, execution session,
+ * or conversation). A hidden tab keeps its event stream, so the server sends
+ * no push for it; this toast is then the only signal the user gets.
  */
 export function isChatInForeground(ids: {
   chatKey?: string;
   threadId: string;
   conversationId?: string;
 }): boolean {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    return false;
+  }
   const navigation = navigationStore.getSnapshot();
   if (!navigation.isDockOpen && fullscreenChatSurfaces === 0) return false;
   const candidates = [ids.chatKey, ids.threadId, ids.conversationId].filter(
