@@ -3,10 +3,11 @@
 //! A candidate is an untrusted courier value. This module verifies the exact
 //! compact JWS bytes, its self-signature, challenge, route, key identifier,
 //! generation descriptor, expiry, and short authentication string. A verified
-//! candidate proves possession of the advertised key only; it is deliberately
-//! not an approval or a persisted trust decision.
+//! candidate proves possession of the advertised key only. Durable approval
+//! requires separate operator inputs and a host-locked profile/trust revision
+//! CAS; no command or active connection route uses this module yet.
 
-#![allow(dead_code)] // Intentionally unregistered from IPC until durable host trust custody exists.
+#![allow(dead_code)] // Native host integration is a separate step; no IPC surface is registered here.
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -14,12 +15,24 @@ use ring::digest::{digest, SHA256};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::Arc;
+use std::sync::Mutex;
 use url::Url;
+use zeroize::Zeroizing;
 
 const MAX_CANDIDATE_BYTES: usize = 8192;
 const CANDIDATE_LIFETIME_SECONDS: u64 = 60;
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
+const TRUST_RECORD_SCHEMA_VERSION: u8 = 1;
+const TRUST_KEYRING_SERVICE: &str = "io.kontourai.station.connection-trust";
+const TRUST_KEYRING_ACCOUNT_PREFIX: &str = "station-connection-trust:v1:";
+const MAX_APPROVED_ROUTE_BINDINGS: usize = 1024;
 const HEADER: &[u8] = br#"{"alg":"ES256","typ":"station-connection-key-candidate+jws"}"#;
+static STATION_TRUST_OPERATION: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CandidateError {
@@ -27,21 +40,65 @@ pub(crate) enum CandidateError {
     Stale,
     BindingMismatch,
     OperatorConfirmationMismatch,
+    ProfileStale,
+    TrustRevisionConflict,
+    GenerationRollback,
+    TrustStore,
 }
 
 pub(crate) type CandidateResult<T> = Result<T, CandidateError>;
 
-/// Host snapshot captured when the broker challenge is issued. Owner and
-/// revision remain local host context: neither is supplied by broker metadata.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct TrustProfileBinding {
+    pub(crate) profile_owner_id: String,
+    pub(crate) app_identifier: String,
+    pub(crate) channel: String,
+    pub(crate) client_instance_id: String,
+    pub(crate) broker_origin: String,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LockedTrustProfileSnapshot {
+    pub(crate) binding: TrustProfileBinding,
+    pub(crate) revision: u64,
+}
+
+/// Implementations must hold the same interprocess profile lock used by the
+/// profile writer until `operation` returns, and construct the snapshot from
+/// the current host-owned profile while that lock remains held.
+pub(crate) trait LockedTrustProfileProvider {
+    fn with_current_profile<T, F>(
+        &self,
+        expected_binding: &TrustProfileBinding,
+        expected_profile_revision: u64,
+        operation: F,
+    ) -> CandidateResult<T>
+    where
+        F: FnOnce(LockedTrustProfileSnapshot) -> CandidateResult<T>;
+}
+
+/// Host snapshot captured when the broker challenge is issued. `profile_owner_id`
+/// is the exact saved profile name (the current profile schema has no UUID);
+/// the app/channel/client and route tuple keep that label from being a sole key.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CandidateBinding {
     pub(crate) profile_owner_id: String,
+    pub(crate) app_identifier: String,
+    pub(crate) channel: String,
     pub(crate) profile_revision: u64,
+    pub(crate) expected_trust_revision: u64,
     pub(crate) broker_origin: String,
     pub(crate) station_id: String,
     pub(crate) enrollment_id: String,
     pub(crate) client_instance_id: String,
     pub(crate) client_key_thumbprint: String,
+    /// Key advertised by the selected invitation; broker metadata alone is
+    /// not trusted, but the candidate must agree with this host-captured pin.
+    pub(crate) expected_station_signing_key_id: String,
+    pub(crate) expected_station_signing_generation: u64,
 }
 
 /// A challenge tied to one enrollment attempt and its host-owned route snapshot.
@@ -101,8 +158,9 @@ struct Claims {
 pub(crate) struct VerifiedStationKeyCandidate {
     claims: Claims,
     challenge: String,
-    profile_owner_id: String,
+    profile_binding: TrustProfileBinding,
     profile_revision: u64,
+    expected_trust_revision: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -177,10 +235,13 @@ impl PendingStationKeyChallenge {
             || claims.client_key_thumbprint != self.binding.client_key_thumbprint
             || claims.candidate.station_id != self.binding.station_id
             || claims.candidate.enrollment_id != self.binding.enrollment_id
+            || claims.key_id != self.binding.expected_station_signing_key_id
+            || claims.candidate.generation != self.binding.expected_station_signing_generation
         {
             return Err(CandidateError::BindingMismatch);
         }
-        if claims.exp <= now
+        if now > JS_SAFE_INTEGER_MAX
+            || claims.exp <= now
             || claims.iat > now.saturating_add(5)
             || claims.iat < now.saturating_sub(CANDIDATE_LIFETIME_SECONDS)
             || claims.exp <= claims.iat
@@ -196,8 +257,9 @@ impl PendingStationKeyChallenge {
         Ok(VerifiedStationKeyCandidate {
             claims,
             challenge: self.challenge.clone(),
-            profile_owner_id: self.binding.profile_owner_id.clone(),
+            profile_binding: profile_binding(&self.binding),
             profile_revision: self.binding.profile_revision,
+            expected_trust_revision: self.binding.expected_trust_revision,
         })
     }
 }
@@ -219,10 +281,13 @@ impl VerifiedStationKeyCandidate {
         &self.claims.confirmation_code
     }
     pub(crate) fn profile_owner_id(&self) -> &str {
-        &self.profile_owner_id
+        &self.profile_binding.profile_owner_id
     }
     pub(crate) fn profile_revision(&self) -> u64 {
         self.profile_revision
+    }
+    pub(crate) fn expected_trust_revision(&self) -> u64 {
+        self.expected_trust_revision
     }
     pub(crate) fn challenge(&self) -> &str {
         &self.challenge
@@ -249,11 +314,21 @@ fn validate_binding(binding: &CandidateBinding) -> CandidateResult<()> {
     if binding.profile_owner_id.is_empty()
         || binding.profile_owner_id.len() > 256
         || binding.profile_revision == 0
+        || binding.profile_revision > JS_SAFE_INTEGER_MAX
+        || binding.expected_trust_revision > JS_SAFE_INTEGER_MAX
+        || !valid_app_identifier(&binding.app_identifier)
+        || !matches!(
+            binding.channel.as_str(),
+            "dev" | "stable" | "beta" | "nightly"
+        )
         || canonical_broker_origin(&binding.broker_origin).is_err()
         || !valid_uuid(&binding.station_id)
         || !valid_uuid(&binding.enrollment_id)
         || !valid_uuid(&binding.client_instance_id)
         || !valid_digest(&binding.client_key_thumbprint)
+        || !valid_digest(&binding.expected_station_signing_key_id)
+        || binding.expected_station_signing_generation == 0
+        || binding.expected_station_signing_generation > JS_SAFE_INTEGER_MAX
     {
         return Err(CandidateError::Invalid);
     }
@@ -273,6 +348,9 @@ fn validate_claims(claims: &Claims) -> CandidateResult<()> {
         || !valid_uuid(&claims.candidate.station_id)
         || !valid_uuid(&claims.candidate.enrollment_id)
         || claims.candidate.generation == 0
+        || claims.candidate.generation > JS_SAFE_INTEGER_MAX
+        || claims.iat > JS_SAFE_INTEGER_MAX
+        || claims.exp > JS_SAFE_INTEGER_MAX
         || claims.candidate.signing_key.kty != "EC"
         || claims.candidate.signing_key.crv != "P-256"
         || !valid_digest(&claims.candidate.signing_key.x)
@@ -281,6 +359,434 @@ fn validate_claims(claims: &Claims) -> CandidateResult<()> {
         return Err(CandidateError::Invalid);
     }
     Ok(())
+}
+
+fn profile_binding(binding: &CandidateBinding) -> TrustProfileBinding {
+    TrustProfileBinding {
+        profile_owner_id: binding.profile_owner_id.clone(),
+        app_identifier: binding.app_identifier.clone(),
+        channel: binding.channel.clone(),
+        client_instance_id: binding.client_instance_id.clone(),
+        broker_origin: binding.broker_origin.clone(),
+        station_id: binding.station_id.clone(),
+        enrollment_id: binding.enrollment_id.clone(),
+    }
+}
+
+fn valid_app_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric())
+        && value.len() <= 255
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StationTrustStatus {
+    Approved,
+    Revoked,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct GenerationFloor {
+    station_id: String,
+    generation: u64,
+    key_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct StoredStationTrust {
+    schema_version: u8,
+    revision: u64,
+    station_id: String,
+    status: Option<StationTrustStatus>,
+    trust: Option<Descriptor>,
+    generation_floor: Option<GenerationFloor>,
+    approved_bindings: Vec<TrustProfileBinding>,
+}
+
+/// Safe-to-display mutation receipt. It contains no secrets or approval input.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StationTrustMutationReceipt {
+    pub(crate) revision: u64,
+    pub(crate) status: StationTrustStatus,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) generation: u64,
+    pub(crate) key_id: String,
+}
+
+pub(crate) trait StationTrustBackend: Send {
+    fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>>;
+    fn write(&mut self, account: &str, value: &str) -> CandidateResult<()>;
+}
+
+/// OS-keyring-backed public trust state. Lock order is always the shared
+/// `profiles.json.lock` supplied by `LockedTrustProfileProvider`, then
+/// `STATION_TRUST_OPERATION`, then the OS keyring call. This module never calls
+/// back into the profile writer while holding its trust mutex.
+pub(crate) struct NativeStationTrustStore<B: StationTrustBackend> {
+    backend: B,
+}
+
+struct OsStationTrustBackend;
+
+impl StationTrustBackend for OsStationTrustBackend {
+    fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
+        super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
+        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
+            .map_err(|_| CandidateError::TrustStore)?;
+        match entry.get_password() {
+            Ok(value) => Ok(Some(Zeroizing::new(value))),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
+            Err(_) => Err(CandidateError::TrustStore),
+        }
+    }
+
+    fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
+        super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
+        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
+            .map_err(|_| CandidateError::TrustStore)?;
+        entry
+            .set_password(value)
+            .map_err(|_| CandidateError::TrustStore)
+    }
+}
+
+impl NativeStationTrustStore<OsStationTrustBackend> {
+    pub(crate) fn system() -> Self {
+        Self {
+            backend: OsStationTrustBackend,
+        }
+    }
+}
+
+impl<B: StationTrustBackend> NativeStationTrustStore<B> {
+    #[cfg(test)]
+    fn with_backend(backend: B) -> Self {
+        Self { backend }
+    }
+
+    pub(crate) fn current_revision<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        binding: &TrustProfileBinding,
+        profile_revision: u64,
+    ) -> CandidateResult<u64> {
+        provider.with_current_profile(binding, profile_revision, |snapshot| {
+            if snapshot.binding != *binding || snapshot.revision != profile_revision {
+                return Err(CandidateError::ProfileStale);
+            }
+            let _guard = STATION_TRUST_OPERATION
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?;
+            let account = trust_account(binding)?;
+            Ok(self.read_record(&account, &binding.station_id)?.revision)
+        })
+    }
+
+    pub(crate) fn approve<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        candidate: VerifiedStationKeyCandidate,
+        operator_code: &str,
+        operator_full_key_id: &str,
+    ) -> CandidateResult<StationTrustMutationReceipt> {
+        let confirmed = candidate.confirm_operator(operator_code, operator_full_key_id)?;
+        let candidate = confirmed.candidate;
+        let binding = candidate.profile_binding.clone();
+        let profile_revision = candidate.profile_revision;
+        let expected_store_revision = candidate.expected_trust_revision;
+        provider.with_current_profile(&binding, profile_revision, |snapshot| {
+            if snapshot.binding != binding || snapshot.revision != profile_revision {
+                return Err(CandidateError::ProfileStale);
+            }
+            let _guard = STATION_TRUST_OPERATION
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?;
+            let account = trust_account(&binding)?;
+            let mut stored = self.read_record(&account, &binding.station_id)?;
+            if stored.revision != expected_store_revision {
+                return Err(CandidateError::TrustRevisionConflict);
+            }
+            apply_generation_floor(
+                &mut stored,
+                &candidate.claims.candidate,
+                &candidate.claims.key_id,
+            )?;
+            if !stored.approved_bindings.contains(&binding) {
+                if stored.approved_bindings.len() >= MAX_APPROVED_ROUTE_BINDINGS {
+                    return Err(CandidateError::TrustStore);
+                }
+                stored.approved_bindings.push(binding.clone());
+            }
+            stored.revision = stored
+                .revision
+                .checked_add(1)
+                .filter(|revision| *revision <= JS_SAFE_INTEGER_MAX)
+                .ok_or(CandidateError::TrustStore)?;
+            stored.status = Some(StationTrustStatus::Approved);
+            stored.trust = Some(candidate.claims.candidate.clone());
+            let receipt = receipt_from(&stored)?;
+            self.write_record(&account, &stored)?;
+            Ok(receipt)
+        })
+    }
+
+    pub(crate) fn revoke<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        binding: &TrustProfileBinding,
+        profile_revision: u64,
+        expected_store_revision: u64,
+        operator_full_key_id: &str,
+    ) -> CandidateResult<StationTrustMutationReceipt> {
+        provider.with_current_profile(binding, profile_revision, |snapshot| {
+            if snapshot.binding != *binding || snapshot.revision != profile_revision {
+                return Err(CandidateError::ProfileStale);
+            }
+            let _guard = STATION_TRUST_OPERATION
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?;
+            let account = trust_account(binding)?;
+            let mut stored = self.read_record(&account, &binding.station_id)?;
+            if stored.revision != expected_store_revision {
+                return Err(CandidateError::TrustRevisionConflict);
+            }
+            if stored.status != Some(StationTrustStatus::Approved) {
+                return Err(CandidateError::TrustRevisionConflict);
+            }
+            if !stored.approved_bindings.contains(binding) {
+                return Err(CandidateError::ProfileStale);
+            }
+            let trust = stored.trust.as_ref().ok_or(CandidateError::TrustStore)?;
+            if signing_key_id(&trust.signing_key)? != operator_full_key_id {
+                return Err(CandidateError::OperatorConfirmationMismatch);
+            }
+            stored.revision = stored
+                .revision
+                .checked_add(1)
+                .filter(|revision| *revision <= JS_SAFE_INTEGER_MAX)
+                .ok_or(CandidateError::TrustStore)?;
+            stored.status = Some(StationTrustStatus::Revoked);
+            let receipt = receipt_from(&stored)?;
+            self.write_record(&account, &stored)?;
+            Ok(receipt)
+        })
+    }
+
+    fn read_record(
+        &mut self,
+        account: &str,
+        station_id: &str,
+    ) -> CandidateResult<StoredStationTrust> {
+        let Some(encoded) = self.backend.read(account)? else {
+            return Ok(StoredStationTrust {
+                schema_version: TRUST_RECORD_SCHEMA_VERSION,
+                revision: 0,
+                station_id: station_id.to_owned(),
+                status: None,
+                trust: None,
+                generation_floor: None,
+                approved_bindings: Vec::new(),
+            });
+        };
+        if encoded.len() > 256 * 1024 {
+            return Err(CandidateError::TrustStore);
+        }
+        let stored: StoredStationTrust =
+            serde_json::from_str(&encoded).map_err(|_| CandidateError::TrustStore)?;
+        validate_stored_record(&stored, station_id)?;
+        Ok(stored)
+    }
+
+    fn write_record(&mut self, account: &str, stored: &StoredStationTrust) -> CandidateResult<()> {
+        let encoded = serde_json::to_string(stored).map_err(|_| CandidateError::TrustStore)?;
+        if encoded.len() > 256 * 1024 {
+            return Err(CandidateError::TrustStore);
+        }
+        // A keyring provider may report an ambiguous write result. Never
+        // return an approval/revocation receipt unless a fresh read yields the
+        // exact complete record. Partial/corrupt data fails closed on parse.
+        let _write_result = self.backend.write(account, &encoded);
+        let persisted = self
+            .backend
+            .read(account)?
+            .ok_or(CandidateError::TrustStore)?;
+        if persisted.len() > 256 * 1024 {
+            return Err(CandidateError::TrustStore);
+        }
+        let decoded: StoredStationTrust =
+            serde_json::from_str(&persisted).map_err(|_| CandidateError::TrustStore)?;
+        validate_stored_record(&decoded, &stored.station_id)?;
+        if decoded != *stored {
+            return Err(CandidateError::TrustStore);
+        }
+        Ok(())
+    }
+}
+
+fn trust_account(binding: &TrustProfileBinding) -> CandidateResult<String> {
+    validate_trust_profile_binding(binding)?;
+    // Mutable profile and route identity remains inside the record. It is not
+    // part of this Station-level namespace, so rename/re-add cannot erase the
+    // revocation tombstone or generation floor.
+    let parts = [
+        binding.app_identifier.as_str(),
+        binding.channel.as_str(),
+        binding.station_id.as_str(),
+    ];
+    let mut canonical = String::from("station-connection-trust-account/v1\0");
+    for part in parts {
+        if part.len() > 2048 {
+            return Err(CandidateError::Invalid);
+        }
+        canonical.push_str(&part.len().to_string());
+        canonical.push(':');
+        canonical.push_str(part);
+        canonical.push(':');
+    }
+    let hash = digest(&SHA256, canonical.as_bytes());
+    Ok(format!(
+        "{TRUST_KEYRING_ACCOUNT_PREFIX}{}",
+        URL_SAFE_NO_PAD.encode(hash.as_ref())
+    ))
+}
+
+fn validate_trust_profile_binding(binding: &TrustProfileBinding) -> CandidateResult<()> {
+    if binding.profile_owner_id.is_empty()
+        || binding.profile_owner_id.len() > 256
+        || !valid_app_identifier(&binding.app_identifier)
+        || !matches!(
+            binding.channel.as_str(),
+            "dev" | "stable" | "beta" | "nightly"
+        )
+        || !valid_uuid(&binding.client_instance_id)
+        || canonical_broker_origin(&binding.broker_origin).is_err()
+        || !valid_uuid(&binding.station_id)
+        || !valid_uuid(&binding.enrollment_id)
+    {
+        return Err(CandidateError::Invalid);
+    }
+    Ok(())
+}
+
+fn validate_stored_record(
+    stored: &StoredStationTrust,
+    expected_station_id: &str,
+) -> CandidateResult<()> {
+    if stored.schema_version != TRUST_RECORD_SCHEMA_VERSION
+        || stored.revision > JS_SAFE_INTEGER_MAX
+        || stored.station_id != expected_station_id
+        || stored.approved_bindings.len() > MAX_APPROVED_ROUTE_BINDINGS
+    {
+        return Err(CandidateError::TrustStore);
+    }
+    match (stored.status, stored.trust.as_ref()) {
+        (None, None)
+            if stored.revision == 0
+                && stored.generation_floor.is_none()
+                && stored.approved_bindings.is_empty() => {}
+        (Some(_), Some(trust)) if stored.revision > 0 => {
+            validate_descriptor(trust)?;
+            let floor = stored
+                .generation_floor
+                .as_ref()
+                .ok_or(CandidateError::TrustStore)?;
+            if trust.station_id != stored.station_id
+                || floor.station_id != stored.station_id
+                || floor.generation != trust.generation
+                || signing_key_id(&trust.signing_key)? != floor.key_id
+                || !stored.approved_bindings.iter().any(|binding| {
+                    validate_trust_profile_binding(binding).is_ok()
+                        && binding.station_id == stored.station_id
+                })
+            {
+                return Err(CandidateError::TrustStore);
+            }
+        }
+        _ => return Err(CandidateError::TrustStore),
+    }
+    if let Some(floor) = &stored.generation_floor {
+        if !valid_uuid(&floor.station_id)
+            || floor.generation == 0
+            || floor.generation > JS_SAFE_INTEGER_MAX
+            || !valid_digest(&floor.key_id)
+        {
+            return Err(CandidateError::TrustStore);
+        }
+    }
+    for binding in &stored.approved_bindings {
+        validate_trust_profile_binding(binding)?;
+        if binding.station_id != stored.station_id {
+            return Err(CandidateError::TrustStore);
+        }
+    }
+    Ok(())
+}
+
+fn validate_descriptor(descriptor: &Descriptor) -> CandidateResult<()> {
+    if !valid_uuid(&descriptor.station_id)
+        || !valid_uuid(&descriptor.enrollment_id)
+        || descriptor.generation == 0
+        || descriptor.generation > JS_SAFE_INTEGER_MAX
+        || descriptor.signing_key.kty != "EC"
+        || descriptor.signing_key.crv != "P-256"
+        || !valid_digest(&descriptor.signing_key.x)
+        || !valid_digest(&descriptor.signing_key.y)
+    {
+        return Err(CandidateError::TrustStore);
+    }
+    p256_point(&descriptor.signing_key)?;
+    Ok(())
+}
+
+fn apply_generation_floor(
+    stored: &mut StoredStationTrust,
+    descriptor: &Descriptor,
+    key_id: &str,
+) -> CandidateResult<()> {
+    validate_descriptor(descriptor)?;
+    if descriptor.station_id != stored.station_id {
+        return Err(CandidateError::ProfileStale);
+    }
+    if let Some(floor) = stored.generation_floor.as_mut() {
+        if descriptor.generation < floor.generation
+            || (descriptor.generation == floor.generation && key_id != floor.key_id)
+            || (descriptor.generation > floor.generation && key_id == floor.key_id)
+            || (stored.status == Some(StationTrustStatus::Revoked)
+                && (descriptor.generation <= floor.generation || key_id == floor.key_id))
+        {
+            return Err(CandidateError::GenerationRollback);
+        }
+        if descriptor.generation > floor.generation {
+            floor.generation = descriptor.generation;
+            floor.key_id = key_id.to_owned();
+        }
+    } else {
+        stored.generation_floor = Some(GenerationFloor {
+            station_id: descriptor.station_id.clone(),
+            generation: descriptor.generation,
+            key_id: key_id.to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn receipt_from(stored: &StoredStationTrust) -> CandidateResult<StationTrustMutationReceipt> {
+    let trust = stored.trust.as_ref().ok_or(CandidateError::TrustStore)?;
+    Ok(StationTrustMutationReceipt {
+        revision: stored.revision,
+        status: stored.status.ok_or(CandidateError::TrustStore)?,
+        station_id: trust.station_id.clone(),
+        enrollment_id: trust.enrollment_id.clone(),
+        generation: trust.generation,
+        key_id: signing_key_id(&trust.signing_key)?,
+    })
 }
 
 fn canonical_broker_origin(value: &str) -> CandidateResult<String> {
@@ -423,17 +929,26 @@ mod tests {
     fn binding() -> CandidateBinding {
         CandidateBinding {
             profile_owner_id: "owner:profile-alpha".into(),
+            app_identifier: "io.kontourai.station".into(),
+            channel: "stable".into(),
             profile_revision: 7,
+            expected_trust_revision: 0,
             broker_origin: "https://broker.example".into(),
             station_id: STATION.into(),
             enrollment_id: ENROLLMENT.into(),
             client_instance_id: CLIENT.into(),
             client_key_thumbprint: URL_SAFE_NO_PAD.encode([8u8; 32]),
+            expected_station_signing_key_id: "ighLfLJiKMnoNAWVAylD4Ze4RWHPXgFDthjOR7Csip8".into(),
+            expected_station_signing_generation: 3,
         }
     }
 
+    fn trust_binding(binding: &CandidateBinding) -> TrustProfileBinding {
+        profile_binding(binding)
+    }
+
     fn signed_candidate(
-        pending: &PendingStationKeyChallenge,
+        pending: &mut PendingStationKeyChallenge,
         overrides: impl FnOnce(&mut Claims),
     ) -> String {
         let rng = SystemRandom::new();
@@ -469,6 +984,10 @@ mod tests {
         claims.key_id = signing_key_id(&claims.candidate.signing_key).unwrap();
         claims.confirmation_code = confirmation_code(&claims.candidate).unwrap();
         overrides(&mut claims);
+        claims.key_id = signing_key_id(&claims.candidate.signing_key).unwrap();
+        claims.confirmation_code = confirmation_code(&claims.candidate).unwrap();
+        pending.binding.expected_station_signing_key_id = claims.key_id.clone();
+        pending.binding.expected_station_signing_generation = claims.candidate.generation;
         let body = serde_json::to_vec(&claims).unwrap();
         let protected = URL_SAFE_NO_PAD.encode(HEADER);
         let payload = URL_SAFE_NO_PAD.encode(body);
@@ -484,14 +1003,15 @@ mod tests {
 
     #[test]
     fn verifies_candidate_and_keeps_host_profile_owner_revision_local() {
-        let pending = pending();
-        let compact = signed_candidate(&pending, |_| {});
+        let mut pending = pending();
+        let compact = signed_candidate(&mut pending, |_| {});
         let verified = pending.verify(&compact, NOW).unwrap();
         assert_eq!(verified.station_id(), STATION);
         assert_eq!(verified.enrollment_id(), ENROLLMENT);
         assert_eq!(verified.generation(), 3);
         assert_eq!(verified.profile_owner_id(), "owner:profile-alpha");
         assert_eq!(verified.profile_revision(), 7);
+        assert_eq!(verified.expected_trust_revision(), 0);
         assert_eq!(verified.challenge(), pending.challenge());
     }
 
@@ -509,10 +1029,9 @@ mod tests {
 
     #[test]
     fn a_valid_self_signed_candidate_remains_unapproved_candidate_data() {
-        let pending = pending();
-        let verified = pending
-            .verify(&signed_candidate(&pending, |_| {}), NOW)
-            .unwrap();
+        let mut pending = pending();
+        let compact = signed_candidate(&mut pending, |_| {});
+        let verified = pending.verify(&compact, NOW).unwrap();
         // This primitive returns only candidate data. It contains no approval
         // record conversion, persistence API, revocation state, or trust grant.
         assert_eq!(verified.key_id().len(), 43);
@@ -523,8 +1042,8 @@ mod tests {
 
     #[test]
     fn rejects_signature_tampering_noncanonical_headers_and_extra_claims() {
-        let pending = pending();
-        let compact = signed_candidate(&pending, |_| {});
+        let mut pending = pending();
+        let compact = signed_candidate(&mut pending, |_| {});
         let mut parts: Vec<String> = compact.split('.').map(str::to_owned).collect();
         let changed_prefix = if &parts[2][..1] == "A" { "B" } else { "A" };
         parts[2].replace_range(0..1, changed_prefix);
@@ -553,7 +1072,6 @@ mod tests {
 
     #[test]
     fn rejects_challenge_route_client_and_identity_mismatches() {
-        let pending = pending();
         let cases = [
             |claims: &mut Claims| claims.challenge = URL_SAFE_NO_PAD.encode([1u8; 32]),
             |claims: &mut Claims| claims.broker_origin = "https://other.example".into(),
@@ -569,7 +1087,8 @@ mod tests {
             },
         ];
         for mutate in cases {
-            let compact = signed_candidate(&pending, mutate);
+            let mut pending = pending();
+            let compact = signed_candidate(&mut pending, mutate);
             assert_eq!(
                 pending.verify(&compact, NOW),
                 Err(CandidateError::BindingMismatch)
@@ -579,14 +1098,15 @@ mod tests {
 
     #[test]
     fn rejects_expired_future_and_overlong_candidates() {
-        let pending = pending();
         for (iat, exp) in [(NOW - 61, NOW - 1), (NOW + 6, NOW + 30), (NOW, NOW + 61)] {
-            let compact = signed_candidate(&pending, |claims| {
+            let mut pending = pending();
+            let compact = signed_candidate(&mut pending, |claims| {
                 claims.iat = iat;
                 claims.exp = exp;
             });
             assert_eq!(pending.verify(&compact, NOW), Err(CandidateError::Stale));
         }
+        let pending = pending();
         assert_eq!(
             pending.verify(&"A".repeat(MAX_CANDIDATE_BYTES + 1), NOW),
             Err(CandidateError::Invalid)
@@ -594,11 +1114,40 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invitation_key_mismatch_and_javascript_unsafe_integers() {
+        let mut pending_challenge = pending();
+        let compact = signed_candidate(&mut pending_challenge, |_| {});
+        pending_challenge.binding.expected_station_signing_key_id = "A".repeat(43);
+        assert_eq!(
+            pending_challenge.verify(&compact, NOW),
+            Err(CandidateError::BindingMismatch)
+        );
+        pending_challenge.binding.expected_station_signing_key_id =
+            "ighLfLJiKMnoNAWVAylD4Ze4RWHPXgFDthjOR7Csip8".into();
+        pending_challenge
+            .binding
+            .expected_station_signing_generation = 4;
+        assert_eq!(
+            pending_challenge.verify(&compact, NOW),
+            Err(CandidateError::BindingMismatch)
+        );
+
+        for mutate in [
+            |claims: &mut Claims| claims.candidate.generation = JS_SAFE_INTEGER_MAX + 1,
+            |claims: &mut Claims| claims.iat = JS_SAFE_INTEGER_MAX + 1,
+            |claims: &mut Claims| claims.exp = JS_SAFE_INTEGER_MAX + 1,
+        ] {
+            let mut pending = pending();
+            let compact = signed_candidate(&mut pending, mutate);
+            assert_eq!(pending.verify(&compact, NOW), Err(CandidateError::Invalid));
+        }
+    }
+
+    #[test]
     fn operator_confirmation_requires_the_sas_and_entire_key_identifier() {
-        let pending = pending();
-        let verified = pending
-            .verify(&signed_candidate(&pending, |_| {}), NOW)
-            .unwrap();
+        let mut pending = pending();
+        let compact = signed_candidate(&mut pending, |_| {});
+        let verified = pending.verify(&compact, NOW).unwrap();
         assert_eq!(
             verified
                 .clone()
@@ -632,5 +1181,266 @@ mod tests {
             PendingStationKeyChallenge::begin(invalid),
             Err(CandidateError::Invalid)
         );
+    }
+
+    #[derive(Clone, Default)]
+    struct MemoryTrustBackend(Arc<Mutex<HashMap<String, String>>>);
+
+    impl StationTrustBackend for MemoryTrustBackend {
+        fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
+            self.0
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)
+                .map(|entries| entries.get(account).cloned().map(Zeroizing::new))
+        }
+
+        fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
+            self.0
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?
+                .insert(account.to_owned(), value.to_owned());
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakeLockedProfileProvider(Arc<Mutex<LockedTrustProfileSnapshot>>);
+
+    impl LockedTrustProfileProvider for FakeLockedProfileProvider {
+        fn with_current_profile<T, F>(
+            &self,
+            expected_binding: &TrustProfileBinding,
+            expected_profile_revision: u64,
+            operation: F,
+        ) -> CandidateResult<T>
+        where
+            F: FnOnce(LockedTrustProfileSnapshot) -> CandidateResult<T>,
+        {
+            let snapshot = self.0.lock().map_err(|_| CandidateError::ProfileStale)?;
+            if snapshot.binding != *expected_binding
+                || snapshot.revision != expected_profile_revision
+            {
+                return Err(CandidateError::ProfileStale);
+            }
+            // Keep this mutex guard alive through the store read/compare/write.
+            operation(snapshot.clone())
+        }
+    }
+
+    fn locked_profile(binding: &CandidateBinding) -> FakeLockedProfileProvider {
+        FakeLockedProfileProvider(Arc::new(Mutex::new(LockedTrustProfileSnapshot {
+            binding: trust_binding(binding),
+            revision: binding.profile_revision,
+        })))
+    }
+
+    fn verified_for_store(
+        expected_trust_revision: u64,
+        generation: u64,
+    ) -> VerifiedStationKeyCandidate {
+        let mut binding = binding();
+        binding.expected_trust_revision = expected_trust_revision;
+        let mut pending =
+            PendingStationKeyChallenge::with_challenge(binding, URL_SAFE_NO_PAD.encode([9u8; 32]))
+                .unwrap();
+        let compact = signed_candidate(&mut pending, |claims| {
+            claims.candidate.generation = generation;
+        });
+        pending.verify(&compact, NOW).unwrap()
+    }
+
+    fn verified_typescript_golden_for(
+        mut binding: CandidateBinding,
+    ) -> VerifiedStationKeyCandidate {
+        binding.expected_station_signing_key_id =
+            "ighLfLJiKMnoNAWVAylD4Ze4RWHPXgFDthjOR7Csip8".into();
+        binding.expected_station_signing_generation = 3;
+        let pending =
+            PendingStationKeyChallenge::with_challenge(binding, URL_SAFE_NO_PAD.encode([9u8; 32]))
+                .unwrap();
+        pending.verify(TYPESCRIPT_GOLDEN_CANDIDATE, NOW).unwrap()
+    }
+
+    #[test]
+    fn keyring_record_revision_survives_store_recreation_and_revocation() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let trust_binding = trust_binding(&binding());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let mut first = NativeStationTrustStore::with_backend(backend.clone());
+        let approved = first.approve(&profile, candidate, &code, &key_id).unwrap();
+        assert_eq!(approved.revision, 1);
+        assert_eq!(approved.status, StationTrustStatus::Approved);
+        drop(first);
+
+        // A fresh store object reloads the serialized record as on restart.
+        let mut after_restart = NativeStationTrustStore::with_backend(backend.clone());
+        assert_eq!(
+            after_restart.current_revision(&profile, &trust_binding, 7),
+            Ok(1)
+        );
+        let revoked = after_restart
+            .revoke(&profile, &trust_binding, 7, 1, &key_id)
+            .unwrap();
+        assert_eq!(revoked.revision, 2);
+        assert_eq!(revoked.status, StationTrustStatus::Revoked);
+        drop(after_restart);
+
+        let mut second_restart = NativeStationTrustStore::with_backend(backend);
+        assert_eq!(
+            second_restart.current_revision(&profile, &trust_binding, 7),
+            Ok(2)
+        );
+        assert_eq!(
+            second_restart.revoke(&profile, &trust_binding, 7, 1, &key_id),
+            Err(CandidateError::TrustRevisionConflict)
+        );
+    }
+
+    #[test]
+    fn station_level_tombstone_survives_profile_rename_and_reapproval_needs_rotation() {
+        let backend = MemoryTrustBackend::default();
+        let first_binding = binding();
+        let first_profile = locked_profile(&first_binding);
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_typescript_golden_for(first_binding.clone());
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let approved = store
+            .approve(&first_profile, candidate, &code, &key_id)
+            .unwrap();
+        assert_eq!(approved.revision, 1);
+
+        // A profile rename is a new route binding under the same Station-level
+        // keyring account; explicit confirmation may add it while approved.
+        let mut renamed = binding();
+        renamed.profile_owner_id = "profile-renamed".into();
+        renamed.expected_trust_revision = 1;
+        let renamed_profile = locked_profile(&renamed);
+        let renamed_binding = trust_binding(&renamed);
+        assert_eq!(
+            store.current_revision(&renamed_profile, &renamed_binding, 7),
+            Ok(1)
+        );
+        let candidate = verified_typescript_golden_for(renamed.clone());
+        let code = candidate.confirmation_code().to_owned();
+        let added = store
+            .approve(&renamed_profile, candidate, &code, &key_id)
+            .unwrap();
+        assert_eq!(added.revision, 2);
+
+        // Revocation is Station-wide and keeps the same durable generation
+        // floor even when the selected profile name changes.
+        let revoked = store
+            .revoke(&renamed_profile, &renamed_binding, 7, 2, &key_id)
+            .unwrap();
+        assert_eq!(revoked.revision, 3);
+        assert_eq!(revoked.status, StationTrustStatus::Revoked);
+
+        renamed.expected_trust_revision = 3;
+        let candidate = verified_typescript_golden_for(renamed.clone());
+        let code = candidate.confirmation_code().to_owned();
+        assert_eq!(
+            store.approve(&renamed_profile, candidate, &code, &key_id),
+            Err(CandidateError::GenerationRollback)
+        );
+
+        // A revocation can be superseded only by a higher generation and a
+        // different key identifier. This synthetic fixture generates a new key.
+        let rotated = verified_for_store(3, 4);
+        let rotated_code = rotated.confirmation_code().to_owned();
+        let rotated_key_id = rotated.key_id().to_owned();
+        assert_ne!(rotated_key_id, key_id);
+        let reapproved = store
+            .approve(&first_profile, rotated, &rotated_code, &rotated_key_id)
+            .unwrap();
+        assert_eq!(reapproved.revision, 4);
+        assert_eq!(reapproved.status, StationTrustStatus::Approved);
+
+        // Profile rename/re-add did not create a second keyring account.
+        assert_eq!(backend.0.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn corrupt_keyring_record_is_not_treated_as_absent_or_approved() {
+        let backend = MemoryTrustBackend::default();
+        let trust_binding = trust_binding(&binding());
+        let account = trust_account(&trust_binding).unwrap();
+        backend
+            .0
+            .lock()
+            .unwrap()
+            .insert(account, "{truncated".into());
+        let mut store = NativeStationTrustStore::with_backend(backend);
+        assert_eq!(
+            store.current_revision(&locked_profile(&binding()), &trust_binding, 7),
+            Err(CandidateError::TrustStore)
+        );
+    }
+
+    #[test]
+    fn approval_requires_both_operator_values_and_exact_profile_snapshot() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        assert_eq!(
+            store.approve(&profile, candidate.clone(), "0000000000000000", &key_id),
+            Err(CandidateError::OperatorConfirmationMismatch)
+        );
+        assert_eq!(
+            store.approve(&profile, candidate.clone(), &code, "short"),
+            Err(CandidateError::OperatorConfirmationMismatch)
+        );
+        assert_eq!(
+            store.current_revision(&profile, &trust_binding(&binding()), 7),
+            Ok(0)
+        );
+
+        let mut stale_profile = binding();
+        stale_profile.profile_revision += 1;
+        let stale_provider = locked_profile(&stale_profile);
+        assert_eq!(
+            store.approve(&stale_provider, candidate, &code, &key_id),
+            Err(CandidateError::ProfileStale)
+        );
+        assert_eq!(
+            store.current_revision(&profile, &trust_binding(&binding()), 7),
+            Ok(0)
+        );
+        assert_eq!(backend.0.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn store_revision_cas_and_same_enrollment_generation_floor_refuse_rollback() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let trust_binding = trust_binding(&binding());
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        store.approve(&profile, candidate, &code, &key_id).unwrap();
+
+        let stale = verified_for_store(0, 4);
+        let stale_code = stale.confirmation_code().to_owned();
+        let stale_id = stale.key_id().to_owned();
+        assert_eq!(
+            store.approve(&profile, stale, &stale_code, &stale_id),
+            Err(CandidateError::TrustRevisionConflict)
+        );
+
+        let rollback = verified_for_store(1, 2);
+        let rollback_code = rollback.confirmation_code().to_owned();
+        let rollback_id = rollback.key_id().to_owned();
+        assert_eq!(
+            store.approve(&profile, rollback, &rollback_code, &rollback_id),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(store.current_revision(&profile, &trust_binding, 7), Ok(1));
     }
 }
