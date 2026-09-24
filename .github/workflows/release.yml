@@ -714,11 +714,19 @@ jobs:
           "$apksigner" verify --verbose --print-certs "$apk"
           jarsigner -verify -strict -verbose src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
       - name: Audit packaged Android capabilities
+        # apkanalyzer cannot read a bundle (its manifest is protobuf, under
+        # base/manifest/), so the AAB is printed with bundletool instead.
+        env:
+          BUNDLETOOL_JAR: bundletool-all-1.18.3.jar
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
           aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$BUNDLETOOL_JAR" \
+            "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
+          echo "$BUNDLETOOL_SHA256  $RUNNER_TEMP/$BUNDLETOOL_JAR" | sha256sum --check --status
           apkanalyzer manifest print "$apk" > "$RUNNER_TEMP/station-apk-manifest.xml"
-          apkanalyzer manifest print "$aab" > "$RUNNER_TEMP/station-aab-manifest.xml"
+          java -jar "$RUNNER_TEMP/$BUNDLETOOL_JAR" dump manifest --bundle "$aab" > "$RUNNER_TEMP/station-aab-manifest.xml"
           STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT=1 STATION_ANDROID_PACKAGE_MANIFEST="$RUNNER_TEMP/station-apk-manifest.xml" npm run mobile:permissions:gate
           STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT=1 STATION_ANDROID_PACKAGE_MANIFEST="$RUNNER_TEMP/station-aab-manifest.xml" npm run mobile:permissions:gate
       - name: Stage canonical Android artifacts

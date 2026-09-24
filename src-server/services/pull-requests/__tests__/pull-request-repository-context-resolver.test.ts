@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -299,10 +305,183 @@ describe('PullRequestRepositoryContextResolver', () => {
   });
 
   /**
+   * #2474: reading pull request #N needs the repository, not a pushed branch.
+   * The same refusals still hold for opening one from the current branch.
+   */
+  test.each([
+    [
+      'detached HEAD',
+      ['HEAD\n', 'origin/feature\n', '0\t0\n', 'origin/main\n'],
+    ],
+    [
+      'unpushed branch',
+      ['feature\n', 'origin/feature\n', '1\t0\n', 'origin/main\n'],
+    ],
+    ['no recorded base', ['feature\n', 'origin/feature\n', '0\t0\n', '\n']],
+  ])('a read resolves a %s checkout on identity alone', async (_name, out) => {
+    const make = () =>
+      new PullRequestRepositoryContextResolver({
+        git: git(...out) as any,
+        readRemotes: remote as any,
+      });
+    await expect(
+      make().resolve({
+        projectWorkingDirectory: '/checkout',
+        requireBranchState: false,
+      }),
+    ).resolves.toEqual({
+      available: true,
+      context: {
+        repository: {
+          owner: 'kontourai',
+          name: 'station',
+          remote: 'https://github.com/kontourai/station.git',
+        },
+        workingDirectory: '/checkout',
+      },
+    });
+    await expect(
+      make().resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toMatchObject({ available: false });
+  });
+
+  /**
+   * #2475: an umbrella project directory is not a repository; the pull
+   * request's own identity picks the one child checkout it belongs to.
+   */
+  test('an umbrella project resolves to the one child whose remote names the repository', async () => {
+    let outside: string | undefined;
+    const umbrella = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
+    );
+    try {
+      // Checkouts carry a `.git` entry; a plain folder is never asked.
+      for (const name of ['station', 'flow', 'notes', '.hidden'])
+        mkdirSync(join(umbrella, name, '.git'), { recursive: true });
+      mkdirSync(join(umbrella, 'plain-folder'));
+      // A symlinked child points outside the project and is never followed.
+      outside = realpathSync(mkdtempSync(join(tmpdir(), 'station-outside-')));
+      mkdirSync(join(outside, '.git'));
+      symlinkSync(outside, join(umbrella, 'linked'));
+      const asked: string[] = [];
+      const remotesByPath: Record<string, { name: string; url: string }[]> = {
+        [join(umbrella, 'station')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        ],
+        [join(umbrella, 'flow')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/flow.git' },
+        ],
+        [join(umbrella, '.hidden')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        ],
+      };
+      remotesByPath[join(umbrella, 'linked')] = [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+      ];
+      remotesByPath[join(umbrella, 'plain-folder')] = [
+        { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+      ];
+      const readRemotes = async (path: string) => {
+        asked.push(path);
+        return { ok: true as const, remotes: remotesByPath[path] ?? [] };
+      };
+      const make = () =>
+        new PullRequestRepositoryContextResolver({
+          git: git() as any,
+          readRemotes: readRemotes as any,
+        });
+      await expect(
+        make().resolve({
+          projectWorkingDirectory: umbrella,
+          requireBranchState: false,
+          repository: {
+            host: 'github.com',
+            owner: 'KontourAI',
+            name: 'station',
+          },
+        }),
+      ).resolves.toMatchObject({
+        available: true,
+        context: {
+          workingDirectory: join(umbrella, 'station'),
+          repository: { owner: 'kontourai', name: 'station' },
+        },
+      });
+      // Neither the symlink nor the folder without `.git` was asked — each
+      // claims the same repository, so asking would have made it ambiguous.
+      expect(asked).not.toContain(join(umbrella, 'linked'));
+      expect(asked).not.toContain(join(umbrella, 'plain-folder'));
+
+      // A repository no child holds, or a request naming none, stays refused.
+      for (const repository of [
+        { host: 'github.com', owner: 'kontourai', name: 'absent' },
+        undefined,
+      ])
+        await expect(
+          make().resolve({
+            projectWorkingDirectory: umbrella,
+            requireBranchState: false,
+            ...(repository ? { repository } : {}),
+          }),
+        ).resolves.toMatchObject({ available: false, cause: 'no-remote' });
+      // Two children claiming the same repository are ambiguous, not a pick.
+      remotesByPath[join(umbrella, 'notes')] = [
+        { name: 'origin', url: 'git@github.com:kontourai/station.git' },
+      ];
+      await expect(
+        make().resolve({
+          projectWorkingDirectory: umbrella,
+          requireBranchState: false,
+          repository: {
+            host: 'github.com',
+            owner: 'kontourai',
+            name: 'station',
+          },
+        }),
+      ).resolves.toMatchObject({ available: false });
+    } finally {
+      rmSync(umbrella, { recursive: true, force: true });
+      if (outside) rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  /**
    * The owner's own checkout: an https `origin` and an ssh `public` for the
    * SAME repository. Counting remotes rather than repositories made every
    * pull-request read for that project 404 as "ambiguous".
    */
+  test('an umbrella lookup runs at most eight git reads at once', async () => {
+    const umbrella = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
+    );
+    try {
+      for (let index = 0; index < 20; index += 1)
+        mkdirSync(join(umbrella, `repo-${index}`, '.git'), { recursive: true });
+      let inFlight = 0;
+      let peak = 0;
+      const readRemotes = async (path: string) => {
+        if (path === umbrella) return { ok: true as const, remotes: [] };
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((done) => setTimeout(done, 5));
+        inFlight -= 1;
+        return { ok: true as const, remotes: [] };
+      };
+      await new PullRequestRepositoryContextResolver({
+        git: git() as any,
+        readRemotes: readRemotes as any,
+      }).resolve({
+        projectWorkingDirectory: umbrella,
+        requireBranchState: false,
+        repository: { host: 'github.com', owner: 'o', name: 'r' },
+      });
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(8);
+    } finally {
+      rmSync(umbrella, { recursive: true, force: true });
+    }
+  });
+
   test('several remotes for one repository are one identity, not an ambiguity', async () => {
     const twoRemotes = async () => ({
       ok: true as const,
