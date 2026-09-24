@@ -136,6 +136,62 @@ export interface SelfHostedBrokerNativeGrantRetireV2 {
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
 }
 
+export type SelfHostedBrokerNativeRequestPurposeV1 =
+  | 'station-native-connection-open-v2'
+  | 'station-native-connection-read-v2'
+  | 'station-native-grant-retire-v2'
+  | 'station-native-grant-renew-v2';
+
+/** Claims signed by native key custody for one exact, bounded broker request. */
+export interface SelfHostedBrokerNativeRequestProofClaimsV1 {
+  readonly version: 'station-broker-native-request-proof/v1';
+  /** Canonical broker origin; binds proofs against cross-broker replay. */
+  readonly aud: string;
+  readonly purpose: SelfHostedBrokerNativeRequestPurposeV1;
+  readonly brokerOrigin: string;
+  readonly method: 'POST';
+  readonly path:
+    | '/broker/v1/native/connections/open'
+    | '/broker/v1/native/connections/read'
+    | '/broker/v1/native/grants/retire'
+    | '/broker/v1/native/grants/renew';
+  readonly grantId: string;
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly stationSigningKeyId: string;
+  readonly stationSigningGeneration: number;
+  /** SHA-256 of the exact UTF-8 HTTP body bytes, encoded base64url. */
+  readonly bodySha256: string;
+  /** SHA-256 of the bearer secret, encoded base64url. */
+  readonly ath: string;
+  /** 32-byte, one-use proof ID, encoded base64url. */
+  readonly jti: string;
+  /** Unix epoch seconds. Expiry must be no more than 30 seconds after issue. */
+  readonly iat: number;
+  readonly exp: number;
+}
+
+/** Fixed native grant renewal; same grant and bearer, expiry slides in place. */
+export interface SelfHostedBrokerNativeGrantRenewV2 {
+  readonly version: 'station-broker-native-grant-renew/v2';
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  /** Client-generated idempotency key: 8-128 URL-safe ASCII characters. */
+  readonly renewalId: string;
+  /** Expected grant expiry in Unix epoch milliseconds. */
+  readonly expectedExpiresAt: number;
+}
+export interface SelfHostedBrokerNativeGrantRenewedV2 {
+  readonly version: 'station-broker-native-grant-renewed/v2';
+  readonly renewalId: string;
+  readonly expiresAt: number;
+}
+export interface SelfHostedBrokerNativeGrantRenewalConflictV2 {
+  readonly version: 'station-broker-native-grant-renewal-conflict/v2';
+  readonly renewalId: string;
+  readonly currentExpiresAt: number;
+}
+
 export const SELF_HOSTED_BROKER_INVITATION_VERSION =
   'station-broker-route-invitation/v1' as const;
 export const SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION =
@@ -158,3 +214,15 @@ export const SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION =
   'station-broker-native-connection-answer/v2' as const;
 export const SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION =
   'station-broker-native-grant-retire/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION =
+  'station-broker-native-request-proof/v1' as const;
+export const SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE =
+  'station-broker-native-request+jws' as const;
+export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION =
+  'station-broker-native-grant-renew/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION =
+  'station-broker-native-grant-renewed/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION =
+  'station-broker-native-grant-renewal-conflict/v2' as const;
+export const SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_HEADER =
+  'X-Station-Native-Proof' as const;

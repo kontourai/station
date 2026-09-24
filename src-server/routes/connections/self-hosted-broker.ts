@@ -1,6 +1,7 @@
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOpenV2,
+  SelfHostedBrokerNativeGrantRenewV2,
   SelfHostedBrokerNativeRedemptionProofV2,
   SelfHostedBrokerNativeRouteInvitationV2,
   SelfHostedBrokerNativeScopeV2,
@@ -10,6 +11,8 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_ANSWER_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OFFER_VERSION,
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { type Context, Hono } from 'hono';
@@ -18,6 +21,7 @@ import type {
   BrokerScope,
   SelfHostedBrokerService,
 } from '../../services/connections/self-hosted-broker-service.js';
+import { NativeGrantRenewalConflict } from '../../services/connections/self-hosted-broker-service.js';
 
 export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
   const app = new Hono();
@@ -29,7 +33,11 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     const allowedOrigin = Boolean(origin && service.isOriginAllowed(origin));
     if (c.req.method === 'OPTIONS') {
       const pathname = new URL(c.req.url).pathname;
-      if (/\/native\/(?:connections(?:\/.*)?|grants\/retire)$/.test(pathname))
+      if (
+        /\/native\/(?:connections(?:\/.*)?|grants\/(?:retire|renew))$/.test(
+          pathname,
+        )
+      )
         return c.json({ error: 'broker_credential_refused' }, 401);
       const redeem = pathname.endsWith('/grants/redeem');
       const headers = c.req
@@ -100,9 +108,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       c.req.header('content-type')?.toLowerCase() !== 'application/json'
     )
       throw new Error('broker_credential_refused');
+    let rawBody: Uint8Array;
     let body: unknown;
     try {
-      body = await c.req.json();
+      rawBody = new Uint8Array(await c.req.arrayBuffer());
+      body = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(rawBody),
+      );
     } catch {
       throw new Error('invalid_request');
     }
@@ -112,10 +124,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       .header('authorization')
       ?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
     const id = c.req.header('x-broker-credential-id');
-    if (!secret || !id) throw new Error('broker_credential_refused');
+    const proof = c.req.header('x-station-native-proof');
+    if (!secret || !id || !proof) throw new Error('broker_credential_refused');
     return {
       body: body as Record<string, unknown>,
       credential: { id, secret },
+      proof,
+      rawBody,
     };
   };
   function exact(
@@ -132,6 +147,15 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       try {
         return c.json(await fn(c));
       } catch (error) {
+        if (error instanceof NativeGrantRenewalConflict)
+          return c.json(
+            {
+              version: SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION,
+              renewalId: error.renewalId,
+              currentExpiresAt: error.currentExpiresAt,
+            },
+            409,
+          );
         const candidate = error instanceof Error ? error.message : '';
         const known = new Set([
           'invalid_request',
@@ -159,12 +183,18 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
           'stale_generation',
           'lease_conflict',
           'pending_limit',
+          'native_proof_limit',
           'invitation_limit',
           'grant_limit',
           'invitation_refused',
           'native_invitation_refused',
           'grant_unavailable',
           'connection_replayed',
+          'native_proof_replayed',
+          'native_grant_renewal_conflict',
+          'native_grant_renewal_not_due',
+          'native_grant_renewal_expired',
+          'native_grant_renewal_limit',
           'connection_unavailable',
         ]);
         const message = known.has(candidate) ? candidate : 'broker_unavailable';
@@ -185,50 +215,124 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
   app.post(
     '/native/connections/open',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['scope', 'surface', 'connection']);
       const connection = body.connection;
       exact(connection, ['version', 'nonce', 'offerSdp']);
-      return service.openNativeConnection(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-        connection as unknown as SelfHostedBrokerNativeConnectionOpenV2,
-      );
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/connections/open',
+        purpose: 'station-native-connection-open-v2',
+        operation: () =>
+          service.openNativeConnection(
+            nativeScope,
+            credential,
+            surface,
+            connection as unknown as SelfHostedBrokerNativeConnectionOpenV2,
+          ),
+      });
     }),
   );
   app.post(
     '/native/connections/read',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['version', 'scope', 'surface', 'nonce']);
       if (body.version !== SELF_HOSTED_BROKER_NATIVE_CONNECTION_READ_VERSION)
         throw new Error('invalid_native_connection');
       if (typeof body.nonce !== 'string') throw new Error('invalid_nonce');
-      return service.readNativeConnection(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-        body.nonce,
-      );
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/connections/read',
+        purpose: 'station-native-connection-read-v2',
+        operation: () =>
+          service.readNativeConnection(
+            nativeScope,
+            credential,
+            surface,
+            body.nonce as string,
+          ),
+      });
     }),
   );
   app.post(
     '/native/grants/retire',
     invoke(async (c) => {
-      const { body, credential } = await parseNativeClient(c);
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
       exact(body, ['version', 'scope', 'surface']);
       if (body.version !== SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION)
         throw new Error('invalid_native_connection');
-      service.retireOwnNativeClientGrant(
-        body.scope as SelfHostedBrokerNativeScopeV2,
+      const nativeScope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      return service.withNativeRequestProof({
+        scope: nativeScope,
         credential,
-        body.surface as SelfHostedBrokerNativeClientSurfaceV2,
-      );
-      return {
-        version: SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
-        retired: true,
-      };
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/grants/retire',
+        purpose: 'station-native-grant-retire-v2',
+        allowRetired: true,
+        operation: () => {
+          service.retireOwnNativeClientGrant(nativeScope, credential, surface);
+          return {
+            version: SELF_HOSTED_BROKER_NATIVE_GRANT_RETIRE_VERSION,
+            retired: true,
+          };
+        },
+      });
+    }),
+  );
+  app.post(
+    '/native/grants/renew',
+    invoke(async (c) => {
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
+      exact(body, [
+        'version',
+        'scope',
+        'surface',
+        'renewalId',
+        'expectedExpiresAt',
+      ]);
+      if (body.version !== SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION)
+        throw new Error('invalid_native_connection');
+      const scope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      const renewal = body as unknown as SelfHostedBrokerNativeGrantRenewV2;
+      return service.withNativeRequestProof({
+        scope,
+        credential,
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: new URL(c.req.url).origin,
+        path: '/broker/v1/native/grants/renew',
+        purpose: 'station-native-grant-renew-v2',
+        allowExpired: true,
+        operation: (claims) =>
+          service.renewNativeClientGrant(
+            scope,
+            credential,
+            surface,
+            renewal,
+            claims.bodySha256,
+          ),
+      });
     }),
   );
   app.post(
