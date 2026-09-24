@@ -44,6 +44,8 @@ const RENEW_PATH: &str = "/broker/v1/native/grants/renew";
 const NATIVE_INVITATION_VERSION: &str = "station-broker-native-route-invitation/v2";
 const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
+const NATIVE_RENEW_VERSION: &str = "station-broker-native-grant-renew/v2";
+const NATIVE_RENEWED_VERSION: &str = "station-broker-native-grant-renewed/v2";
 const MAX_INVITATION_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GRANT_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -347,10 +349,28 @@ struct NativeRelayCredential {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct NativeGrantRenewalIntent {
+pub(crate) struct NativeGrantRenewalIntent {
     renewal_id: String,
     expected_expires_at: u64,
     request_body: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeGrantRenewalReceipt {
+    version: String,
+    renewal_id: String,
+    expires_at: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeGrantRenewalRequestBody {
+    version: String,
+    scope: NativeRelayScopeV2,
+    surface: NativeRelayClientSurfaceV2,
+    renewal_id: String,
+    expected_expires_at: u64,
 }
 
 pub(crate) struct NativeGrantRequestRecord {
@@ -516,7 +536,7 @@ pub(crate) trait NativeGrantCustody: Send + Sync {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         intent: &NativeGrantRenewalIntent,
-        renewed_expires_at: u64,
+        receipt: &NativeGrantRenewalReceipt,
         now: u64,
     ) -> RedemptionResult<NativeRelayGrantMetadata>;
 }
@@ -788,6 +808,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         if stored.schema_version != 1
             || stored.binding != binding
             || !same_native_grant(&stored.grant, grant)
+            || validate_native_renewal_intent(&intent, &stored.grant).is_err()
         {
             return Err(NativeRedemptionError::GrantStore);
         }
@@ -813,7 +834,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         intent: &NativeGrantRenewalIntent,
-        renewed_expires_at: u64,
+        receipt: &NativeGrantRenewalReceipt,
         now: u64,
     ) -> RedemptionResult<NativeRelayGrantMetadata> {
         let _global = NATIVE_GRANT_VAULT_LOCK
@@ -844,14 +865,26 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
             || stored.binding != binding
             || !same_native_grant(&stored.grant, grant)
             || stored.renewal_intent.as_ref() != Some(intent)
-            || renewed_expires_at <= now
-            || renewed_expires_at > now.saturating_add(MAX_GRANT_AGE_MS)
+            || validate_native_renewal_intent(intent, &stored.grant).is_err()
+            || receipt.version != NATIVE_RENEWED_VERSION
+            || receipt.renewal_id != intent.renewal_id
+            || receipt.expires_at <= intent.expected_expires_at
+            || receipt.expires_at
+                > intent
+                    .expected_expires_at
+                    .saturating_add(NATIVE_GRANT_RENEWAL_GRACE_MS)
+                    .saturating_add(MAX_GRANT_AGE_MS)
+            || receipt.expires_at > now.saturating_add(MAX_GRANT_AGE_MS)
+            || now.saturating_sub(receipt.expires_at) > NATIVE_GRANT_RENEWAL_GRACE_MS
         {
             return Err(NativeRedemptionError::GrantStore);
         }
-        stored.grant.expires_at = renewed_expires_at;
+        stored.grant.expires_at = receipt.expires_at;
         stored.renewal_intent = None;
-        validate_native_grant(owner, &stored.grant, now)?;
+        // The broker can replay this exact receipt during its seven-day
+        // idempotency grace. Preserve its expiry and clear the intent so a
+        // following renewal can proceed even if the replayed grant is stale.
+        validate_native_grant(owner, &stored.grant, receipt.expires_at - 1)?;
         let serialized = Zeroizing::new(
             serde_json::to_string(&stored).map_err(|_| NativeRedemptionError::GrantStore)?,
         );
@@ -1166,10 +1199,10 @@ impl<B: NativeGrantBackend> NativeGrantCustody for NativeRelayGrantVault<B> {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         intent: &NativeGrantRenewalIntent,
-        renewed_expires_at: u64,
+        receipt: &NativeGrantRenewalReceipt,
         now: u64,
     ) -> RedemptionResult<NativeRelayGrantMetadata> {
-        NativeRelayGrantVault::complete_renewal(self, owner, grant, intent, renewed_expires_at, now)
+        NativeRelayGrantVault::complete_renewal(self, owner, grant, intent, receipt, now)
     }
 }
 
@@ -1974,6 +2007,34 @@ fn native_route_for_grant(grant: &NativeRelayClientGrantV2) -> NativeRelayGrantR
     }
 }
 
+fn validate_native_renewal_intent(
+    intent: &NativeGrantRenewalIntent,
+    grant: &NativeRelayClientGrantV2,
+) -> RedemptionResult<()> {
+    if intent.renewal_id.len() < 8
+        || intent.renewal_id.len() > 128
+        || !intent
+            .renewal_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        || intent.expected_expires_at != grant.expires_at
+        || intent.request_body.len() > MAX_REQUEST_BYTES
+    {
+        return Err(NativeRedemptionError::GrantRenewalConflict);
+    }
+    let body: NativeGrantRenewalRequestBody = serde_json::from_slice(&intent.request_body)
+        .map_err(|_| NativeRedemptionError::GrantRenewalConflict)?;
+    if body.version != NATIVE_RENEW_VERSION
+        || body.scope != grant.scope
+        || body.surface != grant.surface
+        || body.renewal_id != intent.renewal_id
+        || body.expected_expires_at != intent.expected_expires_at
+    {
+        return Err(NativeRedemptionError::GrantRenewalConflict);
+    }
+    Ok(())
+}
+
 fn native_request_identity(grant: &NativeRelayClientGrantV2) -> NativeBrokerRequestIdentity<'_> {
     NativeBrokerRequestIdentity {
         broker_origin: &grant.broker_origin,
@@ -2572,6 +2633,81 @@ mod tests {
         impl Fn() -> u64,
     > {
         NativeRelayRedemptionService::new(authority, proof_keys, http, grants, || NOW)
+    }
+
+    fn renewal_intent_for(
+        grant: &NativeRelayClientGrantV2,
+        renewal_id: &str,
+    ) -> NativeGrantRenewalIntent {
+        let request = NativeGrantRenewalRequestBody {
+            version: NATIVE_RENEW_VERSION.to_owned(),
+            scope: grant.scope.clone(),
+            surface: grant.surface.clone(),
+            renewal_id: renewal_id.to_owned(),
+            expected_expires_at: grant.expires_at,
+        };
+        NativeGrantRenewalIntent {
+            renewal_id: renewal_id.to_owned(),
+            expected_expires_at: grant.expires_at,
+            request_body: serde_json::to_vec(&request).unwrap(),
+        }
+    }
+
+    #[test]
+    fn delayed_exact_renewal_receipt_clears_intent_and_allows_fresh_renewal() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let original = sample_grant(&prepared, NOW + 12 * 60 * 60 * 1000);
+        let metadata = grants.store(&prepared.owner, &original, NOW).unwrap();
+        let intent = renewal_intent_for(&original, "renewal-first-01");
+        grants
+            .save_renewal_intent(&prepared.owner, &original, intent.clone())
+            .unwrap();
+
+        let receipt = NativeGrantRenewalReceipt {
+            version: NATIVE_RENEWED_VERSION.to_owned(),
+            renewal_id: intent.renewal_id.clone(),
+            expires_at: NOW + 24 * 60 * 60 * 1000,
+        };
+        let retry_at = NOW + 36 * 60 * 60 * 1000;
+        assert!(receipt.expires_at < retry_at);
+        let wrong_receipt = NativeGrantRenewalReceipt {
+            renewal_id: "renewal-other-01".to_owned(),
+            ..receipt.clone()
+        };
+        assert_eq!(
+            grants.complete_renewal(
+                &prepared.owner,
+                &original,
+                &intent,
+                &wrong_receipt,
+                retry_at,
+            ),
+            Err(NativeRedemptionError::GrantStore)
+        );
+
+        let completed = grants
+            .complete_renewal(&prepared.owner, &original, &intent, &receipt, retry_at)
+            .unwrap();
+        assert_eq!(completed.expires_at, receipt.expires_at);
+        let context = prepared.authority.0.lock().unwrap().clone();
+        let recovered = grants
+            .load_request_grant(&prepared.owner, &context, retry_at, true)
+            .unwrap();
+        assert_eq!(recovered.grant.expires_at, receipt.expires_at);
+        assert!(recovered.renewal_intent.is_none());
+
+        let next_intent = renewal_intent_for(&recovered.grant, "renewal-next-01");
+        grants
+            .save_renewal_intent(&prepared.owner, &recovered.grant, next_intent.clone())
+            .unwrap();
+        assert_ne!(next_intent.renewal_id, intent.renewal_id);
+        assert_eq!(
+            grants
+                .metadata(&prepared.owner, &metadata.route, retry_at)
+                .unwrap(),
+            None
+        );
     }
 
     #[test]
