@@ -6036,7 +6036,7 @@ describe('Orchestration Routes', () => {
     async function raceEventDuringSnapshot(
       request: (
         app: ReturnType<typeof createOrchestrationRoutes>,
-      ) => Promise<Response>,
+      ) => Response | Promise<Response>,
     ) {
       let releaseSnapshotFetch: () => void = () => {};
       const gate = new Promise<void>((resolve) => {
@@ -6054,7 +6054,7 @@ describe('Orchestration Routes', () => {
         eventBus,
         logger: { debug: vi.fn() },
       });
-      const resPromise = request(app);
+      const resPromise = Promise.resolve(request(app));
       await new Promise((resolve) => setTimeout(resolve, 0));
       // Appended and emitted while the snapshot is being built — it is not
       // in the (already-read) session list.
