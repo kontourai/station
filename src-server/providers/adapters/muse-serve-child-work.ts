@@ -191,9 +191,7 @@ function parseChild(value: unknown): MuseServeWorkflowChild | undefined {
 }
 
 /** A child's `terminal` (turn vocabulary, wire-open), as child work. */
-function mapMuseChildTerminal(
-  terminal: string,
-): ChildWorkTerminalStatus {
+function mapMuseChildTerminal(terminal: string): ChildWorkTerminalStatus {
   switch (terminal) {
     case 'completed':
       return 'completed';

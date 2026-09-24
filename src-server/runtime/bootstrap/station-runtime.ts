@@ -943,9 +943,9 @@ export class StationRuntime {
   // Muse Code runs one `muse serve` host per session (#2452), so approvals
   // reach Station and workflow subagents appear as child work; a session
   // whose host cannot be used falls back to one `muse exec` per turn. Muse's
-  // config (credential, settings, model) is read from the user's own config
-  // home either way, so there is no app-home/credential-profile closure to
-  // wire here. The logger closure reads `this.logger` lazily for the same
+  // config (credential, settings, model) and data home (memory, plugins,
+  // session log) are the user's own either way — no `dataHome` override here
+  // — so there is no app-home/credential-profile closure to wire. The logger closure reads `this.logger` lazily for the same
   // reason the Codex one above does.
   private museAdapter = new MuseAdapter({
     serve: {},

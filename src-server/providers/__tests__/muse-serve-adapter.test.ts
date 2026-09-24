@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import {
   MUSE_APPROVAL_EXPIRED_CODE,
+  MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -29,6 +30,7 @@ import {
   buildMuseServeArgs,
   MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
   MuseAdapter,
+  museServeEnvOverrides,
 } from '../adapters/muse-adapter.js';
 import { MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX } from '../adapters/muse-serve-child-work.js';
 import { museServeApprovalPlan } from '../adapters/muse-serve-session.js';
@@ -62,7 +64,10 @@ afterEach(async () => {
 function harness(
   options: {
     approvalTimeoutMs?: number;
+    approvalEscalationMs?: number;
     spawnHost?: (args: string[], index: number) => FakeMuseServeHost;
+    terminateHost?: (host: FakeMuseServeHost) => Promise<void>;
+    onRelease?: (host: FakeMuseServeHost) => void;
     env?: NodeJS.ProcessEnv;
   } = {},
 ): Harness {
@@ -77,13 +82,18 @@ function harness(
           options.spawnHost?.(args, hosts.length) ??
           new FakeMuseServeHost(args, 5151 + hosts.length);
         hosts.push(host);
-        return { process: host, release: () => {} };
+        return { process: host, release: () => options.onRelease?.(host) };
       },
       terminateHost: async (spawned) => {
-        (spawned.process as FakeMuseServeHost).exit(0);
+        const host = spawned.process as FakeMuseServeHost;
+        if (options.terminateHost) return options.terminateHost(host);
+        host.exit(0);
       },
       ...(options.approvalTimeoutMs !== undefined
         ? { approvalTimeoutMs: options.approvalTimeoutMs }
+        : {}),
+      ...(options.approvalEscalationMs !== undefined
+        ? { approvalEscalationMs: options.approvalEscalationMs }
         : {}),
       handshakeTimeoutMs: 2_000,
       requestTimeoutMs: 2_000,
@@ -844,6 +854,8 @@ describe('#2452 muse serve: a posture change of sandbox re-hosts the session', (
     await answer('approval/listPending', { approvals: [], userInputs: [] });
     const setMode = await answer('session/setApprovalMode', {
       status: 'accepted',
+      applyOutcome: 'completed',
+      effectiveMode: { mode: 'allowAll', source: 'approvalReconfigure' },
     });
     expect(setMode.params?.mode).toBe('allowAll');
     await answer('turn/start', {
@@ -976,5 +988,340 @@ describe('#2452 muse serve: exec stays the fallback', () => {
         (event) => event.code === MUSE_SERVE_UNAVAILABLE_CODE,
       ),
     ).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------ fix round
+
+const APPROVE_REQUESTED = () =>
+  loadMuseServeCapture('workflow-child-approve').find(
+    (frame) => frame.msg.method === 'approval/requested',
+  )?.msg as { params: Record<string, unknown> };
+
+/** Replays the approve capture up to (not including) its first decide. */
+async function upToFirstDecide(h: Harness) {
+  const stopAt = captureIndex(
+    'workflow-child-approve',
+    (msg, dir) => dir === 'c2s' && msg.method === 'approval/decide',
+  );
+  await run(h, 'workflow-child-approve', { approvalMode: 'ask', stopAt });
+  return h.hosts[0];
+}
+
+function reply(host: FakeMuseServeHost, request: SentFrame, result: unknown) {
+  host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+}
+
+function reject(host: FakeMuseServeHost, request: SentFrame, code = -32053) {
+  host.writeFrame({
+    jsonrpc: '2.0',
+    id: request.id,
+    error: { code, message: 'stale requirement' },
+  });
+}
+
+describe('#2452 fix round: no approval stays stuck', () => {
+  test('R1: a deadline decline muse rejects escalates: retried once, then the subagent is stopped, then the host is ended', async () => {
+    const h = harness({ approvalTimeoutMs: 60, approvalEscalationMs: 60 });
+    const stopAt = captureIndex(
+      'approval-unanswered-workflow-cancel',
+      (msg, dir) => dir === 'c2s' && msg.method === 'approval/listPending',
+    );
+    await run(h, 'approval-unanswered-workflow-cancel', {
+      approvalMode: 'ask',
+      stopAt,
+    });
+    const host = h.hosts[0];
+    const consumed = new Set<SentFrame>();
+    const first = await host.nextRequest('approval/decide', consumed);
+    consumed.add(first);
+    expect(first.params?.choiceId).toBe('abort');
+    reject(host, first);
+    // The retry re-reads the approval, then declines it again.
+    const listed = await host.nextRequest('approval/listPending', consumed);
+    consumed.add(listed);
+    const pendingFrame = loadMuseServeCapture(
+      'approval-unanswered-workflow-cancel',
+    ).find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        JSON.stringify(frame.msg).includes('"approvals":[{'),
+    )?.msg as { result: unknown };
+    reply(host, listed, pendingFrame.result);
+    const second = await host.nextRequest('approval/decide', consumed);
+    consumed.add(second);
+    expect(second.params?.choiceId).toBe('abort');
+    reject(host, second);
+    // Rejected twice: stop the subagent that asked.
+    const stop = await host.nextRequest('subagent/stop', consumed);
+    expect(stop.params?.subagentId).toBe(
+      '00000000-0000-7000-8000-000000000022',
+    );
+    reply(host, stop, { status: 'accepted' });
+    // Still no approval/resolved within the bound: the host is ended.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(host.stdinEnded).toBe(true);
+    const steps = of(h.events, 'runtime.warning')
+      .filter((event) => event.code === MUSE_APPROVAL_EXPIRED_CODE)
+      .map((event) => event.details?.step);
+    expect(steps).toEqual([undefined, 1, 2]);
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ status: 'expired' }),
+    ]);
+  });
+
+  test('R1: a rejected decide is retried once, on the requirement listPending names now', async () => {
+    const h = harness();
+    const host = await upToFirstDecide(h);
+    await h.adapter.respondToRequest(THREAD, APPROVAL, 'accept');
+    const consumed = new Set<SentFrame>();
+    const first = await host.nextRequest('approval/decide', consumed);
+    consumed.add(first);
+    expect(first.params?.requirementId).toMatchObject({ sourceIndex: 0 });
+    reject(host, first);
+    const listed = await host.nextRequest('approval/listPending', consumed);
+    const requested = APPROVE_REQUESTED().params;
+    const subject = requested.subject as { stages: Record<string, unknown>[] };
+    reply(host, listed, {
+      approvals: [
+        {
+          ...requested,
+          currentRequirementId: { approvalId: APPROVAL, sourceIndex: 1 },
+          subject: {
+            ...subject,
+            stages: [
+              { ...subject.stages[0], resolution: { kind: 'allowOnce' } },
+              subject.stages[1],
+            ],
+          },
+        },
+      ],
+      userInputs: [],
+    });
+    const retried = await host.nextRequest('approval/decide', consumed);
+    expect(retried.params).toMatchObject({
+      choiceId: 'allow_once',
+      requirementId: { approvalId: APPROVAL, sourceIndex: 1 },
+    });
+  });
+
+  test('R1: an approval the user accepted is never expired by the deadline mid-walk', async () => {
+    const h = harness({ approvalTimeoutMs: 60 });
+    const host = await upToFirstDecide(h);
+    await h.adapter.respondToRequest(THREAD, APPROVAL, 'accept');
+    await host.nextRequest('approval/decide', new Set());
+    // Muse is slow to answer; the deadline passes.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(of(h.events, 'request.resolved')).toEqual([]);
+    expect(
+      of(h.events, 'runtime.warning').filter(
+        (event) => event.code === MUSE_APPROVAL_EXPIRED_CODE,
+      ),
+    ).toEqual([]);
+    expect(
+      host.sent.filter((frame) => frame.method === 'approval/decide'),
+    ).toHaveLength(1);
+  });
+});
+
+describe('#2452 fix round: the approval mode muse applied is checked', () => {
+  test('R2: a setApprovalMode reply with another effective mode refuses the turn, visibly', async () => {
+    const h = harness();
+    await run(h, 'workflow-child-deny', {
+      approvalMode: 'ask',
+      decide: 'decline',
+    });
+    const host = h.hosts[0];
+    const sending = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: 'again',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    const setMode = await host.nextRequest(
+      'session/setApprovalMode',
+      new Set(),
+    );
+    expect(setMode.params?.mode).toBe('allowAll');
+    reply(host, setMode, {
+      status: 'accepted',
+      applyOutcome: 'deferred',
+      effectiveMode: { mode: 'promptUnmatched', source: 'startup' },
+    });
+    await expect(sending).rejects.toThrow('did not apply');
+    await settle();
+    expect(
+      host.sent.filter((frame) => frame.method === 'turn/start'),
+    ).toHaveLength(1);
+    expect(
+      of(h.events, 'runtime.warning').some(
+        (event) => event.code === MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('#2452 fix round: the walk answers only what the user saw', () => {
+  test('R4: an update that changes the command stops the walk and puts the new command to the user', async () => {
+    const h = harness();
+    const host = await upToFirstDecide(h);
+    await h.adapter.respondToRequest(THREAD, APPROVAL, 'accept');
+    const consumed = new Set<SentFrame>();
+    const first = await host.nextRequest('approval/decide', consumed);
+    consumed.add(first);
+    reply(host, first, {
+      status: 'accepted',
+      approvalId: APPROVAL,
+      terminal: false,
+    });
+    const updated = loadMuseServeCapture('workflow-child-approve').find(
+      (frame) => frame.msg.method === 'approval/updated',
+    )?.msg as { params: Record<string, unknown> };
+    const subject = updated.params.subject as Record<string, unknown>;
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/updated',
+      params: {
+        ...updated.params,
+        subject: { ...subject, command: 'rm -rf ./stamp.txt' },
+      },
+    });
+    await settle();
+    expect(
+      host.sent.filter((frame) => frame.method === 'approval/decide'),
+    ).toHaveLength(1);
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId: APPROVAL,
+        status: 'cancelled',
+        response: { reason: 'subject-changed' },
+      }),
+    ]);
+    const opened = of(h.events, 'request.opened');
+    expect(opened).toHaveLength(2);
+    expect(opened[1].requestId).not.toBe(APPROVAL);
+    expect(opened[1].payload?.command).toBe('rm -rf ./stamp.txt');
+  });
+});
+
+describe('#2452 fix round: host ownership and data home', () => {
+  test('R5: a host Station could not confirm stopped keeps its ownership record until it exits', async () => {
+    const released: FakeMuseServeHost[] = [];
+    const h = harness({
+      terminateHost: async () => {
+        throw new Error('Process tree did not confirm exit after SIGKILL.');
+      },
+      onRelease: (host) => released.push(host),
+    });
+    const host = await upToFirstDecide(h);
+    await expect(h.adapter.stopSession(THREAD)).rejects.toThrow(
+      'could not confirm',
+    );
+    // stdin was closed, but the fake exits only when told to.
+    expect(released).toEqual([]);
+    host.exit(0);
+    await settle();
+    expect(released).toEqual([host]);
+  });
+
+  test("R6: production passes no data home, so the host uses the user's own; an override is explicit", () => {
+    expect(museServeEnvOverrides()).toEqual({});
+    expect(museServeEnvOverrides('/isolated/data')).toEqual({
+      XDG_DATA_HOME: '/isolated/data',
+    });
+  });
+});
+
+describe('#2452 fix round: regressions from the verifier', () => {
+  test('I2: acceptForSession on bash does not auto-allow a different tool', async () => {
+    const h = harness();
+    await run(h, 'workflow-child-approve', {
+      approvalMode: 'ask',
+      decide: 'acceptForSession',
+    });
+    const id = '00000000-0000-7000-8000-0000000000bb';
+    const host = h.hosts[0];
+    const before = host.sent.length;
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/requested',
+      params: {
+        ...APPROVE_REQUESTED().params,
+        approvalId: id,
+        toolName: 'write_file',
+        currentRequirementId: { approvalId: id, sourceIndex: 0 },
+        subject: {
+          kind: 'shell',
+          command: 'x',
+          stages: [
+            {
+              requirementId: { approvalId: id, sourceIndex: 0 },
+              argv: ['x'],
+              resolution: { kind: 'unresolved' },
+            },
+          ],
+        },
+      },
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(2);
+    expect(
+      host.sent
+        .slice(before)
+        .filter((frame) => frame.method === 'approval/decide'),
+    ).toEqual([]);
+  });
+
+  for (const target of ['ask', 'auto'] as const) {
+    test(`I3: never → ${target} re-hosts onto a sandboxed host`, async () => {
+      const h = harness();
+      await run(h, 'workflow-child-deny', {
+        approvalMode: 'never',
+        decide: 'decline',
+      });
+      expect(h.hosts[0].args).toEqual(['serve', '--disable-sandbox']);
+      const sending = h.adapter.sendTurn({
+        threadId: THREAD,
+        input: 'again',
+        modelOptions: { approvalMode: target },
+      });
+      sending.catch(() => {});
+      for (let attempt = 0; attempt < 200 && !h.hosts[1]; attempt += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(h.hosts[1]?.args).toEqual(['serve']);
+      expect(h.hosts[0].stdinEnded).toBe(true);
+    });
+  }
+
+  async function pendingUnanswered(h: Harness) {
+    const stopAt = captureIndex(
+      'approval-unanswered-workflow-cancel',
+      (msg, dir) => dir === 'c2s' && msg.method === 'approval/listPending',
+    );
+    await run(h, 'approval-unanswered-workflow-cancel', {
+      approvalMode: 'ask',
+      stopAt,
+    });
+    expect(of(h.events, 'request.opened')).toHaveLength(1);
+  }
+
+  test('I5: a host exit resolves a pending approval cancelled', async () => {
+    const h = harness();
+    await pendingUnanswered(h);
+    h.hosts[0].exit(3);
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ status: 'cancelled' }),
+    ]);
+  });
+
+  test('I15: stopping the session resolves a pending approval cancelled', async () => {
+    const h = harness();
+    await pendingUnanswered(h);
+    await h.adapter.stopSession(THREAD);
+    await settle();
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ status: 'cancelled' }),
+    ]);
   });
 });

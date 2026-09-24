@@ -714,6 +714,15 @@ export const MUSE_APPROVAL_EXPIRED_CODE = 'muse-approval-expired';
 export const MUSE_SERVE_UNAVAILABLE_CODE = 'muse-serve-unavailable';
 
 /**
+ * #2452: `runtime.warning` code for a `muse serve` session whose host did not
+ * apply a requested approval mode (`session/setApprovalMode` answered with a
+ * different `effectiveMode`). The turn that needed the mode is refused, never
+ * run under the mode muse kept.
+ */
+export const MUSE_APPROVAL_MODE_NOT_APPLIED_CODE =
+  'muse-approval-mode-not-applied';
+
+/**
  * #2452: `runtime.error` code for a `muse serve` turn the host process ended
  * by exiting (it is respawned, and the session resumed, on the next send).
  */

@@ -4,6 +4,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MUSE_APPROVAL_EXPIRED_CODE,
+  MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
@@ -74,10 +75,9 @@ type MuseServeLogger = Pick<Logger, 'warn' | 'info'>;
  * mapping against, so the session falls back to `muse exec` (and says so)
  * rather than guessing at approval and child-work shapes.
  */
-const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> =
-  new Set([
-    'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
-  ]);
+const MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS: ReadonlySet<string> = new Set([
+  'sha256:7469c9e352e67def4a59df7e439984d7194fa351e1c8b7abb34060fd977ced81',
+]);
 
 /**
  * Station's bound on an unanswered Muse approval. `muse serve` never expires
@@ -174,6 +174,11 @@ export interface MuseServeSessionDeps {
   terminateHost: (spawned: MuseServeSpawnResult) => Promise<void>;
   newCommandId: () => string;
   approvalTimeoutMs: number;
+  /**
+   * How long Station waits for muse to act on a deadline decline before it
+   * escalates (stop the child or interrupt the turn, then re-host).
+   */
+  approvalEscalationMs: number;
   handshakeTimeoutMs: number;
   requestTimeoutMs: number;
   interruptSettleMs: number;
@@ -261,6 +266,40 @@ interface PendingApproval {
   lastDecidedKey?: string;
   stagesDecided: number;
   deadline?: ReturnType<typeof setTimeout>;
+  /** The subject the published card showed (see `approvalSubjectSignature`). */
+  subjectSignature?: string;
+  /** A Station turn this approval belongs to (parent approvals only). */
+  turnId?: string;
+  /** Requirement keys whose rejected decide was already retried once. */
+  retriedKeys: Set<string>;
+  /** After a deadline decline: 0 none yet, 1 child/turn stopped, 2 re-hosted. */
+  escalationStep: number;
+  escalation?: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * What an approval asks for, as the user saw it: the subject's kind, command,
+ * workspace and every stage's argv. Stage resolutions and the offered choices
+ * are left out, because `approval/updated` legitimately changes those as a
+ * walk advances; anything else changing means the request is no longer the
+ * one the user answered.
+ */
+function approvalSubjectSignature(
+  params: Record<string, unknown>,
+): string | undefined {
+  const subject = isRecord(params.subject) ? params.subject : undefined;
+  if (!subject) return undefined;
+  const stages = Array.isArray(subject.stages)
+    ? subject.stages.map((stage) =>
+        isRecord(stage) && Array.isArray(stage.argv) ? stage.argv : null,
+      )
+    : null;
+  return JSON.stringify([
+    subject.kind ?? null,
+    subject.command ?? null,
+    subject.workspaceRoot ?? null,
+    stages,
+  ]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -454,11 +493,7 @@ export class MuseServeSession {
       const connection = this.requireConnection();
       const sessionId = this.requireMuseSessionId();
       if (plan.museMode !== this.plan.museMode) {
-        await this.refusingRequest(connection, 'session/setApprovalMode', {
-          commandId: this.deps.newCommandId(),
-          sessionId,
-          mode: plan.museMode,
-        });
+        await this.applyApprovalMode(connection, sessionId, plan);
       }
       this.plan = plan;
       if (input.modelId && input.modelId !== this.model) {
@@ -564,6 +599,9 @@ export class MuseServeSession {
     if (!pending || pending.resolvedPublished || pending.intent) {
       throw new Error(`Unknown Muse approval request: ${requestId}`);
     }
+    // Answered: the deadline is for requests nobody answered, and must not
+    // expire a walk the user already approved.
+    this.clearDeadline(pending);
     if (decision === 'acceptForSession') {
       this.approvedTools.add(pending.toolName);
     }
@@ -600,6 +638,7 @@ export class MuseServeSession {
     this.stopped = true;
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
+      this.clearEscalation(pending);
       this.publishResolved(pending, 'cancelled');
     }
     this.approvals.clear();
@@ -612,7 +651,11 @@ export class MuseServeSession {
       });
     }
     settleOpenMuseChildren(this.childWork, { close: true });
-    await this.closeHost();
+    if (!(await this.closeHost())) {
+      throw new Error(
+        'Muse session stop could not confirm that its host process stopped.',
+      );
+    }
   }
 
   // --------------------------------------------------------------- host
@@ -731,15 +774,7 @@ export class MuseServeSession {
         ? readString(session.approvalMode.mode)
         : undefined;
       if (mode !== this.plan.museMode) {
-        await host.connection.request(
-          'session/setApprovalMode',
-          {
-            commandId: this.deps.newCommandId(),
-            sessionId,
-            mode: this.plan.museMode,
-          },
-          { timeoutMs: this.deps.requestTimeoutMs },
-        );
+        await this.applyApprovalMode(host.connection, sessionId, this.plan);
       }
       await this.reseedPendingApprovals();
     } catch (error) {
@@ -766,17 +801,37 @@ export class MuseServeSession {
     }
   }
 
-  private async closeHost(): Promise<void> {
+  /**
+   * Ends the current host. Returns whether its termination was confirmed.
+   * Only a confirmed stop drops the owned-process record: a host Station
+   * could not confirm stopped keeps it, so the startup sweep can still reap
+   * it if it outlives Station, and it is released if it exits later.
+   */
+  private async closeHost(): Promise<boolean> {
     const host = this.host;
-    if (!host) return;
+    if (!host) return true;
     this.host = undefined;
     host.closing = true;
     host.connection.close();
     try {
       await this.deps.terminateHost(host.spawned);
-    } finally {
-      host.spawned.release?.();
+    } catch (error) {
+      this.deps.logger?.warn('Muse host termination was not confirmed', {
+        threadId: this.deps.threadId,
+        pid: host.spawned.process.pid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const processHandle = host.spawned.process;
+      if (
+        processHandle.exitCode === null &&
+        processHandle.signalCode === null
+      ) {
+        processHandle.once('exit', () => host.spawned.release?.());
+        return false;
+      }
     }
+    host.spawned.release?.();
+    return true;
   }
 
   private handleHostClose(epoch: number, info: MuseServeCloseInfo): void {
@@ -795,6 +850,15 @@ export class MuseServeSession {
       threadId: this.deps.threadId,
       code: info.code,
     });
+    this.settleAfterHostLoss(message);
+  }
+
+  /**
+   * Everything the lost host was running can no longer report: open turns
+   * fail visibly, pending approvals resolve cancelled, and running children
+   * settle unresolved. The next send re-hosts and resumes the session.
+   */
+  private settleAfterHostLoss(message: string): void {
     for (const turn of this.turns.values()) {
       if (turn.settled) continue;
       this.closeOpenTools(turn);
@@ -806,6 +870,7 @@ export class MuseServeSession {
     }
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
+      this.clearEscalation(pending);
       this.publishResolved(pending, 'cancelled');
     }
     this.approvals.clear();
@@ -1147,8 +1212,7 @@ export class MuseServeSession {
     if (!approvalId || this.stopped) return;
     const existing = this.approvals.get(approvalId);
     if (existing) {
-      this.updateApproval(existing, params);
-      this.continueWalk(existing);
+      this.onApprovalRestated(existing, params);
       return;
     }
     const origin = isRecord(params.subagentOrigin) ? params.subagentOrigin : {};
@@ -1168,17 +1232,24 @@ export class MuseServeSession {
       resolvedPublished: false,
       deciding: false,
       stagesDecided: 0,
+      retriedKeys: new Set(),
+      escalationStep: 0,
     };
+    const signature = approvalSubjectSignature(params);
+    if (signature) pending.subjectSignature = signature;
+    const turnId = readString(params.turnId);
+    if (turnId && this.turns.has(turnId)) pending.turnId = turnId;
     this.updateApproval(pending, params);
     this.approvals.set(approvalId, pending);
-    this.armDeadline(pending);
     if (this.approvedTools.has(toolName)) {
-      // "Allow for this session" covers every later call of the tool (#2299);
+      // "Allow for this session" covers every later call of the tool (#2299,
+      // Station's rule for every engine: trust the tool, not the call);
       // denies are never remembered. Walked with one-time allows only.
       pending.intent = 'accept';
       this.continueWalk(pending);
       return;
     }
+    this.armDeadline(pending);
     this.publishOpened(pending, params);
   }
 
@@ -1298,6 +1369,49 @@ export class MuseServeSession {
     const approvalId = readString(params.approvalId);
     const pending = approvalId ? this.approvals.get(approvalId) : undefined;
     if (!pending) return;
+    this.onApprovalRestated(pending, params);
+  }
+
+  /**
+   * A later statement of a known approval (`approval/updated`, a re-issued
+   * `approval/requested`, a `listPending` read). A walk only continues while
+   * the subject is the one the user answered: if it changed, the answer does
+   * not carry over. The old request resolves `cancelled` and the new subject
+   * is put to the user as a new request.
+   */
+  private onApprovalRestated(
+    pending: PendingApproval,
+    params: Record<string, unknown>,
+  ): void {
+    const signature = approvalSubjectSignature(params);
+    if (
+      signature &&
+      pending.subjectSignature &&
+      signature !== pending.subjectSignature
+    ) {
+      pending.subjectSignature = signature;
+      this.updateApproval(pending, params);
+      if (!pending.published) {
+        // A session grant, never shown to anyone: the grant is for the tool,
+        // which has not changed, so the walk continues (#2299).
+        this.continueWalk(pending);
+        return;
+      }
+      this.publishResolved(pending, 'cancelled', {
+        reason: 'subject-changed',
+      });
+      pending.requestId = `${pending.approvalId}:${crypto.randomUUID()}`;
+      pending.published = false;
+      pending.resolvedPublished = false;
+      pending.intent = undefined;
+      pending.lastDecidedKey = undefined;
+      this.armDeadline(pending);
+      this.publishOpened(pending, {
+        ...params,
+        ...(pending.turnId ? { turnId: pending.turnId } : {}),
+      });
+      return;
+    }
     this.updateApproval(pending, params);
     this.continueWalk(pending);
   }
@@ -1308,6 +1422,7 @@ export class MuseServeSession {
     if (!pending) return;
     this.approvals.delete(pending.approvalId);
     this.clearDeadline(pending);
+    this.clearEscalation(pending);
     const decision = readString(params.decision);
     this.publishResolved(
       pending,
@@ -1370,12 +1485,164 @@ export class MuseServeSession {
       // the next one. Either way Station's own outcome is already published.
       pending.lastDecidedKey = undefined;
       this.continueWalk(pending);
+      // If muse does not act on the decline (a rejected decide, or no
+      // `approval/resolved`), Station escalates rather than show `expired`
+      // over a request muse is still waiting on.
+      this.armEscalation(pending);
     }, this.deps.approvalTimeoutMs);
   }
 
   private clearDeadline(pending: PendingApproval): void {
     if (pending.deadline) clearTimeout(pending.deadline);
     pending.deadline = undefined;
+  }
+
+  private armEscalation(pending: PendingApproval): void {
+    this.clearEscalation(pending);
+    pending.escalation = setTimeout(
+      () => this.escalate(pending),
+      this.deps.approvalEscalationMs,
+    );
+  }
+
+  private clearEscalation(pending: PendingApproval): void {
+    if (pending.escalation) clearTimeout(pending.escalation);
+    pending.escalation = undefined;
+  }
+
+  /**
+   * A declined-at-deadline approval muse has not resolved. First stop what
+   * is waiting on it — the subagent (`subagent/stop`) or the turn
+   * (`turn/interrupt`) — and give muse the same bound again; if that is not
+   * admitted or still resolves nothing, end the host (its session resumes on
+   * the next send). Every step is announced.
+   */
+  private escalate(pending: PendingApproval): void {
+    this.clearEscalation(pending);
+    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    pending.escalationStep += 1;
+    const connection = this.host?.connection;
+    const sessionId = this.museSessionIdValue;
+    const target = pending.subagentId
+      ? {
+          method: 'subagent/stop',
+          params: {
+            subagentId: pending.subagentId,
+            reason: 'An approval it asked for went unanswered.',
+          },
+        }
+      : pending.turnId
+        ? { method: 'turn/interrupt', params: { turnId: pending.turnId } }
+        : undefined;
+    if (
+      pending.escalationStep === 1 &&
+      target &&
+      connection &&
+      !connection.isClosed &&
+      sessionId
+    ) {
+      this.announceEscalation(
+        pending,
+        pending.subagentId
+          ? 'Muse did not act on the declined request, so Station stopped the subagent that asked.'
+          : 'Muse did not act on the declined request, so Station interrupted the turn that asked.',
+      );
+      connection
+        .request(
+          target.method,
+          {
+            commandId: this.deps.newCommandId(),
+            sessionId,
+            ...target.params,
+          },
+          { timeoutMs: this.deps.requestTimeoutMs },
+        )
+        .then(() => {
+          if (pending.subagentId) {
+            recordMuseChildStopRequested(this.childWork, pending.subagentId);
+          }
+          this.armEscalation(pending);
+        })
+        .catch(() => this.escalate(pending));
+      return;
+    }
+    pending.escalationStep = Math.max(pending.escalationStep, 2);
+    this.announceEscalation(
+      pending,
+      "Muse still did not act on the declined request, so Station ended Muse's host process; it restarts on the next message.",
+    );
+    void this.abandonHost(
+      `Station ended Muse's host process because it did not act on a declined request to use ${pending.toolName}. It restarts on the next message.`,
+    );
+  }
+
+  private announceEscalation(pending: PendingApproval, message: string): void {
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_APPROVAL_EXPIRED_CODE,
+      message,
+      details: {
+        requestId: pending.requestId,
+        step: pending.escalationStep,
+        ...(pending.subagentId ? { childId: pending.subagentId } : {}),
+      },
+    });
+  }
+
+  /** Ends the host on Station's own decision, with the host-loss settlement. */
+  private async abandonHost(message: string): Promise<void> {
+    if (!this.host) return;
+    this.settleAfterHostLoss(message);
+    await this.closeHost();
+  }
+
+  /**
+   * One retry of a rejected `approval/decide`: re-read the approval from
+   * `approval/listPending` (a stale `requirementId` is the likely cause) and
+   * decide again on the requirement it names now. A second rejection of a
+   * deadline decline escalates.
+   */
+  private async retryDecide(
+    pending: PendingApproval,
+    key: string,
+  ): Promise<void> {
+    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    if (pending.retriedKeys.has(key)) {
+      if (pending.intent === 'expire') this.escalate(pending);
+      return;
+    }
+    pending.retriedKeys.add(key);
+    const connection = this.host?.connection;
+    if (!connection || connection.isClosed) return;
+    let listed: unknown;
+    try {
+      listed = await connection.request(
+        'approval/listPending',
+        { sessionId: this.requireMuseSessionId() },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch {
+      if (pending.intent === 'expire') this.escalate(pending);
+      return;
+    }
+    const fresh = (
+      isRecord(listed) && Array.isArray(listed.approvals)
+        ? listed.approvals
+        : []
+    ).find(
+      (approval): approval is Record<string, unknown> =>
+        isRecord(approval) && approval.approvalId === pending.approvalId,
+    );
+    // Not pending any more: it was resolved meanwhile, and its
+    // `approval/resolved` closes it.
+    if (!fresh || !this.approvals.has(pending.approvalId)) return;
+    pending.lastDecidedKey = undefined;
+    this.onApprovalRestated(pending, fresh);
   }
 
   /**
@@ -1459,6 +1726,7 @@ export class MuseServeSession {
           approvalId: pending.approvalId,
           error: error instanceof Error ? error.message : String(error),
         });
+        void this.retryDecide(pending, key);
       });
   }
 
@@ -1629,6 +1897,58 @@ export class MuseServeSession {
   }
 
   // ---------------------------------------------------------------- misc
+
+  /**
+   * `session/setApprovalMode`, checked against what the host says it
+   * applied. A reply whose `effectiveMode` is not the requested mode (the
+   * host deferred, refused, or kept another mode) refuses the turn: a turn
+   * labelled `ask` must never run on a session muse left in `allowAll`.
+   */
+  private async applyApprovalMode(
+    connection: MuseServeConnection,
+    sessionId: string,
+    plan: MuseServeApprovalPlan,
+  ): Promise<void> {
+    let result: unknown;
+    try {
+      result = await connection.request(
+        'session/setApprovalMode',
+        { commandId: this.deps.newCommandId(), sessionId, mode: plan.museMode },
+        { timeoutMs: this.deps.requestTimeoutMs },
+      );
+    } catch (error) {
+      throw new SendTurnRefusedError(
+        `Muse refused to change its approval mode: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    const effective =
+      isRecord(result) && isRecord(result.effectiveMode)
+        ? readString(result.effectiveMode.mode)
+        : undefined;
+    if (effective === plan.museMode) return;
+    const applyOutcome = isRecord(result)
+      ? readString(result.applyOutcome)
+      : undefined;
+    const message = `Muse did not apply the ${plan.stationMode ?? 'default'} approval mode (${plan.museMode}): it reports ${effective ?? 'no effective mode'}${
+      applyOutcome ? ` (${applyOutcome})` : ''
+    }. This message was not sent.`;
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
+      message,
+      details: {
+        requested: plan.museMode,
+        ...(effective ? { effective } : {}),
+        ...(applyOutcome ? { applyOutcome } : {}),
+      },
+    });
+    throw new SendTurnRefusedError(message);
+  }
 
   private async refusingRequest(
     connection: MuseServeConnection,

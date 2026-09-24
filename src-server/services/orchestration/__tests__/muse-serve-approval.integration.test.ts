@@ -14,14 +14,14 @@ import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-  buildMuseServeArgs,
-  MuseAdapter,
-} from '../../../providers/adapters/muse-adapter.js';
-import {
   FakeMuseServeHost,
   loadMuseServeCapture,
   replayMuseServeCapture,
 } from '../../../providers/__tests__/muse-serve-replay.js';
+import {
+  buildMuseServeArgs,
+  MuseAdapter,
+} from '../../../providers/adapters/muse-adapter.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -140,7 +140,9 @@ describe('#2452 a Muse workflow subagent approval through OrchestrationService',
     expect(
       driven.find((frame) => frame.method === 'session/start')?.params,
     ).toMatchObject({ approvalMode: 'promptUnmatched' });
-    const opened = persisted().find((event) => event.method === 'request.opened');
+    const opened = persisted().find(
+      (event) => event.method === 'request.opened',
+    );
     expect(opened).toMatchObject({
       requestType: 'approval',
       payload: {

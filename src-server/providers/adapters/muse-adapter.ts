@@ -36,7 +36,6 @@ import {
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
-import { resolveHomeDir } from '../../utils/paths.js';
 import {
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
@@ -185,6 +184,18 @@ export interface MuseServeAdapterOptions {
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
   approvalTimeoutMs?: number;
+  /**
+   * How long muse gets to act on a deadline decline before Station
+   * escalates (default: the request timeout).
+   */
+  approvalEscalationMs?: number;
+  /**
+   * `XDG_DATA_HOME` for the host, for tests and isolated instances ONLY.
+   * Production leaves it unset: a serve session uses the user's own muse
+   * data home (memory, plugins, session index), exactly as `muse exec` does,
+   * and `session/resume` only needs that home to be the same one each time.
+   */
+  dataHome?: string;
   handshakeTimeoutMs?: number;
   requestTimeoutMs?: number;
   interruptSettleMs?: number;
@@ -651,14 +662,12 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
 }
 
 /**
- * The host's data home: `XDG_DATA_HOME` pinned under the Station home, so a
- * session's durable log (what `session/resume` reads) belongs to this Station
- * home rather than to whichever muse data the user's shell points at. muse's
- * CONFIG (credential, settings, model choice) stays in `XDG_CONFIG_HOME` and
- * is untouched.
+ * Environment the host gets beyond Station's usual child environment. Only
+ * an explicit `dataHome` (tests, isolated instances) moves muse's data home;
+ * production passes none, so the user's own is used.
  */
-function museServeDataHome(homeDir: string = resolveHomeDir()): string {
-  return join(homeDir, 'engine-data', 'muse');
+export function museServeEnvOverrides(dataHome?: string): NodeJS.ProcessEnv {
+  return dataHome ? { XDG_DATA_HOME: dataHome } : {};
 }
 
 /** `muse serve` argv for a host posture. The sandbox is on unless disabled. */
@@ -669,10 +678,10 @@ export function buildMuseServeArgs(posture: MuseServeHostPosture): string[] {
 function createMuseServeHost(
   posture: MuseServeHostPosture,
   cwd?: string,
+  dataHome?: string,
 ): MuseServeSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
-  const dataHome = museServeDataHome();
-  mkdirSync(dataHome, { recursive: true });
+  if (dataHome) mkdirSync(dataHome, { recursive: true });
   const { proc, release } = spawnOwnedChild(
     binary,
     buildMuseServeArgs(posture),
@@ -680,7 +689,7 @@ function createMuseServeHost(
       cwd,
       env: childProcessEnvironment({
         TMPDIR: ensureEngineSpawnTmpDir(),
-        XDG_DATA_HOME: dataHome,
+        ...museServeEnvOverrides(dataHome),
       }),
       stdio: ['pipe', 'pipe', 'pipe'],
     },
@@ -1244,7 +1253,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     cwd: string | undefined,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
-    const spawnHost = serve.spawnHost ?? createMuseServeHost;
+    const spawnHost =
+      serve.spawnHost ??
+      ((posture: MuseServeHostPosture, hostCwd?: string) =>
+        createMuseServeHost(posture, hostCwd, serve.dataHome));
     return new MuseServeSession({
       threadId,
       now: this.now,
@@ -1257,6 +1269,10 @@ export class MuseAdapter implements ProviderAdapterShape {
         serve.approvalTimeoutMs,
         MUSE_APPROVAL_DEADLINE_MS,
       ),
+      approvalEscalationMs:
+        serve.approvalEscalationMs ??
+        serve.requestTimeoutMs ??
+        MUSE_SERVE_REQUEST_TIMEOUT_MS,
       handshakeTimeoutMs:
         serve.handshakeTimeoutMs ?? MUSE_SERVE_HANDSHAKE_TIMEOUT_MS,
       requestTimeoutMs: serve.requestTimeoutMs ?? MUSE_SERVE_REQUEST_TIMEOUT_MS,
