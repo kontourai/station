@@ -158,7 +158,10 @@ function DockClock({ statusLabel }: { statusLabel?: string }) {
   useActiveChatTranscript(API, session);
   return (
     <StreamingMessage
-      sessionId={THREAD}
+      // This harness tests the clock before answer text exists. The real
+      // thread's buffered text now hydrates on mount and hides the generic
+      // working label once an answer is visible.
+      sessionId={`${THREAD}:clock-only`}
       agentIcon={null}
       agentIconStyle={{}}
       fontSize={14}

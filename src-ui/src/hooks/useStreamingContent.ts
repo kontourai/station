@@ -57,7 +57,7 @@ export function useStreamingContent(sessionId: string) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = activeChatsStore.subscribe(() => {
+    const readStreamingContent = () => {
       const chat = activeChatsStore.getSnapshot()[sessionId];
       const streamingMessage = chat?.streamingMessage;
       const content = streamingMessage?.content || '';
@@ -126,7 +126,12 @@ export function useStreamingContent(sessionId: string) {
         }
         return prev;
       });
-    });
+    };
+    const unsubscribe = activeChatsStore.subscribe(readStreamingContent);
+    // Re-entering a live chat can happen between deltas (or while a tool is
+    // running). The buffer already exists in the store, so render it without
+    // waiting for another event to trigger the subscription.
+    readStreamingContent();
 
     return () => {
       unsubscribe();

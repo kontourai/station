@@ -79,6 +79,34 @@ describe('useStreamingContent', () => {
     expect(hook.result.current.streamingText).toBe('ab');
   });
 
+  test('restores an existing live answer on remount without another stream event', () => {
+    store.publish({
+      session: {
+        streamingMessage: {
+          role: 'assistant',
+          content: 'Still working on the answer',
+          contentParts: [
+            { type: 'text', content: 'Still working on the answer' },
+          ],
+        },
+      },
+    });
+
+    const first = renderHook(() => useStreamingContent('session'));
+    act(() => vi.advanceTimersByTime(80));
+    expect(first.result.current.streamingText).toBe(
+      'Still working on the answer',
+    );
+    first.unmount();
+
+    const returned = renderHook(() => useStreamingContent('session'));
+    act(() => vi.advanceTimersByTime(80));
+    expect(returned.result.current.hasContent).toBe(true);
+    expect(returned.result.current.streamingText).toBe(
+      'Still working on the answer',
+    );
+  });
+
   test('publishes a completed text part immediately at a tool boundary', () => {
     const hook = renderHook(() => useStreamingContent('session'));
     act(() => {
