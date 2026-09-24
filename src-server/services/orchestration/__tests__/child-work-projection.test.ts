@@ -166,6 +166,54 @@ describe('ChildWorkProjection', () => {
     });
   });
 
+  test('#2457 D1: a late settle after session.exited recreates nothing; a restarted thread is live again', () => {
+    const settled: string[] = [];
+    const projection = new ChildWorkProjection({
+      onChildSettled: (item) => settled.push(item.childId),
+    });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: THREAD,
+    };
+    const listed = () =>
+      event({
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: [{ ...key, childId: 'a', status: 'running' }],
+        },
+      });
+    projection.observe(listed());
+    projection.observe(event({ method: 'session.exited' }));
+    // The adapter drains the real outcome after the session ended.
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'a', status: 'cancelled' },
+      }),
+    );
+    const internals = projection as unknown as {
+      state: { items: Record<string, unknown> };
+      observedAt: Map<string, string>;
+    };
+    expect(internals.state.items).toEqual({});
+    expect(internals.observedAt.has(THREAD)).toBe(false);
+    expect(projection.read(THREAD, 'claude', 'now')).toEqual({
+      observability: 'reported',
+      running: [],
+      observedAt: 'now',
+    });
+    expect(settled).toEqual([]);
+
+    // The same thread starting again reports normally.
+    projection.observe(event({ method: 'session.started' }));
+    projection.observe(listed());
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
+      running: [{ childId: 'a', status: 'running' }],
+    });
+  });
+
   test('#2457: onChildSettled fires once per child, on its running → terminal fold, with the settling provider', () => {
     const settled: Array<[string, string, string]> = [];
     const projection = new ChildWorkProjection({

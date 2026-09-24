@@ -830,6 +830,31 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
     ).toBe(false);
   });
 
+  test('#2457 accepted limitation: a second task_started for a RUNNING task_id is ignored — no second child, no re-keyed run', () => {
+    const record = makeRecord();
+    const events = feed(record, [
+      task('task_started', {
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'First',
+      }),
+      task('task_started', {
+        task_id: 'task-1',
+        tool_use_id: 'toolu-2',
+        description: 'Overlapping',
+      }),
+    ]);
+    expect(childWorkDeltas(events)).toHaveLength(1);
+    expect(fold(events)).toEqual([
+      expect.objectContaining({
+        childId: 'task-1',
+        status: 'running',
+        title: 'First',
+        parent: expect.objectContaining({ toolCallId: 'toolu-1' }),
+      }),
+    ]);
+  });
+
   test('station#1877: activeTasks membership is what a task-scoped stop keys off', () => {
     const record = makeRecord();
     feed(record, [

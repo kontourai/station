@@ -32,6 +32,7 @@ import {
   type SubagentSignal,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
@@ -313,17 +314,56 @@ const KNOWN_SIGNAL_GAPS: Record<
 const ADAPTERS_DIR = new URL('../adapters/', import.meta.url);
 
 /**
- * The adapter modules that can emit child work: the ones whose source names
- * the `child-work.updated` event. A driver's child work can only have come
- * from one of these, so this is what ties a cell's `adapterModule` to the
- * code a replay actually ran (#2457 review V4).
+ * Whether `source` BUILDS a child-work event: an object literal property
+ * `method: 'child-work.updated'` in code, found by parsing the file with the
+ * TypeScript compiler. A comment, or the string anywhere else, does not
+ * count; either quote style does.
+ *
+ * STRUCTURAL ONLY (#2457 review D3): this proves the module constructs such
+ * an event, not that a given replay reached that line at runtime — the
+ * drivers publish through adapter-owned queues (Codex replays through its
+ * transport), where no per-module spy can see the emit. The runtime half is
+ * each driver producing this engine's `child-work.updated` events at all.
+ */
+function buildsChildWorkEvent(source: string, fileName: string): boolean {
+  const file = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isPropertyAssignment(node) &&
+      (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+      node.name.text === 'method' &&
+      ts.isStringLiteralLike(node.initializer) &&
+      node.initializer.text === 'child-work.updated'
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/**
+ * The adapter modules that can emit child work (see `buildsChildWorkEvent`).
+ * A driver's child work can only have come from one of these, which is what
+ * ties a cell's `adapterModule` to the code a replay ran (#2457 review V4).
  */
 function childWorkEmittingModules(): string[] {
   return readdirSync(ADAPTERS_DIR)
     .filter((name) => name.endsWith('.ts'))
     .filter((name) =>
-      readFileSync(new URL(name, ADAPTERS_DIR), 'utf8').includes(
-        "'child-work.updated'",
+      buildsChildWorkEvent(
+        readFileSync(new URL(name, ADAPTERS_DIR), 'utf8'),
+        name,
       ),
     )
     .sort();
@@ -359,7 +399,26 @@ describe('#2456 child-work conformance tripwire', () => {
     expect(STATION_UNMAPPED_SUBAGENT_ENGINES).toEqual(lifecycleGaps);
   });
 
-  test('the modules that emit child work are exactly the declared cells’ adapter modules', () => {
+  test('the emitter check reads code, not text: a comment or a stray string is not an emitter; either quote style is', () => {
+    const at = 'probe.ts';
+    expect(
+      buildsChildWorkEvent("// publishes method: 'child-work.updated'\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent("const label = 'child-work.updated';\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent("publish({ kind: 'child-work.updated' });\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent('publish({ method: "child-work.updated" });\n', at),
+    ).toBe(true);
+    expect(
+      buildsChildWorkEvent("publish({ method: 'child-work.updated' });\n", at),
+    ).toBe(true);
+  });
+
+  test('the modules that emit child work are exactly the declared cells’ adapter modules (structural)', () => {
     const declared = Object.values(ENGINE_CAPABILITY_MATRICES).flatMap(
       (matrix) =>
         matrix.subagentObservability.state === 'declared'

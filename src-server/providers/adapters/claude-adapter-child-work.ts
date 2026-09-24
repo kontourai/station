@@ -56,6 +56,9 @@ import type { ProviderSession } from '../adapter-shape.js';
  *   key pre-#2457 history carries. Frames name only the `task_id`, so they
  *   are routed to that id's current run, and a stop addressed to a re-run's
  *   key reaches the engine as its `task_id` (`resolveClaudeChildStop`).
+ *   Accepted limitation: only SEQUENTIAL re-runs are modelled (all the
+ *   capture shows) — a `task_started` for a `task_id` whose run is still
+ *   RUNNING is ignored, since its frames could not be told apart anyway.
  * - After the session ends, only a REAL terminal is still mapped: when
  *   `stopSession`'s grace elapses, the SDK can still drain a queued
  *   `task_notification`, and that observed outcome corrects the

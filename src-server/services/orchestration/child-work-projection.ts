@@ -63,10 +63,22 @@ export interface ChildWorkProjectionOptions {
   onChildSettled?: (item: ChildWorkItem, provider: string) => void;
 }
 
+/** How many exited threads the projection remembers (see `exited`). */
+const CHILD_WORK_EXITED_THREADS_MAX = 256;
+
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
   /** reporterThreadId → createdAt of the last child-work delta it reported. */
   private readonly observedAt = new Map<string, string>();
+  /**
+   * #2457 (D1): threads this process saw exit, most recent last, bounded.
+   * A child-work delta for one of them is dropped: the Claude adapter can
+   * still publish a real outcome drained after its session ended, and
+   * folding it here would recreate state nothing forgets again. The
+   * persisted event keeps that outcome for history and replay. A thread
+   * that starts again is live again.
+   */
+  private readonly exited = new Set<string>();
 
   constructor(private readonly options: ChildWorkProjectionOptions = {}) {}
 
@@ -74,8 +86,19 @@ export class ChildWorkProjection {
   observe(event: CanonicalRuntimeEvent): void {
     if (event.method === 'session.exited') {
       this.forgetThread(event.threadId);
+      this.exited.delete(event.threadId);
+      this.exited.add(event.threadId);
+      if (this.exited.size > CHILD_WORK_EXITED_THREADS_MAX) {
+        const oldest = this.exited.values().next().value;
+        if (oldest !== undefined) this.exited.delete(oldest);
+      }
       return;
     }
+    if (event.method === 'session.started') {
+      this.exited.delete(event.threadId);
+      return;
+    }
+    if (this.exited.has(event.threadId)) return;
     const delta =
       event.method === 'child-work.updated'
         ? event.delta

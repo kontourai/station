@@ -543,6 +543,77 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     ]);
   });
 
+  test('#2457 D2: a late settle after the session exited re-registers nothing and brings no card back', async () => {
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const live = 'exec-live';
+    activeChatsStore.updateChat(threadId, { currentSessionId: live });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: live,
+    };
+    const running = (childId: string) => ({
+      ...key,
+      childId,
+      status: 'running' as const,
+      backgrounded: true,
+      title: 'Late one',
+    });
+    const snapshot = (items: ReturnType<typeof running>[]) =>
+      handlers.handleChildWorkUpdatedEvent({
+        provider: 'claude',
+        threadId: live,
+        createdAt: '2026-09-23T00:00:00.000Z',
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: items,
+        },
+      });
+    snapshot([running('late')]);
+    expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
+      'late',
+    ]);
+    handleOrchestrationEvent('http://api', {
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:01.000Z',
+      method: 'session.exited',
+    } as never);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+
+    // The adapter drains the real outcome after the session ended. The chat
+    // still resolves `live` through its retained currentSessionId.
+    expect(activeChatsStore.getChatKeyForExecutionSession(live)).toBe(threadId);
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:02.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        ...key,
+        childId: 'late',
+        status: 'cancelled',
+        result: { summary: 'stopped late' },
+        identity: { backgrounded: true, title: 'Late one' },
+      },
+    });
+    expect(
+      Object.values(handlers.childWorkRegistrySnapshot().items).filter(
+        (item) => item.reporterThreadId === live,
+      ),
+    ).toEqual([]);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+    expect(announcements()).toEqual([]);
+
+    // The reporter→chat mapping was not re-recorded: once the chat rebinds
+    // to another session, a report from the ended one has no chat to land in.
+    activeChatsStore.updateChat(threadId, { currentSessionId: 'exec-next' });
+    snapshot([running('ghost')]);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+  });
+
   test('#2457: a live progress upsert reaches the chat task, so the sheet can show it', () => {
     const item = {
       producer: 'engine-subagent' as const,
