@@ -1027,7 +1027,7 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it('keeps the state record and refuses to stop when a live process\'s identity cannot be verified (#2332 item 2)', async () => {
+  it("keeps the state record and refuses to stop when a live process's identity cannot be verified (#2332 item 2)", async () => {
     // A null fingerprint observation (unreadable /proc, a `ps` without a
     // `command=` column, a missing boot id) is NOT the same fact as "the
     // process is gone". Before the fix, both tracked pids returning null
@@ -1118,14 +1118,15 @@ describe('lifecycle instance state', () => {
       },
     });
     const killProcessTree = vi.fn();
-    const killSpy = vi
-      .spyOn(process, 'kill')
-      .mockImplementation(((pid: number, signal?: NodeJS.Signals | number) => {
-        if (signal === 0 && (pid === 45001 || pid === 45002)) {
-          throw new Error('gone');
-        }
-        return true;
-      }) as typeof process.kill);
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 45001 || pid === 45002)) {
+        throw new Error('gone');
+      }
+      return true;
+    }) as typeof process.kill);
     const { lifecycle } = await loadLifecycleModule({
       // A stale port listener (unrelated pid) keeps `isInstanceRunning`
       // true at discovery, so `stop` reaches `stopRecord` instead of the

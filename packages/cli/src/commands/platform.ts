@@ -93,7 +93,10 @@ function inspectLinuxProcessFingerprint(
     // then read as "already absent" (#2332 item 2). Reading `/proc`
     // directly removes that dependency entirely on Linux.
     const raw = readFile(`/proc/${pid}/cmdline`, 'utf8');
-    command = raw.replace(/\u0000+/g, ' ').trim();
+    command = raw
+      .split('\u0000')
+      .filter((segment) => segment.length > 0)
+      .join(' ');
   } catch {
     return null;
   }
