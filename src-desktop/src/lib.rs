@@ -2069,6 +2069,12 @@ fn authorized_credential_reference(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
+    // read takes `profiles.json.lock`, and the writer holds that lock while it
+    // takes this mutex; taking them in the other order here would let a
+    // concurrent write and this read stall each other until the lock wait
+    // expires (the commands run off the main thread since #2469).
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2079,7 +2085,6 @@ fn authorized_credential_reference(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2224,6 +2229,8 @@ fn authorized_profile_for_origin(
     authority: &NativeProfileAuthority,
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2234,7 +2241,6 @@ fn authorized_profile_for_origin(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2303,12 +2309,13 @@ fn scoped_profile_for_origin(
     if uuid::Uuid::parse_str(expected_binding_id).is_err() {
         return Err(native_request_binding_stale());
     }
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = read_station_profile_contents(app)
+        .and_then(|contents| parse_station_profile_store(&contents))
+        .map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
-        .map_err(|_| native_request_binding_stale())?;
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
         .map_err(|_| native_request_binding_stale())?;
     scoped_profile_for_origin_in_store(&state, &store, expected_binding_id, origin)
 }
@@ -4210,6 +4217,10 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
+    // The saved-Station read comes before the pending mutex for the same
+    // lock-order reason as `authorized_credential_reference`: the writer holds
+    // `profiles.json.lock` (mobile) while it takes this mutex.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let mut pending = pending
         .0
         .lock()
@@ -4222,7 +4233,6 @@ fn credential_vault_commit_pairing_internal(
         NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
         _ => return Err("Station pairing handle is not awaiting keyring commitment".to_string()),
     };
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
     let reference_key = credential_reference_key(&entry.reference)?;
     let state = authority
