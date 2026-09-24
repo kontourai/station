@@ -751,13 +751,32 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
           includePendingApprovals: false,
         });
       }
-      // The transcript itself is not compared here: while this turn is still
-      // open, its own content is legitimately asymmetric between a client
-      // rendering it from its live streaming shell (never disconnected) and
-      // one rendering it from the stitched window+live projection (just
+      // A vs B is not compared here: while this turn is still open, its own
+      // content is legitimately asymmetric between a client rendering it
+      // from its live streaming shell (never disconnected) and one
+      // rendering it from the stitched window+live projection (just
       // reconnected) — that IS the shell/projection handoff F4 exists for,
-      // not a defect. The transcript oracle below runs once the turn has a
-      // terminal event, where both clients must agree on the durable copy.
+      // not a defect. The A-vs-B transcript comparison below runs once the
+      // turn has a terminal event, where both clients must agree on the
+      // durable copy.
+      //
+      // What DOES get checked here, independent of A: whether B's own
+      // stitched read shows the deltas published so far for the STILL-OPEN
+      // turn. `orchestrationHistoryRevision` only bumps on a turn boundary,
+      // so B's bounded REST window alone stays stale until this turn
+      // actually ends — mid-turn, only F4's live-buffer stitching can make
+      // a just-reconnected B's transcript show it at all. Checked here,
+      // not only post-terminal, or this exact regression (a persisted
+      // window read alone always eventually catches up once the turn ends,
+      // masking a defeated stitch) would never go red.
+      if (method !== 'remount') {
+        const bMidTurnMessages = await b.settleTranscript();
+        assertDeltaTextRenderedOnce(
+          bMidTurnMessages,
+          turnDeltaText.get(turnId),
+          `${label} mid-turn stitch oracle`,
+        );
+      }
       // Back to simulating a disconnected client for the rest of the turn —
       // 'remount' never touched the transport, so there is nothing to
       // re-disconnect for it.
