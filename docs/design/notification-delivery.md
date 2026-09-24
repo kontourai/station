@@ -172,7 +172,7 @@ must be proven on a device.
 | Slice | State |
 |---|---|
 | Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16) through the debug receiver: delivery to a killed process, promoted chip, launch after that wake. Real FCM delivery is unverified until a Firebase project exists |
-| Relay (token registry, FCM/APNs send, signed publish) | not started; needs a Firebase project, an APNs key and a hosting decision |
+| Relay (token registry, FCM/APNs send, signed publish) | not started; needs a Firebase project, an APNs key and a hosting decision. FCM rotates tokens without the app open, and the plugin has no `onNewToken` hook yet: the relay slice must either re-register from `pushToken` on every foreground or add one |
 | Server publisher (session state → relay) | not started |
 | Web registration (`configure`, `pushToken`, settings UI) | not started |
 | iOS Live Activity (widget extension in `gen/apple/project.yml`) | not started |
@@ -182,7 +182,8 @@ from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
 build time (public values, but bound to one project); without them
 `pushToken` reports `unconfigured`. With them, Firebase auto-init stays off
 until `pushToken` is called, so installing the app does not contact Google
-before the user asks for push. The plugin's Kotlin unit tests run only
+before the user asks for push; the `clear` command turns it off again and
+deletes the token. The plugin's Kotlin unit tests run only
 locally (`./gradlew :tauri-plugin-station-agent-activity:testDebugUnitTest` in
 a generated `gen/android`); no workflow runs them yet. Debug builds include a broadcast receiver,
 restricted to the `adb` shell, that stands in for FCM so rendering and

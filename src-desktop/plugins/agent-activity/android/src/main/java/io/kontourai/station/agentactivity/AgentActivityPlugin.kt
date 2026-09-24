@@ -64,10 +64,27 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
     invoke.resolve()
   }
 
+  /**
+   * The user's opt-out. Besides local state, undoes what pushToken enabled:
+   * Firebase persists the auto-init flag over the manifest default, so
+   * without this every later launch would still refresh a live token.
+   */
   @Command
   fun clear(invoke: Invoke) {
     AgentNotifications.clear(context)
-    invoke.resolve()
+    if (!firebaseConfigured()) {
+      invoke.resolve()
+      return
+    }
+    try {
+      val messaging = FirebaseMessaging.getInstance()
+      messaging.isAutoInitEnabled = false
+      messaging.deleteToken().addOnCompleteListener { task ->
+        if (task.isSuccessful) invoke.resolve() else invoke.reject("push token not deleted", task.exception)
+      }
+    } catch (e: Exception) {
+      invoke.reject("push token not deleted", e)
+    }
   }
 
   @Command
@@ -95,7 +112,9 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
     val messaging = try {
       FirebaseMessaging.getInstance().also {
         // Auto-init is off in the manifest so an install does not contact
-        // Google before the user asks for push. Asking is this call.
+        // Google before the user asks for push. getToken works without it;
+        // enabling it keeps the token refreshed at startup from now on,
+        // until the `clear` command turns it off again.
         it.isAutoInitEnabled = true
       }
     } catch (e: Exception) {

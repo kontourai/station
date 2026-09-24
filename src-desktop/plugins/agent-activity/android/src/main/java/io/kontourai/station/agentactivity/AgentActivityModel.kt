@@ -22,8 +22,9 @@ package io.kontourai.station.agentactivity
  * - `activity_expires_at`: optional absolute expiry, epoch millis
  * - `alert_id`, `alert_title`, `alert_body`: optional one-shot attention alert.
  *   While the app is in the foreground the alert is recorded as seen and not
- *   posted, on the premise that the web layer shows its own notice; the
- *   sender must not rely on this path alone for a foreground user.
+ *   posted, on the premise that the web layer shows its own notice. The
+ *   sender cannot know the app is in the foreground, so the web layer must
+ *   surface the same attention events from its own server stream.
  */
 internal data class ActivityRow(val status: String, val title: String, val project: String)
 
