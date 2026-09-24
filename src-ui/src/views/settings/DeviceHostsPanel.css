@@ -78,7 +78,7 @@
 }
 
 .device-hosts__error {
-  color: var(--color-danger, #c0392b);
+  color: var(--error-text);
   margin: 0;
 }
 
@@ -105,7 +105,7 @@
 }
 
 .device-hosts__step--fail .device-hosts__step-state {
-  color: var(--color-danger, #c0392b);
+  color: var(--error-text);
 }
 
 .device-hosts__step-detail {
