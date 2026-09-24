@@ -306,6 +306,8 @@ export interface ChatSession {
   pendingApprovalMode?: ApprovalMode;
   /** See ChatUIState.approvalModeOverride (active-chats-state.ts, #2334). */
   approvalModeOverride?: ApprovalMode;
+  /** See ApprovalPickState (utils/approvalMode.ts, #2423). */
+  fullAccessNotCarriedSessionId?: string;
   /** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
   stopPending?: boolean;
   model?: string;
