@@ -51,6 +51,33 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * activatable, and what it activates is the pane, not a webview navigation to
  * a relative URL that resolves against Station's own routes.
  */
+/**
+ * Where this conversation's file paths live (#2476). A session in the project
+ * checkout: the checkout. A session anywhere else: its own directory, read
+ * through its thread id — the server reads that directory only when it can
+ * vouch it is this project's, and otherwise answers nothing (no mention links,
+ * a preview is refused), never the checkout's copy. Without a thread id there
+ * is no way to read it, and mentions are not linked (`resolvable: false`).
+ */
+function fileScope(link: MarkdownLinkContextValue | null): {
+  roots: readonly string[];
+  thread?: string;
+  resolvable: boolean;
+} {
+  if (!link) return { roots: [], resolvable: false };
+  if (
+    sessionRunsInProjectDirectory(link.sessionDirectory, link.projectRoots?.[0])
+  )
+    return { roots: link.projectRoots ?? [], resolvable: true };
+  if (link.threadId && link.sessionDirectory)
+    return {
+      roots: [link.sessionDirectory],
+      thread: link.threadId,
+      resolvable: true,
+    };
+  return { roots: [], resolvable: false };
+}
+
 function activate(
   event: MouseEvent<HTMLAnchorElement>,
   target: MarkdownLinkTarget | null,
@@ -102,16 +129,19 @@ function activate(
   }
   if (dockCanHold) {
     event.preventDefault();
+    const thread = fileScope(link).thread;
     const outcome = openFilePreviewInRegion(model, {
       projectId: link.projectId,
       projectSlug: link.projectSlug,
       path: target.path,
       ...(target.lineRange ? { lineRange: target.lineRange } : {}),
+      ...(thread ? { thread } : {}),
     });
     if (outcome.ok) return;
     // The model refused (a device fold, a region rule). The preview still
-    // has the route it had before #2049, if this session has a layout.
-    link.openPathInMain?.(target.path, target.lineRange);
+    // has the route it had before #2049, if this session has a layout — but
+    // that route reads the CHECKOUT, so a worktree's file never takes it.
+    if (!thread) link.openPathInMain?.(target.path, target.lineRange);
     return;
   }
   // No dock that may hold it: a bottom-only fold, or a dock bound to a
@@ -131,7 +161,9 @@ function activate(
   // better than either of those, and it is the same on both hosts, which is
   // one behaviour to reason about instead of two wrong ones.
   event.preventDefault();
-  link.openPathInMain?.(target.path, target.lineRange);
+  // The layout route reads the checkout: a worktree file does not take it.
+  if (!fileScope(link).thread)
+    link.openPathInMain?.(target.path, target.lineRange);
 }
 
 type AnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -145,19 +177,14 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
   const { [PATH_MENTION_ATTRIBUTE]: mentionMarker, ...anchorProps } =
     props as AnchorProps & { [PATH_MENTION_ATTRIBUTE]?: unknown };
   const isMention = mentionMarker !== undefined;
-  const target = classifyMarkdownLink(href, { roots: link?.projectRoots });
+  const scope = fileScope(link);
+  const target = classifyMarkdownLink(href, { roots: scope.roots });
   if (isMention) {
     // A path written in prose is a link only inside a conversation, only when
-    // it names a file in that conversation's checkout, and only once the
-    // server has said the file is there. Until then it is the text it was.
-    if (
-      !link?.projectSlug ||
-      !sessionRunsInProjectDirectory(
-        link.sessionDirectory,
-        link.projectRoots?.[0],
-      ) ||
-      target?.kind !== 'path'
-    )
+    // it names a file in the directory that conversation's session works in,
+    // and only once the server has said the file is there. Until then it is
+    // the text it was.
+    if (!link?.projectSlug || !scope.resolvable || target?.kind !== 'path')
       return <>{children}</>;
     return (
       <PathMentionAnchor
@@ -288,7 +315,11 @@ function PathMentionAnchor({
   link: MarkdownLinkContextValue;
   target: Extract<MarkdownLinkTarget, { kind: 'path' }>;
 }) {
-  const exists = useWorkspaceFileExists(rest.link.projectSlug, target.path);
+  const exists = useWorkspaceFileExists(
+    rest.link.projectSlug,
+    target.path,
+    fileScope(rest.link).thread,
+  );
   if (exists !== true) return <>{rest.children}</>;
   return <LinkAnchor {...rest} target={target} clickTarget={target} />;
 }
@@ -308,8 +339,12 @@ function RepoFileAnchor({
   link: MarkdownLinkContextValue;
   target: Extract<MarkdownLinkTarget, { kind: 'repo-file' }>;
 }) {
+  // In a worktree session the ref to compare is the WORKTREE's branch, which
+  // is also the copy the preview then reads.
+  const thread = fileScope(rest.link).thread;
   const context = usePullRequestContextQuery({
     project: rest.link.projectSlug ?? '',
+    ...(thread ? { thread } : {}),
   });
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

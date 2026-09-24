@@ -153,6 +153,8 @@ interface ChatInputAreaProps {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   // Status
   disabled: boolean;
+  /** A busy continuation may accept a draft while sends remain blocked. */
+  allowDraftWhileDisabled?: boolean;
   isSending: boolean;
   /**
    * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
@@ -295,6 +297,7 @@ export function ChatInputArea({
   attachments,
   textareaRef,
   disabled,
+  allowDraftWhileDisabled = false,
   isSending,
   turnInFlight,
   busyFollowUp = 'queue',
@@ -478,15 +481,17 @@ export function ChatInputArea({
       : null;
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : turnInFlight
-      ? busyFollowUp === 'steer'
-        ? isMobile
-          ? 'Steer this turn…'
-          : 'Steer this turn… (Enter steers; Queue waits)'
-        : 'Queue a follow-up…'
-      : mentionLocation && mentionRequestScope
-        ? 'Type a message — @ files, / for commands…'
-        : 'Type a message — / for commands…';
+    : allowDraftWhileDisabled
+      ? 'Draft a follow-up while this turn finishes…'
+      : turnInFlight
+        ? busyFollowUp === 'steer'
+          ? isMobile
+            ? 'Steer this turn…'
+            : 'Steer this turn… (Enter steers; Queue waits)'
+          : 'Queue a follow-up…'
+        : mentionLocation && mentionRequestScope
+          ? 'Type a message — @ files, / for commands…'
+          : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
@@ -815,7 +820,7 @@ export function ChatInputArea({
             }
             placeholder={placeholder}
             value={displayInput}
-            disabled={disabled}
+            disabled={disabled && !allowDraftWhileDisabled}
             tabIndex={0}
             onFocus={() => {
               setShortcutContext('composerFocused', true);
@@ -1005,7 +1010,8 @@ export function ChatInputArea({
                 } else if (
                   (input.trim() || hasQuotedContext) &&
                   !isOverLimit &&
-                  !sendBlockedReason
+                  !sendBlockedReason &&
+                  !disabled
                 )
                   await onSend();
               }
@@ -1120,7 +1126,7 @@ export function ChatInputArea({
               onClick={() => {
                 if (input.trim() && !isOverLimit) void onQueueFollowUp();
               }}
-              disabled={isOverLimit || !input.trim()}
+              disabled={disabled || isOverLimit || !input.trim()}
               tabIndex={0}
               className="chat-input__queue-btn"
               aria-label="Queue this follow-up until the turn finishes"
@@ -1175,6 +1181,7 @@ export function ChatInputArea({
               }}
               onKeyDown={(e) => {
                 if (
+                  !disabled &&
                   e.key === 'Enter' &&
                   !isOverLimit &&
                   (workspaceRefused ||
@@ -1191,6 +1198,7 @@ export function ChatInputArea({
                 }
               }}
               disabled={
+                disabled ||
                 isOverLimit ||
                 !!sendBlockedReason ||
                 (workspaceRefused

@@ -39,6 +39,7 @@ import { runCloudCommand } from './commands/cloud.js';
 import { configGet, configSet } from './commands/config.js';
 import { runCoreCommand } from './commands/core.js';
 import {
+  configureClientOrigin,
   configureRequestTimeout,
   getResolvedApiBase,
   parseCoreArgs,
@@ -1515,6 +1516,7 @@ export async function runCli(
   // Every Station request gets a deadline from here on, so a listening-but-
   // silent server fails loudly instead of hanging with no output.
   if (!recoveryObservation) configureRequestTimeout();
+  configureClientOrigin();
 
   // Manual unknown-command arm: an unrecognized verb never reaches Commander,
   // so Commander's own "unknown command" handling can never override the pinned

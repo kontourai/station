@@ -121,6 +121,41 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('keeps a busy continuation draft focusable without sending or queueing it', () => {
+    const onInputChange = vi.fn();
+    const onSend = vi.fn(async () => {});
+    const onQueueFollowUp = vi.fn(async () => {});
+    renderChatInputArea({
+      disabled: true,
+      allowDraftWhileDisabled: true,
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onInputChange,
+      onSend,
+      onQueueFollowUp,
+    });
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.placeholder).toBe(
+      'Draft a follow-up while this turn finishes…',
+    );
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+    fireEvent.change(textarea, { target: { value: 'draft while waiting' } });
+    expect(onInputChange).toHaveBeenCalledWith('draft while waiting');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Queue this follow-up until the turn finishes',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(onQueueFollowUp).not.toHaveBeenCalled();
+  });
+
   test('exposes the configured composer size for the responsive mobile floor', () => {
     renderChatInputArea({ fontSize: 20 });
 

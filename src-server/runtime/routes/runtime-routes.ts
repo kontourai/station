@@ -248,6 +248,7 @@ import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
+import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -428,6 +429,7 @@ import { StationKitObservabilityHost } from '../../services/kits/kit-observabili
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -477,6 +479,7 @@ import { ProjectResourceResolver } from '../../services/projects/project-resourc
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -632,6 +635,33 @@ export function pullRequestThreadForProject<
   );
 }
 
+/**
+ * The session a pull-request request names by `?thread=`, for a caller allowed
+ * to read it: its worktree names a branch and a remote, which are that
+ * session's to disclose. `'refused'` when the caller may not read it; the
+ * project filter then keeps another project's session from rebinding the
+ * checkout (`pullRequestThreadForProject`). Authority is checked before any
+ * session is listed.
+ */
+export async function pullRequestSessionForReader<
+  T extends { threadId: string; projectSlug?: string },
+>(
+  deps: {
+    canRead: (threadId: string) => boolean;
+    listSessions: () => Promise<T[]>;
+  },
+  threadId: string | undefined,
+  projectSlug: string,
+): Promise<T | undefined | 'refused'> {
+  if (!threadId) return undefined;
+  if (!deps.canRead(threadId)) return 'refused';
+  return pullRequestThreadForProject(
+    await deps.listSessions(),
+    threadId,
+    projectSlug,
+  );
+}
+
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
   projectSharedTasks?: ProjectSharedTaskStore;
@@ -779,6 +809,8 @@ interface ConfigureRuntimeRoutesResult {
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
   webPushService: WebPushService;
+  /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
+  agentActivityPublisher: AgentActivityPublisher;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -4104,6 +4136,33 @@ export function configureRuntimeRoutes(
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
+        sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
+          sessionWorkspaceDirectoryFor(
+            {
+              canRead: (id) =>
+                context.orchestrationService.canUserReadSession(
+                  id,
+                  readAuthorityForRequest(routeContext.req.raw),
+                ),
+              listSessions: () =>
+                context.orchestrationService.listSessions(
+                  INTERNAL_SESSION_READ_SCOPE,
+                ),
+              projectDirectory: async (slug) => {
+                try {
+                  const configured =
+                    context.projectService.getProject(slug).workingDirectory;
+                  return configured
+                    ? resolve(expandTilde(configured))
+                    : undefined;
+                } catch {
+                  return undefined;
+                }
+              },
+            },
+            projectSlug,
+            thread,
+          ),
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.
@@ -4339,7 +4398,7 @@ export function configureRuntimeRoutes(
     '/api/pull-requests',
     createPullRequestRoutes(
       () => listProviders('pullRequest').map((entry) => entry.provider),
-      async (routeContext) => {
+      async (routeContext, request) => {
         const projectSlug = routeContext.req.query('project');
         if (!projectSlug)
           return { available: false, reason: 'A recorded project is required' };
@@ -4349,16 +4408,24 @@ export function configureRuntimeRoutes(
         } catch {
           return { available: false, reason: 'Project is unavailable' };
         }
-        const threadId = routeContext.req.query('thread');
-        const session = threadId
-          ? pullRequestThreadForProject(
-              await context.orchestrationService.listSessions(
+        const threaded = await pullRequestSessionForReader(
+          {
+            canRead: (id) =>
+              context.orchestrationService.canUserReadSession(
+                id,
+                readAuthorityForRequest(routeContext.req.raw),
+              ),
+            listSessions: () =>
+              context.orchestrationService.listSessions(
                 INTERNAL_SESSION_READ_SCOPE,
               ),
-              threadId,
-              projectSlug,
-            )
-          : undefined;
+          },
+          routeContext.req.query('thread'),
+          projectSlug,
+        );
+        if (threaded === 'refused')
+          return { available: false, reason: 'Session is unavailable' };
+        const session = threaded;
         return pullRequestContextResolver.resolve({
           // EXPAND — 111 lines above this file's own comment warning about
           // exactly this. Raw, it reaches `git remote -v` with a `~/…` cwd
@@ -4369,6 +4436,10 @@ export function configureRuntimeRoutes(
             : project.workingDirectory,
           workspaceIsolation: session?.workspaceIsolation,
           requestedWorkingDirectory: routeContext.req.query('workingDirectory'),
+          requireBranchState: request.requireBranchState,
+          ...(request.repository?.owner && request.repository.name
+            ? { repository: request.repository }
+            : {}),
         });
       },
       {
@@ -5109,6 +5180,9 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    pushSigningKeyStore,
+    pushGatewayAvailable,
+    agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
@@ -5368,6 +5442,32 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route(
+    '/api/system',
+    createNativePushRoutes({
+      enabled: webPushEnabled,
+      deliverable: pushGatewayAvailable,
+      logger: context.logger,
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      loadOrCreateStationKey: async () =>
+        (await pushSigningKeyStore.loadOrCreate()).thumbprint,
+      stationId: () =>
+        context.environmentSecurityService.devicePairing.environmentId(),
+      setNativePush: (deviceId, request, stationKey) =>
+        context.environmentSecurityService.devicePairing.setNativePush(
+          deviceId,
+          request,
+          stationKey,
+        ),
+      clearNativePush: (deviceId) => {
+        context.environmentSecurityService.devicePairing.clearNativePush(
+          deviceId,
+        );
+      },
+      onRegistered: () => agentActivityPublisher.requestFlush(),
+    }),
+  );
+  context.app.route(
     '/scheduler',
     createSchedulerRoutes(schedulerService, context.logger, {
       readAuthorityForRequest,
@@ -5499,6 +5599,7 @@ export function configureRuntimeRoutes(
     notificationService,
     attentionProjection,
     webPushService,
+    agentActivityPublisher,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,

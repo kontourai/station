@@ -5,9 +5,9 @@
  * Members are unconditionally mounted global chrome that installs a window
  * listener/query at startup and renders nothing until asked: the command
  * palette (`open-command-palette` + ⌘K), the guided first run
- * (`station-start-first-run-tour`, plus its own chapter state), and native tray
- * navigation. The palette and first-run
- * flow already share a
+ * (`station-start-first-run-tour`, plus its own chapter state), native tray
+ * navigation, and the Android agent-activity registration refresh. The
+ * palette and first-run flow already share a
  * module edge — the palette's "Take the tour" action calls
  * `requestFirstRunTour` from the first-run store — so they were resolving
  * together in practice anyway.
@@ -27,6 +27,7 @@ import { useEffect } from 'react';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
+import { AgentActivityRefresher } from './AgentActivityRefresher';
 import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
@@ -56,6 +57,7 @@ export default function DeferredAppOverlays() {
       <ReportProblemHost />
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
+      <AgentActivityRefresher />
     </>
   );
 }
