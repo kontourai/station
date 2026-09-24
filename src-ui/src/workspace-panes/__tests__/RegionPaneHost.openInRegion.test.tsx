@@ -363,6 +363,6 @@ test('a session-directory preview is told apart from the checkout preview of the
     'src/app.ts — from the project checkout',
   );
   expect(session?.getAttribute('title')).toBe(
-    "src/app.ts — from the session's own directory, not the project checkout",
+    "src/app.ts — read through the session's directory",
   );
 });

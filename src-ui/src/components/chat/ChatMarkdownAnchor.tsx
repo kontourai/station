@@ -407,9 +407,15 @@ function splitForgeRefPath(
  * so a checkout behind its upstream, ahead of it, or with uncommitted edits
  * still matches and the preview shows ITS working copy, not the forge's
  * revision. The link's tooltip says so rather than implying the two agree.
- * A local branch whose name is a PREFIX of the link's slash branch (local
- * `feature`, link `feature/x`) also cannot be told apart and reads as a
- * match; the preview then names `x/...`, which usually does not exist.
+ * A URL cannot say where a slash branch ends, so two confusions remain, one
+ * per direction:
+ * - local `feature`, link on `feature/x`: the one-segment reading (ref
+ *   `feature`, path `x/...`) matches, and the preview names `x/...`, which
+ *   usually does not exist in this checkout;
+ * - local `feature/x`, link on branch `feature` to `x/a.ts`: the split at the
+ *   local branch (ref `feature/x`, path `a.ts`) matches, and the preview
+ *   shows THIS checkout's `a.ts`, a different file under a plausible name.
+ * Both need a repository holding both branch names at once.
  */
 function RepoFileAnchor({
   target,

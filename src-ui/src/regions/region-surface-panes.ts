@@ -389,7 +389,7 @@ function filePreviewTitle(state: WorkspaceFilePreviewPaneState): string {
 /** The full distinction the tab's short title abbreviates. */
 function filePreviewTooltip(state: WorkspaceFilePreviewPaneState): string {
   return state.thread
-    ? `${state.path} — from the session's own directory, not the project checkout`
+    ? `${state.path} — read through the session's directory`
     : `${state.path} — from the project checkout`;
 }
 
