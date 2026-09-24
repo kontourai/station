@@ -2717,8 +2717,10 @@ export class OrchestrationService {
   }
 
   /**
-   * station#1877: stop ONE provider-reported subagent, leaving the turn and
-   * its siblings running.
+   * station#1877: stop ONE provider-reported subagent, targeted rather than
+   * a blanket turn interrupt. #2486: an engine with no softer path (Codex)
+   * may end its own active turn as part of this — never any OTHER sibling —
+   * see `stopProviderTask` on `ProviderAdapterShape`.
    *
    * Deliberately does NOT fall back to `interruptTurn` when the adapter has
    * no task-scoped stop: a turn interrupt ends every other running subagent

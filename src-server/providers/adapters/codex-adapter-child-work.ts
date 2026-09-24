@@ -98,6 +98,16 @@ interface CodexChildFacts {
    * summary, tokens and duration the parent's report lacked.
    */
   ownTerminalSeen?: boolean;
+  /**
+   * #2486: the child's own currently-active turn id, from its own
+   * `turn/started`. A client `turn/interrupt` targets a specific
+   * {threadId, turnId} pair, so a per-child stop needs this — undefined
+   * until the child's own stream has actually reported a turn starting
+   * (registering a child from a `spawnAgent`/`subAgentActivity started`
+   * item happens first and does not by itself carry a turn id). Cleared once
+   * that turn's own `turn/completed` arrives.
+   */
+  activeTurnId?: string;
 }
 
 export interface CodexChildWorkState {
@@ -131,7 +141,7 @@ interface HeldNotification {
   seq: number;
 }
 
-interface ChildWorkContext {
+export interface ChildWorkContext {
   record: CodexSessionRecord;
   nowIso: () => string;
   publish: (event: CanonicalRuntimeEvent) => void;
@@ -313,6 +323,16 @@ function registerChild(
       ...(facts.depth !== undefined ? { depth: facts.depth } : {}),
       ...(identity.title ? { title: identity.title } : {}),
       ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
+      // #2486 review: `stopProviderTask` needs the child's own active turn
+      // id to target a `turn/interrupt` at — a control offered before that
+      // arrives is a button `stopProviderTask` can only answer
+      // `no-active-task`. Registration (this function, from spawnAgent/
+      // subAgentActivity) almost never has it yet; `syncChildStopControl`
+      // adds it the moment `turn/started` does (and removes it again on
+      // settle) — stoppability is derived, never stamped at registration.
+      ...(facts.activeTurnId !== undefined
+        ? { controls: { stop: 'provider-task-stop' as const } }
+        : {}),
       startedAt: context.nowIso(),
     };
     emit(context, {
@@ -336,6 +356,10 @@ function registerChild(
     if (Object.keys(missing).length > 0) {
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }
+    // A re-registration (e.g. a nested spawn's own identity arriving after
+    // this child's turn/started already did) must not leave a stale item
+    // without the control its known turn id now supports.
+    syncChildStopControl(context, childId);
   }
   const held = dropHeld(state, childId);
   for (const { notification } of held) {
@@ -382,9 +406,42 @@ function settleChild(
     identity: {
       endedAt: context.nowIso(),
       ...(facts.depth !== undefined ? { depth: facts.depth } : {}),
+      // #2486 review: a settled child is never stoppable again — clear
+      // `controls` rather than let it survive from the running item
+      // (`mergeDefined`/`applyUpsert`'s own contract: an object VALUE here,
+      // not `undefined`, is what overrides the prior one; `{}` has no
+      // `.stop`, so `normalizeItem` drops the field entirely).
+      controls: {},
     },
   });
   if (changed) emitSnapshot(context);
+}
+
+/**
+ * #2486 review: `controls.stop` is derived from stoppability, never
+ * stamped once and forgotten. A running child gets it the moment its own
+ * `turn/started` supplies a `turn/interrupt` target (`facts.activeTurnId`);
+ * called again after any later fact settles the item, this is a no-op
+ * (`itemFor`'s status guard). Idempotent either way — skips the upsert
+ * when the item already agrees.
+ */
+function syncChildStopControl(
+  context: ChildWorkContext,
+  childId: string,
+): void {
+  const existing = itemFor(context.record, childId);
+  if (existing?.status !== 'running') return;
+  const hasTarget =
+    stateOf(context.record).children.get(childId)?.activeTurnId !== undefined;
+  const hasControl = existing.controls?.stop === 'provider-task-stop';
+  if (hasTarget === hasControl) return;
+  emit(context, {
+    kind: 'upsert',
+    item: {
+      ...existing,
+      controls: hasTarget ? { stop: 'provider-task-stop' } : {},
+    },
+  });
 }
 
 function titleFrom(value: unknown): string | undefined {
@@ -542,7 +599,15 @@ function applyAgentState(
   settleChild(context, childId, status, message ? { summary: message } : {});
 }
 
-function requestStop(context: ChildWorkContext, childId: string): void {
+/**
+ * #2486: also called directly from `codex-adapter.ts`'s `stopProviderTask`
+ * right after it sends the child's own `turn/interrupt` RPC — the same
+ * immediate "stop requested" feedback the MODEL-initiated `closeAgent`/
+ * `interruptAgent`/`subAgentActivity interrupted` paths below already give,
+ * now also for a CLIENT-initiated one. Never claims `cancelled`: only the
+ * child's own later `turn/completed` does that (see `settleChild` callers).
+ */
+export function requestStop(context: ChildWorkContext, childId: string): void {
   const facts = stateOf(context.record).children.get(childId);
   if (facts) facts.stopRequested = true;
   if (!isRunning(context.record, childId)) return;
@@ -692,6 +757,39 @@ export function routeCodexChildNotification(
   }
 }
 
+/**
+ * #2486: the running child's own active turn id, the target a per-child
+ * `turn/interrupt {threadId: childId, turnId}` needs. Undefined when the
+ * child is not currently running (nothing to stop) or its own `turn/started`
+ * has not yet arrived (nothing to target) — the caller must not guess.
+ */
+export function codexRunningChildTurnId(
+  record: CodexSessionRecord,
+  childId: string,
+): string | undefined {
+  if (itemFor(record, childId)?.status !== 'running') return undefined;
+  return stateOf(record).children.get(childId)?.activeTurnId;
+}
+
+/**
+ * #2486: every currently-running child this session has an active turn id
+ * for, in the registry's own order — the set a cascading parent stop
+ * interrupts before the parent. A child registered but not yet carrying a
+ * turn id (see `codexRunningChildTurnId`) is omitted: there is nothing to
+ * target for it yet.
+ */
+export function codexRunningChildTurns(
+  record: CodexSessionRecord,
+): { childId: string; turnId: string }[] {
+  const state = stateOf(record);
+  const turns: { childId: string; turnId: string }[] = [];
+  for (const item of runningChildren(record)) {
+    const turnId = state.children.get(item.childId)?.activeTurnId;
+    if (turnId) turns.push({ childId: item.childId, turnId });
+  }
+  return turns;
+}
+
 /** Held notifications and their total size, for bound tests. */
 export function codexChildHeldStats(record: CodexSessionRecord): {
   threads: number;
@@ -719,6 +817,20 @@ function handleKnownChildNotification(
   if (!facts || !isRecord(notification.params)) return;
   const params = notification.params;
   switch (notification.method) {
+    case 'turn/started': {
+      // #2486: the child's own turn id, the target a per-child
+      // `turn/interrupt` needs. Not available from the parent item that
+      // registered the child (spawnAgent/subAgentActivity carry no turn id
+      // for the child it names).
+      const turnId = isRecord(params.turn)
+        ? extractString(params.turn.id)
+        : null;
+      if (turnId) {
+        facts.activeTurnId = turnId;
+        syncChildStopControl(context, childId);
+      }
+      return;
+    }
     case 'thread/tokenUsage/updated': {
       const tokenUsage = isRecord(params.tokenUsage)
         ? params.tokenUsage
@@ -772,6 +884,8 @@ function handleKnownChildNotification(
       // The child's own word: after this settle (or its enrichment of a
       // settle the parent already reported) its facts can go.
       facts.ownTerminalSeen = true;
+      // #2486: this turn is over; a stop request must never target it again.
+      facts.activeTurnId = undefined;
       const summary =
         status === 'failed'
           ? (extractString(isRecord(turn.error) ? turn.error.message : null) ??
@@ -807,7 +921,6 @@ function handleKnownChildNotification(
       return;
     }
     default:
-      // `turn/started` needs no mapping: the child is already running.
       return;
   }
 }
