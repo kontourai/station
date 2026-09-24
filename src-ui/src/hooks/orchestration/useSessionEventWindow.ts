@@ -393,10 +393,19 @@ export function useSessionEventWindow(
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),
     settled: currentReader && settled,
+    // station#2530 review 2: catching up means a NEWER revision's fetch is
+    // genuinely outstanding — `settledRevision`/`settled` have not caught up
+    // to this render's `reconcileRevision` yet. `error` alone is
+    // deliberately NOT part of this: a FAILED background refetch settles
+    // `settledRevision` to match regardless (see the `finally` above), so
+    // catching-up ends the instant that fetch resolves either way, instead
+    // of pinning an already-loaded transcript behind a permanent "catching
+    // up" state for as long as retries keep failing. `error` is still
+    // surfaced on its own field for a retry affordance.
     catchingUp: Boolean(
       threadId &&
         reconcileRevision > 0 &&
-        (settledRevision !== reconcileRevision || !settled || error),
+        (settledRevision !== reconcileRevision || !settled),
     ),
     error: currentReader ? error : undefined,
   };

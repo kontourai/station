@@ -348,6 +348,38 @@ export function ChatDockBody({
     transcript.catchingUp ||
     (transcript.enabled && !transcript.settled);
   /*
+   * station#2530 review 2: `transcript.catchingUp` legitimately blanks
+   * `transcript.messages` for BACKGROUND refetches too — a revision bump
+   * whose reload has not settled yet, success or failure alike — and that
+   * hook contract is correct and pinned elsewhere
+   * (useActiveChatTranscript.test.tsx's "a fallback revision hides stale
+   * transcript" case). What is wrong is unmounting the already-loaded
+   * transcript/queue components over that BLIP: `ChatMessageList` lives
+   * behind a `LazyBoundary`, and toggling its mount (empty → non-empty)
+   * forces a fresh `lazy()` Suspense cycle even when the chunk is cached, so
+   * a reload that resolves (successfully OR with an error) still shows one
+   * more pending skeleton frame after the data is already back. Retain the
+   * last non-empty read for THIS session and keep rendering it through a
+   * catching-up blip; a genuinely empty transcript (never loaded, or a
+   * session with no turns) still renders the empty state.
+   */
+  const stickyTranscriptRef = useRef<{ id: string; messages: ChatMessage[] }>({
+    id: activeSession.id,
+    messages: [],
+  });
+  if (stickyTranscriptRef.current.id !== activeSession.id) {
+    stickyTranscriptRef.current = { id: activeSession.id, messages: [] };
+  }
+  if (transcript.messages.length > 0) {
+    stickyTranscriptRef.current.messages = transcript.messages;
+  }
+  const displayedTranscriptMessages =
+    transcript.messages.length > 0
+      ? transcript.messages
+      : transcript.catchingUp
+        ? stickyTranscriptRef.current.messages
+        : transcript.messages;
+  /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
    * never lands settles into the read-only verdict in at most ~30s rather than
@@ -369,9 +401,9 @@ export function ChatDockBody({
   const renderedSession = useMemo(
     () =>
       transcript.enabled
-        ? { ...activeSession, messages: transcript.messages }
+        ? { ...activeSession, messages: displayedTranscriptMessages }
         : activeSession,
-    [activeSession, transcript.enabled, transcript.messages],
+    [activeSession, transcript.enabled, displayedTranscriptMessages],
   );
   /**
    * station#3213. The dock's only failure rendering was `turnHandlers.ts`'s
@@ -864,7 +896,9 @@ export function ChatDockBody({
           key={`${activeSession.conversationId || activeSession.agentSlug}-${activeSession.orchestrationStatus || activeSession.status}`}
         />
       )}
-      {historyFailure && transcript.messages.length > 0 && historyFailureNotice}
+      {historyFailure &&
+        displayedTranscriptMessages.length > 0 &&
+        historyFailureNotice}
       {sessionRecordPending && (
         <SkeletonList count={1} label="Reading this session's record" />
       )}
@@ -901,7 +935,7 @@ export function ChatDockBody({
           </span>
         </div>
       )}
-      {transcript.messages.length === 0 && (
+      {displayedTranscriptMessages.length === 0 && (
         /*
          * The transcript owns the flex fill that pins the composer to the
          * bottom; without this filler an empty chat stacks the composer
@@ -945,7 +979,7 @@ export function ChatDockBody({
             ))}
         </div>
       )}
-      {transcript.messages.length > 0 && (
+      {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
           pending={<SkeletonList count={4} label="Loading conversation" />}
@@ -1244,7 +1278,7 @@ export function ChatDockBody({
         600px here, and jsdom, which lays nothing out, called both green
         (delta-review M1).
       */}
-      {conversationLoading && transcript.messages.length > 0 ? (
+      {conversationLoading && displayedTranscriptMessages.length > 0 ? (
         <SkeletonBlock count={1} label="Loading conversation" />
       ) : null}
       {/*
