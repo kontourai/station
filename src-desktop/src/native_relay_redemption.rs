@@ -1403,13 +1403,33 @@ mod tests {
                 302 => "Found",
                 _ => "Error",
             };
-            write!(
+            if let Err(error) = write!(
                 socket,
                 "HTTP/1.1 {status} {text}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len()
-            )
-            .unwrap();
-            socket.write_all(&body).unwrap();
+            ) {
+                assert!(
+                    matches!(
+                        error.kind(),
+                        std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::ConnectionAborted
+                    ),
+                    "unexpected server response error: {error}"
+                );
+                return request;
+            }
+            if let Err(error) = socket.write_all(&body) {
+                assert!(
+                    matches!(
+                        error.kind(),
+                        std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::ConnectionAborted
+                    ),
+                    "unexpected server body error: {error}"
+                );
+            }
             request
         });
         (origin, thread)
