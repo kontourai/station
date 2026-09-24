@@ -83,9 +83,13 @@ export function AgentActivityLaunchRoutes() {
     };
     void adapter.then((native) => {
       if (disposed) return;
-      // Listen first, then take: a tap between the two is still picked up.
-      subscription = native.subscribeToAgentActivityLaunchRoutes(take);
-      take();
+      // Listen first, then take once the listener is registered: a tap
+      // between the two is either already pending or announced.
+      const launchRoutes = native.subscribeToAgentActivityLaunchRoutes(take);
+      subscription = launchRoutes;
+      void launchRoutes.ready.then(() => {
+        if (!disposed) take();
+      });
     });
     return () => {
       disposed = true;

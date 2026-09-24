@@ -1400,7 +1400,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
 
   subscribeToAgentActivityLaunchRoutes(
     listener: () => void,
-  ): NativeEventSubscription {
+  ): NativeEventSubscription & { ready: Promise<void> } {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
     const addPluginListener = this.bridge.addPluginListener;
@@ -1408,8 +1408,8 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
       this.capabilities['remote-push'].state !== 'enabled' ||
       !addPluginListener
     )
-      return { dispose() {} };
-    void addPluginListener
+      return { dispose() {}, ready: Promise.resolve() };
+    const ready = addPluginListener
       .call(this.bridge, 'station-agent-activity', 'launchRoute', () => {
         if (!disposed) listener();
       })
@@ -1423,6 +1423,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         console.warn('station: agent activity launch listener failed', error);
       });
     return {
+      ready,
       dispose() {
         disposed = true;
         unlisten?.();

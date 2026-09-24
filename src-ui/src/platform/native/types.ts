@@ -494,12 +494,15 @@ export interface NativePlatformAdapter {
   >;
   /**
    * Called (with no route) when a card tap arrives while the app runs; the
-   * listener then calls `takeAgentActivityLaunchRoute`. A no-op subscription
+   * listener then calls `takeAgentActivityLaunchRoute`. `ready` settles once
+   * the listener is registered (or registration failed), so a caller can
+   * take any pending route only after a new tap can no longer slip between
+   * the take and the registration. A no-op subscription, already ready,
    * wherever the plugin is absent.
    */
   subscribeToAgentActivityLaunchRoutes(
     listener: () => void,
-  ): NativeEventSubscription;
+  ): NativeEventSubscription & { ready: Promise<void> };
 }
 
 /** The settled transaction status the native consent broker returns. */

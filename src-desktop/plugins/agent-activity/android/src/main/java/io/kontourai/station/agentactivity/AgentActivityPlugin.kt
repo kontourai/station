@@ -59,18 +59,25 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   /**
-   * Keeps a card tap's route when it is well formed and names a Station this
-   * phone registered with; anything else is ignored and the app just opens.
-   * The extras are removed so a recreated activity cannot replay the tap.
+   * Keeps a card tap's route. Only an intent shaped like the launch intents
+   * AgentNotifications posts (ACTION_MAIN, no data, not relaunched from
+   * Recents) is considered, and only by redeeming its tap nonce: extras
+   * another app supplies name no issued nonce, and a nonce is redeemed once,
+   * so the original launch intent Android restores after process death
+   * opens nothing again. The extra is also removed, which only helps within
+   * this process.
    */
   private fun adoptRoute(intent: Intent?): Boolean {
     if (intent == null) return false
-    val route = intent.agentActivityRoute()
-    intent.removeExtra(EXTRA_ROUTE_STATION)
-    intent.removeExtra(EXTRA_ROUTE_SESSION)
-    intent.removeExtra(EXTRA_ROUTE_PROJECT)
-    if (route == null || !AgentNotifications.knowsStation(context, route.stationId)) return false
-    launchRoute = route
+    val nonce = intent.getStringExtra(EXTRA_TAP) ?: return false
+    intent.removeExtra(EXTRA_TAP)
+    val shaped = isCardTapIntent(
+      intent.action,
+      intent.data != null,
+      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+    )
+    if (!shaped) return false
+    launchRoute = AgentNotifications.redeemTap(context, nonce) ?: return false
     return true
   }
 

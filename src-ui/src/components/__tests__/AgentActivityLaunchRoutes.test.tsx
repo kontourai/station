@@ -15,6 +15,9 @@ let target = 'android';
 const navigate = vi.fn();
 let pending: unknown = null;
 let nudge: (() => void) | undefined;
+/** Resolved by a test to finish the plugin listener registration; null = at once. */
+let registration: Promise<void> | null = null;
+let takes = 0;
 let adapterPromise: Promise<TauriNativePlatformAdapter>;
 
 vi.mock('../../platform/PlatformProfileContext', () => ({
@@ -46,6 +49,7 @@ async function phoneAdapter() {
         }) as T;
       }
       if (command === 'plugin:station-agent-activity|take_launch_route') {
+        takes += 1;
         const route = pending;
         pending = null;
         return { route } as T;
@@ -54,6 +58,7 @@ async function phoneAdapter() {
     },
     listen: async () => () => {},
     async addPluginListener(_plugin, _event, handler) {
+      if (registration) await registration;
       nudge = handler;
       return () => {
         nudge = undefined;
@@ -73,6 +78,8 @@ describe('AgentActivityLaunchRoutes', () => {
     target = 'android';
     pending = null;
     nudge = undefined;
+    registration = null;
+    takes = 0;
     navigate.mockClear();
     adapterPromise = phoneAdapter();
   });
@@ -120,6 +127,24 @@ describe('AgentActivityLaunchRoutes', () => {
     await waitFor(() => expect(pending).toBeNull());
     await settle();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('takes the pending route only after the nudge listener is registered', async () => {
+    let finishRegistration: () => void = () => {};
+    registration = new Promise((resolve) => {
+      finishRegistration = resolve;
+    });
+    pending = { stationId: 'env-a', sessionId: 'thread-1' };
+    render(<AgentActivityLaunchRoutes />);
+    await settle();
+    // Still registering: taking now would leave a window in which a tap is
+    // neither pending at the take nor announced to a listener.
+    expect(takes).toBe(0);
+    expect(nudge).toBeUndefined();
+    finishRegistration();
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(takes).toBe(1);
+    expect(nudge).toBeDefined();
   });
 
   it('does nothing outside the Android app', async () => {

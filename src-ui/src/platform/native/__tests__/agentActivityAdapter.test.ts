@@ -256,7 +256,9 @@ describe('agent-activity launch routes (#2515)', () => {
       });
     const off = make('unsupported');
     await off.getCapabilityReport();
-    off.subscribeToAgentActivityLaunchRoutes(() => {}).dispose();
+    const offSubscription = off.subscribeToAgentActivityLaunchRoutes(() => {});
+    await offSubscription.ready;
+    offSubscription.dispose();
     expect(registered).toEqual([]);
 
     const on = make('enabled');
@@ -265,7 +267,7 @@ describe('agent-activity launch routes (#2515)', () => {
     const subscription = on.subscribeToAgentActivityLaunchRoutes(() => {
       nudges += 1;
     });
-    await Promise.resolve();
+    await subscription.ready;
     expect(registered).toEqual([
       { plugin: 'station-agent-activity', event: 'launchRoute' },
     ]);

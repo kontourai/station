@@ -283,3 +283,119 @@ internal fun sessionRoute(registration: Registration, data: Map<String, String>,
     data["${source.prefix}_session_id"],
     data["${source.prefix}_project_slug"]
   )
+
+/**
+ * A tap nonce: 128 random bits, lowercase hex. The only thing a card's or
+ * alert's launch intent carries; the route it opens stays in app-private
+ * storage (see [TapLedger]).
+ */
+internal val TAP_NONCE = Regex("^[0-9a-f]{32}$")
+
+/** Card taps are valid at most as long as a card can live. */
+internal const val TAP_LIFETIME_MS = 24 * 60 * 60 * 1000L
+
+/** One live nonce per card/alert identity, so this bounds cards plus recent alerts. */
+internal const val MAX_TAPS = 20
+
+/** A nonce a posted card or alert carries, and what a tap on it opens. */
+internal data class IssuedTap(
+  val nonce: String,
+  /** The notification's intent identity (`activity:<registration>`, `alert:<registration>:<alert>`). */
+  val identity: String,
+  /** The PendingIntent request code, so a redeemed tap can re-arm the same intent. */
+  val requestCode: Int,
+  val route: SessionRoute,
+  val issuedAt: Long
+)
+
+/** A redeemed tap: the route to open, and the fresh nonce that re-arms the same notification. */
+internal data class RedeemedTap(val ledger: TapLedger, val route: SessionRoute, val reissued: IssuedTap)
+
+/**
+ * Which tap nonces are live (#2515). The launcher activity is exported and
+ * Android restores a recreated activity with its ORIGINAL launch intent after
+ * process death, so neither the intent's extras nor "we removed them" can be
+ * trusted: a route is opened only by redeeming a nonce this phone issued, and
+ * redeeming consumes it.
+ *
+ * Repeat taps of the same ongoing card must keep working, but its posted
+ * PendingIntent still carries the consumed nonce. So redeeming re-issues: a
+ * fresh nonce for the same identity and route, which the caller writes into
+ * the SAME PendingIntent with FLAG_UPDATE_CURRENT (the posted notification
+ * holds that PendingIntent, so its next tap delivers the fresh nonce). The
+ * consumed nonce — the one a restored launch intent replays — is gone.
+ *
+ * Issuing for an identity drops that identity's previous nonce: its
+ * PendingIntent's extras were just replaced, so nothing can legitimately
+ * deliver the old one.
+ */
+internal class TapLedger(val taps: List<IssuedTap>) {
+  private fun live(now: Long) = taps.filter { now - it.issuedAt in 0..TAP_LIFETIME_MS }
+
+  fun issue(identity: String, requestCode: Int, route: SessionRoute, nonce: String, now: Long): TapLedger =
+    TapLedger(
+      (live(now).filter { it.identity != identity } + IssuedTap(nonce, identity, requestCode, route, now))
+        .takeLast(MAX_TAPS)
+    )
+
+  /** Drops an identity's nonce: its notification no longer names a session. */
+  fun forget(identity: String, now: Long): TapLedger = TapLedger(live(now).filter { it.identity != identity })
+
+  /**
+   * Consumes [nonce] and re-issues its identity under [freshNonce]; null
+   * when the nonce is malformed, unknown, expired or already redeemed.
+   */
+  fun redeem(nonce: String?, now: Long, freshNonce: String): RedeemedTap? {
+    if (nonce == null || !TAP_NONCE.matches(nonce)) return null
+    val tap = live(now).firstOrNull { it.nonce == nonce } ?: return null
+    val reissued = IssuedTap(freshNonce, tap.identity, tap.requestCode, tap.route, now)
+    return RedeemedTap(TapLedger(live(now).filter { it.nonce != nonce } + reissued), tap.route, reissued)
+  }
+
+  fun serialize(): String =
+    org.json.JSONArray(
+      taps.map { tap ->
+        JSONObject()
+          .put("nonce", tap.nonce)
+          .put("identity", tap.identity)
+          .put("requestCode", tap.requestCode)
+          .put("stationId", tap.route.stationId)
+          .put("sessionId", tap.route.sessionId)
+          .put("projectSlug", tap.route.projectSlug ?: JSONObject.NULL)
+          .put("issuedAt", tap.issuedAt)
+      }
+    ).toString()
+
+  companion object {
+    /** Anything unreadable, or any entry that no longer validates, is dropped. */
+    fun parse(serialized: String?): TapLedger {
+      if (serialized.isNullOrEmpty()) return TapLedger(emptyList())
+      return try {
+        val array = org.json.JSONArray(serialized)
+        TapLedger(
+          (0 until array.length()).mapNotNull { index ->
+            val entry = array.optJSONObject(index) ?: return@mapNotNull null
+            val nonce = entry.optString("nonce").takeIf { TAP_NONCE.matches(it) } ?: return@mapNotNull null
+            val route = SessionRoute.validOrNull(
+              entry.optString("stationId", null),
+              entry.optString("sessionId", null),
+              if (entry.isNull("projectSlug")) null else entry.optString("projectSlug", null)
+            ) ?: return@mapNotNull null
+            IssuedTap(nonce, entry.optString("identity"), entry.optInt("requestCode"), route, entry.optLong("issuedAt"))
+          }
+        )
+      } catch (_: JSONException) {
+        TapLedger(emptyList())
+      }
+    }
+  }
+}
+
+/**
+ * Whether an intent is shaped like the launch intents this plugin posts
+ * (`getLaunchIntentForPackage`: ACTION_MAIN, no data) and was not relaunched
+ * from Recents, which replays the original intent. Anything else is not a
+ * card tap, whatever extras it carries.
+ */
+internal fun isCardTapIntent(action: String?, hasData: Boolean, launchedFromHistory: Boolean): Boolean =
+  action == "android.intent.action.MAIN" && !hasData && !launchedFromHistory

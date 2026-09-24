@@ -307,8 +307,10 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     return this.agentActivityUnsupported('take-agent-activity-launch-route');
   }
 
-  subscribeToAgentActivityLaunchRoutes(): NativeEventSubscription {
-    return { dispose() {} };
+  subscribeToAgentActivityLaunchRoutes(): NativeEventSubscription & {
+    ready: Promise<void>;
+  } {
+    return { dispose() {}, ready: Promise.resolve() };
   }
 
   private agentActivityUnsupported(

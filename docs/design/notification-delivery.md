@@ -243,15 +243,26 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   (`SessionRoute.validOrNull`) checks the same grammar — a server test pins
   the Kotlin pattern to the contract's — and drops the whole route on any
   failure; the route's Station is the registration's verified Station id,
-  never a card field. `AgentNotifications.openApp` puts it on the tap's
-  launch intent as extras (no data URI or action, which the deep-link plugin
-  would read as a pairing link); each card and alert has its own request code
-  and, from API 29, intent identifier, and `FLAG_UPDATE_CURRENT` replaces the
-  extras of the same card's intent, so an updated card never opens a stale
-  session. `AgentActivityPlugin` adopts the route from the launch intent
-  (`load`) or `onNewIntent` only if its Station is one this phone registered
-  with — the launcher activity is exported, so another app can start it with
-  extras — removes the extras so a recreated activity cannot replay them,
+  never a card field. The route never rides on an intent: the tap's
+  launch intent (no data URI or action, which the deep-link plugin would
+  read as a pairing link) carries only a random tap nonce, and
+  `AgentNotifications.openApp` records nonce → route in app-private storage
+  (`TapLedger` in `AgentActivityModel.kt`: one live nonce per card or alert,
+  at most 20, expiring after 24 hours, the longest a card lives). Each card
+  and alert has its own request code and, from API 29, intent identifier, and
+  `FLAG_UPDATE_CURRENT` replaces the extras of the same notification's
+  intent, so a re-posted card carries only its newest nonce.
+  `AgentActivityPlugin` looks at an intent from `load` or `onNewIntent` only
+  if it is shaped like those launch intents (`ACTION_MAIN`, no data, not
+  `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), and adopts a route only by
+  redeeming its nonce, which consumes it. That is what makes the exported
+  launcher activity safe: extras another app supplies name no issued nonce,
+  and the original launch intent Android restores to a recreated activity
+  after process death names a nonce already redeemed (removing the extra
+  only helps within one process). Redeeming re-issues a fresh nonce into the
+  same still-existing PendingIntent (`FLAG_NO_CREATE` check, then
+  `FLAG_UPDATE_CURRENT`), so tapping the same ongoing card again works. The
+  plugin then holds the route
   and hands it to the web layer through `take_launch_route` (returns and
   clears), announced by a `launchRoute` plugin event while the app runs. The
   web layer (`agentActivitySessionTarget`) validates the grammar a third time
@@ -259,6 +270,10 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
   or `/?chat=<id>&dock=open` without a project. A route for another Station
   is dropped; switching Stations from a tap is not attempted.
+  The references count against the 2500-byte plaintext budget and are
+  never cut: the card's reference stays for as long as row 0 does, and an
+  alert's stays with the alert, so under a tight budget they displace tail
+  rows (at most about 310 bytes each for the longest id and slug).
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with
