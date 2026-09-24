@@ -56,8 +56,41 @@ const REQUIRED_IOS_USAGE_DESCRIPTIONS = new Map([
   ],
 ]);
 
-function matches(source, expression) {
-  return [...source.matchAll(expression)].map((match) => match[1]);
+/**
+ * Every `<tag ...>` element's attribute text. Manifests from Gradle's merger
+ * and `apkanalyzer manifest print` put each attribute on its own line, so an
+ * element is matched up to its closing `>`, never within one line. The name
+ * must end at whitespace, `/` or `>`: a word boundary would also match the
+ * hyphen in `<uses-permission-sdk-23` and `<activity-alias`.
+ */
+function elements(source, tag) {
+  const uncommented = source.replace(/<!--[\s\S]*?-->/g, '');
+  const element = new RegExp(`<${tag}(?=[\\s/>])([^>]*)>`, 'g');
+  return [...uncommented.matchAll(element)].map((match) => match[1]);
+}
+
+function attribute(attributes, name) {
+  const match = new RegExp(`\\bandroid:${name}\\s*=\\s*"([^"]*)"`).exec(
+    attributes,
+  );
+  return match ? match[1] : undefined;
+}
+
+// android.view.WindowManager.LayoutParams: SOFT_INPUT_MASK_ADJUST and
+// SOFT_INPUT_ADJUST_RESIZE. `apkanalyzer` prints the compiled integer.
+const SOFT_INPUT_MASK_ADJUST = 0xf0;
+const SOFT_INPUT_ADJUST_RESIZE = 0x10;
+
+function resizesForKeyboard(value) {
+  if (value === undefined) return false;
+  if (/^0x[0-9a-f]+$/i.test(value)) {
+    return (
+      (Number.parseInt(value, 16) & SOFT_INPUT_MASK_ADJUST) ===
+      SOFT_INPUT_ADJUST_RESIZE
+    );
+  }
+  const adjust = value.split('|').filter((flag) => flag.startsWith('adjust'));
+  return adjust.length === 1 && adjust[0] === 'adjustResize';
 }
 
 function requiredSet(actual, required, description) {
@@ -73,17 +106,30 @@ function requiredSet(actual, required, description) {
 export function auditAndroidManifest(
   androidManifest,
   description = 'Android',
-  { packaged = false } = {},
+  { packaged = false, compiled = false } = {},
 ) {
   const androidPermissions = new Set(
-    matches(androidManifest, /<uses-permission android:name="([^"]+)"/g).filter(
-      (permission) =>
-        !packaged ||
-        !(
-          PACKAGED_LIBRARY_PERMISSIONS.has(permission) ||
-          DYNAMIC_RECEIVER_PERMISSION.test(permission)
-        ),
-    ),
+    [
+      ...elements(androidManifest, 'uses-permission'),
+      ...elements(androidManifest, 'uses-permission-sdk-23'),
+    ]
+      .map((attributes) => {
+        const permission = attribute(attributes, 'name');
+        if (permission === undefined) {
+          throw new Error(
+            `${description} declares a permission without a readable android:name.`,
+          );
+        }
+        return permission;
+      })
+      .filter(
+        (permission) =>
+          !packaged ||
+          !(
+            PACKAGED_LIBRARY_PERMISSIONS.has(permission) ||
+            DYNAMIC_RECEIVER_PERMISSION.test(permission)
+          ),
+      ),
   );
   requiredSet(
     androidPermissions,
@@ -92,53 +138,92 @@ export function auditAndroidManifest(
   );
 
   const optionalFeatures = new Set(
-    matches(
-      androidManifest,
-      /<uses-feature android:name="([^"]+)" android:required="false"/g,
-    ).filter((feature) => feature !== 'android.software.leanback'),
+    elements(androidManifest, 'uses-feature')
+      .filter((attributes) => attribute(attributes, 'required') === 'false')
+      .map((attributes) => attribute(attributes, 'name'))
+      .filter(
+        (feature) =>
+          feature !== undefined && feature !== 'android.software.leanback',
+      ),
   );
   requiredSet(
     optionalFeatures,
     REQUIRED_ANDROID_OPTIONAL_FEATURES,
     `${description} optional hardware features`,
   );
-  if (!androidManifest.includes('android:windowSoftInputMode="adjustResize"')) {
+  const activities = elements(androidManifest, 'activity');
+  if (
+    !activities.some((attributes) =>
+      resizesForKeyboard(attribute(attributes, 'windowSoftInputMode')),
+    )
+  ) {
     throw new Error(
       `${description} activity must use the maintained platform keyboard-resize contract windowSoftInputMode="adjustResize".`,
     );
   }
-  for (const attribute of [
-    'android:allowBackup="false"',
-    'android:fullBackupContent="false"',
-    'android:dataExtractionRules="@xml/data_extraction_rules"',
+  const application = elements(androidManifest, 'application');
+  if (application.length !== 1) {
+    throw new Error(`${description} must declare exactly one application.`);
+  }
+  const [applicationAttributes] = application;
+  for (const [name, expected] of [
+    ['allowBackup', 'false'],
+    ['fullBackupContent', 'false'],
   ]) {
-    if (!androidManifest.includes(attribute)) {
+    if (attribute(applicationAttributes, name) !== expected) {
       throw new Error(
-        `${description} must retain the reviewed credential backup boundary ${attribute}.`,
+        `${description} must retain the reviewed credential backup boundary android:${name}="${expected}".`,
       );
     }
+  }
+  const extractionRules = attribute(
+    applicationAttributes,
+    'dataExtractionRules',
+  );
+  // `apkanalyzer` prints resources by compiled id, which cannot be tied back
+  // to a file here. Only that print accepts one; the source and merged
+  // manifests audited in the same run must still name the reviewed rules file.
+  const extractionRulesAccepted =
+    extractionRules === '@xml/data_extraction_rules' ||
+    (compiled && /^@ref\/0x[0-9a-f]{8}$/i.test(extractionRules ?? ''));
+  if (!extractionRulesAccepted) {
+    throw new Error(
+      `${description} must retain the reviewed credential backup boundary android:dataExtractionRules="@xml/data_extraction_rules".`,
+    );
   }
 }
 
 export function auditMobilePermissions({
   androidManifest,
   packagedAndroidManifests = /** @type {Array<[string, string]>} */ ([]),
+  compiledAndroidManifests = /** @type {Array<[string, string]>} */ ([]),
   androidDataExtractionRules,
   iosInfo,
 }) {
   auditAndroidManifest(androidManifest, 'Android source manifest');
   for (const [name, manifest] of packagedAndroidManifests) {
-    auditAndroidManifest(manifest, `Android merged/package manifest ${name}`, {
+    auditAndroidManifest(manifest, `Android merged manifest ${name}`, {
       packaged: true,
+    });
+  }
+  for (const [name, manifest] of compiledAndroidManifests) {
+    auditAndroidManifest(manifest, `Android package manifest ${name}`, {
+      packaged: true,
+      compiled: true,
     });
   }
   if (typeof androidDataExtractionRules !== 'string') {
     throw new Error('Android data-extraction rules are required for audit.');
   }
+  // A commented-out exclusion must not count as one.
+  const extractionRules = androidDataExtractionRules.replace(
+    /<!--[\s\S]*?-->/g,
+    '',
+  );
   for (const section of ['cloud-backup', 'device-transfer']) {
     const body = new RegExp(
       `<${section}[^>]*>([\\s\\S]*?)<\\/${section}>`,
-    ).exec(androidDataExtractionRules)?.[1];
+    ).exec(extractionRules)?.[1];
     if (!body)
       throw new Error(`Android ${section} extraction rules are missing.`);
     for (const domain of [
@@ -196,15 +281,20 @@ function main() {
     resolve(root, 'src-desktop/gen/android/app/build/intermediates'),
   );
   const packageManifest = process.env.STATION_ANDROID_PACKAGE_MANIFEST;
-  if (
-    process.env.STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT === '1' &&
-    !packageManifest
-  ) {
-    throw new Error(
-      'STATION_ANDROID_PACKAGE_MANIFEST is required for packaged permission audit.',
-    );
+  if (process.env.STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT === '1') {
+    if (!packageManifest) {
+      throw new Error(
+        'STATION_ANDROID_PACKAGE_MANIFEST is required for packaged permission audit.',
+      );
+    }
+    // The package print cannot show which file its compiled rules id names,
+    // so the build's merged manifest must be there to show it symbolically.
+    if (mergedPaths.length === 0) {
+      throw new Error(
+        'A merged Android manifest from the build is required for packaged permission audit.',
+      );
+    }
   }
-  if (packageManifest) mergedPaths.push(resolve(packageManifest));
   auditMobilePermissions({
     androidManifest: readFileSync(
       resolve(root, 'src-desktop/gen/android/app/src/main/AndroidManifest.xml'),
@@ -214,6 +304,9 @@ function main() {
       path,
       readFileSync(path, 'utf8'),
     ]),
+    compiledAndroidManifests: packageManifest
+      ? [[packageManifest, readFileSync(resolve(packageManifest), 'utf8')]]
+      : [],
     androidDataExtractionRules: readFileSync(
       resolve(
         root,
