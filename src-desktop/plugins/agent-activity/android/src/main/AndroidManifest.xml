@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Android 16 Live Updates: lets an ongoing card request status-bar promotion. -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+  <application>
+    <!-- FCM wakes the process into this service without starting MainActivity,
+         the WebView or the Rust runtime. It must stay independent of all three. -->
+    <service android:name="io.kontourai.station.agentactivity.AgentMessagingService" android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+    <receiver android:name="io.kontourai.station.agentactivity.AgentActivityDismissReceiver" android:exported="false" />
+    <receiver android:name="io.kontourai.station.agentactivity.AgentActivityExpiryReceiver" android:exported="false" />
+  </application>
+</manifest>

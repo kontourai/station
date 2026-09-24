@@ -91,13 +91,13 @@ the platform, not by `getaddrinfo`.
 ## Status: the watch is landed and dormant
 
 `notification_watch_start` / `notification_watch_stop` exist and are tested, and
-**nothing calls them** — the live blocker is #917 (the FCM/APNs dependency
-decision). The dormant call site is commented in
+**nothing calls them**. Push (below) supersedes it for backgrounded delivery.
+The dormant call site is commented in
 `src-ui/src/contexts/ApiBaseContext.tsx` so switching it on is a visible,
 small change rather than an archaeology exercise.
 
-(Historical: #3088 corrected this record after a backlog sweep closed the
-original tracking issue with no code change. #3088 is itself now closed, so
+(Historical: archive#3088 corrected this record after a backlog sweep closed
+the original tracking issue with no code change. It is itself now closed, so
 it must not be cited here as live tracking — that would repeat the very
 defect it was filed for.)
 
@@ -110,12 +110,13 @@ defect it was filed for.)
 | Force-quit / swiped away | **no** |
 | Device rebooted, app never opened | **no** |
 
-Everything below the first row needs FCM on Android and APNs on iOS (#917).
-The native capability report therefore returns `remote-push: unsupported`
-instead of allowing the presence of the local-notification plugin or dormant
-watch to be mistaken for wake-capable delivery. #1225 remains open until #917
-selects and provisions both the mobile applications and server send
-credentials; repository code cannot manufacture those provider identities.
+Everything below the first row needs FCM on Android and APNs on iOS
+(archive#917, reseeded as #63 and batched into #177). The native capability
+report therefore returns `remote-push: unsupported` instead of allowing the
+presence of the local-notification plugin or dormant watch to be mistaken for
+wake-capable delivery. archive#1225 remains open until the mobile applications
+and server send credentials are provisioned; repository code cannot
+manufacture those provider identities.
 
 That is not a consolation prize. Push is the mechanism that does not require
 keeping a process alive at all — the system unfreezes the app to deliver — so it
@@ -125,12 +126,59 @@ platform's answer. The cost is real and is a product decision, not a technical
 one: every notification leaves the machine and transits Google or Apple, which
 matters for a self-hosted product.
 
-The seam is ready for it: `notification_watch_start` takes a URL and a
-credential and owns delivery from then on, so a push relay slots in behind the
-same call without the web layer changing.
-
 **iOS** has no foreground-service equivalent either, and is foreground-only
-until push is decided.
+until push lands.
+
+## Decision: push through a Kontour-operated relay
+
+Decided September 23, 2026 by the owner: follow
+[T3 Code](https://github.com/pingdotgg/t3code), which ships this for a
+self-hosted product today. Its shape:
+
+- **Relay.** Push credentials belong to whoever publishes the app (the
+  Firebase project and the APNs key are bound to its package and bundle IDs), so
+  a self-hosted server cannot send to the published app directly. T3 runs a
+  hosted relay (`infra/relay/src/agentActivity/`) that holds the FCM service
+  account and APNs key, stores device tokens, and re-checks registration and
+  preferences before every send. Each self-hosted server publishes signed
+  activity state to it (`apps/server/src/relay/AgentAwarenessRelay.ts`).
+- **Android.** FCM *data* messages are received by a native
+  `FirebaseMessagingService` that renders the card itself — no WebView, no
+  JavaScript. While work runs the card requests promotion
+  (`setRequestPromotedOngoing`, `setShortCriticalText`), which Android 16 shows
+  as a status-bar Live Update chip.
+- **iOS.** A Live Activity from a widget extension, updated by APNs
+  `liveactivity` pushes, with push-to-start tokens (iOS 17.2+) so a card can
+  appear while the app is closed.
+
+The payload carries status, thread titles and project names, never
+transcripts, code or tool output (the same rule as the
+[connection broker](connection-broker.md)).
+
+Push avoids every failure above: the platform wakes the process to deliver, so
+nothing has to stay alive, and neither the freezer nor tauri#11609/#15671 is
+involved. Rust does no networking, so the DNS failure does not apply either.
+The one Tauri-specific risk is launch-after-wake: FCM starts the process
+without `MainActivity`, which is the same lifecycle family as tauri#11609 and
+must be proven on a device.
+
+### Delivery status
+
+| Slice | State |
+|---|---|
+| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16) through the debug receiver: delivery to a killed process, promoted chip, launch after that wake. Real FCM delivery is unverified until a Firebase project exists |
+| Relay (token registry, FCM/APNs send, signed publish) | not started; needs a Firebase project, an APNs key and a hosting decision |
+| Server publisher (session state → relay) | not started |
+| Web registration (`configure`, `pushToken`, settings UI) | not started |
+| iOS Live Activity (widget extension in `gen/apple/project.yml`) | not started |
+
+The Android plugin builds with or without Firebase. Its Firebase identity comes
+from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
+build time (public values, but bound to one project); without them
+`pushToken` reports `unconfigured`. Debug builds include a broadcast receiver,
+restricted to the `adb` shell, that stands in for FCM so rendering and
+wake-from-cold can be verified before the relay exists — see
+`DebugAgentActivityReceiver.kt`.
 
 ## Rules this area has earned
 
