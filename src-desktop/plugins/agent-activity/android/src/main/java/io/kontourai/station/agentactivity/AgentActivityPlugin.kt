@@ -21,6 +21,7 @@ class ConfigureArgs {
   lateinit var registrationId: String
   lateinit var stationId: String
   lateinit var stationKey: String
+  lateinit var payloadKey: String
   var ongoingEnabled: Boolean = true
 }
 
@@ -65,9 +66,14 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun configure(invoke: Invoke) {
     val args = invoke.parseArgs(ConfigureArgs::class.java)
-    val registration = Registration.validOrNull(args.registrationId, args.stationId, args.stationKey)
+    val registration = Registration.validOrNull(
+      args.registrationId,
+      args.stationId,
+      args.stationKey,
+      args.payloadKey
+    )
     if (registration == null) {
-      invoke.reject("registrationId, stationId and stationKey must be what the Station returned")
+      invoke.reject("registrationId, stationId, stationKey and payloadKey must be what the Station returned")
       return
     }
     AgentNotifications.configure(context, registration, args.ongoingEnabled)

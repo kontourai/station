@@ -71,4 +71,6 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
     implementation(project(":tauri-android"))
     testImplementation("junit:junit:4.13.2")
+    // android.jar only stubs org.json; unit tests need the real parser.
+    testImplementation("org.json:json:20250517")
 }

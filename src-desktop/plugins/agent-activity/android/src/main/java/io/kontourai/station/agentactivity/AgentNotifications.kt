@@ -82,7 +82,8 @@ object AgentNotifications {
     val prefs = state(context, registrationId)
     val stationId = prefs.getString("stationId", null) ?: return null
     val stationKey = prefs.getString("stationKey", null) ?: return null
-    return Registration(registrationId, stationId, stationKey)
+    val payloadKey = prefs.getString("payloadKey", null) ?: return null
+    return Registration(registrationId, stationId, stationKey, payloadKey)
   }
 
   @Synchronized
@@ -113,6 +114,7 @@ object AgentNotifications {
     prefs.edit()
       .putString("stationId", registration.stationId)
       .putString("stationKey", registration.stationKey)
+      .putString("payloadKey", registration.payloadKey)
       .putBoolean("ongoing", ongoingEnabled)
       .apply()
     if (ongoingEnabled && !wasEnabled) prefs.edit().putBoolean("dismissed", false).apply()
@@ -177,14 +179,17 @@ object AgentNotifications {
 
   @Synchronized
   fun receive(context: Context, data: Map<String, String>) {
-    val registration = data["device_id"]?.let { registration(context, it) }
-    val updatedAt = data["updated_at"]?.toLongOrNull() ?: return
-    if (!acceptsPush(registration, data) || !isFresh(updatedAt, System.currentTimeMillis())) return
+    val registration = data["device_id"]?.let { registration(context, it) } ?: return
+    // Cards arrive sealed; one that does not open with this registration's key
+    // did not come from its Station.
+    val card = openPush(registration, data) ?: return
+    val updatedAt = card["updated_at"]?.toLongOrNull() ?: return
+    if (!acceptsPush(registration, card) || !isFresh(updatedAt, System.currentTimeMillis())) return
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-    val prefs = state(context, registration!!.id)
+    val prefs = state(context, registration.id)
     channels(context)
-    showAlert(context, registration.id, prefs, data)
-    updateActivity(context, registration.id, prefs, data, updatedAt)
+    showAlert(context, registration.id, prefs, card)
+    updateActivity(context, registration.id, prefs, card, updatedAt)
   }
 
   /**

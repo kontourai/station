@@ -9,7 +9,7 @@ import org.junit.Test
 
 class AgentRegistrationTest {
   private val key = "A".repeat(43)
-  private val registration = Registration("reg_0123456789abcdef", "station-1", key)
+  private val registration = Registration("reg_0123456789abcdef", "station-1", key, key)
   private val push = mapOf(
     "device_id" to "reg_0123456789abcdef",
     "user_id" to "station-1",
@@ -37,11 +37,12 @@ class AgentRegistrationTest {
 
   @Test
   fun registrationRequiresWhatTheStationReturned() {
-    assertNotNull(Registration.validOrNull("reg_0123456789abcdef", "station-1", key))
-    assertNull("short id", Registration.validOrNull("short", "station-1", key))
-    assertNull("path characters in id", Registration.validOrNull("../../0123456789abc", "station-1", key))
-    assertNull("blank station", Registration.validOrNull("reg_0123456789abcdef", " ", key))
-    assertNull("not a thumbprint", Registration.validOrNull("reg_0123456789abcdef", "station-1", "abc"))
-    assertEquals("station-1", Registration.validOrNull("reg_0123456789abcdef", "station-1", key)?.stationId)
+    assertNotNull(Registration.validOrNull("reg_0123456789abcdef", "station-1", key, key))
+    assertNull("short id", Registration.validOrNull("short", "station-1", key, key))
+    assertNull("path characters in id", Registration.validOrNull("../../0123456789abc", "station-1", key, key))
+    assertNull("blank station", Registration.validOrNull("reg_0123456789abcdef", " ", key, key))
+    assertNull("not a thumbprint", Registration.validOrNull("reg_0123456789abcdef", "station-1", "abc", key))
+    assertNull("not a payload key", Registration.validOrNull("reg_0123456789abcdef", "station-1", key, "short"))
+    assertEquals("station-1", Registration.validOrNull("reg_0123456789abcdef", "station-1", key, key)?.stationId)
   }
 }

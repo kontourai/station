@@ -4,6 +4,13 @@
 
 package io.kontourai.station.agentactivity
 
+import javax.crypto.AEADBadTagException
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import org.json.JSONException
+import org.json.JSONObject
+
 /**
  * The Android-free half of an agent-activity card: what the payload says and
  * what the card should read. Kept free of android.* so it runs in plain JVM
@@ -36,18 +43,104 @@ internal data class ActivityRow(val status: String, val title: String, val proje
  * `user_id`, and `stationKey` is the thumbprint of the Station's push key,
  * which the gateway stamps as `station_key` after verifying the signature.
  */
-data class Registration(val id: String, val stationId: String, val stationKey: String) {
+data class Registration(
+  val id: String,
+  val stationId: String,
+  val stationKey: String,
+  /** AES-256 key (base64url) the Station seals this registration's cards with. */
+  val payloadKey: String
+) {
   companion object {
     private val ID = Regex("^[A-Za-z0-9_-]{16,128}$")
-    private val THUMBPRINT = Regex("^[A-Za-z0-9_-]{43}$")
+    private val KEY_43 = Regex("^[A-Za-z0-9_-]{43}$")
 
-    fun validOrNull(id: String, stationId: String, stationKey: String): Registration? =
-      if (ID.matches(id) && stationId.isNotBlank() && stationId.length <= 128 && THUMBPRINT.matches(stationKey)) {
-        Registration(id, stationId, stationKey)
+    fun validOrNull(id: String, stationId: String, stationKey: String, payloadKey: String): Registration? =
+      if (ID.matches(id) && stationId.isNotBlank() && stationId.length <= 128 &&
+        KEY_43.matches(stationKey) && KEY_43.matches(payloadKey)
+      ) {
+        Registration(id, stationId, stationKey, payloadKey)
       } else {
         null
       }
   }
+}
+
+private const val SEAL_NONCE_BYTES = 12
+private const val SEAL_TAG_BITS = 128
+internal fun sealAad(registrationId: String) = "station-agent-activity:v1:$registrationId"
+
+/**
+ * Opens a card the Station sealed for this registration (AES-256-GCM, a
+ * 12-byte nonce prefixed, the registration bound in as associated data).
+ * Only the Station and this phone hold the key, so the gateway, Cloudflare
+ * and Google carry the card without being able to read or forge it. Returns
+ * null for anything that does not authenticate or is not a flat string map.
+ */
+fun unseal(payloadKey: String, registrationId: String, sealed: String): Map<String, String>? {
+  val key = decodeBase64Url(payloadKey)?.takeIf { it.size == 32 } ?: return null
+  val bytes = decodeBase64Url(sealed)?.takeIf { it.size > SEAL_NONCE_BYTES + SEAL_TAG_BITS / 8 } ?: return null
+  val plaintext = try {
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(
+      Cipher.DECRYPT_MODE,
+      SecretKeySpec(key, "AES"),
+      GCMParameterSpec(SEAL_TAG_BITS, bytes, 0, SEAL_NONCE_BYTES)
+    )
+    cipher.updateAAD(sealAad(registrationId).toByteArray(Charsets.UTF_8))
+    cipher.doFinal(bytes, SEAL_NONCE_BYTES, bytes.size - SEAL_NONCE_BYTES)
+  } catch (_: AEADBadTagException) {
+    return null
+  } catch (_: java.security.GeneralSecurityException) {
+    return null
+  }
+  return try {
+    val json = JSONObject(String(plaintext, Charsets.UTF_8))
+    buildMap {
+      for (name in json.keys()) {
+        val value = json.get(name)
+        if (value !is String) return null
+        put(name, value)
+      }
+    }
+  } catch (_: JSONException) {
+    null
+  }
+}
+
+private const val BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+/**
+ * Unpadded base64url. java.util.Base64 needs API 26 (minSdk is 24) and
+ * android.util.Base64 is a stub in JVM unit tests, so decode by hand.
+ */
+internal fun decodeBase64Url(value: String): ByteArray? {
+  if (value.length % 4 == 1) return null
+  val out = java.io.ByteArrayOutputStream(value.length * 3 / 4)
+  var buffer = 0
+  var bits = 0
+  for (char in value) {
+    val index = BASE64URL.indexOf(char)
+    if (index < 0) return null
+    buffer = (buffer shl 6) or index
+    bits += 6
+    if (bits >= 8) {
+      bits -= 8
+      out.write((buffer shr bits) and 0xFF)
+    }
+  }
+  return out.toByteArray()
+}
+
+/**
+ * Combines a push's routing fields with its sealed card. Routing values come
+ * only from outside the seal (the gateway stamps station_key there), and the
+ * card cannot override them.
+ */
+internal fun openPush(registration: Registration, data: Map<String, String>): Map<String, String>? {
+  val sealed = data["sealed"] ?: return null
+  val card = unseal(registration.payloadKey, registration.id, sealed) ?: return null
+  val routing = listOf("station_kind", "device_id", "station_key")
+  return card - routing.toSet() + routing.mapNotNull { key -> data[key]?.let { key to it } }
 }
 
 internal const val MAX_MESSAGE_AGE_MS = 10 * 60 * 1000L
