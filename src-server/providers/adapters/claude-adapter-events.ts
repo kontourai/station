@@ -1412,7 +1412,7 @@ const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;
  * `url` source names bytes Station never received, so it is reported rather
  * than fetched.
  */
-export function collectClaudeToolResultImages(content: unknown): {
+function collectClaudeToolResultImages(content: unknown): {
   attachments?: ChatAttachmentInput[];
   omissions: string[];
 } {
