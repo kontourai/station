@@ -161,19 +161,21 @@ async function fixture(declared: string | undefined) {
     ),
   );
 
-  const setDefault = async (credential: string, approvalMode: string) => {
+  const put = async (credential: string, body: unknown) => {
     const res = await app.request(`/api/agents/${SLUG}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        execution: { agentConnectionId: 'claude', approvalMode },
-      }),
+      body: JSON.stringify(body),
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  const setDefault = (credential: string, approvalMode: string) =>
+    put(credential, {
+      execution: { agentConnectionId: 'claude', approvalMode },
+    });
   /** What every session start reads: the Agent's effective default. */
   const effectiveDefault = async () =>
     (await configLoader.loadAgent(SLUG)).execution?.approvalMode;
@@ -185,6 +187,7 @@ async function fixture(declared: string | undefined) {
     home,
     operator,
     pair,
+    put,
     grant,
     setDefault,
     effectiveDefault,
@@ -270,4 +273,13 @@ test('another plugin later contributing the same Agent does not inherit the choi
     JSON.stringify({ plugin: 'another-plugin' }),
   );
   expect(await f.effectiveDefault()).toBeUndefined();
+});
+
+test("an edit that leaves execution out does not copy the effective default into the plugin's file", async () => {
+  const f = await fixture('ask');
+  expect((await f.setDefault(f.operator.credential, 'never')).status).toBe(200);
+  const res = await f.put(f.operator.credential, { description: 'Renamed' });
+  expect(res.status).toBe(200);
+  expect(f.declaredOnDisk()).toBe('ask');
+  expect(await f.effectiveDefault()).toBe('never');
 });
