@@ -373,20 +373,31 @@ async function readWorkspaceImage(
     // - DOES: refuse any path that, when checked, resolves outside the
     //   workspace — absolute paths elsewhere, `..` climbs, and symlinked
     //   files or directories that lead out.
-    // - DOES: open the resolved path with O_NOFOLLOW, so its final component
-    //   cannot be a symlink at open time, and require the opened file's
-    //   device/inode to equal an lstat of that same resolved path taken just
-    //   before the open — catching the final file being replaced between
-    //   those two calls.
+    // - DOES: require the opened file's device/inode to equal an lstat of the
+    //   same resolved path taken just before the open — catching the final
+    //   file being replaced by a different file between those two calls.
+    // - PARTLY: open with O_NOFOLLOW so the final component cannot be a
+    //   symlink at open time — but only where the platform defines it. The
+    //   flag is `constants.O_NOFOLLOW ?? 0`; where it is absent (notably
+    //   Windows) the open follows a final-component link, and only the
+    //   device/inode comparison above remains.
     // - DOES NOT: defend against an INTERMEDIATE directory of the resolved
     //   path being replaced with a symlink after `realpath`. The lstat and
     //   the open would both follow it, agree with each other, and read a
-    //   file outside the workspace. Doing this correctly needs
-    //   directory-handle-relative no-follow opens (openat/O_BENEATH), which
-    //   Node does not expose portably, and Windows junctions behave
-    //   differently again. Accepted residual: triggering it requires write
-    //   access inside the session workspace during the read — i.e. the agent
-    //   itself, which can already read the same files through its shell.
+    //   file outside the workspace — with the STATION SERVER's filesystem
+    //   permissions. Doing this correctly needs directory-handle-relative
+    //   no-follow opens (openat/O_BENEATH), which Node does not expose
+    //   portably, and Windows junctions behave differently again.
+    //
+    // Accepted residual, stated exactly: exploiting it needs something that
+    // can rewrite directories inside the session workspace during the read.
+    // That is typically the agent, but not only — any process or user with
+    // write access to the workspace qualifies. And what it gains is a read
+    // with the Station server's permissions, which need not match the
+    // writer's: the agent's own shell may be sandboxed away from files the
+    // server can read, so this is not "nothing the writer couldn't already
+    // read". The image-type and size checks still apply to whatever is read,
+    // so only an image-typed file of at most 5 MB can come back.
     if (!realRoots.some((root) => isInside(real, root))) {
       return omitted('the viewed file is outside the session workspace');
     }
