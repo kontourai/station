@@ -1668,8 +1668,9 @@ export function configureRuntimeRoutes(
       // service reads the answer as the sharer recorded at mint. The cached
       // OS alias is neither, and owns no UI-created chat, so passing it made
       // every share of a real chat "no longer available". Hosted views keep
-      // the request's tenant-bound authority (a separate, still-open gap: its
-      // user is the alias too).
+      // the request's tenant-bound authority, whose user is the alias too;
+      // `/api/shares` refuses hosted mints until the hosted view reads as the
+      // recorded sharer within its tenant.
       authority:
         hostedTenantRegistry === undefined
           ? undefined

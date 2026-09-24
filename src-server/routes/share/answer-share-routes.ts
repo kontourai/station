@@ -94,6 +94,19 @@ export function createAnswerShareRoutes(
       // neither the SPA nor the `/share` route. The client composes the
       // permalink from `window.location.origin` instead.
       const authority = options.readAuthorityForRequest?.(c.req.raw);
+      // #2561: the public view of a hosted share still reads with an
+      // authority that is not the sharer's, so a hosted share could be
+      // minted and never opened. Refuse the mint until the view reads as
+      // the recorded sharer within its tenant.
+      if (authority && isHostedSessionReadAuthority(authority)) {
+        return c.json(
+          {
+            success: false,
+            error: 'Answer sharing is not available on a hosted Station yet.',
+          },
+          409,
+        );
+      }
       const result = authority
         ? await service.mint(
             { ...body, ownerUserId: authority.userId },
