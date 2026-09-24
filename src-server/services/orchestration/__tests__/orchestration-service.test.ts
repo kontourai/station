@@ -1560,6 +1560,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
       expect(dispatched.kind).toBe(uncertain ? 'indeterminate' : 'dispatched');
@@ -1758,6 +1759,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
     const scope = {

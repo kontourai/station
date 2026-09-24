@@ -3833,6 +3833,7 @@ export class StationRuntime {
           agentId: input.agentId,
           provider: 'task-dispatch',
           sourceSurface: 'e2e-task-room-control',
+          fullAccessGrant: null,
         });
         if (dispatched.kind !== 'dispatched')
           throw new Error(`Task dispatch was ${dispatched.kind}`);

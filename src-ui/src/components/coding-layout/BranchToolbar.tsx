@@ -45,7 +45,7 @@ export function BranchToolbar({
   // diff view) operate on the same repo instead of the raw workspace.
   onActiveRepoChange?: (root: string | null) => void;
 }) {
-  const reposQuery = useReposQuery(workingDir || null);
+  const reposQuery = useReposQuery(workingDir || null, { projectSlug });
   const reposResult = reposQuery.data;
   const repos = reposResult?.repos ?? [];
 
@@ -73,9 +73,9 @@ export function BranchToolbar({
     onActiveRepoChange?.(repoRoot);
   }, [repoRoot, onActiveRepoChange]);
 
-  const status = useGitStatus(repoRoot);
-  const branchesQuery = useGitBranchesQuery(repoRoot);
-  const checkout = useGitCheckoutMutation(repoRoot ?? '');
+  const status = useGitStatus(projectSlug, repoRoot);
+  const branchesQuery = useGitBranchesQuery(projectSlug, repoRoot);
+  const checkout = useGitCheckoutMutation(projectSlug, repoRoot ?? '');
   const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
   const push = useGitPushMutation(projectSlug, repoRoot ?? '');
 

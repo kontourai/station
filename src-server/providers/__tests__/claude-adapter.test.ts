@@ -3265,6 +3265,60 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('#2436: the server re-applies a refused full access on every turn; the warning is sent once, the refusal is reported on each turn, and a different posture re-arms it', async () => {
+    const mockedQuery = createMockQuery([]);
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-refused-repeat',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    await iterator.next(); // session.started
+    await iterator.next(); // session.configured
+    const turn = (approvalMode: string) =>
+      adapter.sendTurn({
+        threadId: 'thread-refused-repeat',
+        input: 'go',
+        modelOptions: { approvalMode },
+      });
+
+    await turn('never');
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'runtime.warning',
+      code: 'approval-escalation-requires-restart',
+    });
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalEscalationRejected: true },
+    });
+
+    // The next turn, same recorded posture: no second warning, and the turn
+    // still says it was refused.
+    await turn('never');
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalMode: 'ask', approvalEscalationRejected: true },
+    });
+
+    // A different posture applies, then full access is decided again: that
+    // is a new refusal, and it is warned about.
+    await turn('auto');
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalMode: 'auto' },
+    });
+    await turn('never');
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'runtime.warning',
+      code: 'approval-escalation-requires-restart',
+    });
+    expect(mockedQuery.setPermissionMode).not.toHaveBeenCalledWith(
+      'bypassPermissions',
+    );
+  });
+
   test('an escalation to never WITH the spawn-time flag already granted still applies via setPermissionMode (#727 review item 1b)', async () => {
     const mockedQuery = createMockQuery([]);
     mockQuery.mockReturnValue(mockedQuery);

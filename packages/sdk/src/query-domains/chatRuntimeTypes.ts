@@ -10,7 +10,10 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  ApprovalMode,
+  EngineId,
+} from '@kontourai/station-contracts/provider';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 
 export type OrchestrationEngineId = EngineId;
@@ -148,6 +151,14 @@ export type OrchestrationCommandInput =
   | {
       type: 'stopSession';
       threadId: string;
+    }
+  | {
+      /** #2436: record the conversation's approval posture (server-ordered). */
+      type: 'setApprovalMode';
+      threadId: string;
+      approvalMode: ApprovalMode;
+      /** Compare-and-set basis; see the contract's `basedOnSequence`. */
+      basedOnSequence: number | null;
     };
 
 export interface OrchestrationCommandReceipt {

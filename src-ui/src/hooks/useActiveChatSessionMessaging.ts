@@ -17,7 +17,6 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
-import { useAgents } from '../contexts/AgentsContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -26,28 +25,23 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
-import { useConfig } from '../contexts/ConfigContext';
 import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
-  approvalModeForDispatch,
-  approvalModeToSend,
-  approvalPickOverridingDefaults,
+  approvalPickReceived,
+  fullAccessRefusalNote,
+  isFullAccessRefusal,
+  supersededPickNote,
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
-import {
-  chatSessionIsLive,
-  chatSessionKnownEnded,
-  resolveSessionEngineConnectionId,
-  sessionAdapterSupportsSteering,
-} from '../utils/execution';
+import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
@@ -189,15 +183,6 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
-  // #2144 slice 6 fix round 1: the two default layers below a session
-  // override (the engine connection's own default, then this Station's
-  // `defaultApprovalMode`) were display-only — the composer chip read them
-  // and nothing put them on the wire. This is the one send path that starts a
-  // conversation, so it is where the whole resolved chain becomes a request.
-  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
-  // Only for the Agent-record link of the engine-connection chain the
-  // composer resolves its approval chip from (round 2 LOW-5).
-  const agents = useAgents();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -374,52 +359,19 @@ export function useSendMessage(
         const { dispatchForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
-        // The chip's own chain, shared (round 2 LOW-5).
-        const sessionEngineConnectionId = resolveSessionEngineConnectionId({
-          conversationOpenState: currentState?.conversationOpenState,
-          currentSessionId: currentState?.currentSessionId,
-          chatStateConnectionId: currentState?.agentConnectionId,
-          agentBoundConnectionId: agents.find(
-            (agent) => agent.slug === agentSlug,
-          )?.execution?.agentConnectionId,
-        });
-        // The approval pick travels beside the model options (#2334). It is
-        // session posture, not message content: a replayed turn sends the
-        // chat's CURRENT pick, never the one it was queued with. A confirmed
-        // Ask/Auto is reasserted on every send; a confirmed full access never
-        // is (see `approvalModeToSend`).
-        const dispatchedApprovalOverride = approvalModeToSend(currentState);
-        // The pick the defaults below must yield to: a withheld confirmed
-        // full access still suppresses the Station default while the session
-        // may be live; at a session known to have ended it does not.
-        const sessionApprovalPick = approvalPickOverridingDefaults(
-          currentState,
-          chatSessionKnownEnded(currentState),
-        );
+        // #2436: the server applies the conversation's recorded posture to
+        // this turn. The only posture this send carries is a pick the server
+        // has not received yet (no session yet, or picked offline); it is
+        // recorded on receipt, before the turn. A replayed turn carries the
+        // chat's CURRENT queued pick, never one captured when it was queued.
+        const carriedApprovalPick = currentState?.queuedApprovalMode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
           agentSlug,
           projectSlug: currentState?.projectSlug,
-          // The layers below the session override, resolved here because this
-          // is where the engine identity, the connection record and the app
-          // config all exist at once. `undefined` unless this turn STARTS the
-          // chat's session on an external engine whose adapter has the knob —
-          // see `approvalModeForDispatch` for every gate and why.
-          approvalModeFallback: approvalModeForDispatch({
-            engineConnectionId: sessionEngineConnectionId,
-            executionMode: currentState?.executionMode,
-            // Liveness, not the existence of an id: `currentSessionId`
-            // outlives its session, and a reopened conversation is marked
-            // started whether or not anything is running (round 3 F1).
-            sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: sessionApprovalPick,
-            connectionDefault: agentConnections.find(
-              (connection) => connection.id === sessionEngineConnectionId,
-            )?.config.approvalMode,
-            stationDefault: stationApprovalModeDefault,
-          }),
-          approvalModeOverride: dispatchedApprovalOverride,
+          setApprovalMode: carriedApprovalPick,
+          setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -454,7 +406,25 @@ export function useSendMessage(
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
+          // #2436: the carried pick is settled only by what the server
+          // reports became of it, never by the send's success alone. A
+          // Station that reports nothing (an older one, or another Station
+          // this send was forwarded to) leaves it queued, and the next send
+          // carries it again, as the options channel always did there.
+          ...(carriedApprovalPick && receipt.approvalMode
+            ? approvalPickReceived(
+                activeChatsStore.getSnapshot()[sessionId],
+                carriedApprovalPick,
+                receipt.approvalMode,
+              )
+            : {}),
         });
+        if (carriedApprovalPick && receipt.approvalMode?.recorded === false) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: supersededPickNote(receipt.approvalMode.approvalMode),
+          });
+        }
         // The send above can bring either the conversation's root Session or
         // a later continuation Session into existence. A newly current child
         // is not in the cached list every reader of
@@ -491,6 +461,18 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        // #2436: a carried full access this device may not grant refused the
+        // whole send. The pick is dropped (resending it could only be
+        // refused again) and the send's own failure handling below runs.
+        if (isFullAccessRefusal(error)) {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (latest?.queuedApprovalMode === 'never')
+            updateChat(sessionId, { queuedApprovalMode: undefined });
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: fullAccessRefusalNote,
+          });
+        }
         // Stop deliberately releases the browser's foreground observer after
         // the server has settled the interrupt. Fetch rejects with the abort
         // reason (a string in browsers), which used to fall through as an
@@ -729,7 +711,6 @@ export function useSendMessage(
     [
       addEphemeralMessage,
       agentConnections,
-      agents,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,
@@ -740,7 +721,6 @@ export function useSendMessage(
       queryClient,
       onActiveSessionChange,
       onError,
-      stationApprovalModeDefault,
       updateChat,
     ],
   );

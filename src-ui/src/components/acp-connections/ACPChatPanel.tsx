@@ -192,19 +192,18 @@ export function ACPChatPanel({
   const { project: sessionProject } = useProject(
     activeSession?.projectSlug ?? projectSlug ?? '',
   );
-  // Agent app connection default for the approval-mode chip (archive#727
-  //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === activeSession?.agentConnectionId,
   );
-  const connectionApprovalModeDefault =
-    typeof runtimeConnection?.config.approvalMode === 'string'
-      ? runtimeConnection.config.approvalMode
-      : undefined;
-  // #2144 slice 6: the Station-scope layer below that connection default.
+  // The session's Agent's own default posture for the approval-mode chip
+  // (#2436) — mirrors useChatDockViewModel.ts's agentApprovalModeDefault.
+  const agentApprovalModeDefault = agents.find(
+    (agent) => agent.slug === activeSession?.agentSlug,
+  )?.execution?.approvalMode;
+  // #2144 slice 6: the Station-scope layer below that Agent default.
   const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
@@ -319,6 +318,7 @@ export function ACPChatPanel({
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
         workingDirectory={sessionProject?.workingDirectory}
+        mentionProjectSlug={sessionProject?.slug}
         mentionRequestScope={mentionRequestScope}
         mentionAuthority={mentionAuthority}
         busyFollowUp={
@@ -349,7 +349,7 @@ export function ACPChatPanel({
           activeSession.providerOptions
         }
         executionMode={activeSession.executionMode}
-        approvalModeConnectionDefault={connectionApprovalModeDefault}
+        approvalModeAgentDefault={agentApprovalModeDefault}
         approvalModeStationDefault={stationApprovalModeDefault}
         toolPolicyDelivery={
           runtimeConnection

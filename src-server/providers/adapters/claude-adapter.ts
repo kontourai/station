@@ -568,6 +568,14 @@ type ClaudeSessionRecord = {
    */
   allowsBypassPermissions: boolean;
   /**
+   * #2436: the server now applies the recorded posture at EVERY turn start,
+   * so a recorded full access on a session spawned without the grant would
+   * be refused — and warned about — on every turn. The refusal is still
+   * reported on each `turn.started` (`approvalEscalationRejected`); the
+   * warning toast is sent once until a different posture applies.
+   */
+  bypassRefusalWarned?: boolean;
+  /**
    * Tool-level session grants from `acceptForSession`. The SDK's own session
    * rule is scoped to its suggested `PermissionUpdate` — for Bash that is the
    * command pattern, not the tool — so a second, different Bash command
@@ -1479,11 +1487,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     // A session-level approval override reaches Claude Code from the next
     // turn: the live SDK Query exposes setPermissionMode for exactly this,
-    // so no thread restart is needed. Station resends the full session
-    // override bag on every turn (see useActiveChatSessionMessaging.ts),
-    // so this only calls the SDK when the resolved mode actually changed.
+    // so no thread restart is needed. The orchestration service applies the
+    // conversation's recorded posture on every turn (#2436,
+    // approval-posture.ts), so this only calls the SDK when the resolved
+    // mode actually changed.
     const targetPermissionMode = this.resolvePermissionMode(input.modelOptions);
     let rejectedEscalation = false;
+    if (targetPermissionMode !== 'bypassPermissions')
+      record.bypassRefusalWarned = false;
     if (
       targetPermissionMode &&
       targetPermissionMode !== record.currentPermissionMode
@@ -1500,23 +1511,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // still in effect so the composer chip can revert to reality rather
         // than show 'never' for a mode that never took effect.
         rejectedEscalation = true;
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId: input.threadId,
-          createdAt: new Date().toISOString(),
-          method: 'runtime.warning',
-          severity: 'warning',
-          message:
-            'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
-          code: APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
-          details: {
-            requestedApprovalMode: 'never',
-            revertToApprovalMode:
-              mapPermissionModeToApprovalMode(record.currentPermissionMode) ??
-              'connection-default',
-          },
-        });
+        if (!record.bypassRefusalWarned) {
+          record.bypassRefusalWarned = true;
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.warning',
+            severity: 'warning',
+            message:
+              'Full-access mode requires restarting the session with that mode enabled from the start. Approval mode was not changed.',
+            code: APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+            details: {
+              requestedApprovalMode: 'never',
+              revertToApprovalMode:
+                mapPermissionModeToApprovalMode(record.currentPermissionMode) ??
+                'connection-default',
+            },
+          });
+        }
       } else {
         await record.query.setPermissionMode(targetPermissionMode);
         record.currentPermissionMode = targetPermissionMode;

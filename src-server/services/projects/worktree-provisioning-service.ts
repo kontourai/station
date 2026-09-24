@@ -17,6 +17,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { spawnGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
+import { judgeRepositoryConfig } from './git-repository-config.js';
 
 type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
 
@@ -221,11 +222,16 @@ function resolveWorktreeBaseDir(repoRoot: string, policyBaseDir?: string) {
   // itself already expanded upstream — but expanding both is simpler than a
   // conditional and cannot drift if the default ever changes.
   return resolve(
-    expandTilde(
-      policyBaseDir ??
-        join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`),
-    ),
+    expandTilde(policyBaseDir ?? defaultWorktreeBaseDir(repoRoot)),
   );
+}
+
+/**
+ * Where Station puts a repository's session worktrees unless a policy says
+ * otherwise: a `<repo>-worktrees` folder beside it.
+ */
+function defaultWorktreeBaseDir(repoRoot: string): string {
+  return join(dirname(repoRoot), `${basename(repoRoot)}-worktrees`);
 }
 
 function assertContainedPath(
@@ -525,6 +531,35 @@ export class WorktreeProvisioningService {
       throw new Error(`Git repository root not found for ${request.repoPath}`);
     }
 
+    // #2411: `worktree add` checks files out, which runs a smudge filter the
+    // repository's own config defines, as the operator (and the `status`
+    // just below runs a clean filter). Refused by the rule the coding routes
+    // apply before `status`, `diff` and `checkout` (#2363), judged from the
+    // same `git config --show-scope` bytes, read through this service's
+    // runner.
+    let configList: string;
+    try {
+      configList = (
+        await this.git.run([
+          '-C',
+          repoRoot,
+          'config',
+          '--show-scope',
+          '--null',
+          '--list',
+        ])
+      ).stdout;
+    } catch {
+      // Unreadable is not "nothing refused": refuse rather than check out.
+      throw new WorktreeRepositoryConfigError([]);
+    }
+    const verdict = judgeRepositoryConfig(configList, 'read');
+    if (!verdict.ok) {
+      throw new WorktreeRepositoryConfigError(
+        verdict.code === 'repository-config-refused' ? verdict.keys : [],
+      );
+    }
+
     const status = await this.git.run([
       '-C',
       repoRoot,
@@ -626,8 +661,27 @@ function parseWorktreeList(
   return entries;
 }
 
+/**
+ * #2411: provisioning refused because the repository's own config defines a
+ * program that checking files out would run. The message is written for the
+ * person starting the chat: what was refused, why, and what to do.
+ */
+export class WorktreeRepositoryConfigError extends Error {
+  readonly code = 'repository-config-refused' as const;
+  constructor(readonly keys: readonly string[]) {
+    super(
+      keys.length > 0
+        ? `Station did not create an isolated worktree: this repository's own .git/config sets ${keys.join(', ')}, which git would run while checking files out. Remove them, or start the chat without worktree isolation.`
+        : "Station did not create an isolated worktree: git could not read this repository's configuration.",
+    );
+    this.name = 'WorktreeRepositoryConfigError';
+  }
+}
+
 function errorReason(error: unknown): string {
   if (!(error instanceof Error)) return 'unknown';
+  if (error instanceof WorktreeRepositoryConfigError)
+    return 'repository_config_refused';
   if (error.message.includes('dirty repository')) return 'dirty_repo';
   if (error.message.includes('already exists')) return 'conflict';
   if (error.message.includes('Invalid worktree')) return 'policy_invalid';

@@ -22,6 +22,7 @@ import {
 } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { agentOps } from '../../telemetry/metrics.js';
+import { refuseUngrantedFullAccess } from '../orchestration/approval-authority.js';
 import {
   agentCreateSchema,
   agentMaterializeEngineSchema,
@@ -270,6 +271,14 @@ export function createAgentRoutes(
     }
   });
 
+  /** The default approval posture an Agent body asks for, if any. */
+  function agentDefaultApprovalMode(body: unknown): unknown {
+    const execution = (body as { execution?: unknown } | undefined)?.execution;
+    return execution && typeof execution === 'object'
+      ? (execution as { approvalMode?: unknown }).approvalMode
+      : undefined;
+  }
+
   /**
    * The status a failed Agent mutation deserves.
    *
@@ -300,6 +309,12 @@ export function createAgentRoutes(
   app.post('/', validate(agentCreateSchema), async (c) => {
     try {
       const body = getBody(c);
+      // #2436: an Agent whose default is full access starts every session
+      // there, so saving it needs the same authority as recording it.
+      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+        agentDefaultApprovalMode(body),
+      ]);
+      if (fullAccessRefused) return fullAccessRefused;
       const skillError = validateSkills(body.skills, skillService);
       if (skillError) {
         return c.json({ success: false, error: skillError }, 400);
@@ -437,6 +452,19 @@ export function createAgentRoutes(
     try {
       const slug = param(c, 'slug');
       const updates = getBody(c);
+      // #2436: only RAISING an Agent's default to full access needs the
+      // authority; an edit that leaves an existing full-access default as it
+      // is (a client resending the whole execution block) does not.
+      if (agentDefaultApprovalMode(updates) === 'never') {
+        const previous = await agentService
+          .getAgent(slug)
+          .then((spec) => agentDefaultApprovalMode(spec))
+          .catch(() => undefined);
+        if (previous !== 'never') {
+          const fullAccessRefused = refuseUngrantedFullAccess(c, ['never']);
+          if (fullAccessRefused) return fullAccessRefused;
+        }
+      }
       const skillError = validateSkills(updates.skills, skillService);
       if (skillError) {
         return c.json({ success: false, error: skillError }, 400);

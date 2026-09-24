@@ -67,6 +67,7 @@ describe('coding git-ops routes (real git, no mocks)', () => {
 
   test('checkout creates and switches a branch — HEAD really moves', async () => {
     const created = await post('/git/checkout', {
+      projectSlug: 'acme',
       path: repo,
       branch: 'feature',
       create: true,
@@ -76,7 +77,11 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     expect(created.json.data.branch).toBe('feature');
     expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feature');
 
-    const back = await post('/git/checkout', { path: repo, branch: 'main' });
+    const back = await post('/git/checkout', {
+      projectSlug: 'acme',
+      path: repo,
+      branch: 'main',
+    });
     expect(back.json.success).toBe(true);
     expect(git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
   });
@@ -120,6 +125,7 @@ describe('coding git-ops routes (real git, no mocks)', () => {
   test('checkout of a non-existent branch fails with 400 (no state change)', async () => {
     const head = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD');
     const res = await post('/git/checkout', {
+      projectSlug: 'acme',
       path: repo,
       branch: 'does-not-exist',
     });

@@ -176,7 +176,7 @@
     {
       "id": "default-approval-mode",
       "label": "Default approval mode",
-      "help": "New chats start in this approval posture unless the chat or its engine connection names its own.",
+      "help": "New chats start in this approval posture unless the chat or its Agent names its own.",
       "scope": "station",
       "section": "permissions",
       "route": "/settings?view=permissions&highlight=default-approval-mode",

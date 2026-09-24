@@ -1,6 +1,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
 
+/**
+ * Where a coding request acts (#2412): the Project it belongs to and the
+ * folder inside it. The server refuses a folder outside the named Project's
+ * working directory (or a registered worktree of its repository), so every coding
+ * call carries both.
+ */
+export interface CodingLocation {
+  projectSlug: string;
+  workingDir: string;
+}
+
+function codingQuery(location: CodingLocation): string {
+  return `projectSlug=${encodeURIComponent(location.projectSlug)}&path=${encodeURIComponent(location.workingDir)}`;
+}
+
+function isCodingLocation(
+  location: CodingLocation | undefined,
+): location is CodingLocation {
+  return !!location?.projectSlug && !!location.workingDir;
+}
+
 export interface CodingFileEntry {
   name: string;
   path: string;
@@ -37,48 +58,62 @@ async function postCodingFiles<T>(
 
 /** Create an empty file or a directory at `target` (relative to `workingDir`). */
 export function createCodingFile(
-  workingDir: string,
+  location: CodingLocation,
   target: string,
   type: 'file' | 'directory',
   apiBase?: string,
 ): Promise<CodingFileEntry> {
   return postCodingFiles<CodingFileEntry>(
     'create',
-    { path: workingDir, target, type },
+    {
+      projectSlug: location.projectSlug,
+      path: location.workingDir,
+      target,
+      type,
+    },
     apiBase,
   );
 }
 
 /** Rename or move `from` to `to` (both relative to `workingDir`). */
 export function renameCodingFile(
-  workingDir: string,
+  location: CodingLocation,
   from: string,
   to: string,
   apiBase?: string,
 ): Promise<CodingFileEntry> {
   return postCodingFiles<CodingFileEntry>(
     'rename',
-    { path: workingDir, from, to },
+    {
+      projectSlug: location.projectSlug,
+      path: location.workingDir,
+      from,
+      to,
+    },
     apiBase,
   );
 }
 
 /** Delete a file or directory at `target` (relative to `workingDir`). */
 export function deleteCodingFile(
-  workingDir: string,
+  location: CodingLocation,
   target: string,
   apiBase?: string,
 ): Promise<void> {
-  return postCodingFiles<void>('delete', { path: workingDir, target }, apiBase);
+  return postCodingFiles<void>(
+    'delete',
+    { projectSlug: location.projectSlug, path: location.workingDir, target },
+    apiBase,
+  );
 }
 
 export async function fetchCodingFiles(
-  workingDir: string,
+  location: CodingLocation,
   apiBase?: string,
 ): Promise<CodingFileEntry[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/coding/files?path=${encodeURIComponent(workingDir)}`,
+    `${resolvedApiBase}/api/coding/files?${codingQuery(location)}`,
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -100,14 +135,14 @@ const FILE_MENTION_LOOKUP_LIMIT = 200;
 
 /** Bounded, request-fresh metadata lookup for composer file mentions. */
 export async function fetchCodingFileMentionCandidates(
-  workingDir: string,
+  location: CodingLocation,
   query: string,
   requestScope: ApiRequestScope & { isCurrent: () => boolean },
   signal?: AbortSignal,
 ): Promise<CodingFileMentionCandidates> {
   const resolvedApiBase = await resolveApiBase(requestScope.apiBase);
   const response = await getJson(
-    `${resolvedApiBase}/api/coding/files/search?path=${encodeURIComponent(workingDir)}&query=${encodeURIComponent(query)}&maxResults=${FILE_MENTION_LOOKUP_LIMIT + 1}`,
+    `${resolvedApiBase}/api/coding/files/search?${codingQuery(location)}&query=${encodeURIComponent(query)}&maxResults=${FILE_MENTION_LOOKUP_LIMIT + 1}`,
     { signal, requestScope },
   );
   const result = (await response.json()) as {
@@ -128,12 +163,12 @@ export async function fetchCodingFileMentionCandidates(
 }
 
 export async function fetchCodingDiff(
-  workingDir: string,
+  location: CodingLocation,
   apiBase?: string,
 ): Promise<string> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/coding/git/diff?path=${encodeURIComponent(workingDir)}`,
+    `${resolvedApiBase}/api/coding/git/diff?${codingQuery(location)}`,
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -150,7 +185,7 @@ export async function fetchCodingDiff(
 }
 
 export async function fetchCodingFileContent(
-  workingDir: string,
+  location: CodingLocation,
   filePath: string,
   apiBase?: string,
 ): Promise<string> {
@@ -159,7 +194,7 @@ export async function fetchCodingFileContent(
   // emits workspace-relative paths, so the server resolves against the project
   // directory rather than its own cwd.
   const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/coding/files/content?path=${encodeURIComponent(workingDir)}&file=${encodeURIComponent(filePath)}`,
+    `${resolvedApiBase}/api/coding/files/content?${codingQuery(location)}&file=${encodeURIComponent(filePath)}`,
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -214,9 +249,15 @@ export async function fetchVoicePort(apiBase?: string): Promise<number> {
   return port;
 }
 
+/**
+ * Runs a command in `location` as the Station's operator (#2412). A paired
+ * device needs the operator's `coding:exec` grant; without it the server
+ * answers 403 with code `coding-exec-not-granted`, and this rejects with its
+ * message.
+ */
 export async function executeCodingCommand(
   command: string,
-  cwd: string,
+  location: CodingLocation,
   apiBase?: string,
 ): Promise<{ stdout?: string; stderr?: string }> {
   const resolvedApiBase = await resolveApiBase(apiBase);
@@ -225,7 +266,11 @@ export async function executeCodingCommand(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, cwd }),
+      body: JSON.stringify({
+        projectSlug: location.projectSlug,
+        command,
+        cwd: location.workingDir,
+      }),
     },
   );
   const result = (await response.json()) as {
@@ -240,15 +285,15 @@ export async function executeCodingCommand(
 }
 
 export function useCodingFilesQuery(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   apiBase?: string,
   config?: QueryConfig<CodingFileEntry[]>,
 ) {
   return useApiQuery(
-    ['coding-files', workingDir ?? ''],
-    () => fetchCodingFiles(workingDir!, apiBase),
+    ['coding-files', location?.workingDir ?? ''],
+    () => fetchCodingFiles(location!, apiBase),
     {
-      enabled: !!workingDir && (config?.enabled ?? true),
+      enabled: isCodingLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime,
       gcTime: config?.gcTime,
     },
@@ -256,7 +301,7 @@ export function useCodingFilesQuery(
 }
 
 export function useCodingFileMentionCandidatesQuery(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   query: string,
   requestScope?: ApiRequestScope & { isCurrent: () => boolean },
 ) {
@@ -265,30 +310,30 @@ export function useCodingFileMentionCandidatesQuery(
       'coding-file-mentions',
       requestScope?.apiBase ?? '',
       requestScope?.authorityKey ?? '',
-      workingDir ?? '',
+      location?.projectSlug ?? '',
+      location?.workingDir ?? '',
       query,
     ],
     (signal) =>
-      fetchCodingFileMentionCandidates(
-        workingDir!,
-        query,
-        requestScope!,
-        signal,
-      ),
-    { enabled: !!workingDir && !!requestScope, staleTime: 0, gcTime: 0 },
+      fetchCodingFileMentionCandidates(location!, query, requestScope!, signal),
+    {
+      enabled: isCodingLocation(location) && !!requestScope,
+      staleTime: 0,
+      gcTime: 0,
+    },
   );
 }
 
 export function useCodingDiffQuery(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   apiBase?: string,
   config?: QueryConfig<string>,
 ) {
   return useApiQuery(
-    ['coding-diff', workingDir ?? ''],
-    () => fetchCodingDiff(workingDir!, apiBase),
+    ['coding-diff', location?.workingDir ?? ''],
+    () => fetchCodingDiff(location!, apiBase),
     {
-      enabled: !!workingDir && (config?.enabled ?? true),
+      enabled: isCodingLocation(location) && (config?.enabled ?? true),
       staleTime: config?.staleTime,
       gcTime: config?.gcTime,
     },
@@ -296,20 +341,29 @@ export function useCodingDiffQuery(
 }
 
 export function useCodingFileContentQuery(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   filePath: string | undefined,
   apiBase?: string,
   config?: QueryConfig<string>,
 ) {
   return useApiQuery(
-    ['coding-file-content', workingDir ?? '', filePath ?? ''],
-    () => fetchCodingFileContent(workingDir!, filePath!, apiBase),
+    ['coding-file-content', location?.workingDir ?? '', filePath ?? ''],
+    () => fetchCodingFileContent(location!, filePath!, apiBase),
     {
-      enabled: !!workingDir && !!filePath && (config?.enabled ?? true),
+      enabled:
+        isCodingLocation(location) && !!filePath && (config?.enabled ?? true),
       staleTime: config?.staleTime,
       gcTime: config?.gcTime,
     },
   );
+}
+
+function requireCodingLocation(
+  location: CodingLocation | undefined,
+): CodingLocation {
+  if (!isCodingLocation(location))
+    throw new Error('No Project folder to change files in');
+  return location;
 }
 
 /** Invalidate the file tree for `workingDir` after a successful mutation. */
@@ -322,37 +376,47 @@ function useInvalidateCodingFiles(workingDir: string | undefined) {
 }
 
 export function useCreateCodingFileMutation(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   apiBase?: string,
 ) {
-  const invalidate = useInvalidateCodingFiles(workingDir);
+  const invalidate = useInvalidateCodingFiles(location?.workingDir);
   return useMutation({
     mutationFn: (vars: { target: string; type: 'file' | 'directory' }) =>
-      createCodingFile(workingDir ?? '', vars.target, vars.type, apiBase),
+      createCodingFile(
+        requireCodingLocation(location),
+        vars.target,
+        vars.type,
+        apiBase,
+      ),
     onSuccess: invalidate,
   });
 }
 
 export function useRenameCodingFileMutation(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   apiBase?: string,
 ) {
-  const invalidate = useInvalidateCodingFiles(workingDir);
+  const invalidate = useInvalidateCodingFiles(location?.workingDir);
   return useMutation({
     mutationFn: (vars: { from: string; to: string }) =>
-      renameCodingFile(workingDir ?? '', vars.from, vars.to, apiBase),
+      renameCodingFile(
+        requireCodingLocation(location),
+        vars.from,
+        vars.to,
+        apiBase,
+      ),
     onSuccess: invalidate,
   });
 }
 
 export function useDeleteCodingFileMutation(
-  workingDir: string | undefined,
+  location: CodingLocation | undefined,
   apiBase?: string,
 ) {
-  const invalidate = useInvalidateCodingFiles(workingDir);
+  const invalidate = useInvalidateCodingFiles(location?.workingDir);
   return useMutation({
     mutationFn: (vars: { target: string }) =>
-      deleteCodingFile(workingDir ?? '', vars.target, apiBase),
+      deleteCodingFile(requireCodingLocation(location), vars.target, apiBase),
     onSuccess: invalidate,
   });
 }

@@ -165,6 +165,11 @@
           "type": ["string", "null"],
           "description": "Credential profile (account) of the bound engine this agent runs on. Absent uses the connection's active profile."
         },
+        "approvalMode": {
+          "type": "string",
+          "enum": ["connection-default", "ask", "auto", "never"],
+          "description": "Approval posture this Agent's sessions start in, and what a Default pick returns to (#2436). Applied after a chat's own pick and before the Station default, on engines with an approval knob. Saving \"never\" needs the operator in person or a device granted approval:full-access; a plugin-contributed Agent's \"never\" is not applied."
+        },
         "runtimeOptions": {
           "type": "object",
           "additionalProperties": true

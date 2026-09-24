@@ -13,6 +13,7 @@ import {
   requiresAuthoredAgentPrompt,
 } from '@kontourai/station-contracts/agent-validation';
 import { classifyManagedModelBinding } from '@kontourai/station-contracts/managed-model-binding';
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Tool } from '../../types';
 import { connectionStatusLabel } from '../../utils/execution';
@@ -55,6 +56,8 @@ type AgentLike = {
      * an unrelated save is the same failure with credentials attached.
      */
     credentialProfileRef?: string | null;
+    /** #2436: the Agent's default approval posture. */
+    approvalMode?: unknown;
   };
   icon?: string;
   skills?: string[];
@@ -156,6 +159,10 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       ...(typeof agent.execution?.credentialProfileRef === 'string' &&
       agent.execution.credentialProfileRef
         ? { credentialProfileRef: agent.execution.credentialProfileRef }
+        : {}),
+      ...(isApprovalMode(agent.execution?.approvalMode) &&
+      agent.execution.approvalMode !== 'connection-default'
+        ? { approvalMode: agent.execution.approvalMode }
         : {}),
     },
     icon: agent.icon || '',
@@ -352,6 +359,8 @@ function buildExecutionPayload(form: AgentFormData) {
     // explicit whitelist — omitting it DELETES a pinned account on any
     // unrelated save.
     credentialProfileRef: form.execution.credentialProfileRef || undefined,
+    // #2436: whitelisted like the pin above, or an unrelated save deletes it.
+    approvalMode: form.execution.approvalMode || undefined,
   };
   return Object.values(execution).some((value) => value !== undefined)
     ? execution

@@ -3,6 +3,7 @@ import type { AttentionRequestReference } from './attention.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
+  ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
   ProviderSendTurnInput,
@@ -81,7 +82,51 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  | {
+      /**
+       * #2436: record the conversation's approval posture. Ordered by server
+       * receipt; applied at the next session start or turn start, whatever
+       * path sends it. Result: {@link SetApprovalModeResult}.
+       */
+      type: 'setApprovalMode';
+      threadId: string;
+      approvalMode: ApprovalMode;
+      /**
+       * Compare-and-set: the sequence of the latest decision the caller had
+       * seen when the user picked, or `null` when it had seen none. The pick
+       * is recorded only if no newer decision exists for the conversation;
+       * otherwise nothing is recorded and the result names the posture that
+       * stands. Only a pick looser than the standing decision is held to it;
+       * one at least as strict is always recorded. Required: a caller that
+       * has seen no decision says so with `null`.
+       */
+      basedOnSequence: number | null;
+    };
+
+/** What a `setApprovalMode` command recorded, and where it sits in order. */
+export interface SetApprovalModeResult {
+  threadId: string;
+  /**
+   * `false` when a newer decision had already been recorded (compare-and-set
+   * lost): the pick was dropped, and `approvalMode`/`sequence` name the
+   * decision that stands.
+   */
+  recorded: boolean;
+  approvalMode: ApprovalMode;
+  /**
+   * The standing decision's server global sequence: the SSE `id` its frame
+   * carries. Clients order posture decisions by it, never by arrival.
+   */
+  sequence: number;
+}
+
+/**
+ * #2436: the stable refusal for recording full access (or saving it as an
+ * Agent's default) without the operator in person or `approval:full-access`.
+ */
+export const APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE =
+  'approval-full-access-not-granted' as const;
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a

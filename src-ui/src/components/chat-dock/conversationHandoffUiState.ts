@@ -89,12 +89,11 @@ export function acceptConversationHandoffUiState(
     abortController: undefined,
     stopPending: undefined,
     pendingClientTurnId: undefined,
+    // The engine's reports belong to the predecessor. The recorded posture
+    // is the conversation's, and the server applies it to the successor; a
+    // queued pick still rides the next send (#2436).
     lastAppliedApprovalMode: undefined,
-    pendingApprovalMode: undefined,
-    pendingApprovalPickedAt: undefined,
-    pendingApprovalBehindTurn: undefined,
-    pendingApprovalAppliedAtPick: undefined,
-    approvalModeOverride: undefined,
+    approvalEscalationRejected: undefined,
     isProcessingStep: false,
     error: null,
     orchestrationTurnOpen: false,
