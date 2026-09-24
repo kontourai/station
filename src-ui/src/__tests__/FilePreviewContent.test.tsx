@@ -223,7 +223,12 @@ describe('FilePreviewContent', () => {
     ['has no PDF viewer (Android WebView)', false, undefined, 0],
     ['does not say whether it has one', undefined, undefined, 0],
     // iOS claims a viewer, then frames a PDF as an empty white box.
-    ['is iOS, which claims a viewer but frames nothing', true, IPHONE_SAFARI, 5],
+    [
+      'is iOS, which claims a viewer but frames nothing',
+      true,
+      IPHONE_SAFARI,
+      5,
+    ],
     // iPadOS reports a desktop Mac agent; touch points give it away.
     ['is iPadOS behind a desktop Mac agent', true, DESKTOP_MAC_SAFARI, 5],
   ] as const)(
