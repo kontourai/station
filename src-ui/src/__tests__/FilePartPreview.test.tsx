@@ -1,20 +1,24 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { authenticatedFetch } = vi.hoisted(() => ({
+const { authenticatedFetch, openPreview } = vi.hoisted(() => ({
   authenticatedFetch: vi.fn(),
+  openPreview: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', () => ({ authenticatedFetch }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('../contexts/PreviewContext', () => ({
-  usePreview: () => ({ openPreview: vi.fn() }),
+  usePreview: () => ({ openPreview }),
 }));
 
-import { resetAttachmentObjectUrls } from '../components/chat/attachment-object-urls';
+import {
+  attachmentBlobForObjectUrl,
+  resetAttachmentObjectUrls,
+} from '../components/chat/attachment-object-urls';
 import { FilePartPreview } from '../components/chat/FilePartPreview';
 
 const REF = `sha256-${'a'.repeat(64)}`;
@@ -26,6 +30,7 @@ beforeEach(() => {
   createObjectURL.mockClear();
   revokeObjectURL.mockClear();
   authenticatedFetch.mockReset();
+  openPreview.mockReset();
 });
 
 afterEach(() => {
@@ -124,6 +129,52 @@ describe('FilePartPreview', () => {
     expect(screen.getByText('screen.png')).toBeTruthy();
     expect(container.querySelector('img')).toBeNull();
     expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
+  test('opens a fetched non-image attachment in the previewer, with its bytes kept for reading', async () => {
+    authenticatedFetch.mockResolvedValueOnce(
+      new Response(new TextEncoder().encode('%PDF-1.7'), { status: 200 }),
+    );
+
+    render(
+      <FilePartPreview
+        part={{
+          type: 'file',
+          blobRef: REF,
+          mediaType: 'application/pdf',
+          name: 'report.pdf',
+        }}
+        allParts={[
+          {
+            type: 'file',
+            url: 'data:image/png;base64,aGVsbG8=',
+            mediaType: 'image/png',
+            name: 'sibling.png',
+          },
+        ]}
+      />,
+    );
+
+    const open = await waitFor(() =>
+      screen.getByRole('button', { name: 'Preview report.pdf' }),
+    );
+    // A document gets an icon, not an <img> that could never decode it.
+    expect(open.querySelector('img')).toBeNull();
+    fireEvent.click(open);
+    expect(openPreview).toHaveBeenCalledWith(
+      {
+        url: 'blob:station-attachment',
+        mediaType: 'application/pdf',
+        name: 'report.pdf',
+      },
+      // The image gallery is not offered for a document.
+      undefined,
+    );
+    // The previewer reads text from this Blob rather than fetching the blob:
+    // URL, which the app's CSP refuses.
+    const blob = attachmentBlobForObjectUrl('blob:station-attachment');
+    expect(blob?.type).toBe('application/pdf');
+    expect(blob?.size).toBe(8);
   });
 
   test('renders nothing for a part carrying no attachment identity at all', () => {

@@ -10,6 +10,7 @@ import {
   markdownBlocksRequireWholeParse,
   splitMarkdownBlocks,
 } from './markdown-blocks';
+import { chatUrlTransform, MarkdownImage } from './markdown-images';
 import { QuoteSourceLink } from './QuoteSourceLink';
 
 export type MarkdownRenderProbe = {
@@ -47,6 +48,7 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
       </ChatMarkdownAnchor>
     );
   },
+  img: MarkdownImage,
 };
 const remarkPlugins: NonNullable<Options['remarkPlugins']> = [remarkGfm];
 
@@ -160,7 +162,7 @@ function MarkdownRendererComponent({
       remarkRehypeOptions,
       skipHtml,
       unwrapDisallowed,
-      urlTransform,
+      urlTransform: urlTransform ?? chatUrlTransform,
     }),
     [
       allowElement,
