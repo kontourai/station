@@ -211,9 +211,10 @@ export interface ClaudeMessageState {
    * archive#1182: the model reported by the most recent top-level
    * `assistant` SDK message's `message.model` (the actual Anthropic API
    * response field, not the `init` message's requested-model echo). Reset
-   * to `undefined` at the start of each turn (`claude-adapter.ts`'s
-   * `sendTurn`) so a turn that produces no assistant message before
-   * completing does not inherit a stale value from the previous turn.
+   * to `undefined` whenever the SDK starts running a different turn (the
+   * turn ledger, `claude-sdk-turns.ts`) so a turn that produces no assistant
+   * message before completing does not inherit a stale value from the
+   * previous turn.
    */
   lastReportedModel?: string;
   /**
