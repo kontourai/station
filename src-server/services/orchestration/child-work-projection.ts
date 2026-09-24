@@ -1,6 +1,7 @@
 import {
   applyChildWorkDelta,
   type ChildWorkDelta,
+  type ChildWorkItem,
   type ChildWorkRegistryState,
   type ChildWorkSessionView,
   childWorkDeltaFromLegacyClaudeTaskNotification,
@@ -15,7 +16,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * #2456: the server's process-local child-work registry.
  *
  * Fed at the projection seam with every live event, it folds
- * `child-work.updated` deltas — and, until #2457, the Claude adapter's legacy
+ * `child-work.updated` deltas — and, for pre-#2457 Claude history, the legacy
  * `claude-code` `task/registry` / `task/settled` tuples, through the same
  * contract translator the client uses — through the contract's one reducer,
  * and serves the per-session view that rides on
@@ -52,10 +53,22 @@ export const STATION_UNMAPPED_SUBAGENT_ENGINES: Readonly<
   Record<string, string>
 > = {};
 
+export interface ChildWorkProjectionOptions {
+  /**
+   * Called once per child whose fold moves it from `running` to a terminal
+   * status, with the provider of the event that settled it. A later
+   * correction of that terminal (an `unresolved` the engine's real outcome
+   * replaces) is not a second settle and is not reported again.
+   */
+  onChildSettled?: (item: ChildWorkItem, provider: string) => void;
+}
+
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
   /** reporterThreadId → createdAt of the last child-work delta it reported. */
   private readonly observedAt = new Map<string, string>();
+
+  constructor(private readonly options: ChildWorkProjectionOptions = {}) {}
 
   /** Folds one live event. */
   observe(event: CanonicalRuntimeEvent): void {
@@ -67,9 +80,9 @@ export class ChildWorkProjection {
       event.method === 'child-work.updated'
         ? event.delta
         : event.method === 'extension.notification'
-          ? // Until #2457 the Claude adapter still reports through its legacy
-            // task tuples; the contract's one translator turns them into the
-            // same deltas the client folds.
+          ? // Replay only: before #2457 the Claude adapter reported through
+            // these legacy task tuples; the contract's one translator turns
+            // them into the same deltas the client folds.
             childWorkDeltaFromLegacyClaudeTaskNotification(
               event,
               event.threadId,
@@ -83,7 +96,7 @@ export class ChildWorkProjection {
         ? delta.item.reporterThreadId
         : delta.reporterThreadId;
     if (reporter !== event.threadId) return;
-    this.apply(delta, event.createdAt);
+    this.apply(delta, event.createdAt, event.provider);
   }
 
   /**
@@ -133,8 +146,22 @@ export class ChildWorkProjection {
     this.observedAt.delete(threadId);
   }
 
-  private apply(delta: ChildWorkDelta, createdAt: string): void {
+  private apply(
+    delta: ChildWorkDelta,
+    createdAt: string,
+    provider: string,
+  ): void {
     const next = applyChildWorkDelta(this.state, delta);
+    if (next !== this.state && this.options.onChildSettled) {
+      for (const [key, item] of Object.entries(next.items)) {
+        if (
+          item.status !== 'running' &&
+          this.state.items[key]?.status === 'running'
+        ) {
+          this.options.onChildSettled(item, provider);
+        }
+      }
+    }
     if (delta.kind !== 'not-reported') {
       // Observed even when the fold was a no-op: a repeated snapshot is still
       // a fresh report that the set is what it was.

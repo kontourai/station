@@ -731,13 +731,32 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       // system messages, plus `background_tasks_changed`. `task_notification`
       // carries `output_file`, `summary` and optional `usage`; `task_started`
       // carries `spawn_depth`. `progress` requires the
-      // `agentProgressSummaries` option, which Station sets.
+      // `agentProgressSummaries` option, which Station sets. #2457: live
+      // captures against claude 2.1.281 are committed as
+      // `src-server/providers/__tests__/fixtures/claude-2.1.281-*.jsonl`.
       evidence: 'task_started/progress/updated/notification',
-      adapterModule: 'claude-adapter-events.ts',
+      adapterModule: 'claude-adapter-child-work.ts',
     },
     subagentControl: {
-      state: 'none',
-      reason: 'No per-task stop or resume path is wired.',
+      state: 'wired',
+      // #2457: `stopProviderTask` → `Query.stopTask(task_id)`, offered as
+      // `controls.stop: 'provider-task-stop'` on every running child. The
+      // live `stop-task` capture (claude 2.1.281) shows the engine honouring
+      // it with `task_updated` `killed` + `task_notification` `stopped`,
+      // which settles the child `cancelled`; claude-adapter.test.ts drives
+      // route → service → adapter.
+      stop: {
+        state: 'available',
+        invocation: 'client-request',
+        scope: 'per-task',
+        evidence:
+          'Query.stopTask → task_notification stopped (claude-2.1.281-stop-task.jsonl; claude-adapter.test.ts)',
+      },
+      resume: {
+        state: 'unsupported',
+        reason:
+          'No client request resumes a stopped subagent; only the model can re-invoke one.',
+      },
     },
     builtInTools: {
       state: 'documented',

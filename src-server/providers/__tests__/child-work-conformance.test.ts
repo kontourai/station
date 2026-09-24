@@ -20,12 +20,12 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   type ChildWorkDelta,
   type ChildWorkItem,
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkKey,
+  LEGACY_CLAUDE_TASK_NAMESPACE,
 } from '@kontourai/station-contracts/child-work';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -35,13 +35,12 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
-import {
-  type ClaudeMessageState,
-  mapClaudeSdkMessage,
-} from '../adapters/claude-adapter-events.js';
-import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import {
+  CLAUDE_TASK_CAPTURES,
+  replayClaudeTaskCapture,
+} from './claude-task-captures.js';
 import {
   CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
@@ -66,43 +65,28 @@ type Driver = {
   formats?: Record<string, () => Promise<CanonicalRuntimeEvent[]>>;
 };
 
-const CLAUDE_TASK_SUBAGENTS_FIXTURE = readFileSync(
-  new URL('./fixtures/claude-task-subagents.jsonl', import.meta.url),
-  'utf8',
-)
-  .split('\n')
-  .filter((line) => line.length > 0);
-
 /**
- * A REAL capture (`fixtures/claude-task-subagents.jsonl`, recorded by
- * `fixtures/capture-claude-task-fixtures.mjs` against
- * @anthropic-ai/claude-agent-sdk 0.3.261 / claude 2.1.261, haiku): one
- * foreground and one backgrounded Task subagent, every SDK message in order.
+ * Claude: the REAL captures (`claude-task-captures.ts`), each replayed
+ * through the adapter's own mapper and its child-work module
+ * (`claude-adapter-child-work.ts`). One format per capture that carries a
+ * subagent's whole life: `close-kills` is left out of the per-format check
+ * because the engine sends no terminal there (the child ends `unresolved` at
+ * the session end), so it has no lifecycle settle to deliver — it is still in
+ * the union.
  */
-async function replayClaudeCapture(): Promise<CanonicalRuntimeEvent[]> {
-  const events: CanonicalRuntimeEvent[] = [];
-  const record: ClaudeMessageState = {
-    session: {
-      provider: 'claude',
-      threadId: 'thread-claude',
-      status: 'running',
-      createdAt: '2026-09-23T00:00:00.000Z',
-      updatedAt: '2026-09-23T00:00:00.000Z',
-    },
-    lastSessionState: 'running',
-  };
-  // #2324: turn identity lives in the SDK turn ledger; dispatching turn-1
-  // makes it the running turn, as the live adapter does.
-  recordClaudeTurnDispatched(record, 'turn-1');
-  for (const line of CLAUDE_TASK_SUBAGENTS_FIXTURE) {
-    mapClaudeSdkMessage({
-      provider: 'claude',
-      record,
-      message: JSON.parse(line) as SDKMessage,
-      publish: (event) => events.push(event),
-    });
-  }
-  return events;
+const CLAUDE_FORMATS = Object.fromEntries(
+  CLAUDE_TASK_CAPTURES.filter((name) => name !== 'close-kills').map((name) => [
+    name,
+    async () => replayClaudeTaskCapture(name).events,
+  ]),
+);
+
+async function replayClaudeCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  return CLAUDE_TASK_CAPTURES.flatMap(
+    (name) =>
+      replayClaudeTaskCapture(name, { threadId: `thread-claude-${name}` })
+        .events,
+  );
 }
 
 class FakeMuseProcess extends EventEmitter {
@@ -229,12 +213,10 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
 
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
-  // Via the legacy translator until #2457: the adapter's existing pure
-  // mapper emits `claude-code` task tuples, which `childWorkDeltas` reads
-  // exactly as the server projection does.
   claude: {
-    adapterModule: 'claude-adapter-events.ts',
-    run: replayClaudeCapture,
+    adapterModule: 'claude-adapter-child-work.ts',
+    run: replayClaudeCaptures,
+    formats: CLAUDE_FORMATS,
   },
   codex: {
     adapterModule: 'codex-adapter-child-work.ts',
@@ -247,10 +229,10 @@ const DRIVERS: Record<string, Driver> = {
 
 /**
  * The child work a replay produced, read exactly as the server projection
- * reads it: `child-work.updated` deltas, plus — until #2457 moves the Claude
- * adapter onto the contract — its legacy `claude-code` task tuples through
- * the contract's one translator. For every other engine the translator
- * matches nothing, so it cannot manufacture a signal.
+ * reads it: `child-work.updated` deltas, plus any legacy `claude-code` task
+ * tuple through the contract's one translator (the projection still reads
+ * them, for pre-#2457 history). No driver emits one — asserted below — so the
+ * translator cannot manufacture a signal here.
  */
 function childWorkDeltas(events: CanonicalRuntimeEvent[]): ChildWorkDelta[] {
   return events.flatMap((event) => {
@@ -330,12 +312,7 @@ function observedSignals(deltas: ChildWorkDelta[]): Set<SubagentSignal> {
 const KNOWN_SIGNAL_GAPS: Record<
   string,
   Partial<Record<SubagentSignal, string>>
-> = {
-  // #2457: via the legacy translator, Claude's `task_progress` reaches
-  // clients only as `tool.progress`; no child-work progress exists until the
-  // adapter emits the contract's `upsert`.
-  claude: { progress: '#2457' },
-};
+> = {};
 
 /**
  * Engines whose cell names an adapter module the driver does not run,
@@ -349,13 +326,7 @@ const KNOWN_MODULE_GAPS: Record<string, string> = {};
  * `subagentControl` cell does not declare wired (or the reverse), keyed to
  * the tracking issue. Each is a `test.fails`.
  */
-const KNOWN_CONTROL_GAPS: Record<string, string> = {
-  // The legacy Claude translator stamps `controls.stop: 'provider-task-stop'`
-  // on every running task (the adapter's station#1877 per-task stop), while
-  // Claude's `subagentControl` cell says `none`. One of the two is wrong;
-  // the Claude move onto the contract (#2457) owns resolving it.
-  claude: '#2457',
-};
+const KNOWN_CONTROL_GAPS: Record<string, string> = {};
 
 /** Every control any delta offers, on an item or a settle's identity. */
 function offeredControls(deltas: ChildWorkDelta[]): string[] {
@@ -450,10 +421,28 @@ describe('#2456 child-work conformance tripwire', () => {
     }
   }
 
-  test('the Claude capture, via the legacy translator until #2457, is the two-task shape the claims rest on', async () => {
-    const deltas = childWorkDeltas(await replayClaudeCapture());
+  test('#2457: no driver emits a pre-contract Claude task tuple', async () => {
+    for (const [key, driver] of Object.entries(DRIVERS)) {
+      const runs = [driver.run, ...Object.values(driver.formats ?? {})];
+      for (const run of runs) {
+        const tuples = (await run()).filter(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.namespace === LEGACY_CLAUDE_TASK_NAMESPACE &&
+            (event.type === 'task/registry' || event.type === 'task/settled'),
+        );
+        expect(tuples, key).toEqual([]);
+      }
+    }
+  });
+
+  test('the Claude task-subagents capture is the two-task shape the claims rest on', async () => {
+    const deltas = childWorkDeltas(
+      replayClaudeTaskCapture('task-subagents').events,
+    );
     const settled = deltas.filter((delta) => delta.kind === 'settle');
     // Each subagent settles twice (task_updated then task_notification).
+    expect(settled).toHaveLength(4);
     expect(new Set(settled.map((delta) => delta.childId)).size).toBe(2);
     expect(
       deltas.some(

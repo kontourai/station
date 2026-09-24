@@ -97,6 +97,7 @@ import {
   readBundledClaudeCodeVersion,
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
+import { loadClaudeTaskCapture } from './claude-task-captures.js';
 
 function createMockQuery(
   messages: any[],
@@ -3522,7 +3523,7 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    test('when the last subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
+    test('when a subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
       const threadId = 'thread-task-ended-approval';
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
@@ -3556,7 +3557,9 @@ describe('ClaudeAdapter', () => {
         {
           signal,
           toolUseID: 'toolu-sub',
-          agentID: 'agent-bg',
+          // Captured (claude-2.1.281-subagent-permission.jsonl): a
+          // subagent's canUseTool agentID IS its task_id.
+          agentID: 'task-bg',
           suggestions: [],
         },
       );
@@ -3602,11 +3605,12 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    // #2348: `onNoLiveTasks` infers "no subagent can be waiting" from the
-    // tracked task set, and that inference can be wrong. Its settlement must
-    // deny the one call, never send the cancel mapping's `interrupt: true`,
-    // which may abort a subagent that is still running.
-    describe('#2348: a wrong "no task is live" settles with a plain denial', () => {
+    // #2348: a subagent's settle withdraws only the requests THAT subagent
+    // raised (canUseTool's agentID is its task_id — captured in
+    // claude-2.1.281-subagent-permission.jsonl). The old "no task is live"
+    // sweep withdrew a sibling's request whenever the settle was processed
+    // after the sibling's canUseTool but before its task_started.
+    describe('#2348: a subagent settle withdraws only its own requests', () => {
       async function subagentHarness(threadId: string) {
         const controlled = createControlledMockQuery();
         mockQuery.mockReturnValue(controlled);
@@ -3637,7 +3641,7 @@ describe('ClaudeAdapter', () => {
         return { controlled, adapter, until, askAs, turn };
       }
 
-      test("subagent A's settle, processed after B's canUseTool, does not interrupt B", async () => {
+      test("A's settle, interleaved with B's canUseTool, withdraws A's request and leaves B's answerable", async () => {
         const threadId = 'thread-settle-lag';
         const { controlled, adapter, until, askAs } =
           await subagentHarness(threadId);
@@ -3651,10 +3655,14 @@ describe('ClaudeAdapter', () => {
           session_id: 's-1',
         });
         await until((event) => event.method === 'tool.started');
+        const aPermission = askAs('task-a', 'toolu-a-bash');
+        const aOpened = await until(
+          (event) => event.method === 'request.opened',
+        );
 
         // B's permission arrives by direct callback, while B's own
         // `task_started` is still behind A's settle in the message stream.
-        const bPermission = askAs('agent-b', 'toolu-b-bash');
+        const bPermission = askAs('task-b', 'toolu-b-bash');
         const bOpened = await until(
           (event) => event.method === 'request.opened',
         );
@@ -3666,30 +3674,41 @@ describe('ClaudeAdapter', () => {
           uuid: 'u-a2',
           session_id: 's-1',
         });
+        controlled.push({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: 'task-a',
+          tool_use_id: 'toolu-a',
+          status: 'completed',
+          summary: 'done',
+          output_file: '/tmp/a.output',
+          uuid: 'u-a3',
+          session_id: 's-1',
+        });
 
-        const result = await bPermission;
-        expect(result).toMatchObject({ behavior: 'deny' });
-        expect(result).not.toHaveProperty('interrupt');
+        // A's request: withdrawn with a plain denial, never an interrupt.
+        const aResult = await aPermission;
+        expect(aResult).toMatchObject({ behavior: 'deny' });
+        expect(aResult).not.toHaveProperty('interrupt');
         expect(
           await until((event) => event.method === 'request.resolved'),
-        ).toMatchObject({ requestId: bOpened.requestId, status: 'cancelled' });
-        // Still never answerable later, so no grant can be minted for it.
-        await expect(
-          adapter.respondToRequest(
-            threadId,
-            bOpened.requestId,
-            'acceptForSession',
-          ),
-        ).rejects.toThrow('Unknown Claude permission request');
-        // B, still running, can ask again.
-        void askAs('agent-b', 'toolu-b-retry');
-        expect(
-          await until((event) => event.method === 'request.opened'),
-        ).toMatchObject({ payload: { agentId: 'agent-b' } });
+        ).toMatchObject({ requestId: aOpened.requestId, status: 'cancelled' });
+        // Both of A's terminals have been processed…
+        await until(
+          (event) =>
+            event.method === 'child-work.updated' &&
+            event.delta.kind === 'settle' &&
+            event.delta.result?.summary === 'done',
+        );
+        // …and B's request survived them: the user's answer reaches B.
+        await adapter.respondToRequest(threadId, bOpened.requestId, 'accept');
+        await expect(bPermission).resolves.toMatchObject({
+          behavior: 'allow',
+        });
         await adapter.stopSession(threadId);
       });
 
-      test('an untracked (skip_transcript) task’s request is not interrupted when the main turn completes', async () => {
+      test("the main turn completing withdraws no subagent's request", async () => {
         const threadId = 'thread-untracked-task';
         const { controlled, adapter, until, askAs } =
           await subagentHarness(threadId);
@@ -3703,12 +3722,10 @@ describe('ClaudeAdapter', () => {
           uuid: 'u-h1',
           session_id: 's-1',
         });
-        const permission = askAs('agent-ambient', 'toolu-ambient-bash');
+        const permission = askAs('task-ambient', 'toolu-ambient-bash');
         const opened = await until(
           (event) => event.method === 'request.opened',
         );
-
-        // The main turn completes; nothing is tracked, so the sweep runs.
         controlled.push({
           type: 'result',
           is_error: false,
@@ -3718,20 +3735,17 @@ describe('ClaudeAdapter', () => {
           uuid: 'main-result',
           session_id: 's-1',
         });
+        await until((event) => event.method === 'turn.completed');
 
-        const result = await permission;
-        expect(result).toMatchObject({ behavior: 'deny' });
-        expect(result).not.toHaveProperty('interrupt');
-        expect(
-          await until((event) => event.method === 'request.resolved'),
-        ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+        await adapter.respondToRequest(threadId, opened.requestId, 'accept');
+        await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
         await adapter.stopSession(threadId);
       });
 
       test('an interrupt still cancels a subagent request with interrupt', async () => {
         const threadId = 'thread-interrupt-keeps-cancel';
         const { adapter, until, askAs, turn } = await subagentHarness(threadId);
-        const permission = askAs('agent-b', 'toolu-b-bash');
+        const permission = askAs('task-b', 'toolu-b-bash');
         await until((event) => event.method === 'request.opened');
 
         await adapter.interruptTurn(threadId, turn.turnId);
@@ -7406,6 +7420,192 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
         // overlay must not have its (non-existent) overlay directory removed.
         expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
       });
+    });
+  });
+});
+
+/**
+ * #2457: the adapter's child work at its session seams — the per-task stop
+ * (`stopProviderTask` → `Query.stopTask`) answered by the engine's own
+ * captured frames, and the session end settling every child the engine can
+ * no longer report on, BEFORE `session.exited`.
+ */
+describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
+  afterEach(() => {
+    mockQuery.mockReset();
+  });
+
+  const stopCapture = loadClaudeTaskCapture('stop-task');
+  const stopAt = stopCapture.findIndex((line) =>
+    line.probe?.startsWith('STOP_TASK '),
+  );
+  const capturedChildId = stopCapture[stopAt].probe!.slice('STOP_TASK '.length);
+  /** The captured frames up to the stop: the agent is running. */
+  const beforeStop = stopCapture
+    .slice(0, stopAt)
+    .flatMap((line) => (line.message ? [line.message] : []));
+  /** The engine's answer to `stopTask`, as captured. */
+  const stopAnswer = stopCapture
+    .slice(stopAt + 1)
+    .flatMap((line) =>
+      (line.message as { task_id?: string } | undefined)?.task_id ===
+      capturedChildId
+        ? [line.message]
+        : [],
+    );
+
+  function endableQuery() {
+    const pending: unknown[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+    const end = () => {
+      ended = true;
+      wake?.();
+      wake = null;
+    };
+    return {
+      push(message: unknown) {
+        pending.push(message);
+        wake?.();
+        wake = null;
+      },
+      end,
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          while (pending.length === 0) {
+            if (ended) return;
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+          yield pending.shift();
+        }
+      },
+      stopTask: vi.fn<(taskId: string) => Promise<void>>(),
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      supportedModels: vi.fn().mockResolvedValue([]),
+      close: vi.fn().mockImplementation(end),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  async function runningChild(threadId: string) {
+    const query = endableQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    for (const message of beforeStop) query.push(message);
+    const seen: any[] = [];
+    const until = async (predicate: (event: any) => boolean): Promise<any> => {
+      for (let step = 0; step < 60; step++) {
+        const next = await iterator.next();
+        if (next.done) throw new Error('stream ended');
+        seen.push(next.value);
+        if (predicate(next.value)) return next.value;
+      }
+      throw new Error('expected event never arrived');
+    };
+    await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'snapshot' &&
+        event.delta.running.some(
+          (item: { childId: string }) => item.childId === capturedChildId,
+        ),
+    );
+    return { adapter, query, until, seen };
+  }
+
+  const childSettles = (events: any[]) =>
+    events.flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === capturedChildId
+        ? [event.delta.status]
+        : [],
+    );
+
+  test("stopProviderTask reaches Query.stopTask; the engine's stopped answer settles the child cancelled and clears it", async () => {
+    const threadId = 'thread-child-stop';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockImplementation(async () => {
+      for (const message of stopAnswer) query.push(message);
+    });
+
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).resolves.toEqual({ outcome: 'stopped', taskId: capturedChildId });
+    expect(query.stopTask).toHaveBeenCalledWith(capturedChildId);
+    await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'settle' &&
+        event.delta.result !== undefined,
+    );
+    expect(childSettles(seen)).toEqual(['cancelled', 'cancelled']);
+    // Settled: the next stop is the documented race, not a second stopTask.
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).resolves.toEqual({ outcome: 'no-active-task', taskId: capturedChildId });
+    expect(query.stopTask).toHaveBeenCalledTimes(1);
+    // Nothing is left to settle at the session end.
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['cancelled', 'cancelled']);
+  });
+
+  test('stopSession settles a still-running child unresolved, before session.exited', async () => {
+    const threadId = 'thread-child-session-end';
+    const { adapter, until, seen } = await runningChild(threadId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    const end = seen.findIndex((event) => event.method === 'session.exited');
+    const unresolved = seen.findIndex(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'snapshot' &&
+        event.delta.running.length === 0,
+    );
+    expect(unresolved).toBeGreaterThan(-1);
+    expect(unresolved).toBeLessThan(end);
+    // An empty snapshot, not a settle: nothing observed says how it ended.
+    expect(childSettles(seen)).toEqual([]);
+  });
+
+  test('a stop the engine never answers settles stopped-unconfirmed at the session end, before session.exited', async () => {
+    const threadId = 'thread-child-stop-unanswered';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockResolvedValue(undefined);
+    await adapter.stopProviderTask(threadId, capturedChildId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['stopped-unconfirmed']);
+    const settleAt = seen.findIndex(
+      (event) =>
+        event.method === 'child-work.updated' && event.delta.kind === 'settle',
+    );
+    expect(settleAt).toBeLessThan(
+      seen.findIndex((event) => event.method === 'session.exited'),
+    );
+  });
+
+  test('the engine process ending on its own settles the running child too', async () => {
+    const threadId = 'thread-child-process-exit';
+    const { query, until } = await runningChild(threadId);
+    query.end();
+    const emptied = await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'snapshot' &&
+        event.delta.running.length === 0,
+    );
+    expect(emptied.delta).toMatchObject({
+      producer: 'engine-subagent',
+      reporterThreadId: threadId,
     });
   });
 });

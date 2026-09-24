@@ -95,6 +95,11 @@ import { snapshotSessionSourceAffinity } from '../sessions/session-source-affini
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  type ClaudeChildWorkState,
+  markClaudeChildStopRequested,
+  settleOpenClaudeChildren,
+} from './claude-adapter-child-work.js';
+import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
@@ -565,8 +570,10 @@ type ClaudeSessionRecord = {
    * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime.
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
-  /** Mirrors `ClaudeMessageState.onNoLiveTasks` (#2316). */
-  onNoLiveTasks?: () => void;
+  /** Mirrors `ClaudeMessageState.onTaskSettled` (#2348). */
+  onTaskSettled?: (taskId: string) => void;
+  /** Mirrors `ClaudeMessageState.childWork` (#2457). */
+  childWork?: ClaudeChildWorkState;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -1331,11 +1338,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
     };
-    // #2316: with no subagent task live, no subagent can still be waiting on
-    // a permission request; settle any it left behind.
-    record.onNoLiveTasks = () =>
+    // #2316/#2348: a subagent that ended can no longer be waiting on the
+    // permission requests it raised; withdraw exactly those. Its siblings'
+    // requests stay answerable.
+    record.onTaskSettled = (taskId) =>
       this.cancelPendingRequests(record, input.threadId, {
-        subagentsOnly: true,
+        agentId: taskId,
       });
     record.streamTask = this.consumeMessages(record);
     this.sessions.set(input.threadId, record);
@@ -1662,9 +1670,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * station#1877: stop ONE subagent, leaving the turn and its siblings
-   * running. `Query.stopTask` makes the engine emit a `task_notification`
-   * with status `stopped`, so the settle travels the ordinary path and no
-   * terminal is synthesised here.
+   * running. `Query.stopTask` makes the engine emit `task_updated` `killed`
+   * and a `task_notification` with status `stopped` (captured:
+   * `claude-2.1.281-stop-task.jsonl`), so the settle travels the ordinary
+   * path and no terminal is synthesised here. The request is recorded so a
+   * session that ends before that settle reports `stopped-unconfirmed`
+   * rather than `unresolved` (#2457).
    */
   async stopProviderTask(
     threadId: string,
@@ -1676,6 +1687,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (!record.activeTasks?.has(taskId)) {
       return { outcome: 'no-active-task', taskId };
     }
+    markClaudeChildStopRequested(record, taskId);
     await record.query.stopTask(taskId);
     return { outcome: 'stopped', taskId };
   }
@@ -1720,16 +1732,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private cancelPendingRequests(
     record: ClaudeSessionRecord,
     threadId: string,
-    options: { subagentsOnly?: boolean } = {},
+    options: { agentId?: string } = {},
   ): void {
     for (const [requestId, pending] of [...record.pendingRequests]) {
-      if (options.subagentsOnly && !pending.agentId) continue;
-      // #2348: the subagents-only sweep runs on an inference (no task
-      // tracked as live) that can be wrong, so it denies the one call
+      if (options.agentId !== undefined && pending.agentId !== options.agentId)
+        continue;
+      // #2348: withdrawing one ended subagent's requests denies the one call
       // rather than interrupting. Every other caller ends the turn or the
       // session for real and keeps the interrupting cancel.
       this.cancelPendingRequest(record, threadId, requestId, {
-        withdraw: options.subagentsOnly === true,
+        withdraw: options.agentId !== undefined,
       });
     }
   }
@@ -2845,10 +2857,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         `Claude session '${record.session.threadId}' did not end its message stream within ${graceMs}ms of close(); settling still-open tool calls as unresolved. A result that still arrives will supersede that.`,
       );
     }
+    this.settleSessionEnd(record);
+  }
+
+  /**
+   * Session end: every open `tool_use` (station#1558) and every still-running
+   * child (#2457) is settled — the engine can report on neither any more,
+   * and the `close-kills` capture shows it sends no terminal of its own.
+   * Idempotent; runs before `session.exited`.
+   */
+  private settleSessionEnd(record: ClaudeSessionRecord): void {
+    const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
+    settleOpenClaudeChildren({
+      provider: this.provider,
+      record,
+      publish,
+      createdAt: new Date().toISOString(),
+    });
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,
-      publish: (event) => this.publish(event),
+      publish,
     });
   }
 
@@ -2872,11 +2901,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // This is the one settle site that covers a process exit nobody asked
       // for; `stopSession` covers the deliberate stop. Whichever runs first
       // empties the map, so the other publishes nothing.
-      settleUnresolvedClaudeToolCalls({
-        provider: this.provider,
-        record: record as ClaudeMessageState,
-        publish: (event) => this.publish(event),
-      });
+      this.settleSessionEnd(record);
     }
   }
 
