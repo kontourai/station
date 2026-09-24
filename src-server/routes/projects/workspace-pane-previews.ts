@@ -1,6 +1,10 @@
 import { resolve } from 'node:path';
 import {
+  parseWorkspaceFileExistenceRequest,
   parseWorkspaceFilePreviewRequest,
+  WORKSPACE_FILE_EXISTENCE_MAX_PATHS,
+  WORKSPACE_FILE_PREVIEW_MAX_PATH_LENGTH,
+  type WorkspaceFileExistenceRequest,
   type WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { Hono } from 'hono';
@@ -30,6 +34,20 @@ const workspaceFilePreviewSchema = z
 const workspaceFilePreviewDownloadSchema = z
   .object({ path: z.string() })
   .strict();
+
+// Which of a message's path mentions resolve to previewable files. The body
+// bound admits the declared maximum of maximum-length paths plus JSON framing.
+const workspaceFileExistenceSchema = z
+  .object({
+    paths: z
+      .array(z.string().max(WORKSPACE_FILE_PREVIEW_MAX_PATH_LENGTH))
+      .max(WORKSPACE_FILE_EXISTENCE_MAX_PATHS),
+  })
+  .strict();
+const WORKSPACE_FILE_EXISTENCE_MAX_BODY_BYTES =
+  WORKSPACE_FILE_EXISTENCE_MAX_PATHS *
+    (WORKSPACE_FILE_PREVIEW_MAX_PATH_LENGTH * 3 + 4) +
+  64;
 
 function encodeRfc5987Filename(filename: string): string {
   return encodeURIComponent(filename).replace(
@@ -97,6 +115,52 @@ export function createWorkspacePanePreviewRoutes(
         'X-Content-Type-Options': 'nosniff',
         'Cross-Origin-Resource-Policy': 'same-origin',
         'Content-Security-Policy': 'sandbox',
+      });
+    },
+  );
+
+  app.post(
+    '/exists',
+    validate(workspaceFileExistenceSchema, {
+      maxBodyBytes: WORKSPACE_FILE_EXISTENCE_MAX_BODY_BYTES,
+    }),
+    async (c) => {
+      let slug: string;
+      try {
+        slug = param(c, 'slug');
+        assertSafeLayoutPathSegment('project slug', slug);
+      } catch {
+        return c.json({ success: false, error: 'Invalid project slug' }, 400);
+      }
+      let request: WorkspaceFileExistenceRequest;
+      try {
+        request = parseWorkspaceFileExistenceRequest(getBody(c));
+      } catch {
+        return c.json(
+          { success: false, error: 'Invalid file existence request' },
+          400,
+        );
+      }
+      let workingDirectory: string | undefined;
+      try {
+        // EXPAND, as the preview below does: the service realpaths this.
+        const configured = (await projectService.getProject(slug))
+          .workingDirectory;
+        workingDirectory = configured
+          ? resolve(expandTilde(configured))
+          : configured;
+      } catch {
+        workingDirectory = undefined;
+      }
+      // A project with no readable workspace has no previewable files; that is
+      // an empty answer, not an error the chat would have to render.
+      return c.json({
+        success: true,
+        data: {
+          files: workingDirectory
+            ? previewService.existingFiles(workingDirectory, request.paths)
+            : [],
+        },
       });
     },
   );
