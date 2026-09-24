@@ -88,6 +88,15 @@ export async function openNativeExternalLink(
   return opened;
 }
 
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Open `url` outside Station on either host, for an explicit "open this
  * elsewhere" control: the native host's opener where there is one (which
@@ -96,6 +105,10 @@ export async function openNativeExternalLink(
  * refused visibly. Resolves whether it opened.
  */
 export async function openExternalLink(url: string): Promise<boolean> {
+  if (!isWebUrl(url)) {
+    reportUnopenedExternalLink(url, 'unsupported-scheme');
+    return false;
+  }
   const native = await openNativeExternalLink(url);
   if (native !== null) return native;
   window.open(url, '_blank', 'noopener,noreferrer');

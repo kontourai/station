@@ -126,4 +126,22 @@ describe('a refused native open is shown, with the link and a Copy action', () =
     );
     expect(notice.textContent).toContain('https://example.test/docs');
   });
+
+  test('a non-web scheme is refused before any host is asked, and says so', async () => {
+    renderNotices();
+    const open = vi.spyOn(window, 'open');
+    let opened: boolean | undefined;
+    await act(async () => {
+      opened = await openExternalLink('javascript:alert(1)');
+    });
+    expect(opened).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    expect(ipc.invoke).not.toHaveBeenCalledWith(
+      'open_external_link',
+      expect.anything(),
+    );
+    expect(
+      await screen.findByText(/Station only opens web \(http or https\) links/),
+    ).toBeTruthy();
+  });
 });
