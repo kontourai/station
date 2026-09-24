@@ -311,8 +311,16 @@ function writePhoneLayerPreState(state: PhoneLayerPreState | null) {
   }
 }
 
-/** The prefix of the layer's `registerDialogHistory` ids (`<prefix>:<n>`). */
+/**
+ * The prefix of the layer's `registerDialogHistory` ids
+ * (`<prefix>:<load>-<n>`). `<load>` is a per-page-load nonce: a reload keeps
+ * the entries (and their markers) an earlier load pushed while its counter
+ * starts again, so without it the first layer after a reload could get the
+ * very id of the entry it opens on — and `dialog-history` would read Back as
+ * "still on my entry" and not close it.
+ */
 const PHONE_LAYER_HISTORY_ID = 'phone-pane-layer';
+const PHONE_LAYER_LOAD_NONCE = Math.random().toString(36).slice(2, 10);
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
@@ -504,7 +512,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const leavePhoneLayerByBackRef = useRef<() => void>(() => {});
   const registerLayerEntry = useCallback(() => {
     layerHistoryRef.current = registerDialogHistory(
-      `${PHONE_LAYER_HISTORY_ID}:${layerEntryRef.current}`,
+      `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`,
       () => leavePhoneLayerByBackRef.current(),
     );
   }, []);
