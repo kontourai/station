@@ -701,7 +701,7 @@ describe('HomeView', () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     // #2312 review: a dock tab open on the Draft closes with it.
-    activeChatsStore.initChat('fresh-draft', {});
+    activeChatsStore.initChat('fresh-draft');
     renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
 
     const drafts = screen

@@ -4049,7 +4049,7 @@ describe('SessionsView', () => {
       ];
       // #2312 review: a tab this device has open on the Draft closes too, or
       // a send from it would start a new session under the deleted id.
-      activeChatsStore.initChat('fresh-draft', {});
+      activeChatsStore.initChat('fresh-draft');
       renderView();
 
       expect(
