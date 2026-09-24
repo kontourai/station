@@ -3,7 +3,9 @@
 /**
  * #2459: the Agents pane over the REAL stores — the chat store, the
  * background-tasks store and the global child-work store — with only
- * navigation and the SDK (queries and mutations) stubbed.
+ * navigation, the SDK (queries and mutations) and the stream registration
+ * stubbed. The stream's own refresh path is exercised, unstubbed, in
+ * `AgentsWorkspacePane.streamRefresh.test.tsx`.
  */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -11,7 +13,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 let activeChat: string | null = null;
-let sessions: Partial<OrchestrationSessionSummary>[] = [];
+let sessionsResult: {
+  data?: Partial<OrchestrationSessionSummary>[];
+  isError?: boolean;
+  refetch?: () => void;
+} = { data: [] };
 const showSurface = vi.fn();
 
 vi.mock('../../contexts/NavigationContext', () => ({
@@ -22,8 +28,18 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
+vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useQueryClient: () => ({}),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
-  useOrchestrationSessionsQuery: () => ({ data: sessions }),
+  useOrchestrationSessionsQuery: () => sessionsResult,
   useOrchestrationSessionQuery: () => ({ data: undefined }),
   useInterruptDelegatedTaskMutation: () => ({
     mutate: vi.fn(),
@@ -40,6 +56,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  backgroundTasksStore,
+  selectChatBackgroundTasks,
+} from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
@@ -58,12 +78,25 @@ function openChat(provider: string) {
   activeChat = CHAT;
 }
 
+function claudeRegistry(active: unknown[]) {
+  childWorkGlobalStore.ingest({
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'extension.notification',
+    namespace: 'claude-code',
+    type: 'task/registry',
+    payload: { active },
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   childWorkGlobalStore.reset();
+  backgroundTasksStore.reset();
   activeChatsStore.removeChat(CHAT);
   activeChat = null;
-  sessions = [];
+  sessionsResult = { data: [] };
 });
 
 afterEach(() => {
@@ -115,32 +148,86 @@ test('an engine that cannot report subagents is not an engine reporting none', (
   ).toBeNull();
 });
 
-test('a CLI-started delegate with no chat open appears live, with its provenance, and opens its session', () => {
-  sessions = [
+test('a server refusal is shown in the server’s words, and a later report retracts it', () => {
+  // The #2458-era case: the server's view said the engine reports subagents
+  // but Station did not map them. "Does not report" would contradict it.
+  openChat('codex');
+  childWorkGlobalStore.reconcileSnapshot([
     {
-      threadId: 'delegate-cli',
-      provider: 'codex',
-      turnOrigin: {
-        latest: {
-          version: 1,
-          actor: { kind: 'operator' },
-          reported: { version: 1, surface: 'cli', build: null },
-        },
-        hasOtherOrigins: false,
-      },
+      threadId: 'exec-1',
       childWork: {
-        asChild: {
-          producer: 'station-delegate',
-          reporterThreadId: 'delegate-cli',
-          childId: 'delegate-cli',
-          status: 'running',
-          title: 'Nightly audit',
-          result: { handle: { kind: 'session', threadId: 'delegate-cli' } },
-          controls: { stop: 'delegate-interrupt' },
+        children: {
+          observability: 'not-reported',
+          reason:
+            'The engine reports subagents, but Station does not map them yet.',
         },
       },
     },
-  ];
+  ]);
+  render(<AgentsWorkspacePane />);
+  expect(
+    screen.getByText('Subagents are not shown for this engine'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'The engine reports subagents, but Station does not map them yet.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText('This engine does not report subagents'),
+  ).toBeNull();
+  cleanup();
+
+  // The server now reports (it mapped them): no refusal, no silence claim.
+  childWorkGlobalStore.reconcileSnapshot([
+    {
+      threadId: 'exec-1',
+      childWork: {
+        children: {
+          observability: 'reported',
+          running: [],
+          observedAt: '2026-09-24T00:00:00.000Z',
+        },
+      },
+    },
+  ]);
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('No subagents running')).toBeTruthy();
+  expect(
+    screen.queryByText('Subagents are not shown for this engine'),
+  ).toBeNull();
+});
+
+test('a delegate from the session read model shows in All with its provenance and opens its session', () => {
+  // `surface: 'cli'` is what the CLI declares since #2459 (packages/cli);
+  // here it is a read-model fixture, not a live observation.
+  sessionsResult = {
+    data: [
+      {
+        threadId: 'delegate-cli',
+        provider: 'codex',
+        turnOrigin: {
+          latest: {
+            version: 1,
+            actor: { kind: 'operator' },
+            reported: { version: 1, surface: 'cli', build: null },
+          },
+          hasOtherOrigins: false,
+        },
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'delegate-cli',
+            childId: 'delegate-cli',
+            status: 'running',
+            title: 'Nightly audit',
+            result: { handle: { kind: 'session', threadId: 'delegate-cli' } },
+            controls: { stop: 'delegate-interrupt' },
+          },
+        },
+      },
+    ],
+  };
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getByText('Nightly audit')).toBeTruthy();
@@ -152,9 +239,84 @@ test('a CLI-started delegate with no chat open appears live, with its provenance
   });
 });
 
-test('Claude’s per-chat Stop survives on the TaskRow bridge; ChildWorkRow offers none from a `none` cell', () => {
+test('per chat, delegates are the background-tasks store’s cards — live, as the badge and sheet select them — not the read model’s history', () => {
   openChat('claude');
-  // The chat's derived provider task (the pre-contract per-chat path)...
+  // An old delegate of this chat the read model still lists.
+  sessionsResult = {
+    data: [
+      {
+        threadId: 'old-delegate',
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'old-delegate',
+            childId: 'old-delegate',
+            status: 'completed',
+            parent: { taskId: CHAT },
+            title: 'Last week’s audit',
+          },
+        },
+      },
+    ],
+  };
+  backgroundTasksStore.ingest({
+    provider: 'codex',
+    threadId: 'del-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'session.started',
+    sessionId: 'del-1',
+    metadata: { taskId: 'del-1', parentTaskId: CHAT },
+  });
+  backgroundTasksStore.ingest({
+    provider: 'codex',
+    threadId: 'del-1',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'turn.started',
+    turnId: 't-1',
+    prompt: 'Audit the dependencies',
+  });
+  render(<AgentsWorkspacePane />);
+  // Main's selection for the same event sequence, read the way the sheet
+  // reads it.
+  const main = selectChatBackgroundTasks(
+    backgroundTasksStore.getSnapshot(),
+    CHAT,
+    undefined,
+  );
+  expect(main.running.map((entry) => entry.title)).toEqual([
+    'Audit the dependencies',
+  ]);
+  expect(screen.getByText('Running (1)')).toBeTruthy();
+  expect(screen.getByText('Audit the dependencies')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'View transcript' })).toBeTruthy();
+  expect(screen.queryByText('Last week’s audit')).toBeNull();
+
+  cleanup();
+  backgroundTasksStore.ingest({
+    provider: 'codex',
+    threadId: 'del-1',
+    createdAt: '2026-09-24T00:00:05.000Z',
+    method: 'turn.completed',
+    turnId: 't-1',
+  });
+  render(<AgentsWorkspacePane />);
+  expect(
+    selectChatBackgroundTasks(
+      backgroundTasksStore.getSnapshot(),
+      CHAT,
+      undefined,
+    ).finished.map((entry) => [entry.title, entry.state]),
+  ).toEqual([['Audit the dependencies', 'completed']]);
+  expect(screen.getByText('Finished (1)')).toBeTruthy();
+  expect(screen.getByText('Completed')).toBeTruthy();
+  // Delegates are not "since this window connected" subagents.
+  expect(
+    screen.queryByText('subagents: since this window connected'),
+  ).toBeNull();
+});
+
+test('Claude’s per-chat Stop survives on the TaskRow bridge, with no invented elapsed; ChildWorkRow offers none from a `none` cell', () => {
+  openChat('claude');
   activeChatsStore.updateChat(CHAT, {
     backgroundTasks: [
       {
@@ -165,28 +327,89 @@ test('Claude’s per-chat Stop survives on the TaskRow bridge; ChildWorkRow offe
       },
     ],
   });
-  // ...and the same child in the window-wide registry.
-  childWorkGlobalStore.ingest({
-    provider: 'claude',
-    threadId: 'exec-1',
-    createdAt: '2026-09-24T00:00:00.000Z',
-    method: 'extension.notification',
-    namespace: 'claude-code',
-    type: 'task/registry',
-    payload: {
-      active: [{ taskId: 'task-1', description: 'Investigate flaky test' }],
-    },
-  });
-  render(<AgentsWorkspacePane />);
+  claudeRegistry([{ taskId: 'task-1', description: 'Investigate flaky test' }]);
+  const { container } = render(<AgentsWorkspacePane />);
   // Per chat: ONE row (the bridge), with the shipped Stop.
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getAllByText('Investigate flaky test')).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: 'Stop' })).toHaveLength(1);
+  // No spawning tool card was seen, so no start: the row shows no time
+  // (it showed an invented `Date.now()` start before #2459 R2).
+  expect(
+    container.querySelector('.background-tasks-sheet__meta')?.textContent,
+  ).toBe('Agent');
 
   // All: the contract row, and no Stop — Claude's cell is not wired.
   fireEvent.click(screen.getByRole('button', { name: 'All' }));
   expect(screen.getAllByText('Investigate flaky test')).toHaveLength(1);
   expect(screen.getByText('From “Morning triage”')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+});
+
+test('a Codex child with no stop seam gets no Stop per chat', () => {
+  openChat('codex');
+  // The chat's derived card: the store gives any card with a session thread
+  // a stop kind, so the bridge must not trust the card.
+  activeChatsStore.updateChat(CHAT, {
+    backgroundTasks: [
+      {
+        taskId: 'c-1',
+        description: 'Survey the repo',
+        backgrounded: false,
+        sessionThreadId: 'exec-1',
+      },
+    ],
+  });
+  childWorkGlobalStore.ingest({
+    provider: 'codex',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-1',
+        childId: 'c-1',
+        status: 'running',
+        title: 'Survey the repo',
+      },
+    },
+  });
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Running (1)')).toBeTruthy();
+  expect(screen.getAllByText('Survey the repo')).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+});
+
+test('a settle the chat registry has not caught up with shows the child once, finished — not also running', () => {
+  openChat('claude');
+  // The chat's post-guard fold still lists it (a buffered delivery)...
+  activeChatsStore.updateChat(CHAT, {
+    backgroundTasks: [
+      {
+        taskId: 'task-1',
+        description: 'Investigate flaky test',
+        backgrounded: true,
+        sessionThreadId: 'exec-1',
+      },
+    ],
+  });
+  // ...while the pre-guard registry has already seen it settle.
+  claudeRegistry([{ taskId: 'task-1', description: 'Investigate flaky test' }]);
+  childWorkGlobalStore.ingest({
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:03.000Z',
+    method: 'extension.notification',
+    namespace: 'claude-code',
+    type: 'task/settled',
+    payload: { taskId: 'task-1', status: 'success', summary: 'Found it' },
+  });
+  render(<AgentsWorkspacePane />);
+  expect(screen.queryByText(/Running \(/)).toBeNull();
+  expect(screen.getByText('Finished (1)')).toBeTruthy();
+  expect(screen.getAllByText('Investigate flaky test')).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
 });
 
@@ -208,7 +431,45 @@ test('a settled subagent shows under Finished, which says since when', () => {
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Finished (1)')).toBeTruthy();
   expect(
-    screen.getByText('subagents since this window connected'),
+    screen.getByText('subagents: since this window connected'),
   ).toBeTruthy();
   expect(screen.getByText('No result')).toBeTruthy();
+});
+
+test('All does not read an unanswered session list as "no agent work"', () => {
+  sessionsResult = { data: undefined };
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Loading agent work')).toBeTruthy();
+  expect(screen.queryByText('No agent work yet')).toBeNull();
+  cleanup();
+
+  const refetch = vi.fn();
+  sessionsResult = { data: undefined, isError: true, refetch };
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Could not load agent work')).toBeTruthy();
+  expect(screen.queryByText('No agent work yet')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  expect(refetch).toHaveBeenCalled();
+  cleanup();
+
+  // With subagents on screen, the failure is a note, not a blank.
+  childWorkGlobalStore.ingest({
+    provider: 'codex',
+    threadId: 'exec-x',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-x',
+        childId: 'c-1',
+        status: 'running',
+        title: 'Still here',
+      },
+    },
+  });
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Still here')).toBeTruthy();
+  expect(screen.getByText(/Delegated tasks could not be loaded/)).toBeTruthy();
 });

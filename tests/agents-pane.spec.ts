@@ -25,6 +25,7 @@ const SESSION_ID = 'session-1';
 const CONVERSATION_ID = 'conv-1';
 const CLI_DELEGATE = 'delegate-cli-1';
 const CHATLESS = 'exec-no-chat-open';
+let delegateStarted = false;
 
 function summary(threadId: string, extra: Record<string, unknown> = {}) {
   return {
@@ -72,38 +73,46 @@ test.describe('Agents pane child work (#2459)', () => {
       (conversationId) =>
         conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
     );
+    delegateStarted = false;
     await page.route('**/api/orchestration/sessions/read-model', (route) =>
       route.fulfill({
         json: {
           success: true,
           data: [
             summary(SESSION_ID, { conversationId: CONVERSATION_ID }),
-            // A delegate started from the CLI: no parent task, no chat open.
-            summary(CLI_DELEGATE, {
-              provider: 'codex',
-              turnOrigin: {
-                latest: {
-                  version: 1,
-                  actor: { kind: 'operator' },
-                  reported: { version: 1, surface: 'cli', build: null },
-                },
-                hasOtherOrigins: false,
-              },
-              childWork: {
-                asChild: {
-                  producer: 'station-delegate',
-                  reporterThreadId: CLI_DELEGATE,
-                  childId: CLI_DELEGATE,
-                  status: 'running',
-                  title: 'Nightly audit',
-                  result: {
-                    handle: { kind: 'session', threadId: CLI_DELEGATE },
-                  },
-                  startedAt: '2026-09-24T10:00:00.000Z',
-                  controls: { stop: 'delegate-interrupt' },
-                },
-              },
-            }),
+            // A delegate started from the CLI AFTER the page loaded: no
+            // parent task, no chat open. `surface: 'cli'` is what the CLI
+            // declares since #2459; the server's stamping of it onto the
+            // delegate's turn is not exercised here.
+            ...(delegateStarted
+              ? [
+                  summary(CLI_DELEGATE, {
+                    provider: 'codex',
+                    turnOrigin: {
+                      latest: {
+                        version: 1,
+                        actor: { kind: 'operator' },
+                        reported: { version: 1, surface: 'cli', build: null },
+                      },
+                      hasOtherOrigins: false,
+                    },
+                    childWork: {
+                      asChild: {
+                        producer: 'station-delegate',
+                        reporterThreadId: CLI_DELEGATE,
+                        childId: CLI_DELEGATE,
+                        status: 'running',
+                        title: 'Nightly audit',
+                        result: {
+                          handle: { kind: 'session', threadId: CLI_DELEGATE },
+                        },
+                        startedAt: '2026-09-24T10:00:00.000Z',
+                        controls: { stop: 'delegate-interrupt' },
+                      },
+                    },
+                  }),
+                ]
+              : []),
           ],
         },
       }),
@@ -154,6 +163,26 @@ test.describe('Agents pane child work (#2459)', () => {
 
     await scopeAll.click();
     await expect(scopeAll).toHaveAttribute('aria-pressed', 'true');
+
+    // L1: with the Chat dock gone, the pane alone must keep the session read
+    // model fresh. Hide Chat and prove it is not mounted.
+    await page.getByRole('button', { name: 'Hide Chat' }).first().click();
+    await expect(page.getByRole('region', { name: 'Chat dock' })).toHaveCount(
+      0,
+    );
+    await expect(scopeAll).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('Nightly audit')).toHaveCount(0);
+
+    // A CLI delegate starts now: the Station lists it, and its first turn
+    // is a read-model fact on the stream.
+    delegateStarted = true;
+    await emit(page, {
+      provider: 'codex',
+      threadId: CLI_DELEGATE,
+      method: 'turn.started',
+      turnId: 'turn-cli-1',
+      prompt: 'Nightly audit',
+    });
     await expect(page.getByText('Nightly audit')).toBeVisible();
     await expect(page.getByText('Started from the CLI')).toBeVisible();
 

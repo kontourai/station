@@ -21,6 +21,7 @@ import { activeChatsStore } from '../active-chats-store';
 import {
   childWorkGlobalStore,
   GLOBAL_CHILD_WORK_FINISHED_LIMIT,
+  GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT,
 } from '../child-work-global-store';
 
 const CHATLESS = 'thread-no-chat-open';
@@ -150,9 +151,78 @@ describe('child-work global store', () => {
       },
     ]);
     expect(items().map((item) => item.childId)).toEqual(['c-1']);
-    expect(childWorkGlobalStore.getSnapshot().registry.notReported).toEqual({
-      'reporter-b': 'ACP',
+    expect(childWorkGlobalStore.getSnapshot().observability).toEqual({
+      'reporter-a': { kind: 'reported' },
+      'reporter-b': { kind: 'not-reported', reason: 'ACP' },
     });
+    // Not the reducer's never-forgotten map (R4).
+    expect(childWorkGlobalStore.getSnapshot().registry.notReported).toEqual({});
+  });
+
+  test('a later report retracts an earlier refusal', () => {
+    childWorkGlobalStore.ingest({
+      provider: 'codex',
+      threadId: 'r-1',
+      createdAt: at(),
+      method: 'child-work.updated',
+      delta: { kind: 'not-reported', reporterThreadId: 'r-1', reason: 'no' },
+    });
+    childWorkGlobalStore.ingest({
+      provider: 'codex',
+      threadId: 'r-1',
+      createdAt: at(),
+      method: 'child-work.updated',
+      delta: { kind: 'upsert', item: running('r-1', 'c-1') },
+    });
+    expect(childWorkGlobalStore.getSnapshot().observability['r-1']).toEqual({
+      kind: 'reported',
+    });
+  });
+
+  test('what a reporter said is forgotten on its exit, and when a full snapshot no longer lists it', () => {
+    childWorkGlobalStore.reconcileSnapshot([
+      {
+        threadId: 'gone-by-exit',
+        childWork: { children: { observability: 'not-reported', reason: 'x' } },
+      },
+      {
+        threadId: 'gone-by-snapshot',
+        childWork: { children: { observability: 'not-reported', reason: 'y' } },
+      },
+    ]);
+    childWorkGlobalStore.ingest({
+      provider: 'acp',
+      threadId: 'gone-by-exit',
+      createdAt: at(),
+      method: 'session.exited',
+      sessionId: 'gone-by-exit',
+    });
+    expect(
+      Object.keys(childWorkGlobalStore.getSnapshot().observability),
+    ).toEqual(['gone-by-snapshot']);
+    childWorkGlobalStore.reconcileSnapshot([]);
+    expect(childWorkGlobalStore.getSnapshot().observability).toEqual({});
+  });
+
+  test('what reporters said is bounded, oldest dropped first', () => {
+    const total = GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT + 4;
+    for (let index = 0; index < total; index += 1)
+      childWorkGlobalStore.ingest({
+        provider: 'acp',
+        threadId: `r-${index}`,
+        createdAt: at(),
+        method: 'child-work.updated',
+        delta: {
+          kind: 'not-reported',
+          reporterThreadId: `r-${index}`,
+          reason: 'none',
+        },
+      });
+    const kept = Object.keys(childWorkGlobalStore.getSnapshot().observability);
+    expect(kept).toHaveLength(GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT);
+    expect(kept).not.toContain('r-3');
+    expect(kept).toContain('r-4');
+    expect(kept).toContain(`r-${total - 1}`);
   });
 
   test('a reporter the full snapshot no longer lists is gone: unresolved, not completed', () => {

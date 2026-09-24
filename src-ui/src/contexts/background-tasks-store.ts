@@ -61,7 +61,12 @@ export interface BackgroundTaskEntry {
   chatThreadId: string;
   title: string;
   detail?: string;
-  startedAt: number;
+  /**
+   * When the card's work started, on this client's clock basis. #2459:
+   * absent for a provider subagent whose spawning tool call this client never
+   * saw — no start was reported, and "now" is not one.
+   */
+  startedAt?: number;
   endedAt?: number;
   state: BackgroundTaskState;
   /** Transcript link for an agent/delegate card. */
@@ -137,7 +142,7 @@ function backgroundTaskEntryFromChildWork(
   item: ChildWorkItem,
   placement: {
     chatThreadId: string;
-    startedAt: number;
+    startedAt: number | undefined;
     title?: string;
   },
 ): BackgroundTaskEntry {
@@ -162,7 +167,9 @@ function backgroundTaskEntryFromChildWork(
     chatThreadId: placement.chatThreadId,
     title: placement.title || item.title || item.kindLabel || 'Background task',
     detail: item.kindLabel,
-    startedAt: placement.startedAt,
+    ...(placement.startedAt !== undefined
+      ? { startedAt: placement.startedAt }
+      : {}),
     state,
     ...(item.controls?.stop && item.reporterThreadId
       ? {
@@ -212,6 +219,11 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
   };
 }
 
+/** A card's end for ordering: its end, else its start, else the oldest. */
+function settledAt(entry: BackgroundTaskEntry): number {
+  return entry.endedAt ?? entry.startedAt ?? 0;
+}
+
 /** Bounds a chat's finished list, dropping the oldest-ended entries first. */
 function pruneFinished(
   entries: Record<string, BackgroundTaskEntry>,
@@ -220,7 +232,7 @@ function pruneFinished(
   const finishedIds = Object.values(entries)
     .filter((entry) => entry.chatThreadId === chatThreadId)
     .filter((entry) => entry.state !== 'running')
-    .sort((a, b) => (a.endedAt ?? a.startedAt) - (b.endedAt ?? b.startedAt))
+    .sort((a, b) => settledAt(a) - settledAt(b))
     .map((entry) => entry.id);
   const excess = finishedIds.length - FINISHED_LIMIT_PER_CHAT;
   if (excess <= 0) return entries;
@@ -649,18 +661,25 @@ export function selectChatBackgroundTasks(
       : undefined;
     return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
       chatThreadId,
-      startedAt: matchedTool?.startedAt ?? Date.now(),
+      // #2459: no spawning tool card, no start. `Date.now()` here was an
+      // invented start that reset on every recompute.
+      startedAt: matchedTool?.startedAt,
     });
   });
 
+  // An unknown start sorts last rather than posing as "now".
   const running = [
     ...visible.filter((entry) => entry.state === 'running'),
     ...providerEntries,
-  ].sort((a, b) => a.startedAt - b.startedAt);
+  ].sort(
+    (a, b) =>
+      (a.startedAt ?? Number.POSITIVE_INFINITY) -
+      (b.startedAt ?? Number.POSITIVE_INFINITY),
+  );
 
   const finished = visible
     .filter((entry) => entry.state !== 'running')
-    .sort((a, b) => (b.endedAt ?? b.startedAt) - (a.endedAt ?? a.startedAt));
+    .sort((a, b) => settledAt(b) - settledAt(a));
 
   return { running, finished };
 }

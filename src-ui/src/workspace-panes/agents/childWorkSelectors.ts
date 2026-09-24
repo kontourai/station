@@ -75,6 +75,11 @@ export interface ChildWorkSelectorInput {
   chatKeyFor: (threadId: string) => string | undefined;
   /** The open chat's facts, for a reporter with no session row. */
   chatFacts?: (chatKey: string) => { provider?: string; title?: string };
+  /**
+   * A delegate thread → the thread its bind event named as parent (the
+   * background-tasks store's `delegateParents`), for per-chat nesting.
+   */
+  delegateParentOf?: (threadId: string) => string | undefined;
   /** A tool call's start (ms), for a legacy subagent with no `startedAt`. */
   toolCallStartedAt?: (toolCallId: string) => number | undefined;
 }
@@ -109,13 +114,6 @@ function resolveChat(
 }
 
 /** The engine a session runs on, from its row or its open chat. */
-export function providerForThread(
-  threadId: string,
-  input: ChildWorkSelectorInput,
-): string | undefined {
-  return providerIn(threadId, input, sessionIndex(input.sessions));
-}
-
 function providerIn(
   threadId: string,
   input: ChildWorkSelectorInput,
@@ -138,7 +136,7 @@ function engineMatrix(provider: string | undefined) {
  * `model-tool` stop is something only the model can invoke, so it is never a
  * button; an unknown engine wires nothing.
  */
-export function engineStopIsWired(provider: string | undefined): boolean {
+function engineStopIsWired(provider: string | undefined): boolean {
   const cell = engineMatrix(provider)?.subagentControl;
   if (cell?.state !== 'wired') return false;
   const stop = cell.stop;
@@ -150,9 +148,7 @@ export function engineStopIsWired(provider: string | undefined): boolean {
 }
 
 /** Whether the engine's matrix says it reports nothing about subagents. */
-export function engineReportsNoSubagents(
-  provider: string | undefined,
-): boolean {
+function engineReportsNoSubagents(provider: string | undefined): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
 }
 
@@ -374,38 +370,32 @@ export function selectGlobalChildWork(
 }
 
 /**
- * One chat's child work: subagents its own sessions reported, delegates it
- * launched, and — transitively — what those delegates run in turn.
+ * One chat's ENGINE subagents: those its own sessions reported, and those
+ * reported by a delegate this chat launched (the delegate's bind event names
+ * the chat as its parent — a reported edge). The chat's delegates themselves
+ * are not here: per chat they render from the background-tasks store, live
+ * and bounded exactly as the badge and the sheet read them.
  */
 export function selectChatChildWork(
   input: ChildWorkSelectorInput,
   chatKey: string,
 ): ChildWorkListView {
   const sessions = sessionIndex(input.sessions);
-  const candidates = buildCandidates(input);
-  const byKey = new Map(candidates.map((c) => [c.row.key, c]));
-  const belongs = (candidate: Candidate, seen: Set<string>): boolean => {
-    if (seen.has(candidate.row.key)) return false;
-    seen.add(candidate.row.key);
-    const item = candidate.row.item;
-    const anchor =
-      item.producer === 'engine-subagent'
-        ? item.reporterThreadId
-        : item.parent?.taskId;
-    // The key itself is a thread id: a thread with no chat still reads its
-    // own work (`useChatStoreKey`'s fall-through).
-    if (
-      anchor &&
-      (anchor === chatKey || resolveChat(anchor, input, sessions) === chatKey)
-    )
-      return true;
-    const parent = candidate.parentKey
-      ? byKey.get(candidate.parentKey)
-      : undefined;
-    return parent ? belongs(parent, seen) : false;
-  };
+  // The key itself is a thread id: a thread with no chat still reads its own
+  // work (`useChatStoreKey`'s fall-through).
+  const inChat = (threadId: string | undefined) =>
+    threadId !== undefined &&
+    (threadId === chatKey ||
+      resolveChat(threadId, input, sessions) === chatKey);
   return toView(
-    candidates.filter((candidate) => belongs(candidate, new Set())),
+    buildCandidates(input).filter((candidate) => {
+      const item = candidate.row.item;
+      if (item.producer !== 'engine-subagent') return false;
+      return (
+        inChat(item.reporterThreadId) ||
+        inChat(input.delegateParentOf?.(item.reporterThreadId))
+      );
+    }),
     undefined,
   );
 }
@@ -415,14 +405,51 @@ export interface ChildWorkEmptyState {
   description?: string;
 }
 
+/** What a chat's server said about its reporters' children. */
+export type ChildWorkReporterObservability =
+  | { kind: 'reported' }
+  | { kind: 'not-reported'; reason: string };
+
 /**
- * Two empties that must not read alike: an engine that CANNOT report
- * subagents is not an engine reporting that none are running.
+ * Whether to tell the reader this chat's subagents cannot appear, and in
+ * whose words. The server's own view outranks the matrix: a reporter the
+ * server says reports children is never called silent, and a server refusal
+ * is shown with the server's reason rather than a sentence that might
+ * contradict it ("does not report" when the truth is "Station does not map
+ * them yet"). The matrix speaks only when the server has said nothing.
+ */
+export function subagentNoticeFor(options: {
+  provider: string | undefined;
+  observed: readonly ChildWorkReporterObservability[];
+}): ChildWorkEmptyState | undefined {
+  if (options.observed.some((entry) => entry.kind === 'reported'))
+    return undefined;
+  const refusal = options.observed.find(
+    (entry): entry is { kind: 'not-reported'; reason: string } =>
+      entry.kind === 'not-reported',
+  );
+  if (refusal)
+    return {
+      label: 'Subagents are not shown for this engine',
+      description: refusal.reason,
+    };
+  if (engineReportsNoSubagents(options.provider))
+    return {
+      label: 'This engine does not report subagents',
+      description:
+        'Delegated tasks and tool calls from this conversation still appear here.',
+    };
+  return undefined;
+}
+
+/**
+ * Two empties that must not read alike: an engine whose subagents cannot
+ * appear is not an engine reporting that none are running.
  */
 export function emptyStateFor(options: {
   scope: ChildWorkScope;
   hasChat: boolean;
-  engineReportsNoSubagents: boolean;
+  subagentNotice?: ChildWorkEmptyState;
 }): ChildWorkEmptyState {
   if (options.scope === 'all')
     return {
@@ -435,11 +462,5 @@ export function emptyStateFor(options: {
       label: 'Nothing here yet',
       description: 'Open a chat to see the work it set running.',
     };
-  if (options.engineReportsNoSubagents)
-    return {
-      label: 'This engine does not report subagents',
-      description:
-        'Delegated tasks and tool calls from this conversation still appear here.',
-    };
-  return { label: 'No subagents running' };
+  return options.subagentNotice ?? { label: 'No subagents running' };
 }

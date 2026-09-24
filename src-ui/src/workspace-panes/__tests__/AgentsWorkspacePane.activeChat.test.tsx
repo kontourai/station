@@ -38,6 +38,16 @@ vi.mock('../../contexts/NavigationContext', () => ({
 vi.mock('../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
 }));
+vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
+}));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useQueryClient: () => ({}),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
@@ -49,6 +59,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
@@ -96,6 +107,20 @@ beforeEach(() => {
       },
     ],
   });
+  // The same child as the window-wide registry holds it: its item carries
+  // the per-task stop seam the pane's Claude bridge requires (#2459 R1).
+  childWorkGlobalStore.reset();
+  childWorkGlobalStore.ingest({
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'extension.notification',
+    namespace: 'claude-code',
+    type: 'task/registry',
+    payload: {
+      active: [{ taskId: 'task-1', description: 'Investigate flaky test' }],
+    },
+  });
 });
 
 afterEach(() => {
@@ -135,6 +160,9 @@ test('the pane lists the work the badge counts, for a conversation whose store k
  */
 test('no chat is still no list, and an unknown id borrows nobody else’s work', () => {
   activeChat = null;
+  // All lists every conversation's subagents; this case is about the chat
+  // key, so the window-wide registry is empty here.
+  childWorkGlobalStore.reset();
   const { unmount } = render(<AgentsWorkspacePane />);
   // #2459: no chat reads the All scope, which borrows no chat's tool calls.
   expect(screen.getByText('No agent work yet')).toBeTruthy();

@@ -55,6 +55,7 @@ import {
   provenanceFor,
   selectChatChildWork,
   selectGlobalChildWork,
+  subagentNoticeFor,
 } from '../childWorkSelectors';
 
 function delegate(
@@ -271,7 +272,7 @@ describe('scopes and bounds', () => {
     );
   });
 
-  test('a chat shows its own subagents, the delegates it launched, and what those delegates run', () => {
+  test('a chat shows the subagents its sessions and its delegates report — never the delegates themselves (those are store cards)', () => {
     const facts = input(
       [
         delegate('d-mine', { parent: { taskId: 'exec-1' } }),
@@ -280,31 +281,68 @@ describe('scopes and bounds', () => {
       [
         engineItem('exec-1', 'own-sub'),
         engineItem('d-mine', 'delegate-sub'),
+        engineItem('d-theirs', 'their-delegate-sub'),
         engineItem('exec-9', 'other-sub'),
       ],
       {
         chatKeyFor: (id) =>
           id === 'exec-1' ? 'chat-1' : id === 'exec-9' ? 'chat-9' : undefined,
+        // The bind edge the background-tasks store recorded.
+        delegateParentOf: (id) =>
+          id === 'd-mine' ? 'exec-1' : id === 'd-theirs' ? 'exec-9' : undefined,
       },
     );
     const ids = selectChatChildWork(facts, 'chat-1').running.map(
       (row) => row.item.childId,
     );
-    expect(ids.sort()).toEqual(['d-mine', 'delegate-sub', 'own-sub']);
+    expect(ids.sort()).toEqual(['delegate-sub', 'own-sub']);
   });
 });
 
-test('the two empties never read alike', () => {
-  const silent = emptyStateFor({
-    scope: 'chat',
-    hasChat: true,
-    engineReportsNoSubagents: true,
+describe('what the chat says about subagents it cannot show', () => {
+  test('a server refusal is shown in the server’s words, even when the matrix would say "does not report"', () => {
+    const notice = subagentNoticeFor({
+      provider: 'acp',
+      observed: [
+        {
+          kind: 'not-reported',
+          reason:
+            'The engine reports subagents, but Station does not map them yet.',
+        },
+      ],
+    });
+    expect(notice).toEqual({
+      label: 'Subagents are not shown for this engine',
+      description:
+        'The engine reports subagents, but Station does not map them yet.',
+    });
   });
-  const quiet = emptyStateFor({
-    scope: 'chat',
-    hasChat: true,
-    engineReportsNoSubagents: false,
+
+  test('a reporter the server says reports children is never called silent', () => {
+    expect(
+      subagentNoticeFor({
+        provider: 'acp',
+        observed: [{ kind: 'reported' }, { kind: 'not-reported', reason: 'x' }],
+      }),
+    ).toBe(undefined);
   });
-  expect(silent.label).toBe('This engine does not report subagents');
-  expect(quiet.label).toBe('No subagents running');
+
+  test('with no server word, the matrix speaks; an engine it declares is not silent', () => {
+    expect(subagentNoticeFor({ provider: 'acp', observed: [] })?.label).toBe(
+      'This engine does not report subagents',
+    );
+    expect(subagentNoticeFor({ provider: 'claude', observed: [] })).toBe(
+      undefined,
+    );
+  });
+
+  test('the notice is the chat empty state; without one the empty says none are running', () => {
+    const notice = { label: 'Subagents are not shown for this engine' };
+    expect(
+      emptyStateFor({ scope: 'chat', hasChat: true, subagentNotice: notice }),
+    ).toBe(notice);
+    expect(emptyStateFor({ scope: 'chat', hasChat: true }).label).toBe(
+      'No subagents running',
+    );
+  });
 });

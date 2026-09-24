@@ -1,18 +1,33 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '../components/Button';
-import { TaskRow } from '../components/chat-dock/backgroundTaskRows';
-import { Empty } from '../components/state';
+import {
+  backgroundTaskElapsedMs,
+  TaskRow,
+} from '../components/chat-dock/backgroundTaskRows';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
+import { useApiBase } from '../contexts/ApiBaseContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type BackgroundTaskEntry,
   backgroundTasksStore,
 } from '../contexts/background-tasks-store';
-import { childWorkGlobalStore } from '../contexts/child-work-global-store';
+import {
+  childWorkGlobalStore,
+  type GlobalChildWorkState,
+} from '../contexts/child-work-global-store';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useShowSurface } from '../contexts/useShowSurface';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import {
   useChatBackgroundTasks,
   useChatStoreKey,
@@ -24,31 +39,33 @@ import {
   type ChildWorkScope,
   type ChildWorkSelectorInput,
   emptyStateFor,
-  engineReportsNoSubagents,
-  engineStopIsWired,
-  providerForThread,
   selectChatChildWork,
   selectGlobalChildWork,
+  subagentNoticeFor,
 } from './agents/childWorkSelectors';
 import './agents/AgentsWorkspacePane.css';
 
 /**
- * The Agents pane (#2050, #2459): the child work — engine subagents and
- * Station delegates — of the conversation on screen, or of every
- * conversation.
+ * The Agents pane (#2050, #2459): the work the conversation on screen set
+ * running, or every conversation's child work.
  *
- * Child work renders through `ChildWorkRow`, from the provider-neutral
- * contract, so it reads the same whatever engine reported it. The per-chat
- * scope still shows the chat's own TOOL calls through `TaskRow` (the sheet's
- * row), because a tool call is not child work.
+ * "This conversation" reads the chat's tool calls and delegated tasks from
+ * the background-tasks store through `TaskRow` — the SAME list, live and
+ * bounded, that the dock's badge counts and the sheet shows — and the chat's
+ * engine subagents from the child-work contract through `ChildWorkRow`.
+ * "All" reads every delegate from the session read model and every engine
+ * subagent from the window-wide child-work registry.
  *
- * One bridge, and it retires itself: an engine subagent whose engine's
- * `subagentControl` cell is not `wired`, but which the pre-contract path
- * already offers a working per-task Stop for (Claude, until #2457 flips its
- * cell), renders through `TaskRow` in the per-chat Running list, so no
- * shipped control is lost. `ChildWorkRow` renders a Stop only from a wired
- * cell; the moment the cell is wired the bridge selects nothing and the row
- * moves over.
+ * One bridge, and it retires itself: a running engine subagent whose child
+ * item carries the pre-contract per-task stop seam (Claude's legacy path),
+ * on an engine whose `subagentControl` cell is not yet `wired`, renders
+ * through `TaskRow` in "This conversation" so its shipped Stop is not lost.
+ * `ChildWorkRow` renders a Stop only from a wired cell; once the cell is
+ * wired, the bridge selects nothing.
+ *
+ * The pane registers this authority's `QueryClient` with the orchestration
+ * stream, as `ChatDock` does (#2307), so session read-model facts refresh
+ * "All" even where no dock is mounted.
  *
  * Scope is display state, not pane identity: the occurrence still binds
  * nothing, and the choice is a per-device preference.
@@ -117,6 +134,7 @@ function useChildWorkInput(
       sessions,
       engine: global.registry,
       settledObservedAt: global.settledObservedAt,
+      delegateParentOf: (threadId: string) => tasks.delegateParents[threadId],
       chatKeyFor: (threadId: string) =>
         activeChatsStore.getChatKeyForExecutionSession(threadId),
       chatFacts: (chatKey: string) => {
@@ -130,8 +148,14 @@ function useChildWorkInput(
   );
 }
 
-function rowKey(threadId: string, childId: string) {
-  return `${threadId}\u0000${childId}`;
+/** The engine subagent a provider-task card stands for, in the global registry. */
+function engineItemFor(
+  global: GlobalChildWorkState,
+  entry: BackgroundTaskEntry,
+) {
+  return global.registry.items[
+    JSON.stringify(['engine-subagent', entry.sessionThreadId ?? '', entry.id])
+  ];
 }
 
 export function AgentsWorkspacePane() {
@@ -143,10 +167,25 @@ export function AgentsWorkspacePane() {
   // No chat on screen: there is no "this conversation" to show.
   const scope: ChildWorkScope = chatKey ? (storedScope ?? 'chat') : 'all';
   const tools = useChatBackgroundTasks(scope === 'chat' ? chatKey : null);
-  const { data: sessions = EMPTY_SESSIONS } = useOrchestrationSessionsQuery();
+  const sessionsQuery = useOrchestrationSessionsQuery();
+  const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
   const input = useChildWorkInput(sessions);
+  const global = useSyncExternalStore(
+    childWorkGlobalStore.subscribe,
+    childWorkGlobalStore.getSnapshot,
+  );
   const showSurface = useShowSurface();
   const [now, setNow] = useState(() => Date.now());
+
+  // #2307, the mechanism ChatDock uses: register this authority's client
+  // with the stream so read-model facts (a new delegate's first turn) reach
+  // the sessions query this pane reads, with or without a dock mounted.
+  const { apiBase } = useApiBase();
+  const queryClient = useQueryClient();
+  useEffect(
+    () => ensureOrchestrationEventStream(apiBase, queryClient),
+    [apiBase, queryClient],
+  );
 
   const chooseScope = (next: ChildWorkScope) => {
     setStoredScope(next);
@@ -161,22 +200,31 @@ export function AgentsWorkspacePane() {
     [input, scope, chatKey],
   );
 
-  // The Claude Stop bridge (see the module comment).
-  const bridged: BackgroundTaskEntry[] = useMemo(
-    () =>
-      scope === 'chat'
-        ? tools.running.filter(
-            (entry) =>
-              entry.source === 'provider-task' &&
-              entry.stop?.kind === 'provider-task-stop' &&
-              Boolean(entry.sessionThreadId) &&
-              !engineStopIsWired(
-                providerForThread(entry.sessionThreadId ?? '', input),
-              ),
-          )
-        : [],
-    [scope, tools.running, input],
-  );
+  // The Claude Stop bridge (see the module comment): only a RUNNING child
+  // whose own item carries the pre-contract stop seam, on an engine whose
+  // cell does not yet render one. A child with no seam (a Codex subagent)
+  // is never bridged, and one the registry already settled is not shown
+  // running beside its own finished row.
+  const bridged: BackgroundTaskEntry[] =
+    scope === 'chat'
+      ? tools.running.filter((entry) => {
+          if (entry.source !== 'provider-task') return false;
+          const item = engineItemFor(global, entry);
+          return (
+            item?.status === 'running' &&
+            item.controls?.stop === 'provider-task-stop' &&
+            !view.running.some(
+              (row) =>
+                row.key ===
+                  JSON.stringify([
+                    'engine-subagent',
+                    item.reporterThreadId,
+                    item.childId,
+                  ]) && row.stop,
+            )
+          );
+        })
+      : [];
   const bridgedKeys = new Set(
     bridged.map((entry) => rowKey(entry.sessionThreadId ?? '', entry.id)),
   );
@@ -194,14 +242,20 @@ export function AgentsWorkspacePane() {
       .map((row) => row.item.parent?.toolCallId)
       .filter((id): id is string => Boolean(id)),
   );
-  const isToolRow = (entry: BackgroundTaskEntry) =>
-    entry.source === 'tool-event' && !spawningToolCalls.has(entry.id);
-  const toolRunning =
-    scope === 'chat' ? [...tools.running.filter(isToolRow), ...bridged] : [];
-  const toolFinished = scope === 'chat' ? tools.finished.filter(isToolRow) : [];
+  // Per chat, tool calls AND delegated tasks are the background-tasks
+  // store's cards, exactly as the badge and the sheet select them.
+  const isTaskRow = (entry: BackgroundTaskEntry) =>
+    entry.source === 'delegate-session' ||
+    (entry.source === 'tool-event' && !spawningToolCalls.has(entry.id));
+  const taskRunning =
+    scope === 'chat' ? [...tools.running.filter(isTaskRow), ...bridged] : [];
+  const taskFinished = scope === 'chat' ? tools.finished.filter(isTaskRow) : [];
 
-  const runningCount = toolRunning.length + childRunning.length;
-  const finishedCount = toolFinished.length + view.finished.length;
+  const runningCount = taskRunning.length + childRunning.length;
+  const finishedCount = taskFinished.length + view.finished.length;
+  const finishedHasSubagents = view.finished.some(
+    (row) => row.item.producer === 'engine-subagent',
+  );
 
   // One 1s ticker for every Running row's elapsed time, only while mounted.
   useEffect(() => {
@@ -210,15 +264,19 @@ export function AgentsWorkspacePane() {
     return () => clearInterval(id);
   }, [runningCount]);
 
-  const chatEngineSilent =
+  const subagentNotice =
     scope === 'chat' && chatKey
-      ? engineReportsNoSubagents(
-          activeChatsStore.getSnapshot()[chatKey]?.orchestrationProvider,
-        ) ||
-        Object.keys(input.engine.notReported).some(
-          (threadId) => input.chatKeyFor(threadId) === chatKey,
-        )
-      : false;
+      ? subagentNoticeFor({
+          provider:
+            activeChatsStore.getSnapshot()[chatKey]?.orchestrationProvider,
+          observed: Object.entries(global.observability)
+            .filter(
+              ([threadId]) =>
+                threadId === chatKey || input.chatKeyFor(threadId) === chatKey,
+            )
+            .map(([, observed]) => observed),
+        })
+      : undefined;
 
   const openSession = (threadId: string) =>
     showSurface('activity', { session: threadId });
@@ -233,14 +291,114 @@ export function AgentsWorkspacePane() {
     />
   );
 
-  const empty =
-    runningCount === 0 && finishedCount === 0
-      ? emptyStateFor({
+  // "All" reads delegates from the session read model. Until it answers, or
+  // when it cannot, an empty list is not "no agent work".
+  const readModelPending = scope === 'all' && sessionsQuery.data === undefined;
+  const readModelFailed = readModelPending && sessionsQuery.isError;
+  const retry = () => void sessionsQuery.refetch();
+
+  const nothing = runningCount === 0 && finishedCount === 0;
+  let body: ReactNode;
+  if (nothing && readModelFailed)
+    body = (
+      <ErrorState
+        variant="compact"
+        title="Could not load agent work"
+        description="Delegated tasks come from this Station's session list, which did not answer."
+        action={
+          <Button size="sm" onClick={retry}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  else if (nothing && readModelPending)
+    body = <SkeletonBlock count={3} label="Loading agent work" />;
+  else if (nothing)
+    body = (
+      <Empty
+        variant="compact"
+        {...emptyStateFor({
           scope,
           hasChat: Boolean(chatKey),
-          engineReportsNoSubagents: chatEngineSilent,
-        })
-      : undefined;
+          subagentNotice,
+        })}
+      />
+    );
+  else
+    body = (
+      <div className="background-tasks-sheet__body">
+        {subagentNotice && (
+          <p className="agents-pane__note">
+            {subagentNotice.label}
+            {subagentNotice.description
+              ? ` — ${subagentNotice.description}`
+              : ''}
+          </p>
+        )}
+        {readModelPending && (
+          <p className="agents-pane__note" role="status">
+            {readModelFailed ? (
+              <>
+                Delegated tasks could not be loaded.{' '}
+                <Button size="sm" variant="link" onClick={retry}>
+                  Try again
+                </Button>
+              </>
+            ) : (
+              'Loading delegated tasks…'
+            )}
+          </p>
+        )}
+        {runningCount > 0 && (
+          <section className="background-tasks-sheet__section">
+            <h3 className="background-tasks-sheet__section-label">
+              Running ({runningCount})
+            </h3>
+            <ul className="background-tasks-sheet__list">
+              {taskRunning.map((entry) => (
+                <TaskRow
+                  key={entry.id}
+                  entry={entry}
+                  elapsedMs={backgroundTaskElapsedMs(entry, now)}
+                  onOpenTranscript={openSession}
+                />
+              ))}
+              {childRunning.map(childRow)}
+            </ul>
+          </section>
+        )}
+        {finishedCount > 0 && (
+          <section className="background-tasks-sheet__section">
+            <h3 className="background-tasks-sheet__section-label">
+              <span>Finished ({finishedCount})</span>
+              {finishedHasSubagents && (
+                <span className="agents-pane__section-qualifier">
+                  subagents: since this window connected
+                </span>
+              )}
+            </h3>
+            <ul className="background-tasks-sheet__list">
+              {view.finished.map(childRow)}
+              {taskFinished.map((entry) => (
+                <TaskRow
+                  key={entry.id}
+                  entry={entry}
+                  elapsedMs={backgroundTaskElapsedMs(entry, now)}
+                  outcomeChip={entry.state}
+                  onOpenTranscript={openSession}
+                />
+              ))}
+            </ul>
+            {view.finishedOmitted > 0 && (
+              <p className="agents-pane__note">
+                {view.finishedOmitted} older not shown.
+              </p>
+            )}
+          </section>
+        )}
+      </div>
+    );
 
   return (
     <div className="agents-pane">
@@ -266,68 +424,11 @@ export function AgentsWorkspacePane() {
           All
         </Button>
       </fieldset>
-      {empty ? (
-        <Empty
-          variant="compact"
-          label={empty.label}
-          description={empty.description}
-        />
-      ) : (
-        <div className="background-tasks-sheet__body">
-          {chatEngineSilent && (
-            <p className="agents-pane__note">
-              This engine does not report subagents.
-            </p>
-          )}
-          {runningCount > 0 && (
-            <section className="background-tasks-sheet__section">
-              <h3 className="background-tasks-sheet__section-label">
-                Running ({runningCount})
-              </h3>
-              <ul className="background-tasks-sheet__list">
-                {toolRunning.map((entry) => (
-                  <TaskRow
-                    key={entry.id}
-                    entry={entry}
-                    elapsedMs={now - entry.startedAt}
-                    onOpenTranscript={openSession}
-                  />
-                ))}
-                {childRunning.map(childRow)}
-              </ul>
-            </section>
-          )}
-          {finishedCount > 0 && (
-            <section className="background-tasks-sheet__section">
-              <h3 className="background-tasks-sheet__section-label">
-                <span>Finished ({finishedCount})</span>
-                <span className="agents-pane__section-qualifier">
-                  subagents since this window connected
-                </span>
-              </h3>
-              <ul className="background-tasks-sheet__list">
-                {view.finished.map(childRow)}
-                {toolFinished.map((entry) => (
-                  <TaskRow
-                    key={entry.id}
-                    entry={entry}
-                    elapsedMs={
-                      (entry.endedAt ?? entry.startedAt) - entry.startedAt
-                    }
-                    outcomeChip={entry.state}
-                    onOpenTranscript={openSession}
-                  />
-                ))}
-              </ul>
-              {view.finishedOmitted > 0 && (
-                <p className="agents-pane__note">
-                  {view.finishedOmitted} older not shown.
-                </p>
-              )}
-            </section>
-          )}
-        </div>
-      )}
+      {body}
     </div>
   );
+}
+
+function rowKey(threadId: string, childId: string) {
+  return `${threadId}\u0000${childId}`;
 }

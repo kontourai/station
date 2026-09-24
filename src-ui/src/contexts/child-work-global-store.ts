@@ -32,6 +32,17 @@ import type { OrchestrationEvent } from '../hooks/orchestration/types';
 /** Settled children kept across every reporter, oldest-settled evicted first. */
 export const GLOBAL_CHILD_WORK_FINISHED_LIMIT = 50;
 
+/** Reporters whose observability this store remembers, oldest dropped first. */
+export const GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT = 256;
+
+/**
+ * What a reporter's SERVER said about its children: it reports them, or it
+ * does not (with the server's own reason). Absent means nothing was said.
+ */
+export type ReporterObservability =
+  | { kind: 'reported' }
+  | { kind: 'not-reported'; reason: string };
+
 export interface GlobalChildWorkState {
   registry: ChildWorkRegistryState;
   /**
@@ -40,11 +51,19 @@ export interface GlobalChildWorkState {
    * this is not one — it is never rendered as the child's end time.
    */
   settledObservedAt: Record<string, number>;
+  /**
+   * reporterThreadId → what its server said about its children. Kept here,
+   * not in the reducer's `notReported` (which is never forgotten): a later
+   * report replaces an earlier refusal, an exit forgets it, and the map is
+   * bounded.
+   */
+  observability: Record<string, ReporterObservability>;
 }
 
 const EMPTY_STATE: GlobalChildWorkState = {
   registry: createEmptyChildWorkRegistry(),
   settledObservedAt: {},
+  observability: {},
 };
 
 let state: GlobalChildWorkState = EMPTY_STATE;
@@ -55,23 +74,87 @@ function eventTime(iso: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+function commit(next: GlobalChildWorkState): void {
+  if (next === state) return;
+  state = next;
+  for (const listener of listeners) listener();
+}
+
+function withObservability(
+  current: GlobalChildWorkState,
+  reporterThreadId: string,
+  value: ReporterObservability | undefined,
+): GlobalChildWorkState {
+  const existing = current.observability[reporterThreadId];
+  if (
+    existing === value ||
+    (existing &&
+      value &&
+      existing.kind === value.kind &&
+      (existing.kind === 'reported' ||
+        (value.kind === 'not-reported' && existing.reason === value.reason)))
+  )
+    return current;
+  const observability = { ...current.observability };
+  delete observability[reporterThreadId];
+  if (value) observability[reporterThreadId] = value;
+  const keys = Object.keys(observability);
+  for (const key of keys.slice(
+    0,
+    Math.max(0, keys.length - GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT),
+  ))
+    delete observability[key];
+  return { ...current, observability };
+}
+
 function fold(delta: ChildWorkDelta, at: number): void {
-  const before = state.registry;
+  if (delta.kind === 'not-reported') {
+    // Not folded into the reducer's never-forgotten `notReported` map.
+    commit(
+      withObservability(state, delta.reporterThreadId, {
+        kind: 'not-reported',
+        reason: delta.reason,
+      }),
+    );
+    return;
+  }
+  // Any engine-subagent report says this reporter's engine DOES report.
+  const reporter =
+    delta.kind === 'upsert'
+      ? delta.item.reporterThreadId
+      : delta.reporterThreadId;
+  const reported =
+    (delta.kind === 'upsert' ? delta.item.producer : delta.producer) ===
+    'engine-subagent'
+      ? withObservability(state, reporter, { kind: 'reported' })
+      : state;
+  const before = reported.registry;
   const registry = applyChildWorkDelta(before, delta);
-  if (registry === before) return;
-  let settledObservedAt = state.settledObservedAt;
+  if (registry === before) {
+    commit(reported);
+    return;
+  }
+  commit(stamped(reported, registry, at));
+}
+
+/** `base` with `registry`, stamping when this window saw each child settle. */
+function stamped(
+  base: GlobalChildWorkState,
+  registry: ChildWorkRegistryState,
+  at: number,
+): GlobalChildWorkState {
+  let settledObservedAt = base.settledObservedAt;
   for (const [key, item] of Object.entries(registry.items)) {
     if (
       isChildWorkTerminalStatus(item.status) &&
       settledObservedAt[key] === undefined
     ) {
-      if (settledObservedAt === state.settledObservedAt)
+      if (settledObservedAt === base.settledObservedAt)
         settledObservedAt = { ...settledObservedAt };
       settledObservedAt[key] = at;
     }
   }
-  state = bound({ registry, settledObservedAt });
-  for (const listener of listeners) listener();
+  return bound({ ...base, registry, settledObservedAt });
 }
 
 function bound(next: GlobalChildWorkState): GlobalChildWorkState {
@@ -92,20 +175,28 @@ function bound(next: GlobalChildWorkState): GlobalChildWorkState {
   const settledObservedAt: Record<string, number> = {};
   for (const [key, at] of Object.entries(next.settledObservedAt))
     if (items[key]) settledObservedAt[key] = at;
-  return { registry: { ...next.registry, items }, settledObservedAt };
+  return { ...next, registry: { ...next.registry, items }, settledObservedAt };
 }
 
-/** Ends every child a reporter still lists as running: `unresolved`, kept. */
+/**
+ * The reporter is gone: every child it still lists as running ends
+ * `unresolved` (kept as history), and what its server said about its
+ * children is forgotten.
+ */
 function endReporter(reporterThreadId: string, at: number): void {
-  fold(
-    {
-      kind: 'snapshot',
-      producer: 'engine-subagent',
-      reporterThreadId,
-      running: [],
-    },
-    at,
-  );
+  const before = state.registry;
+  const registry = applyChildWorkDelta(before, {
+    kind: 'snapshot',
+    producer: 'engine-subagent',
+    reporterThreadId,
+    running: [],
+  });
+  const forgotten = withObservability(state, reporterThreadId, undefined);
+  if (registry === before) {
+    commit(forgotten);
+    return;
+  }
+  commit(stamped(forgotten, registry, at));
 }
 
 const TERMINAL_SESSION_STATES = new Set([
@@ -197,11 +288,12 @@ export const childWorkGlobalStore = {
       );
     }
     const listed = new Set(sessions.map((session) => session.threadId));
-    const reporters = new Set(
-      Object.values(state.registry.items)
+    const reporters = new Set([
+      ...Object.values(state.registry.items)
         .filter((item) => item.status === 'running')
         .map((item) => item.reporterThreadId),
-    );
+      ...Object.keys(state.observability),
+    ]);
     for (const reporter of reporters)
       if (!listed.has(reporter)) endReporter(reporter, at);
   },
