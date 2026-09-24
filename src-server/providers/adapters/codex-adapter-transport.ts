@@ -104,9 +104,10 @@ export function createCodexSessionRecord(options: {
 }
 
 /**
- * How many notifications may wait behind a pending host image read before
- * that read is settled early (as if its deadline passed) so the queue drains
- * in order. The read's own deadline normally drains it long before this.
+ * The most notifications that ever wait behind a pending host image read.
+ * Reaching it settles that read synchronously (as if its deadline passed) and
+ * drains the queue in order. The read's own deadline normally drains it long
+ * before this.
  */
 export const MAX_QUEUED_NOTIFICATIONS = 10_000;
 
@@ -677,18 +678,22 @@ export class CodexAdapterTransport {
       }
     };
     // Handling is synchronous except for an image read from the host. While
-    // one is pending, this session's later NOTIFICATIONS queue behind it, so
-    // their publish order stays the engine's order (a tool's terminal never
-    // lands after the turn that contains it). The common path never waits.
+    // one is pending, this session's later NOTIFICATIONS wait in an explicit
+    // queue, so their publish order stays the engine's order (a tool's
+    // terminal never lands after the turn that contains it). The common path
+    // never waits.
     //
     // Bounded three ways:
     // - time: the read itself has a deadline (`HOST_IMAGE_READ_DEADLINE_MS`)
-    //   after which it settles as an omission marker, so the queue drains;
-    // - size: at `MAX_QUEUED_NOTIFICATIONS` the pending read is settled now,
-    //   through its deadline outcome (the "could not be read in time" note),
-    //   and the queue then flushes IN ORDER. Order is never broken: a turn's
-    //   terminal passing its own image tool would close the tool card as
-    //   stopped (`background-tasks-store.ts`) and drop the real result;
+    //   after which it settles as an omission marker, and the queue drains;
+    // - size: the queue never holds more than `MAX_QUEUED_NOTIFICATIONS`. At
+    //   the cap the pending read's terminal is published NOW, synchronously,
+    //   with the deadline's outcome (the "could not be read in time" note),
+    //   and the queue drains in order in the same call — so the bound holds
+    //   even when one stdout callback delivers thousands of lines before any
+    //   microtask can run, and order is never broken (a turn's terminal
+    //   passing its own image tool would close the tool card as stopped in
+    //   `background-tasks-store.ts` and drop the real result);
     // - lifetime: queued work for a session that has since stopped or been
     //   unregistered is discarded, never run against a closed record.
     //
@@ -698,47 +703,88 @@ export class CodexAdapterTransport {
     // before the terminal of an image tool whose read is still pending. That
     // is safe because approvals bind to their call by request/call id, never
     // by position, and the approval must not wait on an unrelated file read.
-    const barrier = record?.notificationBarrier;
-    if (record && barrier) {
-      if ((record.queuedNotifications ?? 0) >= MAX_QUEUED_NOTIFICATIONS) {
-        record.expireHostImageRead?.();
-      }
-      record.queuedNotifications = (record.queuedNotifications ?? 0) + 1;
-      const queued = barrier.then(() => {
-        record.queuedNotifications = (record.queuedNotifications ?? 1) - 1;
-        if (
-          record.stopped ||
-          this.sessions.get(record.externalThreadId) !== record
-        )
-          return undefined;
-        return deliver();
-      });
-      this.holdNotificationsBehind(record, queued, notification.method);
+    if (!record) {
+      deliver();
       return;
     }
-    const pending = deliver();
-    if (record && pending) {
-      this.holdNotificationsBehind(record, pending, notification.method);
+    // Read fresh each time: settling below clears it through a method call.
+    const readPending = () => record.pendingHostImageRead !== undefined;
+    if (readPending()) {
+      const run = () =>
+        record.stopped || this.sessions.get(record.externalThreadId) !== record
+          ? undefined
+          : deliver();
+      // Each pass settles one pending read and delivers at least one queued
+      // notification, so this loop ends; afterwards the queue has room or
+      // nothing is pending any more.
+      while (
+        readPending() &&
+        (record.queuedNotifications?.length ?? 0) >= MAX_QUEUED_NOTIFICATIONS
+      ) {
+        this.settlePendingHostImageReadNow(record);
+      }
+      if (readPending()) {
+        record.queuedNotifications ??= [];
+        record.queuedNotifications.push(run);
+        return;
+      }
+    }
+    this.awaitHostImageRead(record, deliver(), notification.method);
+  }
+
+  /** Hold this session's later notifications until `pending` settles. */
+  private awaitHostImageRead(
+    record: CodexSessionRecord,
+    pending: Promise<void> | undefined,
+    method: string,
+  ): void {
+    if (!pending) return;
+    record.pendingHostImageRead = pending;
+    void pending
+      .catch(() => {
+        this.onNotificationError?.(method);
+      })
+      .then(() => {
+        // Settled early (queue bound) and already drained past it.
+        if (record.pendingHostImageRead !== pending) return;
+        record.pendingHostImageRead = undefined;
+        this.drainQueuedNotifications(record);
+      });
+  }
+
+  /**
+   * Deliver queued notifications in order until one starts another host read
+   * (which then holds the rest) or the queue is empty.
+   */
+  private drainQueuedNotifications(record: CodexSessionRecord): void {
+    const queue = record.queuedNotifications;
+    if (!queue) return;
+    let next = 0;
+    while (next < queue.length && !record.pendingHostImageRead) {
+      const run = queue[next];
+      next += 1;
+      this.awaitHostImageRead(record, run?.(), 'queued');
+    }
+    queue.splice(0, next);
+    if (queue.length === 0 && record.queuedNotifications === queue) {
+      record.queuedNotifications = undefined;
     }
   }
 
-  private holdNotificationsBehind(
-    record: CodexSessionRecord,
-    pending: Promise<void>,
-    method: string,
-  ): void {
-    const settled: Promise<void> = pending.then(
-      () => undefined,
-      () => {
-        this.onNotificationError?.(method);
-      },
-    );
-    record.notificationBarrier = settled;
-    void settled.then(() => {
-      if (record.notificationBarrier === settled) {
-        record.notificationBarrier = undefined;
-      }
-    });
+  /**
+   * Publish the pending host read's terminal now (its deadline outcome), stop
+   * waiting for it, and drain the queue behind it in order.
+   */
+  private settlePendingHostImageReadNow(record: CodexSessionRecord): void {
+    const settleNow = record.settleHostImageReadNow;
+    record.settleHostImageReadNow = undefined;
+    record.pendingHostImageRead = undefined;
+    try {
+      settleNow?.();
+    } catch {
+      this.onNotificationError?.('item/completed');
+    }
+    this.drainQueuedNotifications(record);
   }
 
   private terminateRecord(record: CodexSessionRecord): Promise<void> {

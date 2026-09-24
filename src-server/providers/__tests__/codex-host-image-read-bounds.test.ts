@@ -168,22 +168,78 @@ describe('Codex host image read bounds', () => {
     expect(methods(published)).toEqual(['tool.started']);
   });
 
-  test('at the queue bound the pending read settles early and the queue flushes in order', async () => {
-    vi.useFakeTimers();
-    const { record, published, viewHangingImage, completeTurn } = harness();
-    viewHangingImage();
-    record.queuedNotifications = MAX_QUEUED_NOTIFICATIONS;
-    completeTurn();
-    // No time passes: the bound, not the deadline, settles the read.
-    await vi.advanceTimersByTimeAsync(0);
-    expect(methods(published)).toEqual([
-      'tool.started',
-      'tool.completed',
-      'turn.completed',
-    ]);
-    expect(
-      published.find((event) => event.method === 'tool.completed'),
-    ).toMatchObject({
+  test('a synchronous burst past the cap never queues more than the cap, and keeps order', async () => {
+    const { transport, record, published } = harness();
+    // Observe the queue after EVERY line, through the real readline path:
+    // one stdout chunk makes readline emit all of its lines inside a single
+    // callback, before any microtask can run.
+    const handleLine = transport.handleStdoutLine.bind(transport);
+    let maxDepth = 0;
+    let lines = 0;
+    let microtaskRan = false;
+    let microtaskRanBeforeLastLine: boolean | undefined;
+    const burst = MAX_QUEUED_NOTIFICATIONS + 50;
+    transport.handleStdoutLine = (target, text) => {
+      if (lines === 0)
+        queueMicrotask(() => {
+          microtaskRan = true;
+        });
+      handleLine(target, text);
+      lines += 1;
+      maxDepth = Math.max(maxDepth, record.queuedNotifications?.length ?? 0);
+      if (lines === burst + 2) microtaskRanBeforeLastLine = microtaskRan;
+    };
+    transport.handleProcess(record);
+
+    const chunk = [
+      {
+        method: 'item/completed',
+        params: {
+          threadId: 'codex-thread-1',
+          turnId: 'turn-1',
+          item: {
+            type: 'imageView',
+            id: 'view-1',
+            path: join(workspace, 'hang.png'),
+          },
+        },
+      },
+      ...Array.from({ length: burst }, () => ({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'codex-thread-1',
+          turnId: 'turn-1',
+          itemId: 'message-1',
+          delta: 'x',
+        },
+      })),
+      {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-thread-1',
+          turn: { id: 'turn-1', status: 'completed' },
+        },
+      },
+    ]
+      .map((message) => `${JSON.stringify(message)}\n`)
+      .join('');
+    (record.process.stdout as PassThrough).write(chunk);
+    await vi.waitFor(() => expect(lines).toBe(burst + 2));
+
+    // It really was one synchronous burst.
+    expect(microtaskRanBeforeLastLine).toBe(false);
+    // The bound held — and was actually reached.
+    expect(maxDepth).toBe(MAX_QUEUED_NOTIFICATIONS);
+    // Order: the image tool settles (with the deadline's note) before any
+    // later notification, and nothing was dropped.
+    const order = methods(published);
+    const toolCompleted = order.indexOf('tool.completed');
+    expect(order.indexOf('tool.started')).toBeLessThan(toolCompleted);
+    expect(toolCompleted).toBeLessThan(order.indexOf('content.text-delta'));
+    expect(toolCompleted).toBeLessThan(order.indexOf('turn.completed'));
+    expect(order.filter((m) => m === 'content.text-delta')).toHaveLength(burst);
+    expect(order.at(-1)).toBe('turn.completed');
+    expect(published[toolCompleted]).toMatchObject({
       output: '[image not shown: the viewed image could not be read in time]',
     });
   });

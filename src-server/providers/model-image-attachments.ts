@@ -284,6 +284,10 @@ export function redactInlineData(value: string): string {
 /** How long a host image read may take before it is abandoned. */
 export const HOST_IMAGE_READ_DEADLINE_MS = 5_000;
 
+/** What a host image read that ran out of time leaves in the tool output. */
+export const HOST_IMAGE_READ_TIMEOUT_MARKER =
+  '[image not shown: the viewed image could not be read in time]';
+
 /**
  * Where bytes of an image an engine reported may be read from on this host.
  * Codex's `imageView` names a path; reading it is only legitimate inside the
@@ -294,12 +298,6 @@ export interface HostImageReadScope {
   roots: readonly string[];
   /** Defaults to {@link HOST_IMAGE_READ_DEADLINE_MS}. */
   deadlineMs?: number;
-  /**
-   * Settles the read early through the same outcome as the deadline (the
-   * "could not be read in time" marker) — used when a caller can no longer
-   * afford to wait, e.g. its notification queue hit its bound.
-   */
-  expire?: Promise<void>;
 }
 
 function isInside(path: string, root: string): boolean {
@@ -328,13 +326,12 @@ export async function addWorkspaceImageFile(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<ModelImageOutcome>((resolve) => {
     const expired = () =>
-      resolve(omitted('the viewed image could not be read in time'));
+      resolve({ kind: 'omitted', marker: HOST_IMAGE_READ_TIMEOUT_MARKER });
     timer = setTimeout(
       expired,
       scope.deadlineMs ?? HOST_IMAGE_READ_DEADLINE_MS,
     );
     timer.unref?.();
-    void scope.expire?.then(expired);
   });
   try {
     const read = await Promise.race([

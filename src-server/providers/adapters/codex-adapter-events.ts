@@ -9,6 +9,7 @@ import type {
 import type { ProviderSession } from '../adapter-shape.js';
 import {
   addWorkspaceImageFile,
+  HOST_IMAGE_READ_TIMEOUT_MARKER,
   type HostImageReadScope,
   ModelImageCollector,
   type ModelImageOutcome,
@@ -560,6 +561,25 @@ export async function deriveHostToolOutputAndImages(
   return {
     output: [revisedPrompt, outcome.marker].filter(Boolean).join('\n'),
     attachments: collector.result(),
+  };
+}
+
+/**
+ * The outcome of a host image read that ran out of time — the same output
+ * {@link deriveHostToolOutputAndImages} produces when its deadline passes,
+ * available synchronously for a caller that cannot wait for it.
+ */
+export function hostImageReadTimedOut(
+  item: Record<string, unknown>,
+): ToolOutputAndImages {
+  const revisedPrompt =
+    item.type === 'imageGeneration'
+      ? extractString(item.revisedPrompt)
+      : undefined;
+  return {
+    output: [revisedPrompt, HOST_IMAGE_READ_TIMEOUT_MARKER]
+      .filter(Boolean)
+      .join('\n'),
   };
 }
 

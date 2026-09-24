@@ -123,11 +123,18 @@ export interface CodexSessionRecord {
    * Set while a notification is waiting on I/O (an image read from the host);
    * the transport delivers this session's later notifications after it.
    */
-  notificationBarrier?: Promise<void>;
-  /** Notifications currently queued behind {@link notificationBarrier}. */
-  queuedNotifications?: number;
-  /** Settles the pending host image read now, as if its deadline passed. */
-  expireHostImageRead?: () => void;
+  pendingHostImageRead?: Promise<void>;
+  /**
+   * Notifications waiting, in arrival order, behind
+   * {@link pendingHostImageRead}. Never longer than the transport's
+   * `MAX_QUEUED_NOTIFICATIONS`.
+   */
+  queuedNotifications?: Array<() => Promise<void> | undefined>;
+  /**
+   * Publishes the pending host image read's terminal NOW, synchronously, with
+   * the deadline's outcome. Set only while such a read is pending.
+   */
+  settleHostImageReadNow?: () => void;
   terminationPromise?: Promise<void>;
   /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
   stdoutIngressLimit?: {

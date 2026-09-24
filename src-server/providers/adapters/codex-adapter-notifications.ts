@@ -12,6 +12,7 @@ import {
   extractTokenFigure,
   extractToolError,
   extractToolStatus,
+  hostImageReadTimedOut,
   isRecord,
   mapSessionStatus,
   mapThreadStatusToState,
@@ -506,21 +507,18 @@ function handleCodexItemCompleted(
   // Only the session's own workspace is readable; with none known, the read
   // is refused and the output says so.
   const cwd = record.session.cwd;
-  // The transport may cut the wait short (queue bound): that settles through
-  // the deadline's own outcome, so the note is the same.
-  let expire: () => void = () => {};
-  const expired = new Promise<void>((resolve) => {
-    expire = resolve;
-  });
-  record.expireHostImageRead = expire;
+  // The transport may need the terminal NOW (its notification queue hit its
+  // bound): this publishes the deadline's own outcome synchronously, and the
+  // read's later result is then ignored because the call is no longer open.
+  const settleNow = () => settle(hostImageReadTimedOut(item));
+  record.settleHostImageReadNow = settleNow;
   return deriveHostToolOutputAndImages(item, {
     roots: typeof cwd === 'string' && cwd.length > 0 ? [cwd] : [],
-    expire: expired,
   })
     .then(settle)
     .finally(() => {
-      if (record.expireHostImageRead === expire) {
-        record.expireHostImageRead = undefined;
+      if (record.settleHostImageReadNow === settleNow) {
+        record.settleHostImageReadNow = undefined;
       }
     });
 }
