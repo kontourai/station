@@ -30,6 +30,7 @@ import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
@@ -85,7 +86,8 @@ const EMPTY_STRING_LIST: string[] = [];
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
  * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
- * open turn's start for the working clock) come from
+ * #2309 activity record with its send/stop window, and the older-server
+ * open-turn start for the working clock) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -116,9 +118,15 @@ export function buildTranscriptSession(
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     isProcessingStep: state.isProcessingStep,
-    // #2304: the streaming row's working clock reads the server start. ACP
-    // has no window seed, so after a reload or catch-up it shows no duration
-    // for that turn until #2309's server-projected start supplies one.
+    // #2309: the server's record drives this panel's liveness and working
+    // clock exactly as it drives the dock's, so a reload mid-turn shows the
+    // turn's real duration here too (the panel has no window seed of its own).
+    conversationActivity: state.conversationActivity,
+    sendAwaitingTurnStart: state.sendAwaitingTurnStart,
+    stopSettledTurnId: state.stopSettledTurnId,
+    // #2304: without a record (an older server) the clock falls back to the
+    // start `turn.started` stamped; ACP has no window seed, so after a reload
+    // on such a server the row states no duration.
     openTurnStartedAt: state.openTurnStartedAt,
   };
 }
@@ -352,6 +360,7 @@ export function ACPChatPanel({
             : undefined
         }
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+        approvalModeOverride={sessionApprovalOverride(activeSession)}
         acpSessionModes={advertisedAcpSession.modes}
         acpCurrentModeId={
           activeSession.currentModeId ?? advertisedAcpSession.currentModeId

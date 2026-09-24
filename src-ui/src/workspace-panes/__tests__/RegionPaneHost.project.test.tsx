@@ -33,6 +33,10 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import {
+  readBrowserPreviewPaneState,
+  writeBrowserPreviewPaneState,
+} from '../browserPreviewPaneStateStorage';
 import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 
 vi.mock('../../views/SessionsView', () => ({
@@ -915,4 +919,45 @@ test('an empty region shows no rows while the dock’s project read is in flight
   expect(
     within(shell('right')).getByLabelText('Add pane to Right'),
   ).toBeTruthy();
+});
+
+/**
+ * #90 D9 (live verify): a lone pane that can never render here is still
+ * removable. With one pane there is no tab strip (and so no tab close), and
+ * the record keeps it across reloads, so without "Remove this pane" a broken
+ * pane is a permanent tenant of its region. A Browser pane whose stored
+ * session record is gone is the case: its id resolves, its occurrence
+ * cannot be minted.
+ */
+test('a lone pane that cannot be shown in this dock can be removed from its region', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'beta');
+  const orphan = `browser-preview:${'b'.repeat(32)}`;
+  // Its stored session belongs to another Project: it would render there.
+  writeBrowserPreviewPaneState(window.localStorage, orphan, {
+    version: '2.0',
+    projectId: 'another-project',
+    browserSessionId: 'bs_00000000-0000-4000-8000-000000000001',
+    updatedAt: '2026-09-22T00:00:00.000Z',
+  });
+  renderShells();
+  await awaitChatPane();
+  act(() => currentModel().placeSurface(orphan, 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  expect(
+    within(shell('right')).getByText('Browser is not available in this dock'),
+  ).toBeTruthy();
+  expect(within(shell('right')).queryByRole('tablist')).toBeNull();
+  expect(
+    within(shell('right')).getByText(
+      /Not available in this Project: it was opened for another one, where it still works.*Removing it closes this tab\./,
+    ),
+  ).toBeTruthy();
+  fireEvent.click(
+    within(shell('right')).getByRole('button', { name: 'Remove this pane' }),
+  );
+  expect(currentModel().regions.right.panes).not.toContain(orphan);
+  // The per-device record it rendered from goes with it.
+  expect(readBrowserPreviewPaneState(window.localStorage, orphan)).toBeNull();
 });

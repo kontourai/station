@@ -4,12 +4,15 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { settleApprovalPick } from '../../utils/approvalMode';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -46,6 +49,12 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    // A report settles the pending approval pick only when it matches (#2334).
+    ...settleApprovalPick(
+      currentChat,
+      approvalMode,
+      eventStreamPosition(event),
+    ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
       ? { currentModeId: event.metadata.acpSessionMode }
@@ -119,8 +128,11 @@ export function handleSessionStateChangedEvent(
   // on the very next event and is strictly better than trusting process
   // status (the bug this closes).
   const chat = store.getSnapshot()[event.threadId];
+  // #2309: the server's record answers first; the legacy fold is the
+  // older-server path.
   const turnActive =
-    chat?.orchestrationTurnOpen === true || chat?.status === 'sending';
+    serverTurnLive(chat) ??
+    (chat?.orchestrationTurnOpen === true || chat?.status === 'sending');
   // station#2235: the boot-time interrupted-turn recovery stamps
   // needs_input on a turn whose owner died. That turn will never produce a
   // terminal event of its own (unless the recovery's own turn.aborted,

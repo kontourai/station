@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import type {
   IPullRequestProvider,
   PullRequest,
@@ -13,7 +12,6 @@ import type {
   PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
-import { expandTilde } from '../../utils/paths.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -23,20 +21,16 @@ type PullRequestProviderRequestContext =
   | PullRequestRepositoryContext
   | PullRequestRepositoryIdentityContext;
 
-function hasWorkingDirectory(
-  context: PullRequestProviderRequestContext,
-): context is PullRequestRepositoryContext {
-  return Object.hasOwn(context, 'workingDirectory');
-}
-
+/**
+ * gh runs in a fresh empty directory, never the checkout (#2363): every
+ * call names `--repo`, and `pr create` names `--head`, so gh has nothing to
+ * read from a Project folder, whose config a member can write.
+ */
 const defaultGitHubTransport = (
   args: string[],
-  context: PullRequestProviderRequestContext,
+  _context: PullRequestProviderRequestContext,
 ) =>
   execGitContextCommand('gh', args, {
-    ...(hasWorkingDirectory(context)
-      ? { cwd: resolve(expandTilde(context.workingDirectory)) }
-      : {}),
     timeout: 10_000,
     encoding: 'utf8',
     windowsHide: true,
@@ -380,6 +374,16 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       input.title,
       ...(input.body ? ['--body', input.body] : []),
       ...(input.base ? ['--base', input.base] : []),
+      // The pushed branch Station resolved with its own hardened git (the
+      // upstream's name, `owner:branch` for a fork); without it gh would
+      // run `git status` in its cwd to find one.
+      '--head',
+      input.head ??
+        (c.head
+          ? c.head.owner
+            ? `${c.head.owner}:${c.head.branch}`
+            : c.head.branch
+          : c.branch),
     ]);
   }
   createComment(c: PullRequestRepositoryContext, ref: string, input: any) {

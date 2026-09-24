@@ -17,6 +17,9 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   gap: var(--space-2, 8px);
+  /* The height the "Take control" button needs, reserved whether or not it
+     shows, so claiming control never moves the canvas under the pointer. */
+  min-height: 44px;
 }
 
 .live-surface__controller {

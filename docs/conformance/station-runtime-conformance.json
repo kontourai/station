@@ -4,7 +4,7 @@
     {
       "evidenceScope": "host-bound",
       "adapterId": "station-strands",
-      "adapterVersion": "0.6.0",
+      "adapterVersion": "0.7.1",
       "hostId": "station-strands",
       "hostVersion": "1.15.0",
       "capabilities": {
@@ -143,7 +143,7 @@
     {
       "evidenceScope": "host-bound",
       "adapterId": "station-voltagent",
-      "adapterVersion": "0.6.0",
+      "adapterVersion": "0.7.1",
       "hostId": "station-voltagent",
       "hostVersion": "2.10.0",
       "capabilities": {

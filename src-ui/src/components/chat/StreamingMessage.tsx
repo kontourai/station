@@ -1,3 +1,4 @@
+import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { memo, useEffect, useMemo, useState } from 'react';
 import type {
   ChatActivityHint,
@@ -7,6 +8,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
+import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
@@ -14,6 +16,7 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
+import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -37,15 +40,23 @@ export type StreamingMessageProps = {
   activityHint?: ChatActivityHint;
   elapsedMs?: number;
   /**
-   * #2304: when the open turn started, from the server's `turn.started`
-   * (`ChatUIState.openTurnStartedAt`). When known, the working count is the
-   * turn's duration by the server's start (on this client's clock, so skew
-   * shows up in it). Unknown — before `turn.started`, a fresh mount before
-   * the window seeds it, or a reconnect catch-up that cleared it — and the
-   * row shows no duration at all.
+   * #2309: the conversation's server activity record. When present, the
+   * working count is the open turn's duration by the SERVER's start (on this
+   * client's clock, so skew shows up in it), and the row below shows what the
+   * turn is doing. With a record but no open turn yet (this composer's send,
+   * before the server opens it) the row states no duration at all.
+   */
+  conversationActivity?: ConversationTurnActivity;
+  /**
+   * #2304: the open turn's start as this client last witnessed it
+   * (`ChatUIState.openTurnStartedAt`), used ONLY when there is no activity
+   * record (an older server). Unknown there too, and the row states no
+   * duration at all: it never guesses from its own mount.
    */
   turnStartedAt?: number;
   suppressActivity?: boolean;
+  /** #2309: see `ChatMessageList`'s `progressSilenceShownElsewhere`. */
+  hideProgressSilence?: boolean;
   statusLabel?: string;
   /**
    * Row attribution (archive#1424 fix): shown from the FIRST
@@ -93,8 +104,10 @@ export function StreamingMessageView({
   renderReasoning,
   activityHint,
   elapsedMs,
+  conversationActivity,
   turnStartedAt,
   suppressActivity,
+  hideProgressSilence,
   statusLabel,
   attributionAgent,
   owner,
@@ -113,11 +126,14 @@ export function StreamingMessageView({
   // #2304. It is not the wait's own start — nothing resets it when the status
   // arrives — a pre-existing limitation, deliberately left alone.
   const [mountedAt] = useState(Date.now);
-  // #2304: the working count is shown only when the turn's server start is
-  // known. Without it (before `turn.started`, a remount before the seed, a
-  // reconnect catch-up awaiting its refetch) the row cannot tell how long
-  // this turn has run — or, after a gap, which turn is running — so it
+  // ONE working clock (#2309 over #2304): the server record's open-turn start
+  // when a record exists, the witnessed `turn.started` start only on a server
+  // without one. When neither is known — before the server opens the turn, a
+  // remount before a seed, a reconnect catch-up awaiting its refetch — the row
   // states no duration rather than guess one.
+  const workingStartedAt = conversationActivity
+    ? openTurnStartedAtMs(conversationActivity)
+    : turnStartedAt;
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -239,14 +255,14 @@ export function StreamingMessageView({
               {!statusLabel && <LoadingDots />}
               {statusLabel ||
               elapsedMs !== undefined ||
-              turnStartedAt !== undefined ? (
+              workingStartedAt !== undefined ? (
                 <ElapsedWait
                   label={
                     statusLabel ??
                     `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
                   }
                   separator={statusLabel ? ' · ' : ' '}
-                  startedAt={statusLabel ? mountedAt : turnStartedAt}
+                  startedAt={statusLabel ? mountedAt : workingStartedAt}
                   elapsedMs={elapsedMs}
                 />
               ) : (
@@ -256,6 +272,12 @@ export function StreamingMessageView({
               )}
             </div>
           )}
+        {!suppressActivity && (
+          <TurnActivityProgress
+            activity={conversationActivity}
+            showSilence={!hideProgressSilence}
+          />
+        )}
       </div>
     </div>
   );

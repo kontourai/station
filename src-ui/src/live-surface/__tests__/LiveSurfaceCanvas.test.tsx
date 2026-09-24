@@ -317,7 +317,7 @@ describe('LiveSurfaceCanvas', () => {
     );
     expect(
       screen.getByText(
-        'An agent is in control. Interacting takes control from it.',
+        'An agent is in control. Click or type to take control from it.',
       ),
     ).toBeTruthy();
     layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
@@ -336,7 +336,7 @@ describe('LiveSurfaceCanvas', () => {
     );
     expect(
       screen.getByText(
-        'You are in control from another device. Interacting here takes control.',
+        'You are in control from another device. Click or type here to take control.',
       ),
     ).toBeTruthy();
     // Someone else takes over: the stream publishes it.
@@ -351,7 +351,7 @@ describe('LiveSurfaceCanvas', () => {
     );
     expect(
       screen.getByText(
-        'Another person is in control. Interacting takes control.',
+        'Another person is in control. Click or type to take control.',
       ),
     ).toBeTruthy();
   });
@@ -988,8 +988,150 @@ describe('LiveSurfaceCanvas', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'An agent is in control. Interacting takes control from it.',
+        'An agent is in control. Click or type to take control from it.',
       ),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * #90 D9 (orchestrator decision): any human input the server accepts claims
+ * the lease, so what the canvas SENDS decides whether passing over it steals
+ * control from an agent. Hover and wheel never claim; a press, a key and
+ * text do; with `inputRequiresLease` nothing goes until an explicit claim.
+ * Asserted on the input route itself: what reached the server.
+ */
+describe('LiveSurfaceCanvas: which input may take control', () => {
+  const AGENT_HOLD = {
+    kind: 'agent',
+    principal: 'agent:x',
+    sessionId: 'agent-1',
+  } as const;
+
+  /** The harness plus a lease route that grants this client control. */
+  function claimableHarness() {
+    const h = harness();
+    const claims: unknown[] = [];
+    const base = h.transport;
+    const transport = vi.fn(
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).endsWith('/lease')) {
+          claims.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            success: true,
+            data: { ok: true, lease: lease(8, MY_HOLD) },
+          });
+        }
+        return base(input, init);
+      },
+    );
+    return { ...h, transport, claims };
+  }
+
+  async function renderWith(
+    h: ReturnType<typeof claimableHarness>,
+    initial: LiveSurfaceControlLease,
+    extra: { inputRequiresLease?: boolean } = {},
+  ) {
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={h.transport as never}
+        {...extra}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(initial));
+    await stream.push(frameRecord(1, initial.epoch));
+    layoutCanvas({ left: 0, top: 0, width: 1280, height: 800 });
+    return stream;
+  }
+
+  function hoverAndScroll() {
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 140, clientY: 120, pointerId: 1 });
+    fireEvent.wheel(canvas, { clientX: 140, clientY: 120, deltaY: 120 });
+  }
+
+  function click() {
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerDown(canvas, {
+      clientX: 100,
+      clientY: 100,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 100,
+      clientY: 100,
+      button: 0,
+      pointerId: 1,
+    });
+  }
+
+  test('with an agent in control, hovering and scrolling over the surface send nothing', async () => {
+    const h = claimableHarness();
+    await renderWith(h, lease(4, AGENT_HOLD));
+    hoverAndScroll();
+    await flush();
+    expect(h.inputs).toEqual([]);
+    expect(
+      screen.getByText(
+        'An agent is in control. Click or type to take control from it.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a click is the claiming interaction: it goes, at the current epoch', async () => {
+    const h = claimableHarness();
+    await renderWith(h, lease(4, AGENT_HOLD));
+    click();
+    await flush();
+    expect(h.inputs.map((batch) => batch.epoch)).toEqual([4]);
+    expect(
+      h.inputs.flatMap((batch) =>
+        batch.events.map((event) => (event as { type: string }).type),
+      ),
+    ).toEqual(['down', 'up']);
+  });
+
+  test('once this viewer holds control, hover and wheel reach the surface', async () => {
+    const h = claimableHarness();
+    await renderWith(h, lease(5, MY_HOLD));
+    hoverAndScroll();
+    await flush();
+    expect(
+      h.inputs.flatMap((batch) =>
+        batch.events.map((event) => (event as { type: string }).type),
+      ),
+    ).toEqual(['move', 'wheel']);
+  });
+
+  test('inputRequiresLease: nothing is sent — not a click, a key or text — until Take control, and the keyboard target is out of the tab order', async () => {
+    const h = claimableHarness();
+    await renderWith(h, lease(4, AGENT_HOLD), { inputRequiresLease: true });
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    ) as HTMLTextAreaElement;
+    expect(keyboard.tabIndex).toBe(-1);
+    hoverAndScroll();
+    click();
+    fireEvent.keyDown(keyboard, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyUp(keyboard, { key: 'Enter', code: 'Enter' });
+    fireEvent.input(keyboard, { target: { value: 'h' } });
+    await flush();
+    expect(h.inputs).toEqual([]);
+    // The explicit claim.
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }));
+    await flush();
+    expect(h.claims).toEqual([{ action: 'claim' }]);
+    expect(keyboard.tabIndex).toBe(0);
+    click();
+    await flush();
+    expect(h.inputs.map((batch) => batch.epoch)).toEqual([8]);
   });
 });

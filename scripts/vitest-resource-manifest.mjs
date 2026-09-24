@@ -124,6 +124,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
+  // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
+  'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
+  // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
+  'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -718,6 +722,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/utils/__tests__/sqlite-wal.process.test.ts',
   // Shells out to `git grep` for the projection source guard.
   'src-server/services/agents/__tests__/agent-binding-projection.test.ts',
+  // #2363: plants repo-local git config and runs plain git beside Station's
+  // hardened runner against real temp repositories.
+  'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #2363: the coding git routes over real repositories, a real bare remote
+  // and plain git as the control for every planted config.
+  'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
@@ -917,6 +927,22 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',
+  // #90 wave 2: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the Browser
+  // pane's live surface end to end: a screencast frame reaches a viewer,
+  // human input changes the page, and an alert() is answered without
+  // wedging. Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/chromium-screencast-producer.real.test.ts',
+  // #90 #122/#123: launches a REAL installed Chrome/Edge (headless, pipe CDP,
+  // temporary profile, one loopback fixture server) to prove the browser
+  // tools end to end: an agent opens, snapshots, clicks a ref, types through
+  // a Playwright locator and waits, and a person's input interrupts it.
+  // Explicit skip when no browser is installed; never downloads.
+  'src-server/services/browser/__tests__/browser-agent-tools.real.test.ts',
+  // #90 review S1–S3: the same real Chromium against hostile pages (lying
+  // geometry, a squatted locator global, a covered button, 300,000
+  // elements, a page spinning forever). Explicit skip without a browser.
+  'src-server/services/browser/__tests__/browser-agent-hostile.real.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

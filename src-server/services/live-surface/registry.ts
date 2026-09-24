@@ -28,7 +28,26 @@ export type LiveSurfaceAuthorizer = (
   principal: string,
   surfaceId: string,
   action: LiveSurfaceAction,
+  context?: LiveSurfaceAuthorizationContext,
 ) => boolean | Promise<boolean>;
+
+/**
+ * What the caller can offer an authorizer beyond the principal (added by the
+ * Browser pane lane): the HTTP routes pass the authenticated request, so an
+ * authorizer whose standing depends on the credential itself (the Station
+ * operator) can judge it. Absent on a server-side path with no request; an
+ * authorizer that needs it must then deny.
+ */
+export interface LiveSurfaceAuthorizationContext {
+  request?: Request;
+  /**
+   * A server-side agent path's verified authority (added by the browser
+   * agent tools, #90 #122/#123). Opaque to this layer: only the producer's
+   * own authorizer can recognise it, and it must refuse anything it did not
+   * mint itself. Never built from tool input.
+   */
+  agentGrant?: object;
+}
 
 /**
  * Producers register here by surfaceId; the routes and server-side
@@ -59,6 +78,7 @@ export interface LiveSurfaceEntry {
   readonly authorize: (
     principal: string,
     action: LiveSurfaceAction,
+    context?: LiveSurfaceAuthorizationContext,
   ) => Promise<boolean>;
 }
 
@@ -75,6 +95,17 @@ export interface LiveSurfaceRegistryOptions {
 export interface LiveSurfaceRegistration {
   /** Absent means every principal is denied every action. */
   authorize?: LiveSurfaceAuthorizer;
+  /**
+   * A person's EXPLICIT control action succeeded: the Take control button
+   * (`claim`) or an explicit hand-back (`release`). Never called for a claim
+   * by input or for a hold lapsing; those are not explicit. `fence` is the
+   * lease's fence after the action.
+   */
+  onExplicitControl?: (event: {
+    action: 'claim' | 'release';
+    human: HumanController;
+    fence: number;
+  }) => void;
 }
 
 const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
@@ -204,6 +235,7 @@ interface EntryInternals {
   wedgedSince: number | null;
   dispatchTimeoutMs: number;
   onError: (message: string, error: unknown) => void;
+  onExplicitControl: NonNullable<LiveSurfaceRegistration['onExplicitControl']>;
 }
 
 const internals = new WeakMap<LiveSurfaceEntry, EntryInternals>();
@@ -242,11 +274,16 @@ export class LiveSurfaceRegistry {
       producer,
       hub,
       lease,
-      authorize: async (principal, action) => {
+      authorize: async (principal, action, context) => {
         if (!authorizer) return false;
         try {
           return (
-            (await authorizer(principal, producer.surfaceId, action)) === true
+            (await authorizer(
+              principal,
+              producer.surfaceId,
+              action,
+              context,
+            )) === true
           );
         } catch {
           return false;
@@ -262,6 +299,7 @@ export class LiveSurfaceRegistry {
       dispatchTimeoutMs:
         this.options.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS,
       onError: this.options.hub?.onError ?? (() => {}),
+      onExplicitControl: registration.onExplicitControl ?? (() => {}),
     };
     internals.set(entry, own);
     // A handoff cancels whatever the previous controller held. It is queued
@@ -474,12 +512,29 @@ export function dispatchHumanInput(
   );
 }
 
+/** A listener's fault never changes the outcome of a control action. */
+function notifyExplicit(
+  own: EntryInternals,
+  action: 'claim' | 'release',
+  human: HumanController,
+  fence: number,
+): void {
+  try {
+    own.onExplicitControl({ action, human, fence });
+  } catch (error) {
+    own.onError('explicit control listener failed', error);
+  }
+}
+
 /** An explicit human claim ("Take control"). The route authorizes `control`. */
 export function claimHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
 ): FencedLeaseResult {
-  return internalsOf(entry).lease.claimHuman(human);
+  const own = internalsOf(entry);
+  const result = own.lease.claimHuman(human);
+  if (result.ok) notifyExplicit(own, 'claim', human, result.lease.fence);
+  return result;
 }
 
 /** Release, and cancel anything the human still held (never completing it). */
@@ -489,7 +544,10 @@ export function releaseHumanControl(
   epoch: number,
 ): FencedLeaseResult {
   // The lapse to no holder cancels held input (the lease's onChange).
-  return internalsOf(entry).lease.release(human, { epoch });
+  const own = internalsOf(entry);
+  const result = own.lease.release(human, { epoch });
+  if (result.ok) notifyExplicit(own, 'release', human, result.lease.fence);
+  return result;
 }
 
 /**
@@ -501,8 +559,9 @@ export async function claimAgentControl(
   entry: LiveSurfaceEntry,
   agent: AgentController,
   actingFor: string,
+  context?: LiveSurfaceAuthorizationContext,
 ): Promise<FencedLeaseResult> {
-  if (!(await entry.authorize(actingFor, 'control')))
+  if (!(await entry.authorize(actingFor, 'control', context)))
     return { ok: false, code: 'not-authorized', lease: entry.lease.snapshot() };
   return internalsOf(entry).lease.claimForAgent(
     agent.principal,
@@ -532,8 +591,9 @@ export async function dispatchAgentInput(
   actingFor: string,
   fence: number,
   events: readonly LiveSurfaceInput[],
+  context?: LiveSurfaceAuthorizationContext,
 ): Promise<LiveSurfaceInputResult> {
-  if (!(await entry.authorize(actingFor, 'input')))
+  if (!(await entry.authorize(actingFor, 'input', context)))
     return {
       ok: false,
       code: 'not-authorized',

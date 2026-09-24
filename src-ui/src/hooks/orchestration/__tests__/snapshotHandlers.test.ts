@@ -20,6 +20,8 @@ vi.mock('../../../contexts/active-chats-store', () => ({
     // refetch loop below depends on (archive#3352).
     getSnapshot: () => ({ ...chats }),
     updateChat: (...args: [string, any]) => updateChat(...args),
+    // #2309: the carrier seam; these cases carry no activity record.
+    applyConversationActivity: vi.fn(),
   },
 }));
 
@@ -792,5 +794,120 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
     );
     expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
     expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+  });
+});
+
+describe('#2309: with an activity record, the record names the running child (the #2303 outcomes, from the server)', () => {
+  const ROOT = 'muse:R';
+  const LIVE_CHILD = 'muse:R:session:live';
+  const openRecord = {
+    conversationId: ROOT,
+    asOfSequence: 50,
+    openTurn: {
+      turnId: 'turn-live',
+      threadId: LIVE_CHILD,
+      startedAt: '2026-09-22T17:40:00.000Z',
+    },
+  };
+  const closedRecord = { conversationId: ROOT, asOfSequence: 60 };
+  // The per-row folds disagree with the record on purpose: the record is the
+  // one the rows are read through.
+  const rootRow = (record: typeof openRecord | typeof closedRecord) => ({
+    provider: 'muse' as const,
+    threadId: ROOT,
+    status: 'running',
+    hasActiveTurn: false,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:00:00.000Z',
+    // The idle root is the NEWEST row.
+    lastEventAt: '2026-09-22T17:59:00.000Z',
+    reportedModel: 'model-root',
+    conversationActivity: record,
+  });
+  const childRow = (
+    record: typeof openRecord | typeof closedRecord,
+    hasActiveTurn: boolean,
+  ) => ({
+    provider: 'muse' as const,
+    threadId: LIVE_CHILD,
+    status: 'running',
+    hasActiveTurn,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:40:00.000Z',
+    lastEventAt: '2026-09-22T17:52:00.000Z',
+    reportedModel: 'model-child',
+    conversationActivity: record,
+  });
+
+  beforeEach(() => {
+    updateChat.mockClear();
+    chats = {
+      [ROOT]: {
+        provider: 'muse',
+        agentSlug: 'muse-agent',
+        conversationId: ROOT,
+        currentSessionId: ROOT,
+        orchestrationSessionStarted: true,
+        status: 'idle',
+      },
+    };
+  });
+
+  test('reload mid-turn: the child the record names is adopted and speaks, though its own row reads idle and the root is newest', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [childRow(openRecord, false), rootRow(openRecord)] },
+      { apiBase: 'http://api' },
+    );
+    const chat = chats[ROOT];
+    expect(chat.currentSessionId).toBe(LIVE_CHILD);
+    expect(chat.conversationOpenPending).toBe(true);
+    expect(chat.orchestrationTurnOpen).toBe(true);
+    expect(chat.status).toBe('sending');
+    expect(chat.model).toBe('model-child');
+    expect(chat.orchestrationStatus).not.toBe('exited');
+  });
+
+  test("an idle record and a chat bound to a later child: that child's row speaks (its model, not the root's)", () => {
+    chats[ROOT] = { ...chats[ROOT], currentSessionId: LIVE_CHILD };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow(closedRecord), childRow(closedRecord, false)] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-child');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(false);
+  });
+
+  test("mixed rows: a record-less root row with a stale open fold cannot contradict the child's idle record", () => {
+    const staleRoot = {
+      ...rootRow(closedRecord),
+      hasActiveTurn: true,
+      conversationActivity: undefined,
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [staleRoot, childRow(closedRecord, false)] },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    const chat = chats[ROOT];
+    // The chat's own (root) row speaks for an idle conversation, but the
+    // verdict is the CHAT's record: not open, not adopted, not handed to the
+    // projection as an open turn.
+    expect(chat.orchestrationTurnOpen).toBe(false);
+    expect(chat.status).toBe('idle');
+    expect(chat.currentSessionId).toBe(ROOT);
+    expect(chat.openTurnShellSuperseded).toBeUndefined();
+  });
+
+  test('a stale open row cannot open a conversation the record shows idle, nor be adopted', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow(closedRecord), childRow(closedRecord, true)] },
+      { apiBase: 'http://api' },
+    );
+    const chat = chats[ROOT];
+    expect(chat.currentSessionId).toBe(ROOT);
+    expect(chat.conversationOpenPending).toBeUndefined();
+    expect(chat.orchestrationTurnOpen).toBe(false);
+    expect(chat.status).toBe('idle');
+    // The chat's own row speaks for an idle conversation.
+    expect(chat.model).toBe('model-root');
   });
 });

@@ -29,6 +29,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { createStationBrowserMcpServer } from '../../tools/station-browser-mcp-server.js';
 import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
 import {
   withStationControlCallerBinding,
@@ -43,6 +44,7 @@ import {
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
+  verifyStationControlMcpTokenEntry,
 } from './station-control-mcp-token.js';
 
 /** The structural Transport the SDK passes to `instance.connect`. */
@@ -58,24 +60,67 @@ export interface InProcessStationControlServer {
 }
 
 /**
- * Mint this session's `sdk-in-process` token and build its server. The
- * caller revokes the token with `revokeStationControlMcpToken(sessionId)`
- * when the session stops, exactly as for every other channel.
+ * The `sdk-in-process` token each session's in-process servers share. The
+ * registry holds one credential per session, so a second server for the
+ * same session (station-browser beside station-control, #90 D14) must reuse
+ * the live one rather than mint a replacement that would revoke it.
+ * Cleared with the revocation; a revoked or expired token is never reused.
  */
-function createInProcessStationControlServer(input: {
+const inProcessTokens = new Map<string, string>();
+
+function inProcessToken(
+  sessionId: string,
+  tenantExecutionContext: TenantExecutionContext | undefined,
+  mode: 'fresh' | 'reuse',
+): string {
+  if (mode === 'reuse') {
+    const existing = inProcessTokens.get(sessionId);
+    const entry = verifyStationControlMcpTokenEntry(existing);
+    if (
+      existing &&
+      entry?.sessionId === sessionId &&
+      entry.channel === 'sdk-in-process'
+    )
+      return existing;
+  }
+  const { token } = mintStationControlMcpToken(
+    sessionId,
+    'sdk-in-process',
+    undefined,
+    tenantExecutionContext,
+  );
+  inProcessTokens.set(sessionId, token);
+  return token;
+}
+
+/** Revoke a session's credential and forget its shared in-process token. */
+function revokeInProcessSession(sessionId: string): void {
+  inProcessTokens.delete(sessionId);
+  revokeStationControlMcpToken(sessionId);
+}
+
+/**
+ * Build one in-process server for a session, serving `createServer`'s
+ * registrations as that session's verified caller. station-control mints a
+ * fresh token (as it always has); station-browser reuses the session's live
+ * one. The caller revokes it with the session.
+ */
+function createInProcessServer(input: {
   sessionId: string;
   tenantExecutionContext?: TenantExecutionContext;
   resolveRecord?: StationControlCallerRecordResolver;
-  /** Test seam: production serves the real registrations. */
-  createServer?: typeof createStationControlMcpServer;
+  createServer: () => {
+    connect(transport: never): Promise<void>;
+    close(): Promise<void>;
+  };
+  token: 'fresh' | 'reuse';
 }): InProcessStationControlServer {
-  const { token } = mintStationControlMcpToken(
+  const token = inProcessToken(
     input.sessionId,
-    'sdk-in-process',
-    undefined,
     input.tenantExecutionContext,
+    input.token,
   );
-  const server = (input.createServer ?? createStationControlMcpServer)();
+  const server = input.createServer();
   const binding = createHash('sha256').update(token).digest('base64url');
   const tenant = input.tenantExecutionContext
     ? tenantExecutionContextFromSession(input.tenantExecutionContext)
@@ -136,8 +181,14 @@ export function claudeInProcessStationControlOptions(
   resolveRecord: () => StationControlCallerRecordResolver | undefined,
   /** Test seam: production serves the real registrations. */
   createServer?: typeof createStationControlMcpServer,
+  /** Test seam for the station-browser server (#90 D14). */
+  createBrowserServer?: typeof createStationBrowserMcpServer,
 ): {
   createInProcessStationControl: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => InProcessStationControlServer;
+  createInProcessStationBrowser: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
   ) => InProcessStationControlServer;
@@ -145,13 +196,25 @@ export function claudeInProcessStationControlOptions(
 } {
   return {
     createInProcessStationControl: (threadId, tenantExecutionContext) =>
-      createInProcessStationControlServer({
+      createInProcessServer({
         sessionId: threadId,
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
         resolveRecord: (sessionId) => resolveRecord()?.(sessionId),
-        ...(createServer ? { createServer } : {}),
+        createServer: (createServer ?? createStationControlMcpServer) as never,
+        token: 'fresh',
+      }),
+    // #90 D14: the browser tools as their own narrow server, bound like
+    // station-control and sharing its session credential.
+    createInProcessStationBrowser: (threadId, tenantExecutionContext) =>
+      createInProcessServer({
+        sessionId: threadId,
+        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+        resolveRecord: (sessionId) => resolveRecord()?.(sessionId),
+        createServer: (createBrowserServer ??
+          createStationBrowserMcpServer) as never,
+        token: 'reuse',
       }),
     revokeStationControlCallerToken: (threadId) =>
-      revokeStationControlMcpToken(threadId),
+      revokeInProcessSession(threadId),
   };
 }

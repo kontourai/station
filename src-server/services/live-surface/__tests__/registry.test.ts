@@ -465,15 +465,18 @@ describe('live surface registry', () => {
     viewer.close();
   });
   test('a long press or drag does not lapse the lease; releasing lets it lapse (N1)', async () => {
+    // A hand-driven clock: on a real one, 90ms of sleep against the 120ms
+    // ceiling (4 x 30ms) crossed the ceiling on a loaded runner.
+    let clock = 0;
     const { producer, entry } = setup(() => true, {
-      lease: { humanHoldMs: 30 },
+      lease: { humanHoldMs: 30, now: () => clock },
     });
     await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
-    await sleep(90); // three hold periods, button still down
+    clock += 90; // three hold periods, button still down, under the ceiling
     expect(entry.lease.snapshot().holder).toMatchObject(human);
     expect(producer.dispatched).toHaveLength(1); // nothing cancelled it
     await dispatchHumanInput(entry, human, 1, [press('up', 7, 8)]);
-    await sleep(90);
+    clock += 90;
     expect(entry.lease.snapshot().holder).toBeNull();
   });
 
@@ -558,5 +561,78 @@ describe('live surface registry', () => {
     await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
     await sleep(80);
     expect(entry.lease.snapshot().holder).toBeNull();
+  });
+});
+
+describe('onExplicitControl (#90: only a person’s explicit claim or release)', () => {
+  function withListener(listener: Parameters<typeof register>[2]) {
+    const registry = new LiveSurfaceRegistry();
+    const producer = new SyntheticLiveSurfaceProducer('surface-x');
+    register(registry, producer, listener);
+    return registry.get('surface-x')!;
+  }
+  function register(
+    registry: LiveSurfaceRegistry,
+    producer: SyntheticLiveSurfaceProducer,
+    onExplicitControl: (event: {
+      action: 'claim' | 'release';
+      fence: number;
+    }) => void,
+  ) {
+    registry.register(producer, { authorize: () => true, onExplicitControl });
+  }
+
+  test('a claim made by input never calls it; Take control and an explicit release do, with the lease fence', async () => {
+    const calls: Array<{ action: string; fence: number }> = [];
+    const entry = withListener((event) =>
+      calls.push({ action: event.action, fence: event.fence }),
+    );
+    const byInput = await dispatchHumanInput(
+      entry,
+      human,
+      entry.lease.snapshot().epoch,
+      [move(3)],
+    );
+    expect(byInput.ok).toBe(true);
+    expect(entry.lease.snapshot().holder).toMatchObject({ kind: 'human' });
+    expect(calls).toEqual([]);
+    const claim = claimHumanControl(entry, human);
+    expect(claim.ok).toBe(true);
+    const release = releaseHumanControl(
+      entry,
+      human,
+      entry.lease.snapshot().epoch,
+    );
+    expect(release.ok).toBe(true);
+    expect(calls).toEqual([
+      { action: 'claim', fence: claim.lease.fence },
+      { action: 'release', fence: release.lease.fence },
+    ]);
+  });
+
+  test('a listener that throws leaves the claim and release results unchanged', () => {
+    const quiet = withListener(() => {});
+    const throwing = withListener(() => {
+      throw new Error('listener fault');
+    });
+    const results = [quiet, throwing].map((entry) => {
+      const claim = claimHumanControl(entry, human);
+      const release = releaseHumanControl(
+        entry,
+        human,
+        entry.lease.snapshot().epoch,
+      );
+      return {
+        claim: { ok: claim.ok, holder: claim.lease.holder?.kind },
+        release: { ok: release.ok, holder: release.lease.holder },
+        after: entry.lease.snapshot().holder,
+      };
+    });
+    expect(results[1]).toEqual(results[0]);
+    expect(results[1]).toEqual({
+      claim: { ok: true, holder: 'human' },
+      release: { ok: true, holder: null },
+      after: null,
+    });
   });
 });

@@ -10,6 +10,8 @@ export function beginConversationHandoffUiState(
   const messages = state?.messages ?? [];
   return {
     status: 'sending',
+    // #2309: the handoff's first turn has not been opened by the server yet.
+    sendAwaitingTurnStart: true,
     pendingClientTurnId: input.clientTurnId,
     messages: messages.some(
       (candidate) => candidate.clientId === input.clientTurnId,
@@ -88,6 +90,11 @@ export function acceptConversationHandoffUiState(
     stopPending: undefined,
     pendingClientTurnId: undefined,
     lastAppliedApprovalMode: undefined,
+    pendingApprovalMode: undefined,
+    pendingApprovalPickedAt: undefined,
+    pendingApprovalBehindTurn: undefined,
+    pendingApprovalAppliedAtPick: undefined,
+    approvalModeOverride: undefined,
     isProcessingStep: false,
     error: null,
     orchestrationTurnOpen: false,
@@ -103,6 +110,7 @@ export function acceptConversationHandoffUiState(
     backgroundTasks: [],
     liveUsage: undefined,
     status: 'sending',
+    sendAwaitingTurnStart: true,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision:
       (state?.orchestrationHistoryRevision ?? 0) + 1,

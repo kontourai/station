@@ -1,8 +1,10 @@
 import {
-  parseWorkspaceBrowserPreviewPaneState,
+  parseWorkspaceBrowserPaneState,
+  type WorkspaceBrowserPaneState,
+} from '@kontourai/station-contracts/workspace-browser-pane';
+import {
   WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_BROWSER_PREVIEW_PANE_SOURCE_ID,
-  type WorkspaceBrowserPreviewPaneState,
 } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   parseWorkspacePaneInstance,
@@ -13,6 +15,7 @@ import type { BrowserPreviewPaneStateStorage } from './browserPreviewPaneStateSt
 import {
   readBrowserPreviewPaneState,
   removeBrowserPreviewPaneState,
+  storedBrowserPaneProjectId,
 } from './browserPreviewPaneStateStorage';
 
 const BROWSER_PREVIEW_NONCE_PATTERN = /^[0-9a-f]{32}$/;
@@ -33,11 +36,11 @@ function randomNonce(): string | null {
 }
 
 export function createBrowserPreviewPaneInstance(
-  state: WorkspaceBrowserPreviewPaneState,
+  state: WorkspaceBrowserPaneState,
   projectId: string,
   nonce?: string,
 ): WorkspacePaneInstance | null {
-  const normalized = parseWorkspaceBrowserPreviewPaneState(state);
+  const normalized = parseWorkspaceBrowserPaneState(state);
   const opaqueNonce = nonce ?? randomNonce();
   if (
     !normalized ||
@@ -60,9 +63,10 @@ export function createBrowserPreviewPaneInstance(
   });
 }
 
+/** `state` is the stored record's Project (either pane state version). */
 export function isCanonicalBrowserPreviewPaneInstance(
   instance: WorkspacePaneInstance,
-  state: WorkspaceBrowserPreviewPaneState | null,
+  state: { projectId: string } | null,
 ): boolean {
   const identity = String(instance.instanceId);
   const context = instance.boundContext;
@@ -99,6 +103,13 @@ function isCanonicalProjectContext(
   );
 }
 
+function stateProject(
+  stored: ReturnType<typeof readBrowserPreviewPaneState>,
+): { projectId: string } | null {
+  const projectId = storedBrowserPaneProjectId(stored);
+  return projectId ? { projectId } : null;
+}
+
 export function admitRestoredBrowserPreviewPaneInstance(
   projectId: string,
   candidate: unknown,
@@ -106,7 +117,9 @@ export function admitRestoredBrowserPreviewPaneInstance(
 ): WorkspacePaneInstance | null {
   const instance = parseWorkspacePaneInstance(candidate);
   if (!instance) return null;
-  const state = readBrowserPreviewPaneState(storage, instance.stateKey);
+  const state = stateProject(
+    readBrowserPreviewPaneState(storage, instance.stateKey),
+  );
   return instance.boundContext?.projectId === projectId &&
     isCanonicalBrowserPreviewPaneInstance(instance, state)
     ? instance
@@ -114,18 +127,20 @@ export function admitRestoredBrowserPreviewPaneInstance(
 }
 
 /**
- * Returns a stable, non-sensitive tab label. The local URL is deliberately not
- * exposed in pane chrome because the host has not verified renderer navigation.
+ * Returns a stable, non-sensitive tab label. The page URL is deliberately not
+ * exposed in pane chrome: it is server-owned and may carry a query string.
  */
 export function browserPreviewPanePresentationLabel(
   projectId: string,
   instance: WorkspacePaneInstance,
   storage: BrowserPreviewPaneStateStorage,
 ): string | null {
-  const state = readBrowserPreviewPaneState(storage, instance.stateKey);
+  const state = stateProject(
+    readBrowserPreviewPaneState(storage, instance.stateKey),
+  );
   return instance.boundContext?.projectId === projectId &&
     isCanonicalBrowserPreviewPaneInstance(instance, state)
-    ? 'Browser Preview'
+    ? 'Browser'
     : null;
 }
 
@@ -134,7 +149,9 @@ export function removeRemovedBrowserPreviewPaneState(
   instance: WorkspacePaneInstance,
   storage: BrowserPreviewPaneStateStorage,
 ): boolean {
-  const state = readBrowserPreviewPaneState(storage, instance.stateKey);
+  const state = stateProject(
+    readBrowserPreviewPaneState(storage, instance.stateKey),
+  );
   if (
     instance.boundContext?.projectId !== projectId ||
     !isCanonicalBrowserPreviewPaneInstance(instance, state)

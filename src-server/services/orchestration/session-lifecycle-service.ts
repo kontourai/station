@@ -456,6 +456,20 @@ export function activeTurnIdForEvents(
 }
 
 /**
+ * #2309: one step of the exact fold `activeTurnIdForEvents` (and so
+ * `hasOpenTurn`) runs, for a consumer that folds incrementally instead of
+ * re-reading a list — the conversation activity projection. It is the same
+ * function, not a copy: `activeTurnIdForEvents(events)` equals reducing
+ * `events` with this step from `undefined`.
+ */
+export function advanceOpenTurnId(
+  openTurnId: string | undefined,
+  event: CanonicalRuntimeEvent,
+): string | undefined {
+  return nextActiveTurnId(openTurnId, event);
+}
+
+/**
  * archive#3473 (paths 3/4): the turn id a user-initiated Stop — or the stall
  * watchdog's forced-stop, once archive#2959's observe-only decision lifts — should
  * still target. Deliberately NOT the same fold as `activeTurnIdForEvents`:

@@ -39,11 +39,13 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { queueSendNowOffered } from '../../utils/conversation-activity';
 import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
@@ -115,6 +117,10 @@ const loadSourceQuoteDrafts = () =>
   import('../chat/SourceQuoteDrafts').then((module) => ({
     default: module.SourceQuoteDrafts,
   }));
+
+// #90 D9: a live Browser session an agent in this conversation drives
+// floats over the transcript. Its own chunk, loaded only for a Project chat.
+const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
 
 const loadQueuedMessages = () =>
   import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
@@ -560,6 +566,12 @@ export function ChatDockBody({
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
+  // #2309: the conversation's record carries the watchdog's silence for its
+  // open turn, whichever lineage child runs it. Without a record, the current
+  // session's own projection (the pre-#2309 source) is read instead.
+  const turnProgressSilence = activeSession.conversationActivity
+    ? activeSession.conversationActivity.progressSilence
+    : activeOrchestrationSession?.turnProgress?.progressSilence;
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -938,8 +950,14 @@ export function ChatDockBody({
             // #2316: the pending-approvals strip derives from the window's
             // events inside the lazily loaded list.
             approvalEvents: transcript.enabled ? transcript.events : undefined,
+            approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
             suppressActivity: Boolean(streamStatus),
+            // #2309: the stall notice below presents the silence (with its
+            // Stop action); the streaming row does not repeat it.
+            progressSilenceShownElsewhere: Boolean(
+              turnProgressSilence && isTurnInFlight(activeSession),
+            ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
             owner,
@@ -1008,7 +1026,18 @@ export function ChatDockBody({
                 apiBase,
                 activeSession.id,
                 true,
+                // #2309: an explicit request; not held back by the record.
+                true,
               ),
+            onSendNow: queueSendNowOffered(activeSession)
+              ? () =>
+                  drainQueuedMessageOnTurnCompleted(
+                    apiBase,
+                    activeSession.id,
+                    true,
+                    true,
+                  )
+              : undefined,
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&
@@ -1020,9 +1049,17 @@ export function ChatDockBody({
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a
                   // continuation child becomes current.
-                  threadId: activeSession.currentSessionId ?? activeSession.id,
+                  //
+                  // #2309: the server's open turn names the exact lineage
+                  // child and turn; the local stamp is the older-server path.
+                  threadId:
+                    activeSession.conversationActivity?.openTurn?.threadId ??
+                    activeSession.currentSessionId ??
+                    activeSession.id,
                   text: message,
-                  turnId: activeSession.openTurnId,
+                  turnId:
+                    activeSession.conversationActivity?.openTurn?.turnId ??
+                    activeSession.openTurnId,
                   apiBase,
                 });
                 if (result.outcome === 'steered') return true;
@@ -1265,40 +1302,35 @@ export function ChatDockBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
-      {activeOrchestrationSession?.turnProgress?.progressSilence &&
-        isTurnInFlight(activeSession) && (
-          <div
-            role="status"
-            data-testid="chat-dock-turn-stall-notice"
-            style={{
-              padding: '8px 12px',
-              margin: '0 12px 8px',
-              background: 'var(--bg-warning, var(--bg-secondary))',
-              border: '1px solid var(--border-warning, var(--border-primary))',
-              borderRadius: '6px',
-              fontSize: '0.85em',
-              color: 'var(--text-muted)',
-            }}
+      {turnProgressSilence && isTurnInFlight(activeSession) && (
+        <div
+          role="status"
+          data-testid="chat-dock-turn-stall-notice"
+          style={{
+            padding: '8px 12px',
+            margin: '0 12px 8px',
+            background: 'var(--bg-warning, var(--bg-secondary))',
+            border: '1px solid var(--border-warning, var(--border-primary))',
+            borderRadius: '6px',
+            fontSize: '0.85em',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <strong>The engine appears stalled.</strong>{' '}
+          <ProgressSilenceObservation observation={turnProgressSilence} />
+          {'. '}
+          You can wait, or{' '}
+          <button
+            type="button"
+            onClick={() => void chatInput.handleCancel()}
+            disabled={!!activeSession.stopPending}
+            style={BANNER_LINK_BUTTON_STYLE}
           >
-            <strong>The engine appears stalled.</strong>{' '}
-            <ProgressSilenceObservation
-              observation={
-                activeOrchestrationSession.turnProgress.progressSilence
-              }
-            />
-            {'. '}
-            You can wait, or{' '}
-            <button
-              type="button"
-              onClick={() => void chatInput.handleCancel()}
-              disabled={!!activeSession.stopPending}
-              style={BANNER_LINK_BUTTON_STYLE}
-            >
-              stop this turn
-            </button>
-            .
-          </div>
-        )}
+            stop this turn
+          </button>
+          .
+        </div>
+      )}
       {activeSession.replay?.mode === 'timeline' ? (
         <LazyBoundary
           load={loadConversationTimeline}
@@ -1316,6 +1348,21 @@ export function ChatDockBody({
         />
       ) : (
         <>
+          {/*
+            Mounted HERE, between the transcript and everything docked at the
+            bottom (quotes, composer): the floater floats over its parent
+            (this chat body, not the history sidebar beside it) and keeps
+            clear of everything below its own position, which is exactly the
+            composer stack. A seam this component owns, not a class name.
+          */}
+          {activeSession.projectSlug ? (
+            <LazyBoundary
+              load={loadFloatOverChat}
+              componentProps={{ session: activeSession }}
+              pending={null}
+              unavailable={() => null}
+            />
+          ) : null}
           {chatInput.quotes.length > 0 && (
             <LazyBoundary
               load={loadSourceQuoteDrafts}
@@ -1393,6 +1440,7 @@ export function ChatDockBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpCurrentModeId={
               activeSession.currentModeId ?? advertisedAcpSession.currentModeId

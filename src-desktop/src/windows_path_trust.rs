@@ -177,6 +177,17 @@ fn invoke(_operation: &str, _paths: &[(TrustKind, TrustPolicy, &Path)]) -> Resul
 }
 
 pub fn ensure(paths: &[(TrustKind, &Path)]) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // The writer is a PowerShell child process. A fresh native ACL read
+        // can prove that an existing path is already owner-only without
+        // changing its DACL or paying for another shell startup. Newly
+        // created or altered paths still take the same setter below and its
+        // post-write verification; no trust result is cached across calls.
+        if private_acl::verify(paths).is_ok() {
+            return Ok(());
+        }
+    }
     let paths = paths
         .iter()
         .map(|(kind, path)| (*kind, TrustPolicy::CurrentUserOnly, *path))

@@ -2682,6 +2682,148 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    // #2348: `onNoLiveTasks` infers "no subagent can be waiting" from the
+    // tracked task set, and that inference can be wrong. Its settlement must
+    // deny the one call, never send the cancel mapping's `interrupt: true`,
+    // which may abort a subagent that is still running.
+    describe('#2348: a wrong "no task is live" settles with a plain denial', () => {
+      async function subagentHarness(threadId: string) {
+        const controlled = createControlledMockQuery();
+        mockQuery.mockReturnValue(controlled);
+        const adapter = new ClaudeAdapter();
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        const until = async (predicate: (event: any) => boolean) => {
+          for (let seen = 0; seen < 30; seen++) {
+            const event = (await iterator.next()).value;
+            if (predicate(event)) return event;
+          }
+          throw new Error('expected event never arrived');
+        };
+        await adapter.startSession({ provider: 'claude', threadId });
+        const turn = await adapter.sendTurn({ threadId, input: 'research it' });
+        await until((event) => event.method === 'turn.started');
+        const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+        const askAs = (agentID: string, toolUseID: string) =>
+          canUseTool(
+            'Bash',
+            { command: 'npm test' },
+            {
+              signal: new AbortController().signal,
+              toolUseID,
+              agentID,
+              suggestions: [],
+            },
+          );
+        return { controlled, adapter, until, askAs, turn };
+      }
+
+      test("subagent A's settle, processed after B's canUseTool, does not interrupt B", async () => {
+        const threadId = 'thread-settle-lag';
+        const { controlled, adapter, until, askAs } =
+          await subagentHarness(threadId);
+        controlled.push({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'task-a',
+          tool_use_id: 'toolu-a',
+          description: 'Subagent A',
+          uuid: 'u-a1',
+          session_id: 's-1',
+        });
+        await until((event) => event.method === 'tool.started');
+
+        // B's permission arrives by direct callback, while B's own
+        // `task_started` is still behind A's settle in the message stream.
+        const bPermission = askAs('agent-b', 'toolu-b-bash');
+        const bOpened = await until(
+          (event) => event.method === 'request.opened',
+        );
+        controlled.push({
+          type: 'system',
+          subtype: 'task_updated',
+          task_id: 'task-a',
+          patch: { status: 'completed' },
+          uuid: 'u-a2',
+          session_id: 's-1',
+        });
+
+        const result = await bPermission;
+        expect(result).toMatchObject({ behavior: 'deny' });
+        expect(result).not.toHaveProperty('interrupt');
+        expect(
+          await until((event) => event.method === 'request.resolved'),
+        ).toMatchObject({ requestId: bOpened.requestId, status: 'cancelled' });
+        // Still never answerable later, so no grant can be minted for it.
+        await expect(
+          adapter.respondToRequest(
+            threadId,
+            bOpened.requestId,
+            'acceptForSession',
+          ),
+        ).rejects.toThrow('Unknown Claude permission request');
+        // B, still running, can ask again.
+        void askAs('agent-b', 'toolu-b-retry');
+        expect(
+          await until((event) => event.method === 'request.opened'),
+        ).toMatchObject({ payload: { agentId: 'agent-b' } });
+        await adapter.stopSession(threadId);
+      });
+
+      test('an untracked (skip_transcript) task’s request is not interrupted when the main turn completes', async () => {
+        const threadId = 'thread-untracked-task';
+        const { controlled, adapter, until, askAs } =
+          await subagentHarness(threadId);
+        controlled.push({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: 'task-ambient',
+          tool_use_id: 'toolu-ambient',
+          description: 'Housekeeping',
+          skip_transcript: true,
+          uuid: 'u-h1',
+          session_id: 's-1',
+        });
+        const permission = askAs('agent-ambient', 'toolu-ambient-bash');
+        const opened = await until(
+          (event) => event.method === 'request.opened',
+        );
+
+        // The main turn completes; nothing is tracked, so the sweep runs.
+        controlled.push({
+          type: 'result',
+          is_error: false,
+          result: 'done',
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+          uuid: 'main-result',
+          session_id: 's-1',
+        });
+
+        const result = await permission;
+        expect(result).toMatchObject({ behavior: 'deny' });
+        expect(result).not.toHaveProperty('interrupt');
+        expect(
+          await until((event) => event.method === 'request.resolved'),
+        ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+        await adapter.stopSession(threadId);
+      });
+
+      test('an interrupt still cancels a subagent request with interrupt', async () => {
+        const threadId = 'thread-interrupt-keeps-cancel';
+        const { adapter, until, askAs, turn } = await subagentHarness(threadId);
+        const permission = askAs('agent-b', 'toolu-b-bash');
+        await until((event) => event.method === 'request.opened');
+
+        await adapter.interruptTurn(threadId, turn.turnId);
+
+        await expect(permission).resolves.toMatchObject({
+          behavior: 'deny',
+          interrupt: true,
+        });
+        await adapter.stopSession(threadId);
+      });
+    });
+
     test('a main-thread request under a named Station agent carries no agentId', async () => {
       const threadId = 'thread-named-agent-approval';
       mockQuery.mockReturnValue(createControlledMockQuery());
@@ -3875,6 +4017,103 @@ describe('ClaudeAdapter', () => {
         command: process.execPath,
         args: ['--version'],
       });
+    });
+
+    test('#90 D14: a stock Claude agent gets the built-in station-browser server in-process, beside station-control and without strict mode', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const control = { connect: vi.fn(), close: vi.fn() };
+      const browser = { connect: vi.fn(), close: vi.fn() };
+      const order: string[] = [];
+      const adapter = new ClaudeAdapter({
+        createInProcessStationControl: vi.fn(() => {
+          order.push('station-control');
+          return control;
+        }),
+        createInProcessStationBrowser: vi.fn(() => {
+          order.push('station-browser');
+          return browser;
+        }),
+        revokeStationControlCallerToken: vi.fn(),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-browser',
+        agent: { slug: 'stock', toolServers: stationControlToolServers },
+      });
+      const options = (
+        mockQuery.mock.calls.at(-1)![0] as {
+          options: {
+            mcpServers: Record<string, Record<string, unknown>>;
+            strictMcpConfig?: boolean;
+          };
+        }
+      ).options;
+      expect(options.mcpServers['station-browser']).toEqual({
+        type: 'sdk',
+        name: 'station-browser',
+        instance: browser,
+      });
+      expect(options.mcpServers['station-control']).toMatchObject({
+        type: 'sdk',
+        instance: control,
+      });
+      // station-control first, so the browser server reuses its credential.
+      expect(order).toEqual(['station-control', 'station-browser']);
+
+      // An agent that authored no tool servers still gets the browser tools,
+      // and keeps Claude's own MCP discovery (no strict mode).
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-browser-2',
+        agent: { slug: 'plain' },
+      });
+      const plain = (
+        mockQuery.mock.calls.at(-1)![0] as {
+          options: {
+            mcpServers?: Record<string, unknown>;
+            strictMcpConfig?: boolean;
+          };
+        }
+      ).options;
+      expect(Object.keys(plain.mcpServers ?? {})).toEqual(['station-browser']);
+      expect(plain.strictMcpConfig).toBeUndefined();
+    });
+
+    test('#90 D14: the agent toggle, an agent-less session and a runtime without bound delivery all mean no station-browser', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const createInProcessStationBrowser = vi.fn(() => ({
+        connect: vi.fn(),
+        close: vi.fn(),
+      }));
+      const adapter = new ClaudeAdapter({ createInProcessStationBrowser });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-off',
+        agent: { slug: 'off', browserTools: false },
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-none',
+      });
+      expect(createInProcessStationBrowser).not.toHaveBeenCalled();
+      for (const call of mockQuery.mock.calls.slice(-2))
+        expect(
+          (call[0] as { options: { mcpServers?: Record<string, unknown> } })
+            .options.mcpServers?.['station-browser'],
+        ).toBeUndefined();
+      const bare = new ClaudeAdapter({});
+      await bare.startSession({
+        provider: 'claude',
+        threadId: 'thread-bare',
+        agent: { slug: 'stock' },
+      });
+      expect(
+        (
+          mockQuery.mock.calls.at(-1)![0] as {
+            options: { mcpServers?: Record<string, unknown> };
+          }
+        ).options.mcpServers,
+      ).toBeUndefined();
     });
 
     test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {

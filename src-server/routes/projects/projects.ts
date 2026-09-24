@@ -39,6 +39,8 @@ import {
   validateLayoutAgentReferences,
   validateProjectAgentScope,
 } from '@kontourai/station-contracts/project-reference-integrity';
+import { BROWSER_PANE_DEPLOYMENT_CAPABILITY } from '@kontourai/station-contracts/workspace-browser-pane';
+import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
   WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
@@ -269,6 +271,12 @@ interface ProjectRouteDeps {
    * availability resolves exactly as before.
    */
   canSeePlugin?: (c: Context, pluginId: string) => boolean;
+  /**
+   * #90: whether THIS deployment mounts the Browser pane's server browser
+   * (personal hosts only). The catalogue derives the Browser pane's
+   * availability from it; absent means unknown, which fails closed.
+   */
+  browserPaneDeployment?: 'supported' | 'unsupported';
 }
 
 /**
@@ -1212,13 +1220,24 @@ export function createProjectRoutes(
               {
                 resolveInput: (candidate) =>
                   candidate.descriptor.id ===
-                    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
-                  candidate.descriptor.id ===
-                    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
-                  candidate.descriptor.id ===
-                    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
-                    ? { context: projectWorkspacePaneContext(project) }
-                    : {},
+                  WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID
+                    ? {
+                        deployment: {
+                          state: 'supported' as const,
+                          capabilities: {
+                            [BROWSER_PANE_DEPLOYMENT_CAPABILITY]:
+                              deps.browserPaneDeployment ?? 'unknown',
+                          },
+                        },
+                      }
+                    : candidate.descriptor.id ===
+                          WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
+                        candidate.descriptor.id ===
+                          WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
+                        candidate.descriptor.id ===
+                          WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
+                      ? { context: projectWorkspacePaneContext(project) }
+                      : {},
                 recordTelemetry: (event) =>
                   workspacePaneAvailabilityResolutions.add(
                     1,

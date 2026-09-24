@@ -122,6 +122,60 @@ export async function resolveApiBase(apiBase?: string): Promise<string> {
 }
 
 export function useApiQuery<T = any>(
+  queryKey: (string | number | object | null)[],
+  queryFn: (signal?: AbortSignal) => Promise<T>,
+  config?: QueryConfig<T>,
+) {
+  return useApiQueryWithMountPolicy(queryKey, queryFn, config, undefined);
+}
+
+/**
+ * `refetchOnMount` policy for a read whose contents change OUTSIDE this
+ * client: a plugin installed from the CLI, another tab or device, an agent
+ * (#2319, #2345).
+ *
+ * Station's client default is `refetchOnMount: false`, and TanStack applies it
+ * even to an invalidated query. So `invalidateQueries` reaches only a query
+ * observed at that moment: a lifecycle event, an in-tab mutation, or the
+ * reconnect sync that lands while the read is unmounted marks it invalidated,
+ * and the next mount then serves the old answer anyway, with nothing left to
+ * refetch it.
+ *
+ * Returning `true` for an invalidated query means "refetch if stale", and an
+ * invalidated query is always stale. A remount of an untouched answer does
+ * not refetch; it keeps the cache-first default.
+ *
+ * An invalidated answer that fails to refetch keeps its data and reports
+ * `isError` (and `isRefetchError`). Consumers must render that data, marked
+ * as not refreshed, rather than an error screen; only a read with no data is
+ * an error state.
+ */
+export function refetchOnMountWhenInvalidated(query: {
+  state: { isInvalidated: boolean };
+}): boolean {
+  return query.state.isInvalidated;
+}
+
+/**
+ * {@link useApiQuery} with {@link refetchOnMountWhenInvalidated} as the mount
+ * policy when the caller sets none. Package-internal: `QueryConfig` carries
+ * only the boolean forms, and this keeps the function form off the public
+ * surface.
+ */
+export function useApiQueryRefetchingInvalidatedOnMount<T = any>(
+  queryKey: (string | number | object | null)[],
+  queryFn: (signal?: AbortSignal) => Promise<T>,
+  config?: QueryConfig<T>,
+) {
+  return useApiQueryWithMountPolicy(
+    queryKey,
+    queryFn,
+    config,
+    refetchOnMountWhenInvalidated,
+  );
+}
+
+function useApiQueryWithMountPolicy<T>(
   // `null` is a member because an OPTIONAL key segment has to have a spelling
   // that is distinct from "no segment": `['config','provenance', slug ?? null]`
   // and `['config','provenance']` would otherwise be the same cache entry, and
@@ -130,7 +184,8 @@ export function useApiQuery<T = any>(
   // `useQuery` callers in this package (`developerRuntime.ts`) already do this.
   queryKey: (string | number | object | null)[],
   queryFn: (signal?: AbortSignal) => Promise<T>,
-  config?: QueryConfig<T>,
+  config: QueryConfig<T> | undefined,
+  defaultRefetchOnMount: typeof refetchOnMountWhenInvalidated | undefined,
 ) {
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
@@ -143,9 +198,11 @@ export function useApiQuery<T = any>(
       queryClient.getQueryDefaults(queryKey)?.gcTime ??
       10 * 60 * 1000,
     enabled,
-    ...(config?.refetchOnMount === undefined
-      ? {}
-      : { refetchOnMount: config.refetchOnMount }),
+    ...(config?.refetchOnMount !== undefined
+      ? { refetchOnMount: config.refetchOnMount }
+      : defaultRefetchOnMount
+        ? { refetchOnMount: defaultRefetchOnMount }
+        : {}),
     refetchInterval: config?.refetchInterval,
     // station#2327: only when the caller chose one. query-core merges
     // `{ ...defaults, ...options }`, so an explicit `retry: undefined` erased

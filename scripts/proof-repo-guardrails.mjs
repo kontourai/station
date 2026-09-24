@@ -4323,7 +4323,7 @@ const orchestrationDirChecks = [
     [
       'export function handleRequestOpenedEvent',
       'export function handleRequestResolvedEvent',
-      'async function resolveApproval',
+      'async function answerFromToast',
     ],
   ],
   [

@@ -5,7 +5,9 @@ import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
+import { approvalModeToSend } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
 
@@ -89,14 +91,88 @@ function isDefinitiveClientRejection(error: unknown): boolean {
  * other refusal changes what is sent, and a button that repeats a
  * deterministic failure is worse than no button.
  */
+/**
+ * Why an explicit user request to send the queue head cannot go now, or
+ * undefined when it can. An explicit action is never a silent no-op: the
+ * reason is said in the chat (#2309 review).
+ */
+function userSendBlockedReason(
+  chat: ReturnType<typeof activeChatsStore.getSnapshot>[string] | undefined,
+): string | undefined {
+  if (!chat?.queuedMessages?.length) return undefined;
+  if (chat.queueDrainSettling) return 'A queued message is already being sent.';
+  // Any send of this chat's that the server has not started yet: a queued
+  // follow-up the drain dispatched, or a message sent from the composer.
+  if (chat.sendAwaitingTurnStart)
+    return 'A message is already on its way; the queue waits until it has started.';
+  if (chat.isEditingQueue)
+    return 'Finish editing the queued message first, then send it.';
+  if (!conversationCanMutate(chat))
+    return 'This conversation cannot take a new message right now.';
+  return undefined;
+}
+
+/**
+ * #2309: send the queue head a turn end left held while the chat's binding
+ * was being re-proved (see the hold in `drainQueuedMessageOnTurnCompleted`).
+ * Called by the revalidation once it has settled; a no-op when nothing is
+ * held or the chat is still not writable.
+ */
+export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
+  const chat = activeChatsStore.getSnapshot()[chatKey];
+  if (!chat?.queueDrainHeldForOpen || !conversationCanMutate(chat)) return;
+  activeChatsStore.updateChat(chatKey, { queueDrainHeldForOpen: undefined });
+  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+}
+
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
   reviewed = false,
+  /**
+   * #2309: the user asked for this send (Retry, Send now). It is not held
+   * back by the server showing a turn open: the user is looking at that
+   * record (a stuck turn, a Stop elsewhere) and chose to send anyway. Any
+   * other reason it cannot send is said in the chat, never swallowed.
+   */
+  userInitiated = false,
 ) {
   if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
+  if (userInitiated) {
+    const blocked = userSendBlockedReason(chat);
+    if (blocked) {
+      activeChatsStore.addEphemeralMessage(threadId, {
+        role: 'system',
+        content: blocked,
+      });
+      return;
+    }
+  }
+  // #2309: a turn end that arrives while the chat's binding is being
+  // re-proved (a snapshot adopted the running child and set
+  // `conversationOpenPending`) cannot send yet, and nothing else would fire
+  // for that turn end. Hold it, so the revalidation that makes the chat
+  // writable again sends it (`resumeHeldQueueDrain`), exactly once.
   if (
+    !userInitiated &&
+    chat?.queuedMessages?.length &&
+    !chat.queueDrainSettling &&
+    serverTurnLive(chat) !== true &&
+    !conversationCanMutate(chat)
+  ) {
+    if (!chat.queueDrainHeldForOpen)
+      activeChatsStore.updateChat(threadId, { queueDrainHeldForOpen: true });
+    return;
+  }
+  if (
+    // A popped head that has not been dispatched yet: a second request in
+    // that window must not pop the next message too.
+    chat?.queueDrainSettling ||
+    // #2309: an AUTOMATIC drain does not send while the server shows a turn
+    // live (a turn started elsewhere, or this chat's own send awaiting its
+    // turn); a later turn end drains it.
+    (!userInitiated && serverTurnLive(chat) === true) ||
     !chat?.queuedMessages?.length ||
     chat.isEditingQueue ||
     (chat.queuedMessageFailure?.reviewReason === 'execution-binding-changed' &&
@@ -125,9 +201,23 @@ export function drainQueuedMessageOnTurnCompleted(
   activeChatsStore.updateChat(threadId, {
     queuedMessages: remainingQueue,
     queuedMessageFailure: undefined,
+    queueDrainSettling: true,
+    queueDrainHeldForOpen: undefined,
   });
 
   setTimeout(async () => {
+    try {
+      await dispatchDrainedHead();
+    } finally {
+      if (activeChatsStore.getSnapshot()[threadId]?.queueDrainSettling) {
+        activeChatsStore.updateChat(threadId, {
+          queueDrainSettling: undefined,
+        });
+      }
+    }
+  }, 100);
+
+  async function dispatchDrainedHead() {
     let dispatchForeground: typeof import('../../lib/foregroundMessageDispatch').dispatchForeground;
     try {
       ({ dispatchForeground } = await import(
@@ -184,7 +274,14 @@ export function drainQueuedMessageOnTurnCompleted(
     );
     activeChatsStore.updateChat(threadId, {
       status: 'sending',
+      // #2309: this drain's dispatch is the optimistic window until the
+      // server reports its turn open.
+      sendAwaitingTurnStart: true,
       messages,
+      // The dispatch in flight, as the composer path marks it: its
+      // `turn.started` clears it. An approval pick made before then knows
+      // that turn's report predates it (#2334, `settleApprovalPick`).
+      pendingClientTurnId: clientId,
     });
 
     if (!current.agentSlug) {
@@ -205,6 +302,12 @@ export function drainQueuedMessageOnTurnCompleted(
       projectSlug: continueUnbound ? undefined : current.projectSlug,
       model: current.model,
       providerOptions: current.providerOptions,
+      // #2334: a pending approval pick rides beside the options on every
+      // send path; a follow-up drained without it ran under the posture the
+      // engine last applied. A confirmed Ask/Auto is reasserted too; a
+      // confirmed full access never is (`approvalModeToSend`). No `approvalModeFallback`: a queued
+      // message never starts the session (see approvalModeForDispatch).
+      approvalModeOverride: approvalModeToSend(current),
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model
@@ -266,6 +369,9 @@ export function drainQueuedMessageOnTurnCompleted(
         // drops return the chat to idle. Transient failures keep 'error':
         // their send is still pending in the queue and needs attention.
         activeChatsStore.updateChat(threadId, {
+          ...(failed?.pendingClientTurnId === clientId
+            ? { pendingClientTurnId: undefined }
+            : {}),
           ...(dropPermanentlyRejected
             ? { status: 'idle' as const, error: undefined }
             : { status: 'error' as const, error: reason }),
@@ -333,5 +439,5 @@ export function drainQueuedMessageOnTurnCompleted(
                 }`,
         });
       });
-  }, 100);
+  }
 }

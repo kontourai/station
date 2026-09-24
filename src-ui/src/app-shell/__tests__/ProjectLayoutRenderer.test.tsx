@@ -4,6 +4,7 @@
 
 import { createDirectAnswerBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { workspaceBrowserPaneCatalogInstance } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -1242,10 +1243,9 @@ describe('ProjectLayoutRenderer', () => {
 
     const browserPreview = createBrowserPreviewPaneInstance(
       {
-        version: '1.0',
+        version: '2.0',
         projectId: 'project-uuid',
-        requestedUrl: 'http://127.0.0.1:4173/',
-        viewportPreference: 'responsive',
+        browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
         updatedAt: '2026-08-09T00:00:00.000Z',
       },
       'project-uuid',
@@ -1256,10 +1256,9 @@ describe('ProjectLayoutRenderer', () => {
         window.localStorage,
         browserPreview.stateKey,
         {
-          version: '1.0',
+          version: '2.0',
           projectId: 'project-uuid',
-          requestedUrl: 'http://127.0.0.1:4173/',
-          viewportPreference: 'responsive',
+          browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
           updatedAt: '2026-08-09T00:00:00.000Z',
         },
       ),
@@ -1336,6 +1335,90 @@ describe('ProjectLayoutRenderer', () => {
           descriptor: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
         },
         {
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'health-unavailable', source: 'health' },
+          },
+          descriptor: WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+        },
+        {
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingTerminalPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspacePlanPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_PLAN_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceReadinessPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_READINESS_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceTrustPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_TRUST_PANE_DESCRIPTOR,
+        },
+      ],
+    });
+    codingChatPaneMock.mockReset();
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="workspace" />);
+
+    expect(codingChatPaneMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        browserPreviewAvailability: {
+          state: 'temporarily-unavailable',
+          reason: { code: 'health-unavailable', source: 'health' },
+        },
+      }),
+    );
+  });
+
+  test('finds the Browser pane entry when the server issued its per-Project occurrence (the real catalog shape, #90)', () => {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'workspace',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    catalogMock.mockReturnValue({
+      projectId: 'project-uuid',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: { state: 'available' },
+          descriptor: coding.descriptor,
+        },
+        {
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR,
+        },
+        {
+          // What GET /api/projects/:slug/panes returns since wave 2: the
+          // Browser descriptor WITH its catalogue occurrence.
+          instance: workspaceBrowserPaneCatalogInstance('project-uuid')!,
           availability: {
             state: 'temporarily-unavailable',
             reason: { code: 'health-unavailable', source: 'health' },
@@ -1707,10 +1790,9 @@ describe('ProjectLayoutRenderer', () => {
     )!;
     const browserPreview = createBrowserPreviewPaneInstance(
       {
-        version: '1.0',
+        version: '2.0',
         projectId: 'project-uuid',
-        requestedUrl: 'http://127.0.0.1:4173/',
-        viewportPreference: 'responsive',
+        browserSessionId: 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77',
         updatedAt: '2026-08-09T00:00:00.000Z',
       },
       'project-uuid',

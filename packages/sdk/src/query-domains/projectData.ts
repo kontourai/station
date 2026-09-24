@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   _getApiBase,
   bulkDeleteKnowledgeDocs,
@@ -146,6 +151,46 @@ export function useKnowledgeSearchQuery(
   });
 }
 
+/**
+ * Every knowledge-document write refreshes the same listings: the document
+ * list, the namespace tree and filtered listings. A write that refreshed only
+ * the list left a created note out of the tree and a deleted one in it
+ * (#2343). What a write does to a document's cached BODY differs by write,
+ * and each mutation says so itself.
+ */
+function refreshKnowledgeListings(
+  queryClient: QueryClient,
+  projectSlug: string,
+): void {
+  for (const view of ['docs', 'tree', 'filtered']) {
+    queryClient.invalidateQueries({
+      queryKey: ['knowledge', view, projectSlug],
+    });
+  }
+}
+
+function knowledgeDocContentKey(projectSlug: string, docId: string) {
+  return ['knowledge', 'doc-content', projectSlug, docId];
+}
+
+/**
+ * A deleted document's body is gone. Drop its cache entry rather than
+ * invalidating it, so no later reader is served the deleted text. A reader
+ * still mounted on that document will fetch once more (and get a 404) on its
+ * next render; callers stop reading a document they delete.
+ */
+function forgetKnowledgeDocBodies(
+  queryClient: QueryClient,
+  projectSlug: string,
+  docIds: readonly string[],
+): void {
+  for (const docId of docIds) {
+    queryClient.removeQueries({
+      queryKey: knowledgeDocContentKey(projectSlug, docId),
+    });
+  }
+}
+
 export function useKnowledgeSaveMutation(
   projectSlug: string,
   namespace?: string,
@@ -161,11 +206,7 @@ export function useKnowledgeSaveMutation(
       content: string;
       metadata?: Record<string, any>;
     }) => uploadKnowledge(projectSlug, filename, content, namespace, metadata),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-    },
+    onSuccess: () => refreshKnowledgeListings(queryClient, projectSlug),
   });
 }
 
@@ -177,10 +218,9 @@ export function useKnowledgeDeleteMutation(
   return useMutation({
     mutationFn: async (docId: string) =>
       deleteKnowledgeDoc(projectSlug, docId, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
+    onSuccess: (_data, docId) => {
+      forgetKnowledgeDocBodies(queryClient, projectSlug, [docId]);
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }
@@ -193,10 +233,9 @@ export function useKnowledgeBulkDeleteMutation(
   return useMutation({
     mutationFn: async (ids: string[]) =>
       bulkDeleteKnowledgeDocs(projectSlug, ids, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
+    onSuccess: (_data, ids) => {
+      forgetKnowledgeDocBodies(queryClient, projectSlug, ids);
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }
@@ -288,16 +327,15 @@ export function useKnowledgeUpdateMutation(
       metadata?: Record<string, any>;
     }) =>
       updateKnowledgeDoc(projectSlug, docId, { content, metadata }, namespace),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'docs', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'tree', projectSlug],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['knowledge', 'filtered', projectSlug],
-      });
+    onSuccess: (_data, { docId, content }) => {
+      const key = knowledgeDocContentKey(projectSlug, docId);
+      // Seed the body with what was just written before refetching it. A
+      // reader that mounts while the refetch is in flight otherwise gets the
+      // pre-edit body from the cache, and an editor that loads it saves the
+      // next edit over a stale base.
+      if (content !== undefined) queryClient.setQueryData(key, content);
+      queryClient.invalidateQueries({ queryKey: key });
+      refreshKnowledgeListings(queryClient, projectSlug);
     },
   });
 }

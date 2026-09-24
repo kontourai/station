@@ -531,6 +531,19 @@ export function buildMuseExecArgs(input: {
     args.push('--workspace', input.cwd);
   }
   for (const path of input.imagePaths ?? []) args.push('--image', path);
+  // Headless `exec` has no channel to answer a tool approval: no approval
+  // event reaches stdout and nothing can decide one. Under muse's default
+  // (`on-request` plus an LLM judge), any call the judge escalates — including
+  // one made by a background `workflow` subagent — waits forever, and the turn
+  // ends only when Station's idle timeout kills it. `never` stops nothing for
+  // approval and leaves muse's sandbox as the containment. Live-verified
+  // against Muse Code 1.3.0-R3401.1: the same workflow-subagent `bash` call
+  // hangs under `untrusted` or the default mode with the judge off, and
+  // completes under `never` (policy_decision `allow:policy`);
+  // `--permission-profile` and settings.json's `default_profile` do not lift
+  // exec's gate at all. Surfacing approvals to Station instead needs
+  // `muse serve` (#2452).
+  args.push('--approval-mode', 'never');
   args.push('--', input.prompt);
   return args;
 }

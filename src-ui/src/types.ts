@@ -302,6 +302,10 @@ export interface ChatSession {
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
+  /** See ChatUIState.pendingApprovalMode (active-chats-state.ts, #2334). */
+  pendingApprovalMode?: ApprovalMode;
+  /** See ChatUIState.approvalModeOverride (active-chats-state.ts, #2334). */
+  approvalModeOverride?: ApprovalMode;
   /** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
   stopPending?: boolean;
   model?: string;
@@ -322,6 +326,14 @@ export interface ChatSession {
   openTurnId?: string;
   /** See ChatUIState.openTurnShellSuperseded (active-chats-state.ts). */
   openTurnShellSuperseded?: boolean;
+  /** #2309: see ChatUIState.conversationActivity (active-chats-state.ts). */
+  conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
+  /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
+  sendAwaitingTurnStart?: boolean;
+  /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
+  queueDrainSettling?: boolean;
+  /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
+  stopSettledTurnId?: string;
   /** See ChatUIState.openTurnStartedAt (active-chats-state.ts). */
   openTurnStartedAt?: number;
   /** Incremented only when bounded persisted history must reconcile. */

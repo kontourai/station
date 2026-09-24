@@ -12,6 +12,8 @@
   "retired-surfaces": "candidate",
   "migration-tombstones": "candidate",
   "connected-agents": "enforced",
+  "session-transition-contract": "scoped",
+  "bounded-work-contract": "scoped",
   "static-verification": "enforced",
   "sdk-builds": "enforced",
   "app-builds": "enforced",

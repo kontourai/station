@@ -787,6 +787,12 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  /**
+   * #90 D14: `false` when the agent's operator switched the built-in browser
+   * tools (`station-browser`) off. Absent means the engine's default: an
+   * adapter with bound in-process delivery (Claude) serves them.
+   */
+  browserTools?: boolean;
   // Later waves (additive): model preferences.
 }
 

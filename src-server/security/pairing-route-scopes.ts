@@ -519,6 +519,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #90 browser tools' REST side: Station's own station-control tool code
+  // is its only caller (the routes answer 404 to anything that is not the
+  // internal principal). Declared so no credential reaches it by default;
+  // any paired credential that did would need the terminal authority, as
+  // for driving the Browser pane itself.
+  {
+    id: '/api/browser-agent:terminal-operate',
+    method: '*',
+    prefix: '/api/browser-agent',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.

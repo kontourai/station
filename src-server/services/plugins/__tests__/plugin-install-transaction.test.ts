@@ -2516,16 +2516,32 @@ describe('installPluginFromSource', () => {
     const buildGate = new Promise<void>((resolve) => {
       releaseBuild = resolve;
     });
+    // Wait for the install to REACH the mutation, not for a fixed delay: the
+    // install stages and copies the source before building, and on a loaded
+    // runner that took longer than the 50ms this test used to sleep, so the
+    // first assertion saw an empty order.
+    let buildEntered: () => void = () => {};
+    const building = new Promise<void>((resolve) => {
+      buildEntered = resolve;
+    });
     const installDeps = {
       ...deps(root),
       buildPlugin: vi.fn(async () => {
         order.push('install-mutating');
+        buildEntered();
         await buildGate;
       }),
     };
 
     const install = installPluginFromSource(source, [], installDeps);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // An install that fails or finishes before building must fail here, not
+    // hang until the test timeout.
+    await Promise.race([
+      building,
+      install.then(() => {
+        throw new Error('install finished without reaching buildPlugin');
+      }),
+    ]);
     expect(order).toEqual(['install-mutating']);
 
     // A consent decision for the same plugin asks for the lock mid-install.

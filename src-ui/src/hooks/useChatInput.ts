@@ -33,7 +33,7 @@ import {
   type SavedAnswerQuote,
 } from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
-import { approvalModeLabel } from '../utils/approvalMode';
+import { approvalModeLabel, approvalPickUpdate } from '../utils/approvalMode';
 import {
   type BindingStatus,
   type EffectiveModelSource,
@@ -45,6 +45,7 @@ import {
 } from '../utils/modelCapabilities';
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { clearLastChosenModel } from './lastChosenModel';
+import { latestStreamPosition } from './orchestration/streamPosition';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
 import { useAutocompleteState } from './useAutocompleteState';
@@ -71,6 +72,8 @@ type ComposerChatSlice = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
+  | 'pendingApprovalMode'
+  | 'approvalModeOverride'
   | 'agentConnectionId'
   | 'currentModeId'
   | 'providerOptions'
@@ -96,6 +99,8 @@ function selectComposerSlice(
     requestedModel: state.requestedModel,
     requestedModelSource: state.requestedModelSource,
     requestedProviderOptions: state.requestedProviderOptions,
+    pendingApprovalMode: state.pendingApprovalMode,
+    approvalModeOverride: state.approvalModeOverride,
     agentConnectionId: state.agentConnectionId,
     currentModeId: state.currentModeId,
     providerOptions: state.providerOptions,
@@ -856,31 +861,25 @@ export function useChatInput({
   const handleApprovalModeChange = useCallback(
     (mode: ApprovalMode) => {
       if (!sessionId) return;
-      const previousMode =
-        activeChatState?.requestedProviderOptions?.approvalMode ??
-        activeChatState?.providerOptions?.approvalMode;
-      if (previousMode === mode) return;
-      updateChat(sessionId, {
-        requestedProviderOptions: {
-          ...(activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {}),
-          approvalMode: mode,
-        },
+      // The pick lives in its own field, never in the model-options request
+      // bag (#2334): a report acknowledging the model clears that bag, and
+      // every reader of it treats it as the whole send. It is stamped with
+      // where this client stood, so a later decision elsewhere can retire it
+      // (see `settleApprovalPick`). Read from the store, not the render
+      // slice: the in-flight dispatch and the receipt are not in the slice.
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const update = approvalPickUpdate(current, mode, {
+        pickedAt: latestStreamPosition(apiBase),
+        behindTurn: current?.pendingClientTurnId,
       });
+      if (!update) return;
+      updateChat(sessionId, update);
       addEphemeralMessage(sessionId, {
         role: 'system',
         content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
       });
     },
-    [
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      activeChatState?.requestedProviderOptions?.approvalMode,
-      sessionId,
-      updateChat,
-      addEphemeralMessage,
-    ],
+    [apiBase, sessionId, updateChat, addEphemeralMessage],
   );
 
   const handleAcpSessionModeChange = useCallback(

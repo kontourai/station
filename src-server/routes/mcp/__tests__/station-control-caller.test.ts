@@ -833,6 +833,95 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
     expect(revoked.rest).toBeNull();
   });
 
+  test('#90 D14: the station-browser server shares the session credential with station-control; revoking the session removes both', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    const options = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+      createProbeServer,
+    );
+    const control = sdkSideTransport();
+    const browser = sdkSideTransport();
+    await options
+      .createInProcessStationControl('session-a')
+      .connect(control.transport);
+    // Created second, as the Claude adapter does: it must not replace (and
+    // so revoke) the credential station-control already holds.
+    await options
+      .createInProcessStationBrowser('session-a')
+      .connect(browser.transport);
+    const bound = { ...SESSION_A, assurance: 'bound' };
+    for (const side of [control, browser]) {
+      await side.request(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'claude-code', version: '2' },
+      });
+      const call = await side.request(2, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      const observed = JSON.parse(call.result.content[0].text);
+      expect(observed.inProcess).toEqual(bound);
+      expect(observed.rest).toEqual(bound);
+    }
+    options.revokeStationControlCallerToken('session-a');
+    for (const side of [control, browser]) {
+      const after = await side.request(3, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(after.result.content[0].text).inProcess).toBeNull();
+    }
+    // A later session start mints afresh: nothing revoked is reused.
+    const again = sdkSideTransport();
+    await options
+      .createInProcessStationBrowser('session-a')
+      .connect(again.transport);
+    await again.request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    const renewed = await again.request(2, 'tools/call', {
+      name: 'probe_caller',
+      arguments: {},
+    });
+    expect(JSON.parse(renewed.result.content[0].text).inProcess).toEqual(bound);
+    options.revokeStationControlCallerToken('session-a');
+  });
+
+  test('#90 D14: the real station-browser server serves the browser tools and nothing else', async () => {
+    const options = claudeInProcessStationControlOptions(() => resolveRecord);
+    const side = sdkSideTransport();
+    await options
+      .createInProcessStationBrowser('session-a')
+      .connect(side.transport);
+    await side.request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    const listed = await side.request(2, 'tools/list', {});
+    const names = (listed.result.tools as Array<{ name: string }>)
+      .map((tool) => tool.name)
+      .sort();
+    expect(names).toEqual([
+      'browser_click',
+      'browser_evaluate',
+      'browser_navigate',
+      'browser_open',
+      'browser_press',
+      'browser_resize',
+      'browser_scroll',
+      'browser_snapshot',
+      'browser_status',
+      'browser_type',
+      'browser_wait_for',
+    ]);
+    options.revokeStationControlCallerToken('session-a');
+  });
+
   test('two in-process sessions with interleaved tool calls each see only their own caller, in-process and over REST', async () => {
     process.env.STATION_API_BASE = baseUrl;
     const options = claudeInProcessStationControlOptions(

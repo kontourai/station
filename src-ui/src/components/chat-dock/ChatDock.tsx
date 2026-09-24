@@ -16,6 +16,7 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -50,6 +51,7 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
@@ -523,6 +525,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFetching: orchestrationSessionsFetching,
     isError: orchestrationSessionsFailed,
     refetch: refetchOrchestrationSessions,
+    isFetchedAfterMount: orchestrationSessionsFetchedAfterMount,
   } = useOrchestrationSessionsQuery();
   // The inbox rows' hover cards resolve git facts against the row's local
   // session working directory (only local sessions have one worth answering:
@@ -540,6 +543,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
+  useConversationActivityFeed({
+    sessions: orchestrationSessions,
+    sessionsFetchedAfterMount: orchestrationSessionsFetchedAfterMount,
+    conversations: inventory.data,
+    conversationsFetchedAfterMount: inventory.isFetchedAfterMount,
+  });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
     inventory.isPending ||
@@ -1900,9 +1909,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     focusSession: focusSessionInPane,
   });
 
-  useEffect(() => {
-    ensureOrchestrationEventStream(apiBase);
-  }, [apiBase]);
+  // #2307: this pane renders inside `AuthorityQueryProvider`'s protected
+  // subtree, so this is the ACTIVE authority's client, and an authority change
+  // remounts the subtree with a fresh one. Registering it here (and releasing
+  // it on unmount) is what lets the stream's session read-model refresh and
+  // reconnect refetch write into the right cache — see
+  // `ensureOrchestrationEventStream`'s `streamQueryClients`.
+  const queryClient = useQueryClient();
+  useEffect(
+    () => ensureOrchestrationEventStream(apiBase, queryClient),
+    [apiBase, queryClient],
+  );
 
   // station#1048: whether the app toolbar is genuinely gone (not merely
   // collapsed/half-open) — the one state `ChatDockMobileHeader`'s drawer

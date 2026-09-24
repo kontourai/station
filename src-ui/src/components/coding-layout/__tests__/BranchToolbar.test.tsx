@@ -73,7 +73,7 @@ describe('BranchToolbar (#771)', () => {
     reposData = undefined;
     reposError = new Error('repo discovery failed');
 
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
 
     expect(screen.getByText(/Couldn.t discover git repositories/)).toBeTruthy();
     expect(screen.queryByText('No git repository in this folder')).toBeNull();
@@ -83,7 +83,7 @@ describe('BranchToolbar (#771)', () => {
   });
 
   test('still shows "No git repository" when discovery genuinely found none', () => {
-    render(<BranchToolbar workingDir="/repo" />);
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     expect(screen.getByText('No git repository in this folder')).toBeTruthy();
   });
 
@@ -96,7 +96,13 @@ describe('BranchToolbar (#771)', () => {
     branchesData = undefined as unknown as unknown[];
     branchesError = new Error('branches unavailable');
 
-    render(<BranchToolbar workingDir="/repo" activeFile="/repo/a.ts" />);
+    render(
+      <BranchToolbar
+        projectSlug="acme"
+        workingDir="/repo"
+        activeFile="/repo/a.ts"
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /No branch|main/ }));
 
