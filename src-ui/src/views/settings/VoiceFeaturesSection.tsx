@@ -5,6 +5,7 @@ import { useVoiceProviderContext } from '../../contexts/VoiceProviderContext';
 import type { BooleanFeatureSetting } from '../../hooks/useFeatureSettings';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { AgentActivitySetting } from './AgentActivitySetting';
 import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { NotificationSoundSettings } from './NotificationSoundSettings';
 import { SettingsSection } from './SettingsSection';
@@ -237,6 +238,9 @@ export function NotificationsSection({ apiBase }: { apiBase: string }) {
         {featureSettings.pushNotificationsEnabled && (
           <NotificationSubscribeButton apiBase={apiBase} />
         )}
+        {/* Native (FCM) delivery to the Android app. Independent of the browser
+            push switch above, which a WebView cannot use. */}
+        <AgentActivitySetting />
         <NotificationSoundSettings />
         <button
           type="button"

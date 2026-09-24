@@ -33,6 +33,20 @@ function formatElapsed(ms: number): string {
     : `${minutes}:${pad(seconds)}`;
 }
 
+/**
+ * #2459: a card's elapsed time, or undefined when no start was reported —
+ * a running card counts to `now`, a settled one to its end.
+ */
+export function backgroundTaskElapsedMs(
+  entry: BackgroundTaskEntry,
+  now: number,
+): number | undefined {
+  if (entry.startedAt === undefined) return undefined;
+  return entry.state === 'running'
+    ? now - entry.startedAt
+    : (entry.endedAt ?? entry.startedAt) - entry.startedAt;
+}
+
 const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
   tool: 'Tool',
   agent: 'Agent',
@@ -44,6 +58,8 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   // station#1558: not "Stopped" and not "Failed" — the session ended before
   // any result arrived, and whether the tool ran is unknown.
   unresolved: 'No result',
+  // #2459: never "Stopped" — nothing confirmed the stop took effect.
+  'stopped-unconfirmed': 'Stop requested — not confirmed',
   failed: 'Failed',
 };
 
@@ -58,7 +74,8 @@ export function TaskRow({
   onOpenTranscript,
 }: {
   entry: BackgroundTaskEntry;
-  elapsedMs: number;
+  /** Absent when no start was reported: the meta line then shows no time. */
+  elapsedMs: number | undefined;
   outcomeChip?: BackgroundTaskState;
   onOpenTranscript: (threadId: string) => void;
 }) {
@@ -134,7 +151,8 @@ export function TaskRow({
             {transcriptTitle ?? entry.title}
           </strong>
           <span className="background-tasks-sheet__meta">
-            {KIND_LABEL[entry.kind]} · {formatElapsed(elapsedMs)}
+            {KIND_LABEL[entry.kind]}
+            {elapsedMs !== undefined && ` · ${formatElapsed(elapsedMs)}`}
           </span>
         </span>
         {outcomeChip && (
