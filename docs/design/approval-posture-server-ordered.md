@@ -326,8 +326,9 @@ A session spawned before this change has nothing recorded.
     pick without one is refused with 400 rather than recorded
     unconditionally, so a client bug cannot skip compare-and-set silently.
     The SDK's `ApprovalPickCarry` makes the pick and its basis one value, so
-    a caller cannot send one without the other; the foreground executor also
-    refuses an in-process pick with no basis.
+    a caller cannot send one without the other. The web client's send path
+    (`dispatchForeground`) and the foreground executor also refuse a pick
+    with no basis.
   - The check and the append are one synchronous step.
 - **What this closes.**
   - **G-off.** An offline full access that never saw the phone's later Ask is
