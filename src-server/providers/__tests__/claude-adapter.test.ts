@@ -1499,6 +1499,36 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('M-1: a queued send whose Stop could not withdraw it, when the engine fails before starting it, still reaches the transcript and ends', async () => {
+      const threadId = 'queued-then-engine-fails';
+      const cancelAsyncMessage = vi.fn().mockResolvedValue(false);
+      const { controlled, adapter, events } = await lifecycleSession(threadId, {
+        cancelAsyncMessage,
+      });
+      const from = events.length;
+      const u = await adapter.sendTurn({ threadId, input: 'second' });
+      await adapter.interruptTurn(threadId, u.turnId);
+      controlled.push(
+        result(threadId, [], {
+          subtype: 'error_during_execution',
+          is_error: true,
+          result: 'API Error: overloaded',
+        }),
+      );
+      await flush();
+      expect(methods(events, from)).toEqual([
+        `turn.started:${u.turnId}`,
+        `turn.aborted:${u.turnId}`,
+      ]);
+      expect(
+        events.find(
+          (event) =>
+            event.method === 'turn.started' && event.turnId === u.turnId,
+        ),
+      ).toMatchObject({ prompt: 'second' });
+      await adapter.stopSession(threadId);
+    });
+
     test('M1: steering a queued send is refused definitively', async () => {
       const threadId = 'steer-queued';
       const { adapter } = await lifecycleSession(threadId);

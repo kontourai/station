@@ -648,13 +648,46 @@ export function observeClaudeEmptyResult(context: ClaudeSdkTurnContext): void {
 }
 
 /**
+ * #2324 delta review M-1: sends the engine never started when it stopped
+ * running anything. Each held start is published — it carries the user's
+ * message, which must reach the durable transcript — and then its
+ * `turn.aborted`, so the send has a terminal and its boundary row retires. A
+ * send whose start was already published (or never held) gets the abort
+ * alone.
+ */
+const ENGINE_ENDED_BEFORE_START = 'engine-ended-before-start';
+
+function endQueuedClaudeTurns(context: ClaudeSdkTurnContext): void {
+  const ledger = claudeSdkTurns(context.record);
+  const queued = ledger.queued;
+  ledger.queued = [];
+  for (const turn of queued) {
+    if (turn.startEvent && !turn.startPublished) {
+      turn.startPublished = true;
+      context.publish({ ...turn.startEvent, createdAt: context.createdAt });
+    }
+    context.publish({
+      eventId: crypto.randomUUID(),
+      provider: context.provider,
+      threadId: context.record.session.threadId,
+      createdAt: context.createdAt,
+      turnId: turn.turnId,
+      method: 'turn.aborted',
+      reason: ENGINE_ENDED_BEFORE_START,
+    });
+  }
+}
+
+/**
  * The SDK iterator ended: a turn the engine opened on its own will never
- * report its end, so it is closed here. Dispatched turns are left as they
- * are — their terminal comes from the failure that ended the iterator or
+ * report its end, so it is closed here, and a send still queued is ended
+ * (see {@link endQueuedClaudeTurns}). The running dispatched turn is left as
+ * it is — its terminal comes from the failure that ended the iterator or
  * from `session.exited`, as before this ledger existed.
  */
 export function endClaudeProviderTurn(context: ClaudeSdkTurnContext): void {
   closeProviderTurnWithoutResult(context, 'session-ended');
+  endQueuedClaudeTurns(context);
   claudeSdkTurns(context.record).providerTurnPending = false;
 }
 
@@ -664,8 +697,8 @@ export function clearClaudeSdkTurns(
   reason: ProviderTurnCloseReason = 'session-ended',
 ): void {
   closeProviderTurnWithoutResult(context, reason);
+  endQueuedClaudeTurns(context);
   const ledger = claudeSdkTurns(context.record);
-  ledger.queued = [];
   ledger.steers.clear();
   ledger.startedAwaitingInit = false;
   ledger.providerTurnPending = false;
