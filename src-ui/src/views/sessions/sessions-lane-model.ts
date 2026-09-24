@@ -1,5 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { AgentSummary } from '../../types';
+import { splitDraftsByAge } from '../home/draft-lane';
 import {
   partitionHomeWorkItems,
   terminalSinceFromRecency,
@@ -58,6 +59,12 @@ export interface SessionLane {
   /** Rendered heading, count included — an empty lane is never emitted. */
   heading: string;
   sessions: OrchestrationSessionSummary[];
+  /**
+   * #2312, the Drafts lane only: the members untouched for a day, which the
+   * list folds under "N older drafts". Always the lane's trailing members
+   * (the lane is newest-first), so the fold is contiguous.
+   */
+  olderDraftThreadIds?: ReadonlySet<string>;
 }
 
 /**
@@ -145,6 +152,10 @@ export function partitionSessionLanes({
     earlier: resolve([...partition.settled, ...partition.snoozed]),
   };
 
+  const olderDraftThreadIds = new Set(
+    splitDraftsByAge(partition.drafts ?? [], now).older.map((item) => item.id),
+  );
+
   return SESSION_LANE_ORDER.filter(
     (lane) => membership[lane].length > 0,
   ).map<SessionLane>((lane) => ({
@@ -152,6 +163,9 @@ export function partitionSessionLanes({
     label: SESSION_LANE_LABELS[lane],
     heading: `${SESSION_LANE_LABELS[lane]} · ${membership[lane].length}`,
     sessions: membership[lane],
+    ...(lane === 'drafts' && olderDraftThreadIds.size > 0
+      ? { olderDraftThreadIds }
+      : {}),
   }));
 }
 

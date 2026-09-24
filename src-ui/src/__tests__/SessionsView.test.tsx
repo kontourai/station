@@ -37,6 +37,8 @@ const delegateTask = vi.fn();
 const resetDelegation = vi.fn();
 const refetchSessions = vi.fn().mockResolvedValue(undefined);
 const adoptSession = vi.fn();
+// #2312: the server command a Drafts row's discard dispatches.
+const discardDraftCommand = vi.fn();
 const getStarterWork = vi.fn();
 const launchContinueSessionStarter = vi.fn();
 const evaluateGate = vi.fn().mockResolvedValue(undefined);
@@ -235,6 +237,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   launchContinueSessionStarter: (input: unknown) =>
     launchContinueSessionStarter(input),
   adoptOrchestrationSession: (input: unknown) => adoptSession(input),
+  dispatchOrchestrationCommandWithReceipt: (command: unknown) =>
+    discardDraftCommand(command),
   useAttentionQuery: () => ({
     data: attentionQueryState.isLoading
       ? undefined
@@ -345,6 +349,7 @@ describe('SessionsView', () => {
     refetchSessions.mockReset();
     refetchSessions.mockResolvedValue(undefined);
     adoptSession.mockReset();
+    discardDraftCommand.mockReset();
     getStarterWork.mockReset();
     getStarterWork.mockResolvedValue({ state: 'unbound' });
     launchContinueSessionStarter.mockReset();
@@ -4006,6 +4011,84 @@ describe('SessionsView', () => {
    * local Activity selection path plus the one-shot evidence intent the
    * session detail honors exactly once.
    */
+  describe('Drafts lane (#2312)', () => {
+    const HOUR = 60 * 60 * 1000;
+    function draftSession(
+      threadId: string,
+      displayTitle: string,
+      ageMs: number,
+    ): Record<string, unknown> {
+      const at = new Date(Date.now() - ageMs).toISOString();
+      return {
+        ...sessions[0],
+        delegation: undefined,
+        threadId,
+        displayTitle,
+        lifecycleState: 'queued',
+        hasActiveTurn: false,
+        draft: true,
+        createdAt: at,
+        updatedAt: at,
+        lastEventAt: at,
+      };
+    }
+
+    test('discards a Draft through the server command; only Drafts offer it', async () => {
+      discardDraftCommand.mockResolvedValue({
+        receipt: { commandId: 'discard-1', status: 'accepted' },
+        result: null,
+      });
+      sessions = [
+        {
+          ...draftSession('worked', 'Worked session', HOUR),
+          draft: false,
+          lifecycleState: 'running',
+        },
+        draftSession('fresh-draft', 'Fresh draft', HOUR),
+      ];
+      renderView();
+
+      expect(
+        screen.queryByRole('button', { name: 'Discard draft Worked session' }),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Discard draft Fresh draft' }),
+      );
+
+      await waitFor(() =>
+        expect(discardDraftCommand).toHaveBeenCalledWith({
+          type: 'discardDraft',
+          threadId: 'fresh-draft',
+        }),
+      );
+      expect(discardDraftCommand).toHaveBeenCalledTimes(1);
+    });
+
+    test('folds Drafts untouched for a day under a collapsed "N older drafts" group', () => {
+      sessions = [
+        draftSession('fresh-draft', 'Fresh draft', 23 * HOUR),
+        draftSession('stale-draft', 'Stale draft', 25 * HOUR),
+        draftSession('staler-draft', 'Staler draft', 72 * HOUR),
+      ];
+      renderView();
+
+      expect(screen.getByText('Fresh draft')).toBeTruthy();
+      expect(screen.queryByText('Stale draft')).toBeNull();
+      expect(screen.queryByText('Staler draft')).toBeNull();
+      const toggle = screen.getByRole('button', { name: /2 older drafts$/ });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+      fireEvent.click(toggle);
+
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(screen.getByText('Stale draft')).toBeTruthy();
+      expect(screen.getByText('Staler draft')).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Discard draft Staler draft' }),
+      ).toBeTruthy();
+    });
+  });
+
   describe('evidence affordance (station#4052 slice 3)', () => {
     function flatSession(
       overrides: Record<string, unknown>,

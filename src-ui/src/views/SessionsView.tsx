@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
+import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { LiveCollaboratorsSection } from '../components/live-activity/LiveCollaboratorsSection';
@@ -41,6 +42,7 @@ import {
   sessionRecency,
   sessionTitle,
 } from '../utils/sessionDisplay';
+import { olderDraftsLabel } from './home/draft-lane';
 import { isTerminalLifecycle } from './home/home-lane-model';
 import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
@@ -507,11 +509,26 @@ export function SessionsView({
     );
     return { presentation, members, laneId, order };
   });
+  // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
+  // until opened. They are the Drafts lane's trailing rows (the lane is
+  // newest-first), so the group is contiguous as SplitPaneLayout requires.
+  const olderDraftThreadIds =
+    lanes.find((lane) => lane.id === 'drafts')?.olderDraftThreadIds ??
+    new Set<string>();
+  const isOlderDraft = (members: readonly OrchestrationSessionSummary[]) =>
+    members.every((member) => olderDraftThreadIds.has(member.threadId));
   const laneItems = SESSION_LANE_ORDER.flatMap((laneId) => {
     const lanePresentations = presentationRows
       .filter((row) => row.laneId === laneId)
       .sort((left, right) => left.order - right.order);
     if (lanePresentations.length === 0) return [];
+    const olderDraftCount =
+      laneId === 'drafts'
+        ? lanePresentations.filter(
+            (row) =>
+              row.presentation.kind !== 'run' && isOlderDraft(row.members),
+          ).length
+        : 0;
     // The lane count means presentation members CLASSIFIED into this lane.
     // A mixed-state run RENDERS in its highest-priority member lane, but its
     // members still count where their own state belongs: one waiting child
@@ -533,18 +550,26 @@ export function SessionsView({
     const section = `${SESSION_LANE_LABELS[laneId]} · ${laneSessionCount}`;
     return lanePresentations.flatMap(({ presentation, members }) => {
       const group =
-        presentation.kind === 'run'
+        presentation.kind !== 'run' &&
+        olderDraftCount > 0 &&
+        isOlderDraft(members)
           ? {
-              id: presentation.run.id,
-              label: `Run · ${presentation.run.members.length - 1} delegated ${presentation.run.members.length === 2 ? 'session' : 'sessions'}`,
-              renderSummary: (focusMember: (memberId: string) => void) => (
-                <RunBoardSummary
-                  members={presentation.run.members}
-                  onFocusMember={focusMember}
-                />
-              ),
+              id: 'older-drafts',
+              label: olderDraftsLabel(olderDraftCount),
+              collapsedByDefault: true,
             }
-          : undefined;
+          : presentation.kind === 'run'
+            ? {
+                id: presentation.run.id,
+                label: `Run · ${presentation.run.members.length - 1} delegated ${presentation.run.members.length === 2 ? 'session' : 'sessions'}`,
+                renderSummary: (focusMember: (memberId: string) => void) => (
+                  <RunBoardSummary
+                    members={presentation.run.members}
+                    onFocusMember={focusMember}
+                  />
+                ),
+              }
+            : undefined;
       return members.map((s) => {
         const filterKey = sessionProjectFilterKey(s);
         const projectLabel = sessionProjectLabel(s);
@@ -559,12 +584,16 @@ export function SessionsView({
         const showEvidence =
           !isReadOnlyAttachedSession(s) &&
           isTerminalLifecycle(orchestrationLifecycleLabel(s));
+        // #2312: the server's Draft fold, read through the same label the
+        // Drafts lane files by. Discarding is the server command, so every
+        // device's next list read agrees.
+        const showDiscard = orchestrationLifecycleLabel(s) === 'Draft';
         return {
           id: s.threadId,
           name: sessionTitle(s),
           subtitle: (
             <>
-              {group
+              {presentation.kind === 'run'
                 ? sessionMemberStatusLine(s, agents, now)
                 : sessionMetaLine(s, now, turnCounts.get(s.threadId))}
               {s.turnOrigin?.hasOtherOrigins && (
@@ -592,8 +621,15 @@ export function SessionsView({
           // `SplitPaneLayout` renders as a sibling precisely because a button
           // may not contain interactive content (archive#3027).
           trailing:
-            showEvidence || projectLabel ? (
+            showEvidence || showDiscard || projectLabel ? (
               <>
+                {showDiscard && (
+                  <DiscardDraftButton
+                    threadId={s.threadId}
+                    title={sessionTitle(s)}
+                    className="session-discard-draft"
+                  />
+                )}
                 {showEvidence && (
                   <SessionEvidenceButton
                     sessionTitle={sessionTitle(s)}
