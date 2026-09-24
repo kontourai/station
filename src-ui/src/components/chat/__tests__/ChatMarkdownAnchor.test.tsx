@@ -42,6 +42,7 @@ vi.mock('../../../platform/openExternalLink', () => ({
   openNativeExternalLink: (url: string) => openNativeExternalLink(url),
 }));
 
+import { toastStore } from '../../../contexts/ToastContext';
 import { ChatMarkdownAnchor } from '../ChatMarkdownAnchor';
 import {
   MarkdownLinkContext,
@@ -395,5 +396,44 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       project: 'alpha',
       thread: 'thread-7',
     });
+  });
+});
+
+describe('an explicit path link follows the session’s file scope', () => {
+  test('in a worktree session with a thread it opens the session’s copy', () => {
+    const anchor = mount('src/app.ts', {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/wt/lane',
+      threadId: 'thread-7',
+    });
+    expect(click(anchor)).toBe(false);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      thread: 'thread-7',
+    });
+  });
+
+  test('when the session directory cannot be read it refuses visibly, never opening the checkout copy', () => {
+    toastStore.clear();
+    const outside = {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/elsewhere/lane',
+      threadId: null,
+    };
+    for (const value of [outside, { ...outside, dockProjectSlug: 'beta' }]) {
+      const anchor = mount('src/app.ts#L4', value);
+      expect(click(anchor)).toBe(false);
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openPathInMain).not.toHaveBeenCalled();
+    const notices = toastStore.getSnapshot();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.message).toMatch(/session's own directory/);
+    toastStore.clear();
   });
 });

@@ -1,6 +1,7 @@
 import { usePullRequestContextQuery } from '@kontourai/station-sdk';
 import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { toastStore } from '../../contexts/ToastContext';
 import {
   openFilePreviewInRegion,
   openPullRequestInRegion,
@@ -57,7 +58,9 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * through its thread id — the server reads that directory only when it can
  * vouch it is this project's, and otherwise answers nothing (no mention links,
  * a preview is refused), never the checkout's copy. Without a thread id there
- * is no way to read it, and mentions are not linked (`resolvable: false`).
+ * is no way to read it (`resolvable: false`): mentions are not linked, and an
+ * explicit path link is refused with a notice rather than opened against the
+ * checkout.
  */
 function fileScope(link: MarkdownLinkContextValue | null): {
   roots: readonly string[];
@@ -127,9 +130,29 @@ function activate(
     void openNativeExternalLink(target.url);
     return;
   }
+  // A path in a session whose directory this UI cannot read (it runs
+  // outside the checkout and there is no thread to read it through) names a
+  // file the checkout may not hold, or holds at different content. Opening
+  // the checkout's copy under that name would preview the wrong file, so the
+  // click is refused — visibly, since a click that does nothing silently
+  // reads as a broken link. Mentions never reach here: they are not linked
+  // at all in that scope.
+  const scope = fileScope(link);
+  if (!scope.resolvable) {
+    event.preventDefault();
+    toastStore.show(
+      "This file is in the session's own directory, which can't be previewed here.",
+      undefined,
+      5000,
+      undefined,
+      undefined,
+      'warning',
+    );
+    return;
+  }
   if (dockCanHold) {
     event.preventDefault();
-    const thread = fileScope(link).thread;
+    const thread = scope.thread;
     const outcome = openFilePreviewInRegion(model, {
       projectId: link.projectId,
       projectSlug: link.projectSlug,
@@ -162,7 +185,7 @@ function activate(
   // one behaviour to reason about instead of two wrong ones.
   event.preventDefault();
   // The layout route reads the checkout: a worktree file does not take it.
-  if (!fileScope(link).thread)
+  if (!scope.thread)
     link.openPathInMain?.(target.path, target.lineRange);
 }
 
