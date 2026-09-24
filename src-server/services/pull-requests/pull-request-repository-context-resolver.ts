@@ -189,6 +189,18 @@ export class PullRequestRepositoryContextResolver {
           available: false,
           reason: 'Checkout has no recorded base branch',
         };
+      const head = await upstreamHead(
+        git,
+        workingDirectory,
+        currentBranch,
+        candidates[0].remote,
+      );
+      if (head === 'unknown')
+        return {
+          available: false,
+          reason:
+            'Cannot tell which repository the current branch is pushed to; open this pull request from a terminal',
+        };
       return {
         available: true,
         context: {
@@ -199,6 +211,7 @@ export class PullRequestRepositoryContextResolver {
           workingDirectory,
           branch: currentBranch,
           baseRef,
+          ...(head ? { head } : {}),
         },
       };
     } catch {
@@ -350,6 +363,56 @@ function remoteHost(url: string): string | undefined {
   const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
   const host = match?.[1] ?? match?.[2];
   return host?.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+}
+
+/**
+ * The branch a pull request opens from (#2363 round 4). The forge needs
+ * the PUSHED branch, which Station names now that gh/glab no longer read
+ * the checkout: the upstream's branch (`branch.<name>.merge`), which a
+ * local `fx` tracking `origin/feature-x` names differently, and, when the
+ * upstream's remote is not the context's repository, the fork's owner and
+ * name from that remote's configured URL (same host required). `undefined`
+ * when there is no upstream (the local branch applies); `'unknown'` when
+ * the upstream cannot be named safely.
+ */
+async function upstreamHead(
+  git: typeof execGit,
+  cwd: string,
+  branch: string,
+  contextRemote: CheckoutRemote,
+): Promise<PullRequestRepositoryContext['head'] | 'unknown' | undefined> {
+  const read = async (key: string) => {
+    try {
+      const { stdout } = await git(['config', '--get', key], {
+        cwd,
+        timeout: PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS,
+      });
+      return stdout.trim() || undefined;
+    } catch {
+      return undefined; // unset
+    }
+  };
+  const remoteName = await read(`branch.${branch}.remote`);
+  const merge = await read(`branch.${branch}.merge`);
+  if (!remoteName || !merge) return undefined;
+  const upstreamBranch = merge.replace(/^refs\/heads\//, '');
+  if (!upstreamBranch || upstreamBranch === merge || remoteName === '.') {
+    return 'unknown';
+  }
+  if (remoteName === contextRemote.name) return { branch: upstreamBranch };
+  const forkUrl = await read(`remote.${remoteName}.url`);
+  const fork = forkUrl ? providerRepository(forkUrl) : undefined;
+  if (!forkUrl || !fork || urlHost(forkUrl) !== urlHost(contextRemote.url)) {
+    return 'unknown';
+  }
+  return { branch: upstreamBranch, owner: fork.owner, repository: fork.name };
+}
+
+/** The host of an https or scp-style remote, lowercased. */
+function urlHost(url: string): string | undefined {
+  const match =
+    /^(?:git@([^/:\s]+):|https?:\/\/(?:[^@/\s]+@)?([^/:\s]+))/i.exec(url);
+  return (match?.[1] ?? match?.[2])?.toLowerCase();
 }
 
 function providerRepository(

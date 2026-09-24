@@ -1,8 +1,4 @@
-import {
-  inspectAttentionRequest,
-  resolveOrchestrationRequest,
-  submitToolApproval,
-} from '@kontourai/station-sdk';
+import { submitToolApproval } from '@kontourai/station-sdk';
 import { useCallback } from 'react';
 import type { ToolApprovalOutcome } from '../components/chat/ToolCallDisplay';
 import {
@@ -73,28 +69,17 @@ export function useToolApproval(apiBase: string) {
       let outcome: ToolApprovalOutcome = 'answered';
 
       if (approvalThreadId) {
-        try {
-          await resolveOrchestrationRequest({
-            apiBase,
-            threadId: approvalThreadId,
-            requestId: approvalId,
-            ...(approvalEventId
-              ? { expectedRequestEventId: approvalEventId }
-              : {}),
-            decision: orchestrationDecisionForToolApproval(action),
-          });
-        } catch (error) {
-          if (
-            !approvalEventId ||
-            !(await requestAlreadyResolved(apiBase, {
-              threadId: approvalThreadId,
-              requestId: approvalId,
-              requestEventId: approvalEventId,
-            }))
-          )
-            throw error;
-          outcome = 'already-settled';
-        }
+        // Loaded on demand (entry-chunk budget); a failed load rejects, which
+        // the card reports as a decision that did not land.
+        const { answerOrchestrationRequest } = await import(
+          './orchestration/answerRequest'
+        );
+        outcome = await answerOrchestrationRequest(apiBase, {
+          threadId: approvalThreadId,
+          requestId: approvalId,
+          requestEventId: approvalEventId,
+          decision: orchestrationDecisionForToolApproval(action),
+        });
       } else {
         const result = await submitToolApproval(approvalId, approved);
         if (!result?.success) {
@@ -174,21 +159,4 @@ export function useToolApproval(apiBase: string) {
     },
     [apiBase, updateChat, dismissToast],
   );
-}
-
-/**
- * Whether a refused answer was refused because the request is already
- * answered. Any doubt (the read fails, the request changed, it is still open)
- * is `false`, so a genuine failure stays loud.
- */
-async function requestAlreadyResolved(
-  apiBase: string,
-  reference: { threadId: string; requestId: string; requestEventId: string },
-): Promise<boolean> {
-  try {
-    const inspected = await inspectAttentionRequest(apiBase, reference);
-    return inspected.state === 'resolved';
-  } catch {
-    return false;
-  }
 }

@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -28,16 +27,18 @@ import {
 } from '@kontourai/station-contracts/plugin';
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import { execGit } from '../../utils/git-exec.js';
+import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
   computePluginContentDigest,
-  PLUGIN_TREE_COPY,
+  copyPluginTree,
+  isSpecialFileCopyRefusal,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import { derivePluginConsentBasis } from './plugin-install-consent.js';
+import { readUntrustedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 import {
   readPluginManifestFileSync,
   readPluginManifestFileSyncWithFormat,
@@ -511,8 +512,13 @@ export async function fetchPluginSource(
     const cloneArgs = ['clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
+    // A local path (`/path/to/plugin.git`) is a supported plugin source, and
+    // git clones one over its `file` transport; allowed for exactly that
+    // case. The URL is the operator's (or their registry's), not a Project
+    // member's, and a clone has no repository configuration to redirect it.
+    const hardening = { allowFileProtocol: isLocalGitSource(url) };
     try {
-      await execGit(cloneArgs, { timeout: 30000 });
+      await execGit(cloneArgs, { timeout: 30000, hardening });
     } catch (error) {
       logger.debug('Failed to clone with branch, retrying without', { error });
       rmSync(tempDir, { recursive: true, force: true });
@@ -520,6 +526,7 @@ export async function fetchPluginSource(
       try {
         await execGit(['clone', '--depth', '1', url, tempDir], {
           timeout: 30000,
+          hardening,
         });
       } catch (cloneError: unknown) {
         rmSync(tempDir, { recursive: true, force: true });
@@ -535,7 +542,21 @@ export async function fetchPluginSource(
       rmSync(tempDir, { recursive: true });
       return { error: 'Not a valid plugin: plugin.json not found' };
     }
-    cpSync(source, tempDir, PLUGIN_TREE_COPY);
+    try {
+      // Async on purpose: `cpSync` aborts the process on an unreadable
+      // directory (see `copyPluginTree`).
+      await copyPluginTree(source, tempDir);
+    } catch (error: unknown) {
+      // A copy that fails part-way (an unreadable file or directory, a FIFO)
+      // must not leave the half-copied staging tree behind (#2342).
+      rmSync(tempDir, { recursive: true, force: true });
+      if (isSpecialFileCopyRefusal(error))
+        return {
+          error:
+            'Plugin source contains a special file (a FIFO, socket or device), which Station does not copy.',
+        };
+      return { error: `Failed to stage plugin source: ${errorMessage(error)}` };
+    }
   }
 
   if (!existsSync(join(tempDir, 'plugin.json'))) {
@@ -665,6 +686,12 @@ export async function resolvePluginDependencies(
       depFormat = read.format;
       return read.manifest;
     };
+    // A fetched dependency is a staged, untrusted tree (#2342).
+    const readStagedDependency = (path: string) => {
+      const read = readUntrustedPluginManifestSyncWithFormat(path);
+      depFormat = read.format;
+      return read.manifest;
+    };
     let depGit: PluginGitInfo | undefined;
     let status: ResolvedPluginDependency['status'] = 'missing';
     let consent: ResolvedPluginDependency['consent'];
@@ -716,7 +743,9 @@ export async function resolvePluginDependencies(
       if (!('error' in result)) {
         try {
           try {
-            depManifest = readDependency(join(result.tempDir, 'plugin.json'));
+            depManifest = readStagedDependency(
+              join(result.tempDir, 'plugin.json'),
+            );
           } catch (error) {
             logger.debug('Failed to read fetched dependency manifest', {
               dep: dependency.id,
@@ -763,7 +792,7 @@ export async function resolvePluginDependencies(
             );
             if (!('error' in result)) {
               try {
-                depManifest = readDependency(
+                depManifest = readStagedDependency(
                   join(result.tempDir, 'plugin.json'),
                 );
                 unsupported = unsupportedDependencyFeatures(
@@ -1109,9 +1138,13 @@ export async function installPluginDependency(
       );
       if ('error' in result) return { success: false, error: result.error };
       const { tempDir } = result;
-      const { manifest: depManifest, format } =
-        readPluginManifestFileSyncWithFormat(join(tempDir, 'plugin.json'));
       try {
+        // Inside the `try` so the staged tree is removed when the read is
+        // refused or the manifest does not parse (#2342).
+        const { manifest: depManifest, format } =
+          readUntrustedPluginManifestSyncWithFormat(
+            join(tempDir, 'plugin.json'),
+          );
         if (
           dependency.version &&
           dependency.version !== '*' &&
@@ -1217,7 +1250,11 @@ export async function installPluginDependency(
               );
               return { success: true };
             }
-            cpSync(tempDir, targetDir, { recursive: true });
+            // The staged tree has been through a build that runs the
+            // dependency's own install scripts, so it is plugin-writable.
+            await copyPluginTree(tempDir, targetDir, {
+              skipSpecialFiles: true,
+            });
             try {
               await validateAndBuildInstalledDependency(
                 pluginsDir,

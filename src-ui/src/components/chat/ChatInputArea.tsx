@@ -20,6 +20,7 @@ import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
@@ -201,6 +202,12 @@ interface ChatInputAreaProps {
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  /**
+   * The session approval override: the pending pick, else the confirmed one
+   * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
+   * which holds model controls only.
+   */
+  approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
   // Slash commands
@@ -310,6 +317,7 @@ export function ChatInputArea({
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  approvalModeOverride,
   acpSessionModes = [],
   acpCurrentModeId,
   commandQuery,
@@ -660,7 +668,8 @@ export function ChatInputArea({
               key={sessionId}
               engineConnectionId={agentConnectionId}
               toolPolicyDelivery={toolPolicyDelivery}
-              sessionOverride={modelRuntimeOptions?.approvalMode}
+              sessionOverride={approvalModeOverride?.mode}
+              sessionOverrideState={approvalModeOverride?.state}
               connectionDefault={approvalModeConnectionDefault}
               stationDefault={approvalModeStationDefault}
               lastAppliedApprovalMode={lastAppliedApprovalMode}

@@ -7,6 +7,8 @@ interface NoteActionsProps {
   saving: boolean;
   enhancing: boolean;
   vaulting: boolean;
+  /** The selected note's text has not loaded; actions that read it wait. */
+  bodyLoading?: boolean;
   onNew: () => void;
   onSave: () => void;
   onEnhance: () => void;
@@ -20,6 +22,7 @@ export function NoteActions({
   saving,
   enhancing,
   vaulting,
+  bodyLoading = false,
   onNew,
   onSave,
   onEnhance,
@@ -55,7 +58,7 @@ export function NoteActions({
             type="button"
             className="note-action-btn"
             onClick={onEnhance}
-            disabled={enhancing}
+            disabled={enhancing || bodyLoading}
             title="AI enhance note"
           >
             {enhancing ? 'Enhancing…' : '✨ Enhance'}
@@ -65,7 +68,7 @@ export function NoteActions({
             type="button"
             className="note-action-btn"
             onClick={onVault}
-            disabled={vaulting}
+            disabled={vaulting || bodyLoading}
             title="Save to vault"
           >
             {vaulting ? 'Saving…' : '🔒 Vault'}

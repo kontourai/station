@@ -318,8 +318,10 @@ function ToolApprovalButtons({
     if (phase !== 'idle') return;
     setPhase('sending');
     setFailure(null);
-    // Invoked synchronously, in the click, so the decision is dispatched
-    // before this handler returns; only its outcome is awaited.
+    // The handler is called in the click, and the buttons are disabled before
+    // it returns, so a second click cannot race it. The request itself may
+    // leave a tick later: the answer path is loaded on demand
+    // (`useToolApproval`). Only the outcome is awaited here.
     let sent: ReturnType<ToolApprovalHandler>;
     try {
       sent = onApprove(action);

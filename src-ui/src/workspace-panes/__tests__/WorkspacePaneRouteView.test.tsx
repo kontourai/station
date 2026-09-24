@@ -165,6 +165,47 @@ vi.mock('../workspacePaneRendererSelection', async (importOriginal) => ({
 import { WorkspacePaneRouteView } from '../WorkspacePaneRouteView';
 
 describe('WorkspacePaneRouteView', () => {
+  test('qualifies an "unavailable" answer drawn from a catalog whose refresh failed (#2345)', () => {
+    const entries = catalogMock.entries;
+    const mock = catalogMock as typeof catalogMock & {
+      data?: unknown;
+      isRefetchError?: boolean;
+    };
+    catalogMock.entries = [
+      {
+        ...entries[0]!,
+        instance: {
+          instanceId: 'cross-project-console',
+          boundContext: { projectId: 'project-b' },
+        },
+      },
+    ];
+    mock.isError = true;
+    mock.isRefetchError = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="builtin:flow-run-console"
+          instanceId="cross-project-console"
+        />,
+      );
+
+      expect(
+        screen.getByText('This pane belongs to a different Project.'),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('status', { name: 'Pane list not refreshed' }),
+      ).toBeTruthy();
+    } finally {
+      catalogMock.entries = entries;
+      mock.isError = false;
+      mock.isRefetchError = false;
+      mock.data = undefined;
+    }
+  });
+
   test('rejects an available occurrence scoped to another Project before mounting', () => {
     catalogMock.entries = [
       {
@@ -274,6 +315,131 @@ describe('WorkspacePaneRouteView', () => {
       mock.isError = false;
       catalogMock.entries = entries;
     }
+  });
+
+  test('marks a mounted pane whose catalog refresh failed, and keeps it mounted (#2345)', () => {
+    const mock = catalogMock as typeof catalogMock & {
+      data?: unknown;
+      isRefetchError?: boolean;
+    };
+    mock.isError = true;
+    mock.isRefetchError = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    catalogMock.refetch.mockClear();
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="builtin:flow-run-console"
+          instanceId="flow-console-1"
+        />,
+      );
+
+      expect(screen.getByTestId('mounted-pane').textContent).toContain('demo');
+      const marker = screen.getByRole('status', {
+        name: 'Pane list not refreshed',
+      });
+      expect(marker.textContent).toContain('Couldn’t refresh the pane list');
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(catalogMock.refetch).toHaveBeenCalledTimes(1);
+    } finally {
+      mock.isError = false;
+      mock.isRefetchError = false;
+      mock.data = undefined;
+    }
+  });
+
+  test('a mounted pane from a current catalog carries no refresh marker (#2345)', () => {
+    render(
+      <WorkspacePaneRouteView
+        projectSlug="demo"
+        descriptorId="builtin:flow-run-console"
+        instanceId="flow-console-1"
+      />,
+    );
+    expect(
+      screen.queryByRole('status', { name: 'Pane list not refreshed' }),
+    ).toBeNull();
+  });
+
+  test('Retry refuses a second click while the refresh is in flight (#2345)', () => {
+    const mock = catalogMock as typeof catalogMock & {
+      data?: unknown;
+      isRefetchError?: boolean;
+      isFetching?: boolean;
+    };
+    mock.isError = true;
+    mock.isRefetchError = true;
+    mock.isFetching = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="plugin:installed-elsewhere:pane"
+          instanceId="installed-elsewhere-1"
+        />,
+      );
+      const retry = screen.getByRole('button', { name: 'Retry' });
+      expect(retry.hasAttribute('disabled')).toBe(true);
+      expect(retry.getAttribute('aria-busy')).toBe('true');
+    } finally {
+      mock.isError = false;
+      mock.isRefetchError = false;
+      mock.isFetching = false;
+      mock.data = undefined;
+    }
+  });
+
+  test('does not claim a pane is missing when the catalog refresh just failed (#2345)', () => {
+    // A cached catalog without the pane, and a refresh that failed: the
+    // pane may exist (installed elsewhere while the route was down), so the
+    // view says the catalog could not be refreshed and offers Retry.
+    const mock = catalogMock as typeof catalogMock & {
+      data?: unknown;
+      isRefetchError?: boolean;
+    };
+    mock.isError = true;
+    mock.isRefetchError = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    catalogMock.refetch.mockClear();
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="plugin:installed-elsewhere:pane"
+          instanceId="installed-elsewhere-1"
+        />,
+      );
+
+      expect(
+        screen.queryByText('This Project doesn’t have that pane.'),
+      ).toBeNull();
+      expect(
+        screen.getByText('Could not refresh workspace panes'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(catalogMock.refetch).toHaveBeenCalledTimes(1);
+    } finally {
+      mock.isError = false;
+      mock.isRefetchError = false;
+      mock.data = undefined;
+    }
+  });
+
+  test('still says the pane is missing when the catalog is current (#2345)', () => {
+    render(
+      <WorkspacePaneRouteView
+        projectSlug="demo"
+        descriptorId="plugin:never-installed:pane"
+        instanceId="never-installed-1"
+      />,
+    );
+
+    expect(
+      screen.getByText('This Project doesn’t have that pane.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Could not refresh workspace panes')).toBeNull();
   });
 
   test('mounts the catalog-selected contributed renderer without branching on contributor identity', () => {

@@ -6,6 +6,7 @@ import {
   EXECUTION_MODE,
   type ExecutionMode,
 } from '@kontourai/station-contracts/tool';
+import { chatSessionKnownEnded } from './execution';
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
@@ -273,7 +274,7 @@ export function resolveEffectiveApprovalMode({
  *   fallback at all and is deliberately left that way: a queued message is
  *   never the message that starts a session;
  * - the resolution came from that session override, which the dispatcher
- *   already carries in `requestedProviderOptions`;
+ *   already carries as `approvalModeOverride` (#2334);
  * - nothing concrete resolved (`'connection-default'`), which is Station
  *   deliberately stating no posture.
  */
@@ -297,4 +298,293 @@ export function approvalModeForDispatch(input: {
   if (resolved.source === 'session override') return undefined;
   if (resolved.mode === 'connection-default') return undefined;
   return resolved.mode;
+}
+
+/**
+ * #2334: the session approval pick, across devices. The engine holds its own
+ * posture, and ANOTHER device's report may only move this device's pick in
+ * the STRICTER direction (permissiveness: ask < auto < never). A report never
+ * loosens a pick. That is what keeps this model never looser than a client
+ * that simply resends its pick (the pre-#2334 behaviour), while a stricter
+ * decision made elsewhere is not overridden from here.
+ *
+ * - A CONFIRMED pick (`approvalModeOverride`) is one a report showed the
+ *   engine applying. It labels the chip. A confirmed Ask or Auto is
+ *   reasserted on every send (live session, unknown liveness, or a new
+ *   one), as main's request bag does; a confirmed full access is never
+ *   reasserted, so a new session starts at the defaults (main's outcome)
+ *   and a live one keeps whatever it holds (`approvalModeToSend`). It
+ *   survives a reload as confirmed.
+ *   - A STRICTER differing report retires it (someone tightened).
+ *   - A LOOSER differing report keeps it, shown as unconfirmed for this
+ *     session; an Ask/Auto is then sent back on the next send.
+ * - A PENDING pick (`pendingApprovalMode`) is one this client made and the
+ *   engine has not shown applying. It is sent with every turn until a report
+ *   settles it. It records the latest server stream position this client had
+ *   seen when the user picked (`pendingApprovalPickedAt`), the dispatch that
+ *   was already in flight (`pendingApprovalBehindTurn`), and the posture the
+ *   engine last reported at that moment (`pendingApprovalAppliedAtPick`):
+ *   - a report that MATCHES confirms it;
+ *   - a report from BEFORE the pick (at or under the recorded position, or
+ *     the report of the dispatch that was already in flight) is stale and is
+ *     ignored (refuted approach 2);
+ *   - a report from AFTER the pick retires it only when it is STRICTER than
+ *     the pick AND the posture changed since the pick (a report of the
+ *     posture already in place is nobody's decision). A later position is
+ *     not proof of a later decision (another device's turn may have been
+ *     dispatched first; an offline replay makes every report "later"), so a
+ *     LOOSER report never retires: the pick stays pending and is resent.
+ * - `connection-default` names no posture and has no rank, so it is never
+ *   "stricter": a report of it retires nothing. Keeping the pick is the
+ *   resend-it behaviour, so this cannot be looser than that.
+ *
+ * Positions are the server's own event-stream sequence, never a wall clock.
+ */
+export interface SessionApprovalOverride {
+  mode: ApprovalMode;
+  /**
+   * - `requested`: a pending pick; the next send carries it.
+   * - `unconfirmed`: a confirmed pick with no report of it applying to THIS
+   *   session (restored after a reload, a looser posture reported since, or
+   *   the session ended). An Ask/Auto is reasserted on the next send; a full
+   *   access is never reasserted.
+   * - `confirmed`: the engine's latest report shows it applied.
+   */
+  state: 'requested' | 'unconfirmed' | 'confirmed';
+}
+
+/**
+ * The approval-pick fields of a chat. They live OUTSIDE the model-options
+ * request bag (#2334): that bag is cleared whenever a report acknowledges the
+ * requested model, and every reader treats `requested ?? confirmed` as the
+ * whole send, so an approval pick stored inside it was either discarded with
+ * the bag or, when kept alone, displaced the model controls.
+ */
+export interface ApprovalPickState {
+  /**
+   * A pick the engine has not confirmed. Never `'connection-default'`:
+   * clearing an override has nothing for the engine to confirm.
+   */
+  pendingApprovalMode?: ApprovalMode;
+  /** Latest server stream position this client had seen at the pick. */
+  pendingApprovalPickedAt?: number;
+  /** The dispatch already in flight at the pick; its report predates it. */
+  pendingApprovalBehindTurn?: string;
+  /** The posture the engine last reported when the user picked. */
+  pendingApprovalAppliedAtPick?: ApprovalMode;
+  /** A pick a report showed the engine applying. */
+  approvalModeOverride?: ApprovalMode;
+  lastAppliedApprovalMode?: ApprovalMode;
+  pendingClientTurnId?: string;
+  orchestrationSessionStarted?: boolean;
+  orchestrationStatus?: string;
+  requestedProviderOptions?: Record<string, unknown>;
+  providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * What the composer chip shows: the pending pick, else the confirmed one,
+ * with how far the engine has shown it applied (`state`). The last fallback
+ * is an `approvalMode` left in an options bag by state persisted before
+ * #2334; the dispatcher sends that bag as-is, so the chip names it.
+ */
+export function sessionApprovalOverride(
+  chat: ApprovalPickState | null | undefined,
+): SessionApprovalOverride | undefined {
+  if (!chat) return undefined;
+  if (isApprovalMode(chat.pendingApprovalMode)) {
+    return { mode: chat.pendingApprovalMode, state: 'requested' };
+  }
+  if (isApprovalMode(chat.approvalModeOverride)) {
+    return {
+      mode: chat.approvalModeOverride,
+      // A receipt stands only while a session could still hold it: once the
+      // session is known to have ended (session.exited clears
+      // `orchestrationSessionStarted`), it confirms nothing about the next.
+      state:
+        chat.lastAppliedApprovalMode === chat.approvalModeOverride &&
+        !chatSessionKnownEnded(chat)
+          ? 'confirmed'
+          : 'unconfirmed',
+    };
+  }
+  const legacy = (chat.requestedProviderOptions ?? chat.providerOptions)
+    ?.approvalMode;
+  return isApprovalMode(legacy)
+    ? { mode: legacy, state: 'confirmed' }
+    : undefined;
+}
+
+/**
+ * The approval mode a send puts on the wire as the session's own pick:
+ * - the pending pick, always;
+ * - a confirmed Ask or Auto, on EVERY send, to a live session, one of unknown
+ *   liveness, or a new one. This is main's behaviour (its request bag
+ *   resends the pick), so a looser posture another device applied is
+ *   tightened back, exactly as on main (#2334 probe Q);
+ * - a confirmed full access, NEVER: it is not reasserted over whatever a
+ *   live session now holds (probes E, E2, E3), and a new session starts at
+ *   the defaults, as on main (probe N).
+ * See the model on `SessionApprovalOverride`.
+ */
+export function approvalModeToSend(
+  chat: ApprovalPickState | null | undefined,
+): ApprovalMode | undefined {
+  if (!chat) return undefined;
+  if (isApprovalMode(chat.pendingApprovalMode)) return chat.pendingApprovalMode;
+  if (
+    isApprovalMode(chat.approvalModeOverride) &&
+    confirmedPickIsReasserted(chat.approvalModeOverride)
+  )
+    return chat.approvalModeOverride;
+  return undefined;
+}
+
+/**
+ * Whether a confirmed pick is put back on the wire with each send. Full
+ * access is not: the bar is "never looser than main", and reasserting it
+ * could loosen a session another device tightened, or start a new session
+ * looser than main's defaults. Ask and auto are, because they are at least
+ * as strict as what main would send.
+ */
+function confirmedPickIsReasserted(mode: ApprovalMode): boolean {
+  return mode !== 'never' && mode !== 'connection-default';
+}
+
+/**
+ * The session pick the defaults below it must yield to
+ * (`approvalModeForDispatch`'s `sessionOverride`). A pick that is sent
+ * outranks them. A confirmed full access (never sent) still outranks them
+ * while the session may be live, so a default is not sent in its place; at
+ * a session known to have ended it yields, and the new session starts
+ * exactly as on main.
+ */
+export function approvalPickOverridingDefaults(
+  chat: ApprovalPickState | null | undefined,
+  sessionKnownEnded: boolean,
+): ApprovalMode | undefined {
+  const sent = approvalModeToSend(chat);
+  if (sent) return sent;
+  return sessionKnownEnded ? undefined : sessionApprovalOverride(chat)?.mode;
+}
+
+/** How much a posture lets the engine do without asking. */
+const APPROVAL_PERMISSIVENESS: Partial<Record<ApprovalMode, number>> = {
+  ask: 0,
+  auto: 1,
+  never: 2,
+};
+
+/** Whether `report` is provably STRICTER than `pick` (both ranked). */
+function isStricter(report: ApprovalMode, pick: ApprovalMode): boolean {
+  const reportRank = APPROVAL_PERMISSIVENESS[report];
+  const pickRank = APPROVAL_PERMISSIVENESS[pick];
+  return (
+    reportRank !== undefined && pickRank !== undefined && reportRank < pickRank
+  );
+}
+
+const CLEAR_PENDING = {
+  pendingApprovalMode: undefined,
+  pendingApprovalPickedAt: undefined,
+  pendingApprovalBehindTurn: undefined,
+  pendingApprovalAppliedAtPick: undefined,
+} as const;
+
+/**
+ * The chat update for a newly picked approval mode, or `undefined` when the
+ * pick changes nothing (it is already pending, or confirmed and reported
+ * applied). A concrete pick becomes pending, stamped with where this client
+ * stood (`pickedAt`, `behindTurn`); `'connection-default'` clears the
+ * override immediately. Any `approvalMode` left in an options bag by
+ * pre-#2334 state is removed, so it can neither be resent nor outrank the
+ * pick.
+ */
+export function approvalPickUpdate(
+  chat: ApprovalPickState | null | undefined,
+  mode: ApprovalMode,
+  stamp: { pickedAt?: number; behindTurn?: string } = {},
+): Partial<ApprovalPickState> | undefined {
+  const pending = chat?.pendingApprovalMode;
+  if (pending === mode) return undefined;
+  if (
+    pending === undefined &&
+    (mode === 'connection-default'
+      ? chat?.approvalModeOverride === undefined
+      : chat?.approvalModeOverride === mode &&
+        chat.lastAppliedApprovalMode === mode)
+  )
+    return undefined;
+  const withoutLegacy = (
+    bag: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | undefined => {
+    if (!bag || !('approvalMode' in bag)) return bag;
+    const { approvalMode: _dropped, ...rest } = bag;
+    return rest;
+  };
+  return {
+    ...(chat?.requestedProviderOptions &&
+    'approvalMode' in chat.requestedProviderOptions
+      ? {
+          requestedProviderOptions: withoutLegacy(
+            chat.requestedProviderOptions,
+          ),
+        }
+      : {}),
+    ...(chat?.providerOptions && 'approvalMode' in chat.providerOptions
+      ? { providerOptions: withoutLegacy(chat.providerOptions) }
+      : {}),
+    ...(mode === 'connection-default'
+      ? {
+          ...CLEAR_PENDING,
+          approvalModeOverride: undefined,
+        }
+      : {
+          pendingApprovalMode: mode,
+          pendingApprovalPickedAt: stamp.pickedAt,
+          pendingApprovalBehindTurn: stamp.behindTurn,
+          pendingApprovalAppliedAtPick: chat?.lastAppliedApprovalMode,
+        }),
+  };
+}
+
+/**
+ * The chat update for an engine report of the mode actually applied
+ * (`session.configured` / `turn.started` metadata), at server stream
+ * `position` when known. Applies the model documented on
+ * `SessionApprovalOverride`: a report only ever retires a pick it is
+ * STRICTER than. A report with no known position cannot be ordered against a
+ * pending pick, so it is treated as stale. A pick the engine never reports
+ * back (e.g. a Codex review-isolation turn) stays pending and resent;
+ * accepted as harmless.
+ */
+export function settleApprovalPick(
+  chat: ApprovalPickState | null | undefined,
+  applied: ApprovalMode | undefined,
+  position?: number,
+): Partial<ApprovalPickState> {
+  if (!chat || !applied) return {};
+  const pending = chat.pendingApprovalMode;
+  if (pending !== undefined) {
+    if (pending === applied)
+      return { ...CLEAR_PENDING, approvalModeOverride: applied };
+    const fromDispatchBeforePick =
+      chat.pendingApprovalBehindTurn !== undefined &&
+      chat.pendingClientTurnId === chat.pendingApprovalBehindTurn;
+    const afterPick =
+      position !== undefined &&
+      (chat.pendingApprovalPickedAt === undefined ||
+        position > chat.pendingApprovalPickedAt);
+    const postureChanged = applied !== chat.pendingApprovalAppliedAtPick;
+    return afterPick &&
+      !fromDispatchBeforePick &&
+      postureChanged &&
+      isStricter(applied, pending)
+      ? { ...CLEAR_PENDING, approvalModeOverride: undefined }
+      : {};
+  }
+  return chat.approvalModeOverride !== undefined &&
+    isStricter(applied, chat.approvalModeOverride)
+    ? { approvalModeOverride: undefined }
+    : {};
 }
