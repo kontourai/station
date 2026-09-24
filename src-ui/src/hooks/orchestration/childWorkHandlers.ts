@@ -16,12 +16,13 @@ import type { OrchestrationEvent } from './types';
 
 /**
  * #2456: the client's child-work registry — the same contract reducer the
- * server folds with, fed by `child-work.updated` events, by the Claude
- * adapter's `claude-code` `task/registry`/`task/settled` tuples (the LIVE
- * Claude path until #2457, translated in `extensionHandlers.ts` by the
- * contract's `childWorkDeltaFromLegacyClaudeTaskNotification`, the same
- * function the server projection uses), and by the reconnect snapshot's
- * `childWork.children` view.
+ * server folds with, fed by `child-work.updated` events (every engine's live
+ * path, Claude's since #2457), by the reconnect snapshot's
+ * `childWork.children` view, and — on REPLAY of pre-#2457 history only — by
+ * the Claude adapter's legacy `claude-code` `task/registry`/`task/settled`
+ * tuples, translated in `extensionHandlers.ts` by the contract's
+ * `childWorkDeltaFromLegacyClaudeTaskNotification` (the same function the
+ * server projection uses).
  *
  * `ChatUIState.backgroundTasks` stays what every reader already consumes; it
  * is now DERIVED here from the registry's running engine subagents and
@@ -74,6 +75,8 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
     ...(item.controls?.stop === 'provider-task-stop'
       ? { stop: 'provider-task-stop' as const }
       : {}),
+    // #2457: the live status line, for the sheet's card detail.
+    ...(item.progress ? { progress: item.progress } : {}),
   };
 }
 

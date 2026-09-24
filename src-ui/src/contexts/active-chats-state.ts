@@ -204,8 +204,9 @@ export type ChatActivityHint = {
  * A provider-reported background task/subagent that outlives the assistant
  * turn (e.g. Claude Code backgrounded Task). Drives the persistent
  * "background agent working" affordance while the session is otherwise
- * idle. Sourced from `claude-code` `task/registry` notifications and
- * cleared by `task/settled`.
+ * idle. Derived from the child-work registry's RUNNING engine subagents
+ * (`childWorkHandlers.ts`), which `child-work.updated` feeds live (#2457)
+ * and the legacy `claude-code` tuples feed only on replay of older history.
  */
 export type ChatBackgroundTask = {
   taskId: string;
@@ -229,10 +230,12 @@ export type ChatBackgroundTask = {
   /**
    * #2459: the per-task stop seam the CHILD itself carried
    * (`ChildWorkItem.controls.stop`). A session thread says where a stop
-   * would go, not that the engine has one: Claude's legacy translator sets
-   * this on running tasks; a Codex child carries none.
+   * would go, not that the engine has one: a Claude child carries it; a
+   * Codex child carries none.
    */
   stop?: 'provider-task-stop';
+  /** #2457: the child's latest one-line status (`ChildWorkItem.progress`). */
+  progress?: string;
 };
 
 /**

@@ -180,8 +180,8 @@ describe('controls', () => {
       controls: { stop: 'provider-task-stop' },
     });
     expect(controlsFor(withSeam, 'wired-engine')).toBe('provider-task-stop');
-    // Claude's cell is `none` today (the flip lands with #2457).
-    expect(controlsFor(withSeam, 'claude')).toBe(undefined);
+    // #2457: Claude's cell is wired (stop-task capture), so its seam renders.
+    expect(controlsFor(withSeam, 'claude')).toBe('provider-task-stop');
     // A model-tool stop is never a direct button.
     expect(controlsFor(withSeam, 'model-tool-engine')).toBe(undefined);
     // An unknown engine wires nothing.
