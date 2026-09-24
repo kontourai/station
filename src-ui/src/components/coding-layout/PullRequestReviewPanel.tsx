@@ -49,7 +49,9 @@ export function pullRequestExternalLabel(url: string): string {
   }
   if (hostname === 'github.com' || hostname.endsWith('.github.com'))
     return 'Open on GitHub';
-  if (hostname === 'gitlab.com' || hostname.startsWith('gitlab.'))
+  // gitlab.com only: any `gitlab.*` host is a name anyone can register, and
+  // a self-managed instance is not "GitLab" to the reader either way.
+  if (hostname === 'gitlab.com' || hostname === 'www.gitlab.com')
     return 'Open on GitLab';
   return 'Open in browser';
 }

@@ -142,8 +142,11 @@ describe('opening the pull request on its forge', () => {
     expect(pullRequestExternalLabel('https://github.com/o/r/pull/1')).toBe(
       'Open on GitHub',
     );
-    // A self-managed GitLab conventionally lives at `gitlab.<domain>`.
+    // Only gitlab.com is named: a `gitlab.*` host is not GitLab's by name.
     expect(pullRequestExternalLabel('https://gitlab.example.org/o/r/-/1')).toBe(
+      'Open in browser',
+    );
+    expect(pullRequestExternalLabel('https://www.gitlab.com/o/r/-/1')).toBe(
       'Open on GitLab',
     );
     expect(pullRequestExternalLabel('https://gitlab.com/o/r/-/1')).toBe(
