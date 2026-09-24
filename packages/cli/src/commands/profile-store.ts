@@ -67,17 +67,21 @@ export function resolveStationHome(): string {
 export const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const PROFILE_STORE_LOCK_STALE_MS = 5 * 60 * 1_000;
-// How long a cold start waits for a LIVE sibling's genesis. Wall-clock, not an
-// attempt count: the winner's publication is several file and directory
+// How long a cold start keeps retrying while a LIVE sibling holds genesis
+// (the deadline stops new retries; see the store-lock bound below for what can
+// run past it). Wall-clock, not an attempt count: the winner's publication is several file and directory
 // fsyncs, which on a busy or slow disk can outlast any fixed number of 10ms
 // naps. 100 of them lasted about 3s on macOS (measured), where each nap also
 // spawns `ps` for the stale-lock check, and less on Linux, where that check
 // is a /proc read.
 const PROFILE_STORE_GENESIS_WAIT_MS = 10_000;
-// How long a write waits for a LIVE holder of the profiles.json lock. The same
-// wall-clock bound as genesis, for the same reason, and the same bound the
-// native Desktop uses for this lock (src-desktop `PROFILE_LOCK_WAIT`): a CLI
-// write racing a Desktop write must not lose merely because it arrived second.
+// How long a write keeps retrying the profiles.json lock while a LIVE holder
+// has it. The same wall-clock bound as genesis, for the same reason, and the
+// same bound the native Desktop uses for this lock (src-desktop
+// `PROFILE_LOCK_WAIT`): a CLI write racing a Desktop write must not lose
+// merely because it arrived second. Both bounds stop new retries; a call can
+// still run past them by a probe already in flight plus the final probe
+// taken at expiry.
 const PROFILE_STORE_LOCK_WAIT_MS = 10_000;
 // The stale-lock probe creates and fsyncs a guard lock and, on macOS, spawns
 // `ps` for the owner's birth. Running it on every 10ms nap competes with the
@@ -107,7 +111,9 @@ const DEFAULT_PROFILE_STORE_LOCK_TIMING: Readonly<ProfileStoreLockTiming> =
 let profileStoreLockTiming: ProfileStoreLockTiming = {
   ...DEFAULT_PROFILE_STORE_LOCK_TIMING,
 };
-let onReclaimProbeForTests: ((path: string) => void) | undefined;
+let onReclaimProbeForTests:
+  | ((path: string, reclaimed: boolean) => void)
+  | undefined;
 let profileLockOwnerBirth: { pid: number; birth: string } | undefined;
 
 /**
@@ -116,7 +122,8 @@ let profileLockOwnerBirth: { pid: number; birth: string } | undefined;
  */
 export function setProfileStoreLockTimingForTests(
   overrides: Partial<ProfileStoreLockTiming> & {
-    onReclaimProbe?: (path: string) => void;
+    /** Called after each stale-lock probe with whether it reclaimed. */
+    onReclaimProbe?: (path: string, reclaimed: boolean) => void;
   } = {},
 ): void {
   const { onReclaimProbe, ...timing } = overrides;
@@ -740,8 +747,9 @@ function acquireExclusiveProfileStoreLockWithin(
     const expired = now >= deadline;
     if (!reclaimed && (now >= nextProbeAt || expired)) {
       nextProbeAt = now + reclaimProbeIntervalMs;
-      onReclaimProbeForTests?.(path);
-      if (reclaimStaleProfileStoreLockAt(path)) {
+      const probeReclaimed = reclaimStaleProfileStoreLockAt(path);
+      onReclaimProbeForTests?.(path, probeReclaimed);
+      if (probeReclaimed) {
         reclaimed = true;
         continue;
       }

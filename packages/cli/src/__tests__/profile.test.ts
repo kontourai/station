@@ -597,10 +597,12 @@ describe('shared saved Station store', () => {
       onReclaimProbe: (path) => probes.push(path),
     });
     const lock = `${profilesPath()}.lock`;
+    // Before the holder exists, so its release (1.5s after it starts) is at
+    // least 1.5s after this by construction.
+    const started = performance.now();
     const { holder, exited } = holdLiveLock(lock, 1_500);
     let elapsed: number;
     try {
-      const started = performance.now();
       // A Desktop write holding the lock for 1.5s used to make this CLI write
       // exit with "store is busy" immediately.
       upsertProfile({
@@ -614,7 +616,7 @@ describe('shared saved Station store', () => {
     }
     expect(findProfile('waited')).toBeDefined();
     // It waited for the holder's release rather than reclaiming a live lock.
-    expect(elapsed).toBeGreaterThanOrEqual(1_000);
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
     // The stale-lock probe backs off: once at once, then every 250ms, and
     // once at the end, so about one per 250ms of the wait (about 7 over
     // 1.5s). Probing on every 10ms nap measured 24-27 on macOS, where each
@@ -629,40 +631,56 @@ describe('shared saved Station store', () => {
     'a holder that dies late in the wait is still reclaimed before giving up',
     async () => {
       upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
-      // An interval longer than the wait leaves the final probe as the only
-      // one after the holder's death: a waiter that gave up without it would
-      // report "busy" for a lock nobody holds.
+      // The owner is a long-lived process killed right after the first
+      // probe has seen it alive. With an interval longer than the wait, the
+      // only later probe is the final one taken as the wait runs out, so a
+      // waiter that gave up without it would report "busy" for a lock nobody
+      // holds. The owner's parent is a shell blocked in `wait`, which reaps
+      // it at once; a dead child of this (blocked) process would linger as a
+      // zombie that still answers kill(pid, 0).
+      const results: boolean[] = [];
+      let owner = 0;
       setProfileStoreLockTimingForTests({
         storeWaitMs: 1_500,
         reclaimProbeIntervalMs: 60_000,
-      });
-      // `sh` exits at once, so the backgrounded owner is reparented and reaped
-      // by init when it dies; a dead child of this (blocked) process would
-      // linger as a zombie that still answers kill(pid, 0).
-      const launcher = spawn(
-        'sh',
-        ['-c', 'sleep 0.5 </dev/null >/dev/null 2>&1 & echo $!'],
-        {
-          stdio: ['ignore', 'pipe', 'ignore'],
+        onReclaimProbe: (_path, reclaimed) => {
+          results.push(reclaimed);
+          if (results.length === 1) process.kill(owner, 'SIGKILL');
         },
-      );
-      let output = '';
-      launcher.stdout!.on('data', (chunk) => {
-        output += String(chunk);
       });
-      await once(launcher, 'close');
-      const owner = Number(output.trim());
-      const birth = lookupProcessBirthFingerprint(owner);
-      expect(birth).toBeTruthy();
-      const lock = `${profilesPath()}.lock`;
-      writeFileSync(
-        lock,
-        `${JSON.stringify({ schemaVersion: 2, pid: owner, birth, createdAt: Date.now() })}\n`,
-        { mode: 0o600 },
+      const parent = spawn(
+        'sh',
+        ['-c', 'sleep 30 </dev/null >/dev/null 2>&1 & echo $!; wait'],
+        { stdio: ['ignore', 'pipe', 'ignore'] },
       );
-      chmodSync(lock, 0o600);
-      upsertProfile({ name: 'late', endpoint: 'https://late.example.test' });
-      expect(findProfile('late')).toBeDefined();
+      const parentExited = once(parent, 'close');
+      try {
+        const [line] = await once(parent.stdout!, 'data');
+        owner = Number(String(line).trim());
+        expect(owner).toBeGreaterThan(0);
+        const birth = lookupProcessBirthFingerprint(owner);
+        expect(birth).toBeTruthy();
+        const lock = `${profilesPath()}.lock`;
+        writeFileSync(
+          lock,
+          `${JSON.stringify({ schemaVersion: 2, pid: owner, birth, createdAt: Date.now() })}\n`,
+          { mode: 0o600 },
+        );
+        chmodSync(lock, 0o600);
+        upsertProfile({ name: 'late', endpoint: 'https://late.example.test' });
+        expect(findProfile('late')).toBeDefined();
+        // Exactly two probes: the first found a live owner, the final one
+        // reclaimed the dead owner's lock.
+        expect(results).toEqual([false, true]);
+      } finally {
+        try {
+          if (owner > 0) process.kill(owner, 'SIGKILL');
+        } catch {
+          // Already dead: the expected case.
+        }
+        parent.kill('SIGKILL');
+        await parentExited;
+      }
     },
     30_000,
   );
@@ -676,10 +694,10 @@ describe('shared saved Station store', () => {
       dirname(home),
       `.${basename(home)}.station-profile-store-genesis.json.lock`,
     );
+    const started = performance.now();
     const { holder, exited } = holdLiveLock(genesisLock, 1_500);
     let elapsed: number;
     try {
-      const started = performance.now();
       ensureProfileStoreGenesis(home);
       elapsed = performance.now() - started;
     } finally {
@@ -687,7 +705,7 @@ describe('shared saved Station store', () => {
       await exited;
     }
     expect(readProfileStore().revision).toBe(0);
-    expect(elapsed).toBeGreaterThanOrEqual(1_000);
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
     expect(probes.length).toBeGreaterThanOrEqual(2);
     expect(probes.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 2);
     expect(new Set(probes)).toEqual(new Set([genesisLock]));
