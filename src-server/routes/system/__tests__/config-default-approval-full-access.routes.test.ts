@@ -109,6 +109,21 @@ async function fixture() {
   const configLoader = new ConfigLoader({
     projectHomeDir: join(root, 'station'),
   });
+  // The race window: a mutation that lands after this route read the config
+  // and before its own serialized mutation runs.
+  let concurrentLowering: string | undefined;
+  const mutate = configLoader.mutateAppConfig.bind(configLoader);
+  configLoader.mutateAppConfig = (async (fn: never) => {
+    const lowering = concurrentLowering;
+    concurrentLowering = undefined;
+    if (lowering)
+      await mutate((() => ({ defaultApprovalMode: lowering })) as never);
+    return mutate(fn);
+  }) as typeof configLoader.mutateAppConfig;
+  const lowerConcurrently = (mode: string) => {
+    concurrentLowering = mode;
+  };
+
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -172,6 +187,7 @@ async function fixture() {
     setDefault,
     setDefaultInternally,
     stored,
+    lowerConcurrently,
   };
 }
 
@@ -210,4 +226,17 @@ test("an agent's station-control call cannot raise the Station default to full a
 
   expect((await f.setDefaultInternally(false, 'never')).status).toBe(200);
   expect(await f.stored()).toBe('never');
+});
+
+test('a save that read a standing never cannot land it after the operator lowered the default', async () => {
+  const f = await fixture();
+  expect((await f.setDefault(f.operator.credential, 'never')).status).toBe(200);
+  const phone = f.pairPhone();
+  // The phone's whole-config save resends `never`; the operator's lowering
+  // to Ask lands between the route's read and the phone's mutation.
+  f.lowerConcurrently('ask');
+  const raced = await f.setDefault(phone.credential, 'never');
+  expect(raced.status).toBe(403);
+  expect(raced.body.code).toBe('approval-full-access-not-granted');
+  expect(await f.stored()).toBe('ask');
 });
