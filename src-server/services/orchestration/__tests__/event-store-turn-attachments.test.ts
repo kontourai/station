@@ -164,4 +164,45 @@ describe('EventStore binding of turn.started attachment references (#2483)', () 
     );
     expect(store.listAttachmentThreads(ref)).not.toContain('thread-other');
   });
+
+  test('a live projection vouches only for its own event on the same thread', () => {
+    store.projectLiveEvent(uploadTurn('evt-live', 'thread-live', 'alice'));
+    // Same thread, different event: the pending record is keyed by thread AND
+    // event, so an unrelated event naming the digest is not vouched for.
+    store.appendEvent(bareRefTurn('evt-sibling', 'thread-live', 'alice', ref));
+    expect(
+      persistedAttachment('thread-live', 'evt-sibling'),
+    ).not.toHaveProperty('blobRef');
+    expect(store.listAttachmentThreads(ref)).toEqual([]);
+  });
+
+  test('the import/replay append path applies the same rule', () => {
+    store.appendEvent(uploadTurn('evt-bob', 'thread-bob', 'bob'));
+    store.appendEventIfAbsent(
+      bareRefTurn('evt-imported', 'thread-mallory', 'mallory', ref),
+    );
+    expect(
+      persistedAttachment('thread-mallory', 'evt-imported'),
+    ).not.toHaveProperty('blobRef');
+    expect(store.listAttachmentThreads(ref)).toEqual(['thread-bob']);
+  });
+
+  test('a projection refused part-way leaves nothing to vouch for a later append', () => {
+    const twoFiles = uploadTurn('evt-refused', 'thread-r', 'alice');
+    twoFiles.attachments = [
+      twoFiles.attachments![0]!,
+      {
+        ...twoFiles.attachments![0]!,
+        name: 'broken.png',
+        dataUrl: 'data:image/png;base64,',
+      },
+    ];
+    expect(() => store.projectLiveEvent(twoFiles)).toThrow();
+    // The same thread and event id arriving later reference-only: the refused
+    // projection's write must not count as this ingress having written it.
+    store.appendEvent(bareRefTurn('evt-refused', 'thread-r', 'alice', ref));
+    expect(persistedAttachment('thread-r', 'evt-refused')).not.toHaveProperty(
+      'blobRef',
+    );
+  });
 });

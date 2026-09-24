@@ -543,7 +543,7 @@ type EventStoreIngressLocation =
   | 'canonical-attachment'
   | 'canonical-attachment-data-url';
 
-/** How many live tool events' pending blob refs/charges are remembered. */
+/** How many live events' pending blob refs/charges are remembered. */
 const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
 
 /** An event as it will persist, plus the pending-ref ledger entry to settle. */
@@ -3123,7 +3123,16 @@ export class EventStore {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
     this.assertOwnershipImmutable(projectedEvent);
-    const persisted = this.persistedForm(projectedEvent);
+    let persisted: PersistedIngressForm;
+    try {
+      persisted = this.persistedForm(projectedEvent);
+    } catch (error) {
+      // Refused part-way through, after some bytes may have been written and
+      // recorded as this event's: the event will never persist, so nothing it
+      // recorded may vouch for a later append.
+      this.settleToolImageCharges(this.toolImageKey(projectedEvent));
+      throw error;
+    }
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.

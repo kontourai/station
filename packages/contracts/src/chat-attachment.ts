@@ -68,13 +68,16 @@ export interface ChatAttachmentInput {
  * Persistence therefore keeps the metadata and swaps the bytes for `blobRef`,
  * a content-addressed handle into the attachment blob store.
  *
- * Exactly one of the two byte sources is meaningful at a time, and BOTH are
+ * At most one of the two byte sources is meaningful at a time, and BOTH are
  * optional because each is absent in a real case:
  * - `dataUrl` alone — a row written before blob storage existed. Still read.
  * - `blobRef` alone — the reference could not be resolved to bytes, either
  *   because retention reclaimed the blob or because the caller asked for a
  *   bounded read that deliberately withholds them.
  * - both — the normal read: the reference resolved and the bytes are attached.
+ * - neither — the descriptor only: a reference arrived without bytes and this
+ *   Station could not bind it to the thread (#2483), so the name and type are
+ *   kept with no preview.
  *
  * A consumer that needs the bytes must check `dataUrl` rather than assume it.
  */
