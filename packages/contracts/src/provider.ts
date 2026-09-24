@@ -705,6 +705,15 @@ export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
 export const MUSE_APPROVAL_EXPIRED_CODE = 'muse-approval-expired';
 
 /**
+ * #2452: `runtime.warning` code for a Muse approval answer (the user's, or a
+ * session grant's) that `muse serve` would not admit, even after one retry
+ * from `approval/listPending`. The request stays bounded: Station escalates
+ * (stops the child or interrupts the turn, then ends the host) if muse does
+ * not settle it.
+ */
+export const MUSE_APPROVAL_DECIDE_FAILED_CODE = 'muse-approval-decide-failed';
+
+/**
  * #2452: `runtime.warning` code for a Muse session that runs on the `muse
  * exec` fallback because `muse serve` could not be used (no such subcommand,
  * a failed handshake, or a protocol schema this Station has not verified).

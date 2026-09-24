@@ -13,6 +13,7 @@ import {
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import {
+  MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
@@ -1121,6 +1122,44 @@ describe('#2452 fix round: no approval stays stuck', () => {
     expect(
       host.sent.filter((frame) => frame.method === 'approval/decide'),
     ).toHaveLength(1);
+  });
+});
+
+describe('#2452 fix round 2: an answer muse will not take is still bounded', () => {
+  test('accept, decide rejected twice: the user is told, and escalation follows', async () => {
+    const h = harness({ approvalEscalationMs: 60 });
+    const host = await upToFirstDecide(h);
+    await h.adapter.respondToRequest(THREAD, APPROVAL, 'accept');
+    const consumed = new Set<SentFrame>();
+    const first = await host.nextRequest('approval/decide', consumed);
+    consumed.add(first);
+    reject(host, first);
+    const listed = await host.nextRequest('approval/listPending', consumed);
+    consumed.add(listed);
+    reply(host, listed, {
+      approvals: [APPROVE_REQUESTED().params],
+      userInputs: [],
+    });
+    const second = await host.nextRequest('approval/decide', consumed);
+    consumed.add(second);
+    expect(second.params?.choiceId).toBe('allow_once');
+    reject(host, second);
+    await settle();
+    expect(
+      of(h.events, 'runtime.warning').filter(
+        (event) => event.code === MUSE_APPROVAL_DECIDE_FAILED_CODE,
+      ),
+    ).toHaveLength(1);
+    // Muse still settles nothing: the subagent that asked is stopped.
+    const stop = await host.nextRequest('subagent/stop', consumed);
+    expect(stop.params?.subagentId).toBe(CHILD);
+    reply(host, stop, { status: 'accepted' });
+    // ...and then the host is ended; the request resolves, never left open.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(host.stdinEnded).toBe(true);
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId: APPROVAL, status: 'cancelled' }),
+    ]);
   });
 });
 

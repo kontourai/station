@@ -3,6 +3,7 @@ import {
   type ApprovalMode,
   ENGINE_TURN_FAILED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MUSE_APPROVAL_DECIDE_FAILED_CODE,
   MUSE_APPROVAL_EXPIRED_CODE,
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
@@ -1613,7 +1614,7 @@ export class MuseServeSession {
   ): Promise<void> {
     if (!this.approvals.has(pending.approvalId) || this.stopped) return;
     if (pending.retriedKeys.has(key)) {
-      if (pending.intent === 'expire') this.escalate(pending);
+      this.decideUndeliverable(pending);
       return;
     }
     pending.retriedKeys.add(key);
@@ -1627,7 +1628,7 @@ export class MuseServeSession {
         { timeoutMs: this.deps.requestTimeoutMs },
       );
     } catch {
-      if (pending.intent === 'expire') this.escalate(pending);
+      this.decideUndeliverable(pending);
       return;
     }
     const fresh = (
@@ -1638,11 +1639,48 @@ export class MuseServeSession {
       (approval): approval is Record<string, unknown> =>
         isRecord(approval) && approval.approvalId === pending.approvalId,
     );
-    // Not pending any more: it was resolved meanwhile, and its
-    // `approval/resolved` closes it.
-    if (!fresh || !this.approvals.has(pending.approvalId)) return;
+    if (!this.approvals.has(pending.approvalId)) return;
+    if (!fresh) {
+      // Not pending any more: it was resolved meanwhile, and its
+      // `approval/resolved` closes it — bounded all the same, in case that
+      // resolution never arrives.
+      this.armEscalation(pending);
+      return;
+    }
     pending.lastDecidedKey = undefined;
     this.onApprovalRestated(pending, fresh);
+  }
+
+  /**
+   * Station's answer could not be delivered, even after the retry. A decline
+   * at the deadline escalates now. Any other answer (the user's, or a session
+   * grant's) must not leave muse waiting with no timer: the user is told
+   * their answer did not reach muse, and the same escalation path bounds the
+   * request (stop the child or interrupt the turn, then end the host).
+   */
+  private decideUndeliverable(pending: PendingApproval): void {
+    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    if (pending.intent === 'expire') {
+      this.escalate(pending);
+      return;
+    }
+    this.deps.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'muse',
+      threadId: this.deps.threadId,
+      createdAt: this.nowIso(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: MUSE_APPROVAL_DECIDE_FAILED_CODE,
+      message: `Your answer to Muse's request to use ${pending.toolName} did not reach Muse. If Muse does not settle it shortly, Station stops ${
+        pending.subagentId ? 'the subagent that asked' : 'the turn that asked'
+      }.`,
+      details: {
+        requestId: pending.requestId,
+        ...(pending.subagentId ? { childId: pending.subagentId } : {}),
+      },
+    });
+    this.armEscalation(pending);
   }
 
   /**
