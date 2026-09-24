@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-24T05:19:31Z | nightly-android | 0.1.11-nightly.2458.3 | `3ab9ce1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35955520672) |
 | 2026-09-24T05:16:07Z | nightly-npm | 0.6.0-nightly.2458.35955520672 | `3ab9ce1` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35955520672) |
 | 2026-09-24T03:22:42Z | nightly-desktop | 0.1.11-nightly.2458.2 | `7bc3cc6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35945178538) |
 | 2026-09-24T03:22:39Z | nightly-android | 0.1.11-nightly.2458.2 | `7bc3cc6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35945178538) |
@@ -134,6 +135,24 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-24T05:19:31Z · nightly-android · 0.1.11-nightly.2458.3
+
+- Ship SHA: `3ab9ce1ba0024c97ed5aa3c73461e3bea1a2758f`
+- Artifact built at: `2026-09-24T04:34:31.219Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 35955520672)
+
+### Changelog
+
+Commits since `7bc3cc6` ([full sha](https://github.com/kontourai/station/commit/7bc3cc6dfb7947f68ab7c4884b189e71101e7061)):
+
+**Fixes**
+
+- [#2479](https://github.com/kontourai/station/pull/2479) fix(pull-requests,chat): the PR review loads on a two-remote checkout, and chat links become chips
+- [#2472](https://github.com/kontourai/station/pull/2472) fix(profiles): bound every saved Station lock wait by wall clock
+- [#2468](https://github.com/kontourai/station/pull/2468) fix(search): name the cause of a refused message read in the server log
+- [#2449](https://github.com/kontourai/station/pull/2449) fix: plugin-workbench follow-ups: approval pick truth, untrusted plugin trees, pane honesty, examples typecheck, hardened git (#2334 #2342 #2343 #2344 #2345 #2348 #2363)
 
 ## 2026-09-24T05:16:07Z · nightly-npm · 0.6.0-nightly.2458.35955520672
 
