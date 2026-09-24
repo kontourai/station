@@ -2099,7 +2099,6 @@ describe('a continuation child whose start failed', () => {
     lifecycleState: 'completed',
     model: 'gpt-6-sol',
     projectSlug: 'kontour-ai',
-    agentSlug: 'codex',
     createdAt: '2026-09-24T08:04:39Z',
     updatedAt: '2026-09-24T08:27:49Z',
     isLoaded: true,
