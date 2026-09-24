@@ -248,6 +248,39 @@ describe('Vitest corpus runner', () => {
     expect(() => parseVitestCorpusArguments(['--unexpected'])).toThrow(/usage/);
   });
 
+  // #2416: a hosted coverage-shard matrix job runs exactly one descriptor
+  // with coverage enabled, via this flag next to --group.
+  it('accepts --coverage-root only alongside --group', () => {
+    expect(
+      parseVitestCorpusArguments([
+        '--group=ordinary',
+        '--shard=3/8',
+        '--coverage-root=coverage/shards',
+      ]),
+    ).toEqual({
+      groupName: 'ordinary',
+      shard: '3/8',
+      coverageRoot: 'coverage/shards',
+    });
+    expect(
+      parseVitestCorpusArguments([
+        '--group=shared-output',
+        '--coverage-root=coverage/shards',
+      ]),
+    ).toEqual({ groupName: 'shared-output', coverageRoot: 'coverage/shards' });
+    expect(() =>
+      parseVitestCorpusArguments(['--coverage-root=coverage/shards']),
+    ).toThrow(/--coverage-root requires --group/);
+    expect(() =>
+      parseVitestCorpusArguments([
+        '--group=ordinary',
+        '--shard=3/8',
+        '--coverage-root=coverage/shards',
+        '--coverage-root=coverage/shards',
+      ]),
+    ).toThrow(/usage/);
+  });
+
   it('uses the exact current Node executable to own a child group', async () => {
     let executable = '';
     const result = await runVitestGroup(
