@@ -105,6 +105,7 @@ function maximizeParam(): string | null {
 beforeEach(() => {
   model = null;
   localStorage.clear();
+  sessionStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', {
@@ -212,6 +213,55 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(true));
     act(() => current().closePhoneLayer());
     await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  // Gap G1: the layer's maximize rides Chat's `?maximize`, so a reload with
+  // a layer open came back with Chat maximized and no layer to undo it. A
+  // reload is simulated as a fresh provider mount on the SAME entry — its
+  // URL and history state as the unloaded page left them, and the tab's
+  // session storage.
+  test('a reload with a layer open lands in the pre-layer dock state', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    const href = window.location.href;
+    const state = window.history.state;
+
+    // The unload: no React cleanup runs on a real reload, so the entry is
+    // put back exactly as it was after the test's unmount.
+    cleanup();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    window.history.replaceState(state, '', href);
+    navigationStore.navigate(window.location.pathname, {
+      dock: 'open',
+      maximize: 'true',
+    });
+    window.history.replaceState(state, '', href);
+    model = null;
+
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(current().phoneLayer).toBeNull();
+    expect(current().regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+      maximized: false,
+    });
+    await waitFor(() => expect(maximizeParam()).toBeNull());
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 

@@ -12,7 +12,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { registerDialogHistory } from '../components/dialog-history';
+import {
+  DIALOG_HISTORY_KEY,
+  registerDialogHistory,
+} from '../components/dialog-history';
 import {
   availablePlacements,
   dockFoldsToOneRegion,
@@ -243,6 +246,71 @@ interface RegionModelValue {
   closePhoneLayer(): void;
 }
 
+/**
+ * Gap G1: what Chat's dock looked like before a phone layer, kept for the
+ * life of the layer in this tab's session storage. The layer's maximize (and
+ * the dock open it may add) ride Chat's `?dock`/`?maximize` URL params, so a
+ * reload with a layer open would otherwise come back with Chat maximized and
+ * no layer to undo it. Every ending of a layer removes the key; a key found
+ * at mount therefore means the page unloaded with a layer open, and the load
+ * restores the pre-layer dock state instead of the URL's.
+ */
+const PHONE_LAYER_PRE_STATE_KEY = 'station.phoneLayer.preLayerDock.v1';
+
+interface PhoneLayerPreState {
+  visible: boolean;
+  maximized: boolean;
+  dockMemory: boolean;
+}
+
+function takePhoneLayerPreState(): PhoneLayerPreState | null {
+  try {
+    const raw = window.sessionStorage.getItem(PHONE_LAYER_PRE_STATE_KEY);
+    if (raw === null) return null;
+    window.sessionStorage.removeItem(PHONE_LAYER_PRE_STATE_KEY);
+    // Keyed to the layer's history entry: only a load ON that entry (a
+    // reload with the layer open) is the layer's. Any other load finds a
+    // stale key — a tab that unloaded mid-layer and navigated since — and
+    // the URL it was given stands.
+    const state: unknown = window.history.state;
+    const marker =
+      state !== null && typeof state === 'object'
+        ? (state as Record<string, unknown>)[DIALOG_HISTORY_KEY]
+        : undefined;
+    if (
+      typeof marker !== 'string' ||
+      !marker.startsWith(`${PHONE_LAYER_HISTORY_ID}:`)
+    )
+      return null;
+    const value = JSON.parse(raw) as Partial<PhoneLayerPreState>;
+    return typeof value.visible === 'boolean' &&
+      typeof value.maximized === 'boolean' &&
+      typeof value.dockMemory === 'boolean'
+      ? {
+          visible: value.visible,
+          maximized: value.maximized,
+          dockMemory: value.dockMemory,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePhoneLayerPreState(state: PhoneLayerPreState | null) {
+  try {
+    if (state)
+      window.sessionStorage.setItem(
+        PHONE_LAYER_PRE_STATE_KEY,
+        JSON.stringify(state),
+      );
+    else window.sessionStorage.removeItem(PHONE_LAYER_PRE_STATE_KEY);
+  } catch {
+    // Storage unavailable: a reload with a layer open keeps the URL's state,
+    // the behaviour before G1.
+  }
+}
+
 /** The prefix of the layer's `registerDialogHistory` ids (`<prefix>:<n>`). */
 const PHONE_LAYER_HISTORY_ID = 'phone-pane-layer';
 
@@ -390,8 +458,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // pane reads full screen; a wide coarse device keeps the region's size.
   const isMobile = useIsMobile();
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A reload that happened with a phone layer open (gap G1): the URL's
+  // Chat params are the layer's, so the load starts from the pre-layer ones
+  // and the mount effect below writes them back to navigation.
+  const [reloadedOverLayer] = useState(takePhoneLayerPreState);
   const [regions, setRegions] = useState<RegionArrangement>(() =>
-    initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
+    initialRegionArrangement(
+      settings,
+      dockMode,
+      reloadedOverLayer ? reloadedOverLayer.visible : isDockOpen,
+      reloadedOverLayer ? reloadedOverLayer.maximized : isDockMaximized,
+    ),
   );
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
@@ -444,7 +521,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // never answers (its component unmounted with the prompt up) would
     // otherwise leave the decision set for the session, and navigation's
     // inbound sync and the dismissal effect both stand down while it is.
-    if (!layer) layerBackDecisionRef.current = null;
+    if (!layer) {
+      layerBackDecisionRef.current = null;
+      writePhoneLayerPreState(null);
+    }
     setPhoneLayerState(layer);
   }, []);
   const regionsRef = useRef(regions);
@@ -579,6 +659,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           if (!phoneLayerRef.current) {
             layerDockMemoryRef.current = navigationStore.lastDockMaximized;
             layerEntryRef.current += 1;
+            const chatAt = chatRegion(current);
+            writePhoneLayerPreState({
+              visible: chatAt ? current[chatAt].visible : false,
+              maximized: chatAt ? current[chatAt].maximized : false,
+              dockMemory: navigationStore.lastDockMaximized,
+            });
           }
           layerMaximizedRef.current =
             opened.arrangement[opened.layer.region].maximized;
@@ -1036,6 +1122,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       pendingDockMemoryRef.current = null;
     }
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
+
+  // Gap G1: put navigation back in line with the pre-layer dock state the
+  // arrangement was seeded from. A mount is otherwise not a write; this one
+  // repairs params the layer left behind, once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once for the state taken at mount.
+  useEffect(() => {
+    if (!reloadedOverLayer) return;
+    setDockState(reloadedOverLayer.visible, reloadedOverLayer.maximized);
+    navigationStore.lastDockMaximized = reloadedOverLayer.dockMemory;
+  }, []);
 
   // Navigation remains an inbound source for deep links and browser history.
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
