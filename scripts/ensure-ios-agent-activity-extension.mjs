@@ -192,6 +192,9 @@ function valueAfter(argv, flag) {
 /**
  * Applies the spec and, when an APNs environment is named, the Info.plist
  * copy of it: the one argument feeds both, so they cannot disagree.
+ *
+ * @param {{ project: string, infoPlist?: string }} files
+ * @param {{ appBundleId?: string, apsEnvironment?: string }} [options]
  */
 export function ensureIosAgentActivity(
   { project, infoPlist },
