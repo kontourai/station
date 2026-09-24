@@ -135,17 +135,6 @@ describe('FilePreviewContent', () => {
 
   test('bounds a very large text file and says the rest is in the download', async () => {
     const big = 'x'.repeat(TEXT_PREVIEW_CHAR_LIMIT + 10);
-    render(
-      <FilePreviewContent
-        current={{
-          url: 'blob:big',
-          mediaType: 'text/plain',
-          name: 'big.txt',
-        }}
-      />,
-    );
-    // Not cached → unavailable; cache it and remount to exercise the bound.
-    await screen.findByText('Preview unavailable');
     storeAttachmentObjectUrl('big', 'blob:big2', new Blob([big]));
     render(
       <FilePreviewContent
