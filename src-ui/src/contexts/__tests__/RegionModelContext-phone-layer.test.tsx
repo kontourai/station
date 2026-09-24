@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DIALOG_HISTORY_KEY } from '../../components/dialog-history';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
@@ -489,12 +490,14 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(false));
   });
 
-  // Delta review M-b, as decided in round 4: the fold-open ending leaves a
-  // pane the layer moved out of a hidden side region where the user is
-  // looking at it — visible, selected, mounted (moving it back would remount
-  // it and drop an unguarded draft) — but the RECORD must not lose it from
-  // the region the user put it in: it projects the origin placement.
-  test('widening out of the fold keeps a moved pane on screen, while the record keeps it in its region', async () => {
+  // The fold-open ending (decided in rounds 4–5): the layer ends in place.
+  // A pane it moved out of a hidden side region stays where the user is
+  // looking at it — visible, selected, mounted as a tab of Chat's region —
+  // and that live arrangement is exactly what is saved. It is NOT returned
+  // to its origin, live or in the record (round 5 removed that projection:
+  // it disagreed with the live state across later layers, the persist
+  // early-return and cross-tab adoption). The user can move it.
+  test('widening out of the fold keeps a moved pane on screen, and saves exactly that arrangement', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 600,
@@ -541,7 +544,10 @@ describe('a pane opened on a phone opens over Chat', () => {
     });
     expect(current().regions.right.panes).toEqual([]);
     await settle();
-    expect(record()).toBe(before);
+    expect(record()).not.toBe(before);
+    expect(record()).toBe(
+      JSON.stringify(toRegionArrangementRecord(current().regions)),
+    );
   });
 
   // Round-4 review M1: a guard that never answers (its component unmounted
