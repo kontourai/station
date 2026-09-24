@@ -44,6 +44,10 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import {
+  NATIVE_PUSH_ANDROID_PACKAGES,
+  type NativePushRegistrationRequest,
+} from '@kontourai/station-contracts/native-push';
+import {
   humanPrincipal,
   isPrincipalRef,
   type PrincipalRef,
@@ -139,7 +143,18 @@ const DEVICE_RECORD_KEYS = new Set([
   'credentialAliases',
   'relayEnrollmentId',
   'pendingEnrollmentId',
+  // Additive: absent on every record written before native push existed.
+  'nativePush',
 ]);
+const NATIVE_PUSH_KEYS = new Set([
+  'token',
+  'packageName',
+  'platform',
+  'registrationId',
+  'updatedAt',
+]);
+const NATIVE_PUSH_REGISTRATION_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
+const NATIVE_PUSH_REGISTRATION_ID_BYTES = 16;
 const PRE_CREDENTIAL_ALIAS_DEVICE_RECORD_KEYS = new Set(
   [...DEVICE_RECORD_KEYS].filter((key) => key !== 'credentialAliases'),
 );
@@ -181,6 +196,12 @@ interface StoredDevice extends PairedDevice {
   /** PRIVATE — never surfaced through publicDevice()/PairedDevice. */
   pushSubscription: WebPushSubscription | null;
   /**
+   * PRIVATE — the device's native (FCM) agent-activity registration. Absent
+   * when the device never registered. Never surfaced through
+   * publicDevice()/PairedDevice.
+   */
+  nativePush?: StoredNativePush;
+  /**
    * PRIVATE — mint-time proof that issuance presented the local-grant
    * secret or a direct-loopback UI-bootstrap (no proxy attestation).
    * Never client-supplied; never copied onto the public PairedDevice wire.
@@ -202,6 +223,13 @@ interface StoredDevice extends PairedDevice {
   relayEnrollmentId?: string;
   /** PRIVATE admission fence cleared only after the signed activation ACK. */
   pendingEnrollmentId?: string;
+}
+
+/** A device's native push registration (docs/design/notification-delivery.md). */
+export interface StoredNativePush extends NativePushRegistrationRequest {
+  /** 128 random bits, base64url; kept across token rotation. */
+  registrationId: string;
+  updatedAt: number;
 }
 
 interface StoredCredentialAlias {
@@ -551,6 +579,7 @@ function publicDevice(device: StoredDevice): PairedDevice {
     credentialAliases: _credentialAliases,
     clientInstanceId: _clientInstanceId,
     pushSubscription: _pushSubscription,
+    nativePush: _nativePush,
     locality: _locality,
     mintKind: _mintKind,
     homeControlGrantRevision: _homeControlGrantRevision,
@@ -652,6 +681,42 @@ function isValidPushSubscription(value: unknown): value is WebPushSubscription {
     PUSH_KEY_PATTERN.test(keyRecord.p256dh) &&
     typeof keyRecord.auth === 'string' &&
     PUSH_KEY_PATTERN.test(keyRecord.auth)
+  );
+}
+
+/**
+ * The request half, shared by the route and the persisted-record check so the
+ * two cannot disagree about what a registrable token is.
+ */
+export function isValidNativePushRequest(
+  value: unknown,
+): value is NativePushRegistrationRequest {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.token === 'string' &&
+    record.token.length >= 20 &&
+    record.token.length <= 4096 &&
+    !/\s/.test(record.token) &&
+    typeof record.packageName === 'string' &&
+    (NATIVE_PUSH_ANDROID_PACKAGES as readonly string[]).includes(
+      record.packageName,
+    ) &&
+    record.platform === 'android'
+  );
+}
+
+function isValidStoredNativePush(value: unknown): value is StoredNativePush {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    hasOnlyKnownKeys(record, NATIVE_PUSH_KEYS) &&
+    isValidNativePushRequest(record) &&
+    typeof record.registrationId === 'string' &&
+    NATIVE_PUSH_REGISTRATION_ID_PATTERN.test(record.registrationId) &&
+    typeof record.updatedAt === 'number' &&
+    Number.isSafeInteger(record.updatedAt) &&
+    record.updatedAt >= 0
   );
 }
 
@@ -965,6 +1030,12 @@ function validateRegistry(
     ) {
       throw new Error('Invalid paired-device push subscription');
     }
+    if (
+      device.nativePush !== undefined &&
+      !isValidStoredNativePush(device.nativePush)
+    ) {
+      throw new Error('Invalid paired-device native push registration');
+    }
   }
   const aliasIds = new Set<string>();
   const credentialHashes = new Set<string>();
@@ -1042,6 +1113,7 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
             keys: { ...device.pushSubscription.keys },
           }
         : null,
+      ...(device.nativePush ? { nativePush: { ...device.nativePush } } : {}),
       revocation: { ...device.revocation },
     })),
   };
@@ -1746,6 +1818,7 @@ export class DevicePairingService {
           };
           cascadeCredentialAliasRevocation(item, revokedAt);
           item.pushSubscription = null;
+          delete item.nativePush;
         }
       }
     }
@@ -2116,6 +2189,7 @@ export class DevicePairingService {
       // Revocation explicitly severs push, not just credential lookup — a
       // subscription must never survive its device record.
       device.pushSubscription = null;
+      delete device.nativePush;
       this.#persistRegistry(nextRegistry);
       this.#registry = nextRegistry;
     }
@@ -2513,6 +2587,80 @@ export class DevicePairingService {
       }
     }
     return results;
+  }
+
+  /**
+   * Stores (or replaces the token of) the caller's own native push
+   * registration. Callers must resolve the caller's device via
+   * {@link identifyDevice} first — this trusts the deviceId it is given.
+   *
+   * The registrationId is minted once and kept across token rotation: it is
+   * the value the phone checks on every push, so rotating it with the token
+   * would make every push in flight during a rotation look foreign.
+   */
+  setNativePush(
+    deviceId: string,
+    request: NativePushRegistrationRequest,
+  ): StoredNativePush {
+    if (!isValidNativePushRequest(request))
+      throw new DevicePairingError('invalid_request');
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId);
+    if (!device || device.revokedAt !== null)
+      throw new DevicePairingError('device_not_found');
+    if (device.pendingEnrollmentId !== undefined)
+      throw new DevicePairingError('device_not_found');
+    const registration: StoredNativePush = {
+      token: request.token,
+      packageName: request.packageName,
+      platform: 'android',
+      registrationId:
+        device.nativePush?.registrationId ??
+        randomBytes(NATIVE_PUSH_REGISTRATION_ID_BYTES).toString('base64url'),
+      updatedAt: this.#now(),
+    };
+    device.nativePush = registration;
+    // Persist before exposing (archive#3324), as setPushSubscription does.
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return { ...registration };
+  }
+
+  /**
+   * Idempotent. With `expectedToken`, clears only if the stored token is
+   * still that one — a gateway "unregistered" answer for an old token must
+   * not erase a registration the phone has since refreshed.
+   */
+  clearNativePush(deviceId: string, expectedToken?: string): boolean {
+    const current = this.#registry.devices.find((item) => item.id === deviceId);
+    if (!current) throw new DevicePairingError('device_not_found');
+    if (
+      !current.nativePush ||
+      (expectedToken !== undefined &&
+        current.nativePush.token !== expectedToken)
+    )
+      return false;
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId);
+    if (!device) throw new DevicePairingError('device_not_found');
+    delete device.nativePush;
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    return true;
+  }
+
+  /** Fan-out source for the agent-activity publisher — active devices only. */
+  listNativePushRegistrations(): Array<{
+    deviceId: string;
+    registration: StoredNativePush;
+  }> {
+    return this.#registry.devices.flatMap((device) =>
+      device.revokedAt === null &&
+      device.pendingEnrollmentId === undefined &&
+      device.nativePush
+        ? [{ deviceId: device.id, registration: { ...device.nativePush } }]
+        : [],
+    );
   }
 
   resetEnvironment(environmentId: string): void {

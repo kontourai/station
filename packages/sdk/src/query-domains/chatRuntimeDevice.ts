@@ -1,3 +1,9 @@
+import {
+  NATIVE_PUSH_REGISTER_PATH,
+  NATIVE_PUSH_REGISTRATION_PATH,
+  type NativePushRegistrationRequest,
+  type NativePushRegistrationResponse,
+} from '@kontourai/station-contracts/native-push';
 import { resolveApiBase } from '../query-core';
 
 /**
@@ -111,6 +117,60 @@ export async function unsubscribePushNotifications(
   if (!response.ok) {
     throw new Error(
       `Failed to unsubscribe from push notifications: ${response.status}`,
+    );
+  }
+}
+
+/**
+ * Registers this paired device for native (FCM) agent-activity push, or
+ * refreshes its token after FCM rotated it. The answer carries the values the
+ * phone must check on every push; `registrationId` is stable across token
+ * rotation.
+ */
+export async function registerNativePush(
+  request: NativePushRegistrationRequest,
+  apiBase?: string,
+): Promise<NativePushRegistrationResponse> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}${NATIVE_PUSH_REGISTER_PATH}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  );
+  await throwIfDevicePairingRequired(response);
+  if (!response.ok) {
+    throw new Error(`Failed to register for native push: ${response.status}`);
+  }
+  const result =
+    (await response.json()) as Partial<NativePushRegistrationResponse>;
+  if (
+    typeof result.registrationId !== 'string' ||
+    typeof result.stationId !== 'string' ||
+    typeof result.stationKey !== 'string'
+  ) {
+    throw new Error('Malformed native push registration response');
+  }
+  return {
+    registrationId: result.registrationId,
+    stationId: result.stationId,
+    stationKey: result.stationKey,
+  };
+}
+
+/** Clears this paired device's own native push registration. */
+export async function unregisterNativePush(apiBase?: string): Promise<void> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}${NATIVE_PUSH_REGISTRATION_PATH}`,
+    { method: 'DELETE' },
+  );
+  await throwIfDevicePairingRequired(response);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to unregister from native push: ${response.status}`,
     );
   }
 }
