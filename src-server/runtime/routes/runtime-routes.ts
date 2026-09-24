@@ -486,6 +486,7 @@ import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js'
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -4394,23 +4395,23 @@ export function configureRuntimeRoutes(
             )
           )
             return [];
-          return context.taskGraphService
-            .listTasks()
-            .flatMap((task) =>
-              context.taskGraphService.listKeptDeclaredPullRequestsForSession(
-                task.id,
-                conversationId,
-              ),
-            )
-            .map((reference) => ({
-              provider: reference.provider,
-              host: reference.host,
-              repository: reference.repository,
-              ref: reference.ref,
-              source: 'task-declared' as const,
-              linkedAt: reference.keptAt,
-              linkedBy: 'station.task-graph',
-            }));
+          return declaredPullRequestsForConversation(
+            {
+              taskIds: () =>
+                context.taskGraphService.listTasks().map((task) => task.id),
+              lineageSessionIds: (id) =>
+                (
+                  context.orchestrationEventStore?.conversationSessions(id) ??
+                  []
+                ).map((linked) => linked.sessionId),
+              keptForSession: (taskId, sessionId) =>
+                context.taskGraphService.listKeptDeclaredPullRequestsForSession(
+                  taskId,
+                  sessionId,
+                ),
+            },
+            conversationId,
+          );
         },
       },
     ),
