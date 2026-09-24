@@ -112,7 +112,7 @@ const appliedCursors = new Map<string, string>();
 const streamEpochs = new Map<string, string>();
 
 /** Re-read present-tense state when a previously viewed authority returns. */
-export function notifyOrchestrationAuthorityChanged(apiBase: string): void {
+function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   const owned = activeSources.get(apiBase);
   if (owned && !owned.ended && !owned.connection.signal.aborted) {
     owned.connection.restart();
