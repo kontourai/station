@@ -38,6 +38,7 @@ import {
   HOST_IMAGE_READ_DEADLINE_MS,
   ModelImageCollector,
 } from '../model-image-attachments.js';
+import { ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY } from '../sessions/async-event-queue.js';
 
 class FakeCodexProcess extends EventEmitter {
   readonly stdin = new PassThrough();
@@ -63,7 +64,7 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-function harness() {
+function harness({ stubPublish = true } = {}) {
   const transport = new CodexAdapterTransport(
     () => new Date('2026-04-11T00:00:00Z'),
   );
@@ -79,11 +80,13 @@ function harness() {
   transport.registerSession(record);
   transport.setCodexThreadId(record, 'codex-thread-1');
   const published: Array<{ method: string; [key: string]: unknown }> = [];
-  (transport as unknown as { publish: (event: never) => void }).publish = (
-    event: never,
-  ) => {
-    published.push(event);
-  };
+  if (stubPublish) {
+    (transport as unknown as { publish: (event: never) => void }).publish = (
+      event: never,
+    ) => {
+      published.push(event);
+    };
+  }
   const line = (message: unknown) =>
     transport.handleStdoutLine(record, JSON.stringify(message));
   const viewHangingImage = () =>
@@ -168,17 +171,38 @@ describe('Codex host image read bounds', () => {
     expect(methods(published)).toEqual(['tool.started']);
   });
 
-  test('a synchronous burst past the cap never queues more than the cap, and keeps order', async () => {
-    const { transport, record, published } = harness();
-    // Observe the queue after EVERY line, through the real readline path:
-    // one stdout chunk makes readline emit all of its lines inside a single
-    // callback, before any microtask can run.
+  test('the notification cap stays well below the downstream event queue capacity', () => {
+    // A drain pushes up to the cap in one synchronous run; the event queue it
+    // feeds clears itself and rejects its iterator past its capacity.
+    expect(MAX_QUEUED_NOTIFICATIONS * 2).toBeLessThanOrEqual(
+      ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY,
+    );
+  });
+
+  test('bursts past the cap through the REAL event queue: bounded, ordered, nothing dropped, no rejection', async () => {
+    // No stubbed publish: events go through the transport's own bounded
+    // AsyncEventQueue and are read back through `streamEvents()`.
+    const { transport, record } = harness({ stubPublish: false });
+    const collected: Array<{ method: string; [key: string]: unknown }> = [];
+    let failure: unknown;
+    const consuming = (async () => {
+      try {
+        for await (const event of transport.streamEvents()) {
+          collected.push(event as never);
+          if (event.method === 'turn.completed') return;
+        }
+      } catch (error) {
+        failure = error;
+      }
+    })();
+
     const handleLine = transport.handleStdoutLine.bind(transport);
-    let maxDepth = 0;
     let lines = 0;
+    let maxDepth = 0;
     let microtaskRan = false;
-    let microtaskRanBeforeLastLine: boolean | undefined;
-    const burst = MAX_QUEUED_NOTIFICATIONS + 50;
+    let microtaskRanBeforeFirstChunkEnd: boolean | undefined;
+    // First chunk: one synchronous burst already past the cap.
+    const firstChunkLines = MAX_QUEUED_NOTIFICATIONS + 76;
     transport.handleStdoutLine = (target, text) => {
       if (lines === 0)
         queueMicrotask(() => {
@@ -187,32 +211,55 @@ describe('Codex host image read bounds', () => {
       handleLine(target, text);
       lines += 1;
       maxDepth = Math.max(maxDepth, record.queuedNotifications?.length ?? 0);
-      if (lines === burst + 2) microtaskRanBeforeLastLine = microtaskRan;
+      if (lines === firstChunkLines)
+        microtaskRanBeforeFirstChunkEnd = microtaskRan;
     };
     transport.handleProcess(record);
 
-    const chunk = [
-      {
-        method: 'item/completed',
-        params: {
-          threadId: 'codex-thread-1',
-          turnId: 'turn-1',
-          item: {
-            type: 'imageView',
-            id: 'view-1',
-            path: join(workspace, 'hang.png'),
-          },
+    const delta = (index: number) => ({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'turn-1',
+        itemId: 'message-1',
+        delta: String(index % 10),
+      },
+    });
+    const write = async (messages: unknown[]) => {
+      const expected = lines + messages.length;
+      (record.process.stdout as PassThrough).write(
+        messages.map((message) => `${JSON.stringify(message)}\n`).join(''),
+      );
+      await vi.waitFor(() => expect(lines).toBe(expected));
+      // Let the consumer take what was published before the next chunk.
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+
+    // Then realistic chunks of a few hundred lines, until the total is past
+    // 10,000 — the old cap, whose single synchronous drain overflowed.
+    const totalDeltas = 10_600;
+    const imageView = {
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'turn-1',
+        item: {
+          type: 'imageView',
+          id: 'view-1',
+          path: join(workspace, 'hang.png'),
         },
       },
-      ...Array.from({ length: burst }, () => ({
-        method: 'item/agentMessage/delta',
-        params: {
-          threadId: 'codex-thread-1',
-          turnId: 'turn-1',
-          itemId: 'message-1',
-          delta: 'x',
-        },
-      })),
+    };
+    let sent = 0;
+    await write([
+      imageView,
+      ...Array.from({ length: firstChunkLines - 1 }, () => delta(sent++)),
+    ]);
+    while (sent < totalDeltas) {
+      const size = Math.min(500, totalDeltas - sent);
+      await write(Array.from({ length: size }, () => delta(sent++)));
+    }
+    await write([
       {
         method: 'turn/completed',
         params: {
@@ -220,29 +267,35 @@ describe('Codex host image read bounds', () => {
           turn: { id: 'turn-1', status: 'completed' },
         },
       },
-    ]
-      .map((message) => `${JSON.stringify(message)}\n`)
-      .join('');
-    (record.process.stdout as PassThrough).write(chunk);
-    await vi.waitFor(() => expect(lines).toBe(burst + 2));
+    ]);
+    await vi.waitFor(
+      () => {
+        if (failure) throw failure;
+        expect(collected.at(-1)?.method).toBe('turn.completed');
+      },
+      { timeout: 10_000 },
+    );
+    await consuming;
 
-    // It really was one synchronous burst.
-    expect(microtaskRanBeforeLastLine).toBe(false);
-    // The bound held — and was actually reached.
-    expect(maxDepth).toBe(MAX_QUEUED_NOTIFICATIONS);
-    // Order: the image tool settles (with the deadline's note) before any
-    // later notification, and nothing was dropped.
-    const order = methods(published);
+    expect(failure).toBeUndefined();
+    expect(microtaskRanBeforeFirstChunkEnd).toBe(false);
+    expect(maxDepth).toBeLessThanOrEqual(MAX_QUEUED_NOTIFICATIONS);
+    const order = methods(collected);
     const toolCompleted = order.indexOf('tool.completed');
     expect(order.indexOf('tool.started')).toBeLessThan(toolCompleted);
     expect(toolCompleted).toBeLessThan(order.indexOf('content.text-delta'));
-    expect(toolCompleted).toBeLessThan(order.indexOf('turn.completed'));
-    expect(order.filter((m) => m === 'content.text-delta')).toHaveLength(burst);
-    expect(order.at(-1)).toBe('turn.completed');
-    expect(published[toolCompleted]).toMatchObject({
+    const deltas = collected.filter(
+      (event) => event.method === 'content.text-delta',
+    );
+    expect(deltas).toHaveLength(totalDeltas);
+    // Not merely the right count: every delta, in the order it was sent.
+    expect(deltas.map((event) => event.delta).join('')).toBe(
+      Array.from({ length: totalDeltas }, (_, index) => index % 10).join(''),
+    );
+    expect(collected[toolCompleted]).toMatchObject({
       output: '[image not shown: the viewed image could not be read in time]',
     });
-  });
+  }, 30_000);
 
   test('contract: a server approval request is not held behind a pending image read', async () => {
     vi.useFakeTimers();

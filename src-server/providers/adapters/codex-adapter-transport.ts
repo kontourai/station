@@ -108,8 +108,18 @@ export function createCodexSessionRecord(options: {
  * Reaching it settles that read synchronously (as if its deadline passed) and
  * drains the queue in order. The read's own deadline normally drains it long
  * before this.
+ *
+ * It MUST stay well below `ASYNC_EVENT_QUEUE_DEFAULT_CAPACITY` (4,096), the
+ * capacity of the event queue this transport publishes into. A drain pushes
+ * every queued notification's events in ONE synchronous run, before the
+ * consumer can take any; a drain larger than that queue's free space
+ * overflows it, which clears its buffer and rejects the iterator ("Async
+ * event queue capacity exceeded."). 1,024 leaves room for the events the
+ * consumer has not taken yet plus the rest of the stdout chunk being
+ * handled — and a single chunk of JSON-RPC lines holds only a few hundred
+ * lines, so the cap is reached across chunks, not within one.
  */
-export const MAX_QUEUED_NOTIFICATIONS = 10_000;
+export const MAX_QUEUED_NOTIFICATIONS = 1_024;
 
 export class CodexAdapterTransport {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
