@@ -622,6 +622,48 @@ describe('shared saved Station store', () => {
     expect(new Set(probes)).toEqual(new Set([lock]));
   }, 30_000);
 
+  test.skipIf(process.platform === 'win32')(
+    'a holder that dies late in the wait is still reclaimed before giving up',
+    async () => {
+      upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
+      // An interval longer than the wait leaves the final probe as the only
+      // one after the holder's death: a waiter that gave up without it would
+      // report "busy" for a lock nobody holds.
+      setProfileStoreLockTimingForTests({
+        storeWaitMs: 1_500,
+        reclaimProbeIntervalMs: 60_000,
+      });
+      // `sh` exits at once, so the backgrounded owner is reparented and reaped
+      // by init when it dies; a dead child of this (blocked) process would
+      // linger as a zombie that still answers kill(pid, 0).
+      const launcher = spawn(
+        'sh',
+        ['-c', 'sleep 0.5 </dev/null >/dev/null 2>&1 & echo $!'],
+        {
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      );
+      let output = '';
+      launcher.stdout!.on('data', (chunk) => {
+        output += String(chunk);
+      });
+      await once(launcher, 'close');
+      const owner = Number(output.trim());
+      const birth = lookupProcessBirthFingerprint(owner);
+      expect(birth).toBeTruthy();
+      const lock = `${profilesPath()}.lock`;
+      writeFileSync(
+        lock,
+        `${JSON.stringify({ schemaVersion: 2, pid: owner, birth, createdAt: Date.now() })}\n`,
+        { mode: 0o600 },
+      );
+      chmodSync(lock, 0o600);
+      upsertProfile({ name: 'late', endpoint: 'https://late.example.test' });
+      expect(findProfile('late')).toBeDefined();
+    },
+    30_000,
+  );
+
   test('a cold start waits for a live genesis holder with a backed-off probe', async () => {
     const probes: string[] = [];
     setProfileStoreLockTimingForTests({

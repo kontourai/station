@@ -17233,6 +17233,42 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
+    /// The probe backs off, so the only probe after a holder's late death may
+    /// be the one taken as the wait runs out. It must still happen: giving up
+    /// without it reports "busy" for a lock that is provably stale.
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_wait_probes_once_more_before_giving_up() {
+        let directory = profile_lock_wait_test_directory("lock-wait-final-probe");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let started = std::time::Instant::now();
+        // Until 200ms in, the owner is this live process; afterwards the probe
+        // reports a different birth for the pid, i.e. proven PID reuse.
+        let reused_later = |pid: u32| -> Result<Option<String>, String> {
+            let birth = if started.elapsed() < Duration::from_millis(200) {
+                "test-process-birth"
+            } else {
+                "reused-process-birth"
+            };
+            Ok((pid == own_pid).then(|| birth.to_string()))
+        };
+        let lock = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &reused_later,
+            Duration::from_millis(600),
+            Duration::from_secs(60),
+        )
+        .expect("the final probe reclaims the now-stale lock");
+        // The reclaim already removed the holder's file; forget it so its drop
+        // does not unlink the new owner's lock.
+        std::mem::forget(held);
+        drop(lock);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
     fn profile_lock_waits_for_a_live_holder_to_release() {
