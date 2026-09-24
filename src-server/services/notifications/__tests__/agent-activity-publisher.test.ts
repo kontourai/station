@@ -181,6 +181,10 @@ async function harness(
   options: {
     answers?: GatewayAnswer[];
     answerFor?: (token: string) => GatewayAnswer | undefined;
+    /** Per-device reading principal; default: every device reads everything. */
+    principalFor?: (
+      deviceId: string,
+    ) => { principalId: string; sessionIds: string[] } | null;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
@@ -246,7 +250,18 @@ async function harness(
     eventBus,
     devicePairing: pairing,
     signingKey: keys,
-    sessionReaderFor: () => ({ principalId: 'reader', listSessions }),
+    sessionReaderFor: (deviceId) => {
+      if (!options.principalFor) return { principalId: 'reader', listSessions };
+      const reader = options.principalFor(deviceId);
+      if (!reader) return null;
+      return {
+        principalId: reader.principalId,
+        listSessions: async () =>
+          (await listSessions()).filter((row) =>
+            reader.sessionIds.includes(row.sessionId),
+          ),
+      };
+    },
     gateway: GATEWAY,
     logger: { warn },
     fetchImpl: fetchImpl as unknown as typeof fetch,
@@ -1048,6 +1063,55 @@ describe('agent-activity publisher', () => {
     await h.settle();
     // The same card is not re-sent just because one read failed.
     expect(h.delivered).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
+  test('each phone gets only the sessions its own device may read, one read per principal', async () => {
+    let first = '';
+    let second = '';
+    let third = '';
+    const h = await harness({
+      principalFor: (deviceId) =>
+        deviceId === first
+          ? { principalId: 'principal-a', sessionIds: ['s1'] }
+          : deviceId === second
+            ? { principalId: 'principal-b', sessionIds: ['s2'] }
+            : deviceId === third
+              ? { principalId: 'principal-a', sessionIds: ['s1'] }
+              : null,
+    });
+    first = (await h.pairAndRegister('A')).deviceId;
+    second = (await h.pairAndRegister('B', `fcm-token-${'b'.repeat(60)}`))
+      .deviceId;
+    third = (await h.pairAndRegister('C', `fcm-token-${'c'.repeat(60)}`))
+      .deviceId;
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.sessions.set('s2', sessionEvents('s2', 'approval', START));
+    h.emit('turn.started');
+    await h.settle();
+    const byToken = new Map(h.delivered.map((d) => [d.token, d.card]));
+    expect(byToken.get(TOKEN)?.activity_active_count).toBe('1');
+    expect(byToken.get(TOKEN)?.activity_phase).toBe('running');
+    expect(byToken.get(TOKEN)?.alert_id).toBeUndefined();
+    expect(byToken.get(`fcm-token-${'b'.repeat(60)}`)?.activity_phase).toBe(
+      'waiting_for_approval',
+    );
+    expect(byToken.get(`fcm-token-${'c'.repeat(60)}`)?.activity_phase).toBe(
+      'running',
+    );
+    // Two principals, two reads — the third device shares principal-a's.
+    expect(h.listSessions).toHaveBeenCalledTimes(2);
+    await h.publisher.stop();
+  });
+
+  test('a registered device that may no longer read sessions is sent nothing', async () => {
+    const h = await harness({ principalFor: () => null });
+    await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    expect(h.liveTimers()).toEqual([]);
     await h.publisher.stop();
   });
 
