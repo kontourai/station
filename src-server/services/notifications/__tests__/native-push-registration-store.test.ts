@@ -400,3 +400,82 @@ describe('NativePushIosRegistrationStore', () => {
     expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 });
+
+describe('NativePushIosRegistrationStore tombstones', () => {
+  const tombstoneOf = (registrationId: string, payloadKey: string) => ({
+    registrationId,
+    payloadKey,
+    bundleId: 'io.kontourai.station',
+    environment: 'production',
+    retiredAt: 7,
+    activity: ACTIVITY,
+  });
+
+  test('delete and retain retire a record with an activity; one without leaves nothing', () => {
+    const base = fixture();
+    const ios = new NativePushIosRegistrationStore(base.home, () => 7);
+    const live = ios.upsert('live', IOS_REQUEST, KEY, 1);
+    ios.updateLiveActivity('live', live.registrationId, { activity: ACTIVITY });
+    ios.upsert('idle', { ...IOS_REQUEST, token: 'cd'.repeat(40) }, KEY, 1);
+    ios.delete('live');
+    ios.retain(new Set());
+    const reopened = new NativePushIosRegistrationStore(base.home);
+    expect(reopened.list().size).toBe(0);
+    expect(reopened.listTombstones()).toEqual([
+      tombstoneOf(live.registrationId, live.payloadKey),
+    ]);
+    reopened.updateTombstone(live.registrationId, null);
+    expect(
+      new NativePushIosRegistrationStore(base.home).listTombstones(),
+    ).toEqual([]);
+  });
+
+  test('tombstones are bounded and the drops are counted', () => {
+    const base = fixture();
+    const ios = new NativePushIosRegistrationStore(base.home, () => 7);
+    for (let i = 0; i < 34; i += 1) {
+      const token = i.toString(16).padStart(2, '0').repeat(40);
+      const registration = ios.upsert(
+        `d${i}`,
+        { ...IOS_REQUEST, token },
+        KEY,
+        1,
+      );
+      ios.updateLiveActivity(`d${i}`, registration.registrationId, {
+        activity: ACTIVITY,
+      });
+      ios.delete(`d${i}`);
+    }
+    expect(ios.listTombstones()).toHaveLength(32);
+    expect(ios.droppedTombstones).toBe(2);
+  });
+
+  test('the Android file refuses tombstones', () => {
+    const { store, path, reopen } = fixture();
+    const registration = store.upsert('device-1', REQUEST, KEY, 1);
+    writeFileSync(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        registrations: { 'device-1': registration },
+        tombstones: [tombstoneOf('r'.repeat(22), 'k'.repeat(43))],
+      }),
+      { mode: 0o600 },
+    );
+    expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
+  });
+
+  test('a malformed tombstone makes the iOS file unreadable', () => {
+    const { iosPath, reopenIos } = iosFixture();
+    writeFileSync(
+      iosPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        registrations: {},
+        tombstones: [{ registrationId: 'x' }],
+      }),
+      { mode: 0o600 },
+    );
+    expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
+  });
+});

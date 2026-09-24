@@ -72,6 +72,8 @@ export const APNS_CHANNEL_AUTH_PATTERN = /^v\d{1,3}\.[A-Za-z0-9_-]{16,256}$/;
 const ACTIVITY_RUN_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 /** Channels waiting to be deleted, per registration. */
 export const CHANNEL_DELETES_MAX = 16;
+/** Retired iOS registrations still to be ended and cleaned up. */
+export const TOMBSTONES_MAX = 32;
 
 interface StoredRegistrationFields {
   /** 128 random bits, base64url; kept across token rotation. */
@@ -105,6 +107,27 @@ export interface NativePushLiveActivityRecord {
   channelId: string;
   /** Required by the gateway on every update, end and delete of the channel. */
   channelAuth: string;
+  /**
+   * The last `timestamp` (s) sent to this activity: kept so a restart never
+   * sends it an older one, which the phone would drop.
+   */
+  lastTimestamp?: number;
+}
+
+/**
+ * What outlives a removed iOS registration (revoked, unregistered, moved to
+ * Android): its live activity, still to be ended at once, and the channels
+ * still to be deleted. `payloadKey` is kept only to seal that final empty
+ * card; the tombstone goes as soon as both are done.
+ */
+export interface NativePushIosTombstone {
+  registrationId: string;
+  payloadKey: string;
+  bundleId: NativePushIosRegistrationRequest['packageName'];
+  environment: NativePushIosRegistrationRequest['apnsEnvironment'];
+  retiredAt: number;
+  activity?: NativePushLiveActivityRecord;
+  channelDeletes?: NativePushChannelDelete[];
 }
 
 /** An ended activity's channel, deleted once its dismissal time has passed. */
@@ -267,8 +290,12 @@ function isValidActivity(
     hasExactKeys(
       value,
       ['channelAuth', 'channelId', 'runId', 'startedAt'],
-      [],
+      ['lastTimestamp'],
     ) &&
+    (value.lastTimestamp === undefined ||
+      (typeof value.lastTimestamp === 'number' &&
+        Number.isSafeInteger(value.lastTimestamp) &&
+        value.lastTimestamp >= 0)) &&
     isChannelRef(value) &&
     typeof value.startedAt === 'number' &&
     Number.isSafeInteger(value.startedAt) &&
@@ -276,6 +303,64 @@ function isValidActivity(
     typeof value.runId === 'string' &&
     ACTIVITY_RUN_ID_PATTERN.test(value.runId)
   );
+}
+
+function isValidChannelDeletes(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= CHANNEL_DELETES_MAX &&
+    value.every(isValidChannelDelete)
+  );
+}
+
+function isValidIosTombstone(value: unknown): value is NativePushIosTombstone {
+  return (
+    isRecord(value) &&
+    hasExactKeys(
+      value,
+      ['bundleId', 'environment', 'payloadKey', 'registrationId', 'retiredAt'],
+      ['activity', 'channelDeletes'],
+    ) &&
+    (value.activity !== undefined || value.channelDeletes !== undefined) &&
+    typeof value.registrationId === 'string' &&
+    REGISTRATION_ID_PATTERN.test(value.registrationId) &&
+    typeof value.payloadKey === 'string' &&
+    PAYLOAD_KEY_PATTERN.test(value.payloadKey) &&
+    typeof value.bundleId === 'string' &&
+    (NATIVE_PUSH_IOS_BUNDLES as readonly string[]).includes(value.bundleId) &&
+    (value.environment === 'production' || value.environment === 'sandbox') &&
+    typeof value.retiredAt === 'number' &&
+    Number.isSafeInteger(value.retiredAt) &&
+    value.retiredAt >= 0 &&
+    (value.activity === undefined || isValidActivity(value.activity)) &&
+    (value.channelDeletes === undefined ||
+      isValidChannelDeletes(value.channelDeletes))
+  );
+}
+
+function retireIos(
+  registration: NativePushIosRegistration,
+  now: number,
+): NativePushIosTombstone | undefined {
+  if (!registration.activity && !registration.channelDeletes) return undefined;
+  return {
+    registrationId: registration.registrationId,
+    payloadKey: registration.payloadKey,
+    bundleId: registration.packageName,
+    environment: registration.apnsEnvironment,
+    retiredAt: now,
+    ...(registration.activity
+      ? { activity: { ...registration.activity } }
+      : {}),
+    ...(registration.channelDeletes
+      ? {
+          channelDeletes: registration.channelDeletes.map((entry) => ({
+            ...entry,
+          })),
+        }
+      : {}),
+  };
 }
 
 function isValidIosRegistration(
@@ -288,10 +373,7 @@ function isValidIosRegistration(
     hasValidStoredFields(value) &&
     (value.activity === undefined || isValidActivity(value.activity)) &&
     (value.channelDeletes === undefined ||
-      (Array.isArray(value.channelDeletes) &&
-        value.channelDeletes.length > 0 &&
-        value.channelDeletes.length <= CHANNEL_DELETES_MAX &&
-        value.channelDeletes.every(isValidChannelDelete)))
+      isValidChannelDeletes(value.channelDeletes))
   );
 }
 
@@ -331,6 +413,14 @@ interface RegistrationFileSpec<R extends NativePushRegistration, Q> {
   isValid(value: unknown): value is R;
   /** The record for `request`, keeping what `existing` must carry over. */
   build(request: Q, kept: StoredRegistrationFields, existing?: R): R;
+  /**
+   * What must outlive a removed record (iOS: its live activity and queued
+   * channel deletions), or undefined. A file whose spec has no tombstones
+   * refuses one that carries any.
+   */
+  retire?(registration: R, now: number): unknown;
+  isValidTombstone?(value: unknown): boolean;
+  maxTombstones?: number;
 }
 
 /**
@@ -347,11 +437,25 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
    * file's identity (inode, size, change and modification times) is
    * unchanged — a stat, not a parse. A failed read is never cached.
    */
-  #cache: { identity: string; registrations: Map<string, R> } | undefined;
+  #cache:
+    | {
+        identity: string;
+        registrations: Map<string, R>;
+        tombstones: readonly unknown[];
+      }
+    | undefined;
+  readonly #now: () => number;
+  /** Tombstones dropped for the bound since this store was created. */
+  droppedTombstones = 0;
 
-  constructor(homeDir: string, spec: RegistrationFileSpec<R, Q>) {
+  constructor(
+    homeDir: string,
+    spec: RegistrationFileSpec<R, Q>,
+    now: () => number = Date.now,
+  ) {
     this.#path = join(homeDir, 'security', spec.fileName);
     this.#spec = spec;
+    this.#now = now;
   }
 
   #error(): NativePushRegistrationStoreError {
@@ -369,9 +473,19 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
   }
 
   protected read(): Map<string, R> {
+    return this.readAll().registrations;
+  }
+
+  protected readAll(): {
+    registrations: Map<string, R>;
+    tombstones: unknown[];
+  } {
     const identity = this.#identity();
     if (this.#cache?.identity === identity)
-      return cloneAll(this.#cache.registrations);
+      return {
+        registrations: cloneAll(this.#cache.registrations),
+        tombstones: structuredClone([...this.#cache.tombstones]),
+      };
     let value: unknown;
     try {
       value = readPrivateJsonFile(this.#path, MAX_FILE_BYTES, this.#spec.label);
@@ -380,34 +494,67 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
     }
     const result = new Map<string, R>();
     if (value === null) {
-      this.#cache = { identity, registrations: new Map() };
-      return result;
+      this.#cache = { identity, registrations: new Map(), tombstones: [] };
+      return { registrations: result, tombstones: [] };
     }
     const file = value as Partial<StoreFile<R>> | null;
+    const keys = file && typeof file === 'object' ? Object.keys(file) : [];
+    const tombstones = (file as { tombstones?: unknown } | null)?.tombstones;
     if (
       !file ||
       typeof file !== 'object' ||
-      Object.keys(file).sort().join(',') !== 'registrations,schemaVersion' ||
+      ![
+        'registrations,schemaVersion',
+        'registrations,schemaVersion,tombstones',
+      ].includes(keys.sort().join(',')) ||
       file.schemaVersion !== 1 ||
       !file.registrations ||
       typeof file.registrations !== 'object' ||
-      Array.isArray(file.registrations)
+      Array.isArray(file.registrations) ||
+      (tombstones !== undefined &&
+        (!this.#spec.isValidTombstone ||
+          !Array.isArray(tombstones) ||
+          tombstones.length === 0 ||
+          tombstones.length > (this.#spec.maxTombstones ?? 0) ||
+          !tombstones.every((entry) => this.#spec.isValidTombstone?.(entry))))
     )
       throw this.#error();
     for (const [deviceId, registration] of Object.entries(file.registrations)) {
       if (!this.#spec.isValid(registration)) throw this.#error();
       result.set(deviceId, clone(registration));
     }
-    this.#cache = { identity, registrations: cloneAll(result) };
-    return result;
+    const kept = (tombstones as unknown[] | undefined) ?? [];
+    this.#cache = {
+      identity,
+      registrations: cloneAll(result),
+      tombstones: structuredClone(kept),
+    };
+    return { registrations: result, tombstones: structuredClone(kept) };
   }
 
   protected write(registrations: Map<string, R>): void {
+    this.writeAll(registrations, this.readAll().tombstones);
+  }
+
+  protected writeAll(
+    registrations: Map<string, R>,
+    tombstones: readonly unknown[],
+  ): void {
     for (const registration of registrations.values())
       if (!this.#spec.isValid(registration)) throw this.#error();
-    const file: StoreFile<R> = {
+    const max = this.#spec.maxTombstones ?? 0;
+    const bounded = max > 0 ? tombstones.slice(-max) : [];
+    if (max > 0 && tombstones.length > max)
+      this.droppedTombstones += tombstones.length - max;
+    if (
+      bounded.length > 0 &&
+      !bounded.every((entry) => this.#spec.isValidTombstone?.(entry))
+    )
+      throw this.#error();
+    const file = {
       schemaVersion: 1,
       registrations: Object.fromEntries(registrations),
+      ...(max > 0 && bounded.length > 0 ? { tombstones: bounded } : {}),
     };
     this.#cache = undefined;
     writePrivateJsonFileSync(
@@ -419,7 +566,16 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
     this.#cache = {
       identity: this.#identity(),
       registrations: cloneAll(registrations),
+      tombstones: structuredClone(max > 0 ? [...bounded] : []),
     };
+  }
+
+  /** Removed records' tombstones, for the files whose spec keeps them. */
+  #retired(removed: R[]): unknown[] {
+    const at = this.#now();
+    return removed
+      .map((registration) => this.#spec.retire?.(registration, at))
+      .filter((entry) => entry !== undefined);
   }
 
   list(): Map<string, R> {
@@ -495,21 +651,23 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
       (expectedToken !== undefined && current.token !== expectedToken)
     )
       return false;
+    const { tombstones } = this.readAll();
     registrations.delete(deviceId);
-    this.write(registrations);
+    this.writeAll(registrations, [...tombstones, ...this.#retired([current])]);
     return true;
   }
 
   /** Drops every registration whose device is not in `keep`. */
   retain(keep: ReadonlySet<string>): void {
-    const registrations = this.read();
-    let changed = false;
-    for (const deviceId of [...registrations.keys()])
+    const { registrations, tombstones } = this.readAll();
+    const removed: R[] = [];
+    for (const [deviceId, registration] of [...registrations])
       if (!keep.has(deviceId)) {
         registrations.delete(deviceId);
-        changed = true;
+        removed.push(registration);
       }
-    if (changed) this.write(registrations);
+    if (removed.length > 0)
+      this.writeAll(registrations, [...tombstones, ...this.#retired(removed)]);
   }
 }
 
@@ -545,42 +703,69 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
   NativePushIosRegistration,
   NativePushIosRegistrationRequest
 > {
-  constructor(homeDir: string) {
-    super(homeDir, {
-      fileName: IOS_FILE_NAME,
-      label: IOS_LABEL,
-      isValid: isValidIosRegistration,
-      build: (request, kept, existing) => {
-        // An activity belongs to one app and one APNs environment: a token
-        // for another bundle or environment cannot reach it, so its channel
-        // is queued for deletion (under the topic it was created in).
-        const sameTopic =
-          existing !== undefined &&
-          existing.packageName === request.packageName &&
-          existing.apnsEnvironment === request.apnsEnvironment;
-        const deletes = [...(existing?.channelDeletes ?? [])];
-        if (existing?.activity && !sameTopic)
-          deletes.push({
-            bundleId: existing.packageName,
-            environment: existing.apnsEnvironment,
-            channelId: existing.activity.channelId,
-            channelAuth: existing.activity.channelAuth,
-            deleteAt: kept.updatedAt,
-          });
-        const bounded = deletes.slice(-CHANNEL_DELETES_MAX);
-        return {
-          token: request.token,
-          packageName: request.packageName,
-          platform: 'ios',
-          apnsEnvironment: request.apnsEnvironment,
-          ...kept,
-          ...(sameTopic && existing.activity
-            ? { activity: { ...existing.activity } }
-            : {}),
-          ...(bounded.length > 0 ? { channelDeletes: bounded } : {}),
-        };
+  constructor(homeDir: string, now: () => number = Date.now) {
+    super(
+      homeDir,
+      {
+        fileName: IOS_FILE_NAME,
+        label: IOS_LABEL,
+        isValid: isValidIosRegistration,
+        retire: retireIos,
+        isValidTombstone: isValidIosTombstone,
+        maxTombstones: TOMBSTONES_MAX,
+        build: (request, kept, existing) => {
+          // An activity belongs to one app and one APNs environment: a token
+          // for another bundle or environment cannot reach it, so its channel
+          // is queued for deletion (under the topic it was created in).
+          const sameTopic =
+            existing !== undefined &&
+            existing.packageName === request.packageName &&
+            existing.apnsEnvironment === request.apnsEnvironment;
+          const deletes = [...(existing?.channelDeletes ?? [])];
+          if (existing?.activity && !sameTopic)
+            deletes.push({
+              bundleId: existing.packageName,
+              environment: existing.apnsEnvironment,
+              channelId: existing.activity.channelId,
+              channelAuth: existing.activity.channelAuth,
+              deleteAt: kept.updatedAt,
+            });
+          const bounded = deletes.slice(-CHANNEL_DELETES_MAX);
+          return {
+            token: request.token,
+            packageName: request.packageName,
+            platform: 'ios',
+            apnsEnvironment: request.apnsEnvironment,
+            ...kept,
+            ...(sameTopic && existing.activity
+              ? { activity: { ...existing.activity } }
+              : {}),
+            ...(bounded.length > 0 ? { channelDeletes: bounded } : {}),
+          };
+        },
       },
-    });
+      now,
+    );
+  }
+
+  /** Retired registrations still to be ended or cleaned up, oldest first. */
+  listTombstones(): NativePushIosTombstone[] {
+    return this.readAll().tombstones as NativePushIosTombstone[];
+  }
+
+  /** Replaces (or, with null, removes) the tombstone for `registrationId`. */
+  updateTombstone(
+    registrationId: string,
+    next: NativePushIosTombstone | null,
+  ): void {
+    const { registrations, tombstones } = this.readAll();
+    const current = tombstones as NativePushIosTombstone[];
+    if (!current.some((entry) => entry.registrationId === registrationId))
+      return;
+    const updated = current.flatMap((entry) =>
+      entry.registrationId !== registrationId ? [entry] : next ? [next] : [],
+    );
+    this.writeAll(registrations, updated);
   }
 
   /**

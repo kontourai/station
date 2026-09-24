@@ -18,6 +18,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -357,6 +358,7 @@ function harness(
     return existsSync(path)
       ? (JSON.parse(readFileSync(path, 'utf8')) as {
           registrations: Record<string, Record<string, unknown>>;
+          tombstones?: Array<Record<string, unknown>>;
         })
       : null;
   };
@@ -409,6 +411,7 @@ function harness(
 }
 
 const seconds = (ms: number) => Math.floor(ms / 1000);
+type Harness = ReturnType<typeof harness>;
 
 const kind = (call: GatewayCall) =>
   call.path === '/v1/apns/channels' ? `delete` : String(call.body.event);
@@ -645,11 +648,23 @@ describe('agent-activity publisher: iOS Live Activities', () => {
 
   test('a restart resumes the persisted activity: an update through its channel, no second start', async () => {
     const first = harness();
-    await first.registerIos();
+    const { deviceId } = await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
+    // An update well ahead of where the restarted clock will be.
+    first.advance(100_000);
+    await first.change([row('s1', 'approval', first.now())]);
     await first.publisher.stop();
     const [channelId] = [...first.channels.keys()];
     const channelAuth = first.channels.get(channelId ?? '');
+    const lastSent = Number(first.iosCalls().at(-1)?.body.timestamp);
+    // Persisted on the activity, not only in the process that sent it.
+    expect(
+      (
+        first.iosFile()?.registrations[deviceId]?.activity as {
+          lastTimestamp?: number;
+        }
+      )?.lastTimestamp,
+    ).toBe(lastSent);
 
     const restarted = harness({
       homeDir: first.homeDir,
@@ -669,9 +684,9 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       channelId,
       channelAuth,
     });
-    expect(Number(restarted.iosCalls()[0]?.body.timestamp)).toBeGreaterThan(
-      Number(first.iosCalls().at(-1)?.body.timestamp),
-    );
+    // The restarted clock (START + 60 s) is behind the last update (START +
+    // 100 s): the activity's persisted timestamp still orders this one after.
+    expect(Number(restarted.iosCalls()[0]?.body.timestamp)).toBe(lastSent + 1);
     await restarted.publisher.stop();
   });
 
@@ -803,6 +818,237 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       'token',
     ]);
     expect(fcm?.body.token).toBe(FCM_TOKEN);
+    await h.publisher.stop();
+  });
+});
+
+describe('agent-activity publisher: iOS review regressions', () => {
+  test('P7: rollover end sent, then every start fails: the start is retried with bounded backoff and nothing spins', async () => {
+    let starts = 0;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event !== 'start') return undefined;
+        starts += 1;
+        return starts >= 2 ? { status: 503, body: {} } : undefined;
+      },
+    });
+    await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    let fired = 0;
+    while (fired < 200 && h.now() < START + 20 * HOUR) {
+      if (h.liveTimers().length === 0) break;
+      await h.fireNextTimer();
+      fired += 1;
+    }
+    const kinds = h.iosCalls().map(kind);
+    const rollover = kinds.indexOf('end');
+    expect(rollover).toBeGreaterThan(0);
+    // The first start after the rollover, then eight timed retries.
+    expect(kinds.slice(rollover + 1).filter((k) => k === 'start')).toHaveLength(
+      9,
+    );
+    // No re-flush every second: a bounded number of wakes in total.
+    expect(fired).toBeLessThan(40);
+    expect(h.liveTimers()).toEqual([]);
+    await h.publisher.stop();
+  });
+
+  test('P4: rollover end sent, then the start is unregistered: the registration goes and the ended channel is still deleted', async () => {
+    let starts = 0;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event !== 'start') return undefined;
+        starts += 1;
+        return starts === 2
+          ? { status: 410, body: { result: 'unregistered' } }
+          : undefined;
+      },
+    });
+    await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    const [first] = [...h.channels.keys()];
+    while (h.now() < START + LIVE_ACTIVITY_ROLLOVER_AFTER_MS)
+      await h.fireNextTimer();
+    expect(h.iosCalls().map(kind).slice(-3)).toEqual([
+      'end',
+      'start',
+      'delete',
+    ]);
+    expect(h.iosCalls().at(-1)?.body.channelId).toBe(first);
+    expect(h.channels.size).toBe(0);
+    expect(h.pairing.listNativePushRegistrations()).toEqual([]);
+    expect(h.iosFile()?.tombstones).toBeUndefined();
+    await h.publisher.stop();
+  });
+
+  test('P1: after a restart, a device narrowed below read access has its persisted activity ended first', async () => {
+    const first = harness();
+    const { deviceId } = await first.registerIos();
+    await first.change([row('s1', 'running', START - 1000)]);
+    await first.publisher.stop();
+    const restarted = harness({ homeDir: first.homeDir });
+    for (const [id, r] of first.registered) restarted.registered.set(id, r);
+    restarted.unreadable.add(deviceId);
+    restarted.setRows([row('s1', 'running', START - 1000)]);
+    restarted.advance(60_000);
+    await restarted.fireNextTimer();
+    const [end] = restarted.iosCalls();
+    expect(end?.body).toMatchObject({
+      event: 'end',
+      dismissAt: seconds(restarted.now()),
+    });
+    expect(end?.card?.activity_line_0).toBeUndefined();
+    await restarted.publisher.stop();
+  });
+
+  test.each([
+    [
+      'revoked',
+      (h: Harness, deviceId: string) =>
+        h.pairing.revokeDevice(deviceId, 'operator-credential'),
+    ],
+    [
+      'unregistered (DELETE)',
+      (h: Harness, deviceId: string) => h.pairing.clearNativePush(deviceId),
+    ],
+    [
+      'moved to Android',
+      (h: Harness, deviceId: string, key: string) =>
+        h.pairing.setNativePush(
+          deviceId,
+          {
+            token: FCM_TOKEN,
+            packageName: 'io.kontourai.station',
+            platform: 'android',
+          },
+          key,
+        ),
+    ],
+  ] as const)(
+    'P2: an iPhone %s has its live activity ended now (empty, dismissed at once) and its channel deleted',
+    async (_label, retire) => {
+      const h = harness();
+      const { deviceId, registration } = await h.registerIos();
+      await h.change([row('s1', 'running', START - 1000)]);
+      const [channelId] = [...h.channels.keys()];
+      h.advance(10_000);
+      // No lifecycle event: the retirement itself asks for the flush.
+      retire(h, deviceId, registration.stationKey);
+      await h.publisher.drain();
+      const [end, remove] = h.iosCalls().slice(1);
+      expect(end?.body).toMatchObject({
+        event: 'end',
+        channelId,
+        alert: false,
+        dismissAt: seconds(h.now()),
+      });
+      expect(end?.card).toMatchObject({ active: 'false' });
+      expect(end?.card?.activity_line_0).toBeUndefined();
+      expect(remove?.body).toMatchObject({ op: 'delete', channelId });
+      expect(h.channels.size).toBe(0);
+      expect(h.iosFile()?.tombstones).toBeUndefined();
+      await h.publisher.stop();
+    },
+  );
+
+  test('P3: revoked after a restart, before any flush: the persisted activity is still ended and its channel deleted', async () => {
+    const first = harness();
+    const { deviceId } = await first.registerIos();
+    await first.change([row('s1', 'running', START - 1000)]);
+    await first.publisher.stop();
+    const [channelId] = [...first.channels.keys()];
+    const restarted = harness({ homeDir: first.homeDir });
+    for (const [id, r] of first.registered) restarted.registered.set(id, r);
+    // The restarted gateway fake knows the first one's channel.
+    restarted.channels.set(
+      channelId ?? '',
+      first.channels.get(channelId ?? '') ?? '',
+    );
+    restarted.advance(60_000);
+    restarted.pairing.revokeDevice(deviceId, 'operator-credential');
+    await restarted.publisher.drain();
+    expect(restarted.iosCalls().map(kind)).toEqual(['end', 'delete']);
+    expect(restarted.channels.size).toBe(0);
+    expect(restarted.iosFile()?.tombstones).toBeUndefined();
+    await restarted.publisher.stop();
+  });
+
+  test('a retired activity whose end fails is retried with backoff and survives a restart', async () => {
+    let failing = true;
+    const h = harness({
+      answer: (call) =>
+        failing && call.body.event === 'end'
+          ? { status: 503, body: {} }
+          : undefined,
+    });
+    const { deviceId } = await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    h.advance(10_000);
+    h.pairing.revokeDevice(deviceId, 'operator-credential');
+    await h.publisher.drain();
+    expect(h.iosCalls().map(kind)).toEqual(['start', 'end']);
+    expect(h.iosFile()?.tombstones).toHaveLength(1);
+    failing = false;
+    const retry = await h.fireNextTimer();
+    expect(retry.at).toBe(START + 10_000 + 5_000);
+    expect(h.iosCalls().map(kind)).toEqual(['start', 'end', 'end', 'delete']);
+    expect(h.iosFile()?.tombstones).toBeUndefined();
+    await h.publisher.stop();
+  });
+
+  test('P6: an unreadable iOS file stalls only iOS: Android keeps getting cards and can still register', async () => {
+    const h = harness();
+    const android = await h.registerAndroid();
+    const ios = await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    const fcm = () => h.calls.filter((c) => c.path === '/v1/fcm/send').length;
+    const before = fcm();
+    const iosCallsBefore = h.iosCalls().length;
+    writeFileSync(
+      join(h.homeDir, 'security', 'native-push-ios-registrations.json'),
+      '{not json',
+      { mode: 0o600 },
+    );
+    h.advance(10_000);
+    await h.change([row('s1', 'approval', h.now())]);
+    expect(fcm()).toBe(before + 1);
+    expect(h.iosCalls()).toHaveLength(iosCallsBefore);
+    expect(h.warn).toHaveBeenCalledWith(
+      expect.stringContaining('ios native push registrations are unreadable'),
+    );
+    expect(() =>
+      h.pairing.setNativePush(
+        android.deviceId,
+        {
+          token: `${FCM_TOKEN}-rotated`,
+          packageName: 'io.kontourai.station',
+          platform: 'android',
+        },
+        android.registration.stationKey,
+      ),
+    ).not.toThrow();
+    expect(ios.registration.platform).toBe('ios');
+    await h.publisher.stop();
+  });
+
+  test('L1: a 200 start without a channel is retried with backoff, not taken as started', async () => {
+    let starts = 0;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event !== 'start') return undefined;
+        starts += 1;
+        return starts === 1
+          ? { status: 200, body: { result: 'sent' } }
+          : undefined;
+      },
+    });
+    const { deviceId } = await h.registerIos();
+    await h.change([row('s1', 'running', START - 1000)]);
+    expect(h.iosFile()?.registrations[deviceId]?.activity).toBeUndefined();
+    const retry = await h.fireNextTimer();
+    expect(retry.at).toBe(START + 5_000);
+    expect(h.iosCalls().map(kind)).toEqual(['start', 'start']);
+    expect(h.iosFile()?.registrations[deviceId]?.activity).toBeDefined();
     await h.publisher.stop();
   });
 });

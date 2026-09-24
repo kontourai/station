@@ -334,7 +334,14 @@ iPhone yet.
   because the Android file is read as strictly as the device registry: one
   iOS record in it would cost an older Station every Android registration.
   A device holds one registration; registering on one platform clears the
-  other, and `DELETE`, revocation and replacement clear both files. A token
+  other (best effort: an unreadable file for the other platform does not
+  block this one, and should both ever hold the device the newer one is
+  served), and `DELETE`, revocation and replacement clear both files. A
+  removed iOS record that still has a live activity or queued channels
+  leaves a tombstone in the file (`tombstones`, at most 32, drops logged):
+  the publisher is told at once, ends that activity with an empty card
+  dismissed now, then deletes its channels, so a revoked phone stops
+  showing sessions even when the Station restarted in between. A token
   for another bundle or APNs environment queues the live activity's channel
   for deletion under its old topic.
 - **Card.** `content-state` is `{ v: 1, rid, sk, sealed }`: `sealed` is the
@@ -369,8 +376,17 @@ iPhone yet.
   stale, and queues its channel); 429, 503, 401 and network errors back off.
   Deletions back off on their own (so a failing delete never holds back a
   card) and are dropped after the same eight timed attempts; a gone or
-  refused channel counts as deleted. A phone the publisher stops seeing has
-  its known channels deleted at once, best effort.
+  refused channel counts as deleted; a given-up channel is logged by a hash
+  of its id. A start that fails after a rollover's end forgets what the
+  phone was sent, so the next attempt starts again rather than waiting on a
+  rollover that already happened. A 200 start that names no channel is
+  retried like a 503. Each activity keeps its last `timestamp` in the file,
+  so a restart never sends it an older one. An unreadable registration file
+  stops only its own platform's cards. A registration pinned to a previous
+  push key cannot have its activity ended (its `channelAuth` is bound to
+  that key): it goes stale, and the gateway's channel ledger and sweep
+  reclaim the channel within about 13 hours, as they do any channel the
+  Station loses track of.
 - **What differs from Android in the threat model.** A forged or replayed
   push can blank the card but not inject content: the widget (slice C) is to
   show a neutral placeholder unless the state's `rid` matches its attributes, `sk` matches

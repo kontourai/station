@@ -55,6 +55,7 @@ import {
   isValidNativePushRequest,
   type NativePushIosRegistration,
   NativePushIosRegistrationStore,
+  type NativePushIosTombstone,
   type NativePushLiveActivityUpdate,
   type NativePushRegistration,
   NativePushRegistrationStore,
@@ -1103,11 +1104,16 @@ export class DevicePairingService {
   /** Native push registrations: sidecars, never a registry field. */
   readonly #nativePush: NativePushRegistrationStore;
   readonly #nativePushIos: NativePushIosRegistrationStore;
+  readonly #retiredListeners = new Set<(event: { dropped: number }) => void>();
+  #reportedDroppedTombstones = 0;
 
   constructor(options: DevicePairingServiceOptions) {
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
     this.#nativePush = new NativePushRegistrationStore(options.homeDir);
-    this.#nativePushIos = new NativePushIosRegistrationStore(options.homeDir);
+    this.#nativePushIos = new NativePushIosRegistrationStore(
+      options.homeDir,
+      () => this.#now(),
+    );
     this.#environmentId = options.environmentId;
     this.#now = options.now ?? Date.now;
     this.#offerTtlMs = options.offerTtlMs ?? DEFAULT_OFFER_TTL_MS;
@@ -2557,10 +2563,13 @@ export class DevicePairingService {
     if (!this.#activeDeviceIds().has(deviceId))
       throw new DevicePairingError('device_not_found');
     // One registration per device: a device that registers on one platform
-    // leaves the other's file. Cleared first, so a failure leaves the old
-    // registration rather than two.
+    // leaves the other's file. Best effort: an unreadable file for the other
+    // platform must not block this one; should both ever hold the device,
+    // the listing serves the newer registration.
     if (request.platform === 'ios') {
-      this.#nativePush.delete(deviceId);
+      try {
+        this.#nativePush.delete(deviceId);
+      } catch {}
       return this.#nativePushIos.upsert(
         deviceId,
         request,
@@ -2568,8 +2577,18 @@ export class DevicePairingService {
         this.#now(),
       );
     }
-    this.#nativePushIos.delete(deviceId);
-    return this.#nativePush.upsert(deviceId, request, stationKey, this.#now());
+    let retired = false;
+    try {
+      retired = this.#nativePushIos.delete(deviceId);
+    } catch {}
+    const registration = this.#nativePush.upsert(
+      deviceId,
+      request,
+      stationKey,
+      this.#now(),
+    );
+    if (retired) this.#notifyNativePushRetired();
+    return registration;
   }
 
   /**
@@ -2579,10 +2598,55 @@ export class DevicePairingService {
    * device from both platforms' files.
    */
   clearNativePush(deviceId: string, expectedToken?: string): boolean {
-    return onBothNativePushFiles([
-      () => this.#nativePush.delete(deviceId, expectedToken),
-      () => this.#nativePushIos.delete(deviceId, expectedToken),
-    ]).some(Boolean);
+    try {
+      return onBothNativePushFiles([
+        () => this.#nativePush.delete(deviceId, expectedToken),
+        () => this.#nativePushIos.delete(deviceId, expectedToken),
+      ]).some(Boolean);
+    } finally {
+      this.#notifyNativePushRetired();
+    }
+  }
+
+  /**
+   * Retired iOS registrations whose live activity must still be ended, or
+   * whose channels deleted (see the store). Not joined against the registry:
+   * a revoked device's activity is exactly what must be ended.
+   */
+  listNativePushTombstones(): NativePushIosTombstone[] {
+    return this.#nativePushIos.listTombstones();
+  }
+
+  updateNativePushTombstone(
+    registrationId: string,
+    next: NativePushIosTombstone | null,
+  ): void {
+    this.#nativePushIos.updateTombstone(registrationId, next);
+  }
+
+  /**
+   * Calls `listener` after a change that can retire an iOS registration
+   * (clear, revoke, replace, reset, a move to Android), so the publisher
+   * ends its live activity now. `dropped` counts tombstones lost to the
+   * file's bound since the last call. A listener's failure is ignored.
+   */
+  onNativePushRetired(
+    listener: (event: { dropped: number }) => void,
+  ): () => void {
+    this.#retiredListeners.add(listener);
+    return () => {
+      this.#retiredListeners.delete(listener);
+    };
+  }
+
+  #notifyNativePushRetired(): void {
+    const dropped =
+      this.#nativePushIos.droppedTombstones - this.#reportedDroppedTombstones;
+    this.#reportedDroppedTombstones = this.#nativePushIos.droppedTombstones;
+    for (const listener of [...this.#retiredListeners])
+      try {
+        listener({ dropped });
+      } catch {}
   }
 
   /** Remembers alerts a registration was sent (see the store). */
@@ -2625,16 +2689,56 @@ export class DevicePairingService {
     deviceId: string;
     registration: NativePushRegistration;
   }> {
-    const active = this.#activeDeviceIds();
     // Both files or neither: an unreadable one fails the whole listing
     // rather than reading as "nobody on that platform is registered".
-    const all: Array<[string, NativePushRegistration]> = [
-      ...this.#nativePush.list(),
-      ...this.#nativePushIos.list(),
-    ];
-    return all
-      .filter(([deviceId]) => active.has(deviceId))
-      .map(([deviceId, registration]) => ({ deviceId, registration }));
+    const { registrations, unreadable } =
+      this.listNativePushRegistrationsByPlatform();
+    if (unreadable.length > 0) throw unreadable[0]?.error;
+    return registrations;
+  }
+
+  /**
+   * The same listing, per file: an unreadable file is reported (and its
+   * platform left out) instead of failing the other platform's listing.
+   */
+  listNativePushRegistrationsByPlatform(): {
+    registrations: Array<{
+      deviceId: string;
+      registration: NativePushRegistration;
+    }>;
+    unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }>;
+  } {
+    const active = this.#activeDeviceIds();
+    const unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }> =
+      [];
+    const byDevice = new Map<string, NativePushRegistration>();
+    for (const [platform, store] of [
+      ['android', this.#nativePush],
+      ['ios', this.#nativePushIos],
+    ] as const) {
+      let entries: Map<string, NativePushRegistration>;
+      try {
+        entries = store.list();
+      } catch (error) {
+        unreadable.push({ platform, error });
+        continue;
+      }
+      for (const [deviceId, registration] of entries) {
+        if (!active.has(deviceId)) continue;
+        const other = byDevice.get(deviceId);
+        // Both files hold the device only after a best-effort clear failed:
+        // the newer registration is the phone's current one.
+        if (!other || registration.updatedAt > other.updatedAt)
+          byDevice.set(deviceId, registration);
+      }
+    }
+    return {
+      registrations: [...byDevice].map(([deviceId, registration]) => ({
+        deviceId,
+        registration,
+      })),
+      unreadable,
+    };
   }
 
   #activeDeviceIds(): Set<string> {
@@ -2662,6 +2766,7 @@ export class DevicePairingService {
       } catch {
         // An unreadable store is reported where it is read (publisher, route).
       }
+    this.#notifyNativePushRetired();
   }
 
   resetEnvironment(environmentId: string): void {
