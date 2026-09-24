@@ -122,7 +122,11 @@ import {
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { notifyPluginCommandEffectAuthoritySwitch } from '../components/plugin-command-effect-switch-signal';
+import {
+  isPluginCommandEffectCookieAuthEligible,
+  notifyPluginCommandEffectAuthoritySwitch,
+  notifyPluginCommandEffectCookieAuthEligibility,
+} from '../components/plugin-command-effect-switch-signal';
 import { SkeletonBlock } from '../components/state';
 import {
   useConnectionSwitchScope,
@@ -249,6 +253,24 @@ export function AuthorityQueryProvider({
   const authorityGeneration = connectionId
     ? credentialAuthorityGeneration(connectionId)
     : 0;
+
+  // #1418/#1419 review, MEDIUM: this is the one place that already holds
+  // `credentialState`, `profile.isTauri`, and the active connection's broker
+  // route together, so the plugin-command-effect coordinator's `pagehide`
+  // keepalive eligibility is derived here and pushed through the same
+  // always-loaded signal seam `notifyPluginCommandEffectAuthoritySwitch`
+  // already uses (the coordinator itself may not be loaded yet).
+  const pluginCommandEffectCookieAuthEligible =
+    isPluginCommandEffectCookieAuthEligible({
+      isTauri: profile.isTauri,
+      credentialState,
+      hasBrokerRoute: Boolean(activeConnection?.brokerRoute),
+    });
+  useEffect(() => {
+    notifyPluginCommandEffectCookieAuthEligibility(
+      pluginCommandEffectCookieAuthEligible,
+    );
+  }, [pluginCommandEffectCookieAuthEligible]);
 
   const observationEnabled =
     activeConnection !== null && requestScope !== undefined;

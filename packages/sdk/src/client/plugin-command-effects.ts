@@ -81,14 +81,26 @@ export async function admitPluginCommandEffect(
 /**
  * `POST /api/plugins/command-effects/settlements`. Settlement is LP-K.
  *
- * `keepalive` lets a `pagehide` flush survive page teardown; it bypasses the
- * SDK's broker/credential transport (native and relay callers do not use
- * `pagehide` at all, and `fetch`'s `keepalive` flag has no analogue there),
- * so a settlement sent this way relies on the browser's ambient session
- * (same-origin cookies) rather than an explicit bearer credential. That is a
- * disclosed gap for a remote broker connection; the retry on the next
- * `flush` (bfcache `pageshow`, or the next scheduled attempt) goes through
- * the normal path.
+ * `keepalive` lets a `pagehide` flush survive page teardown, but it bypasses
+ * the SDK's authenticated transport ENTIRELY (`credentials: 'include'` sends
+ * only the browser's ambient same-origin session cookie — never an explicit
+ * bearer, and never anything for a native shell's Rust-owned credential or a
+ * browser-relay/broker connection's own exchange). It is therefore the
+ * CALLER's responsibility to pass `keepalive: true` only when this
+ * document's Station credential is genuinely a same-origin browser cookie
+ * ("device session"); the client coordinator
+ * (`src-ui/src/components/plugin-command-effect-coordinator.ts`) is the
+ * production caller and derives that eligibility from a live signal before
+ * ever setting this flag (kontourai/station#1418, #1419 review, MEDIUM —
+ * this used to be used on every `pagehide` regardless of auth mode, which
+ * silently could not authenticate for desktop or a remote-paired browser).
+ * Outside that one case, a `pagehide` flush must instead attempt the normal
+ * authenticated path here (`keepalive: false`): best-effort, since teardown
+ * may still cut it off, and never a claim of delivery either way — the
+ * retry on the next `flush` (bfcache `pageshow`, or the next scheduled
+ * attempt) is what actually closes the loop for desktop and remote-paired
+ * connections; a `pagehide` that cannot complete in time may leave the
+ * effect outstanding for the operator to resolve.
  */
 export async function settlePluginCommandEffects(
   apiBase: string,

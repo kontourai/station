@@ -29,9 +29,16 @@
  *   outbox before any `await` — the outbox item exists in the same tick the
  *   decision is made, so a page teardown right after can still flush it.
  * - The ack outbox retries with backoff, treats `already-settled` (and other
- *   terminal statuses) as done, and keeps retrying `cancel-refused`. It
- *   flushes with `keepalive` on `pagehide` and resumes on a bfcache
- *   `pageshow`.
+ *   terminal statuses) as done, and keeps retrying `cancel-refused`. On
+ *   `pagehide` it flushes immediately, with `keepalive` ONLY when this
+ *   document's Station credential is a same-origin browser cookie ("device
+ *   session") — the one case a bare `keepalive` fetch can actually carry it
+ *   (#1418/#1419 review, MEDIUM; see `isPluginCommandEffectCookieAuthEligible`
+ *   in `plugin-command-effect-switch-signal.ts`). Everywhere else — native,
+ *   a browser-relay/broker connection, or no confirmed auth mode yet — it
+ *   instead attempts the normal authenticated transport: best-effort, may
+ *   not finish before teardown, and never claims delivery either way. It
+ *   resumes on a bfcache `pageshow`.
  */
 import type {
   PluginCommandEffectAdmissionRequest,
@@ -242,6 +249,14 @@ export function createPluginCommandEffectCoordinator(
   let documentId = loadOrCreateDocumentId();
   let documentKey = randomId();
   let flushTimer: unknown = null;
+  /**
+   * Whether THIS document's Station credential is a same-origin browser
+   * cookie ("device session") — the only mode a `pagehide` flush may use a
+   * bare `keepalive` fetch for. Fails closed (`false`, the normal
+   * authenticated transport) until the production wiring's live signal says
+   * otherwise (#1418/#1419 review, MEDIUM).
+   */
+  let cookieAuthEligible = false;
 
   function loadOrCreateDocumentId(): string {
     const existing = deps.storage.getItem(DOCUMENT_ID_STORAGE_KEY);
@@ -341,7 +356,15 @@ export function createPluginCommandEffectCoordinator(
   }
 
   function onPageHide() {
-    void flush({ keepalive: true });
+    // `keepalive: true` bypasses the SDK's authenticated transport entirely
+    // (see `settlePluginCommandEffects`), so it must only be used when this
+    // document's Station credential is an ambient same-origin cookie — the
+    // one case `credentials: 'include'` can actually carry. Everywhere else
+    // (native, browser-relay/broker, no confirmed auth mode yet) this
+    // attempts the normal authenticated transport instead: best-effort, may
+    // not finish before teardown, and never claims delivery either way
+    // (#1418/#1419 review, MEDIUM).
+    void flush({ keepalive: cookieAuthEligible });
   }
 
   function onPageShow(event: { persisted?: boolean }) {
@@ -552,10 +575,20 @@ export function createPluginCommandEffectCoordinator(
     if (flushTimer !== null) clearTimer(flushTimer);
   }
 
+  /**
+   * Production wiring calls this from a live signal (`AuthorityQueryContext`
+   * via `registerPluginCommandEffectCookieAuthHandler`) whenever the derived
+   * same-origin-cookie-auth eligibility could have changed.
+   */
+  function setCookieAuthEligible(eligible: boolean): void {
+    cookieAuthEligible = eligible;
+  }
+
   return {
     runCommand,
     cancelRequest,
     resetForAuthorityChange,
+    setCookieAuthEligible,
     dispose,
     /** Test seam only. */
     _debug: {

@@ -13,7 +13,10 @@ import {
   type PluginCommandEffectCoordinator,
   type PluginCommandEffectTransport,
 } from './plugin-command-effect-coordinator';
-import { registerPluginCommandEffectAuthoritySwitchHandler } from './plugin-command-effect-switch-signal';
+import {
+  registerPluginCommandEffectAuthoritySwitchHandler,
+  registerPluginCommandEffectCookieAuthHandler,
+} from './plugin-command-effect-switch-signal';
 
 const transport: PluginCommandEffectTransport = {
   admit: (apiBase, pluginId, request, signal) =>
@@ -33,6 +36,9 @@ export function getPluginCommandEffectCoordinator(): PluginCommandEffectCoordina
     });
     registerPluginCommandEffectAuthoritySwitchHandler(() =>
       singleton?.resetForAuthorityChange(),
+    );
+    registerPluginCommandEffectCookieAuthHandler((eligible) =>
+      singleton?.setCookieAuthEligible(eligible),
     );
   }
   return singleton;
