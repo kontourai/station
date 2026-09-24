@@ -154,7 +154,7 @@ function stateOf(record: CodexSessionRecord): CodexChildWorkState {
  * `running` means "not terminal"; everything unrecognised is `unresolved`,
  * never a success.
  */
-export function mapCodexCollabAgentStatus(
+function mapCodexCollabAgentStatus(
   status: unknown,
 ): 'running' | ChildWorkTerminalStatus {
   switch (status) {
@@ -175,9 +175,7 @@ export function mapCodexCollabAgentStatus(
 }
 
 /** A child's own `turn/completed` `turn.status`, as child work. */
-export function mapCodexChildTurnStatus(
-  status: unknown,
-): ChildWorkTerminalStatus {
+function mapCodexChildTurnStatus(status: unknown): ChildWorkTerminalStatus {
   switch (status) {
     case 'completed':
       return 'completed';
@@ -402,7 +400,7 @@ function titleFrom(value: unknown): string | undefined {
  * v2 `agentPath` is `/root/<name>` for a top-level child, one more segment
  * per level below it. Anything not rooted at `root` has no depth.
  */
-export function depthFromCodexAgentPath(path: unknown): number | undefined {
+function depthFromCodexAgentPath(path: unknown): number | undefined {
   const segments = (extractString(path) ?? '').split('/').filter(Boolean);
   if (segments[0] !== 'root' || segments.length < 2) return undefined;
   return segments.length - 1;
