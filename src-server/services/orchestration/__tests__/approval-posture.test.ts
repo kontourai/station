@@ -842,13 +842,33 @@ describe('server-ordered approval posture (#2436)', () => {
     });
 
     test.each([
-      ['a workspace stamp', 'workspace', false, 'workspace'],
-      ['a host stamp', 'host', false, 'host'],
-      ['no stamp (a session from before #2493)', undefined, false, 'workspace'],
-      ['no stamp but a recorded never', undefined, true, 'host'],
+      {
+        label: 'a workspace stamp',
+        stamp: 'workspace',
+        recordedNever: false,
+        expected: 'workspace',
+      },
+      {
+        label: 'a host stamp',
+        stamp: 'host',
+        recordedNever: false,
+        expected: 'host',
+      },
+      {
+        label: 'no stamp (a session from before #2493)',
+        stamp: undefined,
+        recordedNever: false,
+        expected: 'workspace',
+      },
+      {
+        label: 'no stamp but a recorded never',
+        stamp: undefined,
+        recordedNever: true,
+        expected: 'host',
+      },
     ] as const)(
-      'a dormant respawn with %s runs %s',
-      async (_label, stamp, recordedNever, expected) => {
+      'a dormant respawn with $label runs $expected',
+      async ({ stamp, recordedNever, expected }) => {
         stationDefault = 'never';
         dormant('c-dormant', 'codex', stamp, recordedNever);
         service.initialize();
@@ -891,7 +911,11 @@ describe('server-ordered approval posture (#2436)', () => {
 
     test('also moves a posture Station applied at spawn from the default channel', async () => {
       // e.g. `station chat --approval-mode never`: nothing recorded.
-      await start('t-2409-spawn', 'claude', 'never');
+      await start('t-2409-spawn', 'claude', 'never', undefined, {
+        operator: true,
+      });
+      // #2493: the operator's start really spawns at full access.
+      expect(claude.starts.at(-1)?.modelOptions?.approvalMode).toBe('never');
       await decide('t-2409-spawn', 'connection-default');
       await turn('t-2409-spawn');
       expect(claude.lastTurnMode()).toBe('ask');

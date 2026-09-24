@@ -151,12 +151,33 @@ class RecordingEngine implements ProviderAdapterShape {
     return session;
   }
 
+  /** When set, every turn completes, so a continuation starts a new child. */
+  completeTurns = false;
+
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
-    return {
-      threadId: input.threadId,
-      turnId: `${this.provider}-turn-${this.turns.length}`,
-    };
+    const turnId = `${this.provider}-turn-${this.turns.length}`;
+    if (this.completeTurns) {
+      const base = {
+        provider: this.provider,
+        threadId: input.threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+      } as const;
+      this.events.push({
+        ...base,
+        eventId: `${turnId}:started`,
+        method: 'turn.started',
+        prompt: input.input,
+      } as CanonicalRuntimeEvent);
+      this.events.push({
+        ...base,
+        eventId: `${turnId}:completed`,
+        method: 'turn.completed',
+        outputText: 'done',
+      } as CanonicalRuntimeEvent);
+    }
+    return { threadId: input.threadId, turnId };
   }
 
   async interruptTurn() {
@@ -521,11 +542,15 @@ describe('#2493: who may start a session unconfined', () => {
     });
   });
 
-  test('in-process starters carry no grant: the delegate_task and send_message tools, webhooks and Discord all start confined', async () => {
+  test('in-process starters carry no grant: delegateTask and executeExecutionTargetMessage called without one start confined', async () => {
     const f = await fixture();
-    // delegate_task (station-control-operations-tools.ts) calls this with no
-    // grant; send_message, the webhook seam and Discord enter the foreground
-    // executor the same way.
+    // Driven here: the two in-process entry points, called exactly as the
+    // delegate_task and send_message tools call them (no grant field at all).
+    // Not driven: the webhook seam and Discord. They are covered
+    // structurally: they reach executeExecutionTargetMessage /
+    // continueExecutionTargetMessage with an input that has no
+    // `fullAccessGrant` (runtime-routes.ts, station-runtime.ts), and a start
+    // without a grant is confined in `prepareStart` whoever called it.
     await f.delegateTask(
       {
         prompt: 'go',
@@ -627,6 +652,83 @@ describe('#2493: who may start a session unconfined', () => {
       modelOptions: { approvalMode: 'never' },
     });
     expect(conversationId).toBeDefined();
+  });
+
+  test('the start stamp records the starter grant, not the derived confinement (#2493 review F4)', async () => {
+    const f = await fixture();
+    f.claude.completeTurns = true;
+    const phone = f.pair('Phone');
+    const { conversationId } = await f.chat(
+      f.bearer(phone.credential),
+      'claude-agent',
+    );
+    const root = f.claude.starts.at(-1)!.threadId;
+    const latestSequence = () => {
+      const sequences = f.store
+        .conversationSessions(conversationId)
+        .flatMap(({ sessionId }) => f.store.listEvents(sessionId))
+        .concat(f.store.listEvents(root))
+        .filter((row) => row.payload.method === 'session.approval-mode-set')
+        .map((row) => row.globalSequence);
+      return sequences.length > 0 ? Math.max(...sequences) : null;
+    };
+    const decide = async (
+      credential: string,
+      threadId: string,
+      approvalMode: ApprovalMode,
+    ) => {
+      const decided = await f.request(
+        f.bearer(credential),
+        '/api/orchestration/commands',
+        {
+          type: 'setApprovalMode',
+          threadId,
+          approvalMode,
+          basedOnSequence: latestSequence(),
+        },
+      );
+      expect(decided.status, decided.text).toBe(200);
+      expect(decided.body.data.recorded).toBe(true);
+    };
+
+    // The operator records never; the phone then continues, and the root's
+    // completed turn makes that continuation start a new child.
+    await decide(f.operator.credential, root, 'never');
+    // The child's own turn stays open, so it can still take the last turn.
+    f.claude.completeTurns = false;
+    const starts = f.claude.starts.length;
+    await vi.waitFor(async () => {
+      const continued = await f.request(
+        f.bearer(phone.credential),
+        `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+        { message: 'again' },
+      );
+      expect(continued.status, continued.text).toBe(200);
+    });
+    expect(f.claude.starts.length).toBe(starts + 1);
+    const child = f.claude.starts.at(-1)!;
+    expect(child.threadId).not.toBe(root);
+    // Host through the recorded never; the stamp is the phone's own grant.
+    expect(lastStart(f, 'claude-agent')).toEqual({
+      confinement: 'host',
+      approvalMode: 'never',
+      stamp: 'workspace',
+    });
+
+    // The phone tightens to Ask, then picks Default, which resolves to the
+    // Station default never. Nothing the phone did grants host, so the child
+    // runs confined.
+    await decide(phone.credential, child.threadId, 'ask');
+    await decide(phone.credential, child.threadId, 'connection-default');
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: child.threadId, input: 'after default' },
+    });
+    expect(f.claude.turns.at(-1)).toMatchObject({
+      threadId: child.threadId,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
   });
 
   /**
