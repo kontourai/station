@@ -4146,8 +4146,11 @@ export function configureRuntimeRoutes(
                 ),
               projectDirectory: async (slug) => {
                 try {
-                  return context.projectService.getProject(slug)
-                    .workingDirectory;
+                  const configured =
+                    context.projectService.getProject(slug).workingDirectory;
+                  return configured
+                    ? resolve(expandTilde(configured))
+                    : undefined;
                 } catch {
                   return undefined;
                 }
