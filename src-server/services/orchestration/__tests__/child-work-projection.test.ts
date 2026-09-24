@@ -7,6 +7,7 @@ import {
   type ClaudeMessageState,
   mapClaudeSdkMessage,
 } from '../../../providers/adapters/claude-adapter-events.js';
+import { recordClaudeTurnDispatched } from '../../../providers/adapters/claude-sdk-turns.js';
 import { ChildWorkProjection } from '../child-work-projection.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -157,10 +158,11 @@ describe('ChildWorkProjection', () => {
         createdAt: '2026-09-23T00:00:00.000Z',
         updatedAt: '2026-09-23T00:00:00.000Z',
       },
-      activeTurnId: 'turn-1',
-      dispatchedTurnId: 'turn-1',
       lastSessionState: 'running',
     };
+    // #2324: turn identity lives in the SDK turn ledger; dispatching turn-1
+    // makes it the running turn, as the live adapter does.
+    recordClaudeTurnDispatched(record, 'turn-1');
     const lines = readFileSync(
       resolve(
         process.cwd(),
