@@ -1299,6 +1299,40 @@ describe('orchestration-session-state', () => {
     expect(exitedWithoutTerminal).toBeDefined();
     expect(exitedWithoutTerminal?.status).not.toBe('running');
     expect(exitedWithoutTerminal).not.toHaveProperty('endedAt');
+
+    // A reopened delegate: turn 2 starts, a DELAYED completion of turn 1
+    // arrives, then the session exits with no terminal fact for turn 2.
+    // Turn 1's completion is not turn 2's end.
+    const reopenedWithStaleCompletion = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r7',
+          createdAt: '2026-04-11T00:02:00.000Z',
+          method: 'turn.started',
+          turnId: 'turn-2',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r8',
+          createdAt: '2026-04-11T00:02:01.000Z',
+          method: 'turn.completed',
+          turnId: 'turn-1',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r9',
+          createdAt: '2026-04-11T00:03:00.000Z',
+          method: 'session.exited',
+          sessionId: 'thread-restart',
+        },
+      ]),
+    );
+    expect(reopenedWithStaleCompletion?.status).not.toBe('running');
+    expect(reopenedWithStaleCompletion).not.toHaveProperty('endedAt');
   });
 
   // archive#3408: both delegated-task launch writers persist

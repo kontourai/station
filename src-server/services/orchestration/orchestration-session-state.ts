@@ -1137,24 +1137,30 @@ function stringMeta(
 }
 
 /**
- * #2456: `AgentDelegationContext.depth`, as the delegate's launch stamped it
- * on `metadata.delegation` — read from the same binding event
- * `extractDelegationContext` reads. Absent unless a positive finite number.
- */
-/**
- * #2459: when the session's latest turn actually ended — the time of its own
- * terminal turn fact, if one follows the latest `turn.started`. Undefined
- * when none was observed. Deliberately not `lastEventAt`: after a Station
- * restart the last event is the restart's, and a finished delegate would
- * read as having run until then.
+ * #2459: when the session's latest turn actually ended — the time of that
+ * turn's own terminal fact. Undefined when none was observed. A terminal fact
+ * that names a different turn (a delayed completion of an earlier turn,
+ * arriving after a reopened delegate's next `turn.started`) is not this
+ * turn's end. Deliberately not `lastEventAt`: after a Station restart the
+ * last event is the restart's, and a finished delegate would read as having
+ * run until then.
  */
 function extractTerminalTurnAt(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
+  let latestStart = -1;
   for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index]?.method === 'turn.started') {
+      latestStart = index;
+      break;
+    }
+  }
+  if (latestStart < 0) return undefined;
+  const turnId = events[latestStart]?.turnId;
+  for (let index = events.length - 1; index > latestStart; index -= 1) {
     const event = events[index];
     if (!event) continue;
-    if (event.method === 'turn.started') return undefined;
+    if (turnId && event.turnId && event.turnId !== turnId) continue;
     if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
@@ -1165,6 +1171,11 @@ function extractTerminalTurnAt(
   return undefined;
 }
 
+/**
+ * #2456: `AgentDelegationContext.depth`, as the delegate's launch stamped it
+ * on `metadata.delegation` — read from the same binding event
+ * `extractDelegationContext` reads. Absent unless a positive finite number.
+ */
 function extractDelegationDepth(
   events: CanonicalRuntimeEvent[],
 ): number | undefined {
