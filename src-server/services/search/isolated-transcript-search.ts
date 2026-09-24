@@ -4,6 +4,10 @@ import {
   type OwnedSearchReadWorkerTestOptions,
 } from './owned-search-read-worker.js';
 import {
+  type SearchReadRefusal,
+  SearchReadRefusedError,
+} from './search-read-refusal.js';
+import {
   parseTranscriptReadRequest,
   parseTranscriptReadResult,
   type TranscriptMessageOpenFact,
@@ -82,6 +86,7 @@ export function createIsolatedTranscriptReads(
     signal?: AbortSignal,
   ) {
     let captured: TranscriptReadRequest | null = null;
+    let refusal: SearchReadRefusal | undefined;
     const result = await worker.execute(
       (id) => {
         captured = build(id);
@@ -89,11 +94,21 @@ export function createIsolatedTranscriptReads(
       },
       (value) => (captured ? parseTranscriptReadResult(value, captured) : null),
       signal,
+      (reported) => {
+        refusal = reported;
+      },
     );
-    if (result?.state !== 'available')
-      throw new Error('Transcript read unavailable');
+    // #2460: the refusal names its own branch — the worker's query-error
+    // class, or the owner lifecycle branch that produced no reply.
+    if (!result)
+      throw new SearchReadRefusedError(refusal ?? { kind: 'unrecorded' });
+    if (result.state !== 'available')
+      throw new SearchReadRefusedError(
+        result.cause ?? { kind: 'worker-unavailable' },
+      );
     return result;
   }
+  const mismatch = () => new SearchReadRefusedError({ kind: 'result-invalid' });
   return {
     inspect: worker.inspect,
     close: worker.close,
@@ -104,7 +119,7 @@ export function createIsolatedTranscriptReads(
           parseTranscriptReadRequest({ ...input, type: 'message-page', id }),
         signal,
       );
-      if (!('page' in result)) throw new Error('Transcript read unavailable');
+      if (!('page' in result)) throw mismatch();
       return result.page;
     },
     async search(input, signal) {
@@ -112,7 +127,7 @@ export function createIsolatedTranscriptReads(
         (id) => transcriptMessageRequest(input, id),
         signal,
       );
-      if (!('rows' in result)) throw new Error('Transcript read unavailable');
+      if (!('rows' in result)) throw mismatch();
       return result.rows;
     },
     async readOwner(threadId, signal) {
@@ -121,7 +136,7 @@ export function createIsolatedTranscriptReads(
           parseTranscriptReadRequest({ type: 'session-owner', threadId, id }),
         signal,
       );
-      if (!('owner' in result)) throw new Error('Transcript read unavailable');
+      if (!('owner' in result)) throw mismatch();
       return result.owner ?? undefined;
     },
     async readMessage(input, signal) {
@@ -129,7 +144,7 @@ export function createIsolatedTranscriptReads(
         (id) => transcriptMessageOpenRequest(input, id),
         signal,
       );
-      if (!('target' in result)) throw new Error('Transcript read unavailable');
+      if (!('target' in result)) throw mismatch();
       return result.target;
     },
     async readSession(input, signal) {
@@ -137,8 +152,7 @@ export function createIsolatedTranscriptReads(
         (id) => transcriptSessionOpenRequest(input, id),
         signal,
       );
-      if (!('session' in result))
-        throw new Error('Transcript read unavailable');
+      if (!('session' in result)) throw mismatch();
       return result.session;
     },
   };
