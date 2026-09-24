@@ -60,30 +60,26 @@ describe('tool activity notifications', () => {
     ).toBe('directory listing complete');
   });
 
-  test('suppresses success toasts for the foreground chat', () => {
-    getSnapshot.mockReturnValue({
-      activeChat: 'conv-1',
-      activeConversation: 'conv-1',
-      isDockOpen: true,
-    });
+  test.each(['success', 'cancelled'] as const)(
+    'does not toast routine %s tool outcomes',
+    (status) => {
+      const event = {
+        provider: 'codex' as const,
+        threadId: 'session-1',
+        createdAt: '2026-04-11T00:00:00.000Z',
+        method: 'tool.completed' as const,
+        itemId: 'tool-1',
+        toolCallId: 'tool-1',
+        toolName: 'shell_exec',
+        status,
+        output: { output: 'done' },
+      };
 
-    expect(
-      shouldNotifyForToolCompletion(
-        {
-          provider: 'codex',
-          threadId: 'session-1',
-          createdAt: '2026-04-11T00:00:00.000Z',
-          method: 'tool.completed',
-          itemId: 'tool-1',
-          toolCallId: 'tool-1',
-          toolName: 'shell_exec',
-          status: 'success',
-          output: { output: 'done' },
-        },
-        baseChat,
-      ),
-    ).toBe(false);
-  });
+      expect(shouldNotifyForToolCompletion(event)).toBe(false);
+      notifyToolCompletion(event, baseChat);
+      expect(showToolActivity).not.toHaveBeenCalled();
+    },
+  );
 
   test('always surfaces error tool outcomes and wires navigation back to the session', () => {
     notifyToolCompletion(

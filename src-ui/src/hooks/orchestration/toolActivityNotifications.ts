@@ -43,28 +43,10 @@ export function summarizeToolActivityDetail(
   return undefined;
 }
 
-function isForegroundChat(threadId: string, chat: ChatUIState): boolean {
-  const navigation = navigationStore.getSnapshot();
-  if (!navigation.isDockOpen) {
-    return false;
-  }
-
-  return (
-    navigation.activeChat === threadId ||
-    navigation.activeChat === chat.conversationId ||
-    navigation.activeConversation === chat.conversationId
-  );
-}
-
 export function shouldNotifyForToolCompletion(
   event: ToolCompletedEvent,
-  chat: ChatUIState,
 ): boolean {
-  if (event.status !== 'success') {
-    return true;
-  }
-
-  return !isForegroundChat(event.threadId, chat);
+  return event.status === 'error' || event.status === 'unresolved';
 }
 
 export function notifyToolCompletion(
@@ -72,7 +54,7 @@ export function notifyToolCompletion(
   chat: ChatUIState,
 ): void {
   if (isReplayThread(event.threadId)) return;
-  if (!shouldNotifyForToolCompletion(event, chat)) {
+  if (!shouldNotifyForToolCompletion(event)) {
     return;
   }
 
