@@ -14,6 +14,7 @@ import {
 import { finalizeAssistantTurn } from './assistantTurn';
 import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
 import { eventStreamPosition } from './streamPosition';
+import { observeStopSettled } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -218,6 +219,7 @@ export function handleApprovalModeSetEvent(
 export function handleSessionStopSettledEvent(
   event: Extract<OrchestrationEvent, { method: 'session.stop-settled' }>,
 ) {
+  observeStopSettled(event);
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
     finalizeAssistantTurn(event.threadId, undefined, {

@@ -43,10 +43,16 @@ export function summarizeToolActivityDetail(
   return undefined;
 }
 
+/**
+ * Only a failed tool call toasts. Success and cancellation are routine, and
+ * an unresolved call (station#1558: the session ended with no result) is not
+ * a user-attention event; each stays visible on its tool row. The turn ending
+ * is what calls the user back (`turnAttentionNotifications`).
+ */
 export function shouldNotifyForToolCompletion(
   event: ToolCompletedEvent,
 ): boolean {
-  return event.status === 'error' || event.status === 'unresolved';
+  return event.status === 'error';
 }
 
 export function notifyToolCompletion(
@@ -68,17 +74,7 @@ export function notifyToolCompletion(
     toolName,
     agentName,
     conversationTitle: chat.title,
-    status:
-      event.status === 'cancelled'
-        ? 'cancelled'
-        : event.status === 'error'
-          ? 'error'
-          : // station#1558: an unresolved call gets a neutral note, never
-            // the error toast — Station did not observe a failure, only the
-            // absence of any result.
-            event.status === 'unresolved'
-            ? 'unresolved'
-            : 'completed',
+    status: 'error',
     detail,
     onNavigate: () => {
       navigationStore.setDockState(true);
