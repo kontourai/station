@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -48,35 +46,17 @@ vi.mock('../auth/cli-auth.js', () => ({
 
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
+import {
+  CLAUDE_PROVIDER_TURN_FIXTURES,
+  type ClaudeProviderTurnFixtureLine,
+  loadClaudeProviderTurnFixture,
+  readClaudeProviderTurnFixture,
+} from './claude-provider-turns-fixtures.js';
 
-/** One capture line: an SDK message as the CLI emitted it, or a probe action. */
-type FixtureLine = { t: number; msg?: Record<string, unknown>; probe?: string };
-
-const FIXTURES = [
-  'background-bash',
-  'background-agent',
-  'interrupt-provider-turn',
-  'send-before-task-notification',
-  'send-folded-into-provider-turn',
-  'send-races-provider-turn-start',
-] as const;
-type FixtureName = (typeof FIXTURES)[number];
-
-function readFixture(name: FixtureName): string {
-  return readFileSync(
-    fileURLToPath(
-      new URL(`./fixtures/claude-2.1.281-${name}.jsonl`, import.meta.url),
-    ),
-    'utf8',
-  );
-}
-
-function loadFixture(name: FixtureName): FixtureLine[] {
-  return readFixture(name)
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as FixtureLine);
-}
+type FixtureLine = ClaudeProviderTurnFixtureLine;
+const FIXTURES = CLAUDE_PROVIDER_TURN_FIXTURES;
+const readFixture = readClaudeProviderTurnFixture;
+const loadFixture = loadClaudeProviderTurnFixture;
 
 /**
  * Moves the `PUSH <label>` action to just before the `init` of the SDK turn

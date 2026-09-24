@@ -1,7 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -38,6 +37,10 @@ vi.mock('../../../providers/auth/cli-auth.js', () => ({
   runCliCommand: mockRunCliCommand,
 }));
 
+import {
+  type ClaudeProviderTurnFixtureLine,
+  loadClaudeProviderTurnFixture,
+} from '../../../providers/__tests__/claude-provider-turns-fixtures.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
@@ -51,27 +54,8 @@ import {
   turnIdentityAnchorForEvents,
 } from '../session-lifecycle-service.js';
 
-/** One capture line: an SDK message, or the probe's own action. */
-interface FixtureLine {
-  t: number;
-  msg?: Record<string, unknown>;
-  probe?: string;
-}
-
-function loadFixture(name: string): FixtureLine[] {
-  return readFileSync(
-    fileURLToPath(
-      new URL(
-        `../../../providers/__tests__/fixtures/claude-2.1.281-${name}.jsonl`,
-        import.meta.url,
-      ),
-    ),
-    'utf8',
-  )
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as FixtureLine);
-}
+type FixtureLine = ClaudeProviderTurnFixtureLine;
+const loadFixture = loadClaudeProviderTurnFixture;
 
 /** The race: Station read the push before the engine's own turn's `init`. */
 function pushBeforeRunningTurnInit(lines: FixtureLine[]): FixtureLine[] {
