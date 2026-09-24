@@ -299,6 +299,127 @@ describe('PullRequestRepositoryContextResolver', () => {
   });
 
   /**
+   * #2474: reading pull request #N needs the repository, not a pushed branch.
+   * The same refusals still hold for opening one from the current branch.
+   */
+  test.each([
+    [
+      'detached HEAD',
+      ['HEAD\n', 'origin/feature\n', '0\t0\n', 'origin/main\n'],
+    ],
+    [
+      'unpushed branch',
+      ['feature\n', 'origin/feature\n', '1\t0\n', 'origin/main\n'],
+    ],
+    ['no recorded base', ['feature\n', 'origin/feature\n', '0\t0\n', '\n']],
+  ])('a read resolves a %s checkout on identity alone', async (_name, out) => {
+    const make = () =>
+      new PullRequestRepositoryContextResolver({
+        git: git(...out) as any,
+        readRemotes: remote as any,
+      });
+    await expect(
+      make().resolve({
+        projectWorkingDirectory: '/checkout',
+        requireBranchState: false,
+      }),
+    ).resolves.toEqual({
+      available: true,
+      context: {
+        repository: {
+          owner: 'kontourai',
+          name: 'station',
+          remote: 'https://github.com/kontourai/station.git',
+        },
+        workingDirectory: '/checkout',
+      },
+    });
+    await expect(
+      make().resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toMatchObject({ available: false });
+  });
+
+  /**
+   * #2475: an umbrella project directory is not a repository; the pull
+   * request's own identity picks the one child checkout it belongs to.
+   */
+  test('an umbrella project resolves to the one child whose remote names the repository', async () => {
+    const umbrella = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
+    );
+    try {
+      for (const name of ['station', 'flow', 'notes', '.hidden'])
+        mkdirSync(join(umbrella, name));
+      const remotesByPath: Record<string, { name: string; url: string }[]> = {
+        [join(umbrella, 'station')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        ],
+        [join(umbrella, 'flow')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/flow.git' },
+        ],
+        [join(umbrella, '.hidden')]: [
+          { name: 'origin', url: 'https://github.com/kontourai/station.git' },
+        ],
+      };
+      const readRemotes = async (path: string) => ({
+        ok: true as const,
+        remotes: remotesByPath[path] ?? [],
+      });
+      const make = () =>
+        new PullRequestRepositoryContextResolver({
+          git: git() as any,
+          readRemotes: readRemotes as any,
+        });
+      await expect(
+        make().resolve({
+          projectWorkingDirectory: umbrella,
+          requireBranchState: false,
+          repository: {
+            host: 'github.com',
+            owner: 'KontourAI',
+            name: 'station',
+          },
+        }),
+      ).resolves.toMatchObject({
+        available: true,
+        context: {
+          workingDirectory: join(umbrella, 'station'),
+          repository: { owner: 'kontourai', name: 'station' },
+        },
+      });
+      // A repository no child holds, or a request naming none, stays refused.
+      for (const repository of [
+        { host: 'github.com', owner: 'kontourai', name: 'absent' },
+        undefined,
+      ])
+        await expect(
+          make().resolve({
+            projectWorkingDirectory: umbrella,
+            requireBranchState: false,
+            ...(repository ? { repository } : {}),
+          }),
+        ).resolves.toMatchObject({ available: false, cause: 'no-remote' });
+      // Two children claiming the same repository are ambiguous, not a pick.
+      remotesByPath[join(umbrella, 'notes')] = [
+        { name: 'origin', url: 'git@github.com:kontourai/station.git' },
+      ];
+      await expect(
+        make().resolve({
+          projectWorkingDirectory: umbrella,
+          requireBranchState: false,
+          repository: {
+            host: 'github.com',
+            owner: 'kontourai',
+            name: 'station',
+          },
+        }),
+      ).resolves.toMatchObject({ available: false });
+    } finally {
+      rmSync(umbrella, { recursive: true, force: true });
+    }
+  });
+
+  /**
    * The owner's own checkout: an https `origin` and an ssh `public` for the
    * SAME repository. Counting remotes rather than repositories made every
    * pull-request read for that project 404 as "ambiguous".

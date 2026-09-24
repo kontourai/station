@@ -4339,7 +4339,7 @@ export function configureRuntimeRoutes(
     '/api/pull-requests',
     createPullRequestRoutes(
       () => listProviders('pullRequest').map((entry) => entry.provider),
-      async (routeContext) => {
+      async (routeContext, request) => {
         const projectSlug = routeContext.req.query('project');
         if (!projectSlug)
           return { available: false, reason: 'A recorded project is required' };
@@ -4369,6 +4369,10 @@ export function configureRuntimeRoutes(
             : project.workingDirectory,
           workspaceIsolation: session?.workspaceIsolation,
           requestedWorkingDirectory: routeContext.req.query('workingDirectory'),
+          requireBranchState: request.requireBranchState,
+          ...(request.repository?.owner && request.repository.name
+            ? { repository: request.repository }
+            : {}),
         });
       },
       {

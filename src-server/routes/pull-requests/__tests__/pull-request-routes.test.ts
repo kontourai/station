@@ -598,3 +598,50 @@ describe('pull request reads say why they cannot be served', () => {
     );
   });
 });
+
+describe('what each route asks of the checkout (#2474, #2475)', () => {
+  function recording() {
+    const requests: { requireBranchState: boolean; repository?: unknown }[] =
+      [];
+    const routes = createPullRequestRoutes(
+      () => [],
+      async (_c, request) => {
+        requests.push(request);
+        return { available: false, reason: 'recorded' };
+      },
+      { operatorIdentityForRequest: () => 'operator' },
+    );
+    return { routes, requests };
+  }
+
+  test('reads resolve without branch state and name the repository in the URL', async () => {
+    const { routes, requests } = recording();
+    await routes.request('/github/github.com/o/r?project=p');
+    await routes.request('/github/github.com/o/r/7?project=p');
+    await routes.request('/github/github.com/o/r/7/review?project=p');
+    await routes.request('/context?project=p');
+    expect(requests.map((r) => r.requireBranchState)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(requests[2]?.repository).toEqual({
+      host: 'github.com',
+      owner: 'o',
+      name: 'r',
+    });
+  });
+
+  test('opening a pull request from the current branch still requires it', async () => {
+    const { routes, requests } = recording();
+    await routes.request('/github/github.com/o/r/open?project=p', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 't' }),
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({ requireBranchState: true }),
+    ]);
+  });
+});
