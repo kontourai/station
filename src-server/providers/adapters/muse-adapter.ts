@@ -24,7 +24,6 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
-import { resolveHomeDir } from '../../utils/paths.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -37,6 +36,7 @@ import {
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import {
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
@@ -94,7 +94,6 @@ import {
   MUSE_SERVE_REQUEST_TIMEOUT_MS,
   type MuseServeHostPosture,
   MuseServeSession,
-  museServeApprovalPlan,
 } from './muse-serve-session.js';
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -674,14 +673,18 @@ function createMuseServeHost(
   const binary = findCliBinary('muse') ?? 'muse';
   const dataHome = museServeDataHome();
   mkdirSync(dataHome, { recursive: true });
-  const { proc, release } = spawnOwnedChild(binary, buildMuseServeArgs(posture), {
-    cwd,
-    env: childProcessEnvironment({
-      TMPDIR: ensureEngineSpawnTmpDir(),
-      XDG_DATA_HOME: dataHome,
-    }),
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  const { proc, release } = spawnOwnedChild(
+    binary,
+    buildMuseServeArgs(posture),
+    {
+      cwd,
+      env: childProcessEnvironment({
+        TMPDIR: ensureEngineSpawnTmpDir(),
+        XDG_DATA_HOME: dataHome,
+      }),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  );
   return { process: proc as unknown as MuseServeProcessLike, release };
 }
 
@@ -1064,7 +1067,9 @@ export class MuseAdapter implements ProviderAdapterShape {
     // this Station has not verified, a refused session start) falls back to
     // `muse exec` for THIS session, and says so below.
     let serve: MuseServeSession | undefined;
-    let serveStarted: Awaited<ReturnType<MuseServeSession['start']>> | undefined;
+    let serveStarted:
+      | Awaited<ReturnType<MuseServeSession['start']>>
+      | undefined;
     let serveUnavailable: string | undefined;
     if (this.options.serve && this.providerOverride !== 'echo') {
       const candidate = this.createServeSession(input.threadId, input.cwd);
@@ -1120,7 +1125,9 @@ export class MuseAdapter implements ProviderAdapterShape {
       ? {
           museTransport: 'serve',
           museApprovalMode: serveStarted.plan.museMode,
-          museSandbox: serveStarted.plan.disableSandbox ? 'disabled' : 'enabled',
+          museSandbox: serveStarted.plan.disableSandbox
+            ? 'disabled'
+            : 'enabled',
           ...(serveStarted.plan.stationMode
             ? { approvalMode: serveStarted.plan.stationMode }
             : {}),
@@ -1171,7 +1178,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         ...transportMetadata,
       },
     });
-    if (!serve) this.publishExecTransportFacts(input.threadId, serveUnavailable);
+    if (!serve)
+      this.publishExecTransportFacts(input.threadId, serveUnavailable);
 
     providerOps.add(1, {
       operation: 'adapter-session-start',
@@ -1521,7 +1529,9 @@ export class MuseAdapter implements ProviderAdapterShape {
         })),
         ...(input.modelId ? { modelId: input.modelId } : {}),
         ...(approvalMode ? { approvalMode } : {}),
-        ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
+        ...(input.ambientContext
+          ? { ambientContext: input.ambientContext }
+          : {}),
         ...(input.recoveryCorrelationId
           ? { recoveryCorrelationId: input.recoveryCorrelationId }
           : {}),

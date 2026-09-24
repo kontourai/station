@@ -51,6 +51,12 @@ import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_TOOL_TURN_LINES,
 } from './muse-adapter-fixtures.js';
+import {
+  FakeMuseServeHost,
+  loadMuseServeCapture,
+  type MuseServeCaptureName,
+  replayMuseServeCapture,
+} from './muse-serve-replay.js';
 
 type Driver = {
   /** The adapter module whose mapper this driver actually runs. */
@@ -174,6 +180,87 @@ async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
 }
 
 /**
+ * #2452 Muse: the REAL `muse serve` 1.3.0 captures (a workflow child that is
+ * approved, denied, and stopped), each replayed through the actual adapter
+ * with its host replaced by a stream double (`muse-serve-replay.ts`), with
+ * Station answering exactly as the capture's probe did.
+ */
+async function replayMuseServeCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  const events: CanonicalRuntimeEvent[] = [];
+  const scenarios: Array<{
+    name: MuseServeCaptureName;
+    decide?: 'accept' | 'decline';
+    stop?: boolean;
+  }> = [
+    { name: 'workflow-child-approve', decide: 'accept' },
+    { name: 'workflow-child-deny', decide: 'decline' },
+    { name: 'workflow-child-stop', stop: true },
+  ];
+  for (const [index, scenario] of scenarios.entries()) {
+    const hosts: FakeMuseServeHost[] = [];
+    const threadId = `thread-muse-serve-${index}`;
+    const adapter = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          hosts.push(host);
+          return { process: host, release: () => {} };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as FakeMuseServeHost).exit(0);
+        },
+      },
+      logger: { warn: () => {}, info: () => {} },
+    });
+    const collected: CanonicalRuntimeEvent[] = [];
+    const draining = (async () => {
+      for await (const event of adapter.streamEvents()) collected.push(event);
+    })();
+    const started = adapter.startSession({
+      provider: 'muse',
+      threadId,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    while (!hosts[0]) await new Promise((settle) => setImmediate(settle));
+    await replayMuseServeCapture(
+      hosts[0],
+      loadMuseServeCapture(scenario.name),
+      {
+        onDrivenRequest: (method, occurrence, captured) => {
+          if (method === 'turn/start') {
+            return adapter.sendTurn({ threadId, input: 'go' });
+          }
+          if (
+            method === 'approval/decide' &&
+            occurrence === 0 &&
+            scenario.decide
+          ) {
+            return adapter.respondToRequest(
+              threadId,
+              String(captured.approvalId),
+              scenario.decide,
+            );
+          }
+          if (method === 'subagent/stop' && scenario.stop) {
+            return adapter.stopProviderTask(
+              threadId,
+              String(captured.subagentId),
+            );
+          }
+          return undefined;
+        },
+      },
+    );
+    await started;
+    await new Promise((settle) => setTimeout(settle, 20));
+    await adapter.stopAll();
+    await draining;
+    events.push(...collected);
+  }
+  return events;
+}
+
+/**
  * ACP: `_kiro.dev/subagent/list_update` is the one subagent-shaped tuple a
  * Kiro ACP agent was observed sending (station#1935, bound as host chrome).
  * Only the TUPLE was observed; no payload was captured, so the params here
@@ -241,7 +328,12 @@ const DRIVERS: Record<string, Driver> = {
     run: replayCodexCollabCaptures,
     formats: CODEX_FORMATS,
   },
-  muse: { run: replayMuseCaptures },
+  // #2452: the muse cell is declared for `muse serve`; the exec fallback's
+  // own claim (it reports `not-reported`, never child work) is checked below.
+  muse: {
+    adapterModule: 'muse-serve-child-work.ts',
+    run: replayMuseServeCaptures,
+  },
   acp: { run: replayAcpKiroSubagentTuple },
 };
 
@@ -449,6 +541,18 @@ describe('#2456 child-work conformance tripwire', () => {
       });
     }
   }
+
+  test('#2452 muse exec fallback: real exec output emits no child work, only its not-reported view', async () => {
+    const events = await replayMuseCaptures();
+    // The replay must actually have reached the mapper.
+    expect(events.some((event) => event.method === 'tool.completed')).toBe(
+      true,
+    );
+    const deltas = childWorkDeltas(events);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((delta) => delta.kind === 'not-reported')).toBe(true);
+    expect(offeredControls(deltas)).toEqual([]);
+  });
 
   test('the Claude capture, via the legacy translator until #2457, is the two-task shape the claims rest on', async () => {
     const deltas = childWorkDeltas(await replayClaudeCapture());

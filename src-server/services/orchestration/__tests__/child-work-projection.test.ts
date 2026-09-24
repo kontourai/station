@@ -51,9 +51,16 @@ describe('ChildWorkProjection', () => {
       observedAt: 'now',
     });
     // A `none` engine: not-reported, with the matrix's own reason.
-    expect(projection.read(THREAD, 'muse')).toEqual({
+    expect(projection.read(THREAD, 'acp')).toEqual({
       observability: 'not-reported',
-      reason: 'The engine reports no subagent identity.',
+      reason: 'ACP 1.1.1 has no subagent concept.',
+    });
+    // #2452: Muse's workflow children are mapped (serve), so a Muse session
+    // speaks like any declared engine...
+    expect(projection.read(THREAD, 'muse', 'now')).toEqual({
+      observability: 'reported',
+      running: [],
+      observedAt: 'now',
     });
     // #2458: Codex's subagents are mapped, so it speaks like any declared
     // engine — reported, nothing running.
@@ -65,6 +72,30 @@ describe('ChildWorkProjection', () => {
     // A provider the matrix does not know: no claim either way.
     expect(projection.read(THREAD, 'bedrock')).toBeUndefined();
     expect(projection.read(THREAD, undefined)).toBeUndefined();
+  });
+
+  test('#2452: a Muse session on the exec fallback says its children are not reported, not that none run', () => {
+    const projection = new ChildWorkProjection();
+    projection.observe(
+      event(
+        {
+          method: 'child-work.updated',
+          delta: {
+            kind: 'not-reported',
+            reporterThreadId: THREAD,
+            reason:
+              'This Muse session runs through `muse exec`, which reports no subagent identity.',
+          },
+        },
+        THREAD,
+        'muse',
+      ),
+    );
+    expect(projection.read(THREAD, 'muse')).toEqual({
+      observability: 'not-reported',
+      reason:
+        'This Muse session runs through `muse exec`, which reports no subagent identity.',
+    });
   });
 
   test("folds the Claude adapter's legacy task tuples through the contract translator", () => {

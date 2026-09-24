@@ -208,9 +208,7 @@ export function mapMuseChildTerminal(
   }
 }
 
-function usageOf(
-  child: MuseServeWorkflowChild,
-): ChildWorkUsage | undefined {
+function usageOf(child: MuseServeWorkflowChild): ChildWorkUsage | undefined {
   const usage: ChildWorkUsage = {};
   if (child.inputTokens !== undefined || child.outputTokens !== undefined) {
     usage.totalTokens = (child.inputTokens ?? 0) + (child.outputTokens ?? 0);
@@ -399,7 +397,8 @@ export function observeMuseWorkflowItem(
       running: [...runningItems(context), ...newlyRunning],
     });
   }
-  for (const next of usageUpdates) emit(context, { kind: 'upsert', item: next });
+  for (const next of usageUpdates)
+    emit(context, { kind: 'upsert', item: next });
   for (const child of terminals) {
     const status = mapMuseChildTerminal(child.terminal ?? '');
     if (!itemFor(context, child.childId)) {
@@ -446,9 +445,14 @@ export function observeMuseWorkflowItem(
       if (summary && current && current.status !== 'running') {
         // Enrichment of the settle already recorded: the reducer fills the
         // result a sticky terminal lacked, and never changes its status.
-        settle(context, only.childId, current.status as ChildWorkTerminalStatus, {
-          summary,
-        });
+        settle(
+          context,
+          only.childId,
+          current.status as ChildWorkTerminalStatus,
+          {
+            summary,
+          },
+        );
       }
     }
   }

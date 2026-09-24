@@ -14,9 +14,9 @@ import {
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
 import {
-  ProviderTurnInProgressError,
   type ProviderInterruptTurnResult,
   type ProviderTaskStopResult,
+  ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
@@ -31,8 +31,8 @@ import {
   settleOpenMuseChildren,
 } from './muse-serve-child-work.js';
 import {
-  MuseServeConnection,
   type MuseServeCloseInfo,
+  MuseServeConnection,
   MuseServeRpcError,
   type MuseServeSpawnResult,
   MuseServeTimeoutError,
@@ -137,9 +137,17 @@ export function museServeApprovalPlan(
         stationMode: 'ask',
       };
     case 'auto':
-      return { museMode: 'allowAll', disableSandbox: false, stationMode: 'auto' };
+      return {
+        museMode: 'allowAll',
+        disableSandbox: false,
+        stationMode: 'auto',
+      };
     case 'never':
-      return { museMode: 'allowAll', disableSandbox: true, stationMode: 'never' };
+      return {
+        museMode: 'allowAll',
+        disableSandbox: true,
+        stationMode: 'never',
+      };
     default:
       return { museMode: 'onRequest', disableSandbox: false };
   }
@@ -333,7 +341,6 @@ export class MuseServeSession {
   private museSessionIdValue?: string;
   private plan: MuseServeApprovalPlan = museServeApprovalPlan(undefined);
   private model?: string;
-  private workspaceRoot?: string;
   private stopped = false;
   private sending = false;
   private readonly turns = new Map<string, ServeTurn>();
@@ -373,7 +380,6 @@ export class MuseServeSession {
   /** Spawns the host, verifies the handshake, and starts the MSP session. */
   async start(input: MuseServeStartInput): Promise<MuseServeStarted> {
     const plan = museServeApprovalPlan(input.approvalMode);
-    this.workspaceRoot = input.cwd;
     const host = await this.openHost({ disableSandbox: plan.disableSandbox });
     let result: unknown;
     try {
@@ -393,14 +399,17 @@ export class MuseServeSession {
         `session/start failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const session = isRecord(result) && isRecord(result.session) ? result.session : {};
+    const session =
+      isRecord(result) && isRecord(result.session) ? result.session : {};
     const museSessionId = readString(session.sessionId);
     const appliedMode = isRecord(session.approvalMode)
       ? readString(session.approvalMode.mode)
       : undefined;
     if (!museSessionId) {
       await this.closeHost();
-      throw new MuseServeUnavailableError('session/start returned no session id');
+      throw new MuseServeUnavailableError(
+        'session/start returned no session id',
+      );
     }
     if (appliedMode !== plan.museMode) {
       // The host applied a different mode than Station asked for: the one
@@ -494,7 +503,9 @@ export class MuseServeSession {
         throw error;
       }
       const ackTurnId =
-        isRecord(ack) && readString(ack.turnId) ? (ack.turnId as string) : commandId;
+        isRecord(ack) && readString(ack.turnId)
+          ? (ack.turnId as string)
+          : commandId;
       if (ackTurnId !== commandId) this.rekeyTurn(commandId, ackTurnId);
       this.publishDispatchedStart(turn, input, plan);
       return { turnId: turn.turnId };
@@ -651,9 +662,13 @@ export class MuseServeSession {
           : `initialize failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const schema = isRecord(result) && isRecord(result.schema) ? result.schema : {};
+    const schema =
+      isRecord(result) && isRecord(result.schema) ? result.schema : {};
     const fingerprint = readString(schema.fingerprint);
-    if (!fingerprint || !MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS.has(fingerprint)) {
+    if (
+      !fingerprint ||
+      !MUSE_SERVE_VERIFIED_SCHEMA_FINGERPRINTS.has(fingerprint)
+    ) {
       await this.closeHost();
       throw new MuseServeUnavailableError(
         `unverified MSP schema fingerprint ${fingerprint ?? '(none)'}`,
@@ -743,7 +758,9 @@ export class MuseServeSession {
       { timeoutMs: this.deps.requestTimeoutMs },
     );
     const approvals =
-      isRecord(listed) && Array.isArray(listed.approvals) ? listed.approvals : [];
+      isRecord(listed) && Array.isArray(listed.approvals)
+        ? listed.approvals
+        : [];
     for (const approval of approvals) {
       if (isRecord(approval)) this.onApprovalRequested(approval);
     }
@@ -804,7 +821,11 @@ export class MuseServeSession {
   ): void {
     if (epoch !== this.hostEpoch || this.stopped) return;
     const sessionId = readString(params.sessionId);
-    if (sessionId && this.museSessionIdValue && sessionId !== this.museSessionIdValue) {
+    if (
+      sessionId &&
+      this.museSessionIdValue &&
+      sessionId !== this.museSessionIdValue
+    ) {
       return;
     }
     switch (method) {
@@ -920,7 +941,10 @@ export class MuseServeSession {
       } else {
         // Muse cancelled it and nobody in Station asked: a cancellation,
         // never a success.
-        this.settle(turn, { method: 'turn.completed', finishReason: 'cancelled' });
+        this.settle(turn, {
+          method: 'turn.completed',
+          finishReason: 'cancelled',
+        });
       }
       return;
     }
@@ -1173,7 +1197,12 @@ export class MuseServeSession {
           ? readString(stage.resolution.kind)
           : undefined;
         return ref
-          ? [{ key: requirementKey(ref), resolution: resolution ?? 'unresolved' }]
+          ? [
+              {
+                key: requirementKey(ref),
+                resolution: resolution ?? 'unresolved',
+              },
+            ]
           : [];
       });
     }
@@ -1188,7 +1217,9 @@ export class MuseServeSession {
                 ...(readString(choice.decision)
                   ? { decision: choice.decision as string }
                   : {}),
-                ...(readString(choice.scope) ? { scope: choice.scope as string } : {}),
+                ...(readString(choice.scope)
+                  ? { scope: choice.scope as string }
+                  : {}),
                 acceptsFeedback: choice.acceptsFeedback === true,
               },
             ]
@@ -1278,12 +1309,16 @@ export class MuseServeSession {
     this.approvals.delete(pending.approvalId);
     this.clearDeadline(pending);
     const decision = readString(params.decision);
-    this.publishResolved(pending, mapResolvedDecision(decision, pending.intent), {
-      ...(decision ? { decision } : {}),
-      ...(readString(params.resolvedBy)
-        ? { resolvedBy: params.resolvedBy }
-        : {}),
-    });
+    this.publishResolved(
+      pending,
+      mapResolvedDecision(decision, pending.intent),
+      {
+        ...(decision ? { decision } : {}),
+        ...(readString(params.resolvedBy)
+          ? { resolvedBy: params.resolvedBy }
+          : {}),
+      },
+    );
   }
 
   private publishResolved(
@@ -1352,7 +1387,12 @@ export class MuseServeSession {
    */
   private continueWalk(pending: PendingApproval): void {
     const connection = this.host?.connection;
-    if (!pending.intent || pending.deciding || !connection || connection.isClosed)
+    if (
+      !pending.intent ||
+      pending.deciding ||
+      !connection ||
+      connection.isClosed
+    )
       return;
     const current = pending.current;
     if (!current) return;
@@ -1363,7 +1403,9 @@ export class MuseServeSession {
     if (pending.stagesDecided >= APPROVAL_STAGES_MAX) return;
     const accept = pending.intent === 'accept';
     const choice = accept
-      ? (pending.choices.find((candidate) => candidate.choiceId === 'allow_once') ??
+      ? (pending.choices.find(
+          (candidate) => candidate.choiceId === 'allow_once',
+        ) ??
         pending.choices.find(
           (candidate) =>
             candidate.decision === 'approved' && candidate.scope === 'once',
@@ -1521,7 +1563,10 @@ export class MuseServeSession {
   private settle(
     turn: ServeTurn,
     outcome:
-      | { method: 'turn.completed'; finishReason: 'stop' | 'cancelled' | 'other' }
+      | {
+          method: 'turn.completed';
+          finishReason: 'stop' | 'cancelled' | 'other';
+        }
       | { method: 'turn.aborted'; reason: string }
       | {
           method: 'runtime.error';
@@ -1575,7 +1620,10 @@ export class MuseServeSession {
 
   private forgetSettledTurns(): void {
     const settled = [...this.turns.values()].filter((turn) => turn.settled);
-    for (const turn of settled.slice(0, Math.max(0, settled.length - SETTLED_TURNS_MAX))) {
+    for (const turn of settled.slice(
+      0,
+      Math.max(0, settled.length - SETTLED_TURNS_MAX),
+    )) {
       this.turns.delete(turn.turnId);
     }
   }
@@ -1607,7 +1655,8 @@ export class MuseServeSession {
   }
 
   private requireMuseSessionId(): string {
-    if (!this.museSessionIdValue) throw new Error('The Muse session has not started.');
+    if (!this.museSessionIdValue)
+      throw new Error('The Muse session has not started.');
     return this.museSessionIdValue;
   }
 
