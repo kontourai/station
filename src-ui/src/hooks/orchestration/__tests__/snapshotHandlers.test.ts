@@ -161,6 +161,8 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
 
   // station#2530 review 3: the identity a root row advertises must never
   // bind ANOTHER conversation's lineage child to this chat.
+  // Chat Y's own root row is deliberately absent, so no competing claim
+  // masks the rule under test: the child's own conversationId must win.
   test("a root row naming another chat's lineage child cannot pull that child's approvals into its own chat", () => {
     chats = {
       'chat-x': {
@@ -181,15 +183,6 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
             provider: 'claude',
             threadId: 'chat-x',
             conversationId: 'chat-x',
-            status: 'ready',
-            hasActiveTurn: false,
-            currentSessionId: 'chat-y:session:child',
-            openRequestIds: [],
-          },
-          {
-            provider: 'claude',
-            threadId: 'chat-y',
-            conversationId: 'chat-y',
             status: 'ready',
             hasActiveTurn: false,
             currentSessionId: 'chat-y:session:child',
