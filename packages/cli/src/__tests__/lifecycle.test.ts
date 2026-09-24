@@ -1027,6 +1027,144 @@ describe('lifecycle instance state', () => {
     }
   });
 
+  it("keeps the state record and refuses to stop when a live process's identity cannot be verified (#2332 item 2)", async () => {
+    // A null fingerprint observation (unreadable /proc, a `ps` without a
+    // `command=` column, a missing boot id) is NOT the same fact as "the
+    // process is gone". Before the fix, both tracked pids returning null
+    // made `stopRecord` conclude `already_absent` and delete the state
+    // record while the server was still running (signal-0 succeeds below).
+    ensureDir(TEST_CWD);
+    const journal = join(TEST_ROOT, 'unverifiable-lifecycle.jsonl');
+    const statePath = writeInstanceState({
+      instanceName: 'unverifiable',
+      serverPid: 44001,
+      uiPid: 44002,
+      bootId: '11111111-1111-4111-8111-111111111111',
+      lifecycleJournal: journal,
+      serverFingerprint: {
+        pid: 44001,
+        startToken: 'server-start',
+        commandDigest: 'a'.repeat(64),
+      },
+      uiFingerprint: {
+        pid: 44002,
+        startToken: 'ui-start',
+        commandDigest: 'b'.repeat(64),
+      },
+      build: {
+        branch: 'main',
+        builtAt: '2026-07-10T12:00:00.000Z',
+        sha: 'a'.repeat(40),
+      },
+    });
+    const killProcessTree = vi.fn();
+    // Both tracked pids are alive by signal-0 (the ground-truth liveness
+    // check); their fingerprint probe fails closed with null instead, as it
+    // would on an unreadable /proc or a busybox `ps`.
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => '') },
+      platformOverrides: {
+        killProcessTree,
+        sleepSync: vi.fn(),
+        inspectProcessFingerprint: () => null,
+      },
+    });
+    try {
+      let refusal = '';
+      try {
+        lifecycle.stop({ instanceName: 'unverifiable' });
+      } catch (error) {
+        refusal = String((error as Error).message);
+      }
+      expect(refusal).toContain('identity could not be verified');
+      // There is no --force, so the refusal itself must name the way out:
+      // the pid to check and the state file to remove if it was reused.
+      expect(refusal).toMatch(/PID \d+ is running/);
+      expect(refusal).toContain(`remove ${statePath}`);
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(true);
+      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+        type: 'stop_result',
+        result: 'failed',
+      });
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('still reclaims state when every tracked pid is confirmed dead despite a null fingerprint observation', async () => {
+    // The companion case: liveness (not the fingerprint) is what must gate
+    // `already_absent`, but a genuinely dead process must still reclaim —
+    // the fix must not turn every null observation into a hard refusal.
+    ensureDir(TEST_CWD);
+    const journal = join(TEST_ROOT, 'confirmed-dead-lifecycle.jsonl');
+    const statePath = writeInstanceState({
+      instanceName: 'confirmed-dead',
+      serverPid: 45001,
+      uiPid: 45002,
+      serverPort: 44443,
+      uiPort: 44553,
+      bootId: '11111111-1111-4111-8111-111111111111',
+      lifecycleJournal: journal,
+      serverFingerprint: {
+        pid: 45001,
+        startToken: 'server-start',
+        commandDigest: 'a'.repeat(64),
+      },
+      uiFingerprint: {
+        pid: 45002,
+        startToken: 'ui-start',
+        commandDigest: 'b'.repeat(64),
+      },
+      build: {
+        branch: 'main',
+        builtAt: '2026-07-10T12:00:00.000Z',
+        sha: 'a'.repeat(40),
+      },
+    });
+    const killProcessTree = vi.fn();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 45001 || pid === 45002)) {
+        throw new Error('gone');
+      }
+      return true;
+    }) as typeof process.kill);
+    const { lifecycle } = await loadLifecycleModule({
+      // A stale port listener (unrelated pid) keeps `isInstanceRunning`
+      // true at discovery, so `stop` reaches `stopRecord` instead of the
+      // outer discovery pass reclaiming it first — the case that exercises
+      // stopRecord's own `already_absent` decision rather than the
+      // discovery-time short-circuit.
+      childProcessMock: {
+        execSync: vi.fn((command: string) =>
+          command.includes('lsof') ? '99999\n' : '',
+        ),
+      },
+      platformOverrides: {
+        killProcessTree,
+        sleepSync: vi.fn(),
+        inspectProcessFingerprint: () => null,
+      },
+    });
+    try {
+      lifecycle.stop({ instanceName: 'confirmed-dead' });
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(false);
+      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+        type: 'stop_result',
+        result: 'already_absent',
+      });
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it('fails closed on permissive or symlinked modern instance state', async () => {
     ensureDir(TEST_CWD);
     const permissive = writeInstanceState({
