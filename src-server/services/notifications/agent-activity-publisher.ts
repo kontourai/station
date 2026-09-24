@@ -210,8 +210,15 @@ export function wireAgentActivityPublisher(
   const { logger, devicePairing } = options;
 
   const snapshots = new Map<string, AgentActivitySnapshot>();
-  /** Last card content each device acknowledged, keyed by device id. */
-  const delivered = new Map<string, { token: string; contentKey: string }>();
+  /**
+   * Last card each device acknowledged, keyed by device id. The token and
+   * registrationId are part of the identity: a re-registered phone (new
+   * token, or a new registrationId after unregistering) has seen nothing.
+   */
+  const delivered = new Map<
+    string,
+    { token: string; registrationId: string; contentKey: string }
+  >();
   let lastUpdatedAt = 0;
   let stopped = false;
 
@@ -321,6 +328,7 @@ export function wireAgentActivityPublisher(
       const last = delivered.get(deviceId);
       return (
         last?.token !== registration.token ||
+        last.registrationId !== registration.registrationId ||
         last.contentKey !== card.contentKey
       );
     });
@@ -345,6 +353,7 @@ export function wireAgentActivityPublisher(
         if (outcome === 'sent') {
           delivered.set(deviceId, {
             token: registration.token,
+            registrationId: registration.registrationId,
             contentKey: card.contentKey,
           });
         } else if (outcome === 'unregistered') {

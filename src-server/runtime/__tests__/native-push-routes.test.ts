@@ -60,8 +60,9 @@ function createHarness(options: { enabled?: boolean } = {}) {
   const keys = new PushSigningKeyStore(homeDir, () => pairing.environmentId());
   const onRegistered = vi.fn();
   const app = new Hono<{ Bindings: TestBindings }>();
-  // The real runtime gate, including the pairing-scope route table: an
-  // unmapped leaf would be refused here before reaching the handler.
+  // The real runtime credential gate. The leaves' pairing-scope declaration
+  // is proven by pairing-route-scopes.test.ts's leaf scan, not here: the
+  // `/api/system` family rule would admit an undeclared leaf.
   configureRuntimeHttp({
     app: app as never,
     logger: logger(),

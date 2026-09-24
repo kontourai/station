@@ -553,6 +553,25 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('a phone that unregisters and registers again gets the card again', async () => {
+    const h = await harness();
+    const { deviceId } = await h.pairAndRegister();
+    h.rows.push(summaryRow('s1', 'running', iso(START)));
+    h.emit('turn.started');
+    await h.settle();
+    h.pairing.clearNativePush(deviceId);
+    const again = h.pairing.setNativePush(deviceId, {
+      token: TOKEN,
+      packageName: 'io.kontourai.station',
+      platform: 'android',
+    });
+    h.publisher.requestFlush();
+    await h.settle();
+    expect(h.delivered.map((d) => d.data.device_id)).toHaveLength(2);
+    expect(h.delivered[1]?.data.device_id).toBe(again.registrationId);
+    await h.publisher.stop();
+  });
+
   test('a registration triggers a card without waiting for session activity', async () => {
     const h = await harness();
     h.rows.push(summaryRow('s1', 'running', iso(START)));
