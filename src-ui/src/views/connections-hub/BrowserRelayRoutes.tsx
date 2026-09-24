@@ -57,22 +57,28 @@ export function BrowserRelayRoutes({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enrolling, setEnrolling] = useState<SavedConnection | null>(null);
+  const isMounted = useRef(false);
+  const activeConnectionRef = useRef(activeConnection);
+  const connectionsRef = useRef(connections);
+  activeConnectionRef.current = activeConnection;
+  connectionsRef.current = connections;
   const enrollment = useRef<{
     controller: AbortController;
     custody: BrowserRoutingGrantCustody;
   } | null>(null);
   const routes = connections.filter((connection) => connection.brokerRoute);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
       enrollment.current?.controller.abort(
         new Error('Route acceptance closed'),
       );
       enrollment.current?.custody.invalidate();
       enrollment.current = null;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (enrolling && activeConnection?.id !== enrolling.id) setEnrolling(null);
@@ -279,6 +285,21 @@ export function BrowserRelayRoutes({
     const route = connection.brokerRoute;
     if (!route || busy) return;
     const reconnect = activeConnection?.id === connection.id;
+    const canReconnect = () => {
+      if (!reconnect || !isMounted.current) return false;
+      if (activeConnectionRef.current?.id !== connection.id) return false;
+      return connectionsRef.current.some(
+        (saved) =>
+          saved.id === connection.id &&
+          saved.url === connection.url &&
+          saved.brokerRoute?.brokerOrigin === route.brokerOrigin &&
+          saved.brokerRoute.scope.stationId === route.scope.stationId &&
+          saved.brokerRoute.scope.enrollmentId === route.scope.enrollmentId &&
+          saved.brokerRoute.scope.routingGeneration ===
+            route.scope.routingGeneration &&
+          saved.brokerRoute.scope.browserOrigin === route.scope.browserOrigin,
+      );
+    };
     setBusy(true);
     setTurnError(null);
     // Retire the selected peer before replacing/removing its ICE credentials.
@@ -294,12 +315,14 @@ export function BrowserRelayRoutes({
       if (value === null) await turnCustody.forget();
       else await turnCustody.save(value);
       updated = true;
-      if (reconnect) await setActiveConnection(connection.id);
+      if (canReconnect()) await setActiveConnection(connection.id);
+      if (!isMounted.current) return;
       setSavedTurnUrl('');
       setSavedTurnUsername('');
       setSavedTurnCredential('');
       setConfiguringTurn(null);
     } catch (cause) {
+      if (!isMounted.current) return;
       setTurnError(
         cause instanceof Error
           ? cause.message
@@ -307,7 +330,7 @@ export function BrowserRelayRoutes({
       );
       // IndexedDB writes are atomic. If the update failed, reconnect the
       // selected route with its previous saved settings when they still exist.
-      if (reconnect && !updated) {
+      if (!updated && canReconnect()) {
         try {
           await setActiveConnection(connection.id);
         } catch {
@@ -315,7 +338,7 @@ export function BrowserRelayRoutes({
         }
       }
     } finally {
-      setBusy(false);
+      if (isMounted.current) setBusy(false);
     }
   }
 

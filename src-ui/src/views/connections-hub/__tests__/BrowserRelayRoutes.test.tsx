@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -123,6 +124,32 @@ function fillAndAccept(turn?: {
       target: { value: turn.credential },
     });
   fireEvent.click(screen.getByRole('button', { name: 'Accept route' }));
+}
+
+function fillSavedTurnDialog() {
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText('TURN server URL'), {
+    target: { value: 'turn:127.0.0.1:3478?transport=tcp' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('TURN username'), {
+    target: { value: 'lab-turn-user' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('TURN credential'), {
+    target: { value: 'lab-turn-secret' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Save TURN settings' }),
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('browser broker route acceptance', () => {
@@ -268,19 +295,7 @@ describe('browser broker route acceptance', () => {
 
     render(<BrowserRelayRoutes />);
     fireEvent.click(screen.getByRole('button', { name: 'Configure TURN' }));
-    const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('TURN server URL'), {
-      target: { value: 'turn:127.0.0.1:3478?transport=tcp' },
-    });
-    fireEvent.change(within(dialog).getByLabelText('TURN username'), {
-      target: { value: 'lab-turn-user' },
-    });
-    fireEvent.change(within(dialog).getByLabelText('TURN credential'), {
-      target: { value: 'lab-turn-secret' },
-    });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Save TURN settings' }),
-    );
+    fillSavedTurnDialog();
 
     await waitFor(() =>
       expect(mocks.select).toHaveBeenCalledWith('saved-route'),
@@ -292,6 +307,122 @@ describe('browser broker route acceptance', () => {
       browserOrigin: window.location.origin,
       route: savedRoute.brokerRoute,
     });
+  });
+
+  it('does not reconnect the edited route if selection changes while TURN storage is pending', async () => {
+    const savedRoute = {
+      id: 'saved-route',
+      name: 'Home Station',
+      url: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: approvedTrust.trust.stationId,
+          enrollmentId: approvedTrust.trust.enrollmentId,
+          routingGeneration: 1,
+          browserOrigin: window.location.origin,
+        },
+      },
+    };
+    const otherStation = {
+      id: 'station-b',
+      name: 'Station B',
+      url: 'https://station-b.example.test',
+    };
+    const pendingWrite = deferred<void>();
+    mocks.connections = [savedRoute, otherStation];
+    mocks.activeConnection = savedRoute;
+    mocks.saveTurn.mockReturnValue(pendingWrite.promise);
+
+    const view = render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure TURN' }));
+    fillSavedTurnDialog();
+    await waitFor(() => expect(mocks.saveTurn).toHaveBeenCalledOnce());
+    mocks.activeConnection = otherStation;
+    view.rerender(<BrowserRelayRoutes />);
+
+    await act(async () => {
+      pendingWrite.resolve(undefined);
+      await pendingWrite.promise;
+    });
+
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.activeConnection?.id).toBe('station-b');
+  });
+
+  it('does not recover the edited route after storage fails if selection changed', async () => {
+    const savedRoute = {
+      id: 'saved-route',
+      name: 'Home Station',
+      url: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: approvedTrust.trust.stationId,
+          enrollmentId: approvedTrust.trust.enrollmentId,
+          routingGeneration: 1,
+          browserOrigin: window.location.origin,
+        },
+      },
+    };
+    const otherStation = {
+      id: 'station-b',
+      name: 'Station B',
+      url: 'https://station-b.example.test',
+    };
+    const pendingWrite = deferred<void>();
+    mocks.connections = [savedRoute, otherStation];
+    mocks.activeConnection = savedRoute;
+    mocks.saveTurn.mockReturnValue(pendingWrite.promise);
+
+    const view = render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure TURN' }));
+    fillSavedTurnDialog();
+    await waitFor(() => expect(mocks.saveTurn).toHaveBeenCalledOnce());
+    mocks.activeConnection = otherStation;
+    view.rerender(<BrowserRelayRoutes />);
+
+    await act(async () => {
+      pendingWrite.reject(new Error('TURN storage failed'));
+      await pendingWrite.promise.catch(() => undefined);
+    });
+
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.activeConnection?.id).toBe('station-b');
+  });
+
+  it('does not run failure recovery reconnect after the TURN dialog unmounts', async () => {
+    const savedRoute = {
+      id: 'saved-route',
+      name: 'Home Station',
+      url: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: approvedTrust.trust.stationId,
+          enrollmentId: approvedTrust.trust.enrollmentId,
+          routingGeneration: 1,
+          browserOrigin: window.location.origin,
+        },
+      },
+    };
+    const pendingWrite = deferred<void>();
+    mocks.connections = [savedRoute];
+    mocks.activeConnection = savedRoute;
+    mocks.saveTurn.mockReturnValue(pendingWrite.promise);
+
+    const view = render(<BrowserRelayRoutes />);
+    fireEvent.click(screen.getByRole('button', { name: 'Configure TURN' }));
+    fillSavedTurnDialog();
+    await waitFor(() => expect(mocks.saveTurn).toHaveBeenCalledOnce());
+    view.unmount();
+
+    await act(async () => {
+      pendingWrite.reject(new Error('TURN storage failed'));
+      await pendingWrite.promise.catch(() => undefined);
+    });
+
+    expect(mocks.select).not.toHaveBeenCalled();
   });
 
   it('does not save or redeem after the acceptance screen closes during trust lookup', async () => {
