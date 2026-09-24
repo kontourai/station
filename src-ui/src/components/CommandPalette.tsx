@@ -1,6 +1,8 @@
+import type { PluginCommandEffectContent } from '@kontourai/station-contracts/plugin-command-effect';
 import {
   useAgentsQuery,
   useMessageSearchQuery,
+  usePluginsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
 import {
@@ -17,11 +19,14 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { useApiBase } from '../contexts/ApiBaseContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
@@ -63,6 +68,10 @@ import {
   type PaletteCommand,
   rankCommands,
 } from './command-palette-utils';
+import {
+  type InstalledPluginCommandSource,
+  projectPluginPaletteCommands,
+} from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
@@ -187,6 +196,11 @@ export function CommandPalette() {
     actionLabel?: string;
   } | null>(null);
   const [frecencyNotice, setFrecencyNotice] = useState<string | null>(null);
+  // #1418/#1419: surfaces a refusal or an abort settled for a plugin
+  // command, e.g. "Unsaved changes blocked this navigation."
+  const [pluginCommandNotice, setPluginCommandNotice] = useState<string | null>(
+    null,
+  );
   // Settings has a broad registry and contracts dependency. Keep it out of
   // the shell entry chunk: this projection is useful only while the palette
   // is open, and the actual Settings route stays independently lazy.
@@ -272,6 +286,12 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useScopedProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
+  // #1418/#1419: read fresh at apply time too (`currentGeneration` below),
+  // never from a row captured when the palette opened.
+  const { data: plugins = [] } = usePluginsQuery() as {
+    data: InstalledPluginCommandSource[];
+  };
+  const { apiBase } = useApiBase();
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -292,6 +312,131 @@ export function CommandPalette() {
     subscribeToOpenChats,
     openChatIdentitiesSnapshot,
     openChatIdentitiesSnapshot,
+  );
+  // #1418/#1419: the palette has no global "focused chat" concept — only the
+  // dock's own local tab state does, which this global overlay cannot reach
+  // without inventing new shared state. A `seed-composer` command therefore
+  // only becomes available with exactly one open chat: never guessing which
+  // of several to seed is safer than seeding the wrong one, and matches the
+  // "no product claim the runtime cannot prove" rule (src-ui/AGENTS.md).
+  // #1361 gap: a real focused-chat signal would let this work with several
+  // chats open.
+  const activeChatId = openChats.length === 1 ? openChats[0].sessionId : null;
+  const pluginPaletteCommands = useMemo(
+    () =>
+      projectPluginPaletteCommands(plugins, {
+        activeChatId,
+        hasProject: Boolean(selectedProject),
+        // No global "current session"/"current task" concept reaches the
+        // palette either (#1361 gap, same reasoning as above); never claim
+        // availability this surface cannot prove.
+        hasSession: false,
+        hasTask: false,
+        destinationIds: new Set(
+          APP_DESTINATION_REGISTRY.getPalette(surfaceVisibilityFlags).map(
+            (destination) => destination.id,
+          ),
+        ),
+        occupiedCommandIds: new Set(),
+      }),
+    [plugins, activeChatId, selectedProject, surfaceVisibilityFlags],
+  );
+  const pluginGenerationByName = useMemo(
+    () => new Map(plugins.map((plugin) => [plugin.name, plugin])),
+    [plugins],
+  );
+  const runPluginCommand = useCallback(
+    (command: (typeof pluginPaletteCommands)[number]) => {
+      const { contribution, pluginName, installationGeneration } = command;
+      if (!installationGeneration) return;
+      const currentGeneration = () =>
+        pluginGenerationByName.get(pluginName)?.installationGeneration ??
+        undefined;
+      const notify = (message: string) => setPluginCommandNotice(message);
+      const context =
+        selectedProject || activeChatId
+          ? {
+              ...(selectedProject ? { projectSlug: selectedProject } : {}),
+              ...(activeChatId ? { activeChatSessionId: activeChatId } : {}),
+            }
+          : undefined;
+      if (contribution.intent.kind === 'navigate') {
+        const surfaceId = contribution.intent.surfaceId;
+        void import('./plugin-command-effect-transport').then(
+          ({ getPluginCommandEffectCoordinator }) => {
+            getPluginCommandEffectCoordinator().runCommand({
+              apiBase,
+              pluginId: pluginName,
+              commandId: contribution.id,
+              installationGeneration,
+              target: { kind: 'destination', destinationId: surfaceId },
+              context,
+              currentGeneration,
+              notify,
+              apply: (content: PluginCommandEffectContent) => {
+                if (content.kind !== 'navigate') return false;
+                // Owner decision (#1419): a plugin-command navigation settles
+                // `aborted` with a notice rather than opening the async
+                // discard-changes dialog `navigate()` would otherwise run —
+                // the local effect stays one synchronous step.
+                if (navigationStore.hasActiveNavigationGuard()) {
+                  notify(
+                    'Unsaved changes are blocking navigation. This command was cancelled.',
+                  );
+                  return false;
+                }
+                const destination = APP_DESTINATION_REGISTRY.get(
+                  content.destinationId,
+                );
+                if (!destination) return false;
+                if (destination.regionSurface) {
+                  showSurface(destination.regionSurface);
+                } else if (destination.palette?.params) {
+                  navigate(destination.route, destination.palette.params);
+                } else {
+                  navigate(destination.route);
+                }
+                return true;
+              },
+            });
+          },
+        );
+        return;
+      }
+      // contribution.intent.kind === 'seed-composer' (the registry marks
+      // every other kind unavailable, so `run` never reaches this otherwise).
+      if (!activeChatId) return;
+      const draft = activeChatsStore.captureComposerDraft(activeChatId);
+      if (!draft) {
+        notify('This chat is no longer open. The command was cancelled.');
+        return;
+      }
+      void import('./plugin-command-effect-transport').then(
+        ({ getPluginCommandEffectCoordinator }) => {
+          getPluginCommandEffectCoordinator().runCommand({
+            apiBase,
+            pluginId: pluginName,
+            commandId: contribution.id,
+            installationGeneration,
+            target: { kind: 'composer', sessionId: activeChatId },
+            context,
+            currentGeneration,
+            notify,
+            apply: (content: PluginCommandEffectContent) =>
+              content.kind === 'seed-composer' &&
+              draft.replaceInputIfUnchanged(content.text),
+          });
+        },
+      );
+    },
+    [
+      apiBase,
+      activeChatId,
+      selectedProject,
+      pluginGenerationByName,
+      navigate,
+      showSurface,
+    ],
   );
   const frecency = useSyncExternalStore(
     commandFrecencyStorage.subscribe,
@@ -479,6 +624,29 @@ export function CommandPalette() {
           }
           if (params) navigate(destination.route, { ...params });
           else navigate(destination.route);
+        },
+      });
+    }
+
+    // Plugin commands (#1418/#1419): a row is not authority — every effect
+    // still needs the server's own admission — so an unavailable row stays
+    // visible with an exact reason rather than disappearing or silently
+    // failing when chosen.
+    for (const command of pluginPaletteCommands) {
+      const unavailableReason = command.unavailableReason;
+      list.push({
+        id: command.paletteId,
+        label: command.contribution.title,
+        group: 'Plugins',
+        keywords: [
+          command.pluginName,
+          ...(command.contribution.keywords ?? []),
+        ],
+        detail: unavailableReason ?? command.contribution.subtitle,
+        disabled: unavailableReason !== null,
+        run: () => {
+          if (unavailableReason !== null) return;
+          runPluginCommand(command);
         },
       });
     }
@@ -719,6 +887,8 @@ export function CommandPalette() {
     settingsLocaleFormatter,
     locale,
     showSurface,
+    pluginPaletteCommands,
+    runPluginCommand,
   ]);
 
   const ranked = useMemo(
@@ -892,6 +1062,12 @@ export function CommandPalette() {
         {frecencyNotice && (
           <div className="command-palette__pane-notice" role="status">
             {frecencyNotice}
+          </div>
+        )}
+
+        {pluginCommandNotice && (
+          <div className="command-palette__pane-notice" role="status">
+            {pluginCommandNotice}
           </div>
         )}
 
