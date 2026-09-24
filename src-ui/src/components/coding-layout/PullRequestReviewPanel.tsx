@@ -245,9 +245,9 @@ function ReviewOwner({
         {data?.pullRequest.url ? (
           // Beside Refresh rather than in the body, so the way to the forge
           // is the first thing on screen. On the web it opens a new tab. In
-          // the Station app the host opens only the URLs its allowlist admits
-          // (#2480 — pull request URLs are not among them today), and a
-          // refusal shows the link with a Copy action rather than nothing.
+          // the Station app the host opens what its policy admits (#2480:
+          // any https link, once that widening lands), and any refusal shows
+          // the link with a Copy action rather than nothing.
           <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
             {pullRequestExternalLabel(data.pullRequest.url)}
           </Button>

@@ -631,19 +631,21 @@ the `?maximize` mirror writes (effect declaration order), so Back travels to
 the pre-layer URL and an in-app close travels back over the entry rather
 than collapsing it.
 
-**Pending owner acknowledgement.** This supersedes #928's 2026-09-03 phone
-decision in one respect: showing Activity (or any pane) on a phone no longer
+**Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
+2026-09-03 phone decision in one respect: showing Activity (or any pane) on a phone no longer
 takes the folded region from Chat and swaps Chat back from the toolbar; it
 opens over Chat, and Back or "‹ Chat" returns.
 
 The pull request pane's "Open on GitHub" ("Open on GitLab" for gitlab.com,
 "Open in browser" otherwise) opens the PR's URL outside Station
 (`openExternalLink`): a new tab on the web, for http(s) URLs only. In the
-Station app the host's `open_external_link` admits only its reviewed
-allowlist — today GitHub issue URLs, so NOT pull requests (#2480, awaiting an
-owner decision) — and every refusal, from this button or a chat link, is
-shown as a notice with the link and a Copy action
-(`reportUnopenedExternalLink`) rather than being a click that does nothing.
+Station app the host's `open_external_link` opens what its policy admits —
+the owner's #2480 decision (2026-09-24) widens it to any https link the user
+clicks, landing separately; before that it is a narrower allowlist that does
+not include pull requests. Whichever policy is running, every refusal or
+host error, from this button or a chat link, is shown as a notice with the
+link and a Copy action (`reportUnopenedExternalLink`) rather than being a
+click that does nothing.
 
 **Implemented by #2050 (slice 6: the Agents pane), 2026-09-14.** The
 background work of the conversation on screen — tool calls, delegated
