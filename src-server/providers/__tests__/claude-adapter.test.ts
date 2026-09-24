@@ -805,6 +805,82 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession(threadId);
   });
 
+  describe('#2415 review: a send after Stop whose setup throws cannot wedge the session', () => {
+    const interruptedResult = (sessionId: string) => ({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: 'interrupted',
+      stop_reason: null,
+      num_turns: 1,
+      usage: { input_tokens: 1, output_tokens: 0 },
+      uuid: `result-${crypto.randomUUID()}`,
+      session_id: sessionId,
+    });
+
+    test('the stopped turn reports its result AFTER the failed send', async () => {
+      const controlled = createControlledMockQuery();
+      controlled.setModel.mockRejectedValueOnce(new Error('query ended'));
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'thread-stop-setup-throws-late-result';
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        modelId: 'claude-sonnet-4-6',
+      });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      await expect(
+        adapter.sendTurn({ threadId, input: 'B', modelId: 'claude-opus-4-6' }),
+      ).rejects.toThrow('query ended');
+      // B never reached the engine, so it is not the active turn: a second
+      // Stop still targets A rather than aborting a turn that never started.
+      await expect(adapter.interruptTurn(threadId)).resolves.toMatchObject({
+        outcome: 'cancelled',
+        turnId: a.turnId,
+      });
+      controlled.push(interruptedResult(threadId));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const c = await adapter.sendTurn({ threadId, input: 'C' });
+      expect(c.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+
+    test('the stopped turn reports its result BEFORE the failed send throws', async () => {
+      const controlled = createControlledMockQuery();
+      let rejectSetModel!: (error: Error) => void;
+      controlled.setModel.mockImplementationOnce(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectSetModel = reject;
+          }),
+      );
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const threadId = 'thread-stop-setup-throws-early-result';
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        modelId: 'claude-sonnet-4-6',
+      });
+      const a = await adapter.sendTurn({ threadId, input: 'A' });
+      await adapter.interruptTurn(threadId, a.turnId);
+      const b = adapter.sendTurn({
+        threadId,
+        input: 'B',
+        modelId: 'claude-opus-4-6',
+      });
+      controlled.push(interruptedResult(threadId));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      rejectSetModel(new Error('query ended'));
+      await expect(b).rejects.toThrow('query ended');
+      const c = await adapter.sendTurn({ threadId, input: 'C' });
+      expect(c.turnId).not.toBe(a.turnId);
+      await adapter.stopSession(threadId);
+    });
+  });
+
   test('steerTurn reports a typed turn-ended race when the input queue closed', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();

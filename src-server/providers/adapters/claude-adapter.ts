@@ -1455,6 +1455,31 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;
+    try {
+      return await this.dispatchTurn(record, input, turnId);
+    } catch (error) {
+      // #2415 review: a setup that throws before this turn's prompt is
+      // queued (a rejected setPermissionMode/setModel/applyFlagSettings, or
+      // a closed queue) must not leave `activeTurnId` claiming a turn the
+      // engine never received. It goes back to whatever turn IS in the SDK
+      // — a stopped turn still owed its result, or none — so that result is
+      // attributed to it and clears it.
+      if (
+        record.activeTurnId === turnId &&
+        record.dispatchedTurnId !== turnId
+      ) {
+        record.activeTurnId = record.dispatchedTurnId;
+      }
+      throw error;
+    }
+  }
+
+  /** The rest of `sendTurn`, after the turn id is allocated. */
+  private async dispatchTurn(
+    record: ClaudeSessionRecord,
+    input: ProviderSendTurnInput,
+    turnId: ReturnType<typeof crypto.randomUUID>,
+  ): Promise<ProviderTurnStartResult> {
     // archive#1182: a fresh turn has not reported anything yet — clear the
     // previous turn's value so a turn that ends before any assistant
     // message arrives publishes no `reportedModel` rather than a stale one.

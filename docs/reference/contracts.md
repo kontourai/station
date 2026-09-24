@@ -177,7 +177,9 @@ If Station already tried to stop that process and could not confirm it
 stopped, the send is refused definitively instead (no code): the slot frees
 only when that process exits on its own or the lingering-child reap, one
 window later, confirms stopping it, after which the message can be sent
-again. A send that races a turn that is still running is refused
+again. With no declared idle bound that window is measured from the settle,
+so a Stop Station could not confirm is retried 30 minutes after the Stop,
+not 30 minutes after the turn's last activity. A send that races a turn that is still running is refused
 definitively too (#2415): the adapter refuses it before any effect, so the
 dispatch is `rejected` rather than recorded as a possibly-started turn.
 

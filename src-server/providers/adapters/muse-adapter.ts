@@ -1053,7 +1053,9 @@ export class MuseAdapter implements ProviderAdapterShape {
       // (Stop, stopSession, or a deadline reap left it termination-
       // unconfirmed), no prompt retry will succeed: the slot frees only if
       // the process exits on its own or the lingering-child reap, one window
-      // later, confirms stopping it. That is the definitive refusal, still a
+      // later, confirms stopping it (with no declared idle bound, measured
+      // from the settle: an unconfirmed Stop is retried 30 minutes after the
+      // Stop, not after the turn's last activity). That is the definitive refusal, still a
       // pre-effect one so the dispatch is retired cleanly.
       if (occupant.settled && !occupant.terminationUnconfirmed) {
         throw this.refuseSend(

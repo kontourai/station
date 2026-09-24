@@ -781,12 +781,16 @@ export function mapClaudeSdkMessage({
         record.interruptedResultObserved = true;
         // A new turn can be queued before Claude emits the stopped turn's
         // result. Consume the older interruption receipt without clearing the
-        // newer turn's provenance.
-        if (
-          turnId === interruptingTurnId &&
-          record.dispatchedTurnId === interruptingTurnId
-        ) {
-          clearClaudeDispatchedTurn(record);
+        // newer turn's provenance. Each field is cleared when it names the
+        // stopped turn, independently (#2415 review): a later send that
+        // took `activeTurnId` but never queued its prompt (its setup threw)
+        // leaves `dispatchedTurnId` on the stopped turn, and keeping it would
+        // refuse every later send as racing a turn that is over.
+        if (record.dispatchedTurnId === interruptingTurnId) {
+          record.dispatchedTurnId = undefined;
+        }
+        if (turnId === interruptingTurnId) {
+          record.activeTurnId = undefined;
         }
         logInfo?.('Dropped Claude error result for requested interruption', {
           threadId: record.session.threadId,
