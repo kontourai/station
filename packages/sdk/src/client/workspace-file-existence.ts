@@ -15,12 +15,13 @@ export async function listExistingProjectWorkspaceFiles(
   projectSlug: string,
   paths: readonly string[],
   opts?: ClientRequestOptions,
+  thread?: string,
 ): Promise<WorkspaceFileExistence> {
   const response = await mutateJson(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/exists`,
     'POST',
     { ...opts, readOnly: true },
-    { paths },
+    thread ? { paths, thread } : { paths },
   );
   return unwrapOrThrow<WorkspaceFileExistence>(
     response,

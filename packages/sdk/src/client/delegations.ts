@@ -376,10 +376,21 @@ export interface DelegatedTaskTurnSupervision {
   lastProgressEventAt?: string;
 }
 
-/** #2269: server-forwarded typed reason (mirrors `DelegatedTaskReason`). */
+/**
+ * #2269: server-forwarded typed reason (mirrors `DelegatedTaskReason`).
+ *
+ * #2265: a `provider-plan-quota-exhausted` reason additionally carries the
+ * serving Station's re-validated bounded facts — the plan window, the
+ * provider-reported (timezone-less) reset text for display only, and a
+ * qualified retry-after only when one was genuinely supplied. This SDK is
+ * a typed carrier, not a deriver: absent means unreported, never unknown.
+ */
 export interface DelegatedTaskReason {
   code: string;
   detail?: string;
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
 }
 
 /**
@@ -436,6 +447,14 @@ export interface DelegatedTaskEvent {
   trigger?: 'provider';
   text?: string;
   truncated?: true;
+  /**
+   * #2265: bounded provider-plan quota facts, present only on a classified
+   * quota runtime event. `resetReported` is provider-reported civil text
+   * with no timezone — display only, never a countdown source.
+   */
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
   toolName?: string;
   status?: string;
   requestId?: string;
