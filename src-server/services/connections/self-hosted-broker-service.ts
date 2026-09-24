@@ -6,10 +6,18 @@ import { STATION_CONNECTION_PROOF_MAX_BYTES } from '@kontourai/station-contracts
 import {
   SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION,
   SELF_HOSTED_BROKER_INVITATION_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
   type SelfHostedBrokerClientGrantV1,
+  type SelfHostedBrokerNativeClientGrantV2,
+  type SelfHostedBrokerNativeClientSurfaceV2,
+  type SelfHostedBrokerNativeRedemptionProofV2,
+  type SelfHostedBrokerNativeRouteInvitationV2,
+  type SelfHostedBrokerNativeScopeV2,
   type SelfHostedBrokerRouteInvitationV1,
   type SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
+import { calculateJwkThumbprint, compactVerify, importJWK } from 'jose';
 
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -17,6 +25,21 @@ const SDP_LIMIT = 128 * 1024;
 const INVITATION_MAX_AGE_MS = 5 * 60_000;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const SIGNING_KEY_ID = /^[A-Za-z0-9_-]{43}$/;
+const CLIENT_INSTANCE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const APP_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
+type NativeChannel = SelfHostedBrokerNativeClientSurfaceV2['channel'];
+const NATIVE_CHANNELS: ReadonlySet<NativeChannel> = new Set([
+  'dev',
+  'stable',
+  'beta',
+  'nightly',
+]);
+function isNativeChannel(value: unknown): value is NativeChannel {
+  return (
+    typeof value === 'string' && NATIVE_CHANNELS.has(value as NativeChannel)
+  );
+}
 
 export type BrokerCredential = { id: string; secret: string };
 export type BrokerCredentialBundle = {
@@ -66,6 +89,23 @@ interface GrantRow {
   expires_at: number;
   revoked_at: number | null;
 }
+interface NativeInvitationRow {
+  invitation_id: string;
+  station_id: string;
+  enrollment_id: string;
+  generation: number;
+  broker_origin: string;
+  signing_key_id: string;
+  signing_generation: number;
+  app_identifier: string;
+  channel: string;
+  client_instance_id: string;
+  key_thumbprint: string;
+  secret_hash: Uint8Array;
+  expires_at: number;
+  grant_expires_at: number;
+  consumed_at: number | null;
+}
 export function createBrokerCredentialBundle(): BrokerCredentialBundle {
   return {
     connector: {
@@ -100,6 +140,166 @@ function grantDigest(secret: string) {
 }
 function invitationDigest(secret: string) {
   return digest(`route-invitation/v1:${secret}`);
+}
+function nativeInvitationDigest(secret: string) {
+  return digest(`native-route-invitation/v2:${secret}`);
+}
+function nativeGrantDigest(secret: string) {
+  return digest(`native-client-grant/v2:${secret}`);
+}
+function validateNativeScope(value: unknown): SelfHostedBrokerNativeScopeV2 {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('invalid_native_scope');
+  const scope = value as Record<string, unknown>;
+  if (
+    Object.keys(scope).sort().join(',') !==
+    'enrollmentId,routingGeneration,stationId'
+  )
+    throw new Error('invalid_native_scope');
+  if (typeof scope.stationId !== 'string')
+    throw new Error('invalid_station_id');
+  if (typeof scope.enrollmentId !== 'string')
+    throw new Error('invalid_enrollment_id');
+  assertText(scope.stationId, 'station_id');
+  assertText(scope.enrollmentId, 'enrollment_id');
+  if (
+    !Number.isSafeInteger(scope.routingGeneration) ||
+    (scope.routingGeneration as number) < 1
+  )
+    throw new Error('invalid_generation');
+  return {
+    stationId: scope.stationId,
+    enrollmentId: scope.enrollmentId,
+    routingGeneration: scope.routingGeneration as number,
+  };
+}
+function validateNativeSurface(
+  value: unknown,
+): SelfHostedBrokerNativeClientSurfaceV2 {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('invalid_native_surface');
+  const surface = value as Record<string, unknown>;
+  if (
+    Object.keys(surface).sort().join(',') !==
+    'appIdentifier,channel,clientInstanceId,keyThumbprint,kind'
+  )
+    throw new Error('invalid_native_surface');
+  if (
+    surface.kind !== 'station-native' ||
+    typeof surface.appIdentifier !== 'string' ||
+    !APP_IDENTIFIER.test(surface.appIdentifier) ||
+    !isNativeChannel(surface.channel) ||
+    typeof surface.clientInstanceId !== 'string' ||
+    !CLIENT_INSTANCE_ID.test(surface.clientInstanceId) ||
+    typeof surface.keyThumbprint !== 'string' ||
+    !SECRET.test(surface.keyThumbprint)
+  )
+    throw new Error('invalid_native_surface');
+  return {
+    kind: 'station-native',
+    appIdentifier: surface.appIdentifier,
+    channel: surface.channel,
+    clientInstanceId: surface.clientInstanceId,
+    keyThumbprint: surface.keyThumbprint,
+  };
+}
+function validateNativePublicKey(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('invalid_native_proof');
+  const key = value as Record<string, unknown>;
+  if (
+    Object.keys(key).sort().join(',') !== 'crv,kty,x,y' ||
+    key.kty !== 'EC' ||
+    key.crv !== 'P-256' ||
+    typeof key.x !== 'string' ||
+    !SECRET.test(key.x) ||
+    typeof key.y !== 'string' ||
+    !SECRET.test(key.y)
+  )
+    throw new Error('invalid_native_proof');
+  return {
+    jwk: { kty: 'EC' as const, crv: 'P-256' as const, x: key.x, y: key.y },
+  };
+}
+function nativeProofPayload(
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  nonce: string,
+) {
+  // Property order is the wire contract. Clients sign these exact UTF-8 bytes
+  // with ES256; the invitation secret is represented only by its digest.
+  return JSON.stringify({
+    aud: 'station-self-hosted-broker',
+    purpose: 'redeem-native-route-invitation',
+    version: invitation.version,
+    brokerOrigin: invitation.brokerOrigin,
+    scope: {
+      stationId: invitation.scope.stationId,
+      enrollmentId: invitation.scope.enrollmentId,
+      routingGeneration: invitation.scope.routingGeneration,
+    },
+    stationSigningKeyId: invitation.stationSigningKeyId,
+    stationSigningGeneration: invitation.stationSigningGeneration,
+    surface: {
+      kind: invitation.surface.kind,
+      appIdentifier: invitation.surface.appIdentifier,
+      channel: invitation.surface.channel,
+      clientInstanceId: invitation.surface.clientInstanceId,
+      keyThumbprint: invitation.surface.keyThumbprint,
+    },
+    invitationId: invitation.invitationId,
+    invitationSecretDigest: nativeInvitationDigest(
+      invitation.invitationSecret,
+    ).toString('base64url'),
+    expiresAt: invitation.expiresAt,
+    nonce,
+  });
+}
+/** Stable signing bytes for native clients that implement the v2 broker exchange. */
+export function serializeNativeBrokerRedemptionPayload(
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  nonce: string,
+): Uint8Array {
+  return Buffer.from(nativeProofPayload(invitation, nonce), 'utf8');
+}
+async function assertNativeProof(
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  value: unknown,
+) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('invalid_native_proof');
+  const proof = value as Record<string, unknown>;
+  if (
+    Object.keys(proof).sort().join(',') !== 'jws,nonce,publicKey' ||
+    typeof proof.nonce !== 'string' ||
+    !SECRET.test(proof.nonce) ||
+    typeof proof.jws !== 'string' ||
+    proof.jws.length > 4096
+  )
+    throw new Error('invalid_native_proof');
+  const { jwk } = validateNativePublicKey(proof.publicKey);
+  if ((await calculateJwkThumbprint(jwk)) !== invitation.surface.keyThumbprint)
+    throw new Error('invalid_native_proof');
+  try {
+    const key = await importJWK(jwk, 'ES256');
+    const verified = await compactVerify(proof.jws, key, {
+      algorithms: ['ES256'],
+    });
+    if (
+      Object.keys(verified.protectedHeader).sort().join(',') !== 'alg,typ' ||
+      verified.protectedHeader.alg !== 'ES256' ||
+      verified.protectedHeader.typ !== 'station-broker-native-redemption+jws' ||
+      !timingSafeEqual(
+        Buffer.from(verified.payload),
+        Buffer.from(
+          serializeNativeBrokerRedemptionPayload(invitation, proof.nonce),
+        ),
+      )
+    )
+      throw new Error('invalid_native_proof');
+    return jwk;
+  } catch {
+    throw new Error('invalid_native_proof');
+  }
 }
 function assertPrivateFile(path: string) {
   const file = lstatSync(path);
@@ -232,7 +432,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2].includes(version.user_version)) {
+    if (![0, 1, 2, 3].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -250,23 +450,32 @@ export class SelfHostedBrokerService {
               'broker_route_invitations',
               'broker_client_grants',
               'broker_connection_owners',
+              ...(version.user_version === 3
+                ? [
+                    'broker_native_route_invitations',
+                    'broker_native_client_grants',
+                  ]
+                : []),
             ];
       const present = this.db
         .prepare("SELECT name FROM sqlite_master WHERE type='table'")
         .all() as { name: string }[];
       if (
         application.application_id !== 0x53544252 ||
-        expected.some((name) => !present.some((table) => table.name === name))
+        expected.some(
+          (name) => !present.some((table) => table.name === name),
+        ) ||
+        present.some((table) => !expected.includes(table.name))
       ) {
         this.db.close();
         throw new Error('broker_database_schema_refused');
       }
     }
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON');
-    // Version 2 adds only tables. Legacy pending rows have no client-grant
-    // owner, so they remain usable solely by the legacy operator routing key.
-    // The DDL and version marker commit together; an interrupted upgrade
-    // cannot advertise a version whose grant tables are absent.
+    // Versions 2 and 3 add only tables. Legacy pending rows have no
+    // client-grant owner, so they remain usable solely by the legacy operator
+    // routing key. Native grants have separate tables and are never accepted
+    // by v1 signaling. DDL and version marker commit together.
     try {
       this.db.exec(`BEGIN IMMEDIATE;
       CREATE TABLE IF NOT EXISTS broker_leases(
@@ -305,8 +514,31 @@ export class SelfHostedBrokerService {
         FOREIGN KEY(station_id, client_id, nonce)
           REFERENCES broker_connections(station_id, client_id, nonce) ON DELETE CASCADE);
       CREATE INDEX IF NOT EXISTS broker_connection_grant ON broker_connection_owners(grant_id);
+      CREATE TABLE IF NOT EXISTS broker_native_route_invitations(
+        invitation_id TEXT PRIMARY KEY, station_id TEXT NOT NULL,
+        enrollment_id TEXT NOT NULL, generation INTEGER NOT NULL,
+        broker_origin TEXT NOT NULL, signing_key_id TEXT NOT NULL,
+        signing_generation INTEGER NOT NULL, app_identifier TEXT NOT NULL,
+        channel TEXT NOT NULL, client_instance_id TEXT NOT NULL,
+        key_thumbprint TEXT NOT NULL, secret_hash BLOB NOT NULL,
+        expires_at INTEGER NOT NULL, grant_expires_at INTEGER NOT NULL,
+        consumed_at INTEGER);
+      CREATE INDEX IF NOT EXISTS broker_native_invitation_station
+        ON broker_native_route_invitations(station_id, expires_at);
+      CREATE TABLE IF NOT EXISTS broker_native_client_grants(
+        grant_id TEXT PRIMARY KEY, invitation_id TEXT NOT NULL,
+        station_id TEXT NOT NULL, enrollment_id TEXT NOT NULL,
+        generation INTEGER NOT NULL, broker_origin TEXT NOT NULL,
+        signing_key_id TEXT NOT NULL, signing_generation INTEGER NOT NULL,
+        app_identifier TEXT NOT NULL, channel TEXT NOT NULL,
+        client_instance_id TEXT NOT NULL, key_thumbprint TEXT NOT NULL,
+        proof_public_key TEXT NOT NULL, secret_hash BLOB NOT NULL,
+        issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+        revoked_at INTEGER);
+      CREATE INDEX IF NOT EXISTS broker_native_grant_station
+        ON broker_native_client_grants(station_id, expires_at);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=2;
+      PRAGMA user_version=3;
       COMMIT;`);
     } catch (error) {
       try {
@@ -436,6 +668,14 @@ export class SelfHostedBrokerService {
         this.db
           .prepare('DELETE FROM broker_client_grants WHERE station_id=?')
           .run(scope.stationId);
+        this.db
+          .prepare(
+            'DELETE FROM broker_native_route_invitations WHERE station_id=?',
+          )
+          .run(scope.stationId);
+        this.db
+          .prepare('DELETE FROM broker_native_client_grants WHERE station_id=?')
+          .run(scope.stationId);
       }
       return { changes: Number(written.changes), idempotent: false };
     });
@@ -529,6 +769,233 @@ export class SelfHostedBrokerService {
         invitationId,
         invitationSecret,
         expiresAt,
+      };
+    });
+  }
+  /** Operator issuance binds a routing-only invite to one native proof key. */
+  issueNativeInvitation(input: {
+    scope: BrokerScope;
+    routingCredential: BrokerCredential;
+    brokerOrigin: string;
+    surface: SelfHostedBrokerNativeClientSurfaceV2;
+    stationSigningKeyId: string;
+    stationSigningGeneration: number;
+    invitationTtlMs?: number;
+    grantTtlMs?: number;
+  }): SelfHostedBrokerNativeRouteInvitationV2 {
+    const scope = validateBrokerScope(input.scope);
+    const nativeScope = validateNativeScope({
+      stationId: scope.stationId,
+      enrollmentId: scope.enrollmentId,
+      routingGeneration: scope.routingGeneration,
+    });
+    const surface = validateNativeSurface(input.surface);
+    const brokerOrigin = canonicalBrokerOrigin(input.brokerOrigin);
+    if (!SIGNING_KEY_ID.test(input.stationSigningKeyId))
+      throw new Error('invalid_signing_key_id');
+    if (
+      !Number.isSafeInteger(input.stationSigningGeneration) ||
+      input.stationSigningGeneration < 1
+    )
+      throw new Error('invalid_signing_generation');
+    const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
+    const grantTtlMs = input.grantTtlMs ?? GRANT_MAX_AGE_MS;
+    if (
+      !Number.isSafeInteger(invitationTtlMs) ||
+      invitationTtlMs < 1 ||
+      invitationTtlMs > INVITATION_MAX_AGE_MS ||
+      !Number.isSafeInteger(grantTtlMs) ||
+      grantTtlMs < 1 ||
+      grantTtlMs > GRANT_MAX_AGE_MS
+    )
+      throw new Error('invalid_invitation_lifetime');
+    const invitationId = randomBytes(16).toString('base64url');
+    const invitationSecret = randomBytes(32).toString('base64url');
+    return this.transaction(() => {
+      this.lease(scope, input.routingCredential, 'routing');
+      const now = this.now();
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_route_invitations WHERE expires_at<=? OR consumed_at IS NOT NULL',
+        )
+        .run(now);
+      const stationCount = (
+        this.db
+          .prepare(
+            'SELECT count(*) n FROM broker_native_route_invitations WHERE station_id=?',
+          )
+          .get(scope.stationId) as { n: number }
+      ).n;
+      const totalCount = (
+        this.db
+          .prepare('SELECT count(*) n FROM broker_native_route_invitations')
+          .get() as { n: number }
+      ).n;
+      if (stationCount >= 64 || totalCount >= 1024)
+        throw new Error('invitation_limit');
+      const expiresAt = now + invitationTtlMs;
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_route_invitations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)',
+        )
+        .run(
+          invitationId,
+          nativeScope.stationId,
+          nativeScope.enrollmentId,
+          nativeScope.routingGeneration,
+          brokerOrigin,
+          input.stationSigningKeyId,
+          input.stationSigningGeneration,
+          surface.appIdentifier,
+          surface.channel,
+          surface.clientInstanceId,
+          surface.keyThumbprint,
+          nativeInvitationDigest(invitationSecret),
+          expiresAt,
+          now + grantTtlMs,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
+        brokerOrigin,
+        scope: nativeScope,
+        stationSigningKeyId: input.stationSigningKeyId,
+        stationSigningGeneration: input.stationSigningGeneration,
+        surface,
+        invitationId,
+        invitationSecret,
+        expiresAt,
+      };
+    });
+  }
+  /** One-use native redemption; a JWS proof binds the exact invite and install key. */
+  async redeemNativeInvitation(
+    invitation: SelfHostedBrokerNativeRouteInvitationV2,
+    proof: SelfHostedBrokerNativeRedemptionProofV2,
+  ): Promise<SelfHostedBrokerNativeClientGrantV2> {
+    if (
+      !invitation ||
+      typeof invitation !== 'object' ||
+      Object.keys(invitation).sort().join(',') !==
+        'brokerOrigin,expiresAt,invitationId,invitationSecret,scope,stationSigningGeneration,stationSigningKeyId,surface,version' ||
+      invitation.version !== SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION ||
+      !ID.test(invitation.invitationId) ||
+      !SECRET.test(invitation.invitationSecret) ||
+      !SIGNING_KEY_ID.test(invitation.stationSigningKeyId) ||
+      !Number.isSafeInteger(invitation.stationSigningGeneration) ||
+      invitation.stationSigningGeneration < 1 ||
+      !Number.isSafeInteger(invitation.expiresAt)
+    )
+      throw new Error('invalid_native_invitation');
+    const scope = validateNativeScope(invitation.scope);
+    const brokerOrigin = canonicalBrokerOrigin(invitation.brokerOrigin);
+    const surface = validateNativeSurface(invitation.surface);
+    const normalizedInvitation = {
+      ...invitation,
+      brokerOrigin,
+      scope,
+      surface,
+    };
+    const proofPublicKey = await assertNativeProof(normalizedInvitation, proof);
+    return this.transaction(() => {
+      const row = this.db
+        .prepare(
+          'SELECT * FROM broker_native_route_invitations WHERE invitation_id=?',
+        )
+        .get(invitation.invitationId) as NativeInvitationRow | undefined;
+      if (
+        !row ||
+        row.station_id !== scope.stationId ||
+        row.enrollment_id !== scope.enrollmentId ||
+        row.generation !== scope.routingGeneration ||
+        row.broker_origin !== brokerOrigin ||
+        row.signing_key_id !== invitation.stationSigningKeyId ||
+        row.signing_generation !== invitation.stationSigningGeneration ||
+        row.app_identifier !== surface.appIdentifier ||
+        row.channel !== surface.channel ||
+        row.client_instance_id !== surface.clientInstanceId ||
+        row.key_thumbprint !== surface.keyThumbprint ||
+        row.expires_at !== invitation.expiresAt ||
+        row.consumed_at !== null ||
+        row.expires_at <= this.now() ||
+        row.grant_expires_at <= this.now() ||
+        !timingSafeEqual(
+          Buffer.from(row.secret_hash),
+          nativeInvitationDigest(invitation.invitationSecret),
+        )
+      )
+        throw new Error('native_invitation_refused');
+      const lease = this.db
+        .prepare('SELECT * FROM broker_leases WHERE station_id=?')
+        .get(scope.stationId) as LeaseRow | undefined;
+      if (
+        !lease ||
+        lease.enrollment_id !== scope.enrollmentId ||
+        lease.generation !== scope.routingGeneration ||
+        lease.withdrawn_at !== null ||
+        lease.expires_at <= this.now()
+      )
+        throw new Error('native_invitation_refused');
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_client_grants WHERE expires_at<=? OR revoked_at IS NOT NULL',
+        )
+        .run(this.now());
+      const stationCount = (
+        this.db
+          .prepare(
+            'SELECT count(*) n FROM broker_native_client_grants WHERE station_id=?',
+          )
+          .get(scope.stationId) as { n: number }
+      ).n;
+      const totalCount = (
+        this.db
+          .prepare('SELECT count(*) n FROM broker_native_client_grants')
+          .get() as { n: number }
+      ).n;
+      if (stationCount >= 256 || totalCount >= 4096)
+        throw new Error('grant_limit');
+      const credential = {
+        id: randomBytes(16).toString('base64url'),
+        secret: randomBytes(32).toString('base64url'),
+      };
+      const publicKeyJson = JSON.stringify(proofPublicKey);
+      this.db
+        .prepare(
+          'UPDATE broker_native_route_invitations SET consumed_at=? WHERE invitation_id=? AND consumed_at IS NULL',
+        )
+        .run(this.now(), invitation.invitationId);
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_client_grants VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)',
+        )
+        .run(
+          credential.id,
+          invitation.invitationId,
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          brokerOrigin,
+          invitation.stationSigningKeyId,
+          invitation.stationSigningGeneration,
+          surface.appIdentifier,
+          surface.channel,
+          surface.clientInstanceId,
+          surface.keyThumbprint,
+          publicKeyJson,
+          nativeGrantDigest(credential.secret),
+          this.now(),
+          row.grant_expires_at,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION,
+        brokerOrigin,
+        scope,
+        stationSigningKeyId: invitation.stationSigningKeyId,
+        stationSigningGeneration: invitation.stationSigningGeneration,
+        surface,
+        proofPublicKey,
+        credential,
+        expiresAt: row.grant_expires_at,
       };
     });
   }
@@ -692,6 +1159,53 @@ export class SelfHostedBrokerService {
       )
       .run(this.now(), grantId);
   }
+  /** Revokes native routing independently from browser grants and Station access. */
+  revokeNativeClientGrant(
+    scope: BrokerScope,
+    routingCredential: BrokerCredential,
+    grantId: string,
+  ) {
+    scope = validateBrokerScope(scope);
+    assertText(grantId, 'grant_id');
+    this.transaction(() => {
+      this.lease(scope, routingCredential, 'routing');
+      const changed = this.db
+        .prepare(
+          'UPDATE broker_native_client_grants SET revoked_at=? WHERE grant_id=? AND station_id=? AND enrollment_id=? AND generation=? AND revoked_at IS NULL',
+        )
+        .run(
+          this.now(),
+          grantId,
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+        );
+      if (changed.changes !== 1) throw new Error('grant_unavailable');
+    });
+  }
+  /** Native inventory exposes binding metadata and state, never credentials or proof material. */
+  listNativeClientGrants(
+    scope: BrokerScope,
+    routingCredential: BrokerCredential,
+  ) {
+    scope = validateBrokerScope(scope);
+    this.lease(scope, routingCredential, 'routing');
+    return this.db
+      .prepare(
+        `SELECT grant_id AS grantId,invitation_id AS invitationId,
+                signing_key_id AS stationSigningKeyId,
+                signing_generation AS stationSigningGeneration,
+                app_identifier AS appIdentifier,channel,
+                client_instance_id AS clientInstanceId,
+                key_thumbprint AS keyThumbprint,
+                issued_at AS issuedAt,expires_at AS expiresAt,
+                revoked_at AS revokedAt
+         FROM broker_native_client_grants
+         WHERE station_id=? AND enrollment_id=? AND generation=?
+         ORDER BY issued_at DESC,grant_id LIMIT 256`,
+      )
+      .all(scope.stationId, scope.enrollmentId, scope.routingGeneration);
+  }
   /** Operator inventory contains identifiers and state, never routing secrets. */
   listClientGrants(scope: BrokerScope, routingCredential: BrokerCredential) {
     scope = validateBrokerScope(scope);
@@ -850,6 +1364,14 @@ export class SelfHostedBrokerService {
         .run(scope.stationId);
       this.db
         .prepare('DELETE FROM broker_client_grants WHERE station_id=?')
+        .run(scope.stationId);
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_route_invitations WHERE station_id=?',
+        )
+        .run(scope.stationId);
+      this.db
+        .prepare('DELETE FROM broker_native_client_grants WHERE station_id=?')
         .run(scope.stationId);
     });
   }

@@ -24,9 +24,11 @@ running on a Station distinct.
   direct path is unavailable. One broker may serve many Stations and Devices;
   it handles bounded routing/signaling metadata, not Project data or agent work.
 - **Route grant** — a separately issued, revocable broker credential kept by a
-  Device to reach one Station enrollment. Its client-Origin binding is not
-  proof of a person's or Device's identity. It does not approve the Station
-  signing key, pair the Device, sign a person in, or grant Project access.
+  client to reach one Station enrollment. Browser v1 grants bind a client
+  Origin; native v2 grants bind an approved install proof key and native app
+  surface. Neither binding proves a person's identity. A route grant does not
+  approve the Station signing key, pair a Device, sign a person in, or grant
+  Project access.
 - **Client** — an agent app a Station runs: Claude Code, Codex, opencode,
   cursor-agent. See `bin/clients/`, `station_require_dogfood_client`,
   `client-preflight.sh`.

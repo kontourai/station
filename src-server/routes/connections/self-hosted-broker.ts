@@ -1,4 +1,8 @@
-import type { SelfHostedBrokerRouteInvitationV1 } from '@kontourai/station-contracts/self-hosted-broker';
+import type {
+  SelfHostedBrokerNativeRedemptionProofV2,
+  SelfHostedBrokerNativeRouteInvitationV2,
+  SelfHostedBrokerRouteInvitationV1,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type {
@@ -101,6 +105,10 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
           'invalid_browser_origin',
           'invalid_broker_origin',
           'invalid_invitation',
+          'invalid_native_scope',
+          'invalid_native_surface',
+          'invalid_native_proof',
+          'invalid_native_invitation',
           'invalid_invitation_lifetime',
           'invalid_signing_key_id',
           'invalid_signing_generation',
@@ -116,6 +124,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
           'invitation_limit',
           'grant_limit',
           'invitation_refused',
+          'native_invitation_refused',
           'grant_unavailable',
           'connection_replayed',
           'connection_unavailable',
@@ -135,6 +144,78 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         );
       }
     };
+  app.post(
+    '/native/grants/invitations/issue',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, [
+        'scope',
+        'brokerOrigin',
+        'surface',
+        'stationSigningKeyId',
+        'stationSigningGeneration',
+      ]);
+      return service.issueNativeInvitation({
+        scope: body.scope as BrokerScope,
+        routingCredential: credential,
+        brokerOrigin: body.brokerOrigin as string,
+        surface:
+          body.surface as SelfHostedBrokerNativeRouteInvitationV2['surface'],
+        stationSigningKeyId: body.stationSigningKeyId as string,
+        stationSigningGeneration: body.stationSigningGeneration as number,
+      });
+    }),
+  );
+  app.post(
+    '/native/grants/list',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope']);
+      return service.listNativeClientGrants(
+        body.scope as BrokerScope,
+        credential,
+      );
+    }),
+  );
+  app.post(
+    '/native/grants/revoke',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope', 'grantId']);
+      if (typeof body.grantId !== 'string') throw new Error('invalid_request');
+      service.revokeNativeClientGrant(
+        body.scope as BrokerScope,
+        credential,
+        body.grantId,
+      );
+      return { revoked: true };
+    }),
+  );
+  app.post(
+    '/native/grants/redeem',
+    invoke(async (c) => {
+      if (
+        c.req.header('origin') ||
+        c.req.header('cookie') ||
+        c.req.header('authorization') ||
+        c.req.header('x-broker-credential-id') ||
+        c.req.header('content-type')?.toLowerCase() !== 'application/json'
+      )
+        throw new Error('broker_credential_refused');
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        throw new Error('invalid_request');
+      }
+      exact(body, ['invitation', 'proof']);
+      const record = body as Record<string, unknown>;
+      return service.redeemNativeInvitation(
+        record.invitation as SelfHostedBrokerNativeRouteInvitationV2,
+        record.proof as SelfHostedBrokerNativeRedemptionProofV2,
+      );
+    }),
+  );
   app.post(
     '/grants/redeem',
     invoke(async (c) => {
