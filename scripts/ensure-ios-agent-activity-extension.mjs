@@ -89,7 +89,9 @@ for key in CFBundleShortVersionString CFBundleVersion; do
   case "$value" in
     ''|*'$('*) echo "error: the app's $key is not a literal version: $value" >&2; exit 1 ;;
   esac
-  /usr/libexec/PlistBuddy -c "Set :$key $value" "$built_plist"
+  # Xcode drops a key whose $(VARIABLE) expanded empty, so add, not set.
+  /usr/libexec/PlistBuddy -c "Delete :$key" "$built_plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :$key string $value" "$built_plist"
 done
 `;
 
