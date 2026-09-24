@@ -78,6 +78,11 @@ separate comparison does **Approve Station key** store public trust on the
 client. **Revoke Station key trust** requires the current full key ID and a
 successful keyring write; an error leaves revocation unresolved. Approval and
 revocation do not start a native broker route or sign the client in.
+When a Station rotates its signing key, **Review new Station key** opens a new
+invitation and comparison without discarding the currently approved key. The
+replacement must advance the generation and use a different key; cancelling
+the review keeps the existing approval. A revoked key likewise needs a newer
+generation and different key before trust can be restored.
 
 In the browser, **Manage Stations → Broker routes** first has a **Station
 signing key** step. A fresh browser with no Device cookie can reach the same

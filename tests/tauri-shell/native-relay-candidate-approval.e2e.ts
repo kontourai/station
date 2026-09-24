@@ -79,84 +79,107 @@ function trustAccount(stationId: string) {
 
 async function startBroker() {
   const home = mkdtempSync(join(tmpdir(), 'station-native-operator-'));
-  await new EnvironmentSecurityService({ homeDir: home }).initialize();
-  const custody = new ConnectionSigningKeyStore(home);
-  const trust = await custody.initialize();
-  const service = new SelfHostedBrokerService(join(home, 'broker.sqlite'));
-  const scope = {
-    stationId: trust.stationId,
-    enrollmentId: trust.enrollmentId,
-    routingGeneration: 1,
-    browserOrigin: 'https://station.example',
+  const cleanups: Array<() => void | Promise<void>> = [
+    () => rmSync(home, { recursive: true, force: true }),
+  ];
+  let cleaned = false;
+  const cleanup = async () => {
+    if (cleaned) return;
+    cleaned = true;
+    let firstError: unknown;
+    for (const close of [...cleanups].reverse()) {
+      try {
+        await close();
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (firstError) throw firstError;
   };
-  const credentials = service.provision(scope, 600_000);
-  const app = new Hono().route(
-    '/broker/v1',
-    createSelfHostedBrokerRoutes(service),
-  );
-  const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
-  await new Promise<void>((resolve) => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string')
-    throw new Error('broker fixture listener unavailable');
-  const brokerOrigin = `http://127.0.0.1:${address.port}`;
-  const trustOwner = {
-    current: () => custody.readDescriptor(),
-    isCurrent: (value: typeof trust) =>
-      JSON.stringify(value) === JSON.stringify(custody.readDescriptor()),
-  };
-  const runtime = createSelfHostedBrokerPionRuntime(
-    {
-      brokerOrigin,
-      applicationOrigin: 'https://station.example',
-      scope,
-      connectorCredential: credentials.connector,
-      executable: '/unused',
-      certificatePem: 'unused',
-      privateKeyPem: 'unused',
-      turn: { url: 'turn:unused', username: 'unused', password: 'unused' },
-      trust: trustOwner,
-      issuer: {
-        issue: async () => {
-          throw new Error('unexpected application connection offer');
+  try {
+    await new EnvironmentSecurityService({ homeDir: home }).initialize();
+    const custody = new ConnectionSigningKeyStore(home);
+    const trust = await custody.initialize();
+    const service = new SelfHostedBrokerService(join(home, 'broker.sqlite'));
+    cleanups.push(() => service.close());
+    const scope = {
+      stationId: trust.stationId,
+      enrollmentId: trust.enrollmentId,
+      routingGeneration: 1,
+      browserOrigin: 'https://station.example',
+    };
+    const credentials = service.provision(scope, 600_000);
+    const app = new Hono().route(
+      '/broker/v1',
+      createSelfHostedBrokerRoutes(service),
+    );
+    const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        ),
+    );
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('broker fixture listener unavailable');
+    const brokerOrigin = `http://127.0.0.1:${address.port}`;
+    const trustOwner = {
+      current: () => custody.readDescriptor(),
+      isCurrent: (value: typeof trust) =>
+        JSON.stringify(value) === JSON.stringify(custody.readDescriptor()),
+    };
+    const runtime = createSelfHostedBrokerPionRuntime(
+      {
+        brokerOrigin,
+        applicationOrigin: 'https://station.example',
+        scope,
+        connectorCredential: credentials.connector,
+        executable: '/unused',
+        certificatePem: 'unused',
+        privateKeyPem: 'unused',
+        turn: { url: 'turn:unused', username: 'unused', password: 'unused' },
+        trust: trustOwner,
+        issuer: {
+          issue: async () => {
+            throw new Error('unexpected application connection offer');
+          },
+        },
+        candidateIssuer: new ConnectionKeyCandidateIssuer(custody),
+        heartbeatMs: 30_000,
+        renewMs: 10_000,
+        pollMs: 1_000,
+        maxPeerLifetimeMs: 60_000,
+        maxPeers: 1,
+      },
+      {
+        signal: new AbortController().signal,
+        fetch: async () => new Response('unexpected application request'),
+      },
+      {
+        startAdapter: async () => {
+          throw new Error('unexpected Pion application adapter');
         },
       },
-      candidateIssuer: new ConnectionKeyCandidateIssuer(custody),
-      heartbeatMs: 30_000,
-      renewMs: 10_000,
-      pollMs: 1_000,
-      maxPeerLifetimeMs: 60_000,
-      maxPeers: 1,
-    },
-    {
-      signal: new AbortController().signal,
-      fetch: async () => new Response('unexpected application request'),
-    },
-    {
-      startAdapter: async () => {
-        throw new Error('unexpected Pion application adapter');
-      },
-    },
-  );
-  await runtime.start();
-  return {
-    brokerOrigin,
-    trust,
-    scope,
-    service,
-    credentials,
-    async stop() {
-      try {
-        await runtime.shutdown();
-      } finally {
-        await new Promise<void>((resolve, reject) =>
-          server.close((error) => (error ? reject(error) : resolve())),
-        );
-        service.close();
-        rmSync(home, { recursive: true, force: true });
-      }
-    },
-  };
+    );
+    cleanups.push(() => runtime.shutdown());
+    await runtime.start();
+    return {
+      brokerOrigin,
+      trust,
+      scope,
+      service,
+      credentials,
+      stop: cleanup,
+    };
+  } catch (error) {
+    await cleanup().catch((cleanupError) => {
+      console.error('broker fixture setup cleanup failed:', cleanupError);
+      process.exitCode = 1;
+    });
+    throw error;
+  }
 }
 
 async function main() {
