@@ -595,9 +595,9 @@ class EngineParkedDuringDispatchError extends Error {
   }
 }
 /** #2540: an idle session's engine is parked after this long unused. */
-export const IDLE_SESSION_PARK_AFTER_MS = 30 * 60_000;
+const IDLE_SESSION_PARK_AFTER_MS = 30 * 60_000;
 /** #2540: how often idle sessions are checked for parking. */
-export const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
+const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
 /**
  * How long a park waits, holding the session's lifecycle lock, for the
  * stopped engine's own exit to arrive and be absorbed. Adapters publish it
