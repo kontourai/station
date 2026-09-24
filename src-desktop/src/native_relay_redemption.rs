@@ -10,7 +10,8 @@
 //! signaling consumer is registered from this module.
 
 use crate::native_relay_proof_key::{
-    NativeBrokerRedemptionChallenge, NativeBrokerRedemptionInvitation, NativeProofKeyChannel,
+    NativeBrokerRedemptionChallenge, NativeBrokerRedemptionInvitation, NativeBrokerRequestBody,
+    NativeBrokerRequestIdentity, NativeBrokerRequestProofChallenge, NativeProofKeyChannel,
     NativeProofKeyOwner, NativeProofKeyPublicMetadata, NativeRelayProofKeyVault, P256PublicJwk,
     ProofKeyError,
 };
@@ -36,12 +37,17 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 const REDEEM_PATH: &str = "/broker/v1/native/grants/redeem";
+const OPEN_PATH: &str = "/broker/v1/native/connections/open";
+const READ_PATH: &str = "/broker/v1/native/connections/read";
 const RETIRE_PATH: &str = "/broker/v1/native/grants/retire";
+const RENEW_PATH: &str = "/broker/v1/native/grants/renew";
 const NATIVE_INVITATION_VERSION: &str = "station-broker-native-route-invitation/v2";
 const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
 const MAX_INVITATION_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GRANT_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
+const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS: u64 = 12 * 60 * 60 * 1000;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_GRANT_INDEX_ENTRIES: usize = 10_000;
@@ -70,6 +76,9 @@ pub(crate) enum NativeRedemptionError {
     GrantStore,
     GrantMissing,
     GrantExists,
+    GrantExpired,
+    GrantRenewalConflict,
+    GrantRenewalNotDue,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -338,6 +347,19 @@ struct NativeRelayCredential {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeGrantRenewalIntent {
+    renewal_id: String,
+    expected_expires_at: u64,
+    request_body: Vec<u8>,
+}
+
+pub(crate) struct NativeGrantRequestRecord {
+    pub(crate) grant: NativeRelayClientGrantV2,
+    renewal_intent: Option<NativeGrantRenewalIntent>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeRelayGrantRoute {
     broker_origin: String,
     station_id: String,
@@ -353,12 +375,14 @@ struct NativeRelayGrantBinding {
     route: NativeRelayGrantRoute,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct StoredNativeRelayGrantV2 {
     schema_version: u8,
     binding: NativeRelayGrantBinding,
     grant: NativeRelayClientGrantV2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    renewal_intent: Option<NativeGrantRenewalIntent>,
 }
 
 #[derive(Serialize)]
@@ -367,6 +391,8 @@ struct StoredNativeRelayGrantV2Ref<'a> {
     schema_version: u8,
     binding: NativeRelayGrantBinding,
     grant: &'a NativeRelayClientGrantV2,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    renewal_intent: Option<&'a NativeGrantRenewalIntent>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -472,6 +498,27 @@ pub(crate) trait NativeGrantCustody: Send + Sync {
     ) -> RedemptionResult<()>;
     fn finish_cleanup(&self, owner: &NativeProofKeyOwner, cleanup_id: &str)
         -> RedemptionResult<()>;
+    fn load_request_grant(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+        allow_expired_for_renewal: bool,
+    ) -> RedemptionResult<NativeGrantRequestRecord>;
+    fn save_renewal_intent(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: NativeGrantRenewalIntent,
+    ) -> RedemptionResult<NativeGrantRenewalIntent>;
+    fn complete_renewal(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: &NativeGrantRenewalIntent,
+        renewed_expires_at: u64,
+        now: u64,
+    ) -> RedemptionResult<NativeRelayGrantMetadata>;
 }
 
 pub(crate) struct NativeRelayGrantVault<B> {
@@ -544,6 +591,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
             schema_version: 1,
             binding: binding.clone(),
             grant,
+            renewal_intent: None,
         };
         let encoded = Zeroizing::new(
             serde_json::to_string(&payload).map_err(|_| NativeRedemptionError::GrantInvalid)?,
@@ -630,6 +678,185 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         }
         validate_native_grant(owner, &stored.grant, now)?;
         Ok(Some(native_grant_metadata(binding.route, &stored.grant)))
+    }
+
+    fn load_request_grant(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+        allow_expired_for_renewal: bool,
+    ) -> RedemptionResult<NativeGrantRequestRecord> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        validate_profile_context(context)?;
+        if !profile_matches_owner(&context.profile, owner)
+            || context.station_trust.station_id != context.profile.station_id
+            || context.station_trust.enrollment_id != context.profile.enrollment_id
+            || context.station_trust.station_endpoint != context.profile.station_endpoint
+        {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let pending = read_native_grant_cleanup_index(&mut *backend, owner)?;
+        let entries = read_native_grant_index(&mut *backend, owner)?;
+        let mut matches = Vec::new();
+        for entry in entries {
+            if entry.route.broker_origin != context.profile.broker_origin
+                || entry.route.station_id != context.profile.station_id
+                || entry.route.enrollment_id != context.profile.enrollment_id
+            {
+                continue;
+            }
+            if pending.entries.iter().any(|item| item.route == entry.route) {
+                return Err(NativeRedemptionError::GrantStore);
+            }
+            let binding = NativeRelayGrantBinding {
+                owner: owner.clone(),
+                route: entry.route.clone(),
+            };
+            let account = native_grant_account(&binding)?;
+            let Some(encoded) = backend.get(&account)? else {
+                return Err(NativeRedemptionError::GrantStore);
+            };
+            let stored: StoredNativeRelayGrantV2 =
+                serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantInvalid)?;
+            if stored.schema_version != 1 || stored.binding != binding {
+                return Err(NativeRedemptionError::GrantInvalid);
+            }
+            if stored.grant.station_signing_generation != context.station_trust.generation
+                || stored.grant.station_signing_key_id
+                    != station_signing_key_id(&context.station_trust.signing_key)
+            {
+                continue;
+            }
+            if stored.grant.expires_at <= now {
+                if !allow_expired_for_renewal
+                    || now.saturating_sub(stored.grant.expires_at) > NATIVE_GRANT_RENEWAL_GRACE_MS
+                {
+                    continue;
+                }
+                validate_native_grant(owner, &stored.grant, stored.grant.expires_at - 1)?;
+            } else {
+                validate_native_grant(owner, &stored.grant, now)?;
+            }
+            matches.push(NativeGrantRequestRecord {
+                grant: stored.grant,
+                renewal_intent: stored.renewal_intent,
+            });
+        }
+        if matches.len() != 1 {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        Ok(matches.remove(0))
+    }
+
+    fn save_renewal_intent(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: NativeGrantRenewalIntent,
+    ) -> RedemptionResult<NativeGrantRenewalIntent> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let binding = NativeRelayGrantBinding {
+            owner: owner.clone(),
+            route: native_route_for_grant(grant),
+        };
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        if read_native_grant_cleanup_index(&mut *backend, owner)?
+            .entries
+            .iter()
+            .any(|entry| entry.route == binding.route)
+        {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        let account = native_grant_account(&binding)?;
+        let encoded = backend
+            .get(&account)?
+            .ok_or(NativeRedemptionError::GrantStore)?;
+        let mut stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+        if stored.schema_version != 1
+            || stored.binding != binding
+            || !same_native_grant(&stored.grant, grant)
+        {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        if let Some(existing) = &stored.renewal_intent {
+            if existing.renewal_id != intent.renewal_id
+                || existing.expected_expires_at != intent.expected_expires_at
+                || existing.request_body != intent.request_body
+            {
+                return Err(NativeRedemptionError::GrantStore);
+            }
+            return Ok(existing.clone());
+        }
+        stored.renewal_intent = Some(intent.clone());
+        let serialized = Zeroizing::new(
+            serde_json::to_string(&stored).map_err(|_| NativeRedemptionError::GrantStore)?,
+        );
+        backend.set(&account, &serialized)?;
+        Ok(intent)
+    }
+
+    fn complete_renewal(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: &NativeGrantRenewalIntent,
+        renewed_expires_at: u64,
+        now: u64,
+    ) -> RedemptionResult<NativeRelayGrantMetadata> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let binding = NativeRelayGrantBinding {
+            owner: owner.clone(),
+            route: native_route_for_grant(grant),
+        };
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        if read_native_grant_cleanup_index(&mut *backend, owner)?
+            .entries
+            .iter()
+            .any(|entry| entry.route == binding.route)
+        {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        let account = native_grant_account(&binding)?;
+        let encoded = backend
+            .get(&account)?
+            .ok_or(NativeRedemptionError::GrantStore)?;
+        let mut stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+        if stored.schema_version != 1
+            || stored.binding != binding
+            || !same_native_grant(&stored.grant, grant)
+            || stored.renewal_intent.as_ref() != Some(intent)
+            || renewed_expires_at <= now
+            || renewed_expires_at > now.saturating_add(MAX_GRANT_AGE_MS)
+        {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        stored.grant.expires_at = renewed_expires_at;
+        stored.renewal_intent = None;
+        validate_native_grant(owner, &stored.grant, now)?;
+        let serialized = Zeroizing::new(
+            serde_json::to_string(&stored).map_err(|_| NativeRedemptionError::GrantStore)?,
+        );
+        backend.set(&account, &serialized)?;
+        Ok(native_grant_metadata(binding.route, &stored.grant))
     }
 
     fn revoke_if_matches(
@@ -907,6 +1134,42 @@ impl<B: NativeGrantBackend> NativeGrantCustody for NativeRelayGrantVault<B> {
         cleanup_id: &str,
     ) -> RedemptionResult<()> {
         NativeRelayGrantVault::finish_cleanup(self, owner, cleanup_id)
+    }
+
+    fn load_request_grant(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+        allow_expired_for_renewal: bool,
+    ) -> RedemptionResult<NativeGrantRequestRecord> {
+        NativeRelayGrantVault::load_request_grant(
+            self,
+            owner,
+            context,
+            now,
+            allow_expired_for_renewal,
+        )
+    }
+
+    fn save_renewal_intent(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: NativeGrantRenewalIntent,
+    ) -> RedemptionResult<NativeGrantRenewalIntent> {
+        NativeRelayGrantVault::save_renewal_intent(self, owner, grant, intent)
+    }
+
+    fn complete_renewal(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+        intent: &NativeGrantRenewalIntent,
+        renewed_expires_at: u64,
+        now: u64,
+    ) -> RedemptionResult<NativeRelayGrantMetadata> {
+        NativeRelayGrantVault::complete_renewal(self, owner, grant, intent, renewed_expires_at, now)
     }
 }
 
@@ -1335,6 +1598,11 @@ pub(crate) trait NativeProofKeyOperations: Send + Sync {
         owner: &NativeProofKeyOwner,
         challenge: &NativeBrokerRedemptionChallenge,
     ) -> Result<Vec<u8>, ProofKeyError>;
+    fn sign_native_request(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
+    ) -> Result<Vec<u8>, ProofKeyError>;
 }
 
 impl NativeProofKeyOperations for NativeRelayProofKeyVault {
@@ -1350,6 +1618,13 @@ impl NativeProofKeyOperations for NativeRelayProofKeyVault {
         challenge: &NativeBrokerRedemptionChallenge,
     ) -> Result<Vec<u8>, ProofKeyError> {
         NativeRelayProofKeyVault::sign_es256_p1363(self, owner, challenge)
+    }
+    fn sign_native_request(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
+    ) -> Result<Vec<u8>, ProofKeyError> {
+        NativeRelayProofKeyVault::sign_native_request_es256_p1363(self, owner, challenge)
     }
 }
 
@@ -1370,11 +1645,28 @@ impl NativeProofKeyOperations for crate::native_relay_proof_key::MemoryNativeRel
             self, owner, challenge,
         )
     }
+    fn sign_native_request(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeBrokerRequestProofChallenge,
+    ) -> Result<Vec<u8>, ProofKeyError> {
+        crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault::sign_native_request_es256_p1363(
+            self, owner, challenge,
+        )
+    }
 }
 
 pub(crate) trait NativeBrokerTransport: Send + Sync {
     fn redeem(&self, broker_origin: &str, request_body: &[u8]) -> RedemptionResult<BrokerResponse>;
-    fn retire_own_grant(&self, grant: &NativeRelayClientGrantV2) -> RedemptionResult<()>;
+}
+
+pub(crate) trait NativeBrokerRequestTransport: Send + Sync {
+    fn send_fixed_request(
+        &self,
+        grant: &NativeRelayClientGrantV2,
+        challenge: &NativeBrokerRequestProofChallenge,
+        compact_proof: &str,
+    ) -> RedemptionResult<BrokerResponse>;
 }
 
 pub(crate) struct BrokerResponse {
@@ -1441,32 +1733,37 @@ impl NativeBrokerTransport for UreqNativeBrokerTransport {
         }
         Ok(BrokerResponse { status, body })
     }
+}
 
-    fn retire_own_grant(&self, grant: &NativeRelayClientGrantV2) -> RedemptionResult<()> {
+impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
+    fn send_fixed_request(
+        &self,
+        grant: &NativeRelayClientGrantV2,
+        challenge: &NativeBrokerRequestProofChallenge,
+        compact_proof: &str,
+    ) -> RedemptionResult<BrokerResponse> {
         if !canonical_broker_origin(&grant.broker_origin)
             || !valid_opaque(grant.credential.secret.expose())
             || !valid_grant_id(&grant.credential.id)
+            || compact_proof.is_empty()
+            || compact_proof.len() > 8192
+            || challenge.body().len() > MAX_REQUEST_BYTES
+            || !challenge.matches_identity(&native_request_identity(grant))
         {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        let path = challenge.path();
+        if !matches!(path, OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH) {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let base = url::Url::parse(&grant.broker_origin)
             .map_err(|_| NativeRedemptionError::GrantInvalid)?;
         let target = base
-            .join(RETIRE_PATH)
+            .join(path)
             .map_err(|_| NativeRedemptionError::GrantInvalid)?;
-        if target.origin().ascii_serialization() != grant.broker_origin
-            || target.path() != RETIRE_PATH
-        {
+        if target.origin().ascii_serialization() != grant.broker_origin || target.path() != path {
             return Err(NativeRedemptionError::GrantInvalid);
         }
-        let body = Zeroizing::new(
-            serde_json::to_vec(&NativeGrantRetireRequest {
-                version: NATIVE_RETIRE_VERSION,
-                scope: grant.scope.clone(),
-                surface: grant.surface.clone(),
-            })
-            .map_err(|_| NativeRedemptionError::GrantInvalid)?,
-        );
         let authorization = Zeroizing::new(format!("Bearer {}", grant.credential.secret.expose()));
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .max_redirects(0)
@@ -1478,15 +1775,14 @@ impl NativeBrokerTransport for UreqNativeBrokerTransport {
             .post(target.as_str())
             .header("Authorization", authorization.as_str())
             .header("X-Broker-Credential-Id", &grant.credential.id)
+            .header("X-Station-Native-Proof", compact_proof)
             .header("Content-Type", "application/json")
-            .send(&body[..])
+            .send(challenge.body())
             .map_err(|_| NativeRedemptionError::BrokerTransport)?;
-        if response.status().as_u16() != 200 {
-            return Err(NativeRedemptionError::BrokerRejected);
-        }
-        let mut response_body = Zeroizing::new(Vec::new());
+        let status = response.status().as_u16();
+        let mut body = Zeroizing::new(Vec::new());
         let mut reader = response.body_mut().as_reader();
-        let mut chunk = Zeroizing::new([0_u8; 256]);
+        let mut chunk = Zeroizing::new([0_u8; 8192]);
         loop {
             let read = reader
                 .read(&mut chunk[..])
@@ -1494,26 +1790,13 @@ impl NativeBrokerTransport for UreqNativeBrokerTransport {
             if read == 0 {
                 break;
             }
-            if response_body.len().saturating_add(read) > 4096 {
+            if body.len().saturating_add(read) > MAX_RESPONSE_BYTES {
                 return Err(NativeRedemptionError::BrokerTransport);
             }
-            response_body.extend_from_slice(&chunk[..read]);
+            body.extend_from_slice(&chunk[..read]);
         }
-        let receipt: NativeGrantRetireReceipt = serde_json::from_slice(&response_body)
-            .map_err(|_| NativeRedemptionError::BrokerRejected)?;
-        if receipt.version != NATIVE_RETIRE_VERSION || !receipt.retired {
-            return Err(NativeRedemptionError::BrokerRejected);
-        }
-        Ok(())
+        Ok(BrokerResponse { status, body })
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct NativeGrantRetireRequest {
-    version: &'static str,
-    scope: NativeRelayScopeV2,
-    surface: NativeRelayClientSurfaceV2,
 }
 
 #[derive(Deserialize)]
@@ -1550,6 +1833,15 @@ fn validate_profile_context(context: &NativeRedemptionContext) -> RedemptionResu
         return Err(NativeRedemptionError::StationTrustRequired);
     }
     Ok(())
+}
+
+fn profile_matches_owner(
+    profile: &NativeRelayProfileSnapshot,
+    owner: &NativeProofKeyOwner,
+) -> bool {
+    profile.app_identifier == owner.app_identifier()
+        && profile.channel.keyring_label() == owner.channel_label()
+        && profile.client_instance_id == owner.client_instance_id()
 }
 
 fn validate_invitation_and_trust(
@@ -1679,6 +1971,23 @@ fn native_route_for_grant(grant: &NativeRelayClientGrantV2) -> NativeRelayGrantR
         enrollment_id: grant.scope.enrollment_id.clone(),
         routing_generation: grant.scope.routing_generation,
         grant_id: grant.credential.id.clone(),
+    }
+}
+
+fn native_request_identity(grant: &NativeRelayClientGrantV2) -> NativeBrokerRequestIdentity<'_> {
+    NativeBrokerRequestIdentity {
+        broker_origin: &grant.broker_origin,
+        grant_id: &grant.credential.id,
+        station_id: &grant.scope.station_id,
+        enrollment_id: &grant.scope.enrollment_id,
+        routing_generation: grant.scope.routing_generation,
+        app_identifier: &grant.surface.app_identifier,
+        channel: &grant.surface.channel,
+        client_instance_id: &grant.surface.client_instance_id,
+        key_thumbprint: &grant.surface.key_thumbprint,
+        station_signing_key_id: &grant.station_signing_key_id,
+        station_signing_generation: grant.station_signing_generation,
+        bearer_secret: grant.credential.secret.expose(),
     }
 }
 
@@ -1934,8 +2243,16 @@ mod tests {
             self.0.store(true, Ordering::SeqCst);
             Err(NativeRedemptionError::BrokerTransport)
         }
+    }
 
-        fn retire_own_grant(&self, _: &NativeRelayClientGrantV2) -> RedemptionResult<()> {
+    impl NativeBrokerRequestTransport for NeverTransport {
+        fn send_fixed_request(
+            &self,
+            _: &NativeRelayClientGrantV2,
+            _: &NativeBrokerRequestProofChallenge,
+            _: &str,
+        ) -> RedemptionResult<BrokerResponse> {
+            self.0.store(true, Ordering::SeqCst);
             Err(NativeRedemptionError::BrokerTransport)
         }
     }
@@ -1946,9 +2263,28 @@ mod tests {
         fn redeem(&self, _: &str, _: &[u8]) -> RedemptionResult<BrokerResponse> {
             Err(NativeRedemptionError::BrokerTransport)
         }
+    }
 
-        fn retire_own_grant(&self, _: &NativeRelayClientGrantV2) -> RedemptionResult<()> {
-            Ok(())
+    impl NativeBrokerRequestTransport for SuccessfulRetirement {
+        fn send_fixed_request(
+            &self,
+            _: &NativeRelayClientGrantV2,
+            challenge: &NativeBrokerRequestProofChallenge,
+            _: &str,
+        ) -> RedemptionResult<BrokerResponse> {
+            if challenge.path() != RETIRE_PATH {
+                return Err(NativeRedemptionError::GrantInvalid);
+            }
+            Ok(BrokerResponse {
+                status: 200,
+                body: Zeroizing::new(
+                    serde_json::to_vec(&serde_json::json!({
+                        "version": NATIVE_RETIRE_VERSION,
+                        "retired": true,
+                    }))
+                    .unwrap(),
+                ),
+            })
         }
     }
 
@@ -2085,6 +2421,96 @@ mod tests {
         (&request[..header_end], &request[header_end + 4..])
     }
 
+    fn request_header_value<'a>(header: &'a [u8], name: &str) -> Option<&'a str> {
+        let text = std::str::from_utf8(header).ok()?;
+        text.lines().skip(1).find_map(|line| {
+            line.split_once(':').and_then(|(header_name, value)| {
+                header_name
+                    .eq_ignore_ascii_case(name)
+                    .then_some(value.trim())
+            })
+        })
+    }
+
+    fn verify_native_retire_request_proof(
+        request: &[u8],
+        public_key: &P256PublicJwk,
+        broker_origin: &str,
+    ) -> serde_json::Value {
+        let (header, body) = request_header_body(request);
+        assert!(String::from_utf8_lossy(header)
+            .to_ascii_lowercase()
+            .starts_with("post /broker/v1/native/grants/retire http/1.1"));
+        let expected_authorization = format!("Bearer {}", "S".repeat(43));
+        assert_eq!(
+            request_header_value(header, "authorization"),
+            Some(expected_authorization.as_str())
+        );
+        assert_eq!(
+            request_header_value(header, "x-broker-credential-id"),
+            Some("GGGGGGGGGGGGGGGGGGGGGG")
+        );
+        let compact = request_header_value(header, "x-station-native-proof").unwrap();
+        let parts = compact.split('.').collect::<Vec<_>>();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(
+            URL_SAFE_NO_PAD.decode(parts[0]).unwrap(),
+            br#"{"alg":"ES256","typ":"station-broker-native-request+jws"}"#
+        );
+        let claims_bytes = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let claims: serde_json::Value = serde_json::from_slice(&claims_bytes).unwrap();
+        assert_eq!(claims["version"], "station-broker-native-request-proof/v1");
+        assert_eq!(claims["aud"], broker_origin);
+        assert_eq!(claims["brokerOrigin"], broker_origin);
+        assert_eq!(claims["purpose"], "station-native-grant-retire-v2");
+        assert_eq!(claims["method"], "POST");
+        assert_eq!(claims["path"], RETIRE_PATH);
+        assert_eq!(claims["grantId"], "GGGGGGGGGGGGGGGGGGGGGG");
+        let key_thumbprint = station_signing_key_id(public_key);
+        assert_eq!(claims["surface"]["keyThumbprint"], key_thumbprint);
+        assert_eq!(
+            claims["stationSigningKeyId"],
+            station_signing_key_id(public_key)
+        );
+        assert_eq!(
+            claims["bodySha256"],
+            URL_SAFE_NO_PAD.encode(digest(&SHA256, body))
+        );
+        assert_eq!(
+            claims["ath"],
+            URL_SAFE_NO_PAD.encode(digest(&SHA256, "S".repeat(43).as_bytes()))
+        );
+        assert_eq!(
+            URL_SAFE_NO_PAD
+                .decode(claims["jti"].as_str().unwrap())
+                .unwrap()
+                .len(),
+            32
+        );
+        assert_eq!(
+            claims["exp"].as_u64().unwrap() - claims["iat"].as_u64().unwrap(),
+            30
+        );
+        let body_value: serde_json::Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(body_value["version"], NATIVE_RETIRE_VERSION);
+        assert_eq!(body_value["scope"]["stationId"], STATION_ID);
+        assert_eq!(body_value["scope"]["enrollmentId"], ENROLLMENT_ID);
+        assert_eq!(body_value["scope"]["routingGeneration"], 9);
+        assert_eq!(body_value["surface"]["keyThumbprint"], key_thumbprint);
+
+        let x = URL_SAFE_NO_PAD.decode(public_key.x()).unwrap();
+        let y = URL_SAFE_NO_PAD.decode(public_key.y()).unwrap();
+        let mut point = vec![0x04];
+        point.extend_from_slice(&x);
+        point.extend_from_slice(&y);
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let signature_bytes = URL_SAFE_NO_PAD.decode(parts[2]).unwrap();
+        signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, point)
+            .verify(signing_input.as_bytes(), &signature_bytes)
+            .unwrap();
+        claims
+    }
+
     fn spawn_server(
         response: impl FnOnce(&[u8]) -> (u16, Vec<u8>) + Send + 'static,
     ) -> (String, std::thread::JoinHandle<Vec<u8>>) {
@@ -2132,7 +2558,7 @@ mod tests {
         (origin, thread)
     }
 
-    fn service<'a, H: NativeBrokerTransport>(
+    fn service<'a, H: NativeBrokerTransport + NativeBrokerRequestTransport>(
         authority: &'a MemoryAuthority,
         proof_keys: &'a crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault,
         http: &'a H,
@@ -2648,6 +3074,8 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let origin = format!("http://{address}");
         let prepared = prepared(origin.clone(), 7);
+        let proof_public_key = prepared.public.jwk().clone();
+        let proof_broker_origin = origin.clone();
         let server = std::thread::spawn(move || {
             let (mut redeem_socket, _) = listener.accept().unwrap();
             let redeem = read_request(&mut redeem_socket);
@@ -2665,20 +3093,23 @@ mod tests {
             // Broker retires the credential but the acknowledgement is lost.
             let (mut first_retire, _) = listener.accept().unwrap();
             let first_request = read_request(&mut first_retire);
-            let (first_header, _) = request_header_body(&first_request);
-            let first_header = String::from_utf8_lossy(first_header).to_ascii_lowercase();
-            assert!(first_header.starts_with("post /broker/v1/native/grants/retire http/1.1"));
-            assert!(first_header.contains(&format!("authorization: bearer {}", "s".repeat(43))));
+            let first_claims = verify_native_retire_request_proof(
+                &first_request,
+                &proof_public_key,
+                &proof_broker_origin,
+            );
             drop(first_retire);
 
             // Restart recovery repeats the exact fixed-path idempotent call.
             let (mut retry, _) = listener.accept().unwrap();
             let retry_request = read_request(&mut retry);
-            let (retry_header, _) = request_header_body(&retry_request);
-            let retry_header = String::from_utf8_lossy(retry_header).to_ascii_lowercase();
-            assert!(retry_header.starts_with("post /broker/v1/native/grants/retire http/1.1"));
-            assert!(retry_header.contains(&format!("authorization: bearer {}", "s".repeat(43))));
-            assert!(retry_header.contains(&format!("x-broker-credential-id: {}", "g".repeat(22))));
+            let retry_claims = verify_native_retire_request_proof(
+                &retry_request,
+                &proof_public_key,
+                &proof_broker_origin,
+            );
+            assert_ne!(first_claims["jti"], retry_claims["jti"]);
+            assert_eq!(first_claims["bodySha256"], retry_claims["bodySha256"]);
             let receipt = serde_json::to_vec(&serde_json::json!({
                 "version": NATIVE_RETIRE_VERSION,
                 "retired": true,
@@ -3246,7 +3677,7 @@ impl<'a, P, K, H, G, C> NativeRelayRedemptionService<'a, P, K, H, G, C>
 where
     P: NativeRedemptionContextProvider,
     K: NativeProofKeyOperations,
-    H: NativeBrokerTransport,
+    H: NativeBrokerTransport + NativeBrokerRequestTransport,
     G: NativeGrantCustody,
     C: Fn() -> u64,
 {
@@ -3264,6 +3695,44 @@ where
             grants,
             now,
         }
+    }
+
+    fn retire_pending_grant(
+        &self,
+        owner: &NativeProofKeyOwner,
+        grant: &NativeRelayClientGrantV2,
+    ) -> RedemptionResult<()> {
+        if grant.surface.app_identifier != owner.app_identifier()
+            || grant.surface.channel != owner.channel_label()
+            || grant.surface.client_instance_id != owner.client_instance_id()
+        {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        let challenge = NativeBrokerRequestProofChallenge::from_request(
+            native_request_identity(grant),
+            NativeBrokerRequestBody::Retire,
+            (self.now)() / 1000,
+        )
+        .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+        let signature = self
+            .proof_keys
+            .sign_native_request(owner, &challenge)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let compact_proof = challenge
+            .compact_jws(&signature)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let response = self
+            .http
+            .send_fixed_request(grant, &challenge, &compact_proof)?;
+        if response.status != 200 {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        let receipt: NativeGrantRetireReceipt = serde_json::from_slice(&response.body)
+            .map_err(|_| NativeRedemptionError::BrokerRejected)?;
+        if receipt.version != NATIVE_RETIRE_VERSION || !receipt.retired {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        Ok(())
     }
 
     pub(crate) fn pending_cleanup_ids(
@@ -3334,8 +3803,7 @@ where
             ));
         }
         if !entry.broker_retired {
-            self.http
-                .retire_own_grant(grant)
+            self.retire_pending_grant(owner, grant)
                 .map_err(NativeGrantCleanupAttemptFailure::broker)?;
             self.grants
                 .mark_broker_retired(owner, cleanup_id)
@@ -3486,7 +3954,7 @@ where
             let cleanup_result = if let Some(cleanup_id) = cleanup_id.as_deref() {
                 self.retry_cleanup_with_fallback(&owner, cleanup_id, Some(&grant))
             } else {
-                match self.http.retire_own_grant(&grant) {
+                match self.retire_pending_grant(&owner, &grant) {
                     Err(error) => Err(NativeGrantCleanupAttemptFailure::broker(error)),
                     Ok(()) if local_cleanup_required => self
                         .grants
