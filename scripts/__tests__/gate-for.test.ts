@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { gateReport } from '../gate-for.mjs';
+import { gateReport, veritasGuidanceForPaths } from '../gate-for.mjs';
 
 // gate:for must stay a COMPOSER of the pre-push deciders, never a parallel
 // encoding of their path lists — these tests therefore assert agreement with
@@ -10,6 +10,20 @@ import { gateReport } from '../gate-for.mjs';
 const baseSha = 'f'.repeat(40);
 
 describe('gate-for report', () => {
+  it('shows the linked behavior check before a governed Session edit', () => {
+    const guidance = veritasGuidanceForPaths([
+      'src-server/services/orchestration/session-turn-boundary.ts',
+    ]);
+    expect(guidance).toContain('session-lifecycle-recovery-contract (Require)');
+    expect(guidance).toContain('session-transition-contract');
+    expect(guidance).toContain('Do:');
+  });
+
+  it('does not invent path guidance for an unrelated file', () => {
+    expect(
+      veritasGuidanceForPaths(['docs/plans/issue-class-prevention.md']),
+    ).toContain('no matching rules');
+  });
   it('marks every scoped gate RUNS for a surface that feeds all five', () => {
     const report = gateReport({
       changedPaths: [

@@ -118,7 +118,7 @@
       },
       {
         "id": "package.cli",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/cli",
         "patterns": ["packages/cli/"],
         "owners": ["station-architecture"],
@@ -126,7 +126,7 @@
       },
       {
         "id": "package.connect",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/connect",
         "patterns": ["packages/connect/"],
         "owners": ["station-architecture"],
@@ -150,7 +150,7 @@
       },
       {
         "id": "package.shared",
-        "kind": "shared-package-area",
+        "kind": "shared-package",
         "label": "packages/shared",
         "patterns": ["packages/shared/"],
         "owners": ["station-architecture"],
@@ -377,6 +377,18 @@
         "summary": "Provider and orchestration integration tests for connected agent runtimes (behavioral proof for runtime-contracts)."
       },
       {
+        "id": "session-transition-contract",
+        "command": "npm run proof:session-transition-contract",
+        "method": "validation",
+        "summary": "Changed Session boundary files must preserve durable transition, late-outcome, and recovery behavior."
+      },
+      {
+        "id": "bounded-work-contract",
+        "command": "npm run proof:bounded-work-contract",
+        "method": "validation",
+        "summary": "Changed background-work owners must retain retry, queue, and stall bounds."
+      },
+      {
         "id": "static-verification",
         "command": "npm run verify:static",
         "method": "validation",
@@ -415,11 +427,7 @@
           "product.src-server",
           "product.src-server.evidence-services"
         ],
-        "evidenceCheckIds": ["connected-agents"],
-        "componentIds": [
-          "product.src-server",
-          "product.src-server.evidence-services"
-        ]
+        "evidenceCheckIds": ["connected-agents"]
       }
     ],
     "evidenceInventoryManifests": [

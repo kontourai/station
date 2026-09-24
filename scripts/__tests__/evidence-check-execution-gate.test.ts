@@ -19,6 +19,12 @@ const realRepoMap = JSON.parse(
 const realMapping = JSON.parse(
   readFileSync(join(repoRoot, 'scripts/evidence-check-execution.json'), 'utf8'),
 );
+const realStandards = JSON.parse(
+  readFileSync(
+    join(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
+    'utf8',
+  ),
+);
 const temporaryRoots: string[] = [];
 
 // Mirrors the real corpus shape the gate reads: a Vitest file that names the
@@ -81,6 +87,9 @@ function baseScripts() {
     'proof:retired-surfaces': fail,
     'proof:migration-tombstones': fail,
     'test:connected-agents': pass,
+    'proof:session-transition-contract': pass,
+    'proof:bounded-work-contract': pass,
+    'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
     'veritas:fallow:advisory': pass,
@@ -90,6 +99,7 @@ function baseScripts() {
 function createFixture(
   mutate: (fixture: {
     repoMap: typeof realRepoMap;
+    standards: typeof realStandards;
     mapping: typeof realMapping;
     packageJson: { scripts: ReturnType<typeof baseScripts> };
   }) => void,
@@ -99,17 +109,32 @@ function createFixture(
   temporaryRoots.push(root);
   const fixture = {
     repoMap: structuredClone(realRepoMap),
+    standards: structuredClone(realStandards),
     mapping: structuredClone(realMapping),
     packageJson: { scripts: baseScripts() },
   };
   mutate(fixture);
 
   mkdirSync(join(root, '.veritas'), { recursive: true });
+  mkdirSync(join(root, '.veritas/repo-standards'), { recursive: true });
+  mkdirSync(join(root, '.githooks'), { recursive: true });
   mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, '.github/workflows'), { recursive: true });
   writeFileSync(
     join(root, '.veritas/repo-map.json'),
     JSON.stringify(fixture.repoMap),
+  );
+  writeFileSync(
+    join(root, '.veritas/repo-standards/default.repo-standards.json'),
+    JSON.stringify(fixture.standards),
+  );
+  writeFileSync(
+    join(root, 'scripts/run-ci-fast.mjs'),
+    "const gate = ['run', 'veritas:readiness'];\n",
+  );
+  writeFileSync(
+    join(root, '.githooks/pre-push'),
+    'npm run --silent veritas:readiness\n',
   );
   writeFileSync(
     join(root, 'scripts/evidence-check-execution.json'),
@@ -201,6 +226,36 @@ describe('evidence-check execution gate', () => {
       'evidence check "fallow-advisory" is enforced but "npm run veritas:fallow:advisory" is unreachable',
     );
     expect(status).toBe(1);
+  });
+
+  test('scoped checks require a Require rule that names the check', () => {
+    const root = createFixture(({ standards }) => {
+      const rule = standards.rules.find(
+        (item: { id: string }) =>
+          item.id === 'session-lifecycle-recovery-contract',
+      );
+      rule.enforcementLevel = 'Guide';
+    });
+
+    const { status, output } = runGate(root);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      'evidence check "session-transition-contract" is scoped but no Require rule binds it through evidenceCheckIds',
+    );
+  });
+
+  test('scoped checks require readiness in the fast lane and pre-push hook', () => {
+    const root = createFixture(() => {});
+    writeFileSync(
+      join(root, 'scripts/run-ci-fast.mjs'),
+      '// readiness removed\n',
+    );
+
+    const { status, output } = runGate(root);
+    expect(status).toBe(1);
+    expect(output).toContain(
+      'evidence check "session-transition-contract" is scoped but Veritas readiness is not wired to both ci:fast and pre-push',
+    );
   });
 
   test('a candidate check reachable from a lane root fails', () => {

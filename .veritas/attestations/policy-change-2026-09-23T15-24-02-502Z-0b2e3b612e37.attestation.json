@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-23T15:24:02.502Z",
+  "repoStandardsHash": "sha256:866a3d291c31a03467fe312c3131718862816604f0bdc350afada28488b011db",
+  "repoMapHash": "sha256:dd02c66694ae97542e66d4c75d5e07459839b49051f79e03605e05774c98badc",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+  "validUntilDays": 90,
+  "notes": "Require the project-scoped Codex hooks feature alongside the provisioned Veritas PreToolUse handler.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+    "approvalRef": "conversation:2026-09-22:ensure-full-flow-enforced",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ed426df3e277fc2000db3c411d80ff03c97d5197f501b944998b63083a4a59ca",
+        "validUntil": "2026-12-22T15:24:02.502Z"
+      },
+      "createdAt": "2026-09-23T15:24:02.502Z",
+      "updatedAt": "2026-09-23T15:24:02.502Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Require the project-scoped Codex hooks feature alongside the provisioned Veritas PreToolUse handler.",
+      "observedAt": "2026-09-23T15:24:02.502Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "ed426df3e277fc2000db3c411d80ff03c97d5197f501b944998b63083a4a59ca",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-23T15:24:02.502Z",
+        "validUntil": "2026-12-22T15:24:02.502Z",
+        "contentHash": "ed426df3e277fc2000db3c411d80ff03c97d5197f501b944998b63083a4a59ca"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-23T15-24-02-502Z-0b2e3b612e37"
+      ],
+      "createdAt": "2026-09-23T15:24:02.502Z",
+      "verifiedAt": "2026-09-23T15:24:02.502Z"
+    }
+  }
+}
