@@ -1,14 +1,25 @@
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { chmodSync, linkSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Worker } from 'node:worker_threads';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeRouteInvitationV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
-import { describe, expect, test } from 'vitest';
+import { CompactSign, calculateJwkThumbprint } from 'jose';
+import { describe, expect, test, vi } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
+import {
+  SelfHostedBrokerClient,
+  SelfHostedBrokerNativeClient,
+} from '../self-hosted-broker-client.js';
 import {
   assertSelfHostedBrokerPlatform,
   SelfHostedBrokerService,
+  serializeNativeBrokerRedemptionPayload,
 } from '../self-hosted-broker-service.js';
 
 const scope = {
@@ -17,6 +28,70 @@ const scope = {
   routingGeneration: 1,
   browserOrigin: 'https://client.example',
 };
+const nativeScope = {
+  stationId: scope.stationId,
+  enrollmentId: scope.enrollmentId,
+  routingGeneration: scope.routingGeneration,
+};
+async function createNativeClient() {
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const exported = pair.publicKey.export({ format: 'jwk' });
+  const publicKey = {
+    kty: 'EC' as const,
+    crv: 'P-256' as const,
+    x: exported.x as string,
+    y: exported.y as string,
+  };
+  const keyThumbprint = await calculateJwkThumbprint(publicKey);
+  const surface: SelfHostedBrokerNativeClientSurfaceV2 = {
+    kind: 'station-native',
+    appIdentifier: 'io.kontourai.station',
+    channel: 'dev',
+    clientInstanceId: '7c6f49aa-6925-4bb2-b7c4-22bb6e264105',
+    keyThumbprint,
+  };
+  return { privateKey: pair.privateKey, publicKey, surface };
+}
+async function createNativeProof(
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  client: Awaited<ReturnType<typeof createNativeClient>>,
+) {
+  const nonce = randomBytes(32).toString('base64url');
+  const invitationSecretDigest = createHash('sha256')
+    .update(`native-route-invitation/v2:${invitation.invitationSecret}`)
+    .digest('base64url');
+  const payload = JSON.stringify({
+    aud: 'station-self-hosted-broker',
+    purpose: 'redeem-native-route-invitation',
+    version: invitation.version,
+    brokerOrigin: invitation.brokerOrigin,
+    scope: {
+      stationId: invitation.scope.stationId,
+      enrollmentId: invitation.scope.enrollmentId,
+      routingGeneration: invitation.scope.routingGeneration,
+    },
+    stationSigningKeyId: invitation.stationSigningKeyId,
+    stationSigningGeneration: invitation.stationSigningGeneration,
+    surface: {
+      kind: invitation.surface.kind,
+      appIdentifier: invitation.surface.appIdentifier,
+      channel: invitation.surface.channel,
+      clientInstanceId: invitation.surface.clientInstanceId,
+      keyThumbprint: invitation.surface.keyThumbprint,
+    },
+    invitationId: invitation.invitationId,
+    invitationSecretDigest,
+    expiresAt: invitation.expiresAt,
+    nonce,
+  });
+  const jws = await new CompactSign(Buffer.from(payload))
+    .setProtectedHeader({
+      alg: 'ES256',
+      typ: 'station-broker-native-redemption+jws',
+    })
+    .sign(client.privateKey);
+  return { publicKey: client.publicKey, nonce, jws };
+}
 test('fails closed where private path custody is not implemented', () => {
   expect(() => assertSelfHostedBrokerPlatform('win32')).toThrow(
     'self_hosted_broker_private_custody_unavailable_on_windows',
@@ -25,6 +100,38 @@ test('fails closed where private path custody is not implemented', () => {
 describe.runIf(process.platform !== 'win32')(
   'self-hosted broker control plane',
   () => {
+    test('publishes deterministic native redemption signing bytes without the invite secret', () => {
+      const invitation: SelfHostedBrokerNativeRouteInvitationV2 = {
+        version: 'station-broker-native-route-invitation/v2',
+        brokerOrigin: 'https://broker.example',
+        scope: {
+          stationId: 'station-12345678',
+          enrollmentId: 'enroll-12345678',
+          routingGeneration: 9,
+        },
+        stationSigningKeyId: 'K'.repeat(43),
+        stationSigningGeneration: 4,
+        surface: {
+          kind: 'station-native',
+          appIdentifier: 'io.kontourai.station',
+          channel: 'nightly',
+          clientInstanceId: '7c6f49aa-6925-4bb2-b7c4-22bb6e264105',
+          keyThumbprint: 'T'.repeat(43),
+        },
+        invitationId: 'invite-12345678',
+        invitationSecret: 'A'.repeat(43),
+        expiresAt: 1_700_000_000_123,
+      };
+      const bytes = serializeNativeBrokerRedemptionPayload(
+        invitation,
+        'N'.repeat(43),
+      );
+      const encoded = Buffer.from(bytes).toString('utf8');
+      expect(encoded).toBe(
+        '{"aud":"station-self-hosted-broker","purpose":"redeem-native-route-invitation","version":"station-broker-native-route-invitation/v2","brokerOrigin":"https://broker.example","scope":{"stationId":"station-12345678","enrollmentId":"enroll-12345678","routingGeneration":9},"stationSigningKeyId":"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK","stationSigningGeneration":4,"surface":{"kind":"station-native","appIdentifier":"io.kontourai.station","channel":"nightly","clientInstanceId":"7c6f49aa-6925-4bb2-b7c4-22bb6e264105","keyThumbprint":"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"},"invitationId":"invite-12345678","invitationSecretDigest":"cwNHKhO8UqbEmG63NB3wWnIRQaHNpk7z6r78WuCtcPs","expiresAt":1700000000123,"nonce":"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"}',
+      );
+      expect(encoded).not.toContain(invitation.invitationSecret);
+    });
     test('persists exact routing, refuses replay and invalidates pending work on withdrawal', async () => {
       const path = join(
         mkdtempSync(join(tmpdir(), 'station-broker-')),
@@ -270,14 +377,14 @@ describe.runIf(process.platform !== 'win32')(
         'broker.sqlite',
       );
       const database = new DatabaseSync(path);
-      database.exec('PRAGMA user_version=3');
+      database.exec('PRAGMA user_version=5');
       database.close();
       chmodSync(path, 0o600);
       expect(() => new SelfHostedBrokerService(path)).toThrow(
         'broker_database_version_refused',
       );
     });
-    test('refuses a version-two database missing its grant-owner table', () => {
+    test('refuses a version-four database missing its grant-owner table', () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-missing-owner-'));
       const path = join(root, 'broker.sqlite');
       try {
@@ -556,6 +663,9 @@ describe.runIf(process.platform !== 'win32')(
         old.exec(`DROP TABLE broker_connection_owners;
           DROP TABLE broker_client_grants;
           DROP TABLE broker_route_invitations;
+          DROP TABLE broker_native_connections;
+          DROP TABLE broker_native_client_grants;
+          DROP TABLE broker_native_route_invitations;
           PRAGMA user_version=1;`);
         old.close();
         service = new SelfHostedBrokerService(path, () => 1_000);
@@ -576,19 +686,276 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(2);
+        ).toBe(4);
         expect(
           (
             upgraded
               .prepare(
-                "SELECT count(*) n FROM sqlite_master WHERE type='table' AND name IN ('broker_route_invitations','broker_client_grants','broker_connection_owners')",
+                "SELECT count(*) n FROM sqlite_master WHERE type='table' AND name IN ('broker_route_invitations','broker_client_grants','broker_connection_owners','broker_native_route_invitations','broker_native_client_grants','broker_native_connections')",
               )
               .get() as { n: number }
           ).n,
-        ).toBe(3);
+        ).toBe(6);
         upgraded.close();
       } finally {
         service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('upgrades v2 to v4 while preserving a browser v1 grant across restart', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-v2-'));
+      const path = join(root, 'broker.sqlite');
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        const issued = service.provision(scope, 600_000);
+        const invitation = service.issueInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          clientOrigin: scope.browserOrigin,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const browserGrant = service.redeemInvitation(
+          invitation,
+          scope.browserOrigin,
+        );
+        service.close();
+        service = undefined;
+        const old = new DatabaseSync(path);
+        old.exec(`DROP TABLE broker_native_connections;
+          DROP TABLE broker_native_client_grants;
+          DROP TABLE broker_native_route_invitations;
+          PRAGMA user_version=2;`);
+        old.close();
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        expect(service.status(scope, browserGrant.credential).state).toBe(
+          'offline',
+        );
+        expect(service.listClientGrants(scope, issued.routing)).toHaveLength(1);
+        expect(service.listNativeClientGrants(scope, issued.routing)).toEqual(
+          [],
+        );
+        const migrated = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            migrated.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
+        ).toBe(4);
+        migrated.close();
+      } finally {
+        service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('upgrades v3 native grants to v4 native connections and preserves them across restart', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-v3-'));
+      const path = join(root, 'broker.sqlite');
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        const issued = service.provision(scope, 600_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        service.close();
+        service = undefined;
+        const old = new DatabaseSync(path);
+        old.exec(`DROP TABLE broker_native_connections;
+          PRAGMA user_version=3;`);
+        old.close();
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toHaveLength(1);
+        expect(
+          service.openNativeConnection(
+            nativeScope,
+            grant.credential,
+            client.surface,
+            {
+              version: 'station-broker-native-connection-open/v2',
+              nonce: 'nonce-v3-migrated',
+              offerSdp: 'migrated-offer',
+            },
+          ).version,
+        ).toBe('station-broker-native-connection-opened/v2');
+        service.close();
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        expect(
+          service.readNativeConnection(
+            nativeScope,
+            grant.credential,
+            client.surface,
+            'nonce-v3-migrated',
+          ),
+        ).toMatchObject({ answerSdp: null, stationProof: null });
+        const migrated = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            migrated.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
+        ).toBe(4);
+        migrated.close();
+      } finally {
+        service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('v3-to-v4 migration failure rolls back the version marker', () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-fault-'));
+      const path = join(root, 'broker.sqlite');
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => 1_000);
+        service.close();
+        service = undefined;
+        const old = new DatabaseSync(path);
+        old.exec(`DROP TABLE broker_native_connections;
+          CREATE VIEW broker_native_connections AS SELECT 1 AS expires_at;
+          PRAGMA user_version=3;`);
+        old.close();
+        expect(() => new SelfHostedBrokerService(path, () => 1_000)).toThrow();
+        const after = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            after.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
+        ).toBe(3);
+        expect(
+          (
+            after
+              .prepare(
+                "SELECT type FROM sqlite_master WHERE name='broker_native_connections'",
+              )
+              .get() as { type: string }
+          ).type,
+        ).toBe('view');
+        after.close();
+      } finally {
+        service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('generation replacement and lease withdrawal clear native signaling rows before grants', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-retirement-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      const service = new SelfHostedBrokerService(path, () => 1_000);
+      try {
+        const issued = service.provision(scope, 600_000);
+        const client = await createNativeClient();
+        const issue = (
+          currentScope: typeof scope,
+          routingCredential: { id: string; secret: string },
+        ) =>
+          service.issueNativeInvitation({
+            scope: currentScope,
+            routingCredential,
+            brokerOrigin: 'https://broker.example',
+            surface: client.surface,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+          });
+        const firstInvitation = issue(scope, issued.routing);
+        const firstGrant = await service.redeemNativeInvitation(
+          firstInvitation,
+          await createNativeProof(firstInvitation, client),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          firstGrant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-gen-one',
+            offerSdp: 'generation-one-offer',
+          },
+        );
+        const nextScope = { ...scope, routingGeneration: 2 };
+        const nextIssued = service.provision(nextScope, 600_000);
+        const afterGeneration = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterGeneration
+              .prepare('SELECT count(*) n FROM broker_native_connections')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterGeneration
+              .prepare('SELECT count(*) n FROM broker_native_client_grants')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        afterGeneration.close();
+
+        const nextInvitation = issue(nextScope, nextIssued.routing);
+        const nextGrant = await service.redeemNativeInvitation(
+          nextInvitation,
+          await createNativeProof(nextInvitation, client),
+        );
+        const nextNativeScope = {
+          stationId: nextScope.stationId,
+          enrollmentId: nextScope.enrollmentId,
+          routingGeneration: nextScope.routingGeneration,
+        };
+        service.openNativeConnection(
+          nextNativeScope,
+          nextGrant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-before-withdraw',
+            offerSdp: 'generation-two-offer',
+          },
+        );
+        service.withdraw(nextScope, nextIssued.connector);
+        const afterWithdrawal = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterWithdrawal
+              .prepare('SELECT count(*) n FROM broker_native_connections')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterWithdrawal
+              .prepare('SELECT count(*) n FROM broker_native_client_grants')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        afterWithdrawal.close();
+        expect(() =>
+          service.readNativeConnection(
+            nextNativeScope,
+            nextGrant.credential,
+            client.surface,
+            'nonce-native-before-withdraw',
+          ),
+        ).toThrow('broker_credential_refused');
+      } finally {
+        service.close();
         rmSync(root, { recursive: true, force: true });
       }
     });
@@ -903,6 +1270,1081 @@ describe.runIf(process.platform !== 'win32')(
         reopened.close();
       } finally {
         await Promise.all(workers.map((worker) => worker.terminate()));
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('native v2 binds a one-use install proof and remains outside v1 signaling', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-v2-'));
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, 600_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          invitationTtlMs: 500,
+          grantTtlMs: 10_000,
+        });
+
+        const otherClient = await createNativeClient();
+        await expect(
+          service.redeemNativeInvitation(
+            invitation,
+            await createNativeProof(invitation, otherClient),
+          ),
+        ).rejects.toThrow('invalid_native_proof');
+        const changedChannel = {
+          ...invitation,
+          surface: { ...invitation.surface, channel: 'beta' as const },
+        };
+        await expect(
+          service.redeemNativeInvitation(
+            changedChannel,
+            await createNativeProof(changedChannel, client),
+          ),
+        ).rejects.toThrow('native_invitation_refused');
+        const changedApp = {
+          ...invitation,
+          surface: {
+            ...invitation.surface,
+            appIdentifier: 'io.kontourai.station.other',
+          },
+        };
+        await expect(
+          service.redeemNativeInvitation(
+            changedApp,
+            await createNativeProof(changedApp, client),
+          ),
+        ).rejects.toThrow('native_invitation_refused');
+        const changedStation = {
+          ...invitation,
+          scope: { ...invitation.scope, stationId: 'station-other1234' },
+        };
+        await expect(
+          service.redeemNativeInvitation(
+            changedStation,
+            await createNativeProof(changedStation, client),
+          ),
+        ).rejects.toThrow('native_invitation_refused');
+        const changedGeneration = {
+          ...invitation,
+          scope: { ...invitation.scope, routingGeneration: 2 },
+        };
+        await expect(
+          service.redeemNativeInvitation(
+            changedGeneration,
+            await createNativeProof(changedGeneration, client),
+          ),
+        ).rejects.toThrow('native_invitation_refused');
+        const validProof = await createNativeProof(invitation, client);
+        const proofPayload = Buffer.from(
+          validProof.jws.split('.')[1],
+          'base64url',
+        ).toString('utf8');
+        expect(proofPayload).not.toContain(invitation.invitationSecret);
+        const reorderedPayload = JSON.stringify(
+          Object.fromEntries(
+            Object.entries(
+              JSON.parse(proofPayload) as Record<string, unknown>,
+            ).reverse(),
+          ),
+        );
+        const reorderedJws = await new CompactSign(
+          Buffer.from(reorderedPayload),
+        )
+          .setProtectedHeader({
+            alg: 'ES256',
+            typ: 'station-broker-native-redemption+jws',
+          })
+          .sign(client.privateKey);
+        await expect(
+          service.redeemNativeInvitation(invitation, {
+            ...validProof,
+            jws: reorderedJws,
+          }),
+        ).rejects.toThrow('invalid_native_proof');
+        await expect(
+          service.redeemNativeInvitation(invitation, {
+            ...validProof,
+            nonce: randomBytes(32).toString('base64url'),
+          }),
+        ).rejects.toThrow('invalid_native_proof');
+
+        const fault = new DatabaseSync(path);
+        fault.exec(`CREATE TRIGGER fail_native_grant_insert
+          BEFORE INSERT ON broker_native_client_grants
+          BEGIN SELECT RAISE(ABORT, 'injected_native_grant_failure'); END;`);
+        fault.close();
+        await expect(
+          service.redeemNativeInvitation(invitation, validProof),
+        ).rejects.toThrow('injected_native_grant_failure');
+        const rollback = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            rollback
+              .prepare(
+                'SELECT consumed_at FROM broker_native_route_invitations WHERE invitation_id=?',
+              )
+              .get(invitation.invitationId) as { consumed_at: number | null }
+          ).consumed_at,
+        ).toBeNull();
+        expect(
+          (
+            rollback
+              .prepare('SELECT count(*) n FROM broker_native_client_grants')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        rollback.close();
+        const repair = new DatabaseSync(path);
+        repair.exec('DROP TRIGGER fail_native_grant_insert');
+        repair.close();
+
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          validProof,
+        );
+        expect(grant).toMatchObject({
+          version: 'station-broker-native-client-grant/v2',
+          scope: nativeScope,
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+        });
+        expect(() => service.status(scope, grant.credential)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.register(scope, grant.credential)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.renew(scope, grant.credential, 0)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.withdraw(scope, grant.credential)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() =>
+          service.open(scope, grant.credential, {
+            clientId: 'client-native123',
+            nonce: 'nonce-native123',
+            offerSdp: 'offer',
+          }),
+        ).toThrow('broker_credential_refused');
+        expect(() =>
+          service.read(
+            scope,
+            grant.credential,
+            'client-native123',
+            'nonce-native123',
+          ),
+        ).toThrow('broker_credential_refused');
+        expect(() => service.offers(scope, grant.credential)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() =>
+          service.answer(scope, grant.credential, {
+            clientId: 'client-native123',
+            nonce: 'nonce-native123',
+            answerSdp: 'answer',
+            stationProof: 'proof',
+          }),
+        ).toThrow('broker_credential_refused');
+        expect(() =>
+          service.revokeClientGrant(scope, issued.routing, grant.credential.id),
+        ).toThrow('grant_unavailable');
+        expect(() =>
+          service.retireOwnClientGrant(scope, grant.credential),
+        ).toThrow('broker_credential_refused');
+        await expect(
+          service.redeemNativeInvitation(invitation, validProof),
+        ).rejects.toThrow('native_invitation_refused');
+        const inventory = service.listNativeClientGrants(scope, issued.routing);
+        expect(inventory).toMatchObject([
+          {
+            grantId: grant.credential.id,
+            appIdentifier: client.surface.appIdentifier,
+            channel: client.surface.channel,
+            clientInstanceId: client.surface.clientInstanceId,
+            keyThumbprint: client.surface.keyThumbprint,
+            revokedAt: null,
+          },
+        ]);
+        const inventoryJson = JSON.stringify(inventory);
+        expect(inventoryJson).not.toContain(grant.credential.secret);
+        expect(inventoryJson).not.toContain(invitation.invitationSecret);
+        expect(inventoryJson).not.toContain(JSON.stringify(client.publicKey));
+
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toHaveLength(1);
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          grant.credential.id,
+        );
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toMatchObject([{ grantId: grant.credential.id, revokedAt: now }]);
+
+        const expiringClient = await createNativeClient();
+        const expiring = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: expiringClient.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          invitationTtlMs: 100,
+        });
+        const expiringProof = await createNativeProof(expiring, expiringClient);
+        now += 101;
+        await expect(
+          service.redeemNativeInvitation(expiring, expiringProof),
+        ).rejects.toThrow('native_invitation_refused');
+        const retainedClient = await createNativeClient();
+        const retainedInvitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: retainedClient.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        await service.redeemNativeInvitation(
+          retainedInvitation,
+          await createNativeProof(retainedInvitation, retainedClient),
+        );
+        const nextScope = { ...scope, routingGeneration: 2 };
+        const next = service.provision(nextScope, 600_000);
+        expect(service.listNativeClientGrants(nextScope, next.routing)).toEqual(
+          [],
+        );
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('redeeming a later native invite purges revoked and expired offer tombstones before grants', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-fk-purge-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      const service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, 48 * 60 * 60_000);
+        const [clientA, clientB, clientC] = await Promise.all([
+          createNativeClient(),
+          createNativeClient(),
+          createNativeClient(),
+        ]);
+        const clients = [clientA, clientB, clientC].map((client, index) => ({
+          ...client,
+          surface: {
+            ...client.surface,
+            clientInstanceId: [
+              '11111111-1111-4111-8111-111111111111',
+              '22222222-2222-4222-8222-222222222222',
+              '33333333-3333-4333-8333-333333333333',
+            ][index]!,
+          },
+        }));
+        const invite = (
+          client: (typeof clients)[number],
+          grantTtlMs?: number,
+        ) =>
+          service.issueNativeInvitation({
+            scope,
+            routingCredential: issued.routing,
+            brokerOrigin: 'https://broker.example',
+            surface: client.surface,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+            ...(grantTtlMs === undefined ? {} : { grantTtlMs }),
+          });
+
+        const inviteA = invite(clients[0]!);
+        const grantA = await service.redeemNativeInvitation(
+          inviteA,
+          await createNativeProof(inviteA, clients[0]!),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grantA.credential,
+          clients[0]!.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-revoked-tombstone',
+            offerSdp: 'revoked-native-offer',
+          },
+        );
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          grantA.credential.id,
+        );
+        const revokedTombstone = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            revokedTombstone
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(1);
+        revokedTombstone.close();
+
+        const inviteB = invite(clients[1]!, 100);
+        const grantB = await service.redeemNativeInvitation(
+          inviteB,
+          await createNativeProof(inviteB, clients[1]!),
+        );
+        const afterRevokedPurge = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterRevokedPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterRevokedPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_client_grants WHERE grant_id=?',
+              )
+              .get(grantA.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        afterRevokedPurge.close();
+
+        service.openNativeConnection(
+          nativeScope,
+          grantB.credential,
+          clients[1]!.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-expired-tombstone',
+            offerSdp: 'expired-native-offer',
+          },
+        );
+        now = grantB.expiresAt + 1;
+        const inviteC = invite(clients[2]!);
+        await service.redeemNativeInvitation(
+          inviteC,
+          await createNativeProof(inviteC, clients[2]!),
+        );
+        const afterExpiredPurge = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterExpiredPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_connections WHERE grant_id=?',
+              )
+              .get(grantB.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          (
+            afterExpiredPurge
+              .prepare(
+                'SELECT count(*) n FROM broker_native_client_grants WHERE grant_id=?',
+              )
+              .get(grantB.credential.id) as { n: number }
+          ).n,
+        ).toBe(0);
+        afterExpiredPurge.close();
+        expect(
+          service.nativeOffers(scope, issued.connector, clients[1]!.surface),
+        ).toEqual([]);
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('native redeem endpoint requires a signed v2 invite and forbids downgrade', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-route-'));
+      const path = join(root, 'broker.sqlite');
+      const service = new SelfHostedBrokerService(path, () => 1_000);
+      try {
+        const issued = service.provision(scope, 600_000);
+        const app = new Hono();
+        app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+        const operatorPost = (
+          route: string,
+          body: unknown,
+          origin = scope.browserOrigin,
+        ) =>
+          app.request(`/broker/v1${route}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${issued.routing.secret}`,
+              'x-broker-credential-id': issued.routing.id,
+              origin,
+            },
+            body: JSON.stringify(body),
+          });
+        const client = await createNativeClient();
+        const issueBody = {
+          scope,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        };
+        expect(
+          (
+            await operatorPost(
+              '/native/grants/invitations/issue',
+              issueBody,
+              'https://untrusted.example',
+            )
+          ).status,
+        ).toBe(401);
+        const issueResponse = await operatorPost(
+          '/native/grants/invitations/issue',
+          issueBody,
+        );
+        expect(issueResponse.status).toBe(200);
+        const nativeInvitation =
+          (await issueResponse.json()) as SelfHostedBrokerNativeRouteInvitationV2;
+        const nativeProof = await createNativeProof(nativeInvitation, client);
+        const browserInvitation = service.issueInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          clientOrigin: scope.browserOrigin,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const nativeBody = JSON.stringify({
+          invitation: nativeInvitation,
+          proof: nativeProof,
+        });
+        const nativeResponse = await app.request(
+          '/broker/v1/native/grants/redeem',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: nativeBody,
+          },
+        );
+        expect(nativeResponse.status).toBe(200);
+        const nativeGrant = (await nativeResponse.json()) as {
+          credential: { id: string; secret: string };
+        };
+        expect(nativeGrant.credential.secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+        const v1Attempts = [
+          ['/stations/status', { scope }],
+          ['/leases/register', { scope }],
+          ['/leases/renew', { scope, expectedRevision: 0 }],
+          ['/leases/withdraw', { scope }],
+          ['/grants/revoke', { scope, grantId: nativeGrant.credential.id }],
+          ['/grants/retire', { scope }],
+          ['/connections/offers', { scope, limit: 1 }],
+          [
+            '/connections',
+            {
+              scope,
+              connection: {
+                clientId: 'client-native123',
+                nonce: 'nonce-native123',
+                offerSdp: 'offer',
+              },
+            },
+          ],
+          [
+            '/connections/answer',
+            {
+              scope,
+              connection: {
+                clientId: 'client-native123',
+                nonce: 'nonce-native123',
+                answerSdp: 'answer',
+                stationProof: 'proof',
+              },
+            },
+          ],
+          [
+            '/connections/read',
+            { scope, clientId: 'client-native123', nonce: 'nonce-native123' },
+          ],
+        ] as const;
+        for (const [path, body] of v1Attempts) {
+          const refused = await app.request(`/broker/v1${path}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${nativeGrant.credential.secret}`,
+              'x-broker-credential-id': nativeGrant.credential.id,
+              origin: scope.browserOrigin,
+            },
+            body: JSON.stringify(body),
+          });
+          expect(refused.status, path).toBe(401);
+        }
+        const listed = await operatorPost('/native/grants/list', { scope });
+        expect(listed.status).toBe(200);
+        const listedBody = await listed.text();
+        expect(listedBody).toContain(nativeGrant.credential.id);
+        expect(listedBody).not.toContain(nativeGrant.credential.secret);
+        const revoke = await operatorPost('/native/grants/revoke', {
+          scope,
+          grantId: nativeGrant.credential.id,
+        });
+        expect(revoke.status).toBe(200);
+        expect(await revoke.json()).toEqual({ revoked: true });
+        const listedAfterRevoke = await operatorPost('/native/grants/list', {
+          scope,
+        });
+        expect(await listedAfterRevoke.json()).toMatchObject([
+          { grantId: nativeGrant.credential.id, revokedAt: 1_000 },
+        ]);
+        const originResponse = await app.request(
+          '/broker/v1/native/grants/redeem',
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              origin: 'https://untrusted.example',
+            },
+            body: JSON.stringify({
+              invitation: nativeInvitation,
+              proof: nativeProof,
+            }),
+          },
+        );
+        expect(originResponse.status).toBe(401);
+        const downgrade = await app.request('/broker/v1/grants/redeem', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            origin: scope.browserOrigin,
+          },
+          body: JSON.stringify({ invitation: nativeInvitation }),
+        });
+        expect(downgrade.status).toBe(400);
+        expect(await downgrade.json()).toEqual({ error: 'invalid_invitation' });
+        const upgradeRefusal = await app.request(
+          '/broker/v1/native/grants/redeem',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              invitation: browserInvitation,
+              proof: nativeProof,
+            }),
+          },
+        );
+        expect(upgradeRefusal.status).toBe(400);
+        expect(await upgradeRefusal.json()).toEqual({
+          error: 'invalid_native_invitation',
+        });
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('native host open/read/retire and connector v2 offers stay isolated from v1', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-signaling-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      const service = new SelfHostedBrokerService(path, () => 1_000);
+      try {
+        const issued = service.provision(scope, 600_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        const app = new Hono();
+        app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+        const observedHeaders: Headers[] = [];
+        const request: typeof fetch = async (input, init) => {
+          observedHeaders.push(new Headers(init?.headers));
+          return app.fetch(new Request(input, init));
+        };
+        const native = new SelfHostedBrokerNativeClient(
+          grant,
+          request,
+          () => 1_000,
+        );
+        const signal = new AbortController().signal;
+        const opened = await native.open(
+          { nonce: 'nonce-native-signaling', offerSdp: 'native-offer' },
+          signal,
+        );
+        expect(opened).toMatchObject({
+          version: 'station-broker-native-connection-opened/v2',
+          expiresAt: 31_000,
+        });
+        expect(observedHeaders[0]?.has('origin')).toBe(false);
+        expect(observedHeaders[0]?.has('cookie')).toBe(false);
+        const disallowedNativeHeaders = {
+          'content-type': 'application/json',
+          authorization: `Bearer ${grant.credential.secret}`,
+          'x-broker-credential-id': grant.credential.id,
+        };
+        const disallowedNativeBody = JSON.stringify({
+          scope: nativeScope,
+          surface: client.surface,
+          connection: {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-origin',
+            offerSdp: 'native-offer',
+          },
+        });
+        const browserOriginRefusal = await app.request(
+          '/broker/v1/native/connections/open',
+          {
+            method: 'POST',
+            headers: {
+              ...disallowedNativeHeaders,
+              origin: scope.browserOrigin,
+            },
+            body: disallowedNativeBody,
+          },
+        );
+        const cookieRefusal = await app.request(
+          '/broker/v1/native/connections/open',
+          {
+            method: 'POST',
+            headers: { ...disallowedNativeHeaders, cookie: 'session=blocked' },
+            body: disallowedNativeBody,
+          },
+        );
+        expect(browserOriginRefusal.status).toBe(401);
+        expect(cookieRefusal.status).toBe(401);
+
+        const operator = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          issued.connector,
+          request,
+          () => 1_000,
+        );
+        expect(await operator.offers(signal)).toEqual([]);
+        const nativeOffers = await operator.nativeOffers(
+          client.surface,
+          signal,
+        );
+        expect(nativeOffers).toMatchObject([
+          {
+            version: 'station-broker-native-connection-offer/v2',
+            scope: nativeScope,
+            surface: client.surface,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+            clientId: client.surface.clientInstanceId,
+            nonce: 'nonce-native-signaling',
+            offerSdp: 'native-offer',
+          },
+        ]);
+        await expect(
+          operator.answerNative(
+            {
+              surface: client.surface,
+              clientId: nativeOffers[0]!.clientId,
+              nonce: nativeOffers[0]!.nonce,
+              stationSigningKeyId: 'X'.repeat(43),
+              stationSigningGeneration: 1,
+              answerSdp: 'wrong-key-answer',
+              stationProof: 'wrong-key-proof',
+            },
+            signal,
+          ),
+        ).rejects.toThrow('broker_request_refused_401');
+        await expect(
+          operator.answerNative(
+            {
+              surface: client.surface,
+              clientId: nativeOffers[0]!.clientId,
+              nonce: nativeOffers[0]!.nonce,
+              stationSigningKeyId: 'K'.repeat(43),
+              stationSigningGeneration: 2,
+              answerSdp: 'wrong-generation-answer',
+              stationProof: 'wrong-generation-proof',
+            },
+            signal,
+          ),
+        ).rejects.toThrow('broker_request_refused_401');
+        await operator.answerNative(
+          {
+            surface: client.surface,
+            clientId: nativeOffers[0]!.clientId,
+            nonce: nativeOffers[0]!.nonce,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+            answerSdp: 'native-answer',
+            stationProof: 'native-station-proof',
+          },
+          signal,
+        );
+        expect(await native.read('nonce-native-signaling', signal)).toEqual({
+          version: 'station-broker-native-connection-answer/v2',
+          answerSdp: 'native-answer',
+          stationProof: 'native-station-proof',
+          expiresAt: 31_000,
+        });
+
+        const appPreflight = await app.request(
+          '/broker/v1/native/connections/open',
+          {
+            method: 'OPTIONS',
+            headers: {
+              origin: scope.browserOrigin,
+              'access-control-request-method': 'POST',
+              'access-control-request-headers':
+                'Authorization, Content-Type, X-Broker-Credential-Id',
+            },
+          },
+        );
+        const connectorPreflight = await app.request(
+          '/broker/v1/native/connections/offers',
+          {
+            method: 'OPTIONS',
+            headers: {
+              origin: scope.browserOrigin,
+              'access-control-request-method': 'POST',
+              'access-control-request-headers':
+                'Authorization, Content-Type, X-Broker-Credential-Id',
+            },
+          },
+        );
+        expect(appPreflight.status).toBe(401);
+        expect(connectorPreflight.status).toBe(401);
+
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          grant.credential.id,
+        );
+        expect(await operator.nativeOffers(client.surface, signal)).toEqual([]);
+        const staleNativeClient = new SelfHostedBrokerNativeClient(
+          grant,
+          request,
+          () => 1_000,
+        );
+        await expect(
+          staleNativeClient.read('nonce-native-signaling', signal),
+        ).rejects.toThrow('broker_request_refused_401');
+        expect(await native.retire(signal)).toEqual({
+          version: 'station-broker-native-grant-retire/v2',
+          retired: true,
+        });
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('native grant defaults to and is capped at 24 hours while browser v1 stays at 30 days', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-ttl-'));
+      const path = join(root, 'broker.sqlite');
+      const maxNativeGrantAgeMs = 24 * 60 * 60_000;
+      let now = 1_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, maxNativeGrantAgeMs * 2);
+        const client = await createNativeClient();
+        const nativeIssue = {
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        };
+        expect(() =>
+          service.issueNativeInvitation({
+            ...nativeIssue,
+            grantTtlMs: maxNativeGrantAgeMs + 1,
+          }),
+        ).toThrow('invalid_invitation_lifetime');
+        const nativeInvitation = service.issueNativeInvitation(nativeIssue);
+        const nativeGrant = await service.redeemNativeInvitation(
+          nativeInvitation,
+          await createNativeProof(nativeInvitation, client),
+        );
+        expect(nativeGrant.expiresAt - now).toBe(maxNativeGrantAgeMs);
+
+        const browserInvitation = service.issueInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          clientOrigin: scope.browserOrigin,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const browserGrant = service.redeemInvitation(
+          browserInvitation,
+          scope.browserOrigin,
+        );
+        expect(browserGrant.expiresAt - now).toBe(30 * 24 * 60 * 60_000);
+
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toMatchObject([
+          {
+            grantId: nativeGrant.credential.id,
+            expiresAt: nativeGrant.expiresAt,
+          },
+        ]);
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          nativeGrant.credential.id,
+        );
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toMatchObject([
+          { grantId: nativeGrant.credential.id, revokedAt: now },
+        ]);
+
+        const expiringClient = await createNativeClient();
+        const expiringInvitation = service.issueNativeInvitation({
+          ...nativeIssue,
+          surface: expiringClient.surface,
+        });
+        const expiringGrant = await service.redeemNativeInvitation(
+          expiringInvitation,
+          await createNativeProof(expiringInvitation, expiringClient),
+        );
+        now = expiringGrant.expiresAt + 1;
+        expect(() =>
+          service.readNativeConnection(
+            nativeScope,
+            expiringGrant.credential,
+            expiringClient.surface,
+            'nonce-native-expired',
+          ),
+        ).toThrow('broker_credential_refused');
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('read-only access scrubs expired native offer and answer bytes durably', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-native-scrub-'));
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      try {
+        const issued = service.provision(scope, 60_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          grantTtlMs: 40_000,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-read-scrub',
+            offerSdp: 'sensitive-native-offer',
+          },
+        );
+        service.answerNativeConnection(scope, issued.connector, {
+          version: 'station-broker-native-connection-answer/v2',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          clientId: client.surface.clientInstanceId,
+          nonce: 'nonce-native-read-scrub',
+          answerSdp: 'sensitive-native-answer',
+          stationProof: 'sensitive-native-station-proof',
+        });
+        now = 31_001;
+        expect(() =>
+          service.readNativeConnection(
+            nativeScope,
+            grant.credential,
+            client.surface,
+            'nonce-native-read-scrub',
+          ),
+        ).toThrow('connection_unavailable');
+        const beforeRestart = new DatabaseSync(path, { readOnly: true });
+        expect(
+          beforeRestart
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-read-scrub'),
+        ).toEqual({ offer_sdp: '', answer_sdp: null, station_proof: null });
+        beforeRestart.close();
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        const afterRestart = new DatabaseSync(path, { readOnly: true });
+        expect(
+          afterRestart
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-read-scrub'),
+        ).toEqual({ offer_sdp: '', answer_sdp: null, station_proof: null });
+        afterRestart.close();
+      } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('idle native expiry sweep scrubs only native rows and stops when broker closes', async () => {
+      vi.useFakeTimers();
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-native-maintenance-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let now = 1_000;
+      let service: SelfHostedBrokerService | undefined;
+      try {
+        service = new SelfHostedBrokerService(path, () => now);
+        const issued = service.provision(scope, 100_000);
+        const client = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          grantTtlMs: 90_000,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, client),
+        );
+        service.openNativeConnection(
+          nativeScope,
+          grant.credential,
+          client.surface,
+          {
+            version: 'station-broker-native-connection-open/v2',
+            nonce: 'nonce-native-idle-sweep',
+            offerSdp: 'native-expiring-offer',
+          },
+        );
+        service.answerNativeConnection(scope, issued.connector, {
+          version: 'station-broker-native-connection-answer/v2',
+          surface: client.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+          clientId: client.surface.clientInstanceId,
+          nonce: 'nonce-native-idle-sweep',
+          answerSdp: 'native-expiring-answer',
+          stationProof: 'native-expiring-proof',
+        });
+        service.open(scope, issued.routing, {
+          clientId: 'client-browser-idle',
+          nonce: 'nonce-browser-idle',
+          offerSdp: 'browser-v1-offer',
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        now = 31_001;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const snapshot = new DatabaseSync(path, { readOnly: true });
+        expect(
+          snapshot
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof,created_at,expires_at FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-idle-sweep'),
+        ).toEqual({
+          offer_sdp: '',
+          answer_sdp: null,
+          station_proof: null,
+          created_at: 1_000,
+          expires_at: 31_000,
+        });
+        expect(
+          snapshot
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_connections WHERE nonce=?',
+            )
+            .get('nonce-browser-idle'),
+        ).toEqual({
+          offer_sdp: 'browser-v1-offer',
+          answer_sdp: null,
+          station_proof: null,
+        });
+        snapshot.close();
+        await vi.advanceTimersByTimeAsync(10_000);
+        const repeatedSweep = new DatabaseSync(path, { readOnly: true });
+        expect(
+          repeatedSweep
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof,created_at,expires_at FROM broker_native_connections WHERE nonce=?',
+            )
+            .get('nonce-native-idle-sweep'),
+        ).toEqual({
+          offer_sdp: '',
+          answer_sdp: null,
+          station_proof: null,
+          created_at: 1_000,
+          expires_at: 31_000,
+        });
+        repeatedSweep.close();
+        now = 331_001;
+        await vi.advanceTimersByTimeAsync(10_000);
+        const afterTombstoneWindow = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            afterTombstoneWindow
+              .prepare('SELECT count(*) n FROM broker_native_connections')
+              .get() as { n: number }
+          ).n,
+        ).toBe(0);
+        expect(
+          afterTombstoneWindow
+            .prepare(
+              'SELECT offer_sdp,answer_sdp,station_proof FROM broker_connections WHERE nonce=?',
+            )
+            .get('nonce-browser-idle'),
+        ).toEqual({
+          offer_sdp: 'browser-v1-offer',
+          answer_sdp: null,
+          station_proof: null,
+        });
+        afterTombstoneWindow.close();
+        service.close();
+        service = undefined;
+        expect(vi.getTimerCount()).toBe(0);
+        now += 20_000;
+        await vi.advanceTimersByTimeAsync(20_000);
+      } finally {
+        service?.close();
+        vi.useRealTimers();
         rmSync(root, { recursive: true, force: true });
       }
     });
