@@ -1298,13 +1298,28 @@ fn release_provisional_quarantine_after_commit_locked(
     if entry.route != binding.route {
         return Err(NativeRedemptionError::GrantStore);
     }
-    index.entries.retain(|entry| entry.cleanup_id != cleanup_id);
-    // At this point the active grant write was confirmed. Unquarantine before
-    // deleting the provisional duplicate so a crash can leave only an
-    // unreachable cleanup record, never an unusable active grant.
-    write_native_grant_cleanup_index_confirmed(backend, owner, &index)?;
     let record_account = native_grant_cleanup_record_account(owner, cleanup_id)?;
-    let _ = backend.delete(&record_account);
+    let Some(encoded_record) = backend.get(&record_account)? else {
+        return Err(NativeRedemptionError::GrantStore);
+    };
+    let record: StoredNativeGrantCleanupV2 =
+        serde_json::from_str(&encoded_record).map_err(|_| NativeRedemptionError::GrantStore)?;
+    if !stored_cleanup_matches(
+        &record,
+        cleanup_id,
+        &binding,
+        expected_grant,
+        true,
+        entry.staged_at,
+    ) {
+        return Err(NativeRedemptionError::GrantStore);
+    }
+    // Delete the secret-bearing provisional record while quarantine is still
+    // durable. A failed or ambiguous delete therefore cannot strand an
+    // unindexed bearer; metadata stays blocked until the index is removed.
+    backend.delete(&record_account)?;
+    index.entries.retain(|entry| entry.cleanup_id != cleanup_id);
+    write_native_grant_cleanup_index_confirmed(backend, owner, &index)?;
     Ok(())
 }
 
@@ -2966,6 +2981,77 @@ mod tests {
     }
 
     #[test]
+    fn provisional_record_delete_failure_keeps_quarantine_indexed_across_restart() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        backend.shared.lock().unwrap().fail_delete_number = Some(1);
+        let first_vault = NativeRelayGrantVault::new(backend.clone());
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        let route = native_route_for_grant(&grant);
+        let failure = first_vault.store(&prepared.owner, &grant, NOW).unwrap_err();
+        assert_eq!(
+            failure.write_disposition,
+            NativeGrantStoreWriteDisposition::MayHaveWritten
+        );
+        let cleanup_id = failure.cleanup_id.unwrap();
+        assert!(first_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        let pending = first_vault.pending_cleanups(&prepared.owner).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].cleanup_id, cleanup_id);
+        assert!(pending[0].record_present);
+        let record_account =
+            native_grant_cleanup_record_account(&prepared.owner, &cleanup_id).unwrap();
+        {
+            let backend = first_vault.backend.lock().unwrap();
+            let shared = backend.shared.lock().unwrap();
+            assert!(shared
+                .values
+                .get(&record_account)
+                .unwrap()
+                .contains(&"S".repeat(43)));
+            assert!(shared
+                .values
+                .get(&native_grant_cleanup_index_account(&prepared.owner))
+                .unwrap()
+                .contains(&cleanup_id));
+        }
+        drop(first_vault);
+
+        let restarted_vault = NativeRelayGrantVault::new(backend);
+        assert!(restarted_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        let transport = SuccessfulRetirement;
+        let service = service(
+            &prepared.authority,
+            &prepared.proof_keys,
+            &transport,
+            &restarted_vault,
+        );
+        service
+            .retry_pending_cleanup(&prepared.owner, &cleanup_id)
+            .unwrap();
+        assert!(restarted_vault
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_none());
+        assert!(restarted_vault
+            .pending_cleanups(&prepared.owner)
+            .unwrap()
+            .is_empty());
+        let backend = restarted_vault.backend.lock().unwrap();
+        let shared = backend.shared.lock().unwrap();
+        assert!(shared
+            .values
+            .values()
+            .all(|value| !value.contains(&"S".repeat(43))));
+    }
+
+    #[test]
     fn native_grant_maximum_age_is_twenty_four_hours() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let too_long = sample_grant(&prepared, NOW + MAX_GRANT_AGE_MS + 1);
@@ -3035,6 +3121,8 @@ struct MemoryNativeGrantBackendState {
     fail_set_number: Option<usize>,
     fail_after_set_number: Option<usize>,
     sets: usize,
+    fail_delete_number: Option<usize>,
+    deletes: usize,
 }
 
 #[cfg(test)]
@@ -3064,11 +3152,15 @@ impl NativeGrantBackend for MemoryNativeGrantBackend {
         Ok(())
     }
     fn delete(&mut self, account: &str) -> RedemptionResult<()> {
-        self.shared
+        let mut shared = self
+            .shared
             .lock()
-            .map_err(|_| NativeRedemptionError::GrantStore)?
-            .values
-            .remove(account);
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        shared.deletes += 1;
+        if shared.fail_delete_number == Some(shared.deletes) {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        shared.values.remove(account);
         Ok(())
     }
 }
