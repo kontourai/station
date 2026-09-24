@@ -20,6 +20,7 @@ import { LazyMarkdown } from './chat/LazyMarkdown';
 import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
+import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from './state';
 
 /**
@@ -272,15 +273,15 @@ export default function FilePreviewContent({
   } else {
     body = (
       <Empty
-        label="No preview for this file type"
-        description={`${current.mediaType} files can't be shown here. Download the file to open it.`}
+        label="This file type can't be shown here"
+        description={`Download the ${current.mediaType} file to open it in another app.`}
       />
     );
   }
 
   return (
     <>
-      <div className="file-preview__actions">
+      <ResponsiveSurfaceActions className="file-preview__actions">
         <a
           className="button button--secondary"
           href={current.url}
@@ -288,7 +289,7 @@ export default function FilePreviewContent({
         >
           Download
         </a>
-      </div>
+      </ResponsiveSurfaceActions>
       <div className="file-preview__body">{body}</div>
     </>
   );

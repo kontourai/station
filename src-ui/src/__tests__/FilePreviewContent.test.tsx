@@ -68,6 +68,10 @@ describe('FilePreviewContent', () => {
     expect(await screen.findByText('hello from the phone')).toBeTruthy();
     const download = screen.getByRole('link', { name: 'Download' });
     expect(download.getAttribute('href')).toBe(url);
+    // The row is the shared phone-safe action row (wrap, 44px, safe area).
+    expect(
+      download.closest('.responsive-surface-actions')?.className,
+    ).toContain('file-preview__actions');
     expect(download.getAttribute('download')).toBe('notes.txt');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -271,7 +275,7 @@ describe('FilePreviewContent', () => {
       />,
     );
 
-    expect(screen.getByText('No preview for this file type')).toBeTruthy();
+    expect(screen.getByText("This file type can't be shown here")).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
   });
 });
