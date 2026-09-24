@@ -2087,19 +2087,12 @@ export function configureRuntimeRoutes(
   // decide with the same principal orchestration owns sessions under — the
   // OS alias `readAuthorityForRequest` builds never owns a chat created in the
   // UI (`human:local:operator` does), so those reads refused every real chat.
-  context.app.use(
-    '/api/conversation-pull-requests',
-    bindConversationReadAuthority,
-  );
+  // A `/*` pattern also matches its bare prefix, so one binding covers each.
   context.app.use(
     '/api/conversation-pull-requests/*',
     bindConversationReadAuthority,
   );
   context.app.use('/api/pull-requests/*', bindConversationReadAuthority);
-  context.app.use(
-    '/api/projects/:slug/file-preview',
-    bindConversationReadAuthority,
-  );
   context.app.use(
     '/api/projects/:slug/file-preview/*',
     bindConversationReadAuthority,
