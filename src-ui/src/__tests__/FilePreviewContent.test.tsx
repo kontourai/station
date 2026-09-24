@@ -38,6 +38,8 @@ const createObjectURL = vi.fn((_blob: Blob) => 'blob:minted-pdf');
 const revokeObjectURL = vi.fn();
 const fetchSpy = vi.fn();
 let pdfViewerEnabled: boolean | undefined;
+// jsdom has no touch points; iPadOS detection reads them.
+let maxTouchPoints = 0;
 
 beforeEach(() => {
   Object.assign(URL, { createObjectURL, revokeObjectURL });
@@ -52,11 +54,17 @@ beforeEach(() => {
     configurable: true,
     get: () => pdfViewerEnabled,
   });
+  maxTouchPoints = 0;
+  Object.defineProperty(navigator, 'maxTouchPoints', {
+    configurable: true,
+    get: () => maxTouchPoints,
+  });
 });
 
 afterEach(() => {
   resetAttachmentObjectUrls();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('filePreviewKind', () => {
@@ -170,6 +178,10 @@ describe('FilePreviewContent', () => {
   });
 
   test('frames a PDF where the engine has a viewer, re-minting inline bytes as a blob URL', () => {
+    // Desktop Mac Safari: a real viewer, and no touch points to mark it iPadOS.
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+    );
     render(
       <FilePreviewContent
         current={{
@@ -203,13 +215,31 @@ describe('FilePreviewContent', () => {
     });
   }
 
+  const DESKTOP_MAC_SAFARI =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+  const IPHONE_SAFARI =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1';
+
   test.each([
-    ['has no PDF viewer (Android WebView)', false],
-    ['does not say whether it has one', undefined],
+    ['has no PDF viewer (Android WebView)', false, undefined, 0],
+    ['does not say whether it has one', undefined, undefined, 0],
+    // iOS claims a viewer, then frames a PDF as an empty white box.
+    [
+      'is iOS, which claims a viewer but frames nothing',
+      true,
+      IPHONE_SAFARI,
+      5,
+    ],
+    // iPadOS reports a desktop Mac agent; touch points give it away.
+    ['is iPadOS behind a desktop Mac agent', true, DESKTOP_MAC_SAFARI, 5],
   ] as const)(
     'draws the PDF with pdf.js where the engine %s',
-    async (_, enabled) => {
+    async (_, enabled, userAgent, touchPoints) => {
       pdfViewerEnabled = enabled;
+      if (userAgent) {
+        vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent);
+        maxTouchPoints = touchPoints;
+      }
       renderablePdf(2);
       const pdfBytes = new TextEncoder().encode('%PDF-1.7 cached bytes');
       storeAttachmentObjectUrl(

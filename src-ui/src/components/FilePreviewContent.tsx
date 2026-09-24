@@ -145,13 +145,24 @@ function usePdfFrameUrl(item: PreviewItem, enabled: boolean) {
  * without the property at all predates it (Android WebView before 94, WebKit
  * before 16.4) and may frame a PDF as a blank box with no fallback, while
  * pdf.js draws on every one of them — so an unknown engine gets the canvas.
+ *
+ * iOS and iPadOS answer `true` and then draw a framed PDF as an empty white
+ * box (observed on iOS 26.5 Safari), so they get the canvas too. iPadOS
+ * reports a desktop Mac user agent; touch points are what tell it apart.
  */
 function engineShowsPdfs(): boolean {
   if (typeof navigator === 'undefined') return false;
+  if (isAppleMobileWebKit(navigator)) return false;
   return (
     (navigator as Navigator & { pdfViewerEnabled?: boolean })
       .pdfViewerEnabled === true
   );
+}
+
+function isAppleMobileWebKit(nav: Navigator): boolean {
+  const agent = nav.userAgent;
+  if (/\b(iPhone|iPad|iPod)\b/.test(agent)) return true;
+  return /\bMacintosh\b/.test(agent) && nav.maxTouchPoints > 1;
 }
 
 const loadPdfCanvasViewer = () => import('./PdfCanvasViewer');
