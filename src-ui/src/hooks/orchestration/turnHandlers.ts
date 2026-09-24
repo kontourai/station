@@ -357,6 +357,22 @@ export function handleTurnAbortedEvent(
     activeChatsStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  // #2324 delta review M-2: the same turn-identity guard the completion
+  // handler applies. A send withdrawn or cancelled while it was still queued
+  // behind another turn ends with a bare `turn.aborted` for ITS id while that
+  // other turn — often one the engine opened on its own — is open and
+  // streaming. That abort must not tear down the open turn's stream or mark
+  // the chat idle; it only ends the waiting send.
+  const openTurnId = chat?.openTurnId;
+  if (openTurnId && openTurnId !== event.turnId) {
+    activeChatsStore.updateChat(chatKey, {
+      orchestrationHistoryRevision: historyRevision + 1,
+      ...(chat?.sendAwaitingTurnStart
+        ? { sendAwaitingTurnStart: undefined, pendingClientTurnId: undefined }
+        : {}),
+    });
+    return;
+  }
   activeChatsStore.updateChat(chatKey, {
     // A late provider abort revokes a previously committed same-turn answer.
     // Keeping it would leave Add to Task on an answer the lifecycle rejects.
