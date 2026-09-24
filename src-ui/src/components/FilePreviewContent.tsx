@@ -13,7 +13,7 @@ import {
 } from '../platform/openExternalLink';
 import {
   attachmentBlobForObjectUrl,
-  useRetainedAttachmentObjectUrl,
+  useRetainedAttachmentObjectUrls,
 } from './chat/attachment-object-urls';
 import { markdownCodeComponents } from './chat/HighlightedCodeBlock';
 import { LazyMarkdown } from './chat/LazyMarkdown';
@@ -110,7 +110,8 @@ function usePdfFrameUrl(item: PreviewItem, enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     if (item.url.startsWith('blob:')) {
-      setUrl(item.url);
+      // Framed only when the attachment cache minted it for these bytes.
+      setUrl(attachmentBlobForObjectUrl(item.url) ? item.url : undefined);
       return;
     }
     // Only bytes Station holds are framed: a blob URL it minted, or inline
@@ -163,7 +164,10 @@ function PreviewMarkdownAnchor({
   node?: unknown;
 }) {
   const target = classifyMarkdownLink(href);
-  if (target?.kind !== 'external') return <span>{children}</span>;
+  // A pull request is an ordinary web page here: there is no conversation to
+  // open it as a pane beside.
+  if (target?.kind !== 'external' && target?.kind !== 'pull-request')
+    return <span>{children}</span>;
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!hostOwnsExternalLinks()) return;
     event.preventDefault();
@@ -207,7 +211,7 @@ export default function FilePreviewContent({
 }) {
   // The dialog holds what it shows: the opening chip's hold ends when it
   // unmounts, and eviction would then revoke the bytes under an open preview.
-  useRetainedAttachmentObjectUrl(current.url);
+  useRetainedAttachmentObjectUrls([current.url]);
   const kind = filePreviewKind(current.mediaType);
   const isText = kind === 'markdown' || kind === 'json' || kind === 'text';
   const pdfInline = kind === 'pdf' && canRenderPdfInline();

@@ -6882,14 +6882,20 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 6px;
 }
 .markdown-image-button {
+  position: relative;
   display: inline-block;
-  min-width: 44px;
-  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;
   cursor: zoom-in;
   max-width: 100%;
+}
+/* A 44px hit area without growing the line box: inline badges stay 20px tall
+   in prose, and the target extends invisibly around them. */
+.markdown-image-button::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
 }
 
 /* File Part Preview */

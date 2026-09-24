@@ -1,5 +1,5 @@
 import { Button } from './Button';
-import { useRetainedAttachmentObjectUrl } from './chat/attachment-object-urls';
+import { useRetainedAttachmentObjectUrls } from './chat/attachment-object-urls';
 import { ImageInspector } from './ImageInspector';
 
 export interface PreviewItem {
@@ -18,8 +18,12 @@ export default function ImagePreviewContent({
   items: readonly PreviewItem[];
   onSelect: (item: PreviewItem) => void;
 }) {
-  // Same hold as the file preview: see FilePreviewContent.
-  useRetainedAttachmentObjectUrl(current.url);
+  // Same hold as the file preview (see FilePreviewContent), over the whole
+  // gallery: prev/next must not land on a sibling eviction revoked.
+  useRetainedAttachmentObjectUrls([
+    current.url,
+    ...items.map((item) => item.url),
+  ]);
   const currentIdx = items.findIndex((item) => item.url === current.url);
   const selectAdjacentImage = (direction: -1 | 1) => {
     const next = items[currentIdx + direction];

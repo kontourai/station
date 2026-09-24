@@ -116,12 +116,22 @@ export function retainAttachmentObjectUrl(objectUrl: string): () => void {
 }
 
 /**
- * Hold `objectUrl` for as long as the calling component shows it. Used by the
+ * Hold `objectUrls` for as long as the calling component can show them. Used by the
  * preview dialog's (lazily loaded) bodies rather than the eager provider, so
  * the cache stays out of the entry chunk.
  */
-export function useRetainedAttachmentObjectUrl(objectUrl: string): void {
-  useEffect(() => retainAttachmentObjectUrl(objectUrl), [objectUrl]);
+export function useRetainedAttachmentObjectUrls(
+  objectUrls: readonly string[],
+): void {
+  // Keyed on the joined list so a re-rendered but identical gallery does not
+  // churn its holds.
+  const key = objectUrls.join('\n');
+  useEffect(() => {
+    const releases = key.split('\n').map(retainAttachmentObjectUrl);
+    return () => {
+      for (const release of releases) release();
+    };
+  }, [key]);
 }
 
 /**

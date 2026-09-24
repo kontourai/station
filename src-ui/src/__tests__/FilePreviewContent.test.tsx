@@ -200,13 +200,46 @@ describe('FilePreviewContent', () => {
     expect(screen.getByText('Preview unavailable')).toBeTruthy();
   });
 
+  test('frames a blob: PDF only when the attachment cache minted it', () => {
+    storeAttachmentObjectUrl(
+      'owned',
+      'blob:owned-pdf',
+      new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    );
+    const { unmount } = render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:owned-pdf',
+          mediaType: 'application/pdf',
+          name: 'owned.pdf',
+        }}
+      />,
+    );
+    expect(screen.getByTitle('owned.pdf').getAttribute('src')).toBe(
+      'blob:owned-pdf',
+    );
+    unmount();
+
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:not-ours',
+          mediaType: 'application/pdf',
+          name: 'stray.pdf',
+        }}
+      />,
+    );
+    expect(screen.queryByTitle('stray.pdf')).toBeNull();
+    expect(screen.getByText('Preview unavailable')).toBeTruthy();
+  });
+
   test('keeps links in an attached markdown file from navigating Station', async () => {
     render(
       <FilePreviewContent
         current={{
           url: dataUrl(
             'text/markdown',
-            '[repo file](src/app.ts) and [site](https://example.test/docs)',
+            '[repo file](src/app.ts), [site](https://example.test/docs) and [pr](https://github.com/acme/app/pull/7)',
           ),
           mediaType: 'text/markdown',
           name: 'links.md',
@@ -221,6 +254,10 @@ describe('FilePreviewContent', () => {
     expect(external.getAttribute('href')).toBe('https://example.test/docs');
     expect(external.getAttribute('target')).toBe('_blank');
     expect(external.getAttribute('rel')).toBe('noopener noreferrer');
+    // A pull request has no pane to open in here; it is still a web page.
+    expect(screen.getByRole('link', { name: 'pr' }).getAttribute('href')).toBe(
+      'https://github.com/acme/app/pull/7',
+    );
   });
 
   test('offers the download for a type it cannot render', () => {
