@@ -490,6 +490,25 @@ npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-ac
 npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-accounts --self-hosted-broker --keep
 ```
 
+The additional `--station-ui` mode drives the actual Station SPA through
+operator key-report approval, invitation acceptance, TURN setup, Connect,
+fresh account login, operator Device approval, invitation redemption, and
+in-app Project navigation. It serves the UI on the lab-owned HTTPS client
+Origin and blocks/counts direct Station `/api` requests after route acceptance.
+It reuses the free local broker, Pion, and TURN fixtures above; no hosted
+identity or paid TURN service is needed. Run one transport at a time:
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --station-ui --keep
+```
+
+The UI-mode receipt requires the selected browser ICE pair and Station answer
+to contain TURN relay candidates, and the protected Project to open through
+the live UI. This is a browser acceptance check only; it does not establish a
+second physical machine, two-person access, internet reachability, or native
+client behavior. Until the command completes successfully against the current
+source, retain the not-verified status in [Connections](connections.md).
+
 Build the pinned Pion executable as described above first. This mode starts the
 actual broker CLI in a separate owned process with private SQLite state and
 separate routing/connector credentials. Its controller issues two one-use

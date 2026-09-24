@@ -12,7 +12,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { inspect } from 'node:util';
+import { DatabaseSync } from 'node:sqlite';
 import { serveApplicationChannel } from '@kontourai/station-connect/application-channel';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import {
@@ -22,6 +22,7 @@ import {
 import { chromium, type Page } from '@playwright/test';
 import { build, stop as stopBundler } from 'esbuild';
 import datachannel from 'node-datachannel';
+import { createServer as createViteServer, type ViteDevServer } from 'vite';
 import { ensureStationHomeSchemaSync } from '../src-server/domain/home-schema-gate.js';
 import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
@@ -40,6 +41,7 @@ import {
   browserFreshRelayProjectRead,
 } from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
+import { installRelayCandidatePairRecorder } from './lib/browser-relay-candidate-pair.mjs';
 import {
   browserBrokerAdmitApplicationTransport,
   browserBrokerAdoptApplicationTransport,
@@ -91,6 +93,7 @@ if (
         '--application-protocol',
         '--application-accounts',
         '--self-hosted-broker',
+        '--station-ui',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -101,6 +104,9 @@ if (
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
 const selfHostedBroker = args.includes('--self-hosted-broker');
+const stationUi = args.includes('--station-ui');
+const fixtureDocumentUrl = (origin: string) =>
+  stationUi ? new URL('/__fixture', origin).href : origin;
 if (
   selfHostedBroker &&
   (peerAdapter !== 'pion' || !args.includes('--application-accounts'))
@@ -108,6 +114,8 @@ if (
   throw new Error(
     '--self-hosted-broker requires --peer=pion --application-accounts',
   );
+if (stationUi && !selfHostedBroker)
+  throw new Error('--station-ui requires --self-hosted-broker');
 if (
   args.includes('--application-protocol') &&
   args.includes('--application-accounts')
@@ -161,6 +169,7 @@ let turnUdpPort: number | undefined;
 let turnTcpPort: number | undefined;
 let relay: Awaited<ReturnType<typeof startLabRelay>> | undefined;
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+let viteServer: ViteDevServer | undefined;
 type LabPeer = {
   close(): void | Promise<void>;
   getSelectedCandidatePair(): {
@@ -172,7 +181,8 @@ const peers: LabPeer[] = [];
 let pionProvenance:
   | Awaited<ReturnType<typeof startPionFixture>>['provenance']
   | undefined;
-const observers: (() => Promise<unknown>)[] = [];
+let stationUiRelayJourney: Record<string, unknown> | undefined;
+let stationUiFailure: Record<string, unknown> | undefined;
 let clientProofScript = '';
 let connectionTrust: ApprovedStationConnectionTrust;
 let proofIssuer: ReturnType<typeof createStationConnectionProofIssuer>;
@@ -222,7 +232,7 @@ async function runFreshRelayScenario(input: {
     await freshContext.close();
   };
   try {
-    await freshPage.goto(input.pageOrigin);
+    await freshPage.goto(fixtureDocumentUrl(input.pageOrigin));
     assert.notEqual(
       new URL(input.approvedPage.url()).origin,
       new URL(freshPage.url()).origin,
@@ -521,6 +531,502 @@ async function bounded<T>(promise: Promise<T>, phase: string): Promise<T> {
   }
 }
 
+function candidateTypeCounts(sdp: unknown) {
+  const counts = { host: 0, srflx: 0, relay: 0, other: 0 };
+  if (typeof sdp !== 'string') return counts;
+  for (const match of sdp.matchAll(/\btyp\s+(host|srflx|relay)\b/gu)) {
+    const candidateType = match[1];
+    if (
+      candidateType === 'host' ||
+      candidateType === 'srflx' ||
+      candidateType === 'relay'
+    )
+      counts[candidateType]++;
+  }
+  const candidateLines = sdp.match(/^a=candidate:/gmu)?.length ?? 0;
+  counts.other = Math.max(
+    0,
+    candidateLines - counts.host - counts.srflx - counts.relay,
+  );
+  return counts;
+}
+
+async function readSelfHostedBrokerPeerDiagnostics() {
+  let leaseState: string | null = null;
+  try {
+    leaseState = (await brokerLab?.readLease())?.state ?? null;
+  } catch {
+    leaseState = 'unavailable';
+  }
+  let database: DatabaseSync | undefined;
+  try {
+    database = new DatabaseSync(
+      join(root, 'self-hosted-broker', 'broker.sqlite'),
+      {
+        readOnly: true,
+      },
+    );
+    const rows = database
+      .prepare(
+        'SELECT offer_sdp,answer_sdp,station_proof FROM broker_connections',
+      )
+      .all() as Array<{
+      offer_sdp: unknown;
+      answer_sdp: unknown;
+      station_proof: unknown;
+    }>;
+    const sum = (
+      field: 'offer_sdp' | 'answer_sdp',
+    ): ReturnType<typeof candidateTypeCounts> => {
+      const total = { host: 0, srflx: 0, relay: 0, other: 0 };
+      for (const row of rows) {
+        const counts = candidateTypeCounts(row[field]);
+        total.host += counts.host;
+        total.srflx += counts.srflx;
+        total.relay += counts.relay;
+        total.other += counts.other;
+      }
+      return total;
+    };
+    return {
+      leaseState,
+      connectionCount: rows.length,
+      answeredCount: rows.filter(
+        (row) =>
+          typeof row.answer_sdp === 'string' && row.answer_sdp.length > 0,
+      ).length,
+      proofCount: rows.filter(
+        (row) =>
+          typeof row.station_proof === 'string' && row.station_proof.length > 0,
+      ).length,
+      offerCandidateTypes: sum('offer_sdp'),
+      answerCandidateTypes: sum('answer_sdp'),
+    };
+  } catch (error) {
+    return {
+      leaseState,
+      databaseStatus:
+        error instanceof Error ? error.name : 'sqlite_diagnostics_unavailable',
+    };
+  } finally {
+    database?.close();
+  }
+}
+
+async function runStationUiRelayJourney(input: {
+  page: Page;
+  clientOrigin: string;
+  applicationOrigin: string;
+  broker: NonNullable<typeof brokerLab>;
+  trust: ApprovedStationConnectionTrust;
+  authorityHome: string;
+  accountStation: Awaited<ReturnType<typeof startRelayAccountStation>>;
+}) {
+  let brokerResponseCount = 0;
+  let applicationApiResponseCount = 0;
+  const keyReport = await runLabCommand(
+    process.execPath,
+    [
+      '--import',
+      import.meta.resolve('tsx'),
+      join(process.cwd(), 'scripts/connection-key.ts'),
+      'inspect',
+      `--home=${input.authorityHome}`,
+    ],
+    process.cwd(),
+  );
+  const operatorReport = JSON.parse(keyReport.stdout.trim()) as {
+    schema: string;
+    status: string;
+    trust: ApprovedStationConnectionTrust;
+    keyId: string;
+  };
+  assert.equal(operatorReport.schema, 'station.connection-key/v1');
+  assert.equal(operatorReport.status, 'present');
+  assert.equal(operatorReport.trust.stationId, input.trust.stationId);
+  const invitation = input.broker.issueInvitation({
+    clientOrigin: input.clientOrigin,
+    stationSigningKeyId: operatorReport.keyId,
+    stationSigningGeneration: operatorReport.trust.generation,
+  });
+  input.page.on('response', (response) => {
+    try {
+      const url = new URL(response.url());
+      if (
+        [input.applicationOrigin, input.clientOrigin].includes(url.origin) &&
+        url.pathname.startsWith('/api/')
+      )
+        applicationApiResponseCount++;
+      if (
+        url.origin === input.broker.brokerOrigin &&
+        url.pathname.startsWith('/broker/')
+      )
+        brokerResponseCount++;
+    } catch {
+      // Ignore non-HTTP response URLs.
+    }
+  });
+  await input.page.addInitScript(installRelayCandidatePairRecorder);
+  await input.page.goto(input.clientOrigin);
+  try {
+    await input.page
+      .getByRole('heading', { name: 'Connect to a Station' })
+      .waitFor({ timeout: 30000 });
+  } catch {
+    stationUiFailure = { phase: 'initial-ui', headingVisible: false };
+    throw new Error('Station Computers UI did not mount.');
+  }
+  await input.page
+    .getByRole('button', { name: 'Use a broker invitation' })
+    .click();
+  try {
+    await input.page
+      .getByRole('region', { name: 'Browser broker routes' })
+      .waitFor({ timeout: 10000 });
+  } catch {
+    stationUiFailure = { phase: 'broker-routes', routePanelVisible: false };
+    throw new Error('Broker route panel did not mount.');
+  }
+  const reportField = input.page.getByLabel('Operator Station key report');
+  try {
+    await reportField.waitFor({ timeout: 10000 });
+  } catch {
+    stationUiFailure = { phase: 'trust-report', trustReportVisible: false };
+    throw new Error('Broker route trust report field did not mount.');
+  }
+  await reportField.fill(JSON.stringify(operatorReport));
+  await input.page
+    .getByRole('status', { name: 'Station trust: untrusted' })
+    .waitFor({ timeout: 10000 });
+  await input.page
+    .getByRole('checkbox', { name: /I compared this full key ID/ })
+    .check();
+  await input.page
+    .getByRole('button', { name: 'Approve Station key', exact: true })
+    .click();
+  await input.page
+    .getByText('Station signing key approved on this browser.')
+    .waitFor({ timeout: 10000 });
+
+  const routeName = 'Relay lab Station';
+  const routes = input.page.getByRole('region', {
+    name: 'Browser broker routes',
+  });
+  await routes.getByLabel('Station name').fill(routeName);
+  await routes
+    .getByLabel('Station application address')
+    .fill(input.applicationOrigin);
+  const browserTurnPort =
+    browserTransport === 'udp' ? turnUdpPort : relay?.port;
+  assert(browserTurnPort, 'Local browser TURN fixture must be ready');
+  await routes
+    .getByLabel('TURN server URL')
+    .fill(`turn:127.0.0.1:${browserTurnPort}?transport=${browserTransport}`);
+  await routes.getByLabel('TURN username').fill(username);
+  await routes.getByLabel('TURN credential').fill(password);
+  await routes
+    .getByLabel('Broker invitation link or private JSON')
+    .fill(JSON.stringify(invitation));
+  await routes.getByRole('button', { name: 'Accept route' }).click();
+  const row = routes.locator('.page-row').filter({ hasText: routeName });
+  await row.getByRole('button', { name: 'Connect' }).waitFor({
+    timeout: 15000,
+  });
+
+  let directStationApiAttempts = 0;
+  for (const origin of new Set([input.clientOrigin, input.applicationOrigin]))
+    await input.page.route(`${origin}/api/**`, async (route) => {
+      directStationApiAttempts++;
+      await route.abort('blockedbyclient');
+    });
+  await row.getByRole('button', { name: 'Connect' }).click();
+  try {
+    await row.getByRole('button', { name: 'Reconnect' }).waitFor({
+      timeout: 30000,
+    });
+  } catch {
+    stationUiFailure = {
+      phase: 'connect',
+      routeConnected: false,
+      brokerResponseCount,
+      applicationApiResponseCount,
+    };
+    throw new Error('Station UI did not connect the accepted broker route.');
+  }
+  await input.page.waitForFunction(
+    async () => {
+      const readPair = (
+        globalThis as unknown as {
+          __stationRelaySelectedCandidatePair?: () => Promise<{
+            localType: string;
+            remoteType: string;
+          } | null>;
+        }
+      ).__stationRelaySelectedCandidatePair;
+      return Boolean(await readPair?.());
+    },
+    undefined,
+    { timeout: 15000 },
+  );
+  const selectedRelayPair = await input.page.evaluate(async () => {
+    const readPair = (
+      globalThis as unknown as {
+        __stationRelaySelectedCandidatePair?: () => Promise<{
+          localType: string;
+          remoteType: string;
+        } | null>;
+      }
+    ).__stationRelaySelectedCandidatePair;
+    return (await readPair?.()) ?? null;
+  });
+  assert(selectedRelayPair);
+  assert.equal(selectedRelayPair.localType, 'relay');
+  assert.equal(selectedRelayPair.remoteType, 'relay');
+  stationUiFailure = undefined;
+  const stationPeerDiagnostics = await readSelfHostedBrokerPeerDiagnostics();
+  if (!('answerCandidateTypes' in stationPeerDiagnostics))
+    throw new Error('Station TURN answer diagnostics are unavailable.');
+  const stationAnswerCandidateTypes =
+    stationPeerDiagnostics.answerCandidateTypes;
+  assert(stationAnswerCandidateTypes);
+  assert(stationPeerDiagnostics.answeredCount > 0);
+  assert(stationPeerDiagnostics.proofCount > 0);
+  assert(stationAnswerCandidateTypes.relay > 0);
+  assert.equal(
+    directStationApiAttempts,
+    0,
+    'Selected relay route health must not issue direct Station HTTP',
+  );
+  const publicHandshake = await input.page.evaluate(
+    async ({ origin, route, moduleUrl }) => {
+      const { probeServerConnection } = await import(moduleUrl);
+      return probeServerConnection(
+        origin,
+        undefined,
+        null,
+        AbortSignal.timeout(20000),
+        route,
+      );
+    },
+    {
+      origin: input.applicationOrigin,
+      moduleUrl: new URL('/src/lib/serverHealth.ts', input.clientOrigin).href,
+      route: {
+        brokerOrigin: invitation.brokerOrigin,
+        scope: invitation.scope,
+      },
+    },
+  );
+  assert.equal(publicHandshake.ok, false);
+  assert.equal(
+    publicHandshake.reason,
+    'authentication-failed',
+    'The public Station handshake must answer through the broker before account authority exists',
+  );
+
+  await row.getByRole('button', { name: 'Verify account and Device' }).click();
+  const accountDialog = input.page.getByRole('dialog', {
+    name: `Verify account on ${routeName}`,
+  });
+  await accountDialog.waitFor({ timeout: 10000 });
+  await accountDialog
+    .getByLabel('Station account name')
+    .fill(input.accountStation.browser.username);
+  await accountDialog
+    .getByLabel('Password')
+    .fill(input.accountStation.browser.password);
+  await accountDialog
+    .getByLabel('Project invitation token (optional)')
+    .fill(input.accountStation.browser.invitation);
+  await accountDialog.getByRole('button', { name: 'Verify account' }).click();
+  await accountDialog
+    .getByText('Waiting for the Station operator to approve this Device…')
+    .waitFor({ timeout: 20000 });
+  const requestId = (await accountDialog.locator('code').textContent())?.trim();
+  assert(requestId && /^[a-f0-9-]{36}$/u.test(requestId));
+  await input.accountStation.confirmFreshRelayRequest(requestId);
+  await accountDialog
+    .getByText('Joined Project relay-shared.')
+    .waitFor({ timeout: 30000 });
+  await accountDialog
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
+  try {
+    await input.page.waitForFunction(
+      () =>
+        !(
+          globalThis as unknown as {
+            document: { querySelector(selector: string): unknown };
+          }
+        ).document.querySelector(
+          'section[aria-label="Station access required"]',
+        ),
+      undefined,
+      { timeout: 20000 },
+    );
+  } catch {
+    const relayIdentityDiagnostic = await input.page
+      .evaluate(
+        async ({ clientOrigin: clientOriginValue }) => {
+          const clientOrigin = new URL(clientOriginValue).origin;
+          try {
+            const connections = JSON.parse(
+              localStorage.getItem('station-connect-connections') ?? '[]',
+            ) as Array<{
+              id: string;
+              url: string;
+              brokerRoute?: {
+                brokerOrigin: string;
+                scope: Record<string, unknown>;
+              };
+            }>;
+            const activeId = localStorage.getItem(
+              'station-connect-connections-active',
+            );
+            const connection = connections.find(
+              (candidate) => candidate.id === activeId && candidate.brokerRoute,
+            );
+            if (!connection?.brokerRoute)
+              return { error: 'active_broker_route_missing' };
+            const [
+              bindingModule,
+              authorityModule,
+              accountScopeModule,
+              healthModule,
+            ] = await Promise.all([
+              import(
+                new URL('/src/lib/browserRelayRouteBinding.ts', clientOrigin)
+                  .href
+              ),
+              import(
+                new URL(
+                  '/src/lib/browserRelayApplicationAuthority.ts',
+                  clientOrigin,
+                ).href
+              ),
+              import(
+                new URL('/src/lib/browserRelayAccountScope.ts', clientOrigin)
+                  .href
+              ),
+              import(new URL('/src/lib/serverHealth.ts', clientOrigin).href),
+            ]);
+            const binding = bindingModule.captureBrowserRelayRoute(
+              connection.id,
+              connection.url,
+              connection.brokerRoute,
+            );
+            if (!binding?.isCurrent()) return { routeIsCurrent: false };
+            const accountScopeKey =
+              accountScopeModule.browserRelayAccountScopeKey({
+                connectionId: connection.id,
+                applicationOrigin: connection.url,
+                route: connection.brokerRoute,
+                clientOrigin,
+              });
+            const accountScope =
+              accountScopeModule.getBrowserRelayAccountScope(accountScopeKey);
+            const credential =
+              await authorityModule.createBrowserRelayApplicationCredential({
+                connectionId: connection.id,
+                applicationOrigin: connection.url,
+                route: connection.brokerRoute,
+                transport: binding.transport,
+                routeIsCurrent: binding.isCurrent,
+              });
+            const identityUrl = new URL('/api/system/identity', connection.url)
+              .href;
+            const response = await credential.transport(identityUrl, {
+              headers: { Accept: 'application/json', Origin: clientOrigin },
+            });
+            const body = (await response.json().catch(() => ({}))) as {
+              error?: { code?: unknown };
+              data?: { bootId?: unknown };
+              bootId?: unknown;
+            };
+            const probe = await healthModule.probeServerConnection(
+              connection.url,
+              undefined,
+              null,
+              AbortSignal.timeout(15000),
+              connection.brokerRoute,
+            );
+            return {
+              activeConnectionIdPresent: Boolean(connection.id),
+              routeIsCurrent: binding.isCurrent(),
+              identityStatus: response.status,
+              identityRejected: typeof body.error?.code === 'string',
+              identityBootIdPresent: Boolean(body.bootId ?? body.data?.bootId),
+              accountScopeState: accountScope?.state ?? null,
+              accountScopeHasAuthority: Boolean(accountScope?.authorityKey),
+              accountScopeVersion: accountScope?.version ?? null,
+              productProbe: {
+                ok: probe.ok,
+                reason: probe.reason ?? null,
+                bootIdPresent: Boolean(probe.bootId),
+              },
+            };
+          } catch {
+            return { probeAvailable: false };
+          }
+        },
+        { clientOrigin: input.clientOrigin },
+      )
+      .catch(() => ({ probeAvailable: false }));
+    stationUiFailure = {
+      phase: 'protected-app-gate',
+      accessRequiredVisible: true,
+      routeConnected: true,
+      brokerResponseCount,
+      applicationApiResponseCount,
+      relayIdentityDiagnostic,
+    };
+    throw new Error('Relay Device approval did not open the protected app.');
+  }
+  try {
+    const projectNavigation = input.page.getByRole('button', {
+      name: /Relay shared fixture/,
+    });
+    await projectNavigation.waitFor({ timeout: 15000 });
+    await projectNavigation.click();
+    await input.page
+      .getByRole('heading', { name: 'Relay shared fixture', exact: true })
+      .waitFor({ timeout: 30000 });
+  } catch {
+    stationUiFailure = {
+      phase: 'project-navigation',
+      routeConnected: true,
+      protectedAppVisible: true,
+      projectHeadingVisible: false,
+      brokerResponseCount,
+      applicationApiResponseCount,
+      directStationApiAttempts,
+    };
+    throw new Error('Protected Project did not open in the live Station UI.');
+  }
+  assert.equal(
+    directStationApiAttempts,
+    0,
+    'Account enrollment, Device approval and Project read must stay off direct Station HTTP',
+  );
+  return {
+    status: 'passed',
+    journey:
+      'real Station UI key approval, invitation acceptance, Connect, fresh account login and operator Device approval',
+    selectedRouteHealthy: true,
+    publicStationHealth: publicHandshake.reason,
+    browserSelectedCandidateTypes: selectedRelayPair,
+    stationAnswerRelayCandidateCount: stationAnswerCandidateTypes.relay,
+    protectedProjectRead: 'Relay shared fixture visible in Station UI',
+    deviceApprovalRequestIdObserved: true,
+    directStationApiAttempts,
+    routingGrantDistinctFromOperator: true,
+    applicationOrigin: input.applicationOrigin,
+    clientOrigin: input.clientOrigin,
+    browserContextIsolated: true,
+    invitationAccepted: true,
+  };
+}
+
 async function identity(name: string) {
   const home = join(root, name);
   mkdirSync(home, { mode: 0o700 });
@@ -622,10 +1128,6 @@ async function exchange(
     peers.push(fixture.peer);
     if (pionProvenance) assert.deepEqual(fixture.provenance, pionProvenance);
     pionProvenance = fixture.provenance;
-    observers.push(async () => ({
-      state: fixture.diagnostics(),
-      browser: await page.evaluate(readBrowserStats),
-    }));
     assert.match(fixture.answer.sdp, / typ relay/);
     assert.equal(
       fixture.answer.sdp.match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]?.trim(),
@@ -662,12 +1164,6 @@ async function exchange(
   peers.push(peer);
   const states: string[] = [];
   peer.onStateChange((state) => states.push(state));
-  observers.push(async () => ({
-    states,
-    pair: peer.getSelectedCandidatePair(),
-    description: peer.localDescription(),
-    browser: await page.evaluate(readBrowserStats),
-  }));
   const messages: string[] = [];
   const gathered = new Promise<void>((resolve) => {
     peer.onGatheringStateChange((state) => {
@@ -833,12 +1329,35 @@ try {
       minVersion: 'TLSv1.3' as const,
       maxVersion: 'TLSv1.3' as const,
     };
+    if (stationUi)
+      viteServer = await createViteServer({
+        configFile: join(process.cwd(), 'vite.config.ts'),
+        server: { middlewareMode: true, hmr: false },
+        appType: 'spa',
+        logLevel: 'error',
+      });
     const securePageHandler = (
       request: import('node:http').IncomingMessage,
       response: import('node:http').ServerResponse,
     ) => {
-      if (request.url === '/' || request.url === '/connection-proof.js') {
+      if (
+        (!stationUi && request.url === '/') ||
+        request.url === '/__fixture' ||
+        request.url === '/__fixture/' ||
+        request.url === '/connection-proof.js'
+      ) {
         serveBrowserDocument(request, response);
+        return;
+      }
+      if (stationUi && !request.url?.startsWith('/api/')) {
+        viteServer?.middlewares(request, response, (error?: unknown) => {
+          if (!response.headersSent)
+            response.writeHead(error ? 500 : 404, {
+              'Content-Type': 'text/plain; charset=utf-8',
+            });
+          if (!response.writableEnded)
+            response.end(error ? 'Station UI middleware failed' : 'Not found');
+        });
         return;
       }
       if (!stationUpstreamPort) {
@@ -1021,7 +1540,7 @@ try {
   abort.signal.throwIfAborted();
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(pageOrigin);
+  await page.goto(fixtureDocumentUrl(pageOrigin));
   let brokerJourney: Record<string, unknown> | undefined;
   let brokerLeaseBefore = 0;
   let brokerReconnectForJourney:
@@ -1054,6 +1573,22 @@ try {
       'online',
       'StationRuntime child must register the broker lease before browser admission',
     );
+    if (stationUi) {
+      const uiContext = await browser.newContext();
+      try {
+        stationUiRelayJourney = await runStationUiRelayJourney({
+          page: await uiContext.newPage(),
+          clientOrigin: secondaryPageOrigin ?? pageOrigin,
+          applicationOrigin: pageOrigin,
+          broker: brokerLab,
+          trust: connectionTrust,
+          authorityHome,
+          accountStation,
+        });
+      } finally {
+        await uiContext.close();
+      }
+    }
     // Browser TURN/UDP uses the direct UDP allocation; the recording relay
     // forward is TCP-only for the Station-side Pion peer. Never aim browser
     // UDP at the TCP recording relay port.
@@ -1382,7 +1917,7 @@ try {
     // then require the next broker admission to refuse before SDP acceptance.
     const brokerRevokePage = await context.newPage();
     try {
-      await brokerRevokePage.goto(pageOrigin);
+      await brokerRevokePage.goto(fixtureDocumentUrl(pageOrigin));
       await brokerRevokePage.evaluate(
         browserRevokeConnectionTrust,
         connectionTrust.stationId,
@@ -1424,7 +1959,7 @@ try {
   if (!selfHostedBroker) {
     const reconnectContext = await browser.newContext();
     const reconnectPage = await reconnectContext.newPage();
-    await reconnectPage.goto(pageOrigin);
+    await reconnectPage.goto(fixtureDocumentUrl(pageOrigin));
     const reconnected = await exchange(
       reconnectPage,
       approved,
@@ -1453,7 +1988,7 @@ try {
 
     const revokedContext = await browser.newContext();
     const revokedPage = await revokedContext.newPage();
-    await revokedPage.goto(pageOrigin);
+    await revokedPage.goto(fixtureDocumentUrl(pageOrigin));
     const revokedPeer = await exchange(
       revokedPage,
       approved,
@@ -1468,7 +2003,7 @@ try {
 
     const replacementContext = await browser.newContext();
     const replacementPage = await replacementContext.newPage();
-    await replacementPage.goto(pageOrigin);
+    await replacementPage.goto(fixtureDocumentUrl(pageOrigin));
     await assert.rejects(
       exchange(replacementPage, substituted, approved.fingerprint),
       /station_fingerprint_not_approved/,
@@ -1477,7 +2012,7 @@ try {
 
     const hostileContext = await browser.newContext();
     const hostilePage = await hostileContext.newPage();
-    await hostilePage.goto(pageOrigin);
+    await hostilePage.goto(fixtureDocumentUrl(pageOrigin));
     const hostile = await exchange(
       hostilePage,
       substituted,
@@ -1544,6 +2079,7 @@ try {
     applicationAccounts: accountReport ?? { status: 'not-run' },
     cookieAdoption: cookieAdoptionReport ?? { status: 'not-run' },
     freshRelayEnrollment: freshRelayReport ?? { status: 'not-run' },
+    stationUiRelayJourney: stationUiRelayJourney ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
           status: 'passed',
@@ -1578,6 +2114,11 @@ try {
           'tampered broker proof rejected before setRemoteDescription',
           'cross-tab Device trust revocation refuses new admission',
           'withdrawn routing credential refused by browser and exact HTTP control',
+          ...(stationUi
+            ? [
+                'real Station UI approves operator report, accepts invitation, selects route and passes public health without direct Station API egress',
+              ]
+            : []),
         ]
       : [
           'TURN relay selected at both peers',
@@ -1599,17 +2140,6 @@ try {
   };
 } catch (error) {
   errors.push(error);
-  writeFileSync(
-    join(root, 'protocol-diagnostics.json'),
-    JSON.stringify(
-      await Promise.allSettled(
-        observers.map((read) => bounded(read(), 'protocol diagnostics')),
-      ),
-      null,
-      2,
-    ),
-    { mode: 0o600 },
-  );
 } finally {
   stopBundler();
   for (const peer of peers) {
@@ -1644,6 +2174,7 @@ try {
     await new Promise<void>((resolve) =>
       secondarySecurePageServer!.close(() => resolve()),
     );
+  await viteServer?.close();
   datachannel.cleanup();
   process.off('SIGINT', interrupt);
   process.off('SIGTERM', interrupt);
@@ -1651,9 +2182,22 @@ try {
 if (!report && !errors.length)
   errors.push(new Error('No completed browser transport report'));
 if (errors.length) {
-  writeFileSync(join(root, 'failure.txt'), inspect(errors, { depth: 5 }), {
-    mode: 0o600,
-  });
+  writeFileSync(
+    join(root, 'failure.json'),
+    JSON.stringify(
+      {
+        scope: 'browser-transport-evaluation',
+        status: 'failed',
+        errorNames: errors.map((error) =>
+          error instanceof Error ? error.name : 'UnknownError',
+        ),
+        stationUi: stationUiFailure ?? { status: 'no-station-ui-diagnostic' },
+      },
+      null,
+      2,
+    ),
+    { mode: 0o600 },
+  );
   process.exitCode = 1;
 }
 const finalReport = errors.length
@@ -1661,6 +2205,7 @@ const finalReport = errors.length
       scope: 'browser-transport-evaluation',
       status: 'failed',
       browserTurnTransport: browserTransport,
+      stationUi: stationUiFailure ?? { status: 'not-reached' },
     }
   : report;
 writeFileSync(join(root, 'report.json'), JSON.stringify(finalReport, null, 2), {
