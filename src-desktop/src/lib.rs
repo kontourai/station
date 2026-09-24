@@ -11058,6 +11058,96 @@ mod tests {
         (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
     }
 
+    /// #2565 through the real writer: the host reads `current` from disk under
+    /// the lock, so the carry rule is judged against the stored profile, never
+    /// against the renderer's own proposal.
+    #[cfg(not(mobile))]
+    fn writer_with_stored_pending_profile() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        WriterTestHost,
+        CredentialProfileStore,
+    ) {
+        let (directory, path, authority, pending, _handle, _contents, host) =
+            writer_pairing_fixture();
+        let stored = r#"{"schemaVersion":1,"revision":3,"defaultProfile":"one","projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#;
+        std::fs::write(&path, stored).unwrap();
+        let current = parse_station_profile_store(stored).unwrap();
+        // A restarted host observes only the configured Stations.
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &current).unwrap();
+        (directory, path, authority, pending, host, current)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_forgets_another_station_beside_a_pending_one() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let mut next = current.clone();
+        next.revision = 4;
+        next.profiles.retain(|profile| profile.name != "two");
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&next).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        let written =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(written.revision, 4);
+        assert_eq!(
+            written
+                .profiles
+                .iter()
+                .map(|profile| profile.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one", "pending"]
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_cannot_add_or_promote_an_unobserved_reference() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let refused = |next: &CredentialProfileStore| {
+            station_profile_store_write_with_host(
+                &host,
+                &authority,
+                &pending,
+                serde_json::to_string(next).unwrap(),
+                3,
+                None,
+            )
+            .unwrap_err()
+        };
+
+        let mut added = current.clone();
+        added.revision = 4;
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        let mut promoted = current.clone();
+        promoted.revision = 4;
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        let stored =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(stored.revision, 3, "a refused write must not publish");
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
@@ -15269,6 +15359,14 @@ mod tests {
         )
         .unwrap_err()
         .contains("cannot add"));
+        assert!(authorize_active_profile_in_state(
+            &mut restarted_authority,
+            &requires_auth,
+            "pending"
+        )
+        .unwrap_err()
+        .contains("not a configured host-observed credential"));
+        assert!(restarted_authority.active.is_none());
     }
 
     /// #2565: a saved Station awaiting sign-in is never observed, so its
