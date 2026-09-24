@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -76,11 +82,12 @@ function renderRoutes() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <RelayRouteProfiles />
     </QueryClientProvider>,
   );
+  return { ...rendered, queryClient };
 }
 
 describe('RelayRouteProfiles', () => {
@@ -166,6 +173,38 @@ describe('RelayRouteProfiles', () => {
       ),
     );
     expect(screen.queryByText('Saved broker routes')).toBeNull();
+  });
+
+  test('hides cached approved trust and disables revocation after a native status refetch fails', async () => {
+    mocks.keyStatus.mockResolvedValue({
+      status: 'approved',
+      trustRevision: 4,
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 3,
+      keyId: 'sha256:cached-approved-key',
+    });
+    mocks.pendingKey.mockResolvedValue(null);
+    const { queryClient } = renderRoutes();
+
+    await screen.findByText('Station key approved');
+    expect(screen.getByText('sha256:cached-approved-key')).toBeTruthy();
+    mocks.keyStatus.mockRejectedValueOnce(
+      new Error('native keyring unavailable'),
+    );
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['native-relay-key-approval', 'Home Station', 'status'],
+      });
+    });
+
+    await screen.findByText('Native key trust unavailable');
+    expect(screen.queryByText('sha256:cached-approved-key')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Revoke Station key trust' }),
+    ).toBeNull();
   });
 
   test('requires native surface preparation, a pasted invitation, and separately entered operator values', async () => {
@@ -260,7 +299,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Discover Station key' }),
     );
     await screen.findByText('sha256:full-station-key-id');
-    expect(screen.getByText('ABCD1234EFGH5678')).toBeTruthy();
+    expect(screen.getByText('ABCD-1234-EFGH-5678')).toBeTruthy();
     expect(
       screen
         .getByRole('button', { name: 'Approve Station key' })
@@ -268,7 +307,7 @@ describe('RelayRouteProfiles', () => {
     ).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Operator comparison code'), {
-      target: { value: 'ABCD1234EFGH5678' },
+      target: { value: 'ABCD-1234-EFGH-567I' },
     });
     fireEvent.change(
       screen.getByLabelText('Full key ID confirmed by operator'),
@@ -281,6 +320,15 @@ describe('RelayRouteProfiles', () => {
         /I got these values from the Station operator through a separate channel/,
       ),
     );
+    expect(
+      screen
+        .getByRole('button', { name: 'Approve Station key' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(mocks.approveKey).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+      target: { value: 'abcd-1234-efgh-5678' },
+    });
     expect(
       screen
         .getByRole('button', { name: 'Approve Station key' })

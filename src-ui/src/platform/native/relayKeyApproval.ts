@@ -99,7 +99,7 @@ function parseCandidate(value: unknown): RelayKeyCandidate {
     'confirmationCode',
     16,
   );
-  if (!/^[a-z0-9]{16}$/iu.test(confirmationCode)) {
+  if (!/^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{16}$/iu.test(confirmationCode)) {
     throw new Error('Invalid native Station key confirmation code.');
   }
   return {

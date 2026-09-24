@@ -7,8 +7,15 @@ import {
   type RelayKeyCandidate,
 } from '../../platform/native/relayKeyApproval';
 
-function shortCode(code: string) {
-  return code.replace(/[^a-z0-9]/giu, '').slice(0, 16);
+function normalizeConfirmationCode(value: string): string | null {
+  const normalized = value.replace(/[ -]/gu, '').toUpperCase();
+  return /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{16}$/u.test(normalized)
+    ? normalized
+    : null;
+}
+
+function groupedConfirmationCode(code: string) {
+  return code.match(/.{1,4}/gu)?.join('-') ?? code;
 }
 
 export function RelayRouteKeyApproval({
@@ -34,6 +41,7 @@ export function RelayRouteKeyApproval({
   const [surface, setSurface] = useState<RelayKeyApprovalSurface | null>(null);
   const hasPendingSession = useRef(false);
   const activeAttemptId = useRef(0);
+  const invitationAttempt = useRef<{ id: number; json: string } | null>(null);
   const key = ['native-relay-key-approval', profileName] as const;
   const statusQuery = useQuery({
     queryKey: [...key, 'status'],
@@ -56,10 +64,16 @@ export function RelayRouteKeyApproval({
     ]);
   };
   const begin = useMutation({
-    mutationFn: (input: { invitation: string; attemptId: number }) =>
-      nativeRelayKeyApproval.begin(profileName, input.invitation),
-    onSuccess: async (_candidate, input) => {
-      if (input.attemptId !== activeAttemptId.current) return;
+    mutationFn: (attemptId: number) => {
+      const input = invitationAttempt.current;
+      invitationAttempt.current = null;
+      if (!input || input.id !== attemptId) {
+        throw new Error('Station invitation is no longer available.');
+      }
+      return nativeRelayKeyApproval.begin(profileName, input.json);
+    },
+    onSuccess: async (_candidate, attemptId) => {
+      if (attemptId !== activeAttemptId.current) return;
       setInvitation('');
       setConfirmationCode('');
       setApprovalKeyId('');
@@ -67,9 +81,10 @@ export function RelayRouteKeyApproval({
       setMessage('Candidate received from the native Station verifier.');
       await refresh();
     },
-    onError: (_error, input) => {
-      if (input.attemptId !== activeAttemptId.current) return;
+    onError: (_error, attemptId) => {
+      if (attemptId !== activeAttemptId.current) return;
       setInvitation('');
+      invitationAttempt.current = null;
       setConfirmationCode('');
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
@@ -84,6 +99,7 @@ export function RelayRouteKeyApproval({
       activeAttemptId.current += 1;
       hasPendingSession.current = false;
       setInvitation('');
+      invitationAttempt.current = null;
       setConfirmationCode('');
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
@@ -111,11 +127,19 @@ export function RelayRouteKeyApproval({
       ),
   });
   const approve = useMutation({
-    mutationFn: ({ candidate }: { candidate: RelayKeyCandidate }) =>
+    mutationFn: ({
+      candidate,
+      normalizedCode,
+      fullKeyId,
+    }: {
+      candidate: RelayKeyCandidate;
+      normalizedCode: string;
+      fullKeyId: string;
+    }) =>
       nativeRelayKeyApproval.approve({
         pendingId: candidate.pendingId,
-        confirmationCode,
-        fullKeyId: approvalKeyId,
+        confirmationCode: normalizedCode,
+        fullKeyId,
       }),
     onSuccess: async () => {
       hasPendingSession.current = false;
@@ -136,11 +160,11 @@ export function RelayRouteKeyApproval({
     },
   });
   const revoke = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: { expectedTrustRevision: number; fullKeyId: string }) =>
       nativeRelayKeyApproval.revoke({
         profileName,
-        expectedTrustRevision: statusQuery.data?.trustRevision ?? 0,
-        fullKeyId: revokeKeyId,
+        expectedTrustRevision: input.expectedTrustRevision,
+        fullKeyId: input.fullKeyId,
       }),
     onSuccess: async () => {
       setRevokeKeyId('');
@@ -166,26 +190,44 @@ export function RelayRouteKeyApproval({
     surface.brokerOrigin === brokerOrigin &&
     surface.stationId === stationId &&
     surface.enrollmentId === enrollmentId;
+  const trustStatusCurrent =
+    !statusQuery.isPending &&
+    !statusQuery.isFetching &&
+    !statusQuery.isError &&
+    statusQuery.data !== undefined;
   const statusMatchesRoute =
+    trustStatusCurrent &&
     statusQuery.data?.profileName === profileName &&
     statusQuery.data.brokerOrigin === brokerOrigin &&
     statusQuery.data.stationId === stationId &&
     statusQuery.data.enrollmentId === enrollmentId;
-  const status = statusQuery.data
-    ? statusMatchesRoute
-      ? statusQuery.data.status
-      : 'mismatch'
-    : 'untrusted';
+  const status = statusQuery.isError
+    ? 'unavailable'
+    : !trustStatusCurrent
+      ? 'checking'
+      : statusQuery.data
+        ? statusMatchesRoute
+          ? statusQuery.data.status
+          : 'mismatch'
+        : 'untrusted';
   const canApprove = Boolean(
     candidate &&
       candidateMatchesRoute &&
+      trustStatusCurrent &&
+      (status === 'untrusted' ||
+        status === 'revoked' ||
+        (status === 'approved' &&
+          candidate.keyId !== statusQuery.data?.keyId)) &&
       separateChannelConfirmed &&
-      shortCode(candidate.confirmationCode) === confirmationCode.trim() &&
+      normalizeConfirmationCode(candidate.confirmationCode) !== null &&
+      normalizeConfirmationCode(candidate.confirmationCode) ===
+        normalizeConfirmationCode(confirmationCode) &&
       candidate.keyId === approvalKeyId.trim() &&
       candidate.expiresAt > Date.now(),
   );
   const canRevoke = Boolean(
-    statusQuery.data?.status === 'approved' &&
+    trustStatusCurrent &&
+      statusQuery.data?.status === 'approved' &&
       statusMatchesRoute &&
       statusQuery.data.keyId &&
       statusQuery.data.keyId === revokeKeyId.trim(),
@@ -194,6 +236,7 @@ export function RelayRouteKeyApproval({
     () => () => {
       if (hasPendingSession.current) {
         activeAttemptId.current += 1;
+        invitationAttempt.current = null;
         void nativeRelayKeyApproval.cancel(profileName).catch(() => undefined);
       }
     },
@@ -253,35 +296,37 @@ export function RelayRouteKeyApproval({
                   : 'The saved route does not establish Station identity.'}
         </span>
       </div>
-      {statusQuery.data?.status !== 'untrusted' && statusQuery.data?.keyId && (
-        <section className="relay-route-key-approval__durable">
-          <strong>Durable Station key record</strong>
-          <dl>
-            <div>
-              <dt>Station ID</dt>
-              <dd>{statusQuery.data.stationId}</dd>
-            </div>
-            <div>
-              <dt>Enrollment ID</dt>
-              <dd>{statusQuery.data.enrollmentId}</dd>
-            </div>
-            <div>
-              <dt>Generation</dt>
-              <dd>{statusQuery.data.generation ?? 'unknown'}</dd>
-            </div>
-            <div>
-              <dt>Full key ID</dt>
-              <dd className="relay-route-trust-approval__key-id">
-                {statusQuery.data.keyId}
-              </dd>
-            </div>
-            <div>
-              <dt>Trust revision</dt>
-              <dd>{statusQuery.data.trustRevision}</dd>
-            </div>
-          </dl>
-        </section>
-      )}
+      {trustStatusCurrent &&
+        statusQuery.data?.status !== 'untrusted' &&
+        statusQuery.data?.keyId && (
+          <section className="relay-route-key-approval__durable">
+            <strong>Durable Station key record</strong>
+            <dl>
+              <div>
+                <dt>Station ID</dt>
+                <dd>{statusQuery.data.stationId}</dd>
+              </div>
+              <div>
+                <dt>Enrollment ID</dt>
+                <dd>{statusQuery.data.enrollmentId}</dd>
+              </div>
+              <div>
+                <dt>Generation</dt>
+                <dd>{statusQuery.data.generation ?? 'unknown'}</dd>
+              </div>
+              <div>
+                <dt>Full key ID</dt>
+                <dd className="relay-route-trust-approval__key-id">
+                  {statusQuery.data.keyId}
+                </dd>
+              </div>
+              <div>
+                <dt>Trust revision</dt>
+                <dd>{statusQuery.data.trustRevision}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
       {!candidate && !surfaceMatchesRoute && (
         <div className="relay-route-key-approval__prepare">
@@ -364,10 +409,12 @@ export function RelayRouteKeyApproval({
               const attemptId = ++activeAttemptId.current;
               const oneTimeInvitation = invitation;
               setInvitation('');
+              invitationAttempt.current = {
+                id: attemptId,
+                json: oneTimeInvitation,
+              };
               hasPendingSession.current = true;
-              void begin
-                .mutateAsync({ invitation: oneTimeInvitation, attemptId })
-                .catch(() => undefined);
+              void begin.mutateAsync(attemptId).catch(() => undefined);
             }}
           >
             Discover Station key
@@ -421,7 +468,12 @@ export function RelayRouteKeyApproval({
             <div>
               <dt>Comparison code</dt>
               <dd>
-                <code>{shortCode(candidate.confirmationCode)}</code>
+                <code>
+                  {groupedConfirmationCode(
+                    normalizeConfirmationCode(candidate.confirmationCode) ??
+                      candidate.confirmationCode,
+                  )}
+                </code>
               </dd>
             </div>
             <div>
@@ -478,9 +530,18 @@ export function RelayRouteKeyApproval({
             disabled={!canApprove || busy}
             pending={approve.isPending}
             pendingLabel="Approving…"
-            onClick={() =>
-              void approve.mutateAsync({ candidate }).catch(() => undefined)
-            }
+            onClick={() => {
+              const normalizedCode =
+                normalizeConfirmationCode(confirmationCode);
+              if (!candidate || !normalizedCode) return;
+              void approve
+                .mutateAsync({
+                  candidate,
+                  normalizedCode,
+                  fullKeyId: approvalKeyId.trim(),
+                })
+                .catch(() => undefined);
+            }}
           >
             Approve Station key
           </Button>
@@ -518,7 +579,14 @@ export function RelayRouteKeyApproval({
           <Button
             variant="danger"
             disabled={!canRevoke || busy}
-            onClick={() => void revoke.mutateAsync().catch(() => undefined)}
+            onClick={() =>
+              void revoke
+                .mutateAsync({
+                  expectedTrustRevision: statusQuery.data?.trustRevision ?? 0,
+                  fullKeyId: revokeKeyId.trim(),
+                })
+                .catch(() => undefined)
+            }
           >
             Revoke Station key trust
           </Button>
