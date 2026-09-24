@@ -395,9 +395,18 @@ export function ensureOrchestrationEventStream(
         receiving = true;
       }
       if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
-        const caughtUp = JSON.parse(
-          raw.data,
-        ) as Partial<OrchestrationSnapshotPayload>;
+        // station#2530 review D6: an empty or malformed body is a legitimate
+        // wire shape (an older server, a rolling deploy mid-response) — it
+        // means no reconcile payload, never a reason to throw inside the SSE
+        // handler and drop the connection's whole message loop.
+        let caughtUp: Partial<OrchestrationSnapshotPayload> = {};
+        if (raw.data) {
+          try {
+            caughtUp = JSON.parse(raw.data) as Partial<OrchestrationSnapshotPayload>;
+          } catch {
+            caughtUp = {};
+          }
+        }
         if (caughtUp.sessions) {
           applyOrchestrationSnapshot(caughtUp as OrchestrationSnapshotPayload, {
             apiBase,
