@@ -17,7 +17,10 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
-import { ModelImageCollector } from '../model-image-attachments.js';
+import {
+  ModelImageCollector,
+  summarizeImageOmissions,
+} from '../model-image-attachments.js';
 import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
@@ -1445,8 +1448,11 @@ function withImageOmissions(
   summary: string | undefined,
   omissions: readonly string[],
 ): string | undefined {
-  if (omissions.length === 0) return summary;
-  return [summary, ...omissions].filter(Boolean).join('\n');
+  // One bounded summary, not a line per image: enough rejected blocks used to
+  // push the output past EventStore's ingress ceiling and lose the terminal.
+  const omitted = summarizeImageOmissions(omissions);
+  if (!omitted) return summary;
+  return [summary, omitted].filter(Boolean).join('\n');
 }
 
 /**

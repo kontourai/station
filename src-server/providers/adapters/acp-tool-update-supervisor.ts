@@ -10,7 +10,12 @@ import type {
   CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
-import { ModelImageCollector } from '../model-image-attachments.js';
+import {
+  INLINE_IMAGE_DATA_PLACEHOLDER,
+  isInlineDataUrl,
+  ModelImageCollector,
+  summarizeImageOmissions,
+} from '../model-image-attachments.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** ACP redraws are untrusted input, never a second event store. */
@@ -247,7 +252,10 @@ class BoundedStructuralProjector {
 
   constructor(private readonly maximum: number) {}
 
-  project(value: unknown): RawProjection {
+  project(input: unknown): RawProjection {
+    // Image bytes are not text: a data URL is replaced whole, before any tail
+    // could keep a slice of its base64.
+    const value = this.redacted(input);
     if (this.maximum <= 0) {
       this.omit('bytes', this.conservativeOmittedBytes(value));
       return { bytes: 0, receipt: this.receipt(0) };
@@ -270,8 +278,15 @@ class BoundedStructuralProjector {
     return { value: projected, bytes, receipt: this.receipt(bytes) };
   }
 
+  private redacted(input: unknown): unknown {
+    if (!isInlineDataUrl(input)) return input;
+    this.omit('unsupported');
+    return INLINE_IMAGE_DATA_PLACEHOLDER;
+  }
+
   private walk(input: unknown, depth: number, container: unknown): unknown {
-    if (typeof input === 'string') return this.stringTail(input, container);
+    if (typeof input === 'string')
+      return this.stringTail(this.redacted(input) as string, container);
     if (
       input === null ||
       typeof input === 'boolean' ||
@@ -328,7 +343,16 @@ class BoundedStructuralProjector {
         this.omit('getter');
         continue;
       }
-      const candidate = this.walk(descriptor.value, depth + 1, result);
+      // An image-shaped payload (`{type: 'image', data: <base64>}`) keeps its
+      // shape and loses its bytes.
+      const imageBytes =
+        key === 'data' &&
+        typeof descriptor.value === 'string' &&
+        dataProperty(input, 'type') === 'image';
+      if (imageBytes) this.omit('unsupported');
+      const candidate = imageBytes
+        ? INLINE_IMAGE_DATA_PLACEHOLDER
+        : this.walk(descriptor.value, depth + 1, result);
       (result as Record<string, unknown>)[key] = candidate;
       if (this.fits(result, container)) {
         this.recordStringOmission(descriptor.value, candidate);
@@ -422,8 +446,15 @@ class ProjectionAccumulator {
   readonly reasons = new Set<ReceiptReason>();
   omittedBytes = 0;
   retainedBytes = 0;
-  retain(value: unknown): string | undefined {
-    if (typeof value !== 'string') return undefined;
+  retain(input: unknown): string | undefined {
+    if (typeof input !== 'string') return undefined;
+    // A data URL (an image `uri`, a resource text) is bytes, not text: it is
+    // replaced whole rather than tail-truncated into a base64 slice that would
+    // reach progress text, errors, SSE and the event log.
+    if (isInlineDataUrl(input)) this.omit('unsupported');
+    const value = isInlineDataUrl(input)
+      ? INLINE_IMAGE_DATA_PLACEHOLDER
+      : input;
     const bounded = tailBytes(
       value,
       Math.max(
@@ -906,15 +937,10 @@ export class AcpToolUpdateSupervisor {
         ? call.rawOutput
         : undefined;
     // What was not kept is stated in the output a reader already sees.
+    const omissions = summarizeImageOmissions(call.imageOmissions);
     const output =
-      call.imageOmissions.length > 0 && Array.isArray(projectedOutput)
-        ? [
-            ...projectedOutput,
-            ...call.imageOmissions.map((text) => ({
-              type: 'text' as const,
-              text,
-            })),
-          ]
+      omissions && Array.isArray(projectedOutput)
+        ? [...projectedOutput, { type: 'text' as const, text: omissions }]
         : projectedOutput;
     const receipt = receiptFor(call);
     this.publish(

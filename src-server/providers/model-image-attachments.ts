@@ -1,5 +1,6 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
-import { basename } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, open, realpath } from 'node:fs/promises';
+import { basename, isAbsolute, resolve, sep } from 'node:path';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -7,6 +8,7 @@ import {
   CHAT_IMAGE_MIME_TYPES,
   type ChatAttachmentInput,
   type ChatImageMimeType,
+  sniffChatImageMimeType,
   validateChatAttachment,
 } from '@kontourai/station-contracts/chat-attachment';
 
@@ -22,11 +24,13 @@ import {
  * {@link CHAT_ATTACHMENT_MAX_BYTES} and together within
  * {@link CHAT_ATTACHMENT_MAX_TOTAL_BYTES}. Those are the limits EventStore's
  * ingress enforces on an attachment-bearing event, so an event built here is
- * never rejected there for its images.
+ * never rejected there for its images. The declared type is only a claim: the
+ * decoded bytes must carry that type's magic number, or the image is refused.
  *
  * An image that does not fit is never persisted and never silently vanishes:
  * `add` returns a bounded text marker saying what was dropped and why, which
- * the adapter puts in the tool's own output where its bytes used to be.
+ * the adapter puts in the tool's own output (see
+ * {@link summarizeImageOmissions} for the bounded aggregate form).
  */
 
 const MIB = 1024 * 1024;
@@ -37,10 +41,15 @@ const EXTENSION: Record<ChatImageMimeType, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
 };
+const OMISSION_PREFIX = '[image not shown: ';
 
 export type ModelImageOutcome =
   | { kind: 'attached'; name: string; marker: string }
   | { kind: 'omitted'; marker: string };
+
+function omitted(reason: string): ModelImageOutcome {
+  return { kind: 'omitted', marker: `${OMISSION_PREFIX}${reason}]` };
+}
 
 /** A display-safe rendering of an engine-supplied type string. */
 function describeMimeType(value: unknown): string {
@@ -92,16 +101,18 @@ export class ModelImageCollector {
   ): ModelImageOutcome {
     const type = normalizeMimeType(mimeType);
     if (!type) {
-      return {
-        kind: 'omitted',
-        marker: `[image not shown: ${describeMimeType(mimeType)} is not a supported image type]`,
-      };
+      return omitted(
+        `${describeMimeType(mimeType)} is not a supported image type`,
+      );
     }
     if (typeof base64 !== 'string' || base64.length === 0) {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: the image data was missing]',
-      };
+      return omitted('the image data was missing');
+    }
+    // Past the count limit, refuse before touching the bytes at all.
+    if (this.attachments.length >= CHAT_ATTACHMENT_MAX_COUNT) {
+      return omitted(
+        `only ${CHAT_ATTACHMENT_MAX_COUNT} images can be shown per tool result`,
+      );
     }
     // Refuse on the ENCODED length before copying anything: a whitespace strip
     // of an unbounded string is itself an unbounded allocation.
@@ -117,29 +128,17 @@ export class ModelImageCollector {
 
   /** A `data:<type>;base64,<bytes>` URL; any other URL is not an image here. */
   addDataUrl(url: unknown, nameHint?: string): ModelImageOutcome {
-    if (typeof url !== 'string') {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: the image data was missing]',
-      };
-    }
+    if (typeof url !== 'string') return omitted('the image data was missing');
     const match = /^data:([^;,]{1,128});base64,/iu.exec(url.slice(0, 160));
-    if (!match) {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: only inline image data can be shown]',
-      };
-    }
+    if (!match) return omitted('only inline image data can be shown');
     return this.addBase64(match[1], url.slice(match[0].length), nameHint);
   }
 
-  /** Bytes already in memory (a host file read). */
-  addBytes(
-    mimeType: ChatImageMimeType,
-    bytes: Buffer,
-    nameHint?: string,
-  ): ModelImageOutcome {
+  /** Bytes already in memory (a host file read), typed by their content. */
+  addBytes(bytes: Buffer, nameHint?: string): ModelImageOutcome {
     if (bytes.length > CHAT_ATTACHMENT_MAX_BYTES) return this.tooLarge();
+    const mimeType = sniffChatImageMimeType(bytes.subarray(0, 12));
+    if (!mimeType) return omitted('the file is not a supported image type');
     return this.accept(
       mimeType,
       bytes.toString('base64'),
@@ -154,10 +153,9 @@ export class ModelImageCollector {
   }
 
   private tooLarge(): ModelImageOutcome {
-    return {
-      kind: 'omitted',
-      marker: `[image not shown: larger than the ${CHAT_ATTACHMENT_MAX_BYTES / MIB} MB limit]`,
-    };
+    return omitted(
+      `larger than the ${CHAT_ATTACHMENT_MAX_BYTES / MIB} MB limit`,
+    );
   }
 
   private accept(
@@ -167,16 +165,22 @@ export class ModelImageCollector {
     nameHint: string | undefined,
   ): ModelImageOutcome {
     if (this.attachments.length >= CHAT_ATTACHMENT_MAX_COUNT) {
-      return {
-        kind: 'omitted',
-        marker: `[image not shown: only ${CHAT_ATTACHMENT_MAX_COUNT} images can be shown per tool result]`,
-      };
+      return omitted(
+        `only ${CHAT_ATTACHMENT_MAX_COUNT} images can be shown per tool result`,
+      );
     }
     if (this.totalBytes + decodedBytes > CHAT_ATTACHMENT_MAX_TOTAL_BYTES) {
-      return {
-        kind: 'omitted',
-        marker: `[image not shown: images in this result exceed ${CHAT_ATTACHMENT_MAX_TOTAL_BYTES / MIB} MB combined]`,
-      };
+      return omitted(
+        `images in this result exceed ${CHAT_ATTACHMENT_MAX_TOTAL_BYTES / MIB} MB combined`,
+      );
+    }
+    // The declared type must be what the bytes are: HTML or SVG declared as
+    // `image/png` is not stored and served under that type.
+    if (
+      sniffChatImageMimeType(Buffer.from(base64.slice(0, 24), 'base64')) !==
+      mimeType
+    ) {
+      return omitted(`the data is not a ${mimeType} image`);
     }
     const name =
       safeName(nameHint) ??
@@ -191,10 +195,7 @@ export class ModelImageCollector {
     // The same validator EventStore runs: an image this accepts is one the
     // ingress accepts, so the event cannot be rejected for it downstream.
     if (validateChatAttachment(attachment) !== null) {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: the image data was not valid]',
-      };
+      return omitted('the image data was not valid');
     }
     this.attachments.push(attachment);
     this.totalBytes += decodedBytes;
@@ -202,102 +203,148 @@ export class ModelImageCollector {
   }
 }
 
-/** The image type the bytes themselves declare, from their magic number. */
-export function sniffImageMimeType(
-  head: Uint8Array,
-): ChatImageMimeType | undefined {
-  const starts = (...bytes: number[]) =>
-    bytes.every((byte, index) => head[index] === byte);
-  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
-    return 'image/png';
-  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
-  if (starts(0x47, 0x49, 0x46, 0x38) && (head[4] === 0x37 || head[4] === 0x39))
-    return 'image/gif';
-  if (
-    starts(0x52, 0x49, 0x46, 0x46) &&
-    head[8] === 0x57 &&
-    head[9] === 0x45 &&
-    head[10] === 0x42 &&
-    head[11] === 0x50
-  )
-    return 'image/webp';
-  return undefined;
+const MAX_OMISSION_LINES = 3;
+
+/**
+ * Omission markers folded into a bounded summary. One line per image let an
+ * engine that returns thousands of rejected blocks push the tool's output past
+ * EventStore's ingress ceiling, which rejected the terminal outright. Identical
+ * reasons are counted (`[3 images not shown: …]`), at most
+ * {@link MAX_OMISSION_LINES} distinct reasons are named, and the rest are
+ * counted in one final line.
+ */
+export function summarizeImageOmissions(
+  markers: readonly string[],
+): string | undefined {
+  if (markers.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  for (const marker of markers) {
+    const reason =
+      marker.startsWith(OMISSION_PREFIX) && marker.endsWith(']')
+        ? marker.slice(OMISSION_PREFIX.length, -1)
+        : 'unknown reason';
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  const lines: string[] = [];
+  let rest = 0;
+  for (const [reason, count] of counts) {
+    if (lines.length < MAX_OMISSION_LINES) {
+      lines.push(
+        count === 1
+          ? `${OMISSION_PREFIX}${reason}]`
+          : `[${count} images not shown: ${reason}]`,
+      );
+    } else {
+      rest += count;
+    }
+  }
+  if (rest > 0) lines.push(`[${rest} more images not shown]`);
+  return lines.join('\n');
+}
+
+/** The text that replaces inline image bytes found where text belongs. */
+export const INLINE_IMAGE_DATA_PLACEHOLDER = '[inline image data omitted]';
+
+/** A `data:…;base64,` URL: image bytes, however they are labelled. */
+export function isInlineDataUrl(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\s*data:[^,]{0,256};base64,/iu.test(value.slice(0, 300))
+  );
 }
 
 /**
- * Read an image an engine reports having viewed on this host (Codex's
- * `imageView` names a path, not bytes). Bounded and type-checked by content:
- * the file must be a regular file within the per-image limit whose leading
- * bytes are one of the chat image types. The extension is never trusted, so a
- * path naming anything else yields a marker, not its contents.
- *
- * Opened non-blocking and checked with `fstat` on the SAME descriptor that is
- * read, so a FIFO cannot hang the adapter and a swap between check and read
- * cannot substitute a different file.
+ * Where bytes of an image an engine reported may be read from on this host.
+ * Codex's `imageView` names a path; reading it is only legitimate inside the
+ * session's own workspace, never anywhere the Station process can reach.
  */
-export function addHostImageFile(
+export interface HostImageReadScope {
+  /** Absolute workspace root(s). None known means nothing is readable. */
+  roots: readonly string[];
+}
+
+function isInside(path: string, root: string): boolean {
+  return (
+    path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
+  );
+}
+
+/**
+ * Read an image an engine reports having viewed on this host, asynchronously
+ * and bounded:
+ * - the path must resolve (realpath) inside the realpath of a workspace root;
+ * - the final component must not be a symbolic link, and the file is opened
+ *   `O_NOFOLLOW`, then its device/inode must match the checked path, so a swap
+ *   after the check reads nothing;
+ * - it must be a regular file within the per-image limit whose leading bytes
+ *   are one of the chat image types. The extension is never trusted.
+ *
+ * Anything else yields a marker naming why, never the file's contents.
+ */
+export async function addWorkspaceImageFile(
   collector: ModelImageCollector,
   path: unknown,
-): ModelImageOutcome {
+  scope: HostImageReadScope,
+): Promise<ModelImageOutcome> {
   if (typeof path !== 'string' || path.length === 0 || path.length > 4096) {
-    return {
-      kind: 'omitted',
-      marker: '[image not shown: no image path was reported]',
-    };
+    return omitted('no image path was reported');
   }
-  let fd: number | undefined;
+  const roots = scope.roots.filter((root) => isAbsolute(root));
+  if (roots.length === 0) {
+    return omitted('the session has no known workspace to read images from');
+  }
+  const requested = isAbsolute(path) ? path : resolve(roots[0]!, path);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
-    const stat = fstatSync(fd);
-    if (!stat.isFile()) {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: the viewed path is not a file]',
-      };
+    const link = await lstat(requested);
+    if (link.isSymbolicLink()) {
+      return omitted('the viewed path is a symbolic link');
     }
+    const real = await realpath(requested);
+    const realRoots = (
+      await Promise.all(roots.map((root) => realpath(root).catch(() => null)))
+    ).filter((root): root is string => root !== null);
+    if (!realRoots.some((root) => isInside(real, root))) {
+      return omitted('the viewed file is outside the session workspace');
+    }
+    const checked = await lstat(real);
+    handle = await open(
+      real,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
+    const stat = await handle.stat();
+    if (stat.dev !== checked.dev || stat.ino !== checked.ino) {
+      return omitted('the image file changed while it was read');
+    }
+    if (!stat.isFile()) return omitted('the viewed path is not a file');
     if (stat.size > CHAT_ATTACHMENT_MAX_BYTES) {
-      return {
-        kind: 'omitted',
-        marker: `[image not shown: larger than the ${CHAT_ATTACHMENT_MAX_BYTES / MIB} MB limit]`,
-      };
+      return omitted(
+        `larger than the ${CHAT_ATTACHMENT_MAX_BYTES / MIB} MB limit`,
+      );
     }
-    // Read one byte past the declared size so a file that grew after the stat
-    // is refused rather than silently truncated into a different image.
+    // One byte past the declared size, so a file that grew after the stat is
+    // refused rather than silently truncated into a different image.
     const buffer = Buffer.alloc(stat.size + 1);
     let length = 0;
     while (length < buffer.length) {
-      const read = readSync(fd, buffer, length, buffer.length - length, null);
-      if (read === 0) break;
-      length += read;
+      const { bytesRead } = await handle.read(
+        buffer,
+        length,
+        buffer.length - length,
+        null,
+      );
+      if (bytesRead === 0) break;
+      length += bytesRead;
     }
     if (length === 0 || length > stat.size) {
-      return {
-        kind: 'omitted',
-        marker: '[image not shown: the image file changed while it was read]',
-      };
+      return omitted('the image file changed while it was read');
     }
-    const bytes = buffer.subarray(0, length);
-    const mimeType = sniffImageMimeType(bytes.subarray(0, 12));
-    if (!mimeType) {
-      return {
-        kind: 'omitted',
-        marker:
-          '[image not shown: the viewed file is not a supported image type]',
-      };
-    }
-    return collector.addBytes(mimeType, bytes, basename(path));
+    return collector.addBytes(buffer.subarray(0, length), basename(real));
   } catch {
-    return {
-      kind: 'omitted',
-      marker: '[image not shown: the viewed image could not be read]',
-    };
+    return omitted('the viewed image could not be read');
   } finally {
-    if (fd !== undefined) {
-      try {
-        closeSync(fd);
-      } catch {
-        // Nothing to report: the read already has its outcome.
-      }
-    }
+    await handle?.close().catch(() => undefined);
   }
 }

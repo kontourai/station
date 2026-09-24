@@ -20,6 +20,7 @@ import {
   CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
   type PersistedChatAttachment,
   parseChatAttachmentDataUrl,
+  sniffChatImageMimeType,
   validateChatAttachments,
   validatePersistedChatAttachmentDescriptor,
 } from '@kontourai/station-contracts/chat-attachment';
@@ -533,6 +534,62 @@ type EventStoreIngressLocation =
   | 'canonical-attachments'
   | 'canonical-attachment'
   | 'canonical-attachment-data-url';
+
+/** How many live tool events' written blob refs are remembered for append. */
+const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
+
+/**
+ * Tell the reader of a tool's output which of its images were not kept, and
+ * why. An adapter marks a kept image `[image: <name>]` where its bytes were;
+ * that marker is rewritten in place, so the output never promises an image
+ * the transcript cannot show. Images no marker names get one summary line.
+ */
+function withToolImageNotes(
+  output: unknown,
+  notes: ReadonlyArray<{ name: string; reason: string }>,
+): unknown {
+  const unplaced = new Set(notes);
+  const rewrite = (value: unknown, depth: number): unknown => {
+    if (typeof value === 'string') {
+      let text = value;
+      for (const note of notes) {
+        const marker = `[image: ${note.name}]`;
+        if (!text.includes(marker)) continue;
+        text = text
+          .split(marker)
+          .join(`[image not shown: ${note.name} ${note.reason}]`);
+        unplaced.delete(note);
+      }
+      return text;
+    }
+    if (!value || typeof value !== 'object' || depth > 8) return value;
+    if (Array.isArray(value)) return value.map((v) => rewrite(v, depth + 1));
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, rewrite(v, depth + 1)]),
+    );
+  };
+  const rewritten = rewrite(output, 0);
+  if (unplaced.size === 0) return rewritten;
+  const line = [...unplaced]
+    .map((note) => `[image not shown: ${note.name} ${note.reason}]`)
+    .join('\n');
+  if (rewritten === undefined || rewritten === null) return line;
+  if (typeof rewritten === 'string')
+    return rewritten ? `${rewritten}\n${line}` : line;
+  if (Array.isArray(rewritten))
+    return [...rewritten, { type: 'text', text: line }];
+  if (
+    typeof rewritten === 'object' &&
+    Array.isArray((rewritten as { content?: unknown }).content)
+  ) {
+    const record = rewritten as { content: unknown[] };
+    return {
+      ...record,
+      content: [...record.content, { type: 'text', text: line }],
+    };
+  }
+  return rewritten;
+}
 
 class EventStoreIngressError extends Error {
   constructor(reason: string) {
@@ -2681,28 +2738,22 @@ export class EventStore {
    * The persisted form of an event: identical, except that attachment bytes
    * are replaced by a content-addressed reference (archive#3374) — a
    * `turn.started`'s request attachments, and the images a `tool.completed`
-   * returned to the model.
+   * returned to the model ({@link persistedToolImages}).
    *
    * This projection is also used for the live event bus, so raw attachment
    * bytes are never an acceptable fallback projection. A blob write failure
-   * rejects a `turn.started` before it can persist or reach SSE. A
-   * `tool.completed` instead keeps the image's descriptor WITHOUT any bytes or
-   * reference: rejecting it would lose the tool's only terminal and leave its
-   * row running forever, and a descriptor with neither `dataUrl` nor `blobRef`
-   * is the existing "no preview available" chip — it names what the tool
-   * returned and claims nothing more. The blob store counts the failure.
+   * rejects a `turn.started` before it can persist or reach SSE.
    */
   private persistedForm(event: CanonicalRuntimeEvent): {
     payload: CanonicalRuntimeEvent;
     blobRefs: string[];
   } {
-    if (
-      (event.method !== 'turn.started' && event.method !== 'tool.completed') ||
-      !event.attachments?.length
-    ) {
+    if (event.method === 'tool.completed' && event.attachments?.length) {
+      return this.persistedToolImages(event);
+    }
+    if (event.method !== 'turn.started' || !event.attachments?.length) {
       return { payload: event, blobRefs: [] };
     }
-    const toolImages = event.method === 'tool.completed';
     if (
       event.attachments.some((attachment) => attachment.dataUrl !== undefined)
     ) {
@@ -2730,28 +2781,213 @@ export class EventStore {
             'Attachment projection rejected an invalid data URL.',
           );
         const ref = this.attachmentBlobs.write(parsed.base64);
-        stripped += attachment.dataUrl.length;
-        const { dataUrl: _bytes, ...metadata } = attachment;
-        if (!ref) {
-          if (toolImages) return metadata;
+        if (!ref)
           throw new Error(
             'Attachment projection could not store attachment bytes.',
           );
-        }
         blobRefs.push(ref);
+        stripped += attachment.dataUrl.length;
+        const { dataUrl: _bytes, ...metadata } = attachment;
         return { ...metadata, blobRef: ref };
       },
     );
     if (stripped === 0) return { payload: event, blobRefs };
+    this.observeAttachmentBytesStripped(stripped, event.provider);
+    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  private observeAttachmentBytesStripped(bytes: number, provider: string) {
     try {
       // Guarded, and the reference is inside the try: a partial test double of
       // the metrics module makes the NAME throw on access, not the `.add`.
       // Telemetry observes persistence; it never decides it.
-      attachmentBytesStripped.add(stripped, { provider: event.provider });
+      attachmentBytesStripped.add(bytes, { provider });
     } catch {
       // Observation only.
     }
-    return { payload: { ...event, attachments }, blobRefs };
+  }
+
+  /**
+   * Blob references this ingress wrote while projecting a live event, keyed
+   * by thread and event, so the append of that same projected event (which
+   * arrives reference-only) may bind them. Bounded; an entry that ages out
+   * only costs the image its preview, never an unauthorized binding.
+   */
+  private readonly liveToolImageRefs = new Map<string, ReadonlySet<string>>();
+
+  private rememberLiveToolImageRefs(
+    event: CanonicalRuntimeEvent,
+    refs: readonly string[],
+  ): void {
+    if (refs.length === 0) return;
+    const key = `${event.threadId}\u0000${event.eventId}`;
+    this.liveToolImageRefs.delete(key);
+    this.liveToolImageRefs.set(key, new Set(refs));
+    while (this.liveToolImageRefs.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
+      const oldest = this.liveToolImageRefs.keys().next().value;
+      if (oldest === undefined) break;
+      this.liveToolImageRefs.delete(oldest);
+    }
+  }
+
+  /**
+   * Charge a tool image against the same per-chat and per-Station attachment
+   * budget user uploads draw on, in ONE conditional statement: atomic on its
+   * own and safe inside a caller's transaction. Returns false, charging
+   * nothing, when either budget would be exceeded.
+   */
+  private chargeToolImageCapacity(
+    threadId: string,
+    encodedBytes: number,
+  ): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT INTO orchestration_attachment_quota (thread_id, encoded_bytes)
+         SELECT ?, ?
+          WHERE COALESCE((SELECT encoded_bytes FROM orchestration_attachment_quota
+                           WHERE thread_id = ?), 0) + ? <= ?
+            AND (SELECT COALESCE(SUM(encoded_bytes), 0)
+                   FROM orchestration_attachment_quota) + ? <= ?
+         ON CONFLICT(thread_id) DO UPDATE SET
+           encoded_bytes = encoded_bytes + excluded.encoded_bytes`,
+      )
+      .run(
+        threadId,
+        encodedBytes,
+        threadId,
+        encodedBytes,
+        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES,
+        encodedBytes,
+        CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES,
+      ) as { changes: number | bigint };
+    return Number(result.changes) > 0;
+  }
+
+  private refundToolImageCapacity(threadId: string, encodedBytes: number) {
+    this.db
+      .prepare(
+        `UPDATE orchestration_attachment_quota
+            SET encoded_bytes = MAX(encoded_bytes - ?, 0)
+          WHERE thread_id = ?`,
+      )
+      .run(encodedBytes, threadId);
+  }
+
+  private isAttachmentBoundToThread(ref: string, threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_attachment_refs
+            WHERE blob_ref = ? AND thread_id = ? LIMIT 1`,
+        )
+        .get(ref, threadId) !== undefined
+    );
+  }
+
+  /**
+   * The persisted form of the images a `tool.completed` returned.
+   *
+   * Only bytes that reach THIS ingress become a binding. A reference that
+   * arrives without bytes is bound only when this store wrote it while
+   * projecting the same live event, or when it is already bound to the same
+   * thread. Anything else — a replayed, imported, or relayed event naming a
+   * digest — would otherwise bind a blob that may belong to someone else's
+   * private thread to this one, and the attachment route would then serve it.
+   * Content addressing makes that digest computable by anyone holding the
+   * bytes, so possession of the reference proves nothing.
+   *
+   * An image is never allowed to lose the tool's only terminal (the row would
+   * run forever). When it cannot be kept — its bytes are not the type it
+   * declares, the chat's attachment budget is spent, the blob write failed, or
+   * a bare reference cannot be bound — the event keeps the descriptor WITHOUT
+   * bytes or reference (the "no preview" chip) and the output a reader sees
+   * says which image was not kept and why.
+   */
+  private persistedToolImages(
+    event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
+  ): { payload: CanonicalRuntimeEvent; blobRefs: string[] } {
+    const attachments = event.attachments ?? [];
+    if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
+      const attachmentError = validateChatAttachments(
+        attachments as Parameters<typeof validateChatAttachments>[0],
+      );
+      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+    }
+    const live = this.liveToolImageRefs.get(
+      `${event.threadId}\u0000${event.eventId}`,
+    );
+    const blobRefs: string[] = [];
+    const written: string[] = [];
+    const notKept: Array<{ name: string; reason: string }> = [];
+    let stripped = 0;
+    let changed = false;
+    const persisted = attachments.map((attachment): PersistedChatAttachment => {
+      const { dataUrl, blobRef, ...descriptor } = attachment;
+      if (dataUrl === undefined) {
+        if (
+          isAttachmentBlobRef(blobRef) &&
+          (live?.has(blobRef) ||
+            this.isAttachmentBoundToThread(blobRef, event.threadId))
+        ) {
+          blobRefs.push(blobRef);
+          return attachment;
+        }
+        if (blobRef !== undefined) {
+          changed = true;
+          notKept.push({
+            name: attachment.name,
+            reason: 'is not stored on this Station',
+          });
+        }
+        return descriptor;
+      }
+      changed = true;
+      stripped += dataUrl.length;
+      const parsed = parseChatAttachmentDataUrl(dataUrl);
+      if (!parsed)
+        throw new Error('Attachment projection rejected an invalid data URL.');
+      if (
+        sniffChatImageMimeType(
+          Buffer.from(parsed.base64.slice(0, 24), 'base64'),
+        ) !== attachment.mimeType
+      ) {
+        notKept.push({
+          name: attachment.name,
+          reason: `is not a valid ${attachment.mimeType} image`,
+        });
+        return descriptor;
+      }
+      if (!this.chargeToolImageCapacity(event.threadId, dataUrl.length)) {
+        notKept.push({
+          name: attachment.name,
+          reason: "could not be stored: this chat's attachment storage is full",
+        });
+        return descriptor;
+      }
+      const ref = this.attachmentBlobs.write(parsed.base64);
+      if (!ref) {
+        this.refundToolImageCapacity(event.threadId, dataUrl.length);
+        notKept.push({ name: attachment.name, reason: 'could not be stored' });
+        return descriptor;
+      }
+      blobRefs.push(ref);
+      written.push(ref);
+      return { ...descriptor, blobRef: ref };
+    });
+    if (!changed) return { payload: event, blobRefs };
+    this.rememberLiveToolImageRefs(event, written);
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: {
+        ...event,
+        attachments: persisted,
+        ...(notKept.length > 0
+          ? { output: withToolImageNotes(event.output, notKept) }
+          : {}),
+      },
+      blobRefs,
+    };
   }
 
   /**

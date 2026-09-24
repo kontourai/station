@@ -1,4 +1,8 @@
 import type { ToolOutputReceipt } from '@kontourai/station-contracts/runtime-events';
+import {
+  INLINE_IMAGE_DATA_PLACEHOLDER,
+  isInlineDataUrl,
+} from './model-image-attachments.js';
 
 /**
  * Shared bounded-mapping helpers for attached-session transcript sources.
@@ -28,7 +32,13 @@ export function projectBoundedToolOutput(input: unknown): {
   let properties = 128;
   let omittedBytesAtLeast = 0;
   const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
-  const walk = (value: unknown, depth: number): unknown => {
+  const walk = (input: unknown, depth: number): unknown => {
+    // Image bytes are not text. A data URL anywhere in the output is replaced
+    // whole, before the tail below could keep a slice of its base64.
+    const value = isInlineDataUrl(input)
+      ? INLINE_IMAGE_DATA_PLACEHOLDER
+      : input;
+    if (value !== input) reasons.add('unsupported');
     if (typeof value === 'string') {
       // Count JSON escaping, not only the source's UTF-8 bytes. Keep the tail
       // (where command failures and exit summaries usually appear).
@@ -88,7 +98,16 @@ export function projectBoundedToolOutput(input: unknown): {
         continue;
       }
       remaining -= keyBytes;
-      const projected = walk(descriptor.value, depth + 1);
+      // An image-shaped payload (`{type: 'image', data: <base64>}`) keeps its
+      // shape and loses its bytes, wherever in the result it sits.
+      const imageBytes =
+        key === 'data' &&
+        typeof descriptor.value === 'string' &&
+        Object.getOwnPropertyDescriptor(value, 'type')?.value === 'image';
+      if (imageBytes) reasons.add('unsupported');
+      const projected = imageBytes
+        ? INLINE_IMAGE_DATA_PLACEHOLDER
+        : walk(descriptor.value, depth + 1);
       Object.defineProperty(result, key, {
         value: projected,
         enumerable: true,

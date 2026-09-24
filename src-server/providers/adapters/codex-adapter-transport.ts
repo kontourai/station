@@ -653,19 +653,43 @@ export class CodexAdapterTransport {
       return;
     }
 
-    try {
-      handleCodexNotification({
-        record,
-        notification,
-        nowIso: () => this.now().toISOString(),
-        publish: (event) => this.publish(event),
-        onQuotaUpdate: this.onQuotaUpdate,
-      });
-    } catch {
-      // Readline notification delivery is a transport boundary: malformed
-      // provider data must never escape and disrupt subsequent messages.
-      this.onNotificationError?.(notification.method);
-    }
+    const deliver = () => {
+      try {
+        return handleCodexNotification({
+          record,
+          notification,
+          nowIso: () => this.now().toISOString(),
+          publish: (event) => this.publish(event),
+          onQuotaUpdate: this.onQuotaUpdate,
+        });
+      } catch {
+        // Readline notification delivery is a transport boundary: malformed
+        // provider data must never escape and disrupt subsequent messages.
+        this.onNotificationError?.(notification.method);
+        return undefined;
+      }
+    };
+    // Handling is synchronous except for an image read from the host. While
+    // one is pending, this session's later notifications queue behind it, so
+    // publish order stays the engine's order (a tool's terminal never lands
+    // after the turn that contains it). The common path never waits.
+    const barrier = record?.notificationBarrier;
+    const pending = barrier
+      ? barrier.then(deliver)
+      : (deliver() as Promise<void> | undefined);
+    if (!record || !pending) return;
+    const settled: Promise<void> = pending.then(
+      () => undefined,
+      () => {
+        this.onNotificationError?.(notification.method);
+      },
+    );
+    record.notificationBarrier = settled;
+    void settled.then(() => {
+      if (record.notificationBarrier === settled) {
+        record.notificationBarrier = undefined;
+      }
+    });
   }
 
   private terminateRecord(record: CodexSessionRecord): Promise<void> {

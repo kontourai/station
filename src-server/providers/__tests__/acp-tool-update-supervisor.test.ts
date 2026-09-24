@@ -422,11 +422,11 @@ describe('AcpToolUpdateSupervisor', () => {
           uri: 'https://image.example/a',
           omitted: 'image-bytes',
         },
-        // `secret-bytes` is not base64, so it becomes no attachment — and the
+        // `secret-bytes` is not a PNG, so it becomes no attachment — and the
         // output says so rather than dropping it silently.
         {
           type: 'text',
-          text: '[image not shown: the image data was not valid]',
+          text: '[image not shown: the data is not a image/png image]',
         },
       ],
       outputReceipt: { truncated: true, fullOutput: 'unavailable' },
@@ -788,5 +788,85 @@ describe('AcpToolUpdateSupervisor — images a tool returned', () => {
       store.close();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('AcpToolUpdateSupervisor — image bytes never ride text', () => {
+  const PNG_1X1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const probe = PNG_1X1_BASE64.slice(20, 44);
+  const dataUri = `data:image/png;base64,${PNG_1X1_BASE64}`;
+
+  test('a data: image uri is not printed into progress text', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'uri' });
+    supervisor.acceptUpdate({
+      toolCallId: 'uri',
+      hasContent: true,
+      content: [{ type: 'content', content: { type: 'image', uri: dataUri } }],
+    });
+    const progress = events.find((event) => event.method === 'tool.progress');
+    expect(progress).toMatchObject({
+      message: '[image: [inline image data omitted]]',
+    });
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('a data: image uri is not printed into a failed call error', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'fail' });
+    supervisor.acceptUpdate({
+      toolCallId: 'fail',
+      hasContent: true,
+      content: [{ type: 'image', uri: dataUri, mimeType: 'image/png' }],
+      status: 'failed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.status).toBe('error');
+    expect(terminal.error).toContain('[inline image data omitted]');
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('rawOutput data URLs and image-shaped payloads are replaced whole', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'raw' });
+    supervisor.acceptUpdate({
+      toolCallId: 'raw',
+      hasRawOutput: true,
+      rawOutput: {
+        screenshot: dataUri,
+        blocks: [
+          { type: 'image', data: PNG_1X1_BASE64, mimeType: 'image/png' },
+        ],
+      },
+      status: 'completed',
+      hasStatus: true,
+    });
+    const terminal = events.at(-1) as any;
+    expect(terminal.output).toEqual({
+      screenshot: '[inline image data omitted]',
+      blocks: [
+        {
+          type: 'image',
+          data: '[inline image data omitted]',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+    expect(JSON.stringify(events)).not.toContain(probe);
+  });
+
+  test('a bare data URL rawOutput is replaced, not tail-truncated', () => {
+    const { events, supervisor } = harness();
+    supervisor.acceptStarted({ toolCallId: 'bare' });
+    supervisor.acceptUpdate({
+      toolCallId: 'bare',
+      hasRawOutput: true,
+      rawOutput: `data:image/png;base64,${'A'.repeat(20_000)}`,
+      status: 'completed',
+      hasStatus: true,
+    });
+    expect((events.at(-1) as any).output).toBe('[inline image data omitted]');
   });
 });

@@ -119,6 +119,11 @@ export interface CodexSessionRecord {
    * doubles).
    */
   stopped: boolean;
+  /**
+   * Set while a notification is waiting on I/O (an image read from the host);
+   * the transport delivers this session's later notifications after it.
+   */
+  notificationBarrier?: Promise<void>;
   terminationPromise?: Promise<void>;
   /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
   stdoutIngressLimit?: {

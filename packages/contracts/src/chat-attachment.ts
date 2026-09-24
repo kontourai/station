@@ -131,6 +131,33 @@ function hasUnsafeAttachmentNameCharacter(value: string): boolean {
   });
 }
 
+/**
+ * The chat image type the bytes themselves declare, from their magic number,
+ * or null when they are none of the allowlisted image types. A declared
+ * `mimeType` is a claim; this is the derivation to check it against before
+ * bytes an engine produced are stored and served as that type.
+ */
+export function sniffChatImageMimeType(
+  head: ArrayLike<number>,
+): ChatImageMimeType | null {
+  const starts = (...bytes: number[]) =>
+    bytes.every((byte, index) => head[index] === byte);
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    return 'image/png';
+  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (starts(0x47, 0x49, 0x46, 0x38) && (head[4] === 0x37 || head[4] === 0x39))
+    return 'image/gif';
+  if (
+    starts(0x52, 0x49, 0x46, 0x46) &&
+    head[8] === 0x57 &&
+    head[9] === 0x45 &&
+    head[10] === 0x42 &&
+    head[11] === 0x50
+  )
+    return 'image/webp';
+  return null;
+}
+
 export function attachmentKindForMimeType(
   mimeType: string,
 ): ChatAttachmentKind | null {

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import { sniffChatImageMimeType } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
@@ -7,10 +8,10 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import {
-  addHostImageFile,
+  addWorkspaceImageFile,
+  type HostImageReadScope,
   ModelImageCollector,
   type ModelImageOutcome,
-  sniffImageMimeType,
 } from '../model-image-attachments.js';
 import { isSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 
@@ -496,58 +497,93 @@ export function deriveToolOutput(item: Record<string, unknown>): unknown {
 }
 
 /**
- * A generated image's bytes. Codex reports them as base64 (`result`), with no
- * type beside them, so the type is read from the decoded bytes themselves; a
- * data URL is accepted as well. With no inline bytes, the file Codex saved is
- * read instead.
+ * A generated image's inline bytes. Codex reports them as base64 (`result`)
+ * with no type beside them, so the type is read from the decoded bytes; a data
+ * URL is accepted as well. `undefined` means there were no inline bytes.
  */
-function addGeneratedImage(
+function addGeneratedInlineImage(
   collector: ModelImageCollector,
   item: Record<string, unknown>,
-): ModelImageOutcome {
+): ModelImageOutcome | undefined {
   const result = extractString(item.result);
-  if (result?.startsWith('data:')) return collector.addDataUrl(result);
-  if (result) {
-    const head = Buffer.from(result.slice(0, 16), 'base64');
-    const mimeType = sniffImageMimeType(head);
-    if (!mimeType) {
-      return {
-        kind: 'omitted',
-        marker:
-          '[image not shown: the generated image is not a supported image type]',
-      };
-    }
-    return collector.addBase64(mimeType, result);
+  if (!result) return undefined;
+  if (result.startsWith('data:')) return collector.addDataUrl(result);
+  const mimeType = sniffChatImageMimeType(
+    Buffer.from(result.slice(0, 16), 'base64'),
+  );
+  if (!mimeType) {
+    return {
+      kind: 'omitted',
+      marker:
+        '[image not shown: the generated image is not a supported image type]',
+    };
   }
-  if (extractString(item.savedPath))
-    return addHostImageFile(collector, item.savedPath);
+  return collector.addBase64(mimeType, result);
+}
+
+type ToolOutputAndImages = {
+  output: unknown;
+  attachments?: ChatAttachmentInput[];
+};
+
+/**
+ * Whether this item's image must be read from the host filesystem — an
+ * `imageView` (a path, never bytes), or a generated image reported only by
+ * the file Codex saved. Those reads are asynchronous; every other item maps
+ * synchronously through {@link deriveToolOutputAndImages}.
+ */
+export function needsHostImageRead(item: Record<string, unknown>): boolean {
+  return (
+    item.type === 'imageView' ||
+    (item.type === 'imageGeneration' &&
+      !extractString(item.result) &&
+      Boolean(extractString(item.savedPath)))
+  );
+}
+
+/**
+ * The host-read half of {@link deriveToolOutputAndImages}, bounded to the
+ * session's workspace (`addWorkspaceImageFile`). A refusal is a marker in the
+ * output, never the file's contents.
+ */
+export async function deriveHostToolOutputAndImages(
+  item: Record<string, unknown>,
+  scope: HostImageReadScope,
+): Promise<ToolOutputAndImages> {
+  const collector = new ModelImageCollector();
+  const path = item.type === 'imageView' ? item.path : item.savedPath;
+  const outcome = await addWorkspaceImageFile(collector, path, scope);
+  const revisedPrompt =
+    item.type === 'imageGeneration'
+      ? extractString(item.revisedPrompt)
+      : undefined;
   return {
-    kind: 'omitted',
-    marker: '[image not shown: no image was returned]',
+    output: [revisedPrompt, outcome.marker].filter(Boolean).join('\n'),
+    attachments: collector.result(),
   };
 }
 
 /**
- * The tool's output with every image lifted out as an attachment.
+ * The tool's output with every inline image lifted out as an attachment.
  *
  * Image bytes never stay in `output`: that field is bounded to a text tail
- * (`projectBoundedToolOutput`), which would have kept a meaningless slice of
- * base64 — and before this, `imageView` and image generation were not
+ * (`projectBoundedToolOutput`, which also replaces any data URL or
+ * image-shaped payload left elsewhere in the result), which would have kept a
+ * meaningless slice of base64 — and before this, image generation was not
  * surfaced at all. Each image is replaced in place by a short marker naming
- * the attachment it became, or saying why it was not kept.
+ * the attachment it became, or saying why it was not kept. Items that need a
+ * host read go through {@link deriveHostToolOutputAndImages} instead.
  */
-export function deriveToolOutputAndImages(item: Record<string, unknown>): {
-  output: unknown;
-  attachments?: ChatAttachmentInput[];
-} {
+export function deriveToolOutputAndImages(
+  item: Record<string, unknown>,
+): ToolOutputAndImages {
   const collector = new ModelImageCollector();
   switch (item.type) {
-    case 'imageView': {
-      const outcome = addHostImageFile(collector, item.path);
-      return { output: outcome.marker, attachments: collector.result() };
-    }
     case 'imageGeneration': {
-      const outcome = addGeneratedImage(collector, item);
+      const outcome = addGeneratedInlineImage(collector, item) ?? {
+        kind: 'omitted',
+        marker: '[image not shown: no image was returned]',
+      };
       const revisedPrompt = extractString(item.revisedPrompt);
       return {
         output: [revisedPrompt, outcome.marker].filter(Boolean).join('\n'),

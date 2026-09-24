@@ -1,4 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -7,8 +13,9 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
-  addHostImageFile,
+  addWorkspaceImageFile,
   ModelImageCollector,
+  summarizeImageOmissions,
 } from '../model-image-attachments.js';
 
 const PNG_1X1_BASE64 =
@@ -103,52 +110,180 @@ describe('ModelImageCollector', () => {
   });
 });
 
-describe('addHostImageFile', () => {
+describe('ModelImageCollector — declared type vs. the bytes', () => {
+  test.each([
+    ['HTML', Buffer.from('<html><script>alert(1)</script></html>')],
+    ['SVG', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
+    ['a JPEG', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])],
+  ])('refuses %s bytes declared as image/png', (_label, bytes) => {
+    const collector = new ModelImageCollector();
+    expect(collector.addBase64('image/png', bytes.toString('base64'))).toEqual({
+      kind: 'omitted',
+      marker: '[image not shown: the data is not a image/png image]',
+    });
+    expect(
+      collector.addDataUrl(`data:image/png;base64,${bytes.toString('base64')}`)
+        .kind,
+    ).toBe('omitted');
+    expect(collector.result()).toBeUndefined();
+  });
+});
+
+describe('summarizeImageOmissions', () => {
+  test('counts identical reasons and bounds distinct ones', () => {
+    const markers = [
+      ...Array.from(
+        { length: 4000 },
+        () => '[image not shown: image/tiff is not a supported image type]',
+      ),
+      ...Array.from(
+        { length: 50 },
+        (_, i) => `[image not shown: type-${i} is not a supported image type]`,
+      ),
+    ];
+    const summary = summarizeImageOmissions(markers)!;
+    expect(summary.split('\n')).toEqual([
+      '[4000 images not shown: image/tiff is not a supported image type]',
+      '[image not shown: type-0 is not a supported image type]',
+      '[image not shown: type-1 is not a supported image type]',
+      '[48 more images not shown]',
+    ]);
+    expect(summarizeImageOmissions([])).toBeUndefined();
+  });
+});
+
+describe('addWorkspaceImageFile', () => {
   let dir: string;
+  let workspace: string;
+  let outside: string;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'host-image-'));
+    workspace = join(dir, 'workspace');
+    outside = join(dir, 'outside');
+    mkdirSync(workspace);
+    mkdirSync(outside);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  test('reads a real image by its content type and keeps its file name', () => {
-    const path = join(dir, 'chart.png');
+  test('reads an image inside the workspace by its content type', async () => {
+    const path = join(workspace, 'chart.png');
     writeFileSync(path, PNG_1X1);
     const collector = new ModelImageCollector();
-    expect(addHostImageFile(collector, path)).toMatchObject({
-      kind: 'attached',
-      name: 'chart.png',
-    });
+    expect(
+      await addWorkspaceImageFile(collector, path, { roots: [workspace] }),
+    ).toMatchObject({ kind: 'attached', name: 'chart.png' });
     expect(collector.result()?.[0]).toMatchObject({
       mimeType: 'image/png',
       size: PNG_1X1.length,
     });
   });
 
-  test('never returns the contents of a non-image file, whatever its extension', () => {
-    const path = join(dir, 'secrets.png');
-    writeFileSync(path, 'API_KEY=hunter2');
+  test('refuses a real image outside the workspace', async () => {
+    const path = join(outside, 'private.png');
+    writeFileSync(path, PNG_1X1);
     const collector = new ModelImageCollector();
-    const outcome = addHostImageFile(collector, path);
-    expect(outcome).toEqual({
+    expect(
+      await addWorkspaceImageFile(collector, path, { roots: [workspace] }),
+    ).toEqual({
       kind: 'omitted',
       marker:
-        '[image not shown: the viewed file is not a supported image type]',
+        '[image not shown: the viewed file is outside the session workspace]',
     });
     expect(collector.result()).toBeUndefined();
   });
 
-  test('refuses a directory, a missing path, and an oversize file', () => {
+  test('refuses a relative path that climbs out of the workspace', async () => {
+    writeFileSync(join(outside, 'private.png'), PNG_1X1);
     const collector = new ModelImageCollector();
-    expect(addHostImageFile(collector, dir).kind).toBe('omitted');
-    expect(addHostImageFile(collector, join(dir, 'missing.png')).kind).toBe(
-      'omitted',
+    expect(
+      (
+        await addWorkspaceImageFile(collector, '../outside/private.png', {
+          roots: [workspace],
+        })
+      ).marker,
+    ).toBe(
+      '[image not shown: the viewed file is outside the session workspace]',
     );
-    const big = join(dir, 'big.png');
+  });
+
+  test('refuses a symlink inside the workspace that points outside', async () => {
+    writeFileSync(join(outside, 'private.png'), PNG_1X1);
+    const link = join(workspace, 'innocent.png');
+    symlinkSync(join(outside, 'private.png'), link);
+    const collector = new ModelImageCollector();
+    expect(
+      await addWorkspaceImageFile(collector, link, { roots: [workspace] }),
+    ).toEqual({
+      kind: 'omitted',
+      marker: '[image not shown: the viewed path is a symbolic link]',
+    });
+    expect(collector.result()).toBeUndefined();
+  });
+
+  test('refuses a path through a symlinked directory that leaves the workspace', async () => {
+    writeFileSync(join(outside, 'private.png'), PNG_1X1);
+    symlinkSync(outside, join(workspace, 'escape'));
+    const collector = new ModelImageCollector();
+    expect(
+      (
+        await addWorkspaceImageFile(
+          collector,
+          join(workspace, 'escape', 'private.png'),
+          { roots: [workspace] },
+        )
+      ).marker,
+    ).toBe(
+      '[image not shown: the viewed file is outside the session workspace]',
+    );
+  });
+
+  test('refuses everything when the session has no known workspace', async () => {
+    const path = join(workspace, 'chart.png');
+    writeFileSync(path, PNG_1X1);
+    const collector = new ModelImageCollector();
+    expect(await addWorkspaceImageFile(collector, path, { roots: [] })).toEqual(
+      {
+        kind: 'omitted',
+        marker:
+          '[image not shown: the session has no known workspace to read images from]',
+      },
+    );
+  });
+
+  test('never returns the contents of a non-image file, whatever its extension', async () => {
+    const path = join(workspace, 'secrets.png');
+    writeFileSync(path, 'API_KEY=hunter2');
+    const collector = new ModelImageCollector();
+    expect(
+      await addWorkspaceImageFile(collector, path, { roots: [workspace] }),
+    ).toEqual({
+      kind: 'omitted',
+      marker: '[image not shown: the file is not a supported image type]',
+    });
+    expect(collector.result()).toBeUndefined();
+  });
+
+  test('refuses a directory, a missing path, and an oversize file', async () => {
+    const collector = new ModelImageCollector();
+    const scope = { roots: [workspace] };
+    expect(
+      (await addWorkspaceImageFile(collector, workspace, scope)).kind,
+    ).toBe('omitted');
+    expect(
+      (
+        await addWorkspaceImageFile(
+          collector,
+          join(workspace, 'missing.png'),
+          scope,
+        )
+      ).kind,
+    ).toBe('omitted');
+    const big = join(workspace, 'big.png');
     writeFileSync(
       big,
       Buffer.concat([PNG_1X1, Buffer.alloc(CHAT_ATTACHMENT_MAX_BYTES)]),
     );
-    expect(addHostImageFile(collector, big)).toEqual({
+    expect(await addWorkspaceImageFile(collector, big, scope)).toEqual({
       kind: 'omitted',
       marker: '[image not shown: larger than the 5 MB limit]',
     });

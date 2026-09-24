@@ -2577,3 +2577,77 @@ describe('claude-adapter-events — images a tool returned', () => {
     );
   });
 });
+
+describe('claude-adapter-events — many rejected images', () => {
+  test('thousands of rejected image blocks still persist the terminal through EventStore', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { EventStore } = await import(
+      '../../services/orchestration/event-store.js'
+    );
+    const dir = mkdtempSync(join(tmpdir(), 'claude-many-images-'));
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    try {
+      const record = makeRecord();
+      const publish = (event: any) =>
+        store.appendEvent(store.projectLiveEvent(event));
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          type: 'assistant',
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              { type: 'tool_use', id: 'toolu-many', name: 'mcp__x', input: {} },
+            ],
+          },
+          uuid: 'u-many-1',
+          session_id: 's-1',
+        } as any,
+      });
+      // 3000 distinct unsupported types: one marker line each would be far
+      // past the 64 KiB ingress ceiling.
+      const content = Array.from({ length: 3000 }, (_, i) => ({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: `image/x-unsupported-type-number-${i}`,
+          data: 'AAAA',
+        },
+      }));
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          type: 'user',
+          parent_tool_use_id: null,
+          message: {
+            content: [
+              { type: 'tool_result', tool_use_id: 'toolu-many', content },
+            ],
+          },
+          uuid: 'u-many-2',
+          session_id: 's-1',
+        } as any,
+      });
+      const terminal = store
+        .listEvents(record.session.threadId)
+        .map((event) => event.payload as any)
+        .find((event) => event.method === 'tool.completed');
+      expect(terminal.status).toBe('success');
+      expect(terminal.output.split('\n')).toEqual([
+        '[image not shown: image/x-unsupported-type-number-0 is not a supported image type]',
+        '[image not shown: image/x-unsupported-type-number-1 is not a supported image type]',
+        '[image not shown: image/x-unsupported-type-number-2 is not a supported image type]',
+        '[2997 more images not shown]',
+      ]);
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

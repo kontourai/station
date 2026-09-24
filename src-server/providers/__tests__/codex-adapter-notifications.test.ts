@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
@@ -665,8 +665,12 @@ describe('codex-adapter-notifications — images a tool returned', () => {
 
   const pipeline = () => {
     const directory = mkdtempSync(join(tmpdir(), 'codex-image-'));
+    const workspace = join(directory, 'workspace');
+    mkdirSync(workspace);
     const store = new EventStore(join(directory, 'events.sqlite'));
     const record = buildRecord({ activeTurnId: 'turn-1' });
+    // The session's workspace is the only place a viewed image may be read.
+    record.session = { ...record.session, cwd: workspace };
     const raw: any[] = [];
     const publish = (event: any) => {
       raw.push(event);
@@ -685,16 +689,25 @@ describe('codex-adapter-notifications — images a tool returned', () => {
       store.close();
       rmSync(directory, { recursive: true, force: true });
     };
-    return { directory, store, raw, notify, persisted, close };
+    return {
+      directory,
+      workspace,
+      store,
+      raw,
+      notify,
+      persisted,
+      close,
+      record,
+    };
   };
 
-  test('imageView reads the viewed host image and persists it as a blob reference', () => {
-    const { directory, store, raw, notify, persisted, close } = pipeline();
+  test('imageView reads the viewed workspace image and persists it as a blob reference', async () => {
+    const { workspace, store, raw, notify, persisted, close } = pipeline();
     try {
-      const path = join(directory, 'diagram.png');
+      const path = join(workspace, 'diagram.png');
       writeFileSync(path, Buffer.from(PNG_1X1_BASE64, 'base64'));
       // The shape codex app-server v2 emits: `{type: 'imageView', id, path}`.
-      notify('item/completed', {
+      await notify('item/completed', {
         turnId: 'turn-1',
         item: { type: 'imageView', id: 'view-1', path },
       });
@@ -731,18 +744,18 @@ describe('codex-adapter-notifications — images a tool returned', () => {
     }
   });
 
-  test('imageView of a non-image file yields a marker, never its contents', () => {
-    const { directory, raw, notify, close } = pipeline();
+  test('imageView of a non-image file yields a marker, never its contents', async () => {
+    const { workspace, raw, notify, close } = pipeline();
     try {
-      const path = join(directory, 'notes.png');
+      const path = join(workspace, 'notes.png');
       writeFileSync(path, 'TOKEN=secret');
-      notify('item/completed', {
+      await notify('item/completed', {
         turnId: 'turn-1',
         item: { type: 'imageView', id: 'view-2', path },
       });
       expect(raw[1]).not.toHaveProperty('attachments');
       expect(raw[1].output).toBe(
-        '[image not shown: the viewed file is not a supported image type]',
+        '[image not shown: the file is not a supported image type]',
       );
       expect(JSON.stringify(raw)).not.toContain('secret');
     } finally {
@@ -821,6 +834,107 @@ describe('codex-adapter-notifications — images a tool returned', () => {
         output: 'a single red pixel\n[image: image-1.png]',
         attachments: [{ mimeType: 'image/png' }],
       });
+    } finally {
+      close();
+    }
+  });
+
+  test('imageView outside the session workspace is refused with a marker', async () => {
+    const { directory, raw, notify, close } = pipeline();
+    try {
+      const path = join(directory, 'private.png');
+      writeFileSync(path, Buffer.from(PNG_1X1_BASE64, 'base64'));
+      await notify('item/completed', {
+        turnId: 'turn-1',
+        item: { type: 'imageView', id: 'view-out', path },
+      });
+      expect(raw[1]).toMatchObject({
+        status: 'success',
+        output:
+          '[image not shown: the viewed file is outside the session workspace]',
+      });
+      expect(raw[1]).not.toHaveProperty('attachments');
+    } finally {
+      close();
+    }
+  });
+
+  test('imageView with no known session workspace reads nothing', async () => {
+    const { workspace, record, raw, notify, close } = pipeline();
+    try {
+      record.session = { ...record.session, cwd: undefined };
+      const path = join(workspace, 'diagram.png');
+      writeFileSync(path, Buffer.from(PNG_1X1_BASE64, 'base64'));
+      await notify('item/completed', {
+        turnId: 'turn-1',
+        item: { type: 'imageView', id: 'view-none', path },
+      });
+      expect(raw[1].output).toBe(
+        '[image not shown: the session has no known workspace to read images from]',
+      );
+      expect(raw[1]).not.toHaveProperty('attachments');
+    } finally {
+      close();
+    }
+  });
+
+  test('image data repeated elsewhere in an MCP result never reaches the output', async () => {
+    const { raw, notify, persisted, close } = pipeline();
+    try {
+      notify('item/started', {
+        turnId: 'turn-1',
+        item: {
+          id: 'mcp-dup',
+          type: 'mcpToolCall',
+          server: 'playwright',
+          tool: 'browser_take_screenshot',
+          arguments: {},
+        },
+      });
+      notify('item/completed', {
+        turnId: 'turn-1',
+        item: {
+          id: 'mcp-dup',
+          type: 'mcpToolCall',
+          server: 'playwright',
+          tool: 'browser_take_screenshot',
+          status: 'completed',
+          result: {
+            content: [
+              { type: 'image', data: PNG_1X1_BASE64, mimeType: 'image/png' },
+            ],
+            structuredContent: {
+              screenshot: `data:image/png;base64,${PNG_1X1_BASE64}`,
+              nested: {
+                image: {
+                  type: 'image',
+                  data: PNG_1X1_BASE64,
+                  mimeType: 'image/png',
+                },
+              },
+            },
+            _meta: { preview: `data:image/png;base64,${PNG_1X1_BASE64}` },
+          },
+          error: null,
+        },
+      });
+      expect(raw[1].output.structuredContent).toEqual({
+        screenshot: '[inline image data omitted]',
+        nested: {
+          image: {
+            type: 'image',
+            data: '[inline image data omitted]',
+            mimeType: 'image/png',
+          },
+        },
+      });
+      expect(raw[1].output._meta).toEqual({
+        preview: '[inline image data omitted]',
+      });
+      // No slice of the base64 anywhere: live form or persisted row.
+      const probe = PNG_1X1_BASE64.slice(20, 44);
+      expect(JSON.stringify(raw[1].output)).not.toContain(probe);
+      expect(JSON.stringify(persisted())).not.toContain(probe);
     } finally {
       close();
     }

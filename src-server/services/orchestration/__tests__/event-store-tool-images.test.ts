@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { Hono } from 'hono';
@@ -224,6 +225,174 @@ describe('EventStore ingress for tool-returned images', () => {
     ]);
     expect(raw).not.toContain('base64,');
     expect(store.listAttachmentThreads(ref)).toEqual([]);
+    // ...and the viewer is told why there is no picture.
+    expect(payload.output).toBe(
+      'Captured the page.\n[image not shown: image-1.png could not be stored]',
+    );
+  });
+
+  test("a store failure rewrites the adapter's own [image: name] marker in place", () => {
+    mkdirSync(join(dir, 'attachments'), { recursive: true });
+    writeFileSync(join(dir, 'attachments', digest.slice(0, 2)), 'occupied');
+    store.appendEvent({
+      ...(screenshotResult('thread-a') as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.completed' }
+      >),
+      output: {
+        content: [
+          { type: 'text', text: 'Took it' },
+          { type: 'text', text: '[image: image-1.png]' },
+        ],
+      },
+    });
+    expect(persistedToolRow('thread-a').payload.output).toEqual({
+      content: [
+        { type: 'text', text: 'Took it' },
+        {
+          type: 'text',
+          text: '[image not shown: image-1.png could not be stored]',
+        },
+      ],
+    });
+  });
+
+  test('bytes that are not the declared image type are never stored', () => {
+    const html = Buffer.from('<html><script>alert(1)</script></html>');
+    store.appendEvent({
+      ...(screenshotResult('thread-a') as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.completed' }
+      >),
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          size: html.length,
+          dataUrl: `data:image/png;base64,${html.toString('base64')}`,
+        },
+      ],
+    });
+    const { payload } = persistedToolRow('thread-a');
+    expect(payload.status).toBe('success');
+    expect(payload.attachments[0]).not.toHaveProperty('blobRef');
+    expect(payload.output).toBe(
+      'Captured the page.\n[image not shown: image-1.png is not a valid image/png image]',
+    );
+    const htmlRef = `sha256-${createHash('sha256').update(html).digest('hex')}`;
+    expect(store.readAttachmentBlob(htmlRef)).toBeUndefined();
+  });
+
+  test('a tool image is charged to the chat attachment budget, and is dropped with a note when it is spent', () => {
+    store.appendEvent(screenshotResult('thread-a'));
+    // Charged: the budget now holds this image's encoded bytes, so a user
+    // reservation that would have fit an empty chat no longer does.
+    expect(() =>
+      store.reserveAttachmentCapacity(
+        'thread-a',
+        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES - dataUrl.length + 1,
+      ),
+    ).toThrow('attachment history limit');
+
+    // Spent: a chat whose budget is full keeps the terminal, not the image.
+    store.reserveAttachmentCapacity(
+      'thread-b',
+      CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES,
+    );
+    store.appendEvent(screenshotResult('thread-b'));
+    const { payload } = persistedToolRow('thread-b');
+    expect(payload.status).toBe('success');
+    expect(payload.attachments[0]).not.toHaveProperty('blobRef');
+    expect(payload.output).toBe(
+      "Captured the page.\n[image not shown: image-1.png could not be stored: this chat's attachment storage is full]",
+    );
+    expect(store.listAttachmentThreads(ref)).toEqual(['thread-a']);
+  });
+
+  test('a bare reference to a digest held in another thread is not bound, and the route refuses it', async () => {
+    // Bob's private thread legitimately holds the bytes.
+    store.appendEvent(ownerTurn('thread-bob', 'bob'));
+    store.appendEvent(screenshotResult('thread-bob'));
+    expect(store.listAttachmentThreads(ref)).toEqual(['thread-bob']);
+
+    // Mallory's replay/import/relay path names the same digest WITHOUT bytes.
+    store.appendEvent(ownerTurn('thread-mallory', 'mallory'));
+    store.appendEvent({
+      ...(screenshotResult('thread-mallory') as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.completed' }
+      >),
+      attachments: [
+        {
+          kind: 'image',
+          name: 'image-1.png',
+          mimeType: 'image/png',
+          size: pixels.length,
+          blobRef: ref,
+        },
+      ],
+    });
+
+    expect(store.listAttachmentThreads(ref)).toEqual(['thread-bob']);
+    const { payload } = persistedToolRow('thread-mallory');
+    expect(payload.attachments[0]).not.toHaveProperty('blobRef');
+    expect(payload.output).toBe(
+      'Captured the page.\n[image not shown: image-1.png is not stored on this Station]',
+    );
+
+    const readable: Record<string, string[]> = {
+      bob: ['thread-bob'],
+      mallory: ['thread-mallory'],
+    };
+    const principalOf = (request: Request) =>
+      (request.headers.get('authorization') ?? '').replace(/^Bearer /, '');
+    const app = new Hono();
+    app.route(
+      '/api/attachments',
+      createAttachmentRoutes({
+        readAttachment: (candidate) => store.readAttachmentBlob(candidate),
+        threadsForAttachment: (candidate, request) =>
+          store.listAttachmentCandidateThreads(candidate, principalOf(request)),
+        canReadSession: (threadId, request) =>
+          (readable[principalOf(request)] ?? []).includes(threadId),
+      }),
+    );
+    const mallory = await app.request(`/api/attachments/${ref}`, {
+      headers: { Authorization: 'Bearer mallory' },
+    });
+    expect(mallory.status).toBe(404);
+    const bob = await app.request(`/api/attachments/${ref}`, {
+      headers: { Authorization: 'Bearer bob' },
+    });
+    expect(bob.status).toBe(200);
+  });
+
+  test('a bare reference already bound to the same thread keeps its preview', () => {
+    store.appendEvent(screenshotResult('thread-a'));
+    const replay = {
+      ...(screenshotResult('thread-a') as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.completed' }
+      >),
+      eventId: 'tool-thread-a-replay',
+      attachments: [
+        {
+          kind: 'image' as const,
+          name: 'image-1.png',
+          mimeType: 'image/png' as const,
+          size: pixels.length,
+          blobRef: ref,
+        },
+      ],
+    };
+    store.appendEvent(replay);
+    const replayed = store
+      .listEvents('thread-a')
+      .find((event) => event.payload.eventId === 'tool-thread-a-replay')!
+      .payload as Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>;
+    expect(replayed.attachments?.[0]?.blobRef).toBe(ref);
+    expect(replayed.output).toBe('Captured the page.');
   });
 
   test('a non-allowlisted tool image is refused at ingress, never persisted', () => {

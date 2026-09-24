@@ -4,6 +4,7 @@ import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   codexResumeCursor,
+  deriveHostToolOutputAndImages,
   deriveToolArguments,
   deriveToolName,
   deriveToolOutputAndImages,
@@ -16,6 +17,7 @@ import {
   mapThreadStatusToState,
   mapToolCompletionStatus,
   mapTurnFinishReason,
+  needsHostImageRead,
 } from './codex-adapter-events.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
@@ -82,9 +84,15 @@ interface HandleCodexNotificationOptions {
   onQuotaUpdate?: (record: CodexSessionRecord, payload: unknown) => void;
 }
 
+/**
+ * Handles one notification. Returns a promise only when handling had to wait
+ * on I/O (an image read from the host); the transport holds every later
+ * notification for the same session behind it, so the tool's terminal is
+ * never published after the turn that contains it.
+ */
 export function handleCodexNotification(
   options: HandleCodexNotificationOptions,
-): void {
+): Promise<void> | undefined {
   const { notification, nowIso, publish, record, onQuotaUpdate } = options;
   if (!record) {
     return;
@@ -215,8 +223,12 @@ export function handleCodexNotification(
       return;
     }
     case 'item/completed': {
-      handleCodexItemCompleted(record, notification.params, nowIso, publish);
-      return;
+      return handleCodexItemCompleted(
+        record,
+        notification.params,
+        nowIso,
+        publish,
+      );
     }
     case 'item/commandExecution/outputDelta':
     case 'item/fileChange/outputDelta':
@@ -442,11 +454,12 @@ function handleCodexItemCompleted(
   params: unknown,
   nowIso: () => string,
   publish: (event: CanonicalRuntimeEvent) => void,
-): void {
+): Promise<void> | undefined {
   if (!isRecord(params) || !isRecord(params.item)) return;
   const turnId = extractString(params.turnId);
   const itemId = extractString(params.item.id);
   if (!turnId || !itemId) return;
+  const item = params.item;
   // An image item may be reported only on completion, with no `item/started`
   // before it. Open its row here so the image still has one to land on; a
   // start that did arrive is not repeated.
@@ -459,23 +472,40 @@ function handleCodexItemCompleted(
   }
   const toolName = record.toolNames.get(itemId);
   if (!toolName || !record.openToolCalls.has(itemId)) return;
-  const { output, attachments } = deriveToolOutputAndImages(params.item);
-  const preview = projectBoundedToolOutput(output);
-  record.openToolCalls.delete(itemId);
-  publish({
-    eventId: crypto.randomUUID(),
-    provider: 'codex',
-    threadId: record.externalThreadId,
-    createdAt: nowIso(),
-    method: 'tool.completed',
-    turnId,
-    itemId,
-    toolCallId: itemId,
-    toolName,
-    status: mapToolCompletionStatus(extractToolStatus(params.item)),
-    output: preview.value,
-    ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
-    error: extractToolError(params.item),
-    ...(attachments ? { attachments } : {}),
-  });
+  const settle = ({
+    output,
+    attachments,
+  }: ReturnType<typeof deriveToolOutputAndImages>) => {
+    // A session that ended while the image was being read has already
+    // settled this call as `unresolved`; the late read publishes nothing.
+    if (!record.openToolCalls.has(itemId)) return;
+    const preview = projectBoundedToolOutput(output);
+    record.openToolCalls.delete(itemId);
+    publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId: record.externalThreadId,
+      createdAt: nowIso(),
+      method: 'tool.completed',
+      turnId,
+      itemId,
+      toolCallId: itemId,
+      toolName,
+      status: mapToolCompletionStatus(extractToolStatus(item)),
+      output: preview.value,
+      ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
+      error: extractToolError(item),
+      ...(attachments ? { attachments } : {}),
+    });
+  };
+  if (!needsHostImageRead(item)) {
+    settle(deriveToolOutputAndImages(item));
+    return;
+  }
+  // Only the session's own workspace is readable; with none known, the read
+  // is refused and the output says so.
+  const cwd = record.session.cwd;
+  return deriveHostToolOutputAndImages(item, {
+    roots: typeof cwd === 'string' && cwd.length > 0 ? [cwd] : [],
+  }).then(settle);
 }
