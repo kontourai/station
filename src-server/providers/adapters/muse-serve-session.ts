@@ -1437,12 +1437,6 @@ export class MuseServeSession {
     ) {
       pending.subjectSignature = signature;
       this.updateApproval(pending, params);
-      if (!pending.published) {
-        // A session grant, never shown to anyone: the grant is for the tool,
-        // which has not changed, so the walk continues (#2299).
-        this.continueWalk(pending);
-        return;
-      }
       this.publishResolved(pending, 'cancelled', {
         reason: 'subject-changed',
       });
@@ -1450,7 +1444,10 @@ export class MuseServeSession {
       pending.published = false;
       pending.resolvedPublished = false;
       pending.intent = undefined;
+      delete pending.escalatedBefore;
+      pending.deciding = false;
       pending.lastDecidedKey = undefined;
+      pending.stagesDecided = 0;
       // A new question for the user: nothing the old one set in motion (an
       // escalation, its step, the retries) may act on it.
       this.clearEscalation(pending);
@@ -1512,8 +1509,8 @@ export class MuseServeSession {
   private armDeadline(pending: PendingApproval): void {
     this.clearDeadline(pending);
     pending.deadline = setTimeout(() => {
+      if (!this.isCurrent(pending)) return;
       pending.deadline = undefined;
-      if (!this.approvals.has(pending.approvalId) || this.stopped) return;
       if (pending.escalatedBefore) {
         this.approvals.delete(pending.approvalId);
         this.deps.publish({
@@ -1578,6 +1575,10 @@ export class MuseServeSession {
     pending.escalation = undefined;
   }
 
+  private isCurrent(pending: PendingApproval): boolean {
+    return this.approvals.get(pending.approvalId) === pending && !this.stopped;
+  }
+
   /**
    * A declined-at-deadline approval muse has not resolved. First stop what
    * is waiting on it — the subagent (`subagent/stop`) or the turn
@@ -1586,8 +1587,8 @@ export class MuseServeSession {
    * the next send). Every step is announced.
    */
   private escalate(pending: PendingApproval): void {
+    if (!this.isCurrent(pending)) return;
     this.clearEscalation(pending);
-    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
     const generation = pending.generation;
     pending.escalationStep += 1;
     this.rememberEscalated(pending.approvalId);
@@ -1628,14 +1629,16 @@ export class MuseServeSession {
           { timeoutMs: this.deps.requestTimeoutMs },
         )
         .then(() => {
-          if (pending.generation !== generation) return;
+          if (!this.isCurrent(pending) || pending.generation !== generation)
+            return;
           if (pending.subagentId) {
             recordMuseChildStopRequested(this.childWork, pending.subagentId);
           }
           this.armEscalation(pending);
         })
         .catch(() => {
-          if (pending.generation === generation) this.escalate(pending);
+          if (this.isCurrent(pending) && pending.generation === generation)
+            this.escalate(pending);
         });
       return;
     }
@@ -1693,7 +1696,8 @@ export class MuseServeSession {
     pending: PendingApproval,
     key: string,
   ): Promise<void> {
-    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    if (!this.isCurrent(pending)) return;
+    const generation = pending.generation;
     if (pending.retriedKeys.has(key)) {
       this.decideUndeliverable(pending);
       return;
@@ -1709,7 +1713,8 @@ export class MuseServeSession {
         { timeoutMs: this.deps.requestTimeoutMs },
       );
     } catch {
-      this.decideUndeliverable(pending);
+      if (this.isCurrent(pending) && pending.generation === generation)
+        this.decideUndeliverable(pending);
       return;
     }
     const fresh = (
@@ -1720,7 +1725,7 @@ export class MuseServeSession {
       (approval): approval is Record<string, unknown> =>
         isRecord(approval) && approval.approvalId === pending.approvalId,
     );
-    if (!this.approvals.has(pending.approvalId)) return;
+    if (!this.isCurrent(pending) || pending.generation !== generation) return;
     if (!fresh) {
       // Not pending any more: it was resolved meanwhile, and its
       // `approval/resolved` closes it — bounded all the same, in case that
@@ -1736,16 +1741,70 @@ export class MuseServeSession {
    * Station's answer could not be delivered, even after the retry. A decline
    * at the deadline escalates now. Any other answer (the user's, or a session
    * grant's) must not leave muse waiting with no timer: the user is told
-   * their answer did not reach muse, and the same escalation path bounds the
-   * request (stop the child or interrupt the turn, then end the host).
+   * their answer did not reach muse, and the escalation path bounds the
+   * request. A previously escalated request gets one stop without re-hosting.
    */
   private decideUndeliverable(pending: PendingApproval): void {
-    if (!this.approvals.has(pending.approvalId) || this.stopped) return;
+    if (!this.isCurrent(pending)) return;
     if (pending.escalatedBefore) {
-      // Escalated once already: another escalation (and re-host) would only
-      // bring it back again. Station stops here; the warning above stands.
+      // A second host escalation would bring the same request back again.
+      // Send one bounded stop request, then release Station's pending record.
+      const connection = this.host?.connection;
+      const sessionId = this.museSessionIdValue;
+      const turnId = pending.turnId ?? this.liveTurn()?.turnId;
+      const { approvalId, subagentId } = pending;
+      const target = pending.subagentId
+        ? {
+            method: 'subagent/stop',
+            params: {
+              subagentId: pending.subagentId,
+              reason: 'Station could not decline an approval it asked for.',
+            },
+          }
+        : turnId
+          ? { method: 'turn/interrupt', params: { turnId } }
+          : undefined;
+      if (target && connection && !connection.isClosed && sessionId) {
+        void connection
+          .request(
+            target.method,
+            {
+              commandId: this.deps.newCommandId(),
+              sessionId,
+              ...target.params,
+            },
+            { timeoutMs: this.deps.requestTimeoutMs },
+          )
+          .then(() => {
+            if (subagentId) {
+              recordMuseChildStopRequested(this.childWork, subagentId);
+            }
+          })
+          .catch((error: unknown) => {
+            this.deps.logger?.warn('Muse approval stop was not admitted', {
+              threadId: this.deps.threadId,
+              approvalId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
+      this.deps.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'muse',
+        threadId: this.deps.threadId,
+        createdAt: this.nowIso(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: MUSE_APPROVAL_DECIDE_FAILED_CODE,
+        message: `Muse is still waiting on a request Station could not decline. Station ${target ? 'stopped' : 'could not identify'} the ${pending.subagentId ? 'subagent' : 'turn'} that asked.`,
+        details: {
+          requestId: pending.requestId,
+          ...(pending.subagentId ? { childId: pending.subagentId } : {}),
+        },
+      });
       this.approvals.delete(pending.approvalId);
       this.clearDeadline(pending);
+      this.clearEscalation(pending);
       return;
     }
     if (pending.intent === 'expire') {
@@ -1779,6 +1838,7 @@ export class MuseServeSession {
    * model reads.
    */
   private continueWalk(pending: PendingApproval): void {
+    if (!this.isCurrent(pending)) return;
     const connection = this.host?.connection;
     if (
       !pending.intent ||
@@ -1825,6 +1885,7 @@ export class MuseServeSession {
             ? `Nobody answered this request in Station within ${formatMuseServeDuration(this.deps.approvalTimeoutMs)}, so it was declined.`
             : undefined;
     pending.deciding = true;
+    const generation = pending.generation;
     pending.lastDecidedKey = key;
     pending.stagesDecided += 1;
     connection
@@ -1841,11 +1902,15 @@ export class MuseServeSession {
         { timeoutMs: this.deps.requestTimeoutMs },
       )
       .then(() => {
+        if (!this.isCurrent(pending) || pending.generation !== generation)
+          return;
         pending.deciding = false;
         // An `approval/updated` naming the next stage may already be in.
         this.continueWalk(pending);
       })
       .catch((error: unknown) => {
+        if (!this.isCurrent(pending) || pending.generation !== generation)
+          return;
         pending.deciding = false;
         this.deps.logger?.warn('Muse approval/decide was not admitted', {
           threadId: this.deps.threadId,

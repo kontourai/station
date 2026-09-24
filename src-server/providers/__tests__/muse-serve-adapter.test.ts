@@ -1527,6 +1527,33 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     expect(host.stdinEnded).toBe(false);
   });
 
+  test('H1: a stop reply for a resolved approval cannot escalate a new approval with the same id', async () => {
+    const h = harness({ approvalTimeoutMs: 300, approvalEscalationMs: 40 });
+    const host = await unansweredOpen(h);
+    const stop = await host.nextRequest('subagent/stop', new Set());
+    const requested = unansweredRequested().params;
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/resolved',
+      params: { approvalId: UNANSWERED_ID, decision: 'abort' },
+    });
+    host.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/requested',
+      params: requested,
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(1);
+    const childDeltasBefore = childWorkDeltas(h.events).length;
+    reply(host, stop, { status: 'accepted' });
+    await wait(100);
+    expect(childWorkDeltas(h.events)).toHaveLength(childDeltasBefore);
+    expect(
+      host.sent.filter((frame) => frame.method === 'subagent/stop'),
+    ).toHaveLength(1);
+    expect(host.stdinEnded).toBe(false);
+  });
+
   test('E2: a same-subject restatement after a deadline decline does not clear the escalation', async () => {
     const h = harness({ approvalTimeoutMs: 60, approvalEscalationMs: 80 });
     const host = await unansweredOpen(h);
@@ -1596,23 +1623,43 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     const decline = await next.nextRequest('approval/decide', seen);
     seen.add(decline);
     expect(decline.params?.choiceId).toBe('abort');
-    // Muse rejects it, and the retry too: Station stops there.
+    // Muse rejects it, and the retry too: Station stops the subagent once.
     reject(next, decline);
     await answer('approval/listPending', pendingList);
     const again = await next.nextRequest('approval/decide', seen);
     seen.add(again);
     reject(next, again);
+    const repeatedStop = await next.nextRequest('subagent/stop', seen);
+    expect(repeatedStop.params?.subagentId).toBe(UNANSWERED_CHILD);
     await wait(150);
     expect(of(h.events, 'request.opened')).toHaveLength(1);
     expect(
       next.sent.filter((frame) => frame.method === 'subagent/stop'),
-    ).toEqual([]);
+    ).toHaveLength(1);
     expect(next.stdinEnded).toBe(false);
     expect(
-      of(h.events, 'runtime.warning').some((event) =>
-        event.message.includes('already declined'),
+      of(h.events, 'runtime.warning').some(
+        (event) =>
+          event.message.includes(
+            'still waiting on a request Station could not decline',
+          ) && event.message.includes('stopped the subagent'),
       ),
     ).toBe(true);
+    const turn = await next.nextRequest('turn/start', seen);
+    reject(next, turn);
+    await expect(sending).rejects.toThrow();
+    const changing = h.adapter.sendTurn({
+      threadId: THREAD,
+      input: 'change posture',
+      modelOptions: { approvalMode: 'never' },
+    });
+    changing.catch(() => {});
+    for (let attempt = 0; attempt < 200 && !h.hosts[2]; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(h.hosts).toHaveLength(3);
+    h.hosts[2].exit(1);
+    await expect(changing).rejects.not.toThrow('cannot change its sandbox');
   });
 
   test('G2: an accepted repeat decline with no resolution releases the approval and permits a sandbox change', async () => {
@@ -1692,6 +1739,38 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
       next.sent.filter((frame) => frame.method === 'approval/decide'),
     ).toEqual([]);
     expect(seen.size).toBe(3);
+  });
+
+  test('H2: a returned escalated approval that changes subject before publish gets a new card', async () => {
+    const h = harness({ approvalTimeoutMs: 300, approvalEscalationMs: 40 });
+    const host = await unansweredOpen(h);
+    const stop = await host.nextRequest('subagent/stop', new Set());
+    reply(host, stop, { status: 'accepted' });
+    await wait(150);
+    expect(host.stdinEnded).toBe(true);
+    const requested = unansweredRequested().params;
+    const { next, seen } = await rehost(h, [requested]);
+    const decline = await next.nextRequest('approval/decide', seen);
+    const changed = {
+      ...requested,
+      subject: {
+        ...(requested.subject as Record<string, unknown>),
+        command: 'ls',
+      },
+    };
+    next.writeFrame({
+      jsonrpc: '2.0',
+      method: 'approval/updated',
+      params: changed,
+    });
+    await settle();
+    expect(of(h.events, 'request.opened')).toHaveLength(2);
+    expect(of(h.events, 'request.opened')[1].description).toContain('ls');
+    reply(next, decline, { status: 'accepted' });
+    await settle();
+    expect(
+      next.sent.filter((frame) => frame.method === 'approval/decide'),
+    ).toHaveLength(1);
   });
 
   test('E5: refining a stage muse marked argvComplete:false does not reopen the request', async () => {
