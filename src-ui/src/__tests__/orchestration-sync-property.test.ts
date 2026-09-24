@@ -192,6 +192,8 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   );
   const selectedSeed = process.env.SYNC_FUZZ_SEED;
   const seeds = [
+    // Pinned regressions: 0 deleted-tail/replacement/snapshot approvals and
+    // settled child; 12 runtime.error; 16 turn.aborted.
     ...Array.from({ length: 200 }, (_, seed) => seed),
     ...(selectedSeed && Number.isSafeInteger(Number(selectedSeed))
       ? [Number(selectedSeed)]
@@ -228,6 +230,10 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       ...(seed % 9 === 0 ? { metadata: { trigger: 'provider' } } : {}),
     } as CanonicalRuntimeEvent);
     trace.push('turn.started');
+    expect(
+      store.headGlobalSequence(),
+      `deleted-tail cursor seed=${seed} trace=${trace.join(',')}`,
+    ).toBeGreaterThan(deletedTailCursor);
     const deltaCount = seed % 3 === 0 ? 6 : 1;
     for (let index = 0; index < deltaCount; index++) {
       publish({
