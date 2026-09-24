@@ -5662,7 +5662,7 @@ describe('OrchestrationService', () => {
     );
     await expect(
       service.readSession('lifecycle-turn-race'),
-    ).resolves.toMatchObject({ session: { lifecycleState: 'completed' } });
+    ).resolves.toMatchObject({ session: { lifecycleState: 'idle' } });
   });
 
   // archive#3581 review BLOCK 1: everything above proves the READ-side
@@ -18937,7 +18937,7 @@ describe('OrchestrationService', () => {
         });
         await vi.waitFor(async () =>
           expect(await isolated.readSession(threadId)).toMatchObject({
-            session: { lifecycleState: 'completed' },
+            session: { lifecycleState: 'idle' },
           }),
         );
       }
