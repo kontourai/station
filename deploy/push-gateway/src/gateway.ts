@@ -1,5 +1,13 @@
 // Request handling for the Station push gateway, independent of the Worker
 // runtime so it can be exercised directly in tests.
+import { type ApnsOutcome, ApnsSender } from './apns.ts';
+import {
+  buildLiveActivityPayload,
+  parseChannelRequest,
+  parseLiveActivityRequest,
+  payloadBytes,
+} from './apns-request.ts';
+import type { ApnsCredentials } from './apns-token.ts';
 import { FcmSender, type SendOutcome, type ServiceAccount } from './fcm.ts';
 import { parseSendRequest } from './send-request.ts';
 import { bodyHash, verifyStationRequest } from './station-auth.ts';
@@ -8,6 +16,18 @@ const MAX_BODY_BYTES = 8 * 1024;
 
 export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+/** APNs delivery; absent until the key is configured, and the routes answer 503. */
+export interface ApnsGatewayConfig {
+  credentials: ApnsCredentials;
+  allowedBundles: readonly string[];
+  /**
+   * Channel creation spends a finite per-app Apple quota, so it has its own,
+   * much lower ceilings than pushes.
+   */
+  channelGlobalLimiter: RateLimiter;
+  channelPerKeyLimiter: RateLimiter;
 }
 
 export interface GatewayConfig {
@@ -21,6 +41,7 @@ export interface GatewayConfig {
   perKeyLimiter: RateLimiter;
   /** Keyed on the push token: key rotation cannot evade it. */
   perTokenLimiter: RateLimiter;
+  apns?: ApnsGatewayConfig | null;
   fetchImpl?: typeof fetch;
   nowSeconds?: () => number;
 }
@@ -43,6 +64,30 @@ const OUTCOME_RESPONSES: Record<SendOutcome['kind'], [number, string]> = {
   rejected: [422, 'rejected'],
   unavailable: [503, 'unavailable'],
 };
+
+const APNS_OUTCOME_RESPONSES: Record<
+  Exclude<ApnsOutcome['kind'], 'created'>,
+  [number, string]
+> = {
+  sent: [200, 'sent'],
+  deleted: [200, 'deleted'],
+  unregistered: [410, 'unregistered'],
+  'channel-gone': [410, 'channel-gone'],
+  rejected: [422, 'rejected'],
+  unavailable: [503, 'unavailable'],
+};
+
+function apnsResponse(outcome: ApnsOutcome): Response {
+  if (outcome.kind === 'created')
+    return json(200, { result: 'created', channelId: outcome.channelId });
+  const [status, result] = APNS_OUTCOME_RESPONSES[outcome.kind];
+  return json(status, { result });
+}
+
+const FCM_ROUTE = '/v1/fcm/send';
+const LIVE_ACTIVITY_ROUTE = '/v1/apns/live-activity';
+const CHANNELS_ROUTE = '/v1/apns/channels';
+const ROUTES = new Set([FCM_ROUTE, LIVE_ACTIVITY_ROUTE, CHANNELS_ROUTE]);
 
 // Senders are cached per isolate so the Google access token is reused.
 const senders = new WeakMap<ServiceAccount, FcmSender>();
@@ -86,10 +131,12 @@ export async function handleRequest(
   const url = new URL(request.url);
   if (url.pathname === '/health' && request.method === 'GET')
     return json(200, { ok: true });
-  if (url.pathname !== '/v1/fcm/send') return json(404, { error: 'not found' });
+  const route = url.pathname;
+  if (!ROUTES.has(route)) return json(404, { error: 'not found' });
   if (request.method !== 'POST')
     return json(405, { error: 'method not allowed' });
-  if (!config.serviceAccount)
+  const configured = route === FCM_ROUTE ? config.serviceAccount : config.apns;
+  if (!configured)
     return json(503, { error: 'push delivery is not configured' });
 
   const clientIp = request.headers.get('cf-connecting-ip') ?? 'unknown';
@@ -99,11 +146,14 @@ export async function handleRequest(
   const body = await readBounded(request, MAX_BODY_BYTES);
   if (!body) return json(413, { error: 'body too large' });
 
+  const nowSeconds = (
+    config.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
+  )();
   const auth = await verifyStationRequest({
     authorization: request.headers.get('authorization'),
     body,
     audiences: config.audiences,
-    nowSeconds: (config.nowSeconds ?? (() => Math.floor(Date.now() / 1000)))(),
+    nowSeconds,
   });
   // Reasons are returned to the caller, who holds the key and needs them to
   // debug; they reveal nothing about other Stations.
@@ -116,6 +166,18 @@ export async function handleRequest(
   ) {
     return json(429, { error: 'rate limited' });
   }
+
+  // Both were checked before any work; re-read here so each route is typed
+  // against its own configuration.
+  const { apns, serviceAccount } = config;
+  if (route !== FCM_ROUTE) {
+    if (!apns) return json(503, { error: 'push delivery is not configured' });
+    return route === LIVE_ACTIVITY_ROUTE
+      ? liveActivity(body, auth.keyThumbprint, nowSeconds, config, apns)
+      : channels(body, auth.keyThumbprint, nowSeconds, config, apns);
+  }
+  if (!serviceAccount)
+    return json(503, { error: 'push delivery is not configured' });
 
   const parsed = parseSendRequest(body, config.allowedPackages);
   if (!parsed.ok) return json(400, { error: parsed.reason });
@@ -133,12 +195,67 @@ export async function handleRequest(
     data: { ...parsed.request.data, station_key: auth.keyThumbprint },
   };
 
-  let sender = senders.get(config.serviceAccount);
+  let sender = senders.get(serviceAccount);
   if (!sender) {
-    sender = new FcmSender(config.serviceAccount, config.fetchImpl);
-    senders.set(config.serviceAccount, sender);
+    sender = new FcmSender(serviceAccount, config.fetchImpl);
+    senders.set(serviceAccount, sender);
   }
   const outcome = await sender.send(stamped);
   const [status, result] = OUTCOME_RESPONSES[outcome.kind];
   return json(status, { result });
+}
+
+async function liveActivity(
+  body: Uint8Array<ArrayBuffer>,
+  stationKey: string,
+  nowSeconds: number,
+  config: GatewayConfig,
+  apns: ApnsGatewayConfig,
+): Promise<Response> {
+  const parsed = parseLiveActivityRequest(
+    body,
+    apns.allowedBundles,
+    nowSeconds,
+  );
+  if (!parsed.ok) return json(400, { error: parsed.reason });
+  const { request } = parsed;
+  // A start is addressed to a device, the rest to a channel: limit whichever
+  // one this push reaches, hashed so the raw value is never a limiter key.
+  const target =
+    request.event === 'start' ? request.pushToStartToken : request.channelId;
+  const targetKey = await bodyHash(new TextEncoder().encode(target));
+  if (!(await config.perTokenLimiter.limit({ key: targetKey })).success) {
+    return json(429, { error: 'rate limited' });
+  }
+  const payload = payloadBytes(buildLiveActivityPayload(request, stationKey));
+  if (!payload) return json(422, { result: 'rejected' });
+  const sender = new ApnsSender(
+    apns.credentials,
+    config.fetchImpl,
+    () => nowSeconds,
+  );
+  return apnsResponse(await sender.sendLiveActivity(request, payload));
+}
+
+async function channels(
+  body: Uint8Array<ArrayBuffer>,
+  stationKey: string,
+  nowSeconds: number,
+  config: GatewayConfig,
+  apns: ApnsGatewayConfig,
+): Promise<Response> {
+  const parsed = parseChannelRequest(body, apns.allowedBundles);
+  if (!parsed.ok) return json(400, { error: parsed.reason });
+  if (!(await apns.channelGlobalLimiter.limit({ key: 'global' })).success) {
+    return json(429, { error: 'rate limited' });
+  }
+  if (!(await apns.channelPerKeyLimiter.limit({ key: stationKey })).success) {
+    return json(429, { error: 'rate limited' });
+  }
+  const sender = new ApnsSender(
+    apns.credentials,
+    config.fetchImpl,
+    () => nowSeconds,
+  );
+  return apnsResponse(await sender.manageChannel(parsed.request));
 }

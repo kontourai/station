@@ -319,7 +319,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
 | Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
-| iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |
+| APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built, ships dark until the `APNS_AUTH_KEY` secret is set; tested against a fake APNs only |
+| iOS Live Activity (widget extension in `gen/apple/project.yml`) | not started |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at

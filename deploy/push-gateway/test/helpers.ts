@@ -103,3 +103,53 @@ export async function fakeServiceAccount() {
 }
 
 export const allow = { limit: async () => ({ success: true }) };
+
+export const IOS_BUNDLE = 'io.kontourai.station.beta';
+export const TEAM_ID = 'TEAM123456';
+export const KEY_ID = 'KEY1234567';
+
+/** A throwaway P-256 key shaped like an Apple .p8 file. Never a real key. */
+export async function fakeApnsKey() {
+  const pair = (await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair;
+  const der = new Uint8Array(
+    await crypto.subtle.exportKey('pkcs8', pair.privateKey),
+  );
+  let binary = '';
+  for (const byte of der) binary += String.fromCharCode(byte);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(binary).replace(/(.{64})/g, '$1\n')}\n-----END PRIVATE KEY-----\n`;
+  return {
+    credentials: { teamId: TEAM_ID, keyId: KEY_ID, privateKeyPem: pem },
+    publicKey: pair.publicKey,
+  };
+}
+
+export const PUSH_TO_START_TOKEN = 'ab'.repeat(40);
+export const CHANNEL_ID = 'dHN0LXNyY2gtY2hubA==';
+export const REGISTRATION_ID = 'r'.repeat(22);
+export const SEALED = 'S'.repeat(400);
+
+export function liveActivityBody(
+  overrides: Record<string, unknown> = {},
+  event: 'start' | 'update' | 'end' = 'start',
+): Record<string, unknown> {
+  return {
+    bundleId: IOS_BUNDLE,
+    environment: 'sandbox',
+    event,
+    ...(event === 'start' ? { pushToStartToken: PUSH_TO_START_TOKEN } : {}),
+    channelId: CHANNEL_ID,
+    registrationId: REGISTRATION_ID,
+    sealed: SEALED,
+    alert: false,
+    timestamp: NOW,
+    ...(event === 'end' ? { dismissAt: NOW + 900 } : { staleAt: NOW + 7200 }),
+    ...overrides,
+  };
+}
+
+export const encodeBody = (value: unknown): Uint8Array<ArrayBuffer> =>
+  new TextEncoder().encode(JSON.stringify(value));
