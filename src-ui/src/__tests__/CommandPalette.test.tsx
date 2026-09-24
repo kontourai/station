@@ -1509,6 +1509,92 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     expect(navigateMock).toHaveBeenCalledWith('/agents');
   });
 
+  test('the navigate apply closure still applies under a registered guard when the target is the pathname already showing (#1418/#1419 review, MEDIUM)', async () => {
+    window.history.replaceState({}, '', '/agents');
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [NAVIGATE_COMMAND],
+        permissions: { granted: [] },
+      },
+    ];
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(
+        screen.getByRole('option', { name: /Open Agents \(demo\)/ }),
+      );
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const { apply } = pluginCommandRunMock.mock.calls[0][0];
+
+      // Registered, but `navigate()` itself would never consult a guard for
+      // a same-pathname target — the predicate answers for the ACTUAL
+      // target, not "is any guard registered anywhere".
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('same-pathname-guard'),
+        () => {},
+      );
+      try {
+        const applied = apply({ kind: 'navigate', destinationId: 'agents' });
+        expect(applied).toBe(true);
+        expect(navigateMock).toHaveBeenCalledWith('/agents');
+      } finally {
+        unregister();
+      }
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  test('the navigate apply closure reveals a regionSurface destination without ever consulting a registered guard', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [
+          {
+            version: '1.0' as const,
+            id: 'demo.open-activity',
+            title: 'Open Activity (demo)',
+            intent: { kind: 'navigate' as const, surfaceId: 'activity' },
+          },
+        ],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    fireEvent.click(
+      screen.getByRole('option', { name: /Open Activity \(demo\)/ }),
+    );
+    await vi.waitFor(() =>
+      expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+    );
+    const { apply } = pluginCommandRunMock.mock.calls[0][0];
+
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('region-surface-guard'),
+      () => {
+        throw new Error(
+          'showSurface must never consult a navigation guard: it does not go through navigate() at all',
+        );
+      },
+    );
+    try {
+      const applied = apply({ kind: 'navigate', destinationId: 'activity' });
+      expect(applied).toBe(true);
+      expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+      expect(navigateMock).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
   test("seed-composer captures the single open chat's draft and applies through its CAS", async () => {
     activeChatsStore.initChat('chat-1', {
       agentSlug: 'demo-agent',

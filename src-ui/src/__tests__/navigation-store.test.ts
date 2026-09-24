@@ -200,6 +200,46 @@ describe('parseProjectSelectionFromPath', () => {
   );
 });
 
+describe('navigationStore.wouldNavigationGuardBlock (#1418/#1419 review, MEDIUM)', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
+
+  test('answers false with no registered guard, whatever the target', () => {
+    window.history.replaceState({}, '', '/here');
+    expect(navigationStore.wouldNavigationGuardBlock('/there')).toBe(false);
+    expect(navigationStore.wouldNavigationGuardBlock('/here')).toBe(false);
+  });
+
+  test('answers false for the SAME pathname even with a guard registered — navigate() never consults a guard for a same-pathname target', () => {
+    window.history.replaceState({}, '', '/here');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('same-pathname-guard'),
+      () => {
+        throw new Error('a same-pathname target must never run a guard');
+      },
+    );
+    try {
+      expect(navigationStore.wouldNavigationGuardBlock('/here')).toBe(false);
+    } finally {
+      unregister();
+    }
+  });
+
+  test('answers true for a different pathname with a guard registered — the exact case navigate() itself would run guards for', () => {
+    window.history.replaceState({}, '', '/here');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('different-pathname-guard'),
+      () => {},
+    );
+    try {
+      expect(navigationStore.wouldNavigationGuardBlock('/there')).toBe(true);
+    } finally {
+      unregister();
+    }
+  });
+});
+
 describe('navigationStore dialog history isolation', () => {
   test('does not carry a dialog Back marker into a new route entry', () => {
     window.history.replaceState({ [DIALOG_HISTORY_KEY]: 'new-chat' }, '', '/');

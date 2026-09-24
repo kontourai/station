@@ -681,7 +681,7 @@ describe('plugin command effect coordinator', () => {
     });
     const notify = vi.fn();
     // Mirrors CommandPalette's navigate-intent `apply`: it checks
-    // `navigationStore.hasActiveNavigationGuard()` itself and reports
+    // `navigationStore.wouldNavigationGuardBlock()` itself and reports
     // failure without calling `navigate()`.
     let guardActive = true;
     coordinator.runCommand(
