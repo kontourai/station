@@ -150,7 +150,7 @@ export function handleOrchestrationEvent(
     observeChildWorkLifecycle(event);
     // #2459: the Agents pane's "All" scope — every session's engine
     // subagents, including sessions no chat has open (a CLI delegate).
-    childWorkGlobalStore.ingest(event);
+    childWorkGlobalStore.ingest(apiBase, event);
   }
 
   if (replayThread) {

@@ -46,11 +46,13 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       completed: new Promise<void>(() => undefined),
     };
   },
-  // The real hook's key; the read goes to the stand-in Station.
+  // The real hook's key and staleTime (`orchestrationQueries.sessions()`);
+  // the read goes to the stand-in Station.
   useOrchestrationSessionsQuery: () =>
     useQuery({
       queryKey: ['orchestration-sessions'],
       queryFn: async () => structuredClone(server.sessions),
+      staleTime: 10_000,
     }),
 }));
 vi.mock('../../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -137,4 +139,21 @@ test('a delegate that starts after the pane mounted appears, with no Chat dock m
 
   expect(await screen.findByText('Arrived after mount')).toBeTruthy();
   expect(screen.getByText('Running (1)')).toBeTruthy();
+});
+
+test('work that started while the pane was closed appears when it mounts over a fresh cached list', async () => {
+  // A cached, still-fresh session list (another surface read it moments
+  // ago), and a client that does not refetch on mount.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnMount: false } },
+  });
+  client.setQueryData(['orchestration-sessions'], []);
+  // The delegate started while no Agents pane was mounted.
+  server.sessions = [cliDelegate('delegate-before-mount')];
+  render(
+    <QueryClientProvider client={client}>
+      <AgentsWorkspacePane />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText('Arrived after mount')).toBeTruthy();
 });

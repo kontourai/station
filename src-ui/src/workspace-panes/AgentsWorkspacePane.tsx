@@ -3,8 +3,10 @@ import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
@@ -42,6 +44,7 @@ import {
   selectChatChildWork,
   selectGlobalChildWork,
   subagentNoticeFor,
+  threadInChat,
 } from './agents/childWorkSelectors';
 import './agents/AgentsWorkspacePane.css';
 
@@ -113,13 +116,19 @@ function chatIndexSignature(chats: Record<string, ChatUIState>): string {
 const readChatIndexSignature = () =>
   chatIndexSignature(activeChatsStore.getSnapshot());
 
+/** This Station's partition of the window-wide child-work registry (D1). */
+function useChildWorkPartition(apiBase: string): GlobalChildWorkState {
+  const read = useCallback(
+    () => childWorkGlobalStore.getPartition(apiBase),
+    [apiBase],
+  );
+  return useSyncExternalStore(childWorkGlobalStore.subscribe, read, read);
+}
+
 function useChildWorkInput(
   sessions: readonly OrchestrationSessionSummary[],
+  global: GlobalChildWorkState,
 ): ChildWorkSelectorInput {
-  const global = useSyncExternalStore(
-    childWorkGlobalStore.subscribe,
-    childWorkGlobalStore.getSnapshot,
-  );
   const tasks = useSyncExternalStore(
     backgroundTasksStore.subscribe,
     backgroundTasksStore.getSnapshot,
@@ -169,23 +178,33 @@ export function AgentsWorkspacePane() {
   const tools = useChatBackgroundTasks(scope === 'chat' ? chatKey : null);
   const sessionsQuery = useOrchestrationSessionsQuery();
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
-  const input = useChildWorkInput(sessions);
-  const global = useSyncExternalStore(
-    childWorkGlobalStore.subscribe,
-    childWorkGlobalStore.getSnapshot,
-  );
+  const { apiBase } = useApiBase();
+  const global = useChildWorkPartition(apiBase);
+  const input = useChildWorkInput(sessions, global);
   const showSurface = useShowSurface();
   const [now, setNow] = useState(() => Date.now());
 
   // #2307, the mechanism ChatDock uses: register this authority's client
   // with the stream so read-model facts (a new delegate's first turn) reach
   // the sessions query this pane reads, with or without a dock mounted.
-  const { apiBase } = useApiBase();
   const queryClient = useQueryClient();
   useEffect(
     () => ensureOrchestrationEventStream(apiBase, queryClient),
     [apiBase, queryClient],
   );
+
+  // D2: a cached session list can predate work that started while this pane
+  // was closed; the query does not refetch on mount, and the stream's
+  // snapshot does not refresh it. Re-read it on mount, and again whenever
+  // All — the scope that lists every delegate from it — is chosen.
+  const refetchSessions = useRef(sessionsQuery.refetch);
+  refetchSessions.current = sessionsQuery.refetch;
+  const refetchedOnMount = useRef(false);
+  useEffect(() => {
+    if (scope !== 'all' && refetchedOnMount.current) return;
+    refetchedOnMount.current = true;
+    void refetchSessions.current?.();
+  }, [scope]);
 
   const chooseScope = (next: ChildWorkScope) => {
     setStoredScope(next);
@@ -269,11 +288,10 @@ export function AgentsWorkspacePane() {
       ? subagentNoticeFor({
           provider:
             activeChatsStore.getSnapshot()[chatKey]?.orchestrationProvider,
+          // D4: the selector's own membership rule, so a continuation
+          // session's refusal (resolved through its conversation) counts.
           observed: Object.entries(global.observability)
-            .filter(
-              ([threadId]) =>
-                threadId === chatKey || input.chatKeyFor(threadId) === chatKey,
-            )
+            .filter(([threadId]) => threadInChat(input, chatKey)(threadId))
             .map(([, observed]) => observed),
         })
       : undefined;
@@ -295,15 +313,22 @@ export function AgentsWorkspacePane() {
   // when it cannot, an empty list is not "no agent work".
   const readModelPending = scope === 'all' && sessionsQuery.data === undefined;
   const readModelFailed = readModelPending && sessionsQuery.isError;
+  // D3: a failed refresh behind cached data — the list shown may be stale.
+  const readModelStale =
+    scope === 'all' && !readModelPending && sessionsQuery.isError === true;
   const retry = () => void sessionsQuery.refetch();
 
   const nothing = runningCount === 0 && finishedCount === 0;
   let body: ReactNode;
-  if (nothing && readModelFailed)
+  if (nothing && (readModelFailed || readModelStale))
     body = (
       <ErrorState
         variant="compact"
-        title="Could not load agent work"
+        title={
+          readModelFailed
+            ? 'Could not load agent work'
+            : 'Could not refresh agent work'
+        }
         description="Delegated tasks come from this Station's session list, which did not answer."
         action={
           <Button size="sm" onClick={retry}>
@@ -339,6 +364,14 @@ export function AgentsWorkspacePane() {
         {readModelFailed && (
           <p className="agents-pane__note" role="status">
             Delegated tasks could not be loaded.{' '}
+            <Button size="sm" variant="link" onClick={retry}>
+              Try again
+            </Button>
+          </p>
+        )}
+        {readModelStale && (
+          <p className="agents-pane__note" role="status">
+            Delegated tasks may be out of date: the last refresh failed.{' '}
             <Button size="sm" variant="link" onClick={retry}>
               Try again
             </Button>

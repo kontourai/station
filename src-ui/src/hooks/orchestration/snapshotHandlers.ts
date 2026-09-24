@@ -528,7 +528,10 @@ export function applyOrchestrationSnapshot(
   // recorded reporter it no longer lists is gone (D2).
   if (!replayId) {
     reconcileChildWorkSnapshot(payload.sessions);
-    childWorkGlobalStore.reconcileSnapshot(payload.sessions);
+    // A snapshot names its Station; one without (no caller today) folds into
+    // no partition rather than a guessed one.
+    if (options?.apiBase)
+      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
   }
 
   if (!isReconnectFallback || !options || replayId) return;

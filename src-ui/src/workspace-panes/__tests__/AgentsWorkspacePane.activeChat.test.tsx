@@ -60,6 +60,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+
+/** The Station these events arrive from (the store is partitioned by it). */
+const API = 'http://station.test';
+
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
@@ -111,7 +115,7 @@ beforeEach(() => {
   // The same child as the window-wide registry holds it: its item carries
   // the per-task stop seam the pane's Claude bridge requires (#2459 R1).
   childWorkGlobalStore.reset();
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'claude',
     threadId: 'exec-1',
     createdAt: '2026-09-24T00:00:00.000Z',

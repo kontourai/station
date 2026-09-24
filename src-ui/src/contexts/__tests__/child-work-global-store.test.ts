@@ -24,6 +24,9 @@ import {
   GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT,
 } from '../child-work-global-store';
 
+/** The Station these events arrive from (the store is partitioned by it). */
+const API = 'http://localhost';
+
 const CHATLESS = 'thread-no-chat-open';
 let seq = 0;
 
@@ -55,7 +58,7 @@ function running(threadId: string, childId: string): ChildWorkItem {
 }
 
 const items = () =>
-  Object.values(childWorkGlobalStore.getSnapshot().registry.items);
+  Object.values(childWorkGlobalStore.getPartition(API).registry.items);
 
 describe('child-work global store', () => {
   beforeEach(() => {
@@ -81,6 +84,35 @@ describe('child-work global store', () => {
       ['t-1', 'running'],
       ['c-2', 'running'],
     ]);
+  });
+
+  test('each Station has its own partition: events from A never reach B', () => {
+    handleOrchestrationEvent('http://station-a.test', {
+      eventId: 'evt-a',
+      provider: 'codex',
+      threadId: 'exec-a',
+      createdAt: at(),
+      method: 'child-work.updated',
+      delta: { kind: 'upsert', item: running('exec-a', 'c-a') },
+    });
+    childWorkGlobalStore.reconcileSnapshot('http://station-a.test', [
+      {
+        threadId: 'exec-a2',
+        childWork: { children: { observability: 'not-reported', reason: 'x' } },
+      },
+    ]);
+    const b = childWorkGlobalStore.getPartition('http://station-b.test');
+    expect(Object.keys(b.registry.items)).toEqual([]);
+    expect(b.observability).toEqual({});
+    const a = childWorkGlobalStore.getPartition('http://station-a.test');
+    expect(Object.values(a.registry.items).map((item) => item.childId)).toEqual(
+      ['c-a'],
+    );
+    // A full snapshot from B does not end A's children.
+    childWorkGlobalStore.reconcileSnapshot('http://station-b.test', []);
+    expect(
+      childWorkGlobalStore.getPartition('http://station-a.test').registry.items,
+    ).toEqual(a.registry.items);
   });
 
   test('a delta naming another reporter is not recorded', () => {
@@ -112,14 +144,14 @@ describe('child-work global store', () => {
   });
 
   test('a terminal state change ends them the same way', () => {
-    childWorkGlobalStore.ingest({
+    childWorkGlobalStore.ingest(API, {
       provider: 'claude',
       threadId: CHATLESS,
       createdAt: at(),
       method: 'child-work.updated',
       delta: { kind: 'upsert', item: running(CHATLESS, 'c-1') },
     });
-    childWorkGlobalStore.ingest({
+    childWorkGlobalStore.ingest(API, {
       provider: 'claude',
       threadId: CHATLESS,
       createdAt: at(),
@@ -132,7 +164,7 @@ describe('child-work global store', () => {
   });
 
   test('the snapshot seeds running children and records a not-reported engine', () => {
-    childWorkGlobalStore.reconcileSnapshot([
+    childWorkGlobalStore.reconcileSnapshot(API, [
       {
         threadId: 'reporter-a',
         childWork: {
@@ -151,36 +183,40 @@ describe('child-work global store', () => {
       },
     ]);
     expect(items().map((item) => item.childId)).toEqual(['c-1']);
-    expect(childWorkGlobalStore.getSnapshot().observability).toEqual({
+    expect(childWorkGlobalStore.getPartition(API).observability).toEqual({
       'reporter-a': { kind: 'reported' },
       'reporter-b': { kind: 'not-reported', reason: 'ACP' },
     });
     // Not the reducer's never-forgotten map (R4).
-    expect(childWorkGlobalStore.getSnapshot().registry.notReported).toEqual({});
+    expect(childWorkGlobalStore.getPartition(API).registry.notReported).toEqual(
+      {},
+    );
   });
 
   test('a later report retracts an earlier refusal', () => {
-    childWorkGlobalStore.ingest({
+    childWorkGlobalStore.ingest(API, {
       provider: 'codex',
       threadId: 'r-1',
       createdAt: at(),
       method: 'child-work.updated',
       delta: { kind: 'not-reported', reporterThreadId: 'r-1', reason: 'no' },
     });
-    childWorkGlobalStore.ingest({
+    childWorkGlobalStore.ingest(API, {
       provider: 'codex',
       threadId: 'r-1',
       createdAt: at(),
       method: 'child-work.updated',
       delta: { kind: 'upsert', item: running('r-1', 'c-1') },
     });
-    expect(childWorkGlobalStore.getSnapshot().observability['r-1']).toEqual({
-      kind: 'reported',
-    });
+    expect(childWorkGlobalStore.getPartition(API).observability['r-1']).toEqual(
+      {
+        kind: 'reported',
+      },
+    );
   });
 
   test('what a reporter said is forgotten on its exit, and when a full snapshot no longer lists it', () => {
-    childWorkGlobalStore.reconcileSnapshot([
+    childWorkGlobalStore.reconcileSnapshot(API, [
       {
         threadId: 'gone-by-exit',
         childWork: { children: { observability: 'not-reported', reason: 'x' } },
@@ -190,7 +226,7 @@ describe('child-work global store', () => {
         childWork: { children: { observability: 'not-reported', reason: 'y' } },
       },
     ]);
-    childWorkGlobalStore.ingest({
+    childWorkGlobalStore.ingest(API, {
       provider: 'acp',
       threadId: 'gone-by-exit',
       createdAt: at(),
@@ -198,16 +234,16 @@ describe('child-work global store', () => {
       sessionId: 'gone-by-exit',
     });
     expect(
-      Object.keys(childWorkGlobalStore.getSnapshot().observability),
+      Object.keys(childWorkGlobalStore.getPartition(API).observability),
     ).toEqual(['gone-by-snapshot']);
-    childWorkGlobalStore.reconcileSnapshot([]);
-    expect(childWorkGlobalStore.getSnapshot().observability).toEqual({});
+    childWorkGlobalStore.reconcileSnapshot(API, []);
+    expect(childWorkGlobalStore.getPartition(API).observability).toEqual({});
   });
 
   test('what reporters said is bounded, oldest dropped first', () => {
     const total = GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT + 4;
     for (let index = 0; index < total; index += 1)
-      childWorkGlobalStore.ingest({
+      childWorkGlobalStore.ingest(API, {
         provider: 'acp',
         threadId: `r-${index}`,
         createdAt: at(),
@@ -218,7 +254,9 @@ describe('child-work global store', () => {
           reason: 'none',
         },
       });
-    const kept = Object.keys(childWorkGlobalStore.getSnapshot().observability);
+    const kept = Object.keys(
+      childWorkGlobalStore.getPartition(API).observability,
+    );
     expect(kept).toHaveLength(GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT);
     expect(kept).not.toContain('r-3');
     expect(kept).toContain('r-4');
@@ -226,7 +264,7 @@ describe('child-work global store', () => {
   });
 
   test('a reporter the full snapshot no longer lists is gone: unresolved, not completed', () => {
-    childWorkGlobalStore.reconcileSnapshot([
+    childWorkGlobalStore.reconcileSnapshot(API, [
       {
         threadId: 'reporter-a',
         childWork: {
@@ -238,7 +276,7 @@ describe('child-work global store', () => {
         },
       },
     ]);
-    childWorkGlobalStore.reconcileSnapshot([]);
+    childWorkGlobalStore.reconcileSnapshot(API, []);
     expect(items().map((item) => item.status)).toEqual(['unresolved']);
   });
 
@@ -246,7 +284,7 @@ describe('child-work global store', () => {
     const total = GLOBAL_CHILD_WORK_FINISHED_LIMIT + 5;
     for (let index = 0; index < total; index += 1) {
       const reporter = `reporter-${index}`;
-      childWorkGlobalStore.ingest({
+      childWorkGlobalStore.ingest(API, {
         provider: 'codex',
         threadId: reporter,
         createdAt: new Date(Date.UTC(2026, 8, 24, 0, 0, index)).toISOString(),
@@ -271,7 +309,7 @@ describe('child-work global store', () => {
 
   test('running children never count against the finished bound', () => {
     for (let index = 0; index < GLOBAL_CHILD_WORK_FINISHED_LIMIT + 3; index++)
-      childWorkGlobalStore.ingest({
+      childWorkGlobalStore.ingest(API, {
         provider: 'codex',
         threadId: `r-${index}`,
         createdAt: at(),

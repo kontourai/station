@@ -66,8 +66,22 @@ const EMPTY_STATE: GlobalChildWorkState = {
   observability: {},
 };
 
+/**
+ * #2459 D1: one partition per Station (the apiBase whose stream delivered
+ * the events). A stream outlives the pane that ensured it (#2307), so an
+ * unpartitioned registry would show Station A's work in Station B's "All".
+ */
+let partitions: Record<string, GlobalChildWorkState> = {};
+/** The partition the running operation works on (operations are sync). */
+let current = '';
 let state: GlobalChildWorkState = EMPTY_STATE;
 const listeners = new Set<() => void>();
+
+function within(apiBase: string, operation: () => void): void {
+  current = apiBase;
+  state = partitions[apiBase] ?? EMPTY_STATE;
+  operation();
+}
 
 function eventTime(iso: string | undefined): number {
   const parsed = iso ? Date.parse(iso) : Number.NaN;
@@ -77,6 +91,7 @@ function eventTime(iso: string | undefined): number {
 function commit(next: GlobalChildWorkState): void {
   if (next === state) return;
   state = next;
+  partitions = { ...partitions, [current]: next };
   for (const listener of listeners) listener();
 }
 
@@ -218,8 +233,9 @@ export const childWorkGlobalStore = {
     return () => listeners.delete(listener);
   },
 
-  getSnapshot(): GlobalChildWorkState {
-    return state;
+  /** One Station's partition; a stable reference until it changes. */
+  getPartition(apiBase: string): GlobalChildWorkState {
+    return partitions[apiBase] ?? EMPTY_STATE;
   },
 
   /**
@@ -227,33 +243,8 @@ export const childWorkGlobalStore = {
    * (non-replay) event. Engine subagents only: a Station delegate's own
    * record comes from the session read model, which lists every delegate.
    */
-  ingest(event: OrchestrationEvent): void {
-    switch (event.method) {
-      case 'child-work.updated': {
-        // A delta names its own reporter; one on another thread is not that
-        // session's to record (the chat registry and server apply the same).
-        if (deltaReporter(event.delta) !== event.threadId) return;
-        fold(event.delta, eventTime(event.createdAt));
-        return;
-      }
-      case 'extension.notification': {
-        const delta = childWorkDeltaFromLegacyClaudeTaskNotification(
-          event,
-          event.threadId,
-        );
-        if (delta) fold(delta, eventTime(event.createdAt));
-        return;
-      }
-      case 'session.exited':
-        endReporter(event.threadId, eventTime(event.createdAt));
-        return;
-      case 'session.state-changed':
-        if (TERMINAL_SESSION_STATES.has(event.to))
-          endReporter(event.threadId, eventTime(event.createdAt));
-        return;
-      default:
-        return;
-    }
+  ingest(apiBase: string, event: OrchestrationEvent): void {
+    within(apiBase, () => ingestInto(event));
   },
 
   /**
@@ -262,44 +253,84 @@ export const childWorkGlobalStore = {
    * longer names is gone, so its running children end `unresolved`.
    */
   reconcileSnapshot(
+    apiBase: string,
     sessions: ReadonlyArray<{
       threadId: string;
       childWork?: SessionChildWork;
     }>,
   ): void {
-    const at = Date.now();
-    for (const session of sessions) {
-      const view = session.childWork?.children;
-      if (!view) continue;
-      fold(
-        view.observability === 'not-reported'
-          ? {
-              kind: 'not-reported',
-              reporterThreadId: session.threadId,
-              reason: view.reason,
-            }
-          : {
-              kind: 'snapshot',
-              producer: 'engine-subagent',
-              reporterThreadId: session.threadId,
-              running: view.running,
-            },
-        at,
-      );
-    }
-    const listed = new Set(sessions.map((session) => session.threadId));
-    const reporters = new Set([
-      ...Object.values(state.registry.items)
-        .filter((item) => item.status === 'running')
-        .map((item) => item.reporterThreadId),
-      ...Object.keys(state.observability),
-    ]);
-    for (const reporter of reporters)
-      if (!listed.has(reporter)) endReporter(reporter, at);
+    within(apiBase, () => reconcileInto(sessions));
   },
 
   /** Test-only. */
   reset(): void {
+    partitions = {};
     state = EMPTY_STATE;
   },
 };
+
+function ingestInto(event: OrchestrationEvent): void {
+  switch (event.method) {
+    case 'child-work.updated': {
+      // A delta names its own reporter; one on another thread is not that
+      // session's to record (the chat registry and server apply the same).
+      if (deltaReporter(event.delta) !== event.threadId) return;
+      fold(event.delta, eventTime(event.createdAt));
+      return;
+    }
+    case 'extension.notification': {
+      const delta = childWorkDeltaFromLegacyClaudeTaskNotification(
+        event,
+        event.threadId,
+      );
+      if (delta) fold(delta, eventTime(event.createdAt));
+      return;
+    }
+    case 'session.exited':
+      endReporter(event.threadId, eventTime(event.createdAt));
+      return;
+    case 'session.state-changed':
+      if (TERMINAL_SESSION_STATES.has(event.to))
+        endReporter(event.threadId, eventTime(event.createdAt));
+      return;
+    default:
+      return;
+  }
+}
+
+function reconcileInto(
+  sessions: ReadonlyArray<{
+    threadId: string;
+    childWork?: SessionChildWork;
+  }>,
+): void {
+  const at = Date.now();
+  for (const session of sessions) {
+    const view = session.childWork?.children;
+    if (!view) continue;
+    fold(
+      view.observability === 'not-reported'
+        ? {
+            kind: 'not-reported',
+            reporterThreadId: session.threadId,
+            reason: view.reason,
+          }
+        : {
+            kind: 'snapshot',
+            producer: 'engine-subagent',
+            reporterThreadId: session.threadId,
+            running: view.running,
+          },
+      at,
+    );
+  }
+  const listed = new Set(sessions.map((session) => session.threadId));
+  const reporters = new Set([
+    ...Object.values(state.registry.items)
+      .filter((item) => item.status === 'running')
+      .map((item) => item.reporterThreadId),
+    ...Object.keys(state.observability),
+  ]);
+  for (const reporter of reporters)
+    if (!listed.has(reporter)) endReporter(reporter, at);
+}

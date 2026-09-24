@@ -61,6 +61,10 @@ import {
   selectChatBackgroundTasks,
 } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+
+/** The Station these events arrive from (the store is partitioned by it). */
+const API = 'http://station.test';
+
 import { AgentsWorkspacePane } from '../AgentsWorkspacePane';
 
 const CHAT = 'chat-2459';
@@ -79,7 +83,7 @@ function openChat(provider: string) {
 }
 
 function claudeRegistry(active: unknown[]) {
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'claude',
     threadId: 'exec-1',
     createdAt: '2026-09-24T00:00:00.000Z',
@@ -152,7 +156,7 @@ test('a server refusal is shown in the server’s words, and a later report retr
   // The #2458-era case: the server's view said the engine reports subagents
   // but Station did not map them. "Does not report" would contradict it.
   openChat('codex');
-  childWorkGlobalStore.reconcileSnapshot([
+  childWorkGlobalStore.reconcileSnapshot(API, [
     {
       threadId: 'exec-1',
       childWork: {
@@ -179,7 +183,7 @@ test('a server refusal is shown in the server’s words, and a later report retr
   cleanup();
 
   // The server now reports (it mapped them): no refusal, no silence claim.
-  childWorkGlobalStore.reconcileSnapshot([
+  childWorkGlobalStore.reconcileSnapshot(API, [
     {
       threadId: 'exec-1',
       childWork: {
@@ -361,7 +365,7 @@ test('a Codex child with no stop seam gets no Stop per chat', () => {
       },
     ],
   });
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'codex',
     threadId: 'exec-1',
     createdAt: '2026-09-24T00:00:00.000Z',
@@ -399,7 +403,7 @@ test('a settle the chat registry has not caught up with shows the child once, fi
   });
   // ...while the pre-guard registry has already seen it settle.
   claudeRegistry([{ taskId: 'task-1', description: 'Investigate flaky test' }]);
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'claude',
     threadId: 'exec-1',
     createdAt: '2026-09-24T00:00:03.000Z',
@@ -416,7 +420,7 @@ test('a settle the chat registry has not caught up with shows the child once, fi
 });
 
 test('a settled subagent shows under Finished, which says since when', () => {
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'codex',
     threadId: 'exec-x',
     createdAt: '2026-09-24T00:00:00.000Z',
@@ -455,7 +459,7 @@ test('All does not read an unanswered session list as "no agent work"', () => {
   cleanup();
 
   // With subagents on screen, the failure is a note, not a blank.
-  childWorkGlobalStore.ingest({
+  childWorkGlobalStore.ingest(API, {
     provider: 'codex',
     threadId: 'exec-x',
     createdAt: '2026-09-24T00:00:00.000Z',
@@ -474,4 +478,87 @@ test('All does not read an unanswered session list as "no agent work"', () => {
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Still here')).toBeTruthy();
   expect(screen.getByText(/Delegated tasks could not be loaded/)).toBeTruthy();
+});
+
+test('All shows only this Station’s subagents — another Station’s stream feeds its own partition', () => {
+  childWorkGlobalStore.ingest('http://other-station.test', {
+    provider: 'codex',
+    threadId: 'exec-elsewhere',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-elsewhere',
+        childId: 'c-elsewhere',
+        status: 'running',
+        title: 'Another Station’s work',
+      },
+    },
+  });
+  render(<AgentsWorkspacePane />);
+  expect(screen.queryByText('Another Station’s work')).toBeNull();
+  expect(screen.getByText('No agent work yet')).toBeTruthy();
+});
+
+test('a failed refresh behind a cached list says the list may be stale', () => {
+  const refetch = vi.fn();
+  sessionsResult = {
+    data: [
+      {
+        threadId: 'delegate-cached',
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'delegate-cached',
+            childId: 'delegate-cached',
+            status: 'running',
+            title: 'Cached delegate',
+          },
+        },
+      },
+    ],
+    isError: true,
+    refetch,
+  };
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Cached delegate')).toBeTruthy();
+  expect(screen.getByText(/may be out of date/)).toBeTruthy();
+  refetch.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  expect(refetch).toHaveBeenCalled();
+  cleanup();
+
+  // Cached but empty: not "no agent work" either.
+  sessionsResult = { data: [], isError: true, refetch };
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Could not refresh agent work')).toBeTruthy();
+  expect(screen.queryByText('No agent work yet')).toBeNull();
+});
+
+test('a continuation session’s server refusal counts for its conversation’s chat', () => {
+  openChat('codex');
+  activeChatsStore.updateChat(CHAT, { conversationId: 'conv-2459' });
+  // The continuation child: not the chat's current session, found only
+  // through its durable conversation — the rule the child list uses.
+  sessionsResult = {
+    data: [{ threadId: 'exec-continuation', conversationId: 'conv-2459' }],
+  };
+  childWorkGlobalStore.reconcileSnapshot(API, [
+    {
+      threadId: 'exec-continuation',
+      conversationId: 'conv-2459',
+      childWork: {
+        children: {
+          observability: 'not-reported',
+          reason: 'Continuation sessions do not report subagents yet.',
+        },
+      },
+    } as never,
+  ]);
+  render(<AgentsWorkspacePane />);
+  expect(
+    screen.getByText('Continuation sessions do not report subagents yet.'),
+  ).toBeTruthy();
 });

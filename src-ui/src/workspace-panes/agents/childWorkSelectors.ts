@@ -370,6 +370,25 @@ export function selectGlobalChildWork(
 }
 
 /**
+ * The ONE rule for "this session thread belongs to this chat", shared by the
+ * chat's child list and its subagent notice so the two cannot disagree: the
+ * key itself (a thread with no chat still reads its own work, as
+ * `useChatStoreKey` falls through), the chat the thread resolves to, or —
+ * for a conversation's continuation session — the chat its durable
+ * conversation resolves to.
+ */
+export function threadInChat(
+  input: ChildWorkSelectorInput,
+  chatKey: string,
+): (threadId: string | undefined) => boolean {
+  const sessions = sessionIndex(input.sessions);
+  return (threadId) =>
+    threadId !== undefined &&
+    (threadId === chatKey ||
+      resolveChat(threadId, input, sessions) === chatKey);
+}
+
+/**
  * One chat's ENGINE subagents: those its own sessions reported, and those
  * reported by a delegate this chat launched (the delegate's bind event names
  * the chat as its parent — a reported edge). The chat's delegates themselves
@@ -380,13 +399,7 @@ export function selectChatChildWork(
   input: ChildWorkSelectorInput,
   chatKey: string,
 ): ChildWorkListView {
-  const sessions = sessionIndex(input.sessions);
-  // The key itself is a thread id: a thread with no chat still reads its own
-  // work (`useChatStoreKey`'s fall-through).
-  const inChat = (threadId: string | undefined) =>
-    threadId !== undefined &&
-    (threadId === chatKey ||
-      resolveChat(threadId, input, sessions) === chatKey);
+  const inChat = threadInChat(input, chatKey);
   return toView(
     buildCandidates(input).filter((candidate) => {
       const item = candidate.row.item;
