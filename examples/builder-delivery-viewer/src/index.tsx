@@ -105,7 +105,7 @@ function ClaimList({
 
 export function BuilderDeliveryViewer(_props: LayoutComponentProps) {
   const { apiBase } = useApiBase();
-  const navigation = useNavigation() as { selectedProject?: string | null };
+  const navigation = useNavigation();
   const project = navigation.selectedProject ?? null;
   const [selected, setSelected] = useState<string | null>(null);
   const list = useQuery({

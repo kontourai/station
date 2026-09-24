@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 const ambientNavigation = {
   selectedProject: 'ambient-project',
   selectedProjectLayout: 'ambient-layout',
-  dockState: false,
+  isDockOpen: false,
   setDockState: vi.fn(),
 };
 
@@ -57,6 +57,7 @@ vi.mock('../../hooks/useActiveChatSessions', () => ({
 }));
 
 import {
+  useDockState,
   useLayout,
   useNavigation,
   useSDK,
@@ -330,4 +331,84 @@ test('keeps simultaneous Pane API identities owner-correct across interleaved ca
     { pane: 'first', pluginName: 'plugin-alpha', header: 'plugin-alpha' },
     { pane: 'first', pluginName: 'plugin-alpha', header: 'plugin-alpha' },
   ]);
+});
+
+function DockProbe() {
+  const { isOpen, toggle } = useDockState();
+  return (
+    <button type="button" onClick={toggle}>
+      {isOpen ? 'Dock open' : 'Dock closed'}
+    </button>
+  );
+}
+
+// #2399: `useDockState` read `navigation.dockState`, a field the host's
+// navigation never had, so a plugin always saw a closed dock and `toggle`
+// always asked to open it. The host publishes `isDockOpen`.
+test('reads and toggles the host dock through useDockState', () => {
+  ambientNavigation.isDockOpen = true;
+  try {
+    render(
+      <SDKAdapter layout={paneLayout}>
+        <DockProbe />
+      </SDKAdapter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Dock open' }));
+    expect(ambientNavigation.setDockState).toHaveBeenCalledWith(false);
+  } finally {
+    ambientNavigation.isDockOpen = false;
+  }
+});
+
+function ActionsToastProbe({
+  first,
+  second,
+}: {
+  first: () => void;
+  second: () => void;
+}) {
+  const { showToast } = useToast();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        showToast({
+          message: 'Notes saved',
+          duration: 0,
+          action: { label: 'Undo', onClick: first },
+          actions: [{ label: 'View', variant: 'primary', onClick: second }],
+        })
+      }
+    >
+      Save notes
+    </button>
+  );
+}
+
+// #2399: the host renders several toast buttons, and the enterprise-layout
+// example passed them as a fourth positional argument the SDK form never
+// carried, so they were dropped. The object form carries them.
+test('renders every button an object-form toast names, in order', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../contexts/ToastContext')
+  >('../../contexts/ToastContext');
+  mocks.useShellToast.mockImplementation(actual.useToast);
+  const first = vi.fn();
+  const second = vi.fn();
+  render(
+    <ToastProvider>
+      <SDKAdapter layout={paneLayout}>
+        <ActionsToastProbe first={first} second={second} />
+      </SDKAdapter>
+    </ToastProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save notes' }));
+  const [toast] = toastStore.getSnapshot();
+  expect(toast.actions?.map((action) => action.label)).toEqual([
+    'Undo',
+    'View',
+  ]);
+  toast.actions?.[1].onClick();
+  expect(second).toHaveBeenCalledTimes(1);
+  expect(first).not.toHaveBeenCalled();
 });

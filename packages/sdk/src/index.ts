@@ -122,6 +122,11 @@ export async function getAnswerBasis(
 ) {
   return (await import('./client/answer-basis.js')).getAnswerBasis(...args);
 }
+// The Agent references `useSendToChat` accepts (#2400)
+export type {
+  AgentId,
+  QualifiedPluginAgentId,
+} from '@kontourai/station-contracts/agent-identity';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -319,6 +324,20 @@ export {
   // Workflows
   useWorkflows,
 } from './hooks';
+// Contracts for the host context slots the hooks below read (#2399)
+export type {
+  SDKAgentsContext,
+  SDKAuthContext,
+  SDKAuthState,
+  SDKAuthUser,
+  SDKNavigation,
+  SDKNavigationContext,
+  SDKToast,
+  SDKToastContext,
+  ToastAction,
+  ToastRequest,
+  ToastType,
+} from './host-contexts';
 // Re-export layout utilities
 export { createLayoutContext } from './layout/context';
 export type { ProviderMetadata } from './layoutProviders';
@@ -337,6 +356,7 @@ export {
   LayoutNavigationProvider,
   LayoutProvider,
   SDKContext,
+  type SDKContextValue,
   SDKProvider,
   useLayoutNavigation,
 } from './providers';
