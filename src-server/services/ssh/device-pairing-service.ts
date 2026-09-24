@@ -43,6 +43,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
 import {
   humanPrincipal,
   isPrincipalRef,
@@ -50,6 +51,11 @@ import {
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
+import {
+  isValidNativePushRequest,
+  type NativePushRegistration,
+  NativePushRegistrationStore,
+} from '../notifications/native-push-registration-store.js';
 
 const REGISTRY_SCHEMA_VERSION = 3 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -139,6 +145,11 @@ const DEVICE_RECORD_KEYS = new Set([
   'credentialAliases',
   'relayEnrollmentId',
   'pendingEnrollmentId',
+  // Tolerated, never written: a pre-release build of native push kept its
+  // registration here. It is dropped on load, so the next persist leaves a
+  // registry that older Stations can still read. Registrations now live in
+  // `native-push-registrations.json`.
+  'nativePush',
 ]);
 const PRE_CREDENTIAL_ALIAS_DEVICE_RECORD_KEYS = new Set(
   [...DEVICE_RECORD_KEYS].filter((key) => key !== 'credentialAliases'),
@@ -988,7 +999,12 @@ function validateRegistry(
       // Null was the old on-disk spelling for never used. Normalize it (and
       // any non-number value) to ABSENT here so no later projection can leak
       // null to consumers whose contract is absent-never-null.
-      const { issuedAt, lastUsedAt, ...device } = rawDevice;
+      const {
+        issuedAt,
+        lastUsedAt,
+        nativePush: _retiredNativePush,
+        ...device
+      } = rawDevice as typeof rawDevice & { nativePush?: unknown };
       return {
         ...device,
         // R4/AC3 migration: a pre-scoping device reads as full access, in
@@ -1081,9 +1097,12 @@ export class DevicePairingService {
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
+  /** Native push registrations: a sidecar, never a registry field. */
+  readonly #nativePush: NativePushRegistrationStore;
 
   constructor(options: DevicePairingServiceOptions) {
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
+    this.#nativePush = new NativePushRegistrationStore(options.homeDir);
     this.#environmentId = options.environmentId;
     this.#now = options.now ?? Date.now;
     this.#offerTtlMs = options.offerTtlMs ?? DEFAULT_OFFER_TTL_MS;
@@ -1838,6 +1857,7 @@ export class DevicePairingService {
     // supersession (old active grant revoked without its replacement).
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#dropStaleNativePush();
     offer.status = 'used';
     return {
       environmentId: this.#environmentId,
@@ -2118,6 +2138,7 @@ export class DevicePairingService {
       device.pushSubscription = null;
       this.#persistRegistry(nextRegistry);
       this.#registry = nextRegistry;
+      this.#dropStaleNativePush();
     }
     return publicDevice(device);
   }
@@ -2515,6 +2536,72 @@ export class DevicePairingService {
     return results;
   }
 
+  /**
+   * Stores (or replaces the token of) the caller's own native push
+   * registration. Callers must resolve the caller's device via
+   * {@link identifyDevice} first — this trusts the deviceId it is given, but
+   * refuses a revoked or not-yet-activated one.
+   */
+  setNativePush(
+    deviceId: string,
+    request: NativePushRegistrationRequest,
+    stationKey: string,
+  ): NativePushRegistration {
+    if (!isValidNativePushRequest(request))
+      throw new DevicePairingError('invalid_request');
+    if (!this.#activeDeviceIds().has(deviceId))
+      throw new DevicePairingError('device_not_found');
+    return this.#nativePush.upsert(deviceId, request, stationKey, this.#now());
+  }
+
+  /**
+   * Idempotent. With `expectedToken`, clears only if the stored token is
+   * still that one — a gateway "unregistered" answer for an old token must
+   * not erase a registration the phone has since refreshed.
+   */
+  clearNativePush(deviceId: string, expectedToken?: string): boolean {
+    return this.#nativePush.delete(deviceId, expectedToken);
+  }
+
+  /**
+   * Fan-out source for the agent-activity publisher. Joined against the
+   * registry on every read, so a registration whose device was revoked is
+   * never listed even if dropping it failed.
+   */
+  listNativePushRegistrations(): Array<{
+    deviceId: string;
+    registration: NativePushRegistration;
+  }> {
+    const active = this.#activeDeviceIds();
+    return [...this.#nativePush.list()]
+      .filter(([deviceId]) => active.has(deviceId))
+      .map(([deviceId, registration]) => ({ deviceId, registration }));
+  }
+
+  #activeDeviceIds(): Set<string> {
+    return new Set(
+      this.#registry.devices
+        .filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.pendingEnrollmentId === undefined,
+        )
+        .map((device) => device.id),
+    );
+  }
+
+  /**
+   * Called after a revocation, replacement or reset is committed. Best
+   * effort: the listing join above already hides a stale entry.
+   */
+  #dropStaleNativePush(keep: ReadonlySet<string> = this.#activeDeviceIds()) {
+    try {
+      this.#nativePush.retain(keep);
+    } catch {
+      // An unreadable store is reported where it is read (publisher, route).
+    }
+  }
+
   resetEnvironment(environmentId: string): void {
     const nextRegistry: DeviceRegistry = {
       schemaVersion: REGISTRY_SCHEMA_VERSION,
@@ -2527,6 +2614,7 @@ export class DevicePairingService {
     // restart. Offers are in-memory only, so they are cleared after the
     // durable write succeeds.
     this.#persistRegistry(nextRegistry);
+    this.#dropStaleNativePush(new Set());
     this.#environmentId = environmentId;
     this.#registry = nextRegistry;
     this.#offers.clear();

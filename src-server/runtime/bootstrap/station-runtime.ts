@@ -375,6 +375,7 @@ import { getCachedUser } from '../../routes/system/auth.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -692,6 +693,7 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  private agentActivityPublisher?: AgentActivityPublisher;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -4000,6 +4002,7 @@ export class StationRuntime {
       browserService,
       liveSurfaceRegistry,
       pluginDraftService,
+      agentActivityPublisher,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4108,6 +4111,7 @@ export class StationRuntime {
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.browserService = browserService;
+    this.agentActivityPublisher = agentActivityPublisher;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
   }
@@ -4593,6 +4597,12 @@ export class StationRuntime {
     try {
       await this.browserService?.shutdown();
       this.browserService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.agentActivityPublisher?.stop();
+      this.agentActivityPublisher = undefined;
     } catch (error) {
       failures.push(error);
     }

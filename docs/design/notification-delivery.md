@@ -167,9 +167,10 @@ self-hosted product today, adapted where Station differs.
   `liveactivity` pushes, with push-to-start tokens (iOS 17.2+) so a card can
   appear while the app is closed.
 
-The payload carries status, thread titles and project names, never
+The card carries status, session titles and project names, never
 transcripts, code or tool output (the same rule as the
-[connection broker](connection-broker.md)).
+[connection broker](connection-broker.md)), and it is end-to-end encrypted
+to the phone: the gateway and Google see only routing data.
 
 **What doing without hosted accounts costs**, compared with T3: no single card
 merging several Stations (each Station owns its own card), revocation happens
@@ -196,44 +197,81 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   whose tokens are not a general signature (connection-broker.md). It is
   created on the first registration, never before.
 - **Registration.** `POST /api/system/native-push/register` from a paired
-  device, body `{ token, packageName, platform: 'android' }`, stores
-  `{ token, packageName, platform, registrationId, updatedAt }` privately on
-  that device's record and returns `{ registrationId, stationId, stationKey }`.
-  `registrationId` is 128 random bits, kept across token rotation, and is the
-  value the phone checks on every push (`device_id`); `stationId` is the
-  environment id (`user_id`); `stationKey` is the push key's RFC 7638
-  thumbprint, which the gateway stamps as `station_key` after verifying the
-  signature, so the phone can pin it. The package must be one the gateway
-  delivers to, and the route sits on the `/api/system` operate tier. `DELETE /api/system/native-push` clears the
-  caller's own registration only. Unpairing a device drops it with the rest of
-  the record. Hosted-tenant mode disables both routes, as it does Web Push.
-- **Publisher.** An `ORCHESTRATION_EVENT` subscriber keeps a per-session
-  snapshot (title, project, lifecycle state, updated time), coalesces per
-  Station, and sends one card to every registered device: at most five rows,
-  attention first (approval, input), then failed, then running, then sessions
-  finished in the last 15 minutes. Lifecycle maps to the plugin's phases
-  through `sessionAttentionDisposition`, the adjudication the bell shares:
-  `queued` with an open turn → `starting` (an attached-but-idle session also
-  projects `queued` and stays off the card), `running` → `running`, an
-  approval request (`review_pending`, which the lifecycle fold derives from an
-  unresolved non-input `request.opened`) → `waiting_for_approval`,
-  `needs_input` → `waiting_for_input`, `blocked` → `stale` (counted as
-  attention), `completed` → `completed`, `failed` → `failed`; canceled
-  sessions leave the card. Failed sessions leave after 15 minutes like any
-  other finished one, and live phases require the session to be attached in
-  this process. An alert (`alert_id` = SHA-256 of Station, session, phase
-  and entry time) goes out on entry into approval or input, and on a finish
-  within the last two minutes. Only lifecycle events trigger a rebuild, never
-  streamed content, and an unchanged card is not re-sent. A 410 from the
-  gateway clears that registration (unless the phone has re-registered with
-  a new token meanwhile); 503/429 are retried twice. The listener never
-  throws. Implementation: `src-server/services/notifications/`
-  (`agent-activity-card.ts`, `agent-activity-publisher.ts`,
-  `push-signing-key-store.ts`) and `routes/operations/native-push-routes.ts`.
+  device, body `{ token, packageName, platform: 'android' }`, returns
+  `{ registrationId, stationId, stationKey, payloadKey }`. `registrationId` is
+  128 random bits and is the value the phone checks on every push
+  (`device_id`); `stationId` is the environment id (`user_id`); `stationKey`
+  is the push key's RFC 7638 thumbprint, which the gateway stamps as
+  `station_key` after verifying the signature, so the phone can pin it;
+  `payloadKey` is 32 random bytes (base64url, 43 characters) the card is
+  sealed with. `registrationId` and `payloadKey` are kept across token
+  rotation and replaced after a `DELETE`. The registration is stored in its
+  own 0600 sidecar, `security/native-push-registrations.json`, keyed by
+  device id — not on the paired-device record, which older Stations read
+  with a strict key check and would refuse whole. The package must be one the
+  gateway delivers to, and the route sits on the `/api/system` operate tier.
+  `DELETE /api/system/native-push` clears the caller's own registration only.
+  Revoking or replacing a device drops its registration, and a registration
+  whose device is no longer active is never listed. Hosted-tenant mode
+  disables both routes, as it does Web Push; an invalid gateway URL, or a
+  corrupt key or registration file, makes registration answer 503.
+- **Sealed card.** Only routing data travels in clear: the FCM data is
+  `{ station_kind: 'agent_activity', device_id: <registrationId>, sealed }`,
+  where `sealed` = base64url(nonce[12] || AES-256-GCM ciphertext || tag[16])
+  under that registration's `payloadKey`, with additional authenticated data
+  `station-agent-activity:v1:<registrationId>`. The plaintext is one JSON
+  object of strings: `user_id`, `updated_at`, `active`, `activity_phase`,
+  `activity_line_0..4`, `activity_active_count`, `activity_attention_count`,
+  `activity_expires_at`, and the `alert_*` fields. It is held to 2500 bytes
+  (rows dropped from the tail, a long alert body shortened first), so the
+  sealed data stays under the gateway's 3800-byte limit with room for
+  `station_key`. `NATIVE_PUSH_SEALED_TEST_VECTOR` in
+  `@kontourai/station-contracts/native-push` is the known-answer vector for
+  the phone's opener.
+- **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
+  lifecycle events (never streamed content), coalesces per Station, reads the
+  session read model, and sends one card per registered phone: at most five
+  rows, attention first (approval, input), then failed, then live, then
+  sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
+  phases through `sessionAttentionDisposition`, the adjudication the bell
+  shares: `queued` with an open turn → `starting` (an attached-but-idle
+  session also projects `queued` and stays off the card), `running` →
+  `running`, an approval request (`review_pending`, which the lifecycle fold
+  derives from an unresolved non-input `request.opened`) →
+  `waiting_for_approval`, `needs_input` → `waiting_for_input`, `blocked` →
+  `stale` (live, but not counted as attention: the phone's attention means an
+  approval or input request), `completed` → `completed`, `failed` → `failed`;
+  canceled sessions leave the card. Failed sessions leave after 15 minutes
+  like any other finished one, and live phases require the session to be
+  attached in this process.
+- **Entries and alerts.** Which entry into a phase a session is in comes from
+  its event log: the open request for approval or input, the turn for a live
+  session, the terminal event for a finished one. So a second approval is a
+  new entry even if nothing saw the session leave the first. An alert goes
+  out once per entry into approval or input, and for a finish within the last
+  two minutes; `alert_id` is SHA-256 of Station, session, phase and entry.
+  Several new entries for one phone are one grouped alert ("2 agents need
+  you", up to five titles listed) whose id is derived from the sorted set.
+- **Delivery.** Per phone, at most one send every three seconds (the gateway
+  allows 30 a minute per token); a change inside the interval is coalesced
+  into the next send. 503, 429, other 5xx and network errors wait for the
+  publisher's single unref'd timer with backoff (5 s, ×3, at most 5 min,
+  8 timed attempts; after that only a new event retries). A live card is
+  re-sent 30 minutes before its two-hour expiry, and the publisher flushes
+  once shortly after boot. A 410 clears that registration (unless the phone
+  re-registered with a new token meanwhile); a registration pinned to a push
+  key this Station no longer holds is dropped. Requests never follow
+  redirects. The listener never throws, and the runtime stops the publisher
+  (and its timer) on shutdown. Implementation:
+  `src-server/services/notifications/` (`agent-activity-card.ts`,
+  `agent-activity-publisher.ts`, `agent-activity-seal.ts`,
+  `native-push-registration-store.ts`, `push-signing-key-store.ts`) and
+  `src-server/routes/operations/native-push-routes.ts`.
 - **Gateway URL.** `STATION_PUSH_GATEWAY_URL`, defaulting to the Kontour
-  gateway. Nothing is sent until a device registers, which only happens when
-  its user turns agent activity on; the flow is listed in the privacy
-  inventory.
+  gateway; it must be a bare https origin (a path, query or credentials are
+  refused, and native push is then off). Nothing is sent until a device
+  registers, which only happens when its user turns agent activity on; the
+  flow is listed in the privacy inventory.
 
 ### Provisioning
 
@@ -253,7 +291,7 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 |---|---|
 | Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
-| Station publisher (push key, device tokens, card building, session state → gateway) | built; verified against the gateway's own verifier and request parser in tests, not yet against a phone. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook yet, so it must re-register from `pushToken` on every foreground or add one. A card is rebuilt only on lifecycle events, so a single turn running longer than two hours with no other change lets the phone's card expire |
+| Station publisher (push key, device tokens, card building, session state → gateway) | built; verified against the gateway's own verifier and request parser in tests, not yet against a phone. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook yet, so it must re-register from `pushToken` on every foreground or add one. Cards are sealed to each phone; the phone's opener (and its `station_key` pin) is not built yet, so until it is, a phone cannot read them |
 | Web registration (`configure`, `pushToken`, settings UI) | not started |
 | One card per Station on the phone | not started; the plugin has one card slot, so two Stations would overwrite each other |
 | iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |

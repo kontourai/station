@@ -23,17 +23,10 @@ import {
   randomUUID,
   sign,
 } from 'node:crypto';
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readSync,
-} from 'node:fs';
 import { join } from 'node:path';
 import { assertExistingSecurityDirectory } from '@kontourai/station-shared/environment-security-record';
 import { mutateJsonFileWithGuardedRead } from '@kontourai/station-shared/json-file-storage';
+import { readPrivateJsonFile } from './private-json-file.js';
 
 const FILE_NAME = 'push-signing-key.json';
 const MAX_RECORD_BYTES = 4096;
@@ -74,7 +67,7 @@ export interface PushSigningKey {
   ): string;
 }
 
-class PushSigningKeyStoreError extends Error {
+export class PushSigningKeyStoreError extends Error {
   constructor(readonly code: 'key_store_invalid') {
     super(`Station push signing key unavailable: ${code}`);
   }
@@ -163,44 +156,18 @@ export class PushSigningKeyStore {
   /** Throws on a present but unsafe/corrupt file; null when there is none. */
   #readRecord(): PrivateRecord | null {
     assertExistingSecurityDirectory(this.#directory);
-    let descriptor: number | undefined;
-    let observedFile = false;
+    let value: unknown;
     try {
-      const link = lstatSync(this.#path);
-      observedFile = true;
-      if (!link.isFile() || link.isSymbolicLink() || link.nlink !== 1)
-        throw new Error('invalid file');
-      descriptor = openSync(
+      value = readPrivateJsonFile(
         this.#path,
-        constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+        MAX_RECORD_BYTES,
+        'Station push signing key',
       );
-      const status = fstatSync(descriptor);
-      if (
-        !status.isFile() ||
-        status.nlink !== 1 ||
-        status.size > MAX_RECORD_BYTES ||
-        status.dev !== link.dev ||
-        status.ino !== link.ino ||
-        (process.platform !== 'win32' && (status.mode & 0o777) !== 0o600)
-      )
-        throw new Error('invalid file');
-      const buffer = Buffer.alloc(MAX_RECORD_BYTES + 1);
-      let length = 0;
-      while (length <= MAX_RECORD_BYTES) {
-        const count = readSync(
-          descriptor,
-          buffer,
-          length,
-          buffer.length - length,
-          null,
-        );
-        if (!count) break;
-        length += count;
-      }
-      if (length > MAX_RECORD_BYTES) throw new Error('oversized file');
-      const value: unknown = JSON.parse(
-        buffer.subarray(0, length).toString('utf8'),
-      );
+    } catch {
+      throw new PushSigningKeyStoreError('key_store_invalid');
+    }
+    if (value === null) return null;
+    try {
       if (!value || typeof value !== 'object' || Array.isArray(value))
         throw new Error('invalid record');
       const record = value as PrivateRecord;
@@ -219,13 +186,9 @@ export class PushSigningKeyStore {
       // Parse now so a present-but-broken key is refused, not deferred.
       materialize(record);
       return record;
-    } catch (error) {
-      if (!observedFile && (error as NodeJS.ErrnoException).code === 'ENOENT')
-        return null;
+    } catch {
       // Parser/crypto errors can carry private input; never attach them.
       throw new PushSigningKeyStoreError('key_store_invalid');
-    } finally {
-      if (descriptor !== undefined) closeSync(descriptor);
     }
   }
 
