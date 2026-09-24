@@ -353,15 +353,67 @@
   min-width: 0;
 }
 
+/* The row, not the item button, carries the hover/current treatment here:
+ * the actions are a sibling of the item, so an item-only highlight stopped
+ * short of them and read as a second, unrelated control. */
+.chat-dock-inbox--touch .chat-dock-inbox__row {
+  border: 1px solid transparent;
+}
+
+.chat-dock-inbox--touch .chat-dock-inbox__row:has(.chat-dock-inbox__item:hover),
+.chat-dock-inbox--touch
+  .chat-dock-inbox__row:has(.chat-dock-inbox__item:focus-visible),
+.chat-dock-inbox--touch .chat-dock-inbox__row.is-current {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+
+.chat-dock-inbox--touch .chat-dock-inbox__row.is-current {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+.chat-dock-inbox--touch .chat-dock-inbox__item,
+.chat-dock-inbox--touch .chat-dock-inbox__item:hover,
+.chat-dock-inbox--touch .chat-dock-inbox__item:focus-visible,
+.chat-dock-inbox--touch .chat-dock-inbox__row.is-current .chat-dock-inbox__item {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* On a phone the status chip and time share the project line instead of
+ * holding a column beside the title, so the title gets the item's full
+ * width. */
 .chat-dock-inbox--touch .chat-dock-inbox__item {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 56px;
+  grid-template-areas:
+    "project state"
+    "title title"
+    "meta meta"
+    "answerability answerability";
 }
 
+.chat-dock-inbox--touch .chat-dock-inbox__item--avatars {
+  grid-template-areas:
+    "avatar project state"
+    "avatar title title"
+    "avatar meta meta"
+    "answerability answerability answerability";
+}
+
+.chat-dock-inbox--touch .chat-dock-inbox__state {
+  justify-content: flex-end;
+}
+
+/* A fixed two-slot action column (snooze + close), right-aligned, so rows
+ * without a close action keep their status and text aligned with rows that
+ * have one. */
 .chat-dock-inbox--touch .chat-dock-inbox__row-actions {
   position: static;
   flex: 0 0 auto;
+  justify-content: flex-end;
+  min-width: calc(88px + 2px);
   align-items: center;
   background: transparent;
   opacity: 1;
