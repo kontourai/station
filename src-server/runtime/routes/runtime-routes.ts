@@ -246,6 +246,7 @@ import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginPublishRoutes } from '../../routes/projects/plugin-publish-routes.js';
 import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
@@ -3880,6 +3881,17 @@ export function configureRuntimeRoutes(
     '/api/projects/:slug/plugin-scaffold',
     createPluginScaffoldRoutes(context.projectService, {
       requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
+  );
+  // #2374 (epic #2323 S6): publish a plugin Project to a git remote.
+  // Mounted under the Project read guard like its siblings; the routes
+  // themselves are operator-only, because the push uses this computer's git
+  // credentials.
+  context.app.route(
+    '/api/projects/:slug/plugin-publish',
+    createPluginPublishRoutes({
+      getWorkspacePath: resolveWorkspacePath,
+      visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
     }),
   );
   context.app.route(
