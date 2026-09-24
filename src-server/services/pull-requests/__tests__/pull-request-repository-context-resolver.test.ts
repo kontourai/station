@@ -348,6 +348,41 @@ describe('PullRequestRepositoryContextResolver', () => {
     });
   });
 
+  test('credentials in a remote URL are not part of its host', async () => {
+    const resolver = new PullRequestRepositoryContextResolver({
+      git: git('main\n', 'origin/main\n', '0\t0\n', 'origin/main\n') as any,
+      readRemotes: (async () => ({
+        ok: true as const,
+        remotes: [
+          { name: 'origin', url: 'https://token@github.com/o/r.git' },
+          { name: 'push', url: 'git@github.com:o/r.git' },
+        ],
+      })) as any,
+    });
+    await expect(
+      resolver.resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toMatchObject({ available: true });
+  });
+
+  test('several remotes for one Bitbucket repository are still an unsupported forge', async () => {
+    const resolver = new PullRequestRepositoryContextResolver({
+      git: git() as any,
+      readRemotes: (async () => ({
+        ok: true as const,
+        remotes: [
+          { name: 'origin', url: 'https://bitbucket.org/o/r.git' },
+          { name: 'ssh', url: 'git@bitbucket.org:o/r.git' },
+        ],
+      })) as any,
+    });
+    await expect(
+      resolver.resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toEqual({
+      available: false,
+      reason: 'Checkout uses unsupported forge bitbucket.org',
+    });
+  });
+
   test('remotes naming two repositories, or one that does not parse, stay ambiguous', async () => {
     for (const remotes of [
       [

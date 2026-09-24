@@ -43,10 +43,10 @@ export interface MarkdownLinkContextValue {
     | ((path: string, lineRange?: WorkspaceFilePreviewLineRange) => void)
     | null;
   /**
-   * Absolute directories this conversation's files live under: the project's
-   * checkout and, when the session runs elsewhere (an isolated worktree), the
-   * session's own directory. An absolute path a model writes is a file link
-   * only inside one of these, and is previewed relative to it.
+   * Absolute directories an absolute path in this conversation may name a
+   * file under — today the project's checkout, the directory the preview
+   * reads. An absolute path is a file link only inside one of these, and is
+   * previewed relative to it.
    */
   projectRoots?: readonly string[];
   /**

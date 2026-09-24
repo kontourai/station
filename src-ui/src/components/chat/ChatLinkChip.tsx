@@ -129,9 +129,12 @@ export function chipFor(
       ) : (
         <BranchGlyph className="chat-link-chip__icon" />
       ),
-      label: raw
-        ? `${target.key.owner}/${target.key.repository}#${target.key.ref}`
-        : null,
+      // A compact label drops the host, so only a host whose mark it earns
+      // may have one: on any other host `o/r#1` would hide where it goes.
+      label:
+        raw && forge
+          ? `${target.key.owner}/${target.key.repository}#${target.key.ref}`
+          : null,
       title: target.url,
       modifier: 'pull-request',
     };
@@ -154,9 +157,10 @@ export function chipFor(
       ) : (
         <DocumentGlyph className="chat-link-chip__icon" />
       ),
-      label: raw
-        ? `${target.repository}/${basename(target.path)}${positionSuffix(target.lineRange)}`
-        : null,
+      label:
+        raw && forge
+          ? `${target.repository}/${basename(target.path)}${positionSuffix(target.lineRange)}`
+          : null,
       title: target.url,
       modifier: 'file',
     };

@@ -2000,11 +2000,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
       // Where an absolute path in this conversation can point: the project's
-      // checkout, and the session's own directory when it runs elsewhere (an
-      // isolated worktree writes absolute paths under that, not the project).
-      projectRoots: [conversationProjectDirectory, sessionDisplayCwd].filter(
-        (root): root is string => !!root,
-      ),
+      // checkout only. A session in an isolated worktree writes paths under
+      // THAT directory, but the preview and the existence check read the
+      // project checkout, so linking them would open the checkout's copy of
+      // a file the model edited elsewhere.
+      projectRoots: conversationProjectDirectory
+        ? [conversationProjectDirectory]
+        : [],
       conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
@@ -2026,7 +2028,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationProjectSlug,
       dockBottomOnly,
       dockProjectSlug,
-      sessionDisplayCwd,
       setLayout,
     ],
   );

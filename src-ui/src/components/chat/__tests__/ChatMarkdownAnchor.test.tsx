@@ -259,6 +259,12 @@ describe('how a recognised link looks', () => {
     expect(anchor.querySelector('svg')).not.toBeNull();
   });
 
+  test('a host that has not earned a forge mark keeps its own URL as the text', () => {
+    // A compact `o/r#1` would hide that this leaves for another host.
+    const url = 'https://attacker.example/kontourai/station/pull/1';
+    expect(mount(url, CONVERSATION, url).textContent).toBe(url);
+  });
+
   test('text an author chose is kept, with the mark beside it', () => {
     const anchor = mount(
       'https://github.com/kontourai/station/pull/2049',
@@ -303,12 +309,13 @@ describe('how a recognised link looks', () => {
 describe('a forge file link (github.com/.../blob/...)', () => {
   const url = 'https://github.com/kontourai/station/blob/main/src/app.ts#L4';
 
-  test('opens the local preview when the checkout IS that repository', () => {
+  test('opens the local preview when the checkout IS that repository, on that ref', () => {
     repositoryContext = {
       available: true,
       provider: 'github',
       host: 'github.com',
       repository: { owner: 'KontourAI', name: 'Station' },
+      branch: 'main',
     };
     expect(click(mount(url))).toBe(false);
     expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
@@ -329,6 +336,15 @@ describe('a forge file link (github.com/.../blob/...)', () => {
         provider: 'github',
         host: 'github.com',
         repository: { owner: 'kontourai', name: 'other' },
+        branch: 'main',
+      },
+      // The same repository on another branch: the link shows different code.
+      {
+        available: true,
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'kontourai', name: 'station' },
+        branch: 'feature',
       },
     ]) {
       repositoryContext = context;
@@ -336,6 +352,6 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       cleanup();
     }
     expect(openFilePreviewInRegion).not.toHaveBeenCalled();
-    expect(openNativeExternalLink).toHaveBeenCalledTimes(3);
+    expect(openNativeExternalLink).toHaveBeenCalledTimes(4);
   });
 });

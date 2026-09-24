@@ -33,6 +33,8 @@ export type MarkdownLinkTarget =
       host: string;
       owner: string;
       repository: string;
+      /** The branch, tag or commit the URL shows the file at. */
+      ref: string;
       path: string;
       lineRange?: WorkspaceFilePreviewLineRange;
       url: string;
@@ -66,7 +68,7 @@ const PULL_REQUEST_PATH =
  * is indistinguishable from a directory here and shifts the path by a
  * segment, which the preview then reports as a missing file.
  */
-const REPO_FILE_PATH = /^\/([^/]+)\/([^/]+)(?:\/-)?\/blob\/[^/]+\/(.+)$/;
+const REPO_FILE_PATH = /^\/([^/]+)\/([^/]+)(?:\/-)?\/blob\/([^/]+)\/(.+)$/;
 
 /**
  * The `:12`, `:12:5` and `:12-34` suffixes a model (and most terminals) write
@@ -74,6 +76,9 @@ const REPO_FILE_PATH = /^\/([^/]+)\/([^/]+)(?:\/-)?\/blob\/[^/]+\/(.+)$/;
  * lines.
  */
 const LINE_SUFFIX = /:(\d{1,9})(?::\d{1,9}|-(\d{1,9}))?$/;
+
+/** `name.ext:12…` with no directory: a path, though it parses as a scheme. */
+const BARE_FILE_WITH_LINE = /^[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}:\d/;
 
 /** `#L12` or `#L12-L34` — the line anchor both forges append to a file URL. */
 const LINE_ANCHOR = /^L(\d{1,9})(?:-L?(\d{1,9}))?$/;
@@ -165,34 +170,27 @@ export function classifyPathReference(
  * `https://evil.test/x?u=https://github.com/o/r/pull/1` is external, and
  * `https://github.com/o/r/pull/1?diff=split#discussion` is the same pull
  * request as the bare one — the query and the fragment are not part of a
- * review's identity. Only `http`/`https` are URLs, plus `file:` inside one of
- * the conversation's roots; `mailto:`, `javascript:` and every other scheme
- * resolve to null, which leaves the anchor exactly as the markdown renderer
- * built it.
+ * review's identity. Only `http`/`https` are URLs; `mailto:`, `file:`,
+ * `javascript:` and every other scheme resolve to null, which leaves the
+ * anchor exactly as the markdown renderer built it. (A `file:` link never
+ * reaches here with its href anyway: react-markdown's URL transform blanks
+ * it.)
  */
 export function classifyMarkdownLink(
   href: string | undefined,
   options: MarkdownLinkClassifyOptions = {},
 ): MarkdownLinkTarget | null {
   if (!href) return null;
+  // `README.md:42` has the shape of a scheme (`readme.md:`); a file name with
+  // an extension followed by a line number is a path, not a URL.
+  if (BARE_FILE_WITH_LINE.test(href))
+    return classifyPathReference(href, options);
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
     let url: URL;
     try {
       url = new URL(href);
     } catch {
       return null;
-    }
-    if (url.protocol === 'file:') {
-      // Only a local file URL (no host) inside a root is a file link; the
-      // position rides in the fragment exactly as it does on a forge.
-      if (url.host !== '') return null;
-      let pathname: string;
-      try {
-        pathname = decodeURIComponent(url.pathname);
-      } catch {
-        return null;
-      }
-      return classifyPathReference(`${pathname}${url.hash}`, options);
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
     const match = PULL_REQUEST_PATH.exec(url.pathname);
@@ -211,7 +209,8 @@ export function classifyMarkdownLink(
     }
     const file = REPO_FILE_PATH.exec(url.pathname);
     if (file) {
-      const [, owner, repository, encodedPath] = file as unknown as [
+      const [, owner, repository, ref, encodedPath] = file as unknown as [
+        string,
         string,
         string,
         string,
@@ -231,6 +230,7 @@ export function classifyMarkdownLink(
         host: url.host,
         owner,
         repository,
+        ref,
         path,
         ...(lineRange ? { lineRange } : {}),
         url: url.href,

@@ -127,6 +127,20 @@ describe('path mentions in a rendered chat message', () => {
     expect(existenceAsks).toContainEqual(['alpha', 'src/gone.ts']);
   });
 
+  test('a bare file name with a line survives the renderer and opens at that line', () => {
+    existing.add('package.json');
+    renderInConversation('Bump the version in package.json:3.');
+    const link = screen.getByRole('link', { name: /package\.json:3/ });
+    fireEvent.click(link);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        path: 'package.json',
+        lineRange: { start: 3, end: 3 },
+      }),
+    );
+  });
+
   test('inline code that is exactly one path is a candidate; other code is not', () => {
     existing.add('src/app.ts');
     existing.add('package.json');

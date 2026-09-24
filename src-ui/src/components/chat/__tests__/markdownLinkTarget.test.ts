@@ -86,6 +86,16 @@ describe('classifying a link in a chat message (#2049)', () => {
       expect(classifyMarkdownLink(escaping), escaping).toBeNull();
   });
 
+  test('a bare file name with a line is a path, though it parses as a scheme', () => {
+    expect(classifyMarkdownLink('README.md:42')).toEqual({
+      kind: 'path',
+      path: 'README.md',
+      lineRange: { start: 42, end: 42 },
+    });
+    // A real scheme with digits after it stays what it was.
+    expect(classifyMarkdownLink('mailto:1@example.test')).toBeNull();
+  });
+
   test('a leading ./ names the same file, not a traversal', () => {
     expect(classifyMarkdownLink('./src/app.ts')).toEqual({
       kind: 'path',
@@ -127,20 +137,14 @@ describe('classifying a link in a chat message (#2049)', () => {
     expect(
       classifyMarkdownLink('/work/worktrees/lane/README.md', { roots }),
     ).toEqual({ kind: 'path', path: 'README.md' });
-    expect(
-      classifyMarkdownLink('file:///work/repo/src/a%20b.ts#L2', { roots }),
-    ).toEqual({
-      kind: 'path',
-      path: 'src/a b.ts',
-      lineRange: { start: 2, end: 2 },
-    });
     for (const outside of [
       // A sibling whose name merely starts with the root's.
       '/work/repository/src/app.ts',
       '/etc/passwd',
       // Inside by prefix, out by traversal: the validator still refuses it.
       '/work/repo/../secret.env',
-      'file://host/work/repo/src/app.ts',
+      // `file:` is not a link scheme here, inside a root or not.
+      'file:///work/repo/src/app.ts',
     ])
       expect(classifyMarkdownLink(outside, { roots }), outside).toBeNull();
     // No roots, no absolute file links at all.
@@ -157,6 +161,7 @@ describe('classifying a link in a chat message (#2049)', () => {
       host: 'github.com',
       owner: 'kontourai',
       repository: 'station',
+      ref: 'main',
       path: 'src/app.ts',
       lineRange: { start: 4, end: 9 },
       url: 'https://github.com/kontourai/station/blob/main/src/app.ts#L4-L9',

@@ -20,8 +20,9 @@
 export const PATH_MENTION_ATTRIBUTE = 'data-path-mention';
 
 /**
- * How many candidates one parse may produce. Bounds the existence checks a
- * single message can cause; later mentions stay text.
+ * How many candidates one parse may produce; later mentions stay text. A
+ * streamed message is parsed block by block, so this bounds one block, and
+ * the existence checks are batched per project either way.
  */
 export const PATH_MENTION_MAX_PER_PARSE = 64;
 
@@ -75,10 +76,12 @@ export function isWholePathMention(value: string): boolean {
   return WHOLE_PATH_MENTION.test(value) && findPathMentions(value).length === 1;
 }
 
-function mentionLink(url: string, children: MdNode[]): MdNode {
+function mentionLink(token: string, children: MdNode[]): MdNode {
   return {
     type: 'link',
-    url,
+    // A bare `name.ext:12` would read as a URL scheme (`name.ext:`) and be
+    // blanked by the renderer's URL transform; `./` keeps it a path.
+    url: token.includes('/') ? token : `./${token}`,
     children,
     data: { hProperties: { [PATH_MENTION_ATTRIBUTE]: '' } },
   };

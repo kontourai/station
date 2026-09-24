@@ -109,14 +109,7 @@ export class PullRequestRepositoryContextResolver {
             cause: 'no-remote' as PullRequestUnavailableCause,
           }
         : { available: false, reason: remotes.reason };
-    if (remotes.remotes.length === 1) {
-      const unsupportedForge = knownUnsupportedForge(remotes.remotes[0].url);
-      if (unsupportedForge)
-        return {
-          available: false,
-          reason: `Checkout uses unsupported forge ${unsupportedForge}`,
-        };
-    }
+
     // Unknown authorities remain provider candidates. The route's provider and
     // literal-host match lets the selected CLI reject a wrong self-managed forge.
     const candidates = remotes.remotes
@@ -144,6 +137,14 @@ export class PullRequestRepositoryContextResolver {
       (a, b) =>
         Number(b.remote.name === 'origin') - Number(a.remote.name === 'origin'),
     );
+    // After the collapse, not before: several remotes for one Bitbucket
+    // repository are still Bitbucket.
+    const unsupportedForge = knownUnsupportedForge(candidates[0]!.remote.url);
+    if (unsupportedForge)
+      return {
+        available: false,
+        reason: `Checkout uses unsupported forge ${unsupportedForge}`,
+      };
     try {
       const [branch, upstream, ahead, base] = await Promise.all([
         git(['rev-parse', '--abbrev-ref', 'HEAD'], {
@@ -351,18 +352,19 @@ function distinctRepositories(
 }
 
 function knownUnsupportedForge(url: string): string | undefined {
-  const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
-  const host = (match?.[1] ?? match?.[2])
-    ?.toLowerCase()
-    .replace(/:\d+$/, '')
-    .replace(/\.$/, '');
+  const host = remoteHost(url);
   return host === 'bitbucket.org' ? host : undefined;
 }
 
 function remoteHost(url: string): string | undefined {
   const match = /^(?:git@([^/:\s]+):|https?:\/\/([^/\s]+)\/)/.exec(url);
   const host = match?.[1] ?? match?.[2];
-  return host?.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+  // `https://token@github.com/o/r` names github.com: credentials are not host.
+  return host
+    ?.replace(/^.*@/, '')
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
 }
 
 /**

@@ -214,7 +214,10 @@ function LinkAnchor({
   target: MarkdownLinkTarget | null;
   clickTarget: MarkdownLinkTarget | null;
 }) {
-  const raw = textOf(children).trim() === (href ?? '').trim();
+  // Raw: the text IS the href — an autolinked URL, or a path mention (whose
+  // href gained a `./` so it would not parse as a scheme).
+  const text = textOf(children).trim();
+  const raw = text === (href ?? '').trim() || `./${text}` === href;
   const chip = target ? chipFor(target, raw) : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
     activate(event, clickTarget, link, model);
@@ -273,9 +276,10 @@ function PathMentionAnchor({
 
 /**
  * A forge file link opens the LOCAL preview only when the conversation's
- * checkout is that repository on that host — decided by the same repository
- * context the pull-request list resolves, never by the path merely existing
- * here (a file of the same name in another repository is a different file).
+ * checkout is that repository on that host, on the ref the link names —
+ * decided by the same repository context the pull-request list resolves, never
+ * by the path merely existing here (a file of the same name in another
+ * repository, or at another commit, is a different file).
  * Until that is known, and when it does not match, it opens on the forge.
  */
 function RepoFileAnchor({
@@ -290,11 +294,15 @@ function RepoFileAnchor({
   });
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // Same repository AND the ref the checkout is on: a link to the file at an
+  // older commit or another branch is different code, and the local preview
+  // shows only the working tree.
   const local =
     !!identity &&
     same(identity.host, target.host) &&
     same(identity.repository.owner, target.owner) &&
-    same(identity.repository.name, target.repository);
+    same(identity.repository.name, target.repository) &&
+    identity.branch === target.ref;
   const clickTarget: MarkdownLinkTarget = local
     ? {
         kind: 'path',
