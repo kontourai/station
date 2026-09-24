@@ -858,8 +858,8 @@ export class NativeStationProfileStorage
 
   /**
    * Forgets a direct saved Station on this device: its profile, its project
-   * mappings, the CLI default if it named it (cleared, as `station profile
-   * remove` does), and its credential unless another profile still uses it.
+   * mappings, the CLI default if it named it (cleared, as the CLI's own
+   * removal does), and its credential unless another profile still uses it.
    *
    * The confirmed name and address are checked before anything changes. The
    * store is written first and the credential deleted after, for the active
