@@ -73,6 +73,7 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
@@ -340,6 +341,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       eventLogPath?: string;
       /** Back the usage rollup with the real orchestration usage source. */
       usage?: boolean;
+      /**
+       * Extra events, appended before the orchestration runtime starts: an
+       * append racing its startup reads can fail with `database is locked`.
+       */
+      seed?: (store: EventStore) => void;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -398,6 +404,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             outputText: 'An exact public answer.',
           });
       }
+      principalReads.seed?.(store);
       orchestration = new OrchestrationService({
         eventStore: store,
         adoptionLedger: store.createAdoptionLedger(),
@@ -2290,6 +2297,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * id must stay unreadable.
    */
   describe('formerly OS-alias session reads decide with the request principal (#2561)', () => {
+    const makeTempDir = trackTempDirs();
     async function operatorSetup() {
       const h = await setup('operator', true, undefined, false, false, {
         extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
@@ -2344,9 +2352,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         {
           extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
           onLog: (entry) => logs.push(entry),
-          eventLogPath: mkdtempSync(
-            join(tmpdir(), 'station-principal-events-'),
-          ),
+          eventLogPath: makeTempDir('station-principal-events-'),
         },
       );
       searchCleanup.unshift(async () => {
@@ -2422,26 +2428,40 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
 
     test('attachment bytes open for the owner of the chat that carried them, not for another caller', async () => {
-      const { app, store, paired } = await operatorSetup();
       const pixels = Buffer.alloc(6 * 1024, 7);
-      store.appendEvent({
-        eventId: 'operator-owned:upload',
-        provider: 'claude',
-        threadId: 'operator-owned',
-        createdAt: '2026-09-04T00:00:03Z',
-        method: 'turn.started',
-        turnId: 'operator-owned:upload-turn',
-        prompt: 'what is in this screenshot?',
-        metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
-        attachments: [
-          {
-            kind: 'image',
-            name: 'screenshot.png',
-            mimeType: 'image/png',
-            size: pixels.length,
-            dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
+      const { app, store, paired, roomRuntime } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+          seed: (seeded) => {
+            seeded.appendEvent({
+              eventId: 'operator-owned:upload',
+              provider: 'claude',
+              threadId: 'operator-owned',
+              createdAt: '2026-09-04T00:00:03Z',
+              method: 'turn.started',
+              turnId: 'operator-owned:upload-turn',
+              prompt: 'what is in this screenshot?',
+              metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+              attachments: [
+                {
+                  kind: 'image',
+                  name: 'screenshot.png',
+                  mimeType: 'image/png',
+                  size: pixels.length,
+                  dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
+                },
+              ],
+            });
           },
-        ],
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
       });
       const [ref] = store
         .listEvents('operator-owned')
@@ -2466,7 +2486,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     test('the usage rollup counts the operator’s own chats for the operator bearer and no other person’s', async () => {
       // A paired device's standard grant has no analytics scope, so only the
       // operator reads the rollup here.
-      const { app, store, roomRuntime } = await setup(
+      const { app, roomRuntime } = await setup(
         'operator',
         true,
         undefined,
@@ -2475,21 +2495,27 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         {
           extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
           usage: true,
+          seed: (seeded) => {
+            for (const threadId of [
+              'operator-owned',
+              'device-owned',
+              'whois-owned',
+            ])
+              seeded.appendEvent({
+                eventId: `${threadId}:usage`,
+                threadId,
+                turnId: `${threadId}:turn`,
+                provider: 'claude',
+                method: 'token-usage.updated',
+                createdAt: new Date().toISOString(),
+                promptTokens: 1,
+              } as never);
+          },
         },
       );
       searchCleanup.unshift(async () => {
         await roomRuntime.close();
       });
-      for (const threadId of ['operator-owned', 'device-owned', 'whois-owned'])
-        store.appendEvent({
-          eventId: `${threadId}:usage`,
-          threadId,
-          turnId: `${threadId}:turn`,
-          provider: 'claude',
-          method: 'token-usage.updated',
-          createdAt: new Date().toISOString(),
-          promptTokens: 1,
-        } as never);
       const usageThreadsFor = async (credential: string) => {
         const response = await app.request(
           '/api/analytics/usage-rollup?localOnly=1',

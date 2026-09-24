@@ -5,11 +5,10 @@
  * pre-principal chat (owned by the Station's former OS alias) that the same
  * caller can open.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -18,6 +17,8 @@ import { OrchestrationService } from '../orchestration-service.js';
 const LEGACY_ALIAS = 'released-os-alias';
 
 describe('usage receipts owner set (#2561)', () => {
+  // Created before the store-closing hook, so it removes directories last.
+  const makeTempDir = trackTempDirs();
   const cleanup: Array<() => void> = [];
   afterEach(() => {
     vi.useRealTimers();
@@ -25,9 +26,8 @@ describe('usage receipts owner set (#2561)', () => {
   });
 
   function setup(usageThreads?: readonly string[]) {
-    const dir = mkdtempSync(join(tmpdir(), 'usage-owner-set-'));
+    const dir = makeTempDir('usage-owner-set-');
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
-    cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
     cleanup.push(() => store.close());
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-04T00:00:00.000Z'));
