@@ -1213,6 +1213,128 @@ describe('orchestration-session-state', () => {
     });
   });
 
+  // #2459 (live): after a Station restart every finished delegate read the
+  // restart as its end, because `endedAt` was the session's LAST EVENT. The
+  // end is the terminal turn fact's own time; a later event does not move it.
+  test('a delegate’s end is its terminal turn, not a later restart or state event', () => {
+    const delegateEvents = (extra: Record<string, unknown>[]) =>
+      [
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r1',
+          createdAt: '2026-04-11T00:00:02.000Z',
+          method: 'session.configured',
+          sessionId: 'thread-restart',
+          metadata: { taskId: 'task-r', parentTaskId: 'parent-task' },
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r2',
+          createdAt: '2026-04-11T00:00:03.000Z',
+          method: 'turn.started',
+          turnId: 'turn-1',
+        },
+        ...extra,
+      ] as any[];
+    const asChild = (events: any[]) =>
+      buildOrchestrationSessionSummary({
+        answerability: OBSERVATION,
+        persisted: {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          status: 'running',
+          createdAt: '2026-04-11T00:00:00.000Z',
+          updatedAt: '2026-04-11T00:07:00.000Z',
+        },
+        events,
+      } as any).childWork?.asChild;
+
+    const completedThenRestarted = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r3',
+          createdAt: '2026-04-11T00:01:03.000Z',
+          method: 'turn.completed',
+          turnId: 'turn-1',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r4',
+          createdAt: '2026-04-11T00:07:47.000Z',
+          method: 'session.started',
+          sessionId: 'thread-restart',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r5',
+          createdAt: '2026-04-11T00:07:48.000Z',
+          method: 'session.state-changed',
+          sessionId: 'thread-restart',
+          from: 'running',
+          to: 'ready',
+        },
+      ]),
+    );
+    expect(completedThenRestarted?.endedAt).toBe('2026-04-11T00:01:03.000Z');
+
+    // No terminal turn fact at all: no end is claimed.
+    const exitedWithoutTerminal = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r6',
+          createdAt: '2026-04-11T00:07:47.000Z',
+          method: 'session.exited',
+          sessionId: 'thread-restart',
+        },
+      ]),
+    );
+    expect(exitedWithoutTerminal).toBeDefined();
+    expect(exitedWithoutTerminal?.status).not.toBe('running');
+    expect(exitedWithoutTerminal).not.toHaveProperty('endedAt');
+
+    // A reopened delegate: turn 2 starts, a DELAYED completion of turn 1
+    // arrives, then the session exits with no terminal fact for turn 2.
+    // Turn 1's completion is not turn 2's end.
+    const reopenedWithStaleCompletion = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r7',
+          createdAt: '2026-04-11T00:02:00.000Z',
+          method: 'turn.started',
+          turnId: 'turn-2',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r8',
+          createdAt: '2026-04-11T00:02:01.000Z',
+          method: 'turn.completed',
+          turnId: 'turn-1',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r9',
+          createdAt: '2026-04-11T00:03:00.000Z',
+          method: 'session.exited',
+          sessionId: 'thread-restart',
+        },
+      ]),
+    );
+    expect(reopenedWithStaleCompletion?.status).not.toBe('running');
+    expect(reopenedWithStaleCompletion).not.toHaveProperty('endedAt');
+  });
+
   // archive#3408: both delegated-task launch writers persist
   // `targetKind: 'agent'` in the binding event, but this reducer used to drop
   // any targetKind other than 'station-agent'|'agent-app' — so the session

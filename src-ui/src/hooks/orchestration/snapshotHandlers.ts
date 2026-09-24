@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
@@ -525,7 +526,13 @@ export function applyOrchestrationSnapshot(
   // through the same reducer a live delta does. A replay never feeds it.
   // The live stream's snapshot is FULL (never thread-filtered), so a
   // recorded reporter it no longer lists is gone (D2).
-  if (!replayId) reconcileChildWorkSnapshot(payload.sessions);
+  if (!replayId) {
+    reconcileChildWorkSnapshot(payload.sessions);
+    // A snapshot names its Station; one without (no caller today) folds into
+    // no partition rather than a guessed one.
+    if (options?.apiBase)
+      childWorkGlobalStore.reconcileSnapshot(options.apiBase, payload.sessions);
+  }
 
   if (!isReconnectFallback || !options || replayId) return;
   // Bounded catch-up guardrail (archive#1225): force a real refetch for every

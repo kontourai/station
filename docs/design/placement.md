@@ -639,6 +639,20 @@ and the dialog semantics go with the sheet. It is not declared to the server
 catalog, so a region's "+" does not list it — Activity's precedent, for
 Activity's reason.
 
+**Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
+renders child work — engine subagents and Station delegates — from the
+provider-neutral child-work contract through its own row
+(`workspace-panes/agents/ChildWorkRow.tsx`), and gains an "All" scope beside
+"This conversation". Scope is display state (a per-device preference), not
+pane identity: the occurrence still binds nothing, so nothing above about
+Activity's precedent changes. "All" reads delegates from the session read
+model and engine subagents from a window-wide registry
+(`contexts/child-work-global-store.ts`) fed before the chat guard, so a
+delegate started from the CLI with no chat open appears. Tool calls keep
+`TaskRow`, and `BackgroundTasksSheet` is unchanged. A Stop renders only from
+a wired `subagentControl` cell (or a delegate's own interrupt); until Claude's
+cell is wired, Claude's per-chat Stop stays on the `TaskRow` path.
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is
