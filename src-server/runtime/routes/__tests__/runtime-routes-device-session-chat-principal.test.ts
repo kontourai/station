@@ -521,6 +521,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskGraphService: taskGraph ?? {
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
+        listKeptDeclaredPullRequestsForSessions: () => [],
       },
       projectService: membershipProjects ?? {
         listProjects: () => [{ id: task.projectId, slug: 'project' }],

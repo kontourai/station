@@ -4380,6 +4380,12 @@ export function configureRuntimeRoutes(
             conversationId,
             conversationReadAuthorityForRequest(request),
           ),
+        lineageSessionIds: (conversationId) =>
+          (
+            context.orchestrationEventStore?.conversationSessions(
+              conversationId,
+            ) ?? []
+          ).map((linked) => linked.sessionId),
         declared: async (request, conversationId) => {
           if (
             !context.orchestrationService.canUserReadConversation(
