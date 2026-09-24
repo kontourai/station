@@ -69,7 +69,8 @@ function FileDropRow({
         const target = activeChatsStore.getSnapshot()[sessionId];
         if (!scope?.isCurrent())
           throw new Error('Reconnect to this Station before adding files.');
-        if (!target || conversationOpenPhase(target) === 'read-only')
+        const phase = target ? conversationOpenPhase(target) : undefined;
+        if (!target || phase === 'read-only' || phase === 'unverified')
           throw new Error(
             'This chat is unavailable or read-only. Open a writable chat to attach files.',
           );

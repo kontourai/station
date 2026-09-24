@@ -7,6 +7,7 @@ import type { ResolvedWorkspacePaneCatalogEntry } from './resolvedWorkspacePaneC
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
+import { isProjectPlaceableWorkspacePane } from './workspacePaneHostAdmission';
 
 interface CatalogProps {
   entries: readonly ResolvedWorkspacePaneCatalogEntry[];
@@ -143,7 +144,7 @@ export function ProjectWorkspacePaneModal({
   onClose,
   notice,
   title = 'Add workspace pane',
-  subtitle = 'Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step.',
+  subtitle = 'Every pane this Project can hold is listed. Available panes open directly; the others carry their state as a badge with the next step.',
   ...catalog
 }: CatalogProps & {
   show: boolean;
@@ -190,7 +191,12 @@ export function ProjectWorkspacePaneModal({
           {notice}
         </PageCallout>
       ) : null}
-      <CatalogContents {...catalog} />
+      <CatalogContents
+        {...catalog}
+        entries={catalog.entries.filter((entry) =>
+          isProjectPlaceableWorkspacePane(entry.descriptor),
+        )}
+      />
     </Dialog>
   );
 }

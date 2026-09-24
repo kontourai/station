@@ -262,12 +262,62 @@ export function androidRotateCommands(
   ];
 }
 
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The adb argument vectors a rotation may run, as fixed shapes (a string is
+ * a literal, a RegExp a full match) — exactly what
+ * {@link androidRotateCommands} builds. An SSH device host re-checks every
+ * vector against these before running it (#2442).
+ */
+export const ANDROID_ROTATE_ARGV_SHAPES: readonly (readonly (
+  | string
+  | RegExp
+)[])[] = [
+  [
+    '-s',
+    EMULATOR_SERIAL,
+    'shell',
+    'settings',
+    'put',
+    'system',
+    'accelerometer_rotation',
+    '1',
+  ],
+  ['-s', EMULATOR_SERIAL, 'shell', 'cmd', 'window', 'user-rotation', 'free'],
+  [
+    '-s',
+    EMULATOR_SERIAL,
+    'emu',
+    'sensor',
+    'set',
+    'acceleration',
+    new RegExp(
+      `^(?:${Object.values(ANDROID_GRAVITY).map(escapeRegExp).join('|')})$`,
+    ),
+  ],
+];
+
+/**
+ * How the caller of a device action can still stop it (#2442 review M1):
+ * `signal` aborts when the caller gave up (its own deadline passed), and
+ * `beforeRun` is the caller's last word before anything runs — it throws
+ * to refuse (the lease changed hands). An action asks `beforeRun` right
+ * before it starts running vectors, after any wait for the host.
+ */
+export interface DeviceActionControl {
+  signal?: AbortSignal;
+  beforeRun?: () => void;
+}
+
 /** The typed device actions a producer may ask the host to run. */
 export interface DeviceHostActions {
   rotateAndroid(
     serial: string,
     orientation: LiveSurfaceOrientation,
     timeoutMs: number,
+    control?: DeviceActionControl,
   ): Promise<void>;
 }
 
@@ -281,15 +331,17 @@ export function createDeviceHostActions(
     options.locateAdb ?? (() => locateExecutable('adb', standardAdbDirs()));
   const run = options.run ?? runBoundedTool;
   return {
-    async rotateAndroid(serial, orientation, timeoutMs) {
+    async rotateAndroid(serial, orientation, timeoutMs, control) {
       const commands = androidRotateCommands(serial, orientation);
       const adb = await locateAdb();
       if (!adb)
         throw new DeviceToolError('tool-unavailable', 'adb is not installed');
+      control?.beforeRun?.();
       const deadline = Date.now() + timeoutMs;
       for (const args of commands) {
         const left = deadline - Date.now();
-        if (left <= 0)
+        // A caller that already gave up starts nothing more.
+        if (left <= 0 || control?.signal?.aborted)
           throw new DeviceToolError('tool-timeout', 'rotation timed out');
         await run(adb, args, left);
       }

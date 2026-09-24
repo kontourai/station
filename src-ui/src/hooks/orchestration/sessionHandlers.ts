@@ -55,6 +55,7 @@ export function handleSessionLifecycleEvent(
       currentChat,
       approvalMode,
       eventStreamPosition(event),
+      event.threadId,
     ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'

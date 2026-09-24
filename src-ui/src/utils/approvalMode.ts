@@ -375,6 +375,18 @@ export interface ApprovalPickState {
   /** A pick a report showed the engine applying. */
   approvalModeOverride?: ApprovalMode;
   lastAppliedApprovalMode?: ApprovalMode;
+  /**
+   * #2423: the execution Session whose report confirmed
+   * `approvalModeOverride`. Not persisted: after a reload it is unknown, and
+   * the full-access notice then stays silent rather than guess.
+   */
+  approvalModeOverrideSessionId?: string;
+  /**
+   * #2423: the NEW Session that started at the defaults while this chat's
+   * confirmed pick was full access (`settleApprovalPick`). The dock shows a
+   * notice for it while it is the chat's current Session.
+   */
+  fullAccessNotCarriedSessionId?: string;
   pendingClientTurnId?: string;
   orchestrationSessionStarted?: boolean;
   orchestrationStatus?: string;
@@ -562,12 +574,18 @@ export function settleApprovalPick(
   chat: ApprovalPickState | null | undefined,
   applied: ApprovalMode | undefined,
   position?: number,
+  /** The execution Session that reported (#2423, see below). */
+  reportSessionId?: string,
 ): Partial<ApprovalPickState> {
   if (!chat || !applied) return {};
   const pending = chat.pendingApprovalMode;
   if (pending !== undefined) {
     if (pending === applied)
-      return { ...CLEAR_PENDING, approvalModeOverride: applied };
+      return {
+        ...CLEAR_PENDING,
+        approvalModeOverride: applied,
+        approvalModeOverrideSessionId: reportSessionId,
+      };
     const fromDispatchBeforePick =
       chat.pendingApprovalBehindTurn !== undefined &&
       chat.pendingClientTurnId === chat.pendingApprovalBehindTurn;
@@ -583,8 +601,26 @@ export function settleApprovalPick(
       ? { ...CLEAR_PENDING, approvalModeOverride: undefined }
       : {};
   }
-  return chat.approvalModeOverride !== undefined &&
-    isStricter(applied, chat.approvalModeOverride)
-    ? { approvalModeOverride: undefined }
+  // #2423: a confirmed full access is not reasserted into a new Session
+  // (`approvalModeToSend`, #2449), so that Session starts at the defaults and
+  // its first report retires the pick here. The chat says so — derived, only
+  // when it KNOWS all three:
+  // (a) the confirmed pick is full access (this branch: no pick pending);
+  // (b) the report comes from a DIFFERENT Session than the one whose report
+  //     confirmed it (`approvalModeOverrideSessionId`): a new Session id, not
+  //     a later report of the same live one, which another device tightened;
+  // (c) that Session reports a posture stricter than full access — Ask or
+  //     Auto. Never, a missing report or `'connection-default'` is not that.
+  // Retiring the pick makes it one-shot per Session.
+  const override = chat.approvalModeOverride;
+  return override !== undefined && isStricter(applied, override)
+    ? {
+        approvalModeOverride: undefined,
+        ...(override === 'never' &&
+        chat.approvalModeOverrideSessionId !== undefined &&
+        chat.approvalModeOverrideSessionId !== reportSessionId
+          ? { fullAccessNotCarriedSessionId: reportSessionId }
+          : {}),
+      }
     : {};
 }

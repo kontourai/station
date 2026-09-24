@@ -792,6 +792,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         <p className="live-surface__notice" role="status">
           Your input could not be delivered.
         </p>
+      ) : surface.inputNotice === 'host-busy' ? (
+        <p className="live-surface__notice" role="status">
+          The host is busy, so nothing was sent. Try again in a moment.
+        </p>
       ) : null}
       <div
         className={`live-surface__stage${fitting ? ' live-surface__stage--fit' : ''}`}
