@@ -179,7 +179,7 @@ export function readCodexSandboxPolicy(
 }
 
 /** The Station sandbox mode a policy is; `externalSandbox` has none. */
-function codexSandboxModeOfPolicy(
+export function codexSandboxModeOfPolicy(
   policy: CodexSandboxPolicy | undefined,
 ): CodexSandboxMode | undefined {
   switch (policy?.type) {
@@ -200,52 +200,82 @@ export interface CodexThreadSandbox {
   policy?: CodexSandboxPolicy;
   /** The mode Station asked for at thread start when Codex reported none. */
   requestedMode?: CodexSandboxMode;
+  /**
+   * The first `workspaceWrite` policy Codex itself reported for the thread:
+   * its own configuration's writable roots, network and exclude flags. A
+   * tightening back to workspace-write restores exactly this, so it never
+   * gains network or roots the user's config did not give.
+   */
+  workspaceBaseline?: Extract<CodexSandboxPolicy, { type: 'workspaceWrite' }>;
 }
 
-function networkOf(policy: CodexSandboxPolicy | undefined): boolean {
-  switch (policy?.type) {
-    // Full access already had the network; keeping it is not a loosening.
-    case 'dangerFullAccess':
-      return true;
-    case 'workspaceWrite':
-    case 'readOnly':
-      return policy.networkAccess;
-    case 'externalSandbox':
-      return policy.networkAccess === 'enabled';
-    default:
-      // Unknown: never grant what the thread may not have had.
-      return false;
-  }
+/** A thread's sandbox as Codex reported it at start, resume or fork. */
+export function reportedCodexThreadSandbox(
+  reported: CodexSandboxPolicy | undefined,
+  requestedMode: CodexSandboxMode | undefined,
+): CodexThreadSandbox {
+  if (!reported) return requestedMode ? { requestedMode } : {};
+  return {
+    policy: reported,
+    ...(reported.type === 'workspaceWrite'
+      ? { workspaceBaseline: reported }
+      : {}),
+  };
 }
+
+type CodexTurnSandboxPlan = {
+  /** The per-turn override to send; absent when the thread stays as it is. */
+  sandboxPolicy?: CodexSandboxPolicy;
+  /** The mode the turn runs in; absent only when neither is known. */
+  applied?: CodexSandboxMode;
+};
 
 /**
- * #2559: the per-turn `sandboxPolicy` a turn must send so the thread runs in
- * `desired`'s sandbox, and the sandbox mode the turn then actually runs in.
+ * #2559: the per-turn `sandboxPolicy` a turn must send, and the sandbox mode
+ * the turn then actually runs in.
  *
- * - Nothing is sent when the thread is already in the desired mode, or the
- *   turn carries no posture: the thread's sandbox (and whatever the user's
- *   own Codex config put in it, network included) keeps governing.
- * - A change is sent as a full policy built from the thread's current one,
- *   never looser: network and writable roots carry over, and an unknown
- *   current policy gives no network.
- * - `danger-full-access` is sent only to a `host` session; anything else
- *   gets `workspace-write` instead, whatever the turn asked for.
+ * - A thread Codex reports `readOnly` is a floor: its configuration (or a
+ *   managed requirement) won over whatever Station asked, and nothing
+ *   Station sends may loosen it.
+ * - Outside a `host` session a thread at full access is pulled to
+ *   workspace-write on EVERY turn, with or without a posture on it: a thread
+ *   the user's own Codex config started unconfined, or an adopted session
+ *   whose fork inherited its source's sandbox, is still confined.
+ * - Otherwise the turn's posture decides; no posture keeps the thread as it
+ *   is, and a posture the thread already satisfies sends nothing, so the
+ *   thread's own configuration keeps governing.
+ * - `danger-full-access` is only ever sent to a `host` session.
+ * - A workspace-write policy is the thread's `workspaceBaseline` when Codex
+ *   reported one, else no network, no extra roots and no excludes: a
+ *   tightening never gains what the thread's own configuration did not
+ *   give.
  */
+export function planCodexTurnSandbox(
+  desired: CodexApprovalKnobs,
+  thread: CodexThreadSandbox,
+  confinement: StationConfinement | undefined,
+): CodexTurnSandboxPlan & { applied: CodexSandboxMode };
 export function planCodexTurnSandbox(
   desired: CodexApprovalKnobs | undefined,
   thread: CodexThreadSandbox,
   confinement: StationConfinement | undefined,
-): { sandboxPolicy?: CodexSandboxPolicy; applied?: CodexSandboxMode } {
+): CodexTurnSandboxPlan;
+export function planCodexTurnSandbox(
+  desired: CodexApprovalKnobs | undefined,
+  thread: CodexThreadSandbox,
+  confinement: StationConfinement | undefined,
+): CodexTurnSandboxPlan {
   const current = thread.policy
     ? codexSandboxModeOfPolicy(thread.policy)
     : thread.requestedMode;
-  if (!desired) return current ? { applied: current } : {};
-  const wanted: CodexSandboxMode =
-    desired.sandbox === 'danger-full-access' && confinement !== 'host'
+  if (thread.policy?.type === 'readOnly') return { applied: 'read-only' };
+  const asked = desired?.sandbox ?? current;
+  const wanted: CodexSandboxMode | undefined =
+    asked === 'danger-full-access' && confinement !== 'host'
       ? 'workspace-write'
-      : desired.sandbox;
+      : asked;
+  if (!wanted) return {};
   if (wanted === current) return { applied: current };
-  const policy = thread.policy;
   switch (wanted) {
     case 'danger-full-access':
       return {
@@ -259,18 +289,18 @@ export function planCodexTurnSandbox(
       };
     case 'workspace-write':
       return {
-        sandboxPolicy: {
-          type: 'workspaceWrite',
-          writableRoots:
-            policy?.type === 'workspaceWrite' ? [...policy.writableRoots] : [],
-          networkAccess: networkOf(policy),
-          excludeTmpdirEnvVar:
-            policy?.type === 'workspaceWrite'
-              ? policy.excludeTmpdirEnvVar
-              : false,
-          excludeSlashTmp:
-            policy?.type === 'workspaceWrite' ? policy.excludeSlashTmp : false,
-        },
+        sandboxPolicy: thread.workspaceBaseline
+          ? {
+              ...thread.workspaceBaseline,
+              writableRoots: [...thread.workspaceBaseline.writableRoots],
+            }
+          : {
+              type: 'workspaceWrite',
+              writableRoots: [],
+              networkAccess: false,
+              excludeTmpdirEnvVar: false,
+              excludeSlashTmp: false,
+            },
         applied: wanted,
       };
   }

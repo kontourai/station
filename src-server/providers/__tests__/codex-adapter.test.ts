@@ -4142,6 +4142,10 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(started, `startSession ${threadId}`);
       await flushIo();
+      // Published only when the start carried a posture.
+      const configured = start.approvalMode
+        ? (await nextOf(iterator, 'session.configured')).metadata
+        : undefined;
       const metadata: Array<Record<string, unknown>> = [];
       let id = 3;
       for (const turn of turns) {
@@ -4167,7 +4171,7 @@ describe('CodexAdapter', () => {
         .filter((line) => line.method === 'turn/start')
         .map((line) => line.params);
       await adapter.stopAll();
-      return { params, metadata };
+      return { params, metadata, configured };
     }
 
     const FULL = { type: 'dangerFullAccess' };
@@ -4179,7 +4183,15 @@ describe('CodexAdapter', () => {
       excludeSlashTmp: false,
     };
 
-    test('a host thread at full access tightens to workspace-write when Ask is picked, keeping the network it had', async () => {
+    const NO_BASELINE = {
+      type: 'workspaceWrite',
+      writableRoots: [],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    };
+
+    test('a host thread at full access tightens to workspace-write when Ask is picked, without gaining network', async () => {
       const { params, metadata } = await run(
         'tighten',
         { approvalMode: 'never', confinement: 'host' },
@@ -4189,13 +4201,9 @@ describe('CodexAdapter', () => {
           { approvalMode: 'ask', confinement: 'host' },
         ],
       );
-      expect(params[0].sandboxPolicy).toEqual({
-        type: 'workspaceWrite',
-        writableRoots: [],
-        networkAccess: true,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      });
+      // Codex never reported a workspace-write config for this thread, so
+      // there is no baseline to restore: no network, no extra roots.
+      expect(params[0].sandboxPolicy).toEqual(NO_BASELINE);
       expect(params[0]).not.toHaveProperty('sandbox');
       expect(metadata[0]).toMatchObject({
         approvalPolicy: 'untrusted',
@@ -4207,18 +4215,28 @@ describe('CodexAdapter', () => {
       expect(metadata[1]).toMatchObject({ sandbox: 'workspace-write' });
     });
 
-    test('a host thread picked up to never loosens to full access', async () => {
+    test("tightening back restores the thread's own workspace-write config exactly (R2 round trip)", async () => {
       const { params, metadata } = await run(
-        'loosen',
+        'round-trip',
         { approvalMode: 'ask', confinement: 'host' },
         WORKSPACE,
-        [{ approvalMode: 'never', confinement: 'host' }],
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { approvalMode: 'ask', confinement: 'host' },
+        ],
       );
       expect(params[0].sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
       expect(metadata[0]).toMatchObject({
         sandbox: 'danger-full-access',
         approvalMode: 'never',
         confinement: 'host',
+      });
+      // Back to the config Codex reported: network still off, its roots and
+      // exclude flags intact.
+      expect(params[1].sandboxPolicy).toEqual(WORKSPACE);
+      expect(metadata[1]).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'ask',
       });
     });
 
@@ -4250,21 +4268,39 @@ describe('CodexAdapter', () => {
           FULL,
           [{ approvalMode: 'never', ...(confinement ? { confinement } : {}) }],
         );
-        expect(fromFull.params[0].sandboxPolicy).toMatchObject({
-          type: 'workspaceWrite',
-        });
+        expect(fromFull.params[0].sandboxPolicy).toEqual(NO_BASELINE);
         expect(fromFull.metadata[0]).toMatchObject({
           sandbox: 'workspace-write',
         });
       },
     );
 
+    test('R1: a confined thread at full access is pulled into the workspace even on a turn that carries no posture', async () => {
+      // The user's own Codex config (or an adopted session's source)
+      // started the thread unconfined; nothing on the turn asks for a mode.
+      const confined = await run('no-posture-ws', {}, FULL, [
+        { confinement: 'workspace' },
+        { confinement: 'workspace' },
+      ]);
+      expect(confined.params[0].sandboxPolicy).toEqual(NO_BASELINE);
+      expect(confined.params[1]).not.toHaveProperty('sandboxPolicy');
+
+      // A host session keeps what its own config gave it.
+      const host = await run('no-posture-host', {}, FULL, [
+        { confinement: 'host' },
+      ]);
+      expect(host.params[0]).not.toHaveProperty('sandboxPolicy');
+    });
+
     test('a thread whose posture does not change sends no sandboxPolicy, so its own sandbox keeps governing', async () => {
       const { params, metadata } = await run(
         'unchanged',
         { approvalMode: 'never', confinement: 'host' },
         FULL,
-        [{ approvalMode: 'never', confinement: 'host' }, {}],
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { confinement: 'host' },
+        ],
       );
       for (const turn of params) {
         expect(turn).not.toHaveProperty('sandboxPolicy');
@@ -4276,27 +4312,54 @@ describe('CodexAdapter', () => {
       });
     });
 
-    test("the thread's sandbox is what Codex reported, not what Station asked for at start", async () => {
-      // Station asked for workspace-write; Codex reports read-only (its own
-      // config won). The adapter plans from the report: an Ask turn really
-      // moves the thread to workspace-write. (Had it trusted the request, it
-      // would have sent nothing and reported a sandbox the thread was not in.)
-      const { params, metadata } = await run(
-        'reported',
-        { approvalMode: 'auto', confinement: 'workspace' },
+    test('R3: a thread Codex reports read-only is a floor Station never loosens', async () => {
+      // Station asked for workspace-write; Codex's own config (or a managed
+      // requirement) put the thread at read-only. Neither Ask nor full
+      // access moves it.
+      const { params, metadata, configured } = await run(
+        'read-only-floor',
+        { approvalMode: 'auto', confinement: 'host' },
         { type: 'readOnly', networkAccess: false },
-        [{ approvalMode: 'ask', confinement: 'workspace' }],
+        [
+          { approvalMode: 'ask', confinement: 'host' },
+          { approvalMode: 'never', confinement: 'host' },
+        ],
       );
-      // Ask is workspace-write: the read-only thread is moved there, with
-      // the network it had (none).
-      expect(params[0].sandboxPolicy).toEqual({
-        type: 'workspaceWrite',
-        writableRoots: [],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
+      for (const turn of params)
+        expect(turn).not.toHaveProperty('sandboxPolicy');
+      expect(metadata[0]).toMatchObject({ sandbox: 'read-only' });
+      expect(metadata[1]).toMatchObject({ sandbox: 'read-only' });
+      // R5: session.configured reports the sandbox Codex reported, not the
+      // one requested, and no Station mode claims it (untrusted/on-request
+      // over read-only is none of Ask, Auto or Full access).
+      expect(configured).toMatchObject({
+        approvalPolicy: 'on-request',
+        sandbox: 'read-only',
+        approvalMode: 'connection-default',
       });
-      expect(metadata[0]).toMatchObject({ sandbox: 'workspace-write' });
+    });
+
+    test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
+      const reported = await run(
+        'configured-reported',
+        { approvalMode: 'never', confinement: 'host' },
+        WORKSPACE,
+        [],
+      );
+      expect(reported.configured).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'never',
+      });
+      const silent = await run(
+        'configured-silent',
+        { approvalMode: 'never', confinement: 'host' },
+        undefined,
+        [],
+      );
+      expect(silent.configured).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+      });
     });
   });
 

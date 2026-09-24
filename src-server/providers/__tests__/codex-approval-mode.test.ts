@@ -173,7 +173,7 @@ describe('planCodexTurnSandbox (#2559)', () => {
       expect(
         planCodexTurnSandbox(
           { approvalPolicy: 'never', sandbox: 'danger-full-access' },
-          { policy: { type: 'readOnly', networkAccess: false } },
+          {},
           confinement,
         ),
       ).toEqual({
@@ -190,7 +190,7 @@ describe('planCodexTurnSandbox (#2559)', () => {
     expect(
       planCodexTurnSandbox(
         { approvalPolicy: 'never', sandbox: 'danger-full-access' },
-        { policy: { type: 'readOnly', networkAccess: false } },
+        {},
         'host',
       ),
     ).toEqual({
