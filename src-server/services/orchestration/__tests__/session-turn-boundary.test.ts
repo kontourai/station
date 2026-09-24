@@ -758,6 +758,7 @@ describe('SessionTurnBoundaryAuthority', () => {
       removeTerminal: () => ({ kind: 'applied' }),
       hasPossibleEffect: () => Boolean(record),
       active: () => (record ? [{ ...record }] : []),
+      recordAccepted: () => ({ kind: 'unavailable' }),
     };
     const authority = createSessionTurnBoundaryAuthority({
       coordinator,

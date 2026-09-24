@@ -32,6 +32,7 @@
 
 import {
   type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
@@ -51,7 +52,12 @@ import {
 const TURN_COMPLETION_SOURCE = 'turn-completion';
 const SESSION_KIND = 'runtime';
 
-type TurnOutcome = 'done' | 'failed' | 'stopped';
+/**
+ * `replied` (#2324, owner decision D1): a turn the engine opened on its own
+ * finished — a reply nobody sent a message for, such as after background
+ * work. Delivered in the `turn-completed` category, worded as a reply.
+ */
+type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied';
 
 interface TurnCompletionOrchestrationService {
   resolveSessionPresenceSubject(
@@ -118,8 +124,10 @@ async function deliverTurnCompletionPush(input: {
         ? 'Your agent needs attention'
         : outcome === 'stopped'
           ? 'Your agent stopped'
-          : 'Your agent finished',
-    body: `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : 'finished'} in session ${threadId}`,
+          : outcome === 'replied'
+            ? 'Your agent replied'
+            : 'Your agent finished',
+    body: `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
     priority: outcome === 'failed' ? 'high' : 'normal',
     dedupeTag: `turn-completion:${threadId}:${turnId}`,
     metadata: {
@@ -420,6 +428,7 @@ export function wireTurnCompletionNotifications(
 
           let outcome = resolveTurnCompletionOutcome(event);
           if (!outcome || !event.turnId) return;
+          const providerTurn = isProviderTriggeredTurn(event);
 
           // archive#3573: a stale `turn.completed`/`turn.aborted` naming a
           // turn the session has already moved past (codex's own protocol
@@ -450,7 +459,29 @@ export function wireTurnCompletionNotifications(
               event.method === 'turn.aborted') &&
             consumeSettledStop(event.threadId, event.turnId)
           ) {
+            // #2324 (D1): a provider turn is never reported "stopped" — the
+            // Stop was the user's own act on a reply they did not ask for.
+            if (providerTurn) {
+              turnCompletionNotificationOps.add(1, {
+                outcome: 'stopped',
+                result: 'skipped_provider_turn',
+              });
+              return;
+            }
             outcome = 'stopped';
+          }
+          if (providerTurn && event.method === 'turn.completed') {
+            // Closed without its own result (a send the engine folded into
+            // it, a new turn, the session ending): whatever came next carries
+            // the news, so this one does not add a push of its own.
+            if (event.finishReason === 'other') {
+              turnCompletionNotificationOps.add(1, {
+                outcome,
+                result: 'skipped_provider_turn',
+              });
+              return;
+            }
+            outcome = 'replied';
           }
 
           // archive#3525: a stop this process initiated as internal machinery

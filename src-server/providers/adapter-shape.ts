@@ -49,6 +49,9 @@ export class ProviderTurnEndedError extends Error {
  * must therefore throw this type. A plain error there is recorded as an
  * indeterminate turn start, and that lingering boundary row reads as an
  * in-flight turn that blocks later continuations of the thread.
+ *
+ * A send while the engine runs a turn it opened on its own is the third
+ * source (#2324): {@link ProviderTurnInProgressError}, retryable by its code.
  */
 export class SendTurnRefusedError extends Error {
   constructor(message: string) {

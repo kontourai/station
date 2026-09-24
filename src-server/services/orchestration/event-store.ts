@@ -40,7 +40,11 @@ import {
   SESSION_AGENT_ICON_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -396,6 +400,8 @@ export type SessionInventoryEventDescriptor =
       method: 'turn.started';
       turnId: string;
       inputKind?: 'steer';
+      /** #2324: the engine opened this turn itself; no input was provided. */
+      trigger?: 'provider';
       attachments: readonly {
         name: string;
         mediaType: string;
@@ -2300,6 +2306,7 @@ export class EventStore {
           `SELECT id, provider, turn_id, method, sequence,
              json_extract(payload, '$.turnId') AS event_turn_id,
              json_extract(payload, '$.inputKind') AS input_kind,
+             json_extract(payload, '$.metadata.trigger') AS turn_trigger,
              json_extract(payload, '$.toolCallId') AS tool_call_id,
              json_extract(payload, '$.toolName') AS tool_name,
              json_extract(payload, '$.status') AS status,
@@ -2364,6 +2371,9 @@ export class EventStore {
           turnId: (row.event_turn_id ?? row.turn_id) as string,
           ...(row.input_kind === 'steer'
             ? { inputKind: 'steer' as const }
+            : {}),
+          ...(row.turn_trigger === PROVIDER_TURN_TRIGGER
+            ? { trigger: PROVIDER_TURN_TRIGGER }
             : {}),
           attachments: JSON.parse((row.attachments as string) || '[]') as {
             name: string;
@@ -4251,6 +4261,9 @@ export class EventStore {
                        AND length(CAST(json_extract(payload, '$.inputKind') AS BLOB)) <= ?
                      THEN json_extract(payload, '$.inputKind') END AS input_kind,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END AS attachments_type,
+                CASE WHEN c.method = 'turn.started' AND json_valid(payload)
+                       AND json_extract(payload, '$.metadata.trigger') = ?
+                     THEN 1 ELSE 0 END AS provider_trigger,
                 a.key AS attachment_key,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_type(a.value) END AS attachment_type,
                 CASE WHEN a.key IS NULL THEN NULL ELSE json_extract(a.value, '$.kind') END AS attachment_kind,
@@ -4293,6 +4306,7 @@ export class EventStore {
         MAX_BASIS_OUTPUT_TEXT_BYTES,
         MAX_BASIS_PROMPT_BYTES,
         MAX_BASIS_INPUT_KIND_BYTES,
+        PROVIDER_TURN_TRIGGER,
         MAX_BASIS_ATTACHMENT_NAME_BYTES,
         MAX_BASIS_ATTACHMENT_MIME_BYTES,
         MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -4361,11 +4375,15 @@ export class EventStore {
             (row.input_kind_type !== 'text' || row.input_kind !== 'steer')
           )
             return { status: 'corrupt' };
-          event.input = {
-            kind: row.input_kind === 'steer' ? 'steer' : 'initial',
-            prompt: typeof row.prompt === 'string' ? row.prompt : '',
-            attachments: [],
-          };
+          // #2324: a turn the engine opened on its own has no input; its
+          // start must not read as an empty message the user sent.
+          if (row.provider_trigger !== 1) {
+            event.input = {
+              kind: row.input_kind === 'steer' ? 'steer' : 'initial',
+              prompt: typeof row.prompt === 'string' ? row.prompt : '',
+              attachments: [],
+            };
+          }
         }
         if (row.method === 'tool.completed') {
           if (
@@ -9564,6 +9582,54 @@ export class EventStore {
           return { kind: 'unavailable' };
         }
       },
+      recordAccepted: (record) => {
+        try {
+          this.db.exec('BEGIN IMMEDIATE');
+          const { rows } = this.db
+            .prepare(
+              `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
+                WHERE thread_id = ?`,
+            )
+            .get(record.threadId) as { rows: number };
+          if (rows >= SESSION_TURN_ACCEPTED_CAPACITY) {
+            this.db.exec('ROLLBACK');
+            return { kind: 'busy' };
+          }
+          this.db
+            .prepare(
+              `INSERT INTO orchestration_turn_boundaries
+                (boundary_id, thread_id, state, provider_turn_id, owner_id,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+               VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+            )
+            .run(
+              record.boundaryId,
+              record.threadId,
+              record.providerTurnId,
+              record.ownerId,
+              record.ownerPid,
+              record.ownerBirth ?? null,
+              record.ownerIdentityKind,
+              record.createdAt,
+              record.updatedAt,
+            );
+          this.db.exec('COMMIT');
+          return { kind: 'applied' };
+        } catch {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch {
+            // The transaction may already have committed.
+          }
+          return exact({
+            boundaryId: record.boundaryId,
+            ownerId: record.ownerId,
+            state: 'accepted',
+          })
+            ? { kind: 'applied' }
+            : { kind: 'unavailable' };
+        }
+      },
       hasPossibleEffect: (threadId) => {
         this.reconcileSessionTurnTerminalsFromEvents(threadId);
         return Boolean(
@@ -10943,9 +11009,16 @@ export class EventStore {
               .prepare(
                 `SELECT COUNT(*) AS count FROM orchestration_events
                  WHERE thread_id = ?
-                   AND method IN ('turn.started', 'turn.completed')`,
+                   AND method IN ('turn.started', 'turn.completed')
+                   AND NOT (
+                     method = 'turn.started'
+                     AND json_valid(payload)
+                     AND json_extract(payload, '$.metadata.trigger') IS ?
+                   )`,
               )
-              .get(session.thread_id) as { count: number }
+              .get(session.thread_id, PROVIDER_TURN_TRIGGER) as {
+              count: number;
+            }
           ).count;
           let ownerUserId: string | undefined;
           let agentSlug: string | undefined;
@@ -11102,9 +11175,13 @@ export class EventStore {
       (typeof metadata?.projectSlug === 'string'
         ? metadata.projectSlug
         : undefined);
+    // A start is the user's message and a completion the agent's reply. A
+    // turn the engine opened on its own (#2324) has a reply but no message
+    // of the user's, so its start is not counted.
     const messageCount =
       (existing?.message_count ?? 0) +
-      (event.method === 'turn.started' || event.method === 'turn.completed'
+      ((event.method === 'turn.started' && !isProviderTriggeredTurn(event)) ||
+      event.method === 'turn.completed'
         ? 1
         : 0);
     this.db

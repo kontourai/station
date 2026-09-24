@@ -57,6 +57,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import {
   ProviderTurnEndedError,
+  ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
@@ -13107,6 +13108,42 @@ describe('OrchestrationService', () => {
     expect(dispatchError.retryable).toBe(true);
     expect(dispatchError.receipt.status).toBe('rejected');
     expect(dispatchError.outcome).toBeUndefined();
+  });
+
+  test('#2324 (D4): a send refused while the engine runs its own turn keeps its retryable code, and the thread stays usable', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-provider-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(new ProviderTurnInProgressError());
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_turn_in_progress');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    // Retired cleanly, not left indeterminate: the retry dispatches.
+    const retry = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-provider-turn', input: 'during the reply' },
+    });
+    expect(retry).toMatchObject({ threadId: 'thread-provider-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
   });
 
   // #2310 review F1/F2/F3: the refusal above, seen from the session list. An

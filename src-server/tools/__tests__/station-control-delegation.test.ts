@@ -4252,3 +4252,71 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
     });
   });
 });
+
+describe('#2324 a delegated task event carries a provider-triggered turn’s trigger', () => {
+  test('forwards trigger on the start and terminal of a turn the engine opened itself, and on nothing else', async () => {
+    const { projectDelegatedTaskEvent } = await import(
+      '../station-control-delegation.js'
+    );
+    const base = {
+      eventId: 'e',
+      provider: 'claude',
+      threadId: 'task:t',
+      createdAt: '2026-09-23T00:00:00.000Z',
+      turnId: 'provider:p',
+    };
+    const trigger = { metadata: { trigger: 'provider' } };
+    expect(
+      projectDelegatedTaskEvent(1, {
+        ...base,
+        method: 'turn.started',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'running',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(2, {
+        ...base,
+        method: 'turn.completed',
+        outputText: 'finished',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'message',
+      status: 'completed',
+      text: 'finished',
+      trigger: 'provider',
+    });
+    expect(
+      projectDelegatedTaskEvent(3, {
+        ...base,
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        ...trigger,
+      }),
+    ).toMatchObject({
+      kind: 'lifecycle',
+      status: 'stopped',
+      trigger: 'provider',
+    });
+    // A caller's turn, and a delta inside the provider turn, carry none.
+    expect(
+      projectDelegatedTaskEvent(4, {
+        ...base,
+        turnId: 'user-turn',
+        method: 'turn.completed',
+      }),
+    ).not.toHaveProperty('trigger');
+    expect(
+      projectDelegatedTaskEvent(5, {
+        ...base,
+        method: 'content.text-delta',
+        delta: 'x',
+        ...trigger,
+      }),
+    ).not.toHaveProperty('trigger');
+  });
+});

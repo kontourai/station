@@ -35,6 +35,79 @@ describe('session-lifecycle-service', () => {
     );
   });
 
+  test('#2324 (D2): a turn the engine opened on its own moves the session like any turn, with its own reasons', () => {
+    const base = {
+      provider: 'claude' as const,
+      threadId: 'thread-provider',
+      createdAt: '2026-09-23T00:00:00.000Z',
+    };
+    const trigger = { metadata: { trigger: 'provider' } };
+    const session = {
+      provider: 'claude' as const,
+      threadId: 'thread-provider',
+      status: 'running' as const,
+      createdAt: base.createdAt,
+      updatedAt: base.createdAt,
+    };
+    const userDone = [
+      {
+        ...base,
+        eventId: 'u1',
+        method: 'turn.started',
+        turnId: 'u',
+        prompt: 'go',
+      },
+      { ...base, eventId: 'u2', method: 'turn.completed', turnId: 'u' },
+    ] as CanonicalRuntimeEvent[];
+    const providerStarted = {
+      ...base,
+      eventId: 'p1',
+      method: 'turn.started',
+      turnId: 'provider:p',
+      ...trigger,
+    } as CanonicalRuntimeEvent;
+    const providerDone = {
+      ...base,
+      eventId: 'p2',
+      method: 'turn.completed',
+      turnId: 'provider:p',
+      ...trigger,
+    } as CanonicalRuntimeEvent;
+    expect(
+      projectSessionLifecycle({ session, events: userDone }),
+    ).toMatchObject({
+      lifecycleState: 'completed',
+      transitionReason: 'turn_completed',
+    });
+    // Running while it works — not a stale "completed" …
+    expect(
+      projectSessionLifecycle({
+        session,
+        events: [...userDone, providerStarted],
+      }),
+    ).toMatchObject({
+      lifecycleState: 'running',
+      transitionReason: 'provider_turn_started',
+    });
+    // … and completed again after, distinguishable from the caller's turn.
+    expect(
+      projectSessionLifecycle({
+        session,
+        events: [...userDone, providerStarted, providerDone],
+      }),
+    ).toMatchObject({
+      lifecycleState: 'completed',
+      transitionReason: 'provider_turn_completed',
+    });
+    // The persisted stamp carries the same reason.
+    expect(
+      normalizeCanonicalRuntimeEventLifecycle(providerDone, 'running'),
+    ).toMatchObject({
+      sessionState: 'completed',
+      transitionReason: 'provider_turn_completed',
+    });
+  });
+
   test('does not let an untargeted resume completion stomp a starting turn (#2383)', () => {
     const startingTurn = {
       eventId: 'evt-start',

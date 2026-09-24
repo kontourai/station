@@ -663,6 +663,100 @@ describe('EventStore', () => {
     );
   });
 
+  describe('#2324: a turn the engine opened on its own provided no input', () => {
+    const threadId = 'provider-turn-thread';
+    const append = (event: Record<string, unknown>) =>
+      store.appendEvent({
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-09-23T00:00:00.000Z',
+        ...event,
+      } as CanonicalRuntimeEvent);
+    const seed = () => {
+      append({
+        eventId: 'pt-session',
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+      });
+      append({
+        eventId: 'pt-user-start',
+        turnId: 'user-turn',
+        method: 'turn.started',
+        prompt: 'start the job',
+      });
+      append({
+        eventId: 'pt-user-done',
+        turnId: 'user-turn',
+        method: 'turn.completed',
+        outputText: 'started',
+      });
+      append({
+        eventId: 'pt-provider-start',
+        turnId: 'provider:p',
+        method: 'turn.started',
+        metadata: { trigger: 'provider' },
+      });
+      append({
+        eventId: 'pt-provider-text',
+        turnId: 'provider:p',
+        method: 'content.text-delta',
+        delta: 'finished',
+      });
+      append({
+        eventId: 'pt-provider-done',
+        turnId: 'provider:p',
+        method: 'turn.completed',
+        outputText: 'finished',
+        metadata: { trigger: 'provider' },
+      });
+    };
+
+    test('counts its reply but not its start as a message', () => {
+      seed();
+      expect(
+        store.listConversationHistoryPage({
+          ownerUserId: 'owner-alpha',
+          limit: 5,
+        }).records,
+      ).toEqual([expect.objectContaining({ threadId, messageCount: 3 })]);
+    });
+
+    test('lists no authored input for it in the Session inventory', () => {
+      seed();
+      const page = store.listSessionInventoryEvents(threadId);
+      const starts = page.events.filter(
+        (event) => event.method === 'turn.started',
+      );
+      expect(starts).toEqual([
+        expect.objectContaining({ id: 'pt-user-start' }),
+        expect.objectContaining({
+          id: 'pt-provider-start',
+          trigger: 'provider',
+        }),
+      ]);
+      expect(starts[0]).not.toHaveProperty('trigger');
+    });
+
+    test('its Basis window carries no input for its start', () => {
+      seed();
+      const result = store.listBasisEventsForTurn(threadId, 'provider:p');
+      expect(result.status).toBe('found');
+      if (result.status !== 'found') return;
+      const start = result.events.find(
+        (event) => event.eventId === 'pt-provider-start',
+      );
+      expect(start).toBeDefined();
+      expect(start).not.toHaveProperty('input');
+      // A caller's turn still carries its input.
+      const user = store.listBasisEventsForTurn(threadId, 'user-turn');
+      expect(
+        user.status === 'found' &&
+          user.events.find((event) => event.eventId === 'pt-user-start'),
+      ).toMatchObject({ input: { kind: 'initial', prompt: 'start the job' } });
+    });
+  });
+
   test('usage session ids are SQL-narrowed by owner and tenant, making other tenants indistinguishable from empty', () => {
     const add = (threadId: string, tenantId: string) => {
       store.upsertSession({

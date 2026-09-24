@@ -31,7 +31,11 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
-import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
+import {
+  isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
   isSessionLifecycleStateStopped,
@@ -528,6 +532,12 @@ export interface DelegatedTaskEvent {
     | 'plan';
   createdAt?: string;
   turnId?: string;
+  /**
+   * #2324: `'provider'` on the start and terminal of a turn the engine
+   * opened on its own — a reply no caller asked for (for example after its
+   * background work finished). Absent on every turn a caller sent.
+   */
+  trigger?: 'provider';
   text?: string;
   truncated?: true;
   toolName?: string;
@@ -3098,6 +3108,17 @@ function commonTaskEvent(
       : {}),
     ...(optionalString(event.turnId)
       ? { turnId: optionalString(event.turnId) }
+      : {}),
+    // #2324: forwarded, never inferred from a turn id or a missing prompt.
+    ...(typeof event.method === 'string' &&
+    isProviderTriggeredTurn({
+      method: event.method,
+      metadata:
+        event.metadata && typeof event.metadata === 'object'
+          ? (event.metadata as Record<string, unknown>)
+          : undefined,
+    })
+      ? { trigger: PROVIDER_TURN_TRIGGER }
       : {}),
   };
 }

@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 // Same directory depth as the service, so this specifier resolves to the id
 // `interrupted-turn-recovery.test.ts` already `vi.mock`s. A module at a
@@ -8,6 +11,7 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
+import { isProviderTurnBoundary } from './session-turn-boundary.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
 type InterruptedTurnRecoveryLogger = {
@@ -262,10 +266,17 @@ export class InterruptedTurnRecovery {
           record.threadId,
           'turn.started',
         );
+        // #2324: a turn the engine opened on its own records its row just
+        // BEFORE its `turn.started` is persisted. If that start is not the
+        // thread's latest turn start, the process died before it landed (or
+        // the thread moved on): there is no turn to close or banner.
+        const providerTurn = isProviderTurnBoundary(record);
         if (
-          latestTurnStarted?.turnId !== undefined &&
-          latestTurnStarted.turnId !== record.providerTurnId &&
-          latestTurnStarted.createdAt > record.createdAt
+          (providerTurn &&
+            latestTurnStarted?.turnId !== record.providerTurnId) ||
+          (latestTurnStarted?.turnId !== undefined &&
+            latestTurnStarted.turnId !== record.providerTurnId &&
+            latestTurnStarted.createdAt > record.createdAt)
         ) {
           this.deps.logger.warn(
             'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
@@ -360,6 +371,11 @@ export class InterruptedTurnRecovery {
               // guarantees below), while every turn fold still settles the
               // dead turn on it.
               recoveryTerminal: true as const,
+              // #2324: the abort carries the trigger its turn's start did,
+              // so every consumer reads it as that provider turn's end.
+              ...(providerTurn
+                ? { metadata: { trigger: PROVIDER_TURN_TRIGGER } }
+                : {}),
             });
             if (!published) {
               // M4 parity with the banner below: a declined publish must

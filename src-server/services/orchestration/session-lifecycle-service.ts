@@ -4,6 +4,7 @@ import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
   type SessionState,
 } from '@kontourai/station-contracts/runtime-events';
 import type {
@@ -985,7 +986,18 @@ function deriveLifecycleTransition(
       };
     }
     case 'turn.started':
-      return { from, to: 'running', reason: 'turn_started', source: 'runtime' };
+      // #2324 (owner decision D2): a turn the engine opened on its own moves
+      // the session like any turn — running while it works, completed after
+      // — with its own reason, so a consumer that must act on a caller's
+      // turn once can tell the later unprompted reply apart.
+      return {
+        from,
+        to: 'running',
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_started'
+          : 'turn_started',
+        source: 'runtime',
+      };
     case 'turn.completed':
       if (!acceptsTurnTerminalEvent(event, turnIdentityAnchor)) return null;
       // archive#3557/#3558 fix-round review BLOCK 3: codex's own Stop
@@ -1008,7 +1020,9 @@ function deriveLifecycleTransition(
       return {
         from,
         to: 'completed',
-        reason: 'turn_completed',
+        reason: isProviderTriggeredTurn(event)
+          ? 'provider_turn_completed'
+          : 'turn_completed',
         source: 'runtime',
       };
     case 'turn.aborted':

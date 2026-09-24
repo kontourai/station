@@ -57,6 +57,7 @@ import {
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -74,7 +75,10 @@ import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
 } from '@kontourai/station-contracts/runtime-events';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  isProviderTriggeredTurn,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   foldedSessionLifecycleState,
@@ -150,6 +154,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnDedup,
+  providerTurnBoundaryRecords,
   sessionActivityEvents,
   sessionBackgroundTasks,
   sessionCwdResolution,
@@ -494,22 +499,36 @@ export class OrchestrationCommandDispatchError extends Error {
       this.retryable =
         code === 'session_start_in_flight' ||
         code === 'resource_engine_start_capacity' ||
-        code === MUSE_TURN_SLOT_RELEASING_CODE;
+        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
     }
   }
 }
 
 /**
- * #2300: the Muse adapter's retryable refusal for a send that arrived while
- * the previous turn's `muse exec` was still exiting. Matched on the
+ * Adapter refusals a caller should retry rather than drop: the same send
+ * succeeds once the condition passes.
+ * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
+ *   still exiting.
+ * - #2324: a send that arrived while the engine was running a turn it opened
+ *   on its own; it succeeds once that turn closes.
+ */
+const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+]);
+
+/**
+ * The code of a retryable adapter refusal (see
+ * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
  * contract code (not the adapter's class) so this service does not import an
  * adapter module.
  */
-function isMuseTurnSlotReleasingRefusal(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error as { code?: unknown }).code === MUSE_TURN_SLOT_RELEASING_CODE
-  );
+function retryableAdapterRefusalCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
+    ? code
+    : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
@@ -5976,12 +5995,16 @@ export class OrchestrationService {
                       }
                       if (error instanceof SendTurnRefusedError) {
                         // The adapter refused the turn BEFORE its first
-                        // provider-visible effect — the type is only thrown
-                        // by pre-effect input validation (unsupported
-                        // attachments, unadvertised capabilities), so no
-                        // engine was invoked and no `turn.started` was
-                        // published even though `providerInvoked` is already
-                        // set (it flips before `adapter.sendTurn` runs).
+                        // provider-visible effect, so no engine was invoked
+                        // and no `turn.started` was published even though
+                        // `providerInvoked` is already set (it flips before
+                        // `adapter.sendTurn` runs). Sources: pre-effect input
+                        // validation (unsupported attachments, unadvertised
+                        // capabilities); a send racing the session's running
+                        // turn, which every adapter with such a guard refuses
+                        // with this type (#2415); and a send while the engine
+                        // runs a turn it opened itself, whose retryable code
+                        // the dispatch error forwards (#2324).
                         // Same clean-refusal shape as above: retire this
                         // dispatch's boundary row and release the
                         // client-turn claim so the thread stays usable, and
@@ -6722,9 +6745,10 @@ export class OrchestrationService {
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError ||
-          // #2300: a Muse send refused while the previous turn's process
-          // was still exiting — a refusal to act, retryable.
-          isMuseTurnSlotReleasingRefusal(error) ||
+          // #2300/#2324: a send refused until a condition passes (a Muse
+          // process still exiting, an engine's own turn still running) — a
+          // refusal to act, retryable.
+          retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
           // a failed action — and its closed code must survive the wrapper
@@ -6752,7 +6776,7 @@ export class OrchestrationService {
         // #484 continuation: a portable refusal's closed code is already a
         // public contract (fixed copy per code, 403-mapped at every route),
         // so it survives here exactly like the ended-session code.
-        // #2300: the Muse slot-releasing refusal's code is forwarded so the
+        // #2300/#2324: a retryable adapter refusal's code is forwarded so the
         // client's queue keeps the send for a retry instead of dropping it
         // as a definitive rejection.
         error instanceof SessionEndedError ||
@@ -6760,9 +6784,7 @@ export class OrchestrationService {
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal
           ? error.code
-          : isMuseTurnSlotReleasingRefusal(error)
-            ? MUSE_TURN_SLOT_RELEASING_CODE
-            : undefined,
+          : retryableAdapterRefusalCode(error),
       );
     }
   }
@@ -7649,6 +7671,46 @@ export class OrchestrationService {
     return this.publishCanonicalEvent(event);
   }
 
+  /**
+   * #2324: a turn the engine opened on its own passed through no send, so no
+   * claim recorded its boundary row. Record it BEFORE its `turn.started` is
+   * persisted: a crash after the start then leaves the same durable fact a
+   * crashed user turn leaves, and boot closes it with the interrupted-turn
+   * banner (`InterruptedTurnRecovery`); a crash before the start leaves a
+   * row boot resolves silently. Retired by the turn's own terminal like any
+   * accepted row. A failed record is logged and counted, and the turn is
+   * still published — losing the crash banner is better than losing the
+   * turn.
+   */
+  private recordProviderTurnBoundary(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.started' ||
+      !event.turnId ||
+      !isProviderTriggeredTurn(event)
+    ) {
+      return;
+    }
+    const recorded = this.sessionStartBoundaries.recordProviderTurn(
+      event.threadId,
+      event.turnId,
+      event.createdAt,
+    );
+    providerTurnBoundaryRecords.add(1, {
+      provider: event.provider,
+      outcome: recorded.kind,
+    });
+    if (recorded.kind !== 'applied') {
+      this.options.logger.warn(
+        'Provider-triggered turn boundary was not recorded; a crash during this turn will not be bannered at boot',
+        {
+          threadId: event.threadId,
+          turnId: event.turnId,
+          outcome: recorded.kind,
+        },
+      );
+    }
+  }
+
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
@@ -7750,6 +7812,7 @@ export class OrchestrationService {
             projectedEvent.eventId,
           )
         : [];
+    this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {

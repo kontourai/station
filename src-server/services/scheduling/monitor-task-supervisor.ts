@@ -1,5 +1,8 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  isProviderTriggeredTurn,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { OrchestrationTurnAdmission } from '../orchestration/orchestration-service.js';
@@ -218,6 +221,11 @@ export class MonitorTaskTurnSupervisor {
   ): void {
     const session = this.sessions.get(event.threadId);
     if (!session || session.initialTurnId) return;
+    // #2324: the monitor's own turn is the one its prompt started. A turn the
+    // engine opened on its own before it is not that turn; once the monitor's
+    // turn has started, a later one still counts toward the task's budgets
+    // (every start after the initial one does).
+    if (isProviderTriggeredTurn(event)) return;
     session.initialTurnId = event.turnId;
     session.onInitialTurnStarted({
       taskId: session.taskId,

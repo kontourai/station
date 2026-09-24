@@ -29,6 +29,22 @@ export interface SessionTurnBoundaryRecord {
 /** Unresolved provider acceptances are protected facts and are never pruned. */
 export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
 
+/**
+ * #2324: the boundary id prefix of a turn the ENGINE opened on its own
+ * (`isProviderTriggeredTurn`). Such a turn has no send, so no claim ever
+ * prepares or invokes it; its row is recorded straight into `accepted` when
+ * its `turn.started` is persisted, so a crash mid-turn leaves the same
+ * durable fact a crashed user turn does. Identified by the id Station minted
+ * (like `session-start-boundary:`), never by caller metadata.
+ */
+export const PROVIDER_TURN_BOUNDARY_PREFIX = 'provider-turn-boundary:';
+
+export function isProviderTurnBoundary(record: {
+  boundaryId: string;
+}): boolean {
+  return record.boundaryId.startsWith(PROVIDER_TURN_BOUNDARY_PREFIX);
+}
+
 type SessionTurnBoundaryTransition =
   | { kind: 'applied' }
   | { kind: 'busy' }
@@ -63,6 +79,17 @@ export interface SessionTurnBoundaryCoordinator {
   }): SessionTurnBoundaryTransition;
   hasPossibleEffect(threadId: string): boolean;
   active(): SessionTurnBoundaryRecord[];
+  /**
+   * #2324: records an `accepted` row with no preceding claim, for a turn the
+   * engine opened itself. Never blocked by another invocation on the thread
+   * (the engine did not ask), only by {@link SESSION_TURN_ACCEPTED_CAPACITY}.
+   */
+  recordAccepted(
+    record: SessionTurnBoundaryRecord & {
+      state: 'accepted';
+      providerTurnId: string;
+    },
+  ): SessionTurnBoundaryTransition;
 }
 
 const activeOwners = new Set<string>();
@@ -206,6 +233,17 @@ export interface SessionTurnBoundaryAuthority {
     threadId: string,
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
+  /**
+   * #2324: the durable row for a turn the engine opened on its own, recorded
+   * before its `turn.started` is persisted. Retired by that turn's terminal
+   * like any accepted turn; left behind by a crash, it is closed at the next
+   * boot with the interrupted-turn banner a user turn gets.
+   */
+  recordProviderTurn(
+    threadId: string,
+    providerTurnId: string,
+    now: string,
+  ): SessionTurnBoundaryTransition;
   /**
    * archive#4080: `reconcile`'s existing dead-owner sweep already
    * flips a dead `invoking` owner to `indeterminate` — this surfaces THAT
@@ -737,6 +775,27 @@ export function createSessionTurnBoundaryAuthority(options: {
         terminalCreatedAt: event.createdAt,
       });
     },
+    recordProviderTurn(threadId, providerTurnId, now) {
+      retryPendingTransitions();
+      try {
+        return options.coordinator.recordAccepted({
+          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
+          threadId,
+          state: 'accepted',
+          providerTurnId,
+          ownerId: options.owner.id,
+          ownerPid: options.owner.pid,
+          ...(options.owner.identityKind === 'exact'
+            ? { ownerBirth: options.owner.birth }
+            : {}),
+          ownerIdentityKind: options.owner.identityKind,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
     reconcile(now) {
       retryPendingTransitions();
       const result = reconcileDeadOwners(now);
@@ -853,6 +912,17 @@ export function createInMemorySessionTurnBoundaryAuthority(): SessionTurnBoundar
           record.threadId === threadId && record.state !== 'lifecycle',
       ),
     active: () => [...records.values()].map((record) => ({ ...record })),
+    recordAccepted(record) {
+      if (
+        [...records.values()].filter(
+          (candidate) => candidate.threadId === record.threadId,
+        ).length >= SESSION_TURN_ACCEPTED_CAPACITY
+      ) {
+        return { kind: 'busy' };
+      }
+      records.set(record.boundaryId, { ...record });
+      return { kind: 'applied' };
+    },
   };
   return createSessionTurnBoundaryAuthority({
     coordinator,
