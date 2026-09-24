@@ -82,6 +82,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from './muse-adapter-types.js';
+import { museExecChildWorkNotReportedEvent } from './muse-serve-child-work.js';
 import type {
   MuseServeProcessLike,
   MuseServeSpawnResult,
@@ -449,10 +450,6 @@ export function museCredentialState(
  * function for why the name alone cannot be trusted.
  */
 export const MUSE_PROVIDER_OVERRIDE_ENV = 'STATION_E2E_MUSE_PROVIDER';
-
-/** Why an exec session's child work is `not-reported` (#2452). */
-export const MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON =
-  'This Muse session runs through `muse exec`, which reports no subagent identity.';
 
 /** Bound on the refused value echoed back in the first turn's warning. */
 export const MUSE_REFUSED_VALUE_MAX_CHARS = 120;
@@ -1217,18 +1214,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     serveUnavailable: string | undefined,
   ): void {
     const createdAt = this.now().toISOString();
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt,
-      method: 'child-work.updated',
-      delta: {
-        kind: 'not-reported',
-        reporterThreadId: threadId,
-        reason: MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
-      },
-    });
+    this.publish(museExecChildWorkNotReportedEvent({ threadId, createdAt }));
     if (serveUnavailable === undefined) return;
     this.publish({
       eventId: crypto.randomUUID(),

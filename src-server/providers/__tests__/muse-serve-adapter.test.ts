@@ -30,11 +30,13 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import {
   buildMuseServeArgs,
-  MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
   MuseAdapter,
   museServeEnvOverrides,
 } from '../adapters/muse-adapter.js';
-import { MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX } from '../adapters/muse-serve-child-work.js';
+import {
+  MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX,
+  MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+} from '../adapters/muse-serve-child-work.js';
 import { museServeApprovalPlan } from '../adapters/muse-serve-session.js';
 import {
   FakeMuseServeHost,

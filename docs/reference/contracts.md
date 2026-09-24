@@ -277,6 +277,65 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
 - `transitionReason` crosses only when it names the
   `SessionTransitionReason` vocabulary; anything else is dropped.
 
+## Provider plan quota (#2265)
+
+A provider coding-plan quota exhaustion is a provider limit, not a Station
+budget and not a transport outage. When an ACP engine's `session/prompt`
+rejects with the evidenced quota shape (observed: OpenCode reporting ZAI
+plan exhaustion as a JSON-RPC request failure), the owning adapter
+classifies it at the terminal rejection seam
+(`src-server/providers/adapters/acp-adapter.ts`, via the engine-neutral
+`src-server/providers/provider-plan-quota.ts` helper, which is currently
+wired only to that observed shape) and publishes `runtime.error` with:
+
+- `code: 'provider-plan-quota-exhausted'` — the allowlisted code the
+  delegation `reason` and events projections branch on;
+- fixed safe `message` (`The provider plan quota was exhausted; the engine
+  refused the turn.`) — the engine's raw text and any co-reported
+  notification text never cross;
+- bounded `details`: the plan window (`quotaWindow`, e.g. `'5 hour'`),
+  the provider-reported reset text (`resetReported`, civil timestamp with
+  NO timezone), `resetPrecision: 'unqualified'`, and a qualified
+  `retryAfterMs` only when one was genuinely supplied alongside the
+  failure (none is supplied on the observed wire, so it stays absent).
+
+The terminal publication names the failed `turnId`, so the reason seam can
+scope the quota to the current turn: a successful continuation or a newer
+unrelated failure ends the quota story instead of reviving it. The
+lifecycle fold still classifies the session as `runtime_error`
+(failed, resumable); the quota code keeps plan limits distinct from
+Station's per-turn idle/total supervision budgets and from generic
+transport errors, which stay a redacted generic with no detail.
+
+Bounds: the window must be a positive whole-hour count (`0 hour` stays
+generic); the reset day must exist in its month (February 31 and February
+29 on a non-leap year stay generic — display-only calendar plausibility,
+never a timezone or epoch); the protocol code must be a finite number.
+
+Session notice: the lifecycle fold's terminal attribution composes the
+same fixed guidance from the re-validated facts (window, reset text
+labelled timezone-less, wait/check then continue explicitly), so the
+existing session failure notice (SessionsView, Home) renders it with no
+UI changes and no raw provider text. A quota-coded terminal with forged
+details falls back to the generic fixed copy.
+
+Surfaces (`snapshotFor` → `DelegatedTaskSnapshot.reason`;
+`projectDelegatedTaskEvent`; `station delegate status`/`events`/`wait`):
+
+- `reason` carries the quota code, host-synthesized fixed guidance
+  (wait for the reset or check the provider plan, then continue
+  explicitly — Station never retries, switches models/providers, or
+  spends on a fallback), and the re-validated bounded facts. Forged or
+  malformed details read as the bare code.
+- Delegated events project the same fixed copy plus validated facts;
+  unknown quota-shaped claims stay `The delegated runtime reported an
+  error.`
+- `station delegate status` (and `wait`'s summary, which reuses it)
+  prints the reason plus `Provider limit window` and
+  `Provider-reported reset … (no timezone given; wait before continuing)`
+  lines. The reset text is repeated verbatim for display — never parsed
+  as UTC/machine-local, never a countdown, never an invented instant.
+
 ## Compatibility
 
 `conversation-pull-request-links` defines exact provider, host, repository, and

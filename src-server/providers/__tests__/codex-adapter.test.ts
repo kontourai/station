@@ -3091,6 +3091,9 @@ describe('CodexAdapter', () => {
         originalId: 'gpt-5.5',
       },
     ]);
+    // #2482: selector validation skips the catalog read on this declaration,
+    // which holds only while the catalog never rewrites an id.
+    expect(adapter.metadata.modelCatalogIdentityMapped).toBe(true);
 
     const writtenMessages = processHandle.stdin.lines.map(parseLine);
     expect(writtenMessages.map((message) => message.method)).toEqual([

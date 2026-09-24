@@ -93,6 +93,34 @@ export interface MuseServeChildWorkContext {
   isTurnLive: (turnId: string) => boolean;
 }
 
+/** Why an exec session's child work is `not-reported` (#2452). */
+export const MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON =
+  'This Muse session runs through `muse exec`, which reports no subagent identity.';
+
+/**
+ * The one child-work fact an exec-fallback session can state: its children
+ * are not reported (`muse exec` names no subagent), rather than an empty
+ * "nothing running" it never derived. Built here so every muse child-work
+ * emission lives in this module.
+ */
+export function museExecChildWorkNotReportedEvent(input: {
+  threadId: string;
+  createdAt: string;
+}): CanonicalRuntimeEvent {
+  return {
+    eventId: crypto.randomUUID(),
+    provider: 'muse',
+    threadId: input.threadId,
+    createdAt: input.createdAt,
+    method: 'child-work.updated',
+    delta: {
+      kind: 'not-reported',
+      reporterThreadId: input.threadId,
+      reason: MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+    },
+  };
+}
+
 export function createMuseServeChildWorkState(): MuseServeChildWorkState {
   return {
     registry: createEmptyChildWorkRegistry(),
