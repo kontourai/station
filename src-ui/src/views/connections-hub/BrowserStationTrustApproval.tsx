@@ -108,7 +108,8 @@ function decideTrust(
     return {
       status: 'untrusted',
       label: 'No Station key is approved on this browser',
-      detail: 'Compare the confirmation code and full key ID with the Station operator.',
+      detail:
+        'Compare the confirmation code and full key ID with the Station operator.',
       canApprove: true,
     };
   const status = stationRelayRouteTrustStatus(record, candidate);
@@ -384,7 +385,9 @@ export function BrowserStationTrustApproval() {
           <span>Key generation: {candidate.trust.generation}</span>
           <span>Confirmation code (compare through a separate channel):</span>
           <code className="relay-route-trust-approval__key-id">
-            {formatStationConnectionKeyConfirmationCode(candidate.confirmationCode)}
+            {formatStationConnectionKeyConfirmationCode(
+              candidate.confirmationCode,
+            )}
           </code>
           <span>Full Station key ID (SHA-256 JWK thumbprint):</span>
           <code className="relay-route-trust-approval__key-id">
