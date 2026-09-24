@@ -1389,6 +1389,7 @@ export function ChatDockBody({
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+            allowDraftWhileDisabled={busyOpen && !!agent}
             isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
