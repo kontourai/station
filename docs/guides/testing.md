@@ -996,10 +996,10 @@ a timer (`setTimeout(resolve, N)`, `setTimeout(() => resolve(x), N)`), a
 neither is a timer resolving with a string or UPPER_CASE sentinel, the
 `Promise.race([op, timeout('TIMED_OUT')])` shape. That exemption is safe only
 when the test expects the sentinel; `.not.toBe('TIMED_OUT')` asserts `op`
-finished in time, which load can fail. Existing lines are never read.
+finished in time, which load can fail. Existing lines are never flagged.
 
-It reports rather than blocks. Replayed over 150 main commits, about 40% of
-what it flags is the hazard (a sleep, then an assertion that something did
+It reports rather than blocks. In a one-off replay over the 150 main commits
+before 2026-09-24, about 40% of what it flagged was the hazard (a sleep, then an assertion that something did
 happen); the rest sleep before a negative assertion, which load can only make
 pass, or sleep inside a loop that already polls. So each finding is an inline
 warning on the pull request's added line and a step-summary entry, and the

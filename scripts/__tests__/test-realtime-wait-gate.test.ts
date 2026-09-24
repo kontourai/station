@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   addedTestLines,
   findRealtimeWaits,
+  realtimeWaitAnnotations,
   unquoteGitPath,
 } from '../test-realtime-wait-gate.mjs';
 
@@ -75,6 +76,23 @@ describe('addedTestLines', () => {
   test('unquotes a path git quoted for its non-ASCII bytes', () => {
     expect(unquoteGitPath(SAMPLES.quotedPath)).toBe(
       'b/src/__tests__/\u00e9 uni.test.ts',
+    );
+  });
+});
+
+describe('realtimeWaitAnnotations', () => {
+  test('escapes an author-controlled filename so it cannot move or split the command', () => {
+    const [annotation] = realtimeWaitAnnotations([
+      {
+        file: 'src/__tests__/a,line=1:x%\n::error::y.test.ts',
+        line: 7,
+        kind: 'promise-sleep',
+        text: '',
+      },
+    ]);
+    expect(annotation.split('\n')).toHaveLength(1);
+    expect(annotation).toMatch(
+      /^::warning file=src\/__tests__\/a%2Cline=1%3Ax%25%0A%3A%3Aerror%3A%3Ay\.test\.ts,line=7,title=/,
     );
   });
 });

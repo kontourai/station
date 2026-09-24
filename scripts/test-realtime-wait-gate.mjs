@@ -15,8 +15,9 @@
  * visible in the line that added it. So this reads the lines a change ADDS to
  * test files and flags those shapes.
  *
- * It is a prompt, not a proof, and it REPORTS rather than blocks. Replayed
- * over 150 main commits, roughly 40% of what it flags is the hazard (a sleep,
+ * It is a prompt, not a proof, and it REPORTS rather than blocks. In a
+ * one-off replay over the 150 main commits before 2026-09-24 (not kept as an
+ * artifact), roughly 40% of what it flagged was the hazard (a sleep,
  * then an assertion that something DID happen); the rest sleep before a
  * negative assertion, which load can only make pass, or sleep inside a loop
  * that already polls. Blocking at that precision would teach waiver-pasting,
@@ -24,7 +25,7 @@
  * summary, and the exit is 0. `--strict` exits 1 on findings. A line that
  * genuinely needs real time says so with a `real-time: <reason>` comment on
  * that line or the line above, which silences it. Existing lines are never
- * read.
+ * flagged; the line above an added one is read from HEAD only for a waiver.
  *
  *   node scripts/test-realtime-wait-gate.mjs [--base=<ref>] [--strict]
  *
@@ -56,7 +57,7 @@ export const REALTIME_WAIT_PATTERNS = Object.freeze([
     // time and load can fail it. The exemption is syntactic, so it trusts the
     // sentinel form to mean the former -- a reviewer's check, not the gate's.
     pattern:
-      /\bsetTimeout\(\s*(?:resolve|res|r|done|next)\s*,(?!\s*0\s*\))|\bsetTimeout\(\s*\(\)\s*=>\s*\{?\s*(?:resolve|res|r|done|next)\s*\((?!\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Z][A-Z0-9_]*)\s*\))[^;]*?\)\s*;?\s*\}?\s*,(?!\s*0\s*\))/,
+      /\bsetTimeout\(\s*(?:resolve|res|r|done|next)\s*,(?!\s*0\s*\))|\bsetTimeout\(\s*\(\)\s*=>\s*\{?\s*(?:resolve|res|r|done|next)\s*\((?!\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Z][A-Z0-9_]*)\s*\))[^;\n]{0,200}?\)\s*;?\s*\}?\s*,(?!\s*0\s*\))/,
   }),
   Object.freeze({
     id: 'literal-sleep',
@@ -223,11 +224,28 @@ export function runRealtimeWaitGate(root, base) {
   };
 }
 
-/** One GitHub Actions annotation per finding, on the added line itself. */
+/** GitHub's workflow-command escaping for a message. */
+function escapeData(value) {
+  return String(value)
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+}
+
+/** ...and for a property, where `:` and `,` also delimit. */
+function escapeProperty(value) {
+  return escapeData(value).replaceAll(':', '%3A').replaceAll(',', '%2C');
+}
+
+/**
+ * One GitHub Actions annotation per finding, on the added line itself. A
+ * filename is author-controlled, so it is escaped: unescaped, a `,` in it
+ * moves the warning and a newline starts a new workflow command.
+ */
 export function realtimeWaitAnnotations(findings) {
   return findings.map(
     (f) =>
-      `::warning file=${f.file},line=${f.line},title=Real-time wait in a test (${f.kind})::A fixed real-time wait passes on an idle machine and can fail on a saturated CI runner. Wait for the event, drive time with an injected or fake clock, or add a real-time: <reason> comment. See "Real-time waits in tests" in docs/guides/testing.md.`,
+      `::warning file=${escapeProperty(f.file)},line=${f.line},title=${escapeProperty(`Real-time wait in a test (${f.kind})`)}::A fixed real-time wait passes on an idle machine and can fail on a saturated CI runner. Wait for the event, drive time with an injected or fake clock, or add a real-time: <reason> comment. See "Real-time waits in tests" in docs/guides/testing.md.`,
   );
 }
 
@@ -282,7 +300,7 @@ if (
     if (process.env.GITHUB_STEP_SUMMARY && result.findings.length > 0)
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `\n### Real-time waits added to tests\n\n${result.findings.length} added test line(s) wait on real time (report-only; see the inline warnings):\n\n${result.findings.map((f) => `- \`${f.file}:${f.line}\` (${f.kind})`).join('\n')}\n`,
+        `\n### Real-time waits added to tests\n\n${result.findings.length} added test line(s) wait on real time (report-only; see the inline warnings):\n\n${result.findings.map((f) => `- \`${f.file.replace(/[`\r\n]/g, '?')}:${f.line}\` (${f.kind})`).join('\n')}\n`,
       );
     if (strict && result.findings.length > 0) process.exit(1);
   } catch (error) {
