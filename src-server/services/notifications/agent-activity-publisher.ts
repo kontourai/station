@@ -27,6 +27,16 @@
  * registration (only if it still holds that token); 503/429/5xx and network
  * errors — and 401, which can be transient — wait for the timer with
  * backoff; 400/413/422 are logged and the card is not retried.
+ *
+ * iOS phones get the same sealed card as a Live Activity instead of an FCM
+ * data message: `live-activity-planner.ts` decides start, update or end, and
+ * the requests go to `/v1/apns/channels` (one broadcast channel per
+ * registration, created when the first activity starts) and
+ * `/v1/apns/live-activity`. Coalescing, the per-phone send interval, backoff,
+ * alert bookkeeping and the per-principal read are shared with Android. A
+ * 410 `unregistered` clears the registration and deletes its channel; a 410
+ * `channel-gone` forgets the channel and its activity, and the next flush
+ * starts over on a new one.
  */
 import type { NativePushSealedData } from '@kontourai/station-contracts/native-push';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -47,11 +57,32 @@ import {
   composeAgentActivityPlaintext,
 } from './agent-activity-card.js';
 import { sealAgentActivityCard } from './agent-activity-seal.js';
-import type { NativePushRegistration } from './native-push-registration-store.js';
+import {
+  type ApnsChannelGatewayRequest,
+  buildApnsChannelGatewayRequest,
+  buildLiveActivityGatewayRequest,
+} from './apns-gateway-request.js';
+import {
+  type LiveActivityStep,
+  liveActivityRolloverAt,
+  planLiveActivity,
+} from './live-activity-planner.js';
+import {
+  APNS_CHANNEL_ID_PATTERN,
+  type NativePushAndroidRegistration,
+  type NativePushIosRegistration,
+  type NativePushLiveActivityRecord,
+  type NativePushRegistration,
+  newLiveActivityRunId,
+} from './native-push-registration-store.js';
 import type { PushSigningKey } from './push-signing-key-store.js';
 
 const DEFAULT_PUSH_GATEWAY_URL = 'https://push.kontourai.io';
 const SEND_PATH = '/v1/fcm/send';
+const LIVE_ACTIVITY_PATH = '/v1/apns/live-activity';
+const CHANNELS_PATH = '/v1/apns/channels';
+/** Enough for the gateway's small JSON answers; anything longer is ignored. */
+const MAX_ANSWER_CHARS = 4096;
 const COALESCE_WINDOW_MS = 1_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 /**
@@ -94,6 +125,10 @@ const CARD_RELEVANT_METHODS = new Set([
 export interface PushGatewayConfig {
   /** Absolute URL of the send endpoint. */
   sendUrl: string;
+  /** Absolute URL of the iOS Live Activity endpoint. */
+  liveActivityUrl: string;
+  /** Absolute URL of the iOS broadcast channel endpoint. */
+  channelsUrl: string;
   /** The gateway origin: the token's `aud`. */
   audience: string;
 }
@@ -127,6 +162,8 @@ export function resolvePushGatewayConfig(
     return null;
   return {
     sendUrl: new URL(SEND_PATH, url.origin).toString(),
+    liveActivityUrl: new URL(LIVE_ACTIVITY_PATH, url.origin).toString(),
+    channelsUrl: new URL(CHANNELS_PATH, url.origin).toString(),
     audience: url.origin,
   };
 }
@@ -300,6 +337,16 @@ export interface AgentActivityDevicePairing {
     registrationId: string,
     alertIds: readonly string[],
   ): void;
+  /** Persists an iOS registration's channel and activity (null clears). */
+  updateNativePushLiveActivity(
+    deviceId: string,
+    registrationId: string,
+    update: {
+      channelId?: string | null;
+      activity?: NativePushLiveActivityRecord | null;
+      expectedRunId?: string;
+    },
+  ): unknown;
   environmentId(): string;
 }
 
@@ -345,6 +392,8 @@ export interface AgentActivityPublisher {
 }
 
 type SendOutcome = 'sent' | 'unregistered' | 'retryable' | 'rejected';
+/** iOS adds `channel-gone`: the broadcast channel no longer exists. */
+type ApnsOutcome = SendOutcome | 'channel-gone';
 /** complete: every phone examined; partial: some principals' reads failed; stalled: nothing examined. */
 type FlushOutcome = 'complete' | 'partial' | 'stalled';
 
@@ -355,6 +404,20 @@ function classify(status: number): SendOutcome {
   // retried on the timer like 429/5xx, and bounded the same way.
   if (status === 401 || status === 429 || status >= 500) return 'retryable';
   return 'rejected';
+}
+
+/**
+ * A 410 from an iOS route says which thing is gone in its body. One that
+ * says neither is retried with backoff rather than guessed at: guessing
+ * `unregistered` would erase a registration, guessing `channel-gone` would
+ * mint channels.
+ */
+function classifyApns(status: number, answer: unknown): ApnsOutcome {
+  if (status !== 410) return classify(status);
+  const result = (answer as { result?: unknown } | null)?.result;
+  if (result === 'unregistered') return 'unregistered';
+  if (result === 'channel-gone') return 'channel-gone';
+  return 'retryable';
 }
 
 interface DeviceState {
@@ -369,6 +432,16 @@ interface DeviceState {
   lastAttemptAt?: number;
   failures: number;
   retryAt?: number;
+  /** iOS: the last Live Activity `timestamp` (s); strictly increasing. */
+  lastTimestamp?: number;
+  /** iOS: when the stored activity started, for its rollover wake. */
+  activityStartedAt?: number;
+  /** iOS: the channel to delete if the registration disappears. */
+  channel?: {
+    bundleId: NativePushIosRegistration['packageName'];
+    environment: NativePushIosRegistration['apnsEnvironment'];
+    channelId: string;
+  };
 }
 
 /**
@@ -516,6 +589,12 @@ export function wireAgentActivityPublisher(
       ...(current?.lastAttemptAt !== undefined
         ? { lastAttemptAt: current.lastAttemptAt }
         : {}),
+      // Per registration: a token rotation keeps the registrationId, and
+      // the phone orders by this whatever token delivered it.
+      ...(current?.lastTimestamp !== undefined &&
+      current.registrationId === registration.registrationId
+        ? { lastTimestamp: current.lastTimestamp }
+        : {}),
     };
     devices.set(deviceId, fresh);
     return fresh;
@@ -524,17 +603,7 @@ export function wireAgentActivityPublisher(
   async function send(body: string, key: PushSigningKey): Promise<SendOutcome> {
     const bytes = Buffer.from(body, 'utf8');
     try {
-      const authorization = `Station ${key.signRequest(bytes, {
-        audience: options.gateway.audience,
-        nowMs: now(),
-      })}`;
-      const response = await fetchImpl(options.gateway.sendUrl, {
-        method: 'POST',
-        headers: { authorization, 'content-type': 'application/json' },
-        body: bytes,
-        redirect: 'error',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      const response = await post(options.gateway.sendUrl, bytes, key);
       // Drain so the connection can be reused; the body is never needed.
       await response.arrayBuffer().catch(() => undefined);
       const outcome = classify(response.status);
@@ -551,6 +620,67 @@ export function wireAgentActivityPublisher(
     }
   }
 
+  /** One signed request to the gateway. Throws on a network failure. */
+  function post(url: string, bytes: Buffer, key: PushSigningKey) {
+    const authorization = `Station ${key.signRequest(bytes, {
+      audience: options.gateway.audience,
+      nowMs: now(),
+    })}`;
+    return fetchImpl(url, {
+      method: 'POST',
+      headers: { authorization, 'content-type': 'application/json' },
+      body: bytes,
+      redirect: 'error',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  }
+
+  /** An iOS gateway request: its outcome and (small) JSON answer. */
+  async function sendApns(
+    url: string,
+    body: object,
+    key: PushSigningKey,
+  ): Promise<{ outcome: ApnsOutcome; answer: unknown }> {
+    try {
+      const response = await post(
+        url,
+        Buffer.from(JSON.stringify(body), 'utf8'),
+        key,
+      );
+      const text = await response.text().catch(() => '');
+      let answer: unknown = null;
+      if (text.length <= MAX_ANSWER_CHARS)
+        try {
+          answer = JSON.parse(text);
+        } catch {}
+      const outcome = classifyApns(response.status, answer);
+      if (outcome !== 'sent')
+        logger.warn('agent-activity: gateway did not accept a live activity', {
+          status: response.status,
+        });
+      return { outcome, answer };
+    } catch (error) {
+      logger.warn('agent-activity: gateway request failed', {
+        error: errorMessage(error),
+      });
+      return { outcome: 'retryable', answer: null };
+    }
+  }
+
+  /** Best effort: a channel nobody will use again counts against the app. */
+  async function deleteChannel(
+    channel: NonNullable<DeviceState['channel']>,
+    key: PushSigningKey,
+  ) {
+    const body: ApnsChannelGatewayRequest = buildApnsChannelGatewayRequest({
+      op: 'delete',
+      ...channel,
+    });
+    const { outcome } = await sendApns(options.gateway.channelsUrl, body, key);
+    if (outcome !== 'sent')
+      logger.warn('agent-activity: could not delete a live activity channel');
+  }
+
   function scheduleWake(at: number, floorMs = 1) {
     if (stopped) return;
     const wakes: number[] = [];
@@ -565,6 +695,14 @@ export function wireAgentActivityPublisher(
         state.retryAt === undefined
       )
         wakes.push(state.deliveredExpiresAt - REFRESH_BEFORE_EXPIRY_MS);
+      // A live activity is rolled over before Apple's 8 h cap even when
+      // nothing on it changes.
+      if (
+        state.deliveredActive &&
+        state.activityStartedAt !== undefined &&
+        state.retryAt === undefined
+      )
+        wakes.push(liveActivityRolloverAt(state.activityStartedAt));
     }
     const next = wakes.length
       ? Math.max(Math.min(...wakes), at + floorMs)
@@ -581,9 +719,224 @@ export function wireAgentActivityPublisher(
     }, next - at);
   }
 
-  async function deliver(
+  function backOff(state: DeviceState, at: number) {
+    state.failures += 1;
+    delete state.retryAt;
+    if (state.failures <= MAX_TIMED_RETRIES)
+      state.retryAt =
+        at + Math.min(RETRY_BASE_MS * 3 ** (state.failures - 1), RETRY_MAX_MS);
+  }
+
+  /** Durable, so a restart or token rotation cannot re-raise a group. */
+  function recordAlerts(
+    deviceId: string,
+    registrationId: string,
+    state: DeviceState,
+    alertIds: string[],
+  ) {
+    state.alerted = [...state.alerted, ...alertIds].slice(-ALERTED_MEMORY);
+    if (alertIds.length === 0) return;
+    try {
+      devicePairing.recordNativePushAlerts(deviceId, registrationId, alertIds);
+    } catch (error) {
+      logger.warn('agent-activity: could not record delivered alerts', {
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  function clearDeadRegistration(
     deviceId: string,
     registration: NativePushRegistration,
+  ) {
+    devices.delete(deviceId);
+    try {
+      devicePairing.clearNativePush(deviceId, registration.token);
+    } catch (error) {
+      logger.warn('agent-activity: failed to clear a dead registration', {
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  function persistLiveActivity(
+    deviceId: string,
+    registrationId: string,
+    update: Parameters<
+      AgentActivityDevicePairing['updateNativePushLiveActivity']
+    >[2],
+  ) {
+    try {
+      devicePairing.updateNativePushLiveActivity(
+        deviceId,
+        registrationId,
+        update,
+      );
+    } catch (error) {
+      logger.warn('agent-activity: could not record a live activity', {
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /** `timestamp` for the next iOS request: seconds, strictly increasing. */
+  function nextTimestamp(state: DeviceState, at: number): number {
+    const timestamp = Math.max(
+      Math.ceil(at / 1000),
+      (state.lastTimestamp ?? 0) + 1,
+    );
+    state.lastTimestamp = timestamp;
+    return timestamp;
+  }
+
+  function sealFor(
+    registration: NativePushRegistration,
+    card: AgentActivityCard,
+    pendingAlerts: AgentActivityCard['alertables'],
+    updatedAt: number,
+  ) {
+    return sealAgentActivityCard({
+      plaintext: composeAgentActivityPlaintext(
+        card,
+        agentActivityAlertFields(pendingAlerts),
+        updatedAt,
+      ),
+      payloadKey: registration.payloadKey,
+      registrationId: registration.registrationId,
+    });
+  }
+
+  /**
+   * Runs the planned steps for one iOS phone, in order, stopping at the
+   * first that fails. What each accepted step changes (channel, activity)
+   * is persisted as it happens, so a restart resumes rather than repeats.
+   */
+  async function deliverIos(
+    deviceId: string,
+    registration: NativePushIosRegistration,
+    state: DeviceState,
+    card: AgentActivityCard,
+    steps: LiveActivityStep[],
+    pendingAlerts: AgentActivityCard['alertables'],
+    key: PushSigningKey,
+    at: number,
+    updatedAt: number,
+  ) {
+    state.lastAttemptAt = at;
+    const topic = {
+      bundleId: registration.packageName,
+      environment: registration.apnsEnvironment,
+    };
+    const { registrationId } = registration;
+    const sealed = sealFor(registration, card, pendingAlerts, updatedAt);
+    let channelId = registration.channelId;
+    let activity = registration.activity;
+    let alerted = false;
+    const fail = (outcome: ApnsOutcome) => {
+      if (outcome === 'unregistered') {
+        const channel = channelId ? { ...topic, channelId } : state.channel;
+        clearDeadRegistration(deviceId, registration);
+        return channel ? deleteChannel(channel, key) : undefined;
+      }
+      if (outcome === 'channel-gone') {
+        // Forget the channel and the activity reached through it; the next
+        // flush creates a channel and starts over.
+        persistLiveActivity(deviceId, registrationId, { channelId: null });
+        delete state.channel;
+        delete state.cardKey;
+        delete state.activityStartedAt;
+        state.deliveredActive = false;
+      }
+      backOff(state, at);
+      return undefined;
+    };
+    for (const step of steps) {
+      if (step.event === 'start' && !channelId) {
+        const created = await sendApns(
+          options.gateway.channelsUrl,
+          buildApnsChannelGatewayRequest({ op: 'create', ...topic }),
+          key,
+        );
+        const createdId = (created.answer as { channelId?: unknown } | null)
+          ?.channelId;
+        if (created.outcome === 'rejected') break;
+        if (
+          created.outcome !== 'sent' ||
+          typeof createdId !== 'string' ||
+          !APNS_CHANNEL_ID_PATTERN.test(createdId)
+        )
+          return fail(
+            created.outcome === 'sent' ? 'retryable' : created.outcome,
+          );
+        channelId = createdId;
+        state.channel = { ...topic, channelId };
+        persistLiveActivity(deviceId, registrationId, { channelId });
+      }
+      if (!channelId) return fail('channel-gone');
+      const timestamp = nextTimestamp(state, at);
+      const { outcome } = await sendApns(
+        options.gateway.liveActivityUrl,
+        buildLiveActivityGatewayRequest({
+          ...topic,
+          channelId,
+          registrationId,
+          sealed,
+          alert: step.alert,
+          timestamp,
+          ...(step.event === 'start'
+            ? {
+                event: 'start',
+                pushToStartToken: registration.token,
+                staleAt: Math.floor(step.staleAtMs / 1000),
+              }
+            : step.event === 'update'
+              ? { event: 'update', staleAt: Math.floor(step.staleAtMs / 1000) }
+              : {
+                  event: 'end',
+                  // Never before this request's own timestamp.
+                  dismissAt: Math.max(
+                    timestamp,
+                    Math.floor(step.dismissAtMs / 1000),
+                  ),
+                }),
+        }),
+        key,
+      );
+      if (outcome !== 'sent' && outcome !== 'rejected') return fail(outcome);
+      alerted ||= step.alert;
+      if (step.event === 'start' && outcome === 'sent') {
+        activity = { startedAt: at, runId: newLiveActivityRunId() };
+        persistLiveActivity(deviceId, registrationId, { activity });
+      }
+      if (step.event === 'end' && activity) {
+        // A refused end is not repeated either: the activity goes stale.
+        persistLiveActivity(deviceId, registrationId, {
+          activity: null,
+          expectedRunId: activity.runId,
+        });
+        activity = undefined;
+      }
+    }
+    // Every step taken (or refused for good): this card is done with.
+    state.failures = 0;
+    delete state.retryAt;
+    state.cardKey = card.contentKey;
+    recordAlerts(
+      deviceId,
+      registrationId,
+      state,
+      alerted ? pendingAlerts.map((entry) => entry.id) : [],
+    );
+    state.deliveredActive = activity !== undefined && card.active;
+    state.deliveredExpiresAt = card.expiresAt;
+    if (activity) state.activityStartedAt = activity.startedAt;
+    else delete state.activityStartedAt;
+    return undefined;
+  }
+
+  async function deliver(
+    deviceId: string,
+    registration: NativePushAndroidRegistration,
     state: DeviceState,
     card: AgentActivityCard,
     key: PushSigningKey,
@@ -679,11 +1032,38 @@ export function wireAgentActivityPublisher(
     }
   }
 
+  /**
+   * Phones this publisher was tracking that are no longer registered: their
+   * channels are deleted (best effort) and their state dropped.
+   */
+  async function forgetUnregistered(
+    targets: ReadonlyArray<{ deviceId: string }>,
+    key: PushSigningKey | null,
+  ) {
+    const orphans: Array<NonNullable<DeviceState['channel']>> = [];
+    for (const [deviceId, state] of [...devices])
+      if (!targets.some((target) => target.deviceId === deviceId)) {
+        devices.delete(deviceId);
+        if (state.channel) orphans.push(state.channel);
+      }
+    if (key)
+      await Promise.all(orphans.map((channel) => deleteChannel(channel, key)));
+  }
+
+  function readKeyQuietly(): PushSigningKey | null {
+    try {
+      return options.signingKey.read();
+    } catch {
+      return null;
+    }
+  }
+
   async function flushOnce(): Promise<FlushOutcome> {
     const targets = registrations();
     if (targets === null) return 'stalled';
     if (targets.length === 0) {
-      devices.clear();
+      const tracked = [...devices.values()].some((state) => state.channel);
+      await forgetUnregistered(targets, tracked ? readKeyQuietly() : null);
       return 'complete';
     }
     let key: PushSigningKey | null;
@@ -788,10 +1168,19 @@ export function wireAgentActivityPublisher(
           `stale-key:${deviceId}`,
           'agent-activity: dropped a registration pinned to a previous push key',
         );
+        const channel =
+          registration.platform === 'ios' && registration.channelId
+            ? {
+                bundleId: registration.packageName,
+                environment: registration.apnsEnvironment,
+                channelId: registration.channelId,
+              }
+            : undefined;
         devices.delete(deviceId);
         try {
           devicePairing.clearNativePush(deviceId, registration.token);
         } catch {}
+        if (channel) due.push(() => deleteChannel(channel, key));
         continue;
       }
       const principalId = principalOf.get(deviceId);
@@ -813,15 +1202,21 @@ export function wireAgentActivityPublisher(
         continue;
       }
       let card = principalId ? cards.get(principalId) : undefined;
+      const readable = card !== undefined;
       if (!card) {
         // Not (or no longer) a device that may read sessions. A phone that
         // was shown a card gets one final empty card; nothing after that.
+        // An iPhone whose activity is still up (even from before a restart)
+        // has it ended at once.
         warnOnce(
           `unreadable:${deviceId}`,
           'agent-activity: a registered device may not read sessions; sending it no activity',
         );
         const previous = devices.get(deviceId);
-        if (previous?.cardKey === undefined) {
+        const liveActivity =
+          registration.platform === 'ios' &&
+          registration.activity !== undefined;
+        if (previous?.cardKey === undefined && !liveActivity) {
           devices.delete(deviceId);
           continue;
         }
@@ -829,14 +1224,58 @@ export function wireAgentActivityPublisher(
       }
       const state = stateFor(deviceId, registration);
       const alerted = alreadyAlerted(registration, state);
-      const changed =
-        state.cardKey !== card.contentKey ||
-        card.alertables.some((entry) => !alerted.has(entry.id));
-      const refresh =
-        state.deliveredActive === true &&
-        state.deliveredExpiresAt !== undefined &&
-        state.deliveredExpiresAt - at <= REFRESH_BEFORE_EXPIRY_MS;
-      if (!changed && !refresh) {
+      const pendingAlerts = card.alertables.filter(
+        (entry) => !alerted.has(entry.id),
+      );
+      let steps: LiveActivityStep[] | undefined;
+      let pending: boolean;
+      if (registration.platform === 'ios') {
+        if (registration.channelId)
+          state.channel = {
+            bundleId: registration.packageName,
+            environment: registration.apnsEnvironment,
+            channelId: registration.channelId,
+          };
+        else delete state.channel;
+        if (registration.activity)
+          state.activityStartedAt = registration.activity.startedAt;
+        else delete state.activityStartedAt;
+        steps = planLiveActivity({
+          now: at,
+          ...(registration.activity ? { activity: registration.activity } : {}),
+          card,
+          readable,
+          ...(state.cardKey !== undefined &&
+          state.deliveredExpiresAt !== undefined
+            ? {
+                lastSent: {
+                  contentKey: state.cardKey,
+                  expiresAt: state.deliveredExpiresAt,
+                },
+              }
+            : {}),
+          pendingAlert: pendingAlerts.length > 0,
+        });
+        pending = steps.length > 0;
+        if (!pending) {
+          // Nothing to show (no activity for a finished card): its alerts
+          // are old news by the time an activity could start.
+          state.cardKey = card.contentKey;
+          state.alerted = [
+            ...state.alerted,
+            ...pendingAlerts.map((entry) => entry.id),
+          ].slice(-ALERTED_MEMORY);
+        }
+      } else {
+        const changed =
+          state.cardKey !== card.contentKey || pendingAlerts.length > 0;
+        const refresh =
+          state.deliveredActive === true &&
+          state.deliveredExpiresAt !== undefined &&
+          state.deliveredExpiresAt - at <= REFRESH_BEFORE_EXPIRY_MS;
+        pending = changed || refresh;
+      }
+      if (!pending) {
         // Nothing is pending for this phone (a change inside the send
         // interval may have reverted): nothing to retry, so no timer.
         delete state.retryAt;
@@ -856,14 +1295,28 @@ export function wireAgentActivityPublisher(
       updatedAt ??= Math.max(at, lastUpdatedAt + 1);
       lastUpdatedAt = updatedAt;
       const stamp = updatedAt;
-      due.push(() =>
-        deliver(deviceId, registration, state, card, key, at, stamp),
-      );
+      const planned = card;
+      if (registration.platform === 'ios' && steps)
+        due.push(() =>
+          deliverIos(
+            deviceId,
+            registration,
+            state,
+            planned,
+            steps,
+            pendingAlerts,
+            key,
+            at,
+            stamp,
+          ),
+        );
+      else if (registration.platform === 'android')
+        due.push(() =>
+          deliver(deviceId, registration, state, planned, key, at, stamp),
+        );
     }
     await Promise.all(due.map((run) => run()));
-    for (const deviceId of [...devices.keys()])
-      if (!targets.some((target) => target.deviceId === deviceId))
-        devices.delete(deviceId);
+    await forgetUnregistered(targets, key);
     return failedPrincipals.size > 0 ? 'partial' : 'complete';
   }
 
