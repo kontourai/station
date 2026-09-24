@@ -10,7 +10,7 @@
 import { ConnectionManagerModal } from '@kontourai/station-connect';
 import { pairingDeepLinkScheme } from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
@@ -20,6 +20,11 @@ import { triggerHaptic } from '../platform/native/haptics';
 import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 
 type GuidedConnectPanel = 'pair-device' | 'request-access' | 'add';
+
+const BrowserRelayRoutes = lazy(async () => {
+  const module = await import('../views/connections-hub/BrowserRelayRoutes');
+  return { default: module.BrowserRelayRoutes };
+});
 
 interface GuidedConnectProps {
   /** Called after a pairing exchange has committed a usable browser session. */
@@ -36,6 +41,7 @@ export function GuidedConnect({
   onExploreSample,
 }: GuidedConnectProps) {
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
+  const [brokerOpen, setBrokerOpen] = useState(false);
   const profile = usePlatformProfile();
   const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(
     window.location.hostname,
@@ -127,6 +133,16 @@ export function GuidedConnect({
             >
               Enter a host address
             </button>
+            {!profile.isTauri && (
+              <button
+                type="button"
+                className="guided-connect__action"
+                aria-expanded={brokerOpen}
+                onClick={() => setBrokerOpen((current) => !current)}
+              >
+                Use a broker invitation
+              </button>
+            )}
           </div>
           {profile.isTauri && (
             <button
@@ -138,6 +154,18 @@ export function GuidedConnect({
             </button>
           )}
         </section>
+        {brokerOpen && !profile.isTauri && (
+          <section
+            className="guided-connect__broker"
+            aria-label="Broker route setup"
+          >
+            <Suspense
+              fallback={<p role="status">Opening broker route setup…</p>}
+            >
+              <BrowserRelayRoutes />
+            </Suspense>
+          </section>
+        )}
         {onExploreSample && (
           <div className="guided-connect__footer">
             <span>Just looking around?</span>{' '}

@@ -15,6 +15,8 @@ import { PageRow } from '../../components/PageRow';
 import { retireBrowserRelayRoute } from '../../lib/browserRelayRouteBinding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
+import '../page-layout.css';
+import './ComputersSection.css';
 
 const BrowserRelayEnrollmentDialog = lazy(async () => {
   const module = await import('./BrowserRelayEnrollmentDialog');

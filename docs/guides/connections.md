@@ -54,7 +54,8 @@ selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
 In the browser, **Manage Stations → Broker routes** first has a **Station
-signing key** step. The operator can run
+signing key** step. A fresh browser with no Device cookie can reach the same
+setup from **Connect to a Station → Use a broker invitation**. The operator can run
 `npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
 send its public JSON report through a separate trusted channel. Compare the
 complete SHA-256 JWK thumbprint shown by the browser with the operator before
