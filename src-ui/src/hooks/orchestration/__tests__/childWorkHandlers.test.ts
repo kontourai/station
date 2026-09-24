@@ -543,7 +543,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     ]);
   });
 
-  test('#2457 D2: a late settle after the session exited re-registers nothing and brings no card back', async () => {
+  test('#2457: a real result drained after the session exited is still announced, and brings no running card back', async () => {
     const { handleOrchestrationEvent } = await import('../eventHandlers');
     const live = 'exec-live';
     activeChatsStore.updateChat(threadId, { currentSessionId: live });
@@ -551,29 +551,25 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       producer: 'engine-subagent' as const,
       reporterThreadId: live,
     };
-    const running = (childId: string) => ({
-      ...key,
-      childId,
-      status: 'running' as const,
-      backgrounded: true,
-      title: 'Late one',
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        ...key,
+        running: [
+          {
+            ...key,
+            childId: 'late',
+            status: 'running',
+            backgrounded: true,
+            title: 'Late one',
+          },
+        ],
+      },
     });
-    const snapshot = (items: ReturnType<typeof running>[]) =>
-      handlers.handleChildWorkUpdatedEvent({
-        provider: 'claude',
-        threadId: live,
-        createdAt: '2026-09-23T00:00:00.000Z',
-        method: 'child-work.updated',
-        delta: {
-          kind: 'snapshot',
-          ...key,
-          running: items,
-        },
-      });
-    snapshot([running('late')]);
-    expect(chat()?.backgroundTasks?.map((task) => task.taskId)).toEqual([
-      'late',
-    ]);
     handleOrchestrationEvent('http://api', {
       provider: 'claude',
       threadId: live,
@@ -581,10 +577,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       method: 'session.exited',
     } as never);
     expect(chat()?.backgroundTasks ?? []).toEqual([]);
-
-    // The adapter drains the real outcome after the session ended. The chat
-    // still resolves `live` through its retained currentSessionId.
-    expect(activeChatsStore.getChatKeyForExecutionSession(live)).toBe(threadId);
+    // The adapter drains the engine's real outcome after the exit.
     handlers.handleChildWorkUpdatedEvent({
       provider: 'claude',
       threadId: live,
@@ -594,23 +587,14 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
         kind: 'settle',
         ...key,
         childId: 'late',
-        status: 'cancelled',
-        result: { summary: 'stopped late' },
+        status: 'completed',
+        result: { summary: 'Found it' },
         identity: { backgrounded: true, title: 'Late one' },
       },
     });
-    expect(
-      Object.values(handlers.childWorkRegistrySnapshot().items).filter(
-        (item) => item.reporterThreadId === live,
-      ),
-    ).toEqual([]);
-    expect(chat()?.backgroundTasks ?? []).toEqual([]);
-    expect(announcements()).toEqual([]);
-
-    // The reporter→chat mapping was not re-recorded: once the chat rebinds
-    // to another session, a report from the ended one has no chat to land in.
-    activeChatsStore.updateChat(threadId, { currentSessionId: 'exec-next' });
-    snapshot([running('ghost')]);
+    expect(announcements()).toEqual([
+      'Background task finished — Late one\n\nFound it',
+    ]);
     expect(chat()?.backgroundTasks ?? []).toEqual([]);
   });
 

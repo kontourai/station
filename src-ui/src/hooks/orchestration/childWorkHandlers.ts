@@ -40,27 +40,6 @@ let registry: ChildWorkRegistryState = createEmptyChildWorkRegistry();
  */
 const reporterChat = new Map<string, string>();
 
-/** How many ended reporters this client remembers (see `endedReporters`). */
-const ENDED_REPORTERS_MAX = 256;
-/**
- * #2457 (D2): execution sessions this client saw end, most recent last,
- * bounded. The Claude adapter can publish a REAL outcome it drained after
- * its session ended; a settle for an ended reporter must not re-register it
- * against the chat its retained `currentSessionId` still resolves to, or the
- * registry holds a reporter nothing forgets again. A non-settle delta (a new
- * report from a session on that thread) makes it live again.
- */
-const endedReporters = new Set<string>();
-
-function markReporterEnded(threadId: string): void {
-  endedReporters.delete(threadId);
-  endedReporters.add(threadId);
-  if (endedReporters.size > ENDED_REPORTERS_MAX) {
-    const oldest = endedReporters.values().next().value;
-    if (oldest !== undefined) endedReporters.delete(oldest);
-  }
-}
-
 /** Read-only view for tests and diagnostics. */
 // childWorkHandlers.test.ts reads it through a dynamic import (vi.resetModules isolation) that fallow cannot trace.
 // fallow-ignore-next-line unused-export
@@ -206,13 +185,15 @@ export function applyChildWorkToChat(
   // A delta names its own reporter; one arriving on another session's thread
   // is not that session's to record (the server applies the same rule).
   if (deltaReporter(delta) !== threadId) return;
-  if (endedReporters.has(threadId)) {
-    if (delta.kind === 'settle') return;
-    endedReporters.delete(threadId);
-  }
   const chatKey = chatKeyForReporter(threadId);
   if (!chatKey) return;
   hookChatRemoval();
+  // #2457: a late settle the adapter drains after its session exited lands
+  // here too (it resolves through the chat's retained currentSessionId), so
+  // it may re-record a reporter the exit already forgot. That is accepted:
+  // the entry is terminal, chat-scoped and bounded, and is cleared on chat
+  // removal (R5) or by a full snapshot that no longer lists the session —
+  // while dropping the settle would lose the user's result announcement.
   reporterChat.set(threadId, chatKey);
   const before = registry;
   const next = applyChildWorkDelta(before, delta);
@@ -298,7 +279,6 @@ export function observeChildWorkLifecycle(event: OrchestrationEvent): void {
       TERMINAL_CHILD_WORK_STATES.has(event.to))
   ) {
     forgetChildWorkForThread(event.threadId);
-    markReporterEnded(event.threadId);
   }
 }
 
@@ -324,10 +304,7 @@ export function reconcileChildWorkSnapshot(
   }
   const listed = new Set(sessions.map((session) => session.threadId));
   for (const reporter of [...reporterChat.keys()]) {
-    if (!listed.has(reporter)) {
-      forgetChildWorkForThread(reporter);
-      markReporterEnded(reporter);
-    }
+    if (!listed.has(reporter)) forgetChildWorkForThread(reporter);
   }
 }
 
@@ -344,7 +321,6 @@ export function backgroundTasksAfterSessionEnds(
     activeChatsStore.getChatKeyForExecutionSession(threadId);
   registry = forgetChildWorkReporter(registry, threadId);
   reporterChat.delete(threadId);
-  markReporterEnded(threadId);
   if (!chatKey) return undefined;
   const remaining = chatBackgroundTasksForChatKey(registry, chatKey);
   return remaining.length > 0 ? remaining : undefined;

@@ -319,6 +319,9 @@ const ADAPTERS_DIR = new URL('../adapters/', import.meta.url);
  * TypeScript compiler. A comment, or the string anywhere else, does not
  * count; either quote style does.
  *
+ * An emitter that builds `method` from a named constant is not recognised:
+ * this is a structural check of LITERAL method assignments.
+ *
  * STRUCTURAL ONLY (#2457 review D3): this proves the module constructs such
  * an event, not that a given replay reached that line at runtime — the
  * drivers publish through adapter-owned queues (Codex replays through its
