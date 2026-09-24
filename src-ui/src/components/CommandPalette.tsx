@@ -375,23 +375,35 @@ export function CommandPalette() {
               notify,
               apply: (content: PluginCommandEffectContent) => {
                 if (content.kind !== 'navigate') return false;
+                const destination = APP_DESTINATION_REGISTRY.get(
+                  content.destinationId,
+                );
+                if (!destination) return false;
+                // `showSurface` never consults a navigation guard — it does
+                // not go through `navigate()` at all — so a plugin command
+                // that reveals a region surface must not abort for one
+                // either (#1418/#1419 review, MEDIUM: checking guard
+                // PRESENCE regardless of destination or target over-aborted
+                // both this case and a same-pathname `navigate()` target).
+                if (destination.regionSurface) {
+                  showSurface(destination.regionSurface);
+                  return true;
+                }
                 // Owner decision (#1419): a plugin-command navigation settles
                 // `aborted` with a notice rather than opening the async
                 // discard-changes dialog `navigate()` would otherwise run —
-                // the local effect stays one synchronous step.
-                if (navigationStore.hasActiveNavigationGuard()) {
+                // the local effect stays one synchronous step. Answered for
+                // THIS target: `wouldNavigationGuardBlock` shares the exact
+                // predicate `navigate()` itself uses, so a guard that would
+                // never actually run (same pathname, no guard registered)
+                // never blocks this command either.
+                if (navigationStore.wouldNavigationGuardBlock(destination.route)) {
                   notify(
                     'Unsaved changes are blocking navigation. This command was cancelled.',
                   );
                   return false;
                 }
-                const destination = APP_DESTINATION_REGISTRY.get(
-                  content.destinationId,
-                );
-                if (!destination) return false;
-                if (destination.regionSurface) {
-                  showSurface(destination.regionSurface);
-                } else if (destination.palette?.params) {
+                if (destination.palette?.params) {
                   navigate(destination.route, destination.palette.params);
                 } else {
                   navigate(destination.route);
