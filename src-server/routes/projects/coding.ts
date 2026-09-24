@@ -3,9 +3,9 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execCb);
 
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { type Context, Hono, type Next } from 'hono';
 import {
   isOperatorInPerson,
@@ -26,6 +26,7 @@ import {
 } from '../../services/projects/coding-git-actions.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
+import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -287,27 +288,14 @@ function isWithin(target: string, root: string): boolean {
   return target === root || target.startsWith(root + sep);
 }
 
-/** Enough for any real set of session worktrees; bounds a hostile one. */
-const WORKTREE_LIST_LIMIT = 256;
 const worktreesByRequest = new WeakMap<
   Request,
   Map<string, Promise<readonly string[]>>
 >();
 
 /**
- * The checkouts git reports as worktrees of the repository containing
- * `projectRoot` (the main checkout included), each realpath-resolved, for
- * the Project containment above (#2412 review). Once per request and
- * Project, bounded by a deadline and {@link WORKTREE_LIST_LIMIT}.
- *
- * `git worktree list` reads `.git/worktrees/<name>/gitdir`, which the
- * repository's own writers control, so a listing alone would let them name
- * any folder. A listed checkout counts only when its own `.git` leads back
- * to this repository: the main checkout's `.git` IS the common directory,
- * and a linked one's `.git` file names a `gitdir` inside
- * `<common>/worktrees/`. Claiming a folder that way takes writing into that
- * folder, which the claimant could then already do. Anything unreadable is
- * left out.
+ * The verified worktrees of the repository containing `projectRoot`
+ * (`listVerifiedWorktrees`, #2412 review), once per request and Project.
  */
 function registeredWorktrees(
   c: Context,
@@ -320,60 +308,10 @@ function registeredWorktrees(
   }
   let pending = perRequest.get(projectRoot);
   if (!pending) {
-    pending = listVerifiedWorktrees(projectRoot);
+    pending = listVerifiedWorktrees(projectRoot, GIT_QUICK_TIMEOUT_MS);
     perRequest.set(projectRoot, pending);
   }
   return pending;
-}
-
-async function listVerifiedWorktrees(
-  projectRoot: string,
-): Promise<readonly string[]> {
-  const opts = {
-    cwd: projectRoot,
-    encoding: 'utf-8' as const,
-    timeout: GIT_QUICK_TIMEOUT_MS,
-    maxBuffer: 1024 * 1024,
-  };
-  let common: string;
-  let listing: string;
-  try {
-    common = realpathSync(
-      (
-        await execGit(
-          ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-          opts,
-        )
-      ).stdout.trim(),
-    );
-    listing = (await execGit(['worktree', 'list', '--porcelain'], opts)).stdout;
-  } catch {
-    return [];
-  }
-  const verified: string[] = [];
-  for (const line of listing.split('\n')) {
-    if (!line.startsWith('worktree ')) continue;
-    if (verified.length >= WORKTREE_LIST_LIMIT) break;
-    const checkout = leadsBackTo(line.slice('worktree '.length), common);
-    if (checkout) verified.push(checkout);
-  }
-  return verified;
-}
-
-/** `path`'s realpath when its `.git` leads back to `common`, else null. */
-function leadsBackTo(path: string, common: string): string | null {
-  try {
-    const checkout = realpathSync(path);
-    const dotGit = join(checkout, '.git');
-    if (statSync(dotGit).isDirectory())
-      return realpathSync(dotGit) === common ? checkout : null;
-    const pointer = /^gitdir: (.+)$/m.exec(readFileSync(dotGit, 'utf-8'));
-    if (!pointer) return null;
-    const gitdir = realpathSync(resolve(checkout, pointer[1].trim()));
-    return dirname(gitdir) === join(common, 'worktrees') ? checkout : null;
-  } catch {
-    return null;
-  }
 }
 
 export function createCodingRoutes(

@@ -585,6 +585,36 @@ describe('FilePreviewPane', () => {
     expect(screen.getByText('<not executable />')).toBeTruthy();
   });
 
+  test('a preview opened from a worktree session reads through its thread (#2476)', () => {
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'worktree copy',
+      },
+    });
+    render(
+      pane({
+        projectSlug: 'demo',
+        stateKey: 'file-preview:test',
+        state: {
+          version: '1.0',
+          projectSlug: 'demo',
+          path: 'src/example.ts',
+          wrap: true,
+          thread: 'thread-7',
+        },
+      }),
+    );
+    expect(previewQuery).toHaveBeenCalledWith('demo', {
+      path: 'src/example.ts',
+      thread: 'thread-7',
+    });
+  });
+
   test.each(['html', 'pdf'] as const)(
     'keeps ready %s files out of the trusted origin without inventing a Browser pane target',
     (renderKind) => {
@@ -630,9 +660,11 @@ describe('FilePreviewPane', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download file' }));
 
     await waitFor(() => {
+      // No thread: the handoff reads the project checkout (#2476).
       expect(downloadFilePreviewMock).toHaveBeenCalledWith(
         'demo',
         'docs/guide.html',
+        undefined,
       );
     });
     expect(createObjectURL).toHaveBeenCalled();
