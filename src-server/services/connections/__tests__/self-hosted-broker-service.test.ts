@@ -841,6 +841,128 @@ describe.runIf(process.platform !== 'win32')(
         rmSync(root, { recursive: true, force: true });
       }
     });
+    test('v5 to v6 migration preserves PoP grants and JTI rows across restart', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-upgrade-v5-renewal-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let service: SelfHostedBrokerService | undefined;
+      let now = 1_000;
+      try {
+        service = new SelfHostedBrokerService(path, () => now);
+        const issued = service.provision(scope, 15 * 24 * 60 * 60_000);
+        const native = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: native.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, native),
+        );
+        const firstApp = new Hono();
+        firstApp.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+        const firstRequest: typeof fetch = async (input, init) =>
+          firstApp.fetch(new Request(input, init));
+        const client = new SelfHostedBrokerNativeClient(
+          grant,
+          (claims) => signNativeRequest(claims, native),
+          firstRequest,
+          () => now,
+        );
+        await client.open(
+          { nonce: 'nonce-v5-proof-preserved', offerSdp: 'v5-offer' },
+          new AbortController().signal,
+        );
+        service.close();
+        service = undefined;
+
+        const v5 = new DatabaseSync(path);
+        v5.exec(`DROP TABLE broker_native_grant_renewals;
+          PRAGMA user_version=5;`);
+        expect(
+          (
+            v5
+              .prepare(
+                'SELECT count(*) n FROM broker_native_request_proofs WHERE grant_id=?',
+              )
+              .get(grant.credential.id) as { n: number }
+          ).n,
+        ).toBe(1);
+        v5.close();
+
+        service = new SelfHostedBrokerService(path, () => now);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toHaveLength(1);
+        service.close();
+        service = undefined;
+        const migrated = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            migrated.prepare('PRAGMA user_version').get() as {
+              user_version: number;
+            }
+          ).user_version,
+        ).toBe(6);
+        expect(
+          (
+            migrated
+              .prepare(
+                "SELECT count(*) n FROM sqlite_master WHERE type='table' AND name='broker_native_grant_renewals'",
+              )
+              .get() as { n: number }
+          ).n,
+        ).toBe(1);
+        const columns = migrated
+          .prepare('PRAGMA table_info(broker_native_grant_renewals)')
+          .all() as { name: string }[];
+        expect(columns.map((column) => column.name).sort()).toEqual([
+          'expected_expires_at',
+          'grant_id',
+          'receipt_expires_at',
+          'renewal_id',
+          'request_digest',
+          'result_expires_at',
+        ]);
+        expect(
+          (
+            migrated
+              .prepare(
+                'SELECT count(*) n FROM broker_native_request_proofs WHERE grant_id=?',
+              )
+              .get(grant.credential.id) as { n: number }
+          ).n,
+        ).toBe(1);
+        expect(migrated.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+        migrated.close();
+
+        service = new SelfHostedBrokerService(path, () => now);
+        expect(
+          service.listNativeClientGrants(scope, issued.routing),
+        ).toHaveLength(1);
+        service.close();
+        service = undefined;
+        const restarted = new DatabaseSync(path, { readOnly: true });
+        expect(
+          (
+            restarted
+              .prepare(
+                'SELECT count(*) n FROM broker_native_request_proofs WHERE grant_id=?',
+              )
+              .get(grant.credential.id) as { n: number }
+          ).n,
+        ).toBe(1);
+        restarted.close();
+      } finally {
+        service?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
     test('upgrades v3 native grants to v4 native connections and preserves them across restart', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-v3-'));
       const path = join(root, 'broker.sqlite');
@@ -2742,91 +2864,6 @@ describe.runIf(process.platform !== 'win32')(
             resultExpiry + 7 * 24 * 60 * 60_000,
           );
         }
-        database.close();
-        now = grant.expiresAt - 12 * 60 * 60_000;
-        await expect(
-          client.renew(
-            'renewal-capacity-overflow-01',
-            new AbortController().signal,
-          ),
-        ).rejects.toThrow('broker_request_transient');
-        const afterRefusal = new DatabaseSync(path, { readOnly: true });
-        expect(
-          (
-            afterRefusal
-              .prepare(
-                'SELECT count(*) n FROM broker_native_grant_renewals WHERE grant_id=?',
-              )
-              .get(grant.credential.id) as { n: number }
-          ).n,
-        ).toBe(16);
-        expect(
-          (
-            afterRefusal
-              .prepare(
-                'SELECT count(*) n FROM broker_native_request_proofs WHERE grant_id=?',
-              )
-              .get(grant.credential.id) as { n: number }
-          ).n,
-        ).toBe(0);
-        afterRefusal.close();
-        await expect(
-          client.renew('short', new AbortController().signal),
-        ).rejects.toThrow('broker_request_invalid');
-      } finally {
-        service.close();
-        rmSync(root, { recursive: true, force: true });
-      }
-    });
-    test('native renewal receipt storage is bounded per grant over the HTTP route', async () => {
-      const root = mkdtempSync(
-        join(tmpdir(), 'station-broker-native-renewal-limit-'),
-      );
-      const path = join(root, 'broker.sqlite');
-      let now = 1_000;
-      const service = new SelfHostedBrokerService(path, () => now);
-      try {
-        const issued = service.provision(scope, 15 * 24 * 60 * 60_000);
-        const native = await createNativeClient();
-        const invitation = service.issueNativeInvitation({
-          scope,
-          routingCredential: issued.routing,
-          brokerOrigin: 'https://broker.example',
-          surface: native.surface,
-          stationSigningKeyId: 'K'.repeat(43),
-          stationSigningGeneration: 1,
-        });
-        const grant = await service.redeemNativeInvitation(
-          invitation,
-          await createNativeProof(invitation, native),
-        );
-        const app = new Hono();
-        app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
-        const request: typeof fetch = async (input, init) =>
-          app.fetch(new Request(input, init));
-        const client = new SelfHostedBrokerNativeClient(
-          grant,
-          (claims) => signNativeRequest(claims, native),
-          request,
-          () => now,
-        );
-        const database = new DatabaseSync(path);
-        const insert = database.prepare(
-          `INSERT INTO broker_native_grant_renewals
-           (grant_id,renewal_id,expected_expires_at,request_digest,
-            result_expires_at,receipt_expires_at)
-           VALUES(?,?,?,?,?,?)`,
-        );
-        const resultExpiry = grant.expiresAt + 24 * 60 * 60_000;
-        for (let index = 0; index < 16; index++)
-          insert.run(
-            grant.credential.id,
-            `renewal-capacity-${index.toString().padStart(2, '0')}`,
-            grant.expiresAt,
-            'D'.repeat(43),
-            resultExpiry,
-            resultExpiry + 7 * 24 * 60 * 60_000,
-          );
         database.close();
         now = grant.expiresAt - 12 * 60 * 60_000;
         await expect(
