@@ -16,8 +16,13 @@ import {
   useConnections,
   useHostUrl,
 } from '@kontourai/station-connect';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
-import { FeatureToggle } from './feature-toggle';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
@@ -74,10 +79,43 @@ function PairingPanel() {
 
 export function PairingSection() {
   const { settings, toggle } = useFeatureSettings();
+  const { isMobile } = usePlatformProfile();
+  const { openLastStationOnLaunch } = useDeviceSettings();
+  const { setDeviceSetting } = useDeviceSettingsActions();
   return (
     // A glyph already on `ui-glyph-coverage-allowlist.json` rather than a new
     // one: that list is recorded debt (#1704 is shrinking it).
     <SettingsSection icon="▦" title="Pairing" id="section-pairing">
+      {isMobile && (
+        <div {...settingsRow('open-last-station')} tabIndex={-1}>
+          <SettingsToggle
+            className="settings__feature-toggle"
+            checked={openLastStationOnLaunch}
+            onChange={() =>
+              setDeviceSetting(
+                'openLastStationOnLaunch',
+                !openLastStationOnLaunch,
+              )
+            }
+            label={settingsRow('open-last-station').title}
+            describedBy="open-last-station-description"
+          >
+            <div>
+              <div className="settings__toggle-name">
+                Open last Station on launch
+              </div>
+              <div
+                className="settings__toggle-detail"
+                id="open-last-station-description"
+              >
+                Reconnect to the Station you last selected when this phone
+                opens. Turn off to open the default Station instead. Applies on
+                the next launch.
+              </div>
+            </div>
+          </SettingsToggle>
+        </div>
+      )}
       <div {...settingsRow('mobile-pairing')} tabIndex={-1}>
         <FeatureToggle
           featureKey="mobilePairingEnabled"
