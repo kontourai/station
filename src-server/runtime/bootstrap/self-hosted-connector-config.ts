@@ -14,6 +14,13 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeRouteInvitationV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
+import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
+import { calculateJwkThumbprint, importJWK } from 'jose';
+import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
 import { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
@@ -48,6 +55,11 @@ const CREDENTIAL_SECRET = /^[A-Za-z0-9_-]{43}$/;
 
 interface SelfHostedConnectorFactory {
   readonly applicationOrigin: string;
+  /** Local operator only. No credential or runtime handle crosses this seam. */
+  issueNativeInvitation(
+    prepare: unknown,
+    signal: AbortSignal,
+  ): Promise<SelfHostedBrokerNativeRouteInvitationV2>;
   /** Typed StationRuntimeOptions entries: spread both into normal
    * StationRuntime construction. The runtime owns the broker lifecycle
    * (awaited start, bounded shutdown); the entrypoint performs no
@@ -231,6 +243,72 @@ function loadPrivateRef(path: string, code: string): ValidatedRef {
   assertAbsoluteRef(path, code);
   assertPrivateParent(path, 'connector_config_parent_untrusted');
   return { path, bytes: readPrivateFile(path, MAX_REF_BYTES, code) };
+}
+
+async function nativePrepareSurface(
+  value: unknown,
+  brokerOrigin: string,
+  stationId: string,
+  enrollmentId: string,
+): Promise<SelfHostedBrokerNativeClientSurfaceV2> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    fail('connector_native_prepare_invalid');
+  const p = value as Record<string, unknown>;
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (
+    Object.keys(p).sort().join(',') !==
+      'appIdentifier,brokerOrigin,channel,clientInstanceId,enrollmentId,keyThumbprint,profileName,publicKey,stationId' ||
+    typeof p.profileName !== 'string' ||
+    !p.profileName ||
+    p.profileName.length > 256 ||
+    p.brokerOrigin !== brokerOrigin ||
+    p.stationId !== stationId ||
+    p.enrollmentId !== enrollmentId ||
+    typeof p.appIdentifier !== 'string' ||
+    !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(p.appIdentifier) ||
+    !['dev', 'stable', 'beta', 'nightly'].includes(p.channel as string) ||
+    typeof p.clientInstanceId !== 'string' ||
+    !uuid.test(p.clientInstanceId) ||
+    typeof p.keyThumbprint !== 'string' ||
+    !/^[A-Za-z0-9_-]{43}$/.test(p.keyThumbprint) ||
+    !p.publicKey ||
+    typeof p.publicKey !== 'object' ||
+    Array.isArray(p.publicKey)
+  )
+    fail('connector_native_prepare_invalid');
+  const key = p.publicKey as Record<string, unknown>;
+  if (
+    Object.keys(key).sort().join(',') !== 'crv,kty,x,y' ||
+    key.kty !== 'EC' ||
+    key.crv !== 'P-256' ||
+    typeof key.x !== 'string' ||
+    typeof key.y !== 'string' ||
+    !/^[A-Za-z0-9_-]{43}$/.test(key.x) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(key.y)
+  )
+    fail('connector_native_prepare_invalid');
+  const jwk = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: key.x as string,
+    y: key.y as string,
+  };
+  const surface: SelfHostedBrokerNativeClientSurfaceV2 = {
+    kind: 'station-native',
+    appIdentifier: p.appIdentifier as string,
+    channel: p.channel as SelfHostedBrokerNativeClientSurfaceV2['channel'],
+    clientInstanceId: p.clientInstanceId as string,
+    keyThumbprint: p.keyThumbprint as string,
+  };
+  try {
+    await importJWK(jwk, 'ES256');
+    if ((await calculateJwkThumbprint(jwk)) !== surface.keyThumbprint)
+      fail('connector_native_prepare_invalid');
+  } catch {
+    fail('connector_native_prepare_invalid');
+  }
+  return surface;
 }
 
 export function loadSelfHostedBrokerConnectorConfig(options?: {
@@ -495,8 +573,45 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     homeDir,
   });
 
+  const routingClient = new SelfHostedBrokerClient(
+    brokerOrigin,
+    snapshot.scope,
+    bundle.routing as { id: string; secret: string },
+  );
+  const trustOwner = createConnectorTrustOwner(homeDir);
   return {
     applicationOrigin: snapshot.applicationOrigin,
+    async issueNativeInvitation(prepare, signal) {
+      signal.throwIfAborted();
+      const trust = trustOwner.current();
+      if (
+        !trust ||
+        trust.stationId !== snapshot.scope.stationId ||
+        trust.enrollmentId !== snapshot.scope.enrollmentId
+      )
+        fail('connector_config_signing_unavailable');
+      const surface = await nativePrepareSurface(
+        prepare,
+        brokerOrigin,
+        trust.stationId,
+        trust.enrollmentId,
+      );
+      const signingKeyId = await stationConnectionSigningKeyId(trust);
+      await routingClient.requireOnline(signal);
+      if (!trustOwner.isCurrent(trust))
+        fail('connector_config_signing_unavailable');
+      const invitation = await routingClient.issueNativeInvitation(
+        surface,
+        signingKeyId,
+        trust.generation,
+        signal,
+      );
+      await routingClient.requireOnline(signal);
+      if (!trustOwner.isCurrent(trust))
+        fail('connector_config_signing_unavailable');
+      signal.throwIfAborted();
+      return invitation;
+    },
     virtualApplication: {
       origin: snapshot.applicationOrigin,
       ready: () => {},

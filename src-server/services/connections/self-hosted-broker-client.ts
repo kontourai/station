@@ -7,6 +7,7 @@ import type {
   SelfHostedBrokerNativeGrantRenewedV2,
   SelfHostedBrokerNativeKeyCandidateOfferV1,
   SelfHostedBrokerNativeRequestProofClaimsV1,
+  SelfHostedBrokerNativeRouteInvitationV2,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import {
@@ -183,6 +184,87 @@ export class SelfHostedBrokerClient {
       throw new Error('broker_response_invalid');
     }
     return record(value);
+  }
+
+  /** Operator-only routing credential operation; never returns that credential. */
+  async issueNativeInvitation(
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+    stationSigningKeyId: string,
+    stationSigningGeneration: number,
+    signal: AbortSignal,
+  ): Promise<SelfHostedBrokerNativeRouteInvitationV2> {
+    const value = exact(
+      await this.#post(
+        '/native/grants/invitations/issue',
+        {
+          brokerOrigin: this.#base,
+          surface,
+          stationSigningKeyId,
+          stationSigningGeneration,
+        },
+        signal,
+      ),
+      [
+        'version',
+        'brokerOrigin',
+        'scope',
+        'stationSigningKeyId',
+        'stationSigningGeneration',
+        'surface',
+        'invitationId',
+        'invitationSecret',
+        'expiresAt',
+      ],
+    );
+    const scope = exact(value.scope, [
+      'stationId',
+      'enrollmentId',
+      'routingGeneration',
+    ]);
+    const returnedSurface = exact(value.surface, [
+      'kind',
+      'appIdentifier',
+      'channel',
+      'clientInstanceId',
+      'keyThumbprint',
+    ]);
+    const now = this.now();
+    if (
+      value.version !== 'station-broker-native-route-invitation/v2' ||
+      value.brokerOrigin !== this.#base ||
+      scope.stationId !== this.#scope.stationId ||
+      scope.enrollmentId !== this.#scope.enrollmentId ||
+      scope.routingGeneration !== this.#scope.routingGeneration ||
+      Object.keys(returnedSurface).some(
+        (key) => returnedSurface[key] !== surface[key as keyof typeof surface],
+      ) ||
+      value.stationSigningKeyId !== stationSigningKeyId ||
+      value.stationSigningGeneration !== stationSigningGeneration ||
+      typeof value.invitationId !== 'string' ||
+      !/^[A-Za-z0-9_-]{22}$/.test(value.invitationId) ||
+      typeof value.invitationSecret !== 'string' ||
+      !/^[A-Za-z0-9_-]{43}$/.test(value.invitationSecret) ||
+      !Number.isSafeInteger(value.expiresAt) ||
+      (value.expiresAt as number) <= now ||
+      (value.expiresAt as number) > now + 300_000
+    )
+      throw new Error('broker_response_invalid');
+    return value as unknown as SelfHostedBrokerNativeRouteInvitationV2;
+  }
+
+  async requireOnline(signal: AbortSignal): Promise<void> {
+    const value = exact(await this.#post('/stations/status', {}, signal), [
+      'state',
+      'routingGeneration',
+      'expiresAt',
+    ]);
+    if (
+      value.state !== 'online' ||
+      value.routingGeneration !== this.#scope.routingGeneration ||
+      !Number.isSafeInteger(value.expiresAt) ||
+      (value.expiresAt as number) <= this.now()
+    )
+      throw new Error('broker_connector_unavailable');
   }
 
   async register(signal: AbortSignal) {
