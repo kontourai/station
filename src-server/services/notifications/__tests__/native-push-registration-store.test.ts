@@ -172,7 +172,14 @@ const IOS_REQUEST = {
   apnsEnvironment: 'production',
 } as const;
 const CHANNEL = 'dHN0LXNyY2gtY2hubA==';
+const CHANNEL_AUTH = `v1.${'A'.repeat(43)}`;
 const RUN_ID = 'r'.repeat(22);
+const ACTIVITY = {
+  startedAt: 5,
+  runId: RUN_ID,
+  channelId: CHANNEL,
+  channelAuth: CHANNEL_AUTH,
+};
 
 function iosFixture() {
   const base = fixture();
@@ -237,34 +244,25 @@ describe('NativePushIosRegistrationStore', () => {
     if (posix) expect(statSync(iosPath).mode & 0o777).toBe(0o600);
   });
 
-  test('channel and activity persist, and survive a token rotation on the same topic', () => {
+  test('the activity and its channel persist, and survive a token rotation on the same topic', () => {
     const { ios, reopenIos } = iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
-    ios.updateLiveActivity('device-1', registrationId, { channelId: CHANNEL });
-    ios.updateLiveActivity('device-1', registrationId, {
-      activity: { startedAt: 5, runId: RUN_ID },
-    });
+    ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
     const rotated = ios.upsert(
       'device-1',
       { ...IOS_REQUEST, token: 'cd'.repeat(40) },
       KEY,
       2,
     );
-    expect(rotated).toMatchObject({
-      registrationId,
-      channelId: CHANNEL,
-      activity: { startedAt: 5, runId: RUN_ID },
-    });
+    expect(rotated).toMatchObject({ registrationId, activity: ACTIVITY });
+    expect(rotated.channelDeletes).toBeUndefined();
     expect(reopenIos().list().get('device-1')).toEqual(rotated);
   });
 
-  test('a token for another bundle or environment drops the channel and its activity', () => {
+  test('a token for another bundle or environment queues the activity channel for deletion under its old topic', () => {
     const { ios } = iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
-    ios.updateLiveActivity('device-1', registrationId, {
-      channelId: CHANNEL,
-      activity: { startedAt: 5, runId: RUN_ID },
-    });
+    ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
     const moved = ios.upsert(
       'device-1',
       { ...IOS_REQUEST, apnsEnvironment: 'sandbox' },
@@ -272,48 +270,104 @@ describe('NativePushIosRegistrationStore', () => {
       2,
     );
     expect(moved.registrationId).toBe(registrationId);
-    expect(moved.channelId).toBeUndefined();
     expect(moved.activity).toBeUndefined();
+    expect(moved.channelDeletes).toEqual([
+      {
+        bundleId: 'io.kontourai.station',
+        environment: 'production',
+        channelId: CHANNEL,
+        channelAuth: CHANNEL_AUTH,
+        deleteAt: 2,
+      },
+    ]);
   });
 
-  test('clearing the channel clears the activity; a stale run id or registration changes nothing', () => {
-    const { ios } = iosFixture();
+  test('ending an activity and queueing its channel is one write; a stale run id or registration changes nothing', () => {
+    const { ios, reopenIos } = iosFixture();
     const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
-    ios.updateLiveActivity('device-1', registrationId, {
+    ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
+    const queued = {
+      bundleId: 'io.kontourai.station',
+      environment: 'production',
       channelId: CHANNEL,
-      activity: { startedAt: 5, runId: RUN_ID },
-    });
+      channelAuth: CHANNEL_AUTH,
+      deleteAt: 50,
+    } as const;
     expect(
       ios.updateLiveActivity('device-1', registrationId, {
         activity: null,
         expectedRunId: 's'.repeat(22),
+        queueChannelDelete: queued,
       }),
     ).toBeUndefined();
     expect(
       ios.updateLiveActivity('device-1', 'other-registration-id-000', {
-        channelId: null,
+        activity: null,
       }),
     ).toBeUndefined();
-    expect(ios.list().get('device-1')?.activity).toEqual({
-      startedAt: 5,
-      runId: RUN_ID,
+    expect(ios.list().get('device-1')?.activity).toEqual(ACTIVITY);
+    ios.updateLiveActivity('device-1', registrationId, {
+      activity: null,
+      expectedRunId: RUN_ID,
+      queueChannelDelete: queued,
     });
-    ios.updateLiveActivity('device-1', registrationId, { channelId: null });
-    const cleared = ios.list().get('device-1');
-    expect(cleared?.channelId).toBeUndefined();
-    expect(cleared?.activity).toBeUndefined();
+    const ended = reopenIos().list().get('device-1');
+    expect(ended?.activity).toBeUndefined();
+    expect(ended?.channelDeletes).toEqual([queued]);
+    ios.updateLiveActivity('device-1', registrationId, {
+      dropChannelDelete: CHANNEL,
+    });
+    expect(reopenIos().list().get('device-1')?.channelDeletes).toBeUndefined();
+  });
+
+  test('queued deletions are bounded, oldest dropped first', () => {
+    const { ios } = iosFixture();
+    const { registrationId } = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
+    for (let i = 0; i < 20; i += 1)
+      ios.updateLiveActivity('device-1', registrationId, {
+        queueChannelDelete: {
+          bundleId: 'io.kontourai.station',
+          environment: 'production',
+          channelId: `channel-${String(i).padStart(4, '0')}`,
+          channelAuth: CHANNEL_AUTH,
+          deleteAt: i,
+        },
+      });
+    const deletes = ios.list().get('device-1')?.channelDeletes ?? [];
+    expect(deletes).toHaveLength(16);
+    expect(deletes[0]?.channelId).toBe('channel-0004');
   });
 
   test.each([
     ['an unknown field', { extra: 1 }],
+    ['a registration-level channel id', { channelId: CHANNEL }],
     [
-      'an activity without a channel',
+      'an activity without its channel',
       { activity: { startedAt: 1, runId: RUN_ID } },
     ],
-    ['a malformed channel id', { channelId: 'no spaces allowed' }],
     [
-      'an activity with an unknown field',
-      { channelId: CHANNEL, activity: { startedAt: 1, runId: RUN_ID, x: 1 } },
+      'an activity with a malformed channel id',
+      { activity: { ...ACTIVITY, channelId: 'no spaces allowed' } },
+    ],
+    [
+      'an activity with a malformed channelAuth',
+      { activity: { ...ACTIVITY, channelAuth: 'plain' } },
+    ],
+    ['an activity with an unknown field', { activity: { ...ACTIVITY, x: 1 } }],
+    ['an empty deletion queue', { channelDeletes: [] }],
+    [
+      'a deletion for an unknown bundle',
+      {
+        channelDeletes: [
+          {
+            bundleId: 'com.example',
+            environment: 'production',
+            channelId: CHANNEL,
+            channelAuth: CHANNEL_AUTH,
+            deleteAt: 1,
+          },
+        ],
+      },
     ],
     ['an Android record', { platform: 'android' }],
   ])('refuses a file holding %s', (_label, patch) => {

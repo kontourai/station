@@ -55,7 +55,7 @@ import {
   isValidNativePushRequest,
   type NativePushIosRegistration,
   NativePushIosRegistrationStore,
-  type NativePushLiveActivityRecord,
+  type NativePushLiveActivityUpdate,
   type NativePushRegistration,
   NativePushRegistrationStore,
 } from '../notifications/native-push-registration-store.js';
@@ -2600,18 +2600,14 @@ export class DevicePairingService {
   }
 
   /**
-   * Records an iOS registration's broadcast channel and started activity
-   * (null clears). Never creates a registration: ignored when the device no
-   * longer holds `registrationId`.
+   * Records an iOS registration's started activity (null clears) and its
+   * queued channel deletions. Never creates a registration: ignored when the
+   * device no longer holds `registrationId`.
    */
   updateNativePushLiveActivity(
     deviceId: string,
     registrationId: string,
-    update: {
-      channelId?: string | null;
-      activity?: NativePushLiveActivityRecord | null;
-      expectedRunId?: string;
-    },
+    update: NativePushLiveActivityUpdate,
   ): NativePushIosRegistration | undefined {
     return this.#nativePushIos.updateLiveActivity(
       deviceId,

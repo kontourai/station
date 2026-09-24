@@ -65,27 +65,34 @@ interface GatewayCall {
 const COMMON_KEYS = [
   'alert',
   'bundleId',
-  'channelId',
   'environment',
   'event',
   'registrationId',
   'sealed',
   'timestamp',
 ];
+const CHANNEL_AUTH = /^v1\.[A-Za-z0-9_-]{43}$/;
 
-/** The documented `/v1/apns/live-activity` body, checked at gateway time `nowS`. */
+/**
+ * The documented `/v1/apns/live-activity` body (design REVISION 1), checked
+ * at gateway time `nowS`: a start carries no channel; update and end carry
+ * the channel and its `channelAuth`.
+ */
 function expectLiveActivityShape(body: Record<string, unknown>, nowS: number) {
   const extra =
     body.event === 'start'
       ? ['pushToStartToken', 'staleAt']
       : body.event === 'update'
-        ? ['staleAt']
-        : ['dismissAt'];
+        ? ['channelAuth', 'channelId', 'staleAt']
+        : ['channelAuth', 'channelId', 'dismissAt'];
   expect(Object.keys(body).sort()).toEqual([...COMMON_KEYS, ...extra].sort());
   expect(['start', 'update', 'end']).toContain(body.event);
   expect(NATIVE_PUSH_IOS_BUNDLES).toContain(body.bundleId);
   expect(['production', 'sandbox']).toContain(body.environment);
-  expect(typeof body.channelId).toBe('string');
+  if (body.event !== 'start') {
+    expect(typeof body.channelId).toBe('string');
+    expect(body.channelAuth).toMatch(CHANNEL_AUTH);
+  }
   expect(body.registrationId).toMatch(/^[A-Za-z0-9_-]{22,64}$/);
   expect(body.sealed).toMatch(/^[A-Za-z0-9_-]+$/);
   expect(String(body.sealed).length).toBeLessThanOrEqual(3400);
@@ -105,16 +112,19 @@ function expectLiveActivityShape(body: Record<string, unknown>, nowS: number) {
   }
 }
 
-/** The documented `/v1/apns/channels` body. */
+/** The documented `/v1/apns/channels` body: deletion only. */
 function expectChannelShape(body: Record<string, unknown>) {
-  expect(Object.keys(body).sort()).toEqual(
-    body.op === 'create'
-      ? ['bundleId', 'environment', 'op']
-      : ['bundleId', 'channelId', 'environment', 'op'],
-  );
-  expect(['create', 'delete']).toContain(body.op);
+  expect(Object.keys(body).sort()).toEqual([
+    'bundleId',
+    'channelAuth',
+    'channelId',
+    'environment',
+    'op',
+  ]);
+  expect(body.op).toBe('delete');
   expect(NATIVE_PUSH_IOS_BUNDLES).toContain(body.bundleId);
   expect(['production', 'sandbox']).toContain(body.environment);
+  expect(body.channelAuth).toMatch(CHANNEL_AUTH);
 }
 
 function openCard(sealed: string, registration: NativePushRegistration) {
@@ -183,12 +193,18 @@ function harness(
   let rows: AgentActivitySessionRow[] = [];
   const unreadable = new Set<string>();
   const calls: GatewayCall[] = [];
-  const channels = new Set<string>();
+  /** channelId → the channelAuth the gateway accepts for it. */
+  const channels = new Map<string, string>();
   let channelCounter = 0;
   const lastTimestamp = new Map<string, number>();
   const orderViolations: string[] = [];
   const refused: string[] = [];
   const registered = new Map<string, NativePushRegistration>();
+  const authFor = (channelId: string) =>
+    `v1.${Buffer.from(`auth:${channelId}`)
+      .toString('base64url')
+      .padEnd(43, 'x')
+      .slice(0, 43)}`;
   const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
     const path = new URL(url).pathname;
     const bytes = new Uint8Array(
@@ -226,23 +242,36 @@ function harness(
     if (answer instanceof Error) throw answer;
     if (answer)
       return Response.json(answer.body ?? {}, { status: answer.status });
-    if (path === '/v1/apns/channels' && body.op === 'create') {
-      channelCounter += 1;
-      const channelId = Buffer.from(`channel-${channelCounter}`).toString(
-        'base64',
-      );
-      channels.add(channelId);
-      return Response.json({ result: 'created', channelId });
-    }
+    if (path === '/v1/fcm/send') return Response.json({});
+    const channelId = String(body.channelId);
     if (path === '/v1/apns/channels') {
-      channels.delete(String(body.channelId));
+      if (!channels.has(channelId))
+        return Response.json({ result: 'channel-gone' }, { status: 410 });
+      if (channels.get(channelId) !== body.channelAuth)
+        return Response.json(
+          { result: 'channel-unauthorized' },
+          { status: 403 },
+        );
+      channels.delete(channelId);
       return Response.json({ result: 'deleted' });
     }
-    if (
-      path === '/v1/apns/live-activity' &&
-      !channels.has(String(body.channelId))
-    )
+    if (body.event === 'start') {
+      // The gateway creates the activity's channel inside the start.
+      channelCounter += 1;
+      const created = Buffer.from(`channel-${channelCounter}`).toString(
+        'base64',
+      );
+      channels.set(created, authFor(created));
+      return Response.json({
+        result: 'sent',
+        channelId: created,
+        channelAuth: channels.get(created),
+      });
+    }
+    if (!channels.has(channelId))
       return Response.json({ result: 'channel-gone' }, { status: 410 });
+    if (channels.get(channelId) !== body.channelAuth)
+      return Response.json({ result: 'channel-unauthorized' }, { status: 403 });
     return Response.json({ result: 'sent' });
   });
   const timers: Array<{ fn: () => void; at: number; live: boolean }> = [];
@@ -381,29 +410,24 @@ function harness(
 
 const seconds = (ms: number) => Math.floor(ms / 1000);
 
+const kind = (call: GatewayCall) =>
+  call.path === '/v1/apns/channels' ? `delete` : String(call.body.event);
+
 describe('agent-activity publisher: iOS Live Activities', () => {
-  test('first active card: creates the channel, then starts the activity through it', async () => {
+  test('first active card: one start with no channel; the channel the gateway made is kept on the activity', async () => {
     const h = harness();
     const { deviceId, registration } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
 
     expect(h.refused).toEqual([]);
-    const [create, start, ...rest] = h.calls;
-    expect(rest).toEqual([]);
-    expect(create?.path).toBe('/v1/apns/channels');
-    expect(create?.body).toEqual({
-      op: 'create',
-      bundleId: 'io.kontourai.station',
-      environment: 'production',
-    });
-    const channelId = [...h.channels][0];
+    expect(h.calls).toHaveLength(1);
+    const start = h.calls[0];
     expect(start?.path).toBe('/v1/apns/live-activity');
     expect(start?.body).toEqual({
       bundleId: 'io.kontourai.station',
       environment: 'production',
       event: 'start',
       pushToStartToken: IOS_TOKEN,
-      channelId,
       registrationId: registration.registrationId,
       sealed: expect.any(String),
       alert: false,
@@ -416,10 +440,14 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       active: 'true',
       activity_line_0: 'Working\tSession s1\tLogin App',
     });
-    // Channel and activity persisted to the iOS file.
+    const [channelId] = [...h.channels.keys()];
     expect(h.iosFile()?.registrations[deviceId]).toMatchObject({
-      channelId,
-      activity: { startedAt: START, runId: expect.any(String) },
+      activity: {
+        startedAt: START,
+        runId: expect.any(String),
+        channelId,
+        channelAuth: h.channels.get(channelId ?? ''),
+      },
     });
     expect(
       existsSync(join(h.homeDir, 'security', 'native-push-registrations.json')),
@@ -427,7 +455,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
     await h.publisher.stop();
   });
 
-  test('a later change updates the same channel; an approval updates with an alert, once', async () => {
+  test('later changes update through the channel with its channelAuth; an approval alerts, once', async () => {
     const h = harness();
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
@@ -441,43 +469,42 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       row('s1', 'approval', START + 15_000),
       row('s2', 'running', START + 5000),
     ]);
-    const events = h
-      .iosCalls()
-      .map((call) => [
-        call.path === '/v1/apns/channels'
-          ? `channel:${call.body.op}`
-          : call.body.event,
-        call.body.alert,
-      ]);
-    expect(events).toEqual([
-      ['channel:create', undefined],
+    expect(h.iosCalls().map((call) => [kind(call), call.body.alert])).toEqual([
       ['start', false],
       ['update', false],
       ['update', true],
     ]);
-    const approval = h.iosCalls().at(-1);
-    expect(approval?.card).toMatchObject({ alert_title: 'Approval needed' });
-    // Nothing new: no further request, and the alert is not raised again.
+    const [channelId] = [...h.channels.keys()];
+    for (const update of h.iosCalls().slice(1))
+      expect(update.body).toMatchObject({
+        channelId,
+        channelAuth: h.channels.get(channelId ?? ''),
+      });
+    expect(h.iosCalls().at(-1)?.card).toMatchObject({
+      alert_title: 'Approval needed',
+    });
     h.advance(10_000);
     await h.change([
       row('s1', 'approval', START + 15_000),
       row('s2', 'running', START + 5000),
     ]);
-    expect(h.iosCalls()).toHaveLength(4);
+    expect(h.iosCalls()).toHaveLength(3);
     expect(h.orderViolations).toEqual([]);
     await h.publisher.stop();
   });
 
-  test('finish: ends with the final card, dismissed at its expiry, alerting the finish', async () => {
+  test('finish: ends with the final card, and the channel is deleted only once the dismissal has passed', async () => {
     const h = harness();
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
+    const [channelId] = [...h.channels.keys()];
     h.advance(10_000);
     const finishedAt = h.now();
     await h.change([row('s1', 'completed', finishedAt)]);
     const end = h.iosCalls().at(-1);
     expect(end?.body).toMatchObject({
       event: 'end',
+      channelId,
       alert: true,
       timestamp: seconds(finishedAt),
       // min(card expiry = now + 15 min, now + 4 h)
@@ -487,141 +514,214 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       active: 'false',
       alert_title: 'Agent finished',
     });
-    expect(h.iosFile()?.registrations[deviceId]?.activity).toBeUndefined();
-    // The channel stays for the next activity.
-    expect(h.iosFile()?.registrations[deviceId]?.channelId).toBeDefined();
-    // Finished and ended: nothing more is sent for this card.
-    h.advance(10_000);
-    await h.flush();
-    expect(h.iosCalls().at(-1)).toBe(end);
+    const stored = h.iosFile()?.registrations[deviceId];
+    expect(stored?.activity).toBeUndefined();
+    expect(stored?.channelDeletes).toEqual([
+      {
+        bundleId: 'io.kontourai.station',
+        environment: 'production',
+        channelId,
+        channelAuth: h.channels.get(channelId ?? ''),
+        deleteAt: seconds(finishedAt + 15 * MINUTE) * 1000,
+      },
+    ]);
+    // Still on screen: nothing deleted yet.
+    expect(h.channels.has(channelId ?? '')).toBe(true);
+    const fired = await h.fireNextTimer();
+    expect(fired.at).toBe(seconds(finishedAt + 15 * MINUTE) * 1000);
+    expect(h.iosCalls().at(-1)?.body).toEqual({
+      op: 'delete',
+      bundleId: 'io.kontourai.station',
+      environment: 'production',
+      channelId,
+      channelAuth: expect.stringMatching(CHANNEL_AUTH),
+    });
+    expect(h.channels.size).toBe(0);
+    expect(
+      h.iosFile()?.registrations[deviceId]?.channelDeletes,
+    ).toBeUndefined();
     await h.publisher.stop();
   });
 
-  test('a device that loses read access has its activity ended at once', async () => {
+  test('a device that loses read access has its activity ended at once and its channel deleted in the same flush', async () => {
     const h = harness();
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
     h.unreadable.add(deviceId);
     h.advance(10_000);
     await h.change([row('s1', 'running', START - 1000)]);
-    const end = h.iosCalls().at(-1);
+    const [end, remove] = h.iosCalls().slice(-2);
     expect(end?.body).toMatchObject({
       event: 'end',
       alert: false,
       dismissAt: seconds(h.now()),
     });
-    // No session content survives on the ended activity.
     expect(end?.card).toMatchObject({ active: 'false' });
     expect(end?.card?.activity_line_0).toBeUndefined();
+    expect(remove?.body.op).toBe('delete');
+    expect(h.channels.size).toBe(0);
     expect(h.iosFile()?.registrations[deviceId]?.activity).toBeUndefined();
     await h.publisher.stop();
   });
 
-  test('410 unregistered: the registration is cleared and its channel deleted', async () => {
-    let dead = false;
+  test('410 unregistered at start: the registration is cleared; the gateway already dropped the channel', async () => {
     const h = harness({
       answer: (call) =>
-        dead && call.body.event === 'update'
+        call.body.event === 'start'
           ? { status: 410, body: { result: 'unregistered' } }
           : undefined,
     });
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
-    const channelId = [...h.channels][0];
-    dead = true;
-    h.advance(10_000);
-    await h.change([row('s1', 'approval', h.now())]);
     expect(h.pairing.listNativePushRegistrations()).toEqual([]);
     expect(h.iosFile()?.registrations[deviceId]).toBeUndefined();
-    expect(h.iosCalls().at(-1)?.body).toEqual({
-      op: 'delete',
-      bundleId: 'io.kontourai.station',
-      environment: 'production',
-      channelId,
-    });
-    expect(h.channels.size).toBe(0);
+    expect(h.iosCalls().map(kind)).toEqual(['start']);
     await h.publisher.stop();
   });
 
-  test('410 channel-gone: the channel and activity are forgotten, and the next flush starts over on a new channel', async () => {
-    const h = harness();
+  test.each([
+    ['410 channel-gone', 'gone'],
+    ['403 channel-unauthorized', 'unauthorized'],
+  ] as const)(
+    '%s on an update: the activity is forgotten, and the retry starts afresh',
+    async (_label, how) => {
+      const h = harness();
+      const { deviceId } = await h.registerIos();
+      await h.change([row('s1', 'running', START - 1000)]);
+      const [first] = [...h.channels.keys()];
+      if (how === 'gone') h.channels.clear();
+      else h.channels.set(first ?? '', `v1.${'Z'.repeat(43)}`);
+      h.advance(10_000);
+      await h.change([row('s1', 'approval', h.now())]);
+      expect(h.iosCalls().map(kind)).toEqual(['start', 'update']);
+      expect(h.iosFile()?.registrations[deviceId]?.activity).toBeUndefined();
+      // Nothing to delete: the channel is gone or no longer ours.
+      expect(
+        h.iosFile()?.registrations[deviceId]?.channelDeletes,
+      ).toBeUndefined();
+      const retry = await h.fireNextTimer();
+      expect(retry.at).toBe(START + 10_000 + 5_000);
+      expect(h.iosCalls().map(kind)).toEqual(['start', 'update', 'start']);
+      expect(h.iosCalls().at(-1)?.body.alert).toBe(true);
+      const activity = h.iosFile()?.registrations[deviceId]?.activity as
+        | { channelId: string }
+        | undefined;
+      expect(activity?.channelId).toBeDefined();
+      expect(activity?.channelId).not.toBe(first);
+      await h.publisher.stop();
+    },
+  );
+
+  test('a fresh channelAuth in a 200 (secret rotation) is stored and used from then on', async () => {
+    const rotated = `v1.${'R'.repeat(43)}`;
+    let answered = false;
+    const h = harness({
+      answer: (call) => {
+        if (call.body.event !== 'update' || answered) return undefined;
+        answered = true;
+        return { status: 200, body: { result: 'sent', channelAuth: rotated } };
+      },
+    });
     const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
-    const first = [...h.channels][0];
-    // Apple dropped the channel.
-    h.channels.clear();
+    const [channelId] = [...h.channels.keys()];
     h.advance(10_000);
     await h.change([row('s1', 'approval', h.now())]);
-    expect(h.iosCalls().at(-1)?.body.event).toBe('update');
-    expect(h.iosFile()?.registrations[deviceId]?.channelId).toBeUndefined();
-    expect(h.iosFile()?.registrations[deviceId]?.activity).toBeUndefined();
-    // The backoff timer retries: new channel, then a start (not an update).
-    const before = h.iosCalls().length;
-    await h.fireNextTimer();
-    const retried = h.iosCalls().slice(before);
-    expect(retried.map((call) => call.body.op ?? call.body.event)).toEqual([
-      'create',
-      'start',
-    ]);
-    const second = [...h.channels][0];
-    expect(second).not.toBe(first);
-    expect(retried[1]?.body.channelId).toBe(second);
-    expect(retried[1]?.body.alert).toBe(true);
-    expect(h.iosFile()?.registrations[deviceId]?.channelId).toBe(second);
+    const stored = h.iosFile()?.registrations[deviceId]?.activity as
+      | { channelAuth: string }
+      | undefined;
+    expect(stored?.channelAuth).toBe(rotated);
+    // The gateway now only accepts the rotated proof.
+    h.channels.set(channelId ?? '', rotated);
+    h.advance(10_000);
+    await h.change([row('s1', 'running', h.now())]);
+    expect(h.iosCalls().at(-1)?.body).toMatchObject({
+      event: 'update',
+      channelAuth: rotated,
+    });
+    expect(h.iosFile()?.registrations[deviceId]?.activity).toBeDefined();
     await h.publisher.stop();
   });
 
-  test('a restart resumes the persisted activity: an update to the same channel, no second start or channel', async () => {
+  test('a restart resumes the persisted activity: an update through its channel, no second start', async () => {
     const first = harness();
     await first.registerIos();
     await first.change([row('s1', 'running', START - 1000)]);
     await first.publisher.stop();
-    const channelId = [...first.channels][0];
+    const [channelId] = [...first.channels.keys()];
+    const channelAuth = first.channels.get(channelId ?? '');
 
     const restarted = harness({
       homeDir: first.homeDir,
       answer: (call) =>
-        call.path === '/v1/apns/live-activity' &&
-        call.body.channelId === channelId
+        call.body.channelId === channelId &&
+        call.body.channelAuth === channelAuth
           ? { status: 200, body: { result: 'sent' } }
           : undefined,
     });
     for (const [id, registration] of first.registered)
       restarted.registered.set(id, registration);
-    // The same sessions, still running.
     restarted.setRows([row('s1', 'running', START - 1000)]);
     restarted.advance(60_000);
     await restarted.fireNextTimer(); // the boot flush
-    expect(restarted.iosCalls().map((call) => call.body.event)).toEqual([
-      'update',
-    ]);
-    expect(restarted.iosCalls()[0]?.body.channelId).toBe(channelId);
-    // Its timestamp still follows the one sent before the restart.
+    expect(restarted.iosCalls().map(kind)).toEqual(['update']);
+    expect(restarted.iosCalls()[0]?.body).toMatchObject({
+      channelId,
+      channelAuth,
+    });
     expect(Number(restarted.iosCalls()[0]?.body.timestamp)).toBeGreaterThan(
       Number(first.iosCalls().at(-1)?.body.timestamp),
     );
     await restarted.publisher.stop();
   });
 
-  test('rollover: after 7 h 30 m an unchanged activity is ended and started again, timestamps strictly increasing', async () => {
+  test('a restart still deletes the channel of an activity ended before it', async () => {
+    const first = harness();
+    await first.registerIos();
+    await first.change([row('s1', 'running', START - 1000)]);
+    first.advance(10_000);
+    await first.change([row('s1', 'completed', first.now())]);
+    await first.publisher.stop();
+    const [channelId] = [...first.channels.keys()];
+
+    const restarted = harness({ homeDir: first.homeDir });
+    for (const [id, registration] of first.registered)
+      restarted.registered.set(id, registration);
+    restarted.setRows([row('s1', 'completed', START + 10_000)]);
+    restarted.advance(20 * MINUTE);
+    await restarted.fireNextTimer(); // the boot flush
+    expect(restarted.iosCalls()).toHaveLength(1);
+    expect(restarted.iosCalls()[0]?.body).toMatchObject({
+      op: 'delete',
+      channelId,
+      channelAuth: first.channels.get(channelId ?? ''),
+    });
+    await restarted.publisher.stop();
+  });
+
+  test('rollover at 7 h 30 m: end now, delete its channel, start fresh on a new one; timestamps strictly increasing', async () => {
     const h = harness();
     const { deviceId } = await h.registerIos();
-    const rows = [row('s1', 'running', START - 1000)];
-    await h.change(rows);
-    // Refreshes and the rollover arrive on their own timers.
+    await h.change([row('s1', 'running', START - 1000)]);
+    const [first] = [...h.channels.keys()];
     while (h.now() < START + LIVE_ACTIVITY_ROLLOVER_AFTER_MS)
       await h.fireNextTimer();
-    const kinds = h.iosCalls().map((call) => call.body.op ?? call.body.event);
-    expect(kinds.slice(0, 2)).toEqual(['create', 'start']);
-    expect(kinds.slice(-2)).toEqual(['end', 'start']);
-    expect(kinds.slice(2, -2).every((kind) => kind === 'update')).toBe(true);
-    const [end, start] = h.iosCalls().slice(-2);
+    const kinds = h.iosCalls().map(kind);
+    expect(kinds[0]).toBe('start');
+    expect(kinds.slice(-3)).toEqual(['end', 'start', 'delete']);
+    expect(kinds.slice(1, -3).every((k) => k === 'update')).toBe(true);
+    const [end, start, remove] = h.iosCalls().slice(-3);
+    expect(end?.body).toMatchObject({ channelId: first });
     expect(end?.body.dismissAt).toBe(end?.body.timestamp);
     expect(Number(start?.body.timestamp)).toBe(Number(end?.body.timestamp) + 1);
+    expect(remove?.body.channelId).toBe(first);
     expect(h.orderViolations).toEqual([]);
-    expect(h.iosFile()?.registrations[deviceId]?.activity).toMatchObject({
-      startedAt: h.now(),
-    });
+    const activity = h.iosFile()?.registrations[deviceId]?.activity as
+      | { startedAt: number; channelId: string }
+      | undefined;
+    expect(activity?.startedAt).toBe(h.now());
+    expect(activity?.channelId).not.toBe(first);
+    expect([...h.channels.keys()]).toEqual([activity?.channelId]);
     await h.publisher.stop();
   });
 
@@ -636,14 +736,12 @@ describe('agent-activity publisher: iOS Live Activities', () => {
     });
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
-    // A change inside the 3 s interval is held for the timer.
     h.advance(1_000);
     await h.change([row('s1', 'approval', h.now())]);
-    expect(h.iosCalls()).toHaveLength(2);
+    expect(h.iosCalls()).toHaveLength(1);
     const held = await h.fireNextTimer();
     expect(held.at).toBe(START + 3_000);
     expect(h.iosCalls().at(-1)?.body.event).toBe('update');
-    // 429: retried with backoff (5 s), not at once.
     busy = 1;
     h.advance(10_000);
     const before = h.iosCalls().length;
@@ -656,24 +754,36 @@ describe('agent-activity publisher: iOS Live Activities', () => {
     await h.publisher.stop();
   });
 
-  test('a channel that cannot be created is retried with backoff and no start is sent', async () => {
+  test('a channel delete that fails is retried with backoff and stays queued until it succeeds', async () => {
     let failures = 1;
     const h = harness({
       answer: (call) => {
-        if (!(call.body.op === 'create' && failures > 0)) return undefined;
+        if (!(call.body.op === 'delete' && failures > 0)) return undefined;
         failures -= 1;
         return { status: 503, body: {} };
       },
     });
-    await h.registerIos();
+    const { deviceId } = await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
-    expect(h.iosCalls().map((call) => call.body.op ?? call.body.event)).toEqual(
-      ['create'],
+    h.unreadable.add(deviceId);
+    h.advance(10_000);
+    await h.change([row('s1', 'running', START - 1000)]);
+    expect(h.iosCalls().map(kind)).toEqual(['start', 'end', 'delete']);
+    expect(h.iosFile()?.registrations[deviceId]?.channelDeletes).toHaveLength(
+      1,
     );
-    await h.fireNextTimer();
-    expect(h.iosCalls().map((call) => call.body.op ?? call.body.event)).toEqual(
-      ['create', 'create', 'start'],
-    );
+    const retry = await h.fireNextTimer();
+    expect(retry.at).toBe(START + 10_000 + 5_000);
+    expect(h.iosCalls().map(kind)).toEqual([
+      'start',
+      'end',
+      'delete',
+      'delete',
+    ]);
+    expect(h.channels.size).toBe(0);
+    expect(
+      h.iosFile()?.registrations[deviceId]?.channelDeletes,
+    ).toBeUndefined();
     await h.publisher.stop();
   });
 
@@ -682,9 +792,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
     await h.registerAndroid();
     await h.registerIos();
     await h.change([row('s1', 'running', START - 1000)]);
-    const paths = h.calls.map((call) => call.path).sort();
-    expect(paths).toEqual([
-      '/v1/apns/channels',
+    expect(h.calls.map((call) => call.path).sort()).toEqual([
       '/v1/apns/live-activity',
       '/v1/fcm/send',
     ]);

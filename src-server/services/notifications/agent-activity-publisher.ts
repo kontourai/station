@@ -30,13 +30,16 @@
  *
  * iOS phones get the same sealed card as a Live Activity instead of an FCM
  * data message: `live-activity-planner.ts` decides start, update or end, and
- * the requests go to `/v1/apns/channels` (one broadcast channel per
- * registration, created when the first activity starts) and
- * `/v1/apns/live-activity`. Coalescing, the per-phone send interval, backoff,
- * alert bookkeeping and the per-principal read are shared with Android. A
- * 410 `unregistered` clears the registration and deletes its channel; a 410
- * `channel-gone` forgets the channel and its activity, and the next flush
- * starts over on a new one.
+ * the requests go to `/v1/apns/live-activity`. The gateway creates one
+ * broadcast channel per activity inside its start and answers the channel's
+ * id and `channelAuth`, which every update and end carries; once an ended
+ * activity's dismissal time has passed its channel is deleted through
+ * `/v1/apns/channels` (queued in the registration file, so a restart still
+ * deletes it). Coalescing, the per-phone send interval, backoff, alert
+ * bookkeeping and the per-principal read are shared with Android. A 410
+ * `unregistered` clears the registration; a 410 `channel-gone` or 403
+ * `channel-unauthorized` forgets the activity, and the next flush starts a
+ * new one.
  */
 import type { NativePushSealedData } from '@kontourai/station-contracts/native-push';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -58,8 +61,7 @@ import {
 } from './agent-activity-card.js';
 import { sealAgentActivityCard } from './agent-activity-seal.js';
 import {
-  type ApnsChannelGatewayRequest,
-  buildApnsChannelGatewayRequest,
+  buildApnsChannelDeleteRequest,
   buildLiveActivityGatewayRequest,
 } from './apns-gateway-request.js';
 import {
@@ -68,10 +70,13 @@ import {
   planLiveActivity,
 } from './live-activity-planner.js';
 import {
+  APNS_CHANNEL_AUTH_PATTERN,
   APNS_CHANNEL_ID_PATTERN,
   type NativePushAndroidRegistration,
+  type NativePushChannelDelete,
   type NativePushIosRegistration,
   type NativePushLiveActivityRecord,
+  type NativePushLiveActivityUpdate,
   type NativePushRegistration,
   newLiveActivityRunId,
 } from './native-push-registration-store.js';
@@ -127,7 +132,7 @@ export interface PushGatewayConfig {
   sendUrl: string;
   /** Absolute URL of the iOS Live Activity endpoint. */
   liveActivityUrl: string;
-  /** Absolute URL of the iOS broadcast channel endpoint. */
+  /** Absolute URL of the iOS broadcast channel (deletion) endpoint. */
   channelsUrl: string;
   /** The gateway origin: the token's `aud`. */
   audience: string;
@@ -337,15 +342,11 @@ export interface AgentActivityDevicePairing {
     registrationId: string,
     alertIds: readonly string[],
   ): void;
-  /** Persists an iOS registration's channel and activity (null clears). */
+  /** Persists an iOS registration's activity and queued channel deletions. */
   updateNativePushLiveActivity(
     deviceId: string,
     registrationId: string,
-    update: {
-      channelId?: string | null;
-      activity?: NativePushLiveActivityRecord | null;
-      expectedRunId?: string;
-    },
+    update: NativePushLiveActivityUpdate,
   ): unknown;
   environmentId(): string;
 }
@@ -392,7 +393,10 @@ export interface AgentActivityPublisher {
 }
 
 type SendOutcome = 'sent' | 'unregistered' | 'retryable' | 'rejected';
-/** iOS adds `channel-gone`: the broadcast channel no longer exists. */
+/**
+ * iOS adds `channel-gone`: the activity's broadcast channel no longer exists,
+ * or the gateway no longer accepts its `channelAuth`.
+ */
 type ApnsOutcome = SendOutcome | 'channel-gone';
 /** complete: every phone examined; partial: some principals' reads failed; stalled: nothing examined. */
 type FlushOutcome = 'complete' | 'partial' | 'stalled';
@@ -410,15 +414,20 @@ function classify(status: number): SendOutcome {
  * A 410 from an iOS route says which thing is gone in its body. One that
  * says neither is retried with backoff rather than guessed at: guessing
  * `unregistered` would erase a registration, guessing `channel-gone` would
- * mint channels.
+ * start activities (and so create channels). A 403 `channel-unauthorized` is
+ * a channel this Station can no longer address: handled as gone.
  */
 function classifyApns(status: number, answer: unknown): ApnsOutcome {
-  if (status !== 410) return classify(status);
   const result = (answer as { result?: unknown } | null)?.result;
+  if (status === 403 && result === 'channel-unauthorized')
+    return 'channel-gone';
+  if (status !== 410) return classify(status);
   if (result === 'unregistered') return 'unregistered';
   if (result === 'channel-gone') return 'channel-gone';
   return 'retryable';
 }
+
+type ChannelToDelete = Omit<NativePushChannelDelete, 'deleteAt'>;
 
 interface DeviceState {
   registrationId: string;
@@ -436,12 +445,12 @@ interface DeviceState {
   lastTimestamp?: number;
   /** iOS: when the stored activity started, for its rollover wake. */
   activityStartedAt?: number;
-  /** iOS: the channel to delete if the registration disappears. */
-  channel?: {
-    bundleId: NativePushIosRegistration['packageName'];
-    environment: NativePushIosRegistration['apnsEnvironment'];
-    channelId: string;
-  };
+  /** iOS: every channel to delete if the registration disappears. */
+  channels?: ChannelToDelete[];
+  /** iOS: the earliest queued channel deletion still waiting. */
+  nextDeleteAt?: number;
+  deleteFailures?: number;
+  deleteRetryAt?: number;
 }
 
 /**
@@ -667,18 +676,81 @@ export function wireAgentActivityPublisher(
     }
   }
 
-  /** Best effort: a channel nobody will use again counts against the app. */
+  /**
+   * Best effort: a channel nobody will use again counts against the app's
+   * quota. Done when deleted, already gone, or refused for good.
+   */
   async function deleteChannel(
-    channel: NonNullable<DeviceState['channel']>,
+    channel: ChannelToDelete,
     key: PushSigningKey,
+  ): Promise<'done' | 'retry'> {
+    const { outcome } = await sendApns(
+      options.gateway.channelsUrl,
+      buildApnsChannelDeleteRequest(channel),
+      key,
+    );
+    return outcome === 'retryable' ? 'retry' : 'done';
+  }
+
+  /**
+   * Deletes the phone's queued channels whose dismissal time has passed,
+   * oldest first, stopping at the first that must be retried (with its own
+   * backoff, so a failing delete never holds back the phone's cards).
+   */
+  async function drainChannelDeletes(
+    deviceId: string,
+    registration: NativePushIosRegistration,
+    state: DeviceState,
+    key: PushSigningKey,
+    at: number,
   ) {
-    const body: ApnsChannelGatewayRequest = buildApnsChannelGatewayRequest({
-      op: 'delete',
-      ...channel,
-    });
-    const { outcome } = await sendApns(options.gateway.channelsUrl, body, key);
-    if (outcome !== 'sent')
-      logger.warn('agent-activity: could not delete a live activity channel');
+    let queued = [...(registration.channelDeletes ?? [])];
+    if (state.deleteRetryAt === undefined || at >= state.deleteRetryAt)
+      for (const entry of queued.filter(
+        (candidate) => candidate.deleteAt <= at,
+      )) {
+        const { deleteAt: _deleteAt, ...channel } = entry;
+        const result = await deleteChannel(channel, key);
+        if (result === 'retry') {
+          state.deleteFailures = (state.deleteFailures ?? 0) + 1;
+          if (state.deleteFailures <= MAX_TIMED_RETRIES) {
+            state.deleteRetryAt =
+              at +
+              Math.min(
+                RETRY_BASE_MS * 3 ** (state.deleteFailures - 1),
+                RETRY_MAX_MS,
+              );
+            break;
+          }
+          // Bounded effort: give this channel up rather than retry forever.
+          logger.warn(
+            'agent-activity: gave up deleting a live activity channel',
+          );
+        }
+        state.deleteFailures = 0;
+        delete state.deleteRetryAt;
+        persistLiveActivity(deviceId, registration.registrationId, {
+          dropChannelDelete: entry.channelId,
+        });
+        queued = queued.filter((candidate) => candidate !== entry);
+      }
+    const activity = registration.activity;
+    state.channels = [
+      ...(activity
+        ? [
+            {
+              bundleId: registration.packageName,
+              environment: registration.apnsEnvironment,
+              channelId: activity.channelId,
+              channelAuth: activity.channelAuth,
+            },
+          ]
+        : []),
+      ...queued.map(({ deleteAt: _deleteAt, ...channel }) => channel),
+    ];
+    if (queued.length > 0)
+      state.nextDeleteAt = Math.min(...queued.map((entry) => entry.deleteAt));
+    else delete state.nextDeleteAt;
   }
 
   function scheduleWake(at: number, floorMs = 1) {
@@ -703,6 +775,8 @@ export function wireAgentActivityPublisher(
         state.retryAt === undefined
       )
         wakes.push(liveActivityRolloverAt(state.activityStartedAt));
+      if (state.nextDeleteAt !== undefined)
+        wakes.push(Math.max(state.nextDeleteAt, state.deleteRetryAt ?? 0));
     }
     const next = wakes.length
       ? Math.max(Math.min(...wakes), at + floorMs)
@@ -762,9 +836,7 @@ export function wireAgentActivityPublisher(
   function persistLiveActivity(
     deviceId: string,
     registrationId: string,
-    update: Parameters<
-      AgentActivityDevicePairing['updateNativePushLiveActivity']
-    >[2],
+    update: NativePushLiveActivityUpdate,
   ) {
     try {
       devicePairing.updateNativePushLiveActivity(
@@ -806,10 +878,19 @@ export function wireAgentActivityPublisher(
     });
   }
 
+  /** A `channelAuth` from a gateway answer, when it carries a valid one. */
+  function answeredChannelAuth(answer: unknown): string | undefined {
+    const value = (answer as { channelAuth?: unknown } | null)?.channelAuth;
+    return typeof value === 'string' && APNS_CHANNEL_AUTH_PATTERN.test(value)
+      ? value
+      : undefined;
+  }
+
   /**
    * Runs the planned steps for one iOS phone, in order, stopping at the
-   * first that fails. What each accepted step changes (channel, activity)
-   * is persisted as it happens, so a restart resumes rather than repeats.
+   * first that fails. What each accepted step changes (the activity and its
+   * channel, a channel to delete) is persisted as it happens, so a restart
+   * resumes rather than repeats.
    */
   async function deliverIos(
     deviceId: string,
@@ -829,90 +910,139 @@ export function wireAgentActivityPublisher(
     };
     const { registrationId } = registration;
     const sealed = sealFor(registration, card, pendingAlerts, updatedAt);
-    let channelId = registration.channelId;
-    let activity = registration.activity;
+    let activity: NativePushLiveActivityRecord | undefined =
+      registration.activity;
     let alerted = false;
-    const fail = (outcome: ApnsOutcome) => {
-      if (outcome === 'unregistered') {
-        const channel = channelId ? { ...topic, channelId } : state.channel;
-        clearDeadRegistration(deviceId, registration);
-        return channel ? deleteChannel(channel, key) : undefined;
-      }
-      if (outcome === 'channel-gone') {
-        // Forget the channel and the activity reached through it; the next
-        // flush creates a channel and starts over.
-        persistLiveActivity(deviceId, registrationId, { channelId: null });
-        delete state.channel;
-        delete state.cardKey;
-        delete state.activityStartedAt;
-        state.deliveredActive = false;
-      }
-      backOff(state, at);
-      return undefined;
-    };
-    for (const step of steps) {
-      if (step.event === 'start' && !channelId) {
-        const created = await sendApns(
-          options.gateway.channelsUrl,
-          buildApnsChannelGatewayRequest({ op: 'create', ...topic }),
-          key,
-        );
-        const createdId = (created.answer as { channelId?: unknown } | null)
-          ?.channelId;
-        if (created.outcome === 'rejected') break;
-        if (
-          created.outcome !== 'sent' ||
-          typeof createdId !== 'string' ||
-          !APNS_CHANNEL_ID_PATTERN.test(createdId)
-        )
-          return fail(
-            created.outcome === 'sent' ? 'retryable' : created.outcome,
-          );
-        channelId = createdId;
-        state.channel = { ...topic, channelId };
-        persistLiveActivity(deviceId, registrationId, { channelId });
-      }
-      if (!channelId) return fail('channel-gone');
-      const timestamp = nextTimestamp(state, at);
-      const { outcome } = await sendApns(
-        options.gateway.liveActivityUrl,
-        buildLiveActivityGatewayRequest({
-          ...topic,
-          channelId,
-          registrationId,
-          sealed,
-          alert: step.alert,
-          timestamp,
-          ...(step.event === 'start'
-            ? {
-                event: 'start',
-                pushToStartToken: registration.token,
-                staleAt: Math.floor(step.staleAtMs / 1000),
-              }
-            : step.event === 'update'
-              ? { event: 'update', staleAt: Math.floor(step.staleAtMs / 1000) }
-              : {
-                  event: 'end',
-                  // Never before this request's own timestamp.
-                  dismissAt: Math.max(
-                    timestamp,
-                    Math.floor(step.dismissAtMs / 1000),
-                  ),
-                }),
-        }),
-        key,
-      );
-      if (outcome !== 'sent' && outcome !== 'rejected') return fail(outcome);
-      alerted ||= step.alert;
-      if (step.event === 'start' && outcome === 'sent') {
-        activity = { startedAt: at, runId: newLiveActivityRunId() };
-        persistLiveActivity(deviceId, registrationId, { activity });
-      }
-      if (step.event === 'end' && activity) {
-        // A refused end is not repeated either: the activity goes stale.
+    const forgetActivity = () => {
+      // Its channel is gone or no longer ours: nothing to delete. The next
+      // flush starts a new activity (and with it a new channel).
+      if (activity)
         persistLiveActivity(deviceId, registrationId, {
           activity: null,
           expectedRunId: activity.runId,
+        });
+      activity = undefined;
+      delete state.cardKey;
+      delete state.activityStartedAt;
+      state.deliveredActive = false;
+    };
+    for (const step of steps) {
+      const timestamp = nextTimestamp(state, at);
+      const routed = { registrationId, sealed, alert: step.alert, timestamp };
+      let body: ReturnType<typeof buildLiveActivityGatewayRequest>;
+      if (step.event === 'start') {
+        // No channel: the gateway creates the activity's channel itself.
+        body = buildLiveActivityGatewayRequest({
+          ...topic,
+          event: 'start',
+          pushToStartToken: registration.token,
+          ...routed,
+          staleAt: Math.floor(step.staleAtMs / 1000),
+        });
+      } else {
+        if (!activity) break;
+        const channel = {
+          channelId: activity.channelId,
+          channelAuth: activity.channelAuth,
+        };
+        body =
+          step.event === 'update'
+            ? buildLiveActivityGatewayRequest({
+                ...topic,
+                event: 'update',
+                ...channel,
+                ...routed,
+                staleAt: Math.floor(step.staleAtMs / 1000),
+              })
+            : buildLiveActivityGatewayRequest({
+                ...topic,
+                event: 'end',
+                ...channel,
+                ...routed,
+                // Never before this request's own timestamp.
+                dismissAt: Math.max(
+                  timestamp,
+                  Math.floor(step.dismissAtMs / 1000),
+                ),
+              });
+      }
+      const { outcome, answer } = await sendApns(
+        options.gateway.liveActivityUrl,
+        body,
+        key,
+      );
+      if (outcome === 'unregistered') {
+        // At a start the gateway has already deleted the channel it made.
+        // Anywhere else the activity's channel is deleted now, best effort.
+        const stranded = activity
+          ? {
+              ...topic,
+              channelId: activity.channelId,
+              channelAuth: activity.channelAuth,
+            }
+          : undefined;
+        clearDeadRegistration(deviceId, registration);
+        if (stranded && step.event !== 'start')
+          await deleteChannel(stranded, key);
+        return;
+      }
+      if (outcome === 'channel-gone' && step.event !== 'start') {
+        forgetActivity();
+        backOff(state, at);
+        return;
+      }
+      if (outcome !== 'sent' && outcome !== 'rejected') {
+        backOff(state, at);
+        return;
+      }
+      alerted ||= step.alert;
+      if (step.event === 'start' && outcome === 'sent') {
+        const channelId = (answer as { channelId?: unknown } | null)?.channelId;
+        const channelAuth = answeredChannelAuth(answer);
+        if (
+          typeof channelId === 'string' &&
+          APNS_CHANNEL_ID_PATTERN.test(channelId) &&
+          channelAuth
+        ) {
+          activity = {
+            startedAt: at,
+            runId: newLiveActivityRunId(),
+            channelId,
+            channelAuth,
+          };
+          persistLiveActivity(deviceId, registrationId, { activity });
+        } else {
+          logger.warn(
+            'agent-activity: the gateway started a live activity without naming its channel',
+          );
+        }
+      }
+      if (step.event === 'update' && outcome === 'sent' && activity) {
+        // The gateway rotated its channel secret: keep the fresh proof.
+        const rotated = answeredChannelAuth(answer);
+        if (rotated && rotated !== activity.channelAuth) {
+          const previous = activity.runId;
+          activity = { ...activity, channelAuth: rotated };
+          persistLiveActivity(deviceId, registrationId, {
+            activity,
+            expectedRunId: previous,
+          });
+        }
+      }
+      if (step.event === 'end' && activity && body.event === 'end') {
+        // A refused end is not repeated either: the activity goes stale.
+        // Either way its channel is deleted once the dismissal has passed.
+        const channelAuth = answeredChannelAuth(answer) ?? activity.channelAuth;
+        const queued: NativePushChannelDelete = {
+          ...topic,
+          channelId: activity.channelId,
+          channelAuth,
+          deleteAt: body.dismissAt * 1000,
+        };
+        persistLiveActivity(deviceId, registrationId, {
+          activity: null,
+          expectedRunId: activity.runId,
+          queueChannelDelete: queued,
         });
         activity = undefined;
       }
@@ -931,7 +1061,6 @@ export function wireAgentActivityPublisher(
     state.deliveredExpiresAt = card.expiresAt;
     if (activity) state.activityStartedAt = activity.startedAt;
     else delete state.activityStartedAt;
-    return undefined;
   }
 
   async function deliver(
@@ -1040,14 +1169,34 @@ export function wireAgentActivityPublisher(
     targets: ReadonlyArray<{ deviceId: string }>,
     key: PushSigningKey | null,
   ) {
-    const orphans: Array<NonNullable<DeviceState['channel']>> = [];
+    const orphans: ChannelToDelete[] = [];
     for (const [deviceId, state] of [...devices])
       if (!targets.some((target) => target.deviceId === deviceId)) {
         devices.delete(deviceId);
-        if (state.channel) orphans.push(state.channel);
+        orphans.push(...(state.channels ?? []));
       }
     if (key)
       await Promise.all(orphans.map((channel) => deleteChannel(channel, key)));
+  }
+
+  /**
+   * After this flush's cards: every iOS phone's due channel deletions, read
+   * afresh (the cards may just have queued some), whether or not the phone
+   * had a card to send.
+   */
+  async function drainAllChannelDeletes(key: PushSigningKey, at: number) {
+    const current = registrations() ?? [];
+    await Promise.all(
+      current.map(async ({ deviceId, registration }) => {
+        if (
+          registration.platform !== 'ios' ||
+          registration.stationKey !== key.thumbprint
+        )
+          return;
+        const state = stateFor(deviceId, registration);
+        await drainChannelDeletes(deviceId, registration, state, key, at);
+      }),
+    );
   }
 
   function readKeyQuietly(): PushSigningKey | null {
@@ -1062,7 +1211,9 @@ export function wireAgentActivityPublisher(
     const targets = registrations();
     if (targets === null) return 'stalled';
     if (targets.length === 0) {
-      const tracked = [...devices.values()].some((state) => state.channel);
+      const tracked = [...devices.values()].some(
+        (state) => (state.channels?.length ?? 0) > 0,
+      );
       await forgetUnregistered(targets, tracked ? readKeyQuietly() : null);
       return 'complete';
     }
@@ -1168,19 +1319,15 @@ export function wireAgentActivityPublisher(
           `stale-key:${deviceId}`,
           'agent-activity: dropped a registration pinned to a previous push key',
         );
-        const channel =
-          registration.platform === 'ios' && registration.channelId
-            ? {
-                bundleId: registration.packageName,
-                environment: registration.apnsEnvironment,
-                channelId: registration.channelId,
-              }
-            : undefined;
+        const channels = devices.get(deviceId)?.channels ?? [];
         devices.delete(deviceId);
         try {
           devicePairing.clearNativePush(deviceId, registration.token);
         } catch {}
-        if (channel) due.push(() => deleteChannel(channel, key));
+        for (const channel of channels)
+          due.push(async () => {
+            await deleteChannel(channel, key);
+          });
         continue;
       }
       const principalId = principalOf.get(deviceId);
@@ -1230,13 +1377,6 @@ export function wireAgentActivityPublisher(
       let steps: LiveActivityStep[] | undefined;
       let pending: boolean;
       if (registration.platform === 'ios') {
-        if (registration.channelId)
-          state.channel = {
-            bundleId: registration.packageName,
-            environment: registration.apnsEnvironment,
-            channelId: registration.channelId,
-          };
-        else delete state.channel;
         if (registration.activity)
           state.activityStartedAt = registration.activity.startedAt;
         else delete state.activityStartedAt;
@@ -1316,6 +1456,7 @@ export function wireAgentActivityPublisher(
         );
     }
     await Promise.all(due.map((run) => run()));
+    await drainAllChannelDeletes(key, now());
     await forgetUnregistered(targets, key);
     return failedPrincipals.size > 0 ? 'partial' : 'complete';
   }

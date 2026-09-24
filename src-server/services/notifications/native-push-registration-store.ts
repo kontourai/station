@@ -52,7 +52,7 @@ const COMMON_KEYS = [
 const ANDROID_KEYS = COMMON_KEYS;
 const ANDROID_OPTIONAL_KEYS = ['alerted'];
 const IOS_KEYS = [...COMMON_KEYS, 'apnsEnvironment'];
-const IOS_OPTIONAL_KEYS = ['activity', 'alerted', 'channelId'];
+const IOS_OPTIONAL_KEYS = ['activity', 'alerted', 'channelDeletes'];
 /** Alert ids remembered per registration; the phone itself keeps 64. */
 const ALERTED_MAX = 128;
 const ALERT_ID_PATTERN = /^[0-9a-f]{64}$/;
@@ -64,7 +64,14 @@ const THUMBPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const IOS_TOKEN_PATTERN = /^(?:[0-9a-f]{2}){32,100}$/;
 /** An APNs broadcast channel id (base64 as Apple issues it). */
 export const APNS_CHANNEL_ID_PATTERN = /^[A-Za-z0-9+/_=-]{8,128}$/;
+/**
+ * The gateway's proof that a channel was created for this Station's key
+ * (`v1.` + base64url HMAC today); opaque to the Station.
+ */
+export const APNS_CHANNEL_AUTH_PATTERN = /^v\d{1,3}\.[A-Za-z0-9_-]{16,256}$/;
 const ACTIVITY_RUN_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+/** Channels waiting to be deleted, per registration. */
+export const CHANNEL_DELETES_MAX = 16;
 
 interface StoredRegistrationFields {
   /** 128 random bits, base64url; kept across token rotation. */
@@ -86,20 +93,36 @@ export interface NativePushAndroidRegistration
   extends NativePushAndroidRegistrationRequest,
     StoredRegistrationFields {}
 
-/** The Live Activity the Station last started for a registration. */
+/**
+ * The Live Activity the Station last started for a registration, and the
+ * broadcast channel the gateway created for it inside that start.
+ */
 export interface NativePushLiveActivityRecord {
   /** When the start was accepted; drives the rollover before Apple's 8 h cap. */
   startedAt: number;
   /** Random per start, so a stale writer cannot clear a newer activity. */
   runId: string;
+  channelId: string;
+  /** Required by the gateway on every update, end and delete of the channel. */
+  channelAuth: string;
+}
+
+/** An ended activity's channel, deleted once its dismissal time has passed. */
+export interface NativePushChannelDelete {
+  bundleId: NativePushIosRegistrationRequest['packageName'];
+  environment: NativePushIosRegistrationRequest['apnsEnvironment'];
+  channelId: string;
+  channelAuth: string;
+  /** Not before this time (ms): the ended activity is still on screen. */
+  deleteAt: number;
 }
 
 export interface NativePushIosRegistration
   extends NativePushIosRegistrationRequest,
     StoredRegistrationFields {
-  /** The APNs broadcast channel every update and end goes to; created lazily. */
-  channelId?: string;
   activity?: NativePushLiveActivityRecord;
+  /** Channels of ended activities not yet deleted; bounded, oldest first. */
+  channelDeletes?: NativePushChannelDelete[];
 }
 
 export type NativePushRegistration =
@@ -207,12 +230,46 @@ function isValidAndroidRegistration(
   );
 }
 
+function isChannelRef(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.channelId === 'string' &&
+    APNS_CHANNEL_ID_PATTERN.test(value.channelId) &&
+    typeof value.channelAuth === 'string' &&
+    APNS_CHANNEL_AUTH_PATTERN.test(value.channelAuth)
+  );
+}
+
+function isValidChannelDelete(
+  value: unknown,
+): value is NativePushChannelDelete {
+  return (
+    isRecord(value) &&
+    hasExactKeys(
+      value,
+      ['bundleId', 'channelAuth', 'channelId', 'deleteAt', 'environment'],
+      [],
+    ) &&
+    isChannelRef(value) &&
+    typeof value.bundleId === 'string' &&
+    (NATIVE_PUSH_IOS_BUNDLES as readonly string[]).includes(value.bundleId) &&
+    (value.environment === 'production' || value.environment === 'sandbox') &&
+    typeof value.deleteAt === 'number' &&
+    Number.isSafeInteger(value.deleteAt) &&
+    value.deleteAt >= 0
+  );
+}
+
 function isValidActivity(
   value: unknown,
 ): value is NativePushLiveActivityRecord {
   return (
     isRecord(value) &&
-    hasExactKeys(value, ['runId', 'startedAt'], []) &&
+    hasExactKeys(
+      value,
+      ['channelAuth', 'channelId', 'runId', 'startedAt'],
+      [],
+    ) &&
+    isChannelRef(value) &&
     typeof value.startedAt === 'number' &&
     Number.isSafeInteger(value.startedAt) &&
     value.startedAt >= 0 &&
@@ -229,22 +286,26 @@ function isValidIosRegistration(
     hasExactKeys(value, IOS_KEYS, IOS_OPTIONAL_KEYS) &&
     isValidIosRequest(value) &&
     hasValidStoredFields(value) &&
-    (value.channelId === undefined ||
-      (typeof value.channelId === 'string' &&
-        APNS_CHANNEL_ID_PATTERN.test(value.channelId))) &&
     (value.activity === undefined || isValidActivity(value.activity)) &&
-    // An activity is only ever reachable through its channel.
-    (value.activity === undefined || value.channelId !== undefined)
+    (value.channelDeletes === undefined ||
+      (Array.isArray(value.channelDeletes) &&
+        value.channelDeletes.length > 0 &&
+        value.channelDeletes.length <= CHANNEL_DELETES_MAX &&
+        value.channelDeletes.every(isValidChannelDelete)))
   );
 }
 
 function clone<R extends NativePushRegistration>(registration: R): R {
   const copy: R = { ...registration };
   if (registration.alerted) copy.alerted = [...registration.alerted];
-  if (registration.platform === 'ios' && registration.activity)
-    (copy as NativePushIosRegistration).activity = {
-      ...registration.activity,
-    };
+  if (registration.platform === 'ios') {
+    const ios = copy as NativePushIosRegistration;
+    if (registration.activity) ios.activity = { ...registration.activity };
+    if (registration.channelDeletes)
+      ios.channelDeletes = registration.channelDeletes.map((entry) => ({
+        ...entry,
+      }));
+  }
   return copy;
 }
 
@@ -475,9 +536,10 @@ export class NativePushRegistrationStore extends RegistrationFileStore<
 /**
  * iOS (Live Activity) registrations:
  * `security/native-push-ios-registrations.json`. Besides the Android fields a
- * record carries its APNs environment, its broadcast channel and the
- * activity last started on it, so a restart neither starts a duplicate
- * activity nor orphans a channel.
+ * record carries its APNs environment, the activity last started (with the
+ * channel the gateway created for it) and the channels of ended activities
+ * still to delete, so a restart neither starts a duplicate activity nor
+ * forgets a channel.
  */
 export class NativePushIosRegistrationStore extends RegistrationFileStore<
   NativePushIosRegistration,
@@ -489,44 +551,48 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
       label: IOS_LABEL,
       isValid: isValidIosRegistration,
       build: (request, kept, existing) => {
-        // A channel belongs to one app and one APNs environment: a token for
-        // another bundle or environment cannot reuse it, nor reach the
-        // activity started through it.
+        // An activity belongs to one app and one APNs environment: a token
+        // for another bundle or environment cannot reach it, so its channel
+        // is queued for deletion (under the topic it was created in).
         const sameTopic =
           existing !== undefined &&
           existing.packageName === request.packageName &&
           existing.apnsEnvironment === request.apnsEnvironment;
+        const deletes = [...(existing?.channelDeletes ?? [])];
+        if (existing?.activity && !sameTopic)
+          deletes.push({
+            bundleId: existing.packageName,
+            environment: existing.apnsEnvironment,
+            channelId: existing.activity.channelId,
+            channelAuth: existing.activity.channelAuth,
+            deleteAt: kept.updatedAt,
+          });
+        const bounded = deletes.slice(-CHANNEL_DELETES_MAX);
         return {
           token: request.token,
           packageName: request.packageName,
           platform: 'ios',
           apnsEnvironment: request.apnsEnvironment,
           ...kept,
-          ...(sameTopic && existing.channelId
-            ? { channelId: existing.channelId }
-            : {}),
-          ...(sameTopic && existing.channelId && existing.activity
+          ...(sameTopic && existing.activity
             ? { activity: { ...existing.activity } }
             : {}),
+          ...(bounded.length > 0 ? { channelDeletes: bounded } : {}),
         };
       },
     });
   }
 
   /**
-   * Sets (a value) or clears (null) the registration's channel and activity.
-   * Ignored — returning undefined — once the device holds another
-   * registrationId, or when `expectedRunId` no longer names the stored
-   * activity.
+   * Sets (a value) or clears (null) the registration's activity, and queues
+   * or drops channel deletions, in one write. Ignored — returning
+   * undefined — once the device holds another registrationId, or when
+   * `expectedRunId` no longer names the stored activity.
    */
   updateLiveActivity(
     deviceId: string,
     registrationId: string,
-    update: {
-      channelId?: string | null;
-      activity?: NativePushLiveActivityRecord | null;
-      expectedRunId?: string;
-    },
+    update: NativePushLiveActivityUpdate,
   ): NativePushIosRegistration | undefined {
     const registrations = this.read();
     const current = registrations.get(deviceId);
@@ -537,19 +603,32 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
     )
       return undefined;
     const next: NativePushIosRegistration = { ...current };
-    if (update.channelId === null) {
-      delete next.channelId;
-      delete next.activity;
-    } else if (update.channelId !== undefined) {
-      if (next.channelId !== update.channelId) delete next.activity;
-      next.channelId = update.channelId;
-    }
     if (update.activity === null) delete next.activity;
     else if (update.activity !== undefined) next.activity = update.activity;
+    let deletes = (current.channelDeletes ?? []).filter(
+      (entry) => entry.channelId !== update.dropChannelDelete,
+    );
+    if (update.queueChannelDelete)
+      deletes = [
+        ...deletes.filter(
+          (entry) => entry.channelId !== update.queueChannelDelete?.channelId,
+        ),
+        update.queueChannelDelete,
+      ].slice(-CHANNEL_DELETES_MAX);
+    if (deletes.length > 0) next.channelDeletes = deletes;
+    else delete next.channelDeletes;
     registrations.set(deviceId, next);
     this.write(registrations);
     return clone(next);
   }
+}
+
+export interface NativePushLiveActivityUpdate {
+  activity?: NativePushLiveActivityRecord | null;
+  expectedRunId?: string;
+  queueChannelDelete?: NativePushChannelDelete;
+  /** The channelId of a queued deletion that is done. */
+  dropChannelDelete?: string;
 }
 
 /** A random id for a newly started activity. */

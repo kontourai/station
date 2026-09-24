@@ -305,28 +305,38 @@ issue #2513). The Station side is built; the gateway's APNs routes, the widget
 extension and App Store signing are separate slices, so nothing reaches an
 iPhone yet.
 
-- **Architecture.** Each registration has one APNs broadcast channel, created
-  through the gateway the first time the Station has a card to start
-  (`POST /v1/apns/channels`, `{ op: 'create', bundleId, environment }`, answer
-  `{ result: 'created', channelId }`). Every start is push-to-start to the
-  registration's token with the channel as `input-push-channel`; every update
-  and end is a broadcast to the channel. The phone never reports a
-  per-activity token, so nothing on the phone uses a credential in the
-  background. Registration itself makes no network call.
+- **Architecture.** Each Live Activity has its own APNs broadcast channel,
+  created by the gateway inside the start: the Station sends
+  `event: 'start'` with the registration's push-to-start token and no
+  channel, and the gateway creates the channel, sends the push-to-start with
+  it as `input-push-channel`, and answers `{ result: 'sent', channelId,
+  channelAuth }`. `channelAuth` is the gateway's HMAC over the channel and the
+  Station's key; every update and end of that activity, and the channel's
+  deletion, must carry it. Once an ended activity's dismissal time has passed
+  (at once for an immediate end) the Station deletes its channel with
+  `POST /v1/apns/channels`, `{ op: 'delete', bundleId, environment,
+  channelId, channelAuth }`. There is no endpoint that creates a channel on
+  its own: channels are an app-wide quota that never expires, and push keys
+  are free to mint. The phone never reports a per-activity token, so nothing
+  on the phone uses a credential in the background. Registration makes no
+  network call.
 - **Registration.** The same route, with
   `{ token, packageName, platform: 'ios', apnsEnvironment }`: the token is
   the ActivityKit push-to-start token (hex, 32 to 100 bytes, stored
   lowercase), `packageName` one of `NATIVE_PUSH_IOS_BUNDLES`, and
   `apnsEnvironment` `production` or `sandbox`. The answer is unchanged. iOS
   records live in their own sidecar, `security/native-push-ios-registrations.json`
-  (0600, schemaVersion 1), with `channelId` and the started `activity`
-  (`startedAt`, a random `runId`) beside the Android fields, so a restart
-  neither starts a second activity nor orphans a channel. A separate file
+  (0600, schemaVersion 1), with the started `activity` (`startedAt`, a random
+  `runId`, `channelId`, `channelAuth`) and `channelDeletes` (ended
+  activities' channels, with their topic and the time they may be deleted,
+  at most 16) beside the Android fields, so a restart neither starts a second
+  activity nor forgets a channel. A separate file
   because the Android file is read as strictly as the device registry: one
   iOS record in it would cost an older Station every Android registration.
   A device holds one registration; registering on one platform clears the
   other, and `DELETE`, revocation and replacement clear both files. A token
-  for another bundle or APNs environment drops the channel.
+  for another bundle or APNs environment queues the live activity's channel
+  for deletion under its old topic.
 - **Card.** `content-state` is `{ v: 1, rid, sk, sealed }`: `sealed` is the
   Android card, sealed with the iOS registration's `payloadKey` and AAD
   `station-agent-activity:v1:<registrationId>`; `sk` is always stamped by
@@ -340,33 +350,40 @@ iPhone yet.
   that card, dismissed at its expiry but within 4 hours, alerting a pending
   finish; an empty card or lost read access → end, dismissed now. An
   activity started 7 h 30 m ago is ended and started again before Apple's
-  8-hour limit, on its own timer.
+  8-hour limit, on its own timer: end, delete its channel, and start again
+  on a new one.
 - **Requests.** `POST /v1/apns/live-activity`, signed like the FCM send:
-  `{ bundleId, environment, event, pushToStartToken (start only), channelId,
-  registrationId, sealed, alert, timestamp, staleAt (start, update) |
-  dismissAt (end) }`, times in Unix seconds. `timestamp` is
+  `{ bundleId, environment, event, pushToStartToken (start only), channelId
+  and channelAuth (update, end), registrationId, sealed, alert, timestamp,
+  staleAt (start, update) | dismissAt (end) }`, times in Unix seconds. `timestamp` is
   `max(ceil(now), previous + 1)` per registration, so an end and the start
   that follows it in one flush are ordered. The per-phone three-second
   interval, backoff, alert bookkeeping and per-principal read are the
-  Android publisher's. Answers: 200 sent; 410 `{ result: 'unregistered' }`
-  clears the registration and deletes its channel; 410
-  `{ result: 'channel-gone' }` forgets the channel and activity, and the next
-  flush starts over on a new channel; a 410 naming neither is retried with
-  backoff; 422 is refused for good (a refused end still forgets the
-  activity, which goes stale); 429, 503, 401 and network errors back off.
-  A channel that cannot be created backs off the same way. A phone the
-  publisher stops seeing has its channel deleted, best effort.
+  Android publisher's. Answers: 200 sent (a fresh `channelAuth` in it, after
+  the gateway rotated its secret, is stored); 410 `{ result: 'unregistered' }`
+  clears the registration (at a start the gateway has already deleted the
+  channel it made); 410 `{ result: 'channel-gone' }` and 403
+  `{ result: 'channel-unauthorized' }` forget the activity, and the retry
+  starts a new one; a 410 naming neither is retried with backoff; 422 is
+  refused for good (a refused end still forgets the activity, which goes
+  stale, and queues its channel); 429, 503, 401 and network errors back off.
+  Deletions back off on their own (so a failing delete never holds back a
+  card) and are dropped after the same eight timed attempts; a gone or
+  refused channel counts as deleted. A phone the publisher stops seeing has
+  its known channels deleted at once, best effort.
 - **What differs from Android in the threat model.** A forged or replayed
   push can blank the card but not inject content: the widget (slice C) is to
   show a neutral placeholder unless the state's `rid` matches its attributes, `sk` matches
   the pinned key, the card opens with the registration's key and `user_id`
   is the Station. Alert text is fixed by the gateway, so no session title
   ever reaches APNs in clear. Channels are a per-app quota shared by every
-  Station: the gateway (slice A) is to rate limit channel operations per key
-  and globally, and the Station creates one channel per registration, reuses it across
-  activities and deletes it when the registration goes. A channel whose
-  registration disappeared while the Station was stopped is not deleted
-  (the Station no longer knows it).
+  Station: no request creates a channel except a start, which the gateway
+  (slice A) rate limits per address, per device, per key and globally, and
+  only the Station whose key the `channelAuth` was minted for can update,
+  end or delete a channel. The Station deletes each activity's channel after
+  it ends. A channel whose registration was cleared (unregistered, revoked,
+  or moved to Android) while the Station was stopped is not deleted: the
+  Station no longer knows it.
 
 ### Provisioning
 

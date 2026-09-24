@@ -3,47 +3,46 @@
  * exactly the documented shape (docs/design/notification-delivery.md, "iOS"):
  * the gateway refuses unknown keys, so nothing optional is ever present as
  * `undefined` or `null`. Signed like the FCM body (`push-signing-key-store`).
+ *
+ * A start carries no channel: the gateway creates one per activity inside
+ * the start and answers its `channelId` and `channelAuth`, which every later
+ * update, end and delete of that channel must carry.
  */
 import type { NativePushIosBundle } from '@kontourai/station-contracts/native-push';
 
 export type ApnsEnvironment = 'production' | 'sandbox';
 
-/** `POST /v1/apns/live-activity`. Times are Unix seconds. */
-export type LiveActivityGatewayRequest = {
+interface Topic {
   bundleId: NativePushIosBundle;
   environment: ApnsEnvironment;
+}
+
+interface ChannelRef {
   channelId: string;
+  channelAuth: string;
+}
+
+interface Card {
   registrationId: string;
   sealed: string;
   alert: boolean;
+  /** Unix seconds. */
   timestamp: number;
-} & (
-  | { event: 'start'; pushToStartToken: string; staleAt: number }
-  | { event: 'update'; staleAt: number }
-  | { event: 'end'; dismissAt: number }
-);
+}
+
+/** `POST /v1/apns/live-activity`. Times are Unix seconds. */
+export type LiveActivityGatewayRequest =
+  | (Topic & { event: 'start'; pushToStartToken: string } & Card & {
+        staleAt: number;
+      })
+  | (Topic & { event: 'update' } & ChannelRef & Card & { staleAt: number })
+  | (Topic & { event: 'end' } & ChannelRef & Card & { dismissAt: number });
 
 export function buildLiveActivityGatewayRequest(
-  input: {
-    bundleId: NativePushIosBundle;
-    environment: ApnsEnvironment;
-    channelId: string;
-    registrationId: string;
-    sealed: string;
-    alert: boolean;
-    timestamp: number;
-  } & (
-    | { event: 'start'; pushToStartToken: string; staleAt: number }
-    | { event: 'update'; staleAt: number }
-    | { event: 'end'; dismissAt: number }
-  ),
+  input: LiveActivityGatewayRequest,
 ): LiveActivityGatewayRequest {
-  const common = {
-    bundleId: input.bundleId,
-    environment: input.environment,
-  };
-  const routed = {
-    channelId: input.channelId,
+  const topic = { bundleId: input.bundleId, environment: input.environment };
+  const card = {
     registrationId: input.registrationId,
     sealed: input.sealed,
     alert: input.alert,
@@ -52,58 +51,44 @@ export function buildLiveActivityGatewayRequest(
   switch (input.event) {
     case 'start':
       return {
-        ...common,
+        ...topic,
         event: 'start',
         pushToStartToken: input.pushToStartToken,
-        ...routed,
+        ...card,
         staleAt: input.staleAt,
       };
     case 'update':
-      return { ...common, event: 'update', ...routed, staleAt: input.staleAt };
+      return {
+        ...topic,
+        event: 'update',
+        channelId: input.channelId,
+        channelAuth: input.channelAuth,
+        ...card,
+        staleAt: input.staleAt,
+      };
     case 'end':
       return {
-        ...common,
+        ...topic,
         event: 'end',
-        ...routed,
+        channelId: input.channelId,
+        channelAuth: input.channelAuth,
+        ...card,
         dismissAt: input.dismissAt,
       };
   }
 }
 
-/** `POST /v1/apns/channels`. */
-export type ApnsChannelGatewayRequest =
-  | {
-      op: 'create';
-      bundleId: NativePushIosBundle;
-      environment: ApnsEnvironment;
-    }
-  | {
-      op: 'delete';
-      bundleId: NativePushIosBundle;
-      environment: ApnsEnvironment;
-      channelId: string;
-    };
+/** `POST /v1/apns/channels`: deletion is the only operation. */
+export type ApnsChannelDeleteRequest = { op: 'delete' } & Topic & ChannelRef;
 
-export function buildApnsChannelGatewayRequest(
-  input:
-    | {
-        op: 'create';
-        bundleId: NativePushIosBundle;
-        environment: ApnsEnvironment;
-      }
-    | {
-        op: 'delete';
-        bundleId: NativePushIosBundle;
-        environment: ApnsEnvironment;
-        channelId: string;
-      },
-): ApnsChannelGatewayRequest {
-  return input.op === 'create'
-    ? { op: 'create', bundleId: input.bundleId, environment: input.environment }
-    : {
-        op: 'delete',
-        bundleId: input.bundleId,
-        environment: input.environment,
-        channelId: input.channelId,
-      };
+export function buildApnsChannelDeleteRequest(
+  input: Topic & ChannelRef,
+): ApnsChannelDeleteRequest {
+  return {
+    op: 'delete',
+    bundleId: input.bundleId,
+    environment: input.environment,
+    channelId: input.channelId,
+    channelAuth: input.channelAuth,
+  };
 }

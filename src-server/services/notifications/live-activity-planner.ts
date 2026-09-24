@@ -17,6 +17,11 @@
  * `alert` is set on the step that carries alerts the phone has not had: the
  * start or update of an active card, or the end of a finished one. A
  * rollover's end never alerts; its start does.
+ *
+ * Channels are not planned here: a start makes its own (the gateway creates
+ * it inside the start), and the publisher deletes an ended activity's
+ * channel once `dismissAtMs` has passed — at once for an immediate end, so a
+ * rollover is end, delete, and a start on a new channel.
  */
 
 /** Apple ends a Live Activity after 8 h; roll over before that. */
