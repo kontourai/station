@@ -5,6 +5,9 @@
 //! an independently approved Station signing-key record. That provider does
 //! not exist in the native shell yet; this module keeps that missing boundary
 //! explicit instead of accepting renderer-created trust or signing input.
+//! It also has no cleanup-pending quarantine: metadata can still return a
+//! possibly stored grant after broker retirement fails. Do not mount this
+//! vault as active signaling custody until cleanup-pending grants are excluded.
 
 use crate::native_relay_proof_key::{
     NativeBrokerRedemptionChallenge, NativeBrokerRedemptionInvitation, NativeProofKeyChannel,
@@ -14,6 +17,7 @@ use crate::native_relay_proof_key::{
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use ring::digest::{digest, SHA256};
+use ring::hmac;
 #[cfg(test)]
 use ring::signature;
 use serde::{Deserialize, Serialize};
@@ -67,6 +71,27 @@ pub(crate) enum NativeRedemptionError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeGrantStoreWriteDisposition {
+    NotWritten,
+    MayHaveWritten,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NativeGrantStoreFailure {
+    pub(crate) primary: NativeRedemptionError,
+    pub(crate) write_disposition: NativeGrantStoreWriteDisposition,
+}
+
+impl From<NativeRedemptionError> for NativeGrantStoreFailure {
+    fn from(primary: NativeRedemptionError) -> Self {
+        Self {
+            primary,
+            write_disposition: NativeGrantStoreWriteDisposition::NotWritten,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeGrantCleanupDisposition {
     NotAttempted,
     Complete,
@@ -76,10 +101,27 @@ pub(crate) enum NativeGrantCleanupDisposition {
     },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeGrantRecoveryInfo {
+    pub(crate) broker_origin: String,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) routing_generation: u64,
+    pub(crate) grant_id: String,
+    pub(crate) credential_status: NativeGrantRecoveryCredentialStatus,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeGrantRecoveryCredentialStatus {
+    NotStored,
+    RetainedOrUnknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeRedemptionFailure {
     pub(crate) primary: NativeRedemptionError,
     pub(crate) cleanup: NativeGrantCleanupDisposition,
+    pub(crate) recovery: Option<NativeGrantRecoveryInfo>,
 }
 
 impl From<NativeRedemptionError> for NativeRedemptionFailure {
@@ -87,6 +129,7 @@ impl From<NativeRedemptionError> for NativeRedemptionFailure {
         Self {
             primary,
             cleanup: NativeGrantCleanupDisposition::NotAttempted,
+            recovery: None,
         }
     }
 }
@@ -303,12 +346,12 @@ pub(crate) trait NativeGrantCustody: Send + Sync {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         now: u64,
-    ) -> RedemptionResult<NativeRelayGrantMetadata>;
-    fn revoke(
+    ) -> Result<NativeRelayGrantMetadata, NativeGrantStoreFailure>;
+    fn revoke_if_matches(
         &self,
         owner: &NativeProofKeyOwner,
-        route: &NativeRelayGrantRoute,
-    ) -> RedemptionResult<()>;
+        grant: &NativeRelayClientGrantV2,
+    ) -> RedemptionResult<bool>;
 }
 
 pub(crate) struct NativeRelayGrantVault<B> {
@@ -327,7 +370,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         now: u64,
-    ) -> RedemptionResult<NativeRelayGrantMetadata> {
+    ) -> Result<NativeRelayGrantMetadata, NativeGrantStoreFailure> {
         let _global = NATIVE_GRANT_VAULT_LOCK
             .lock()
             .map_err(|_| NativeRedemptionError::GrantStore)?;
@@ -342,7 +385,10 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         };
         let account = native_grant_account(&binding)?;
         if backend.get(&account)?.is_some() {
-            return Err(NativeRedemptionError::GrantExists);
+            return Err(NativeGrantStoreFailure {
+                primary: NativeRedemptionError::GrantExists,
+                write_disposition: NativeGrantStoreWriteDisposition::NotWritten,
+            });
         }
         let payload = StoredNativeRelayGrantV2Ref {
             schema_version: 1,
@@ -357,16 +403,19 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         // visible for cleanup instead of stranding an undiscoverable secret.
         add_native_grant_index(&mut *backend, &binding)?;
         if backend.set(&account, &encoded).is_err() {
-            match backend.get(&account) {
+            let write_disposition = match backend.get(&account) {
                 Ok(None) => {
                     let _ = remove_native_grant_index(&mut *backend, &binding);
+                    NativeGrantStoreWriteDisposition::NotWritten
                 }
                 // Either the write committed before surfacing its error or the
-                // backend cannot establish that it did not. Keep the safe
-                // metadata pointer so a later explicit revoke can find it.
-                Ok(Some(_)) | Err(_) => {}
-            }
-            return Err(NativeRedemptionError::GrantStore);
+                // backend cannot establish that it did not.
+                Ok(Some(_)) | Err(_) => NativeGrantStoreWriteDisposition::MayHaveWritten,
+            };
+            return Err(NativeGrantStoreFailure {
+                primary: NativeRedemptionError::GrantStore,
+                write_disposition,
+            });
         }
         Ok(native_grant_metadata(binding.route, grant))
     }
@@ -404,25 +453,39 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         Ok(Some(native_grant_metadata(binding.route, &stored.grant)))
     }
 
-    fn revoke(
+    fn revoke_if_matches(
         &self,
         owner: &NativeProofKeyOwner,
-        route: &NativeRelayGrantRoute,
-    ) -> RedemptionResult<()> {
+        expected: &NativeRelayClientGrantV2,
+    ) -> RedemptionResult<bool> {
         let _global = NATIVE_GRANT_VAULT_LOCK
             .lock()
             .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let route = native_route_for_grant(expected);
         let binding = NativeRelayGrantBinding {
             owner: owner.clone(),
-            route: route.clone(),
+            route,
         };
         let account = native_grant_account(&binding)?;
         let mut backend = self
             .backend
             .lock()
             .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let Some(encoded) = backend.get(&account)? else {
+            remove_native_grant_index(&mut *backend, &binding)?;
+            return Ok(false);
+        };
+        let stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantInvalid)?;
+        if stored.schema_version != 1 || stored.binding != binding {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        if !same_native_grant(&stored.grant, expected) {
+            return Ok(false);
+        }
         backend.delete(&account)?;
-        remove_native_grant_index(&mut *backend, &binding)
+        remove_native_grant_index(&mut *backend, &binding)?;
+        Ok(true)
     }
 }
 
@@ -432,16 +495,16 @@ impl<B: NativeGrantBackend> NativeGrantCustody for NativeRelayGrantVault<B> {
         owner: &NativeProofKeyOwner,
         grant: &NativeRelayClientGrantV2,
         now: u64,
-    ) -> RedemptionResult<NativeRelayGrantMetadata> {
+    ) -> Result<NativeRelayGrantMetadata, NativeGrantStoreFailure> {
         NativeRelayGrantVault::store(self, owner, grant, now)
     }
 
-    fn revoke(
+    fn revoke_if_matches(
         &self,
         owner: &NativeProofKeyOwner,
-        route: &NativeRelayGrantRoute,
-    ) -> RedemptionResult<()> {
-        NativeRelayGrantVault::revoke(self, owner, route)
+        grant: &NativeRelayClientGrantV2,
+    ) -> RedemptionResult<bool> {
+        NativeRelayGrantVault::revoke_if_matches(self, owner, grant)
     }
 }
 
@@ -901,13 +964,7 @@ fn validate_native_grant(
     grant: &NativeRelayClientGrantV2,
     now: u64,
 ) -> RedemptionResult<NativeRelayGrantRoute> {
-    let route = NativeRelayGrantRoute {
-        broker_origin: grant.broker_origin.clone(),
-        station_id: grant.scope.station_id.clone(),
-        enrollment_id: grant.scope.enrollment_id.clone(),
-        routing_generation: grant.scope.routing_generation,
-        grant_id: grant.credential.id.clone(),
-    };
+    let route = native_route_for_grant(grant);
     if grant.version != NATIVE_GRANT_VERSION
         || !canonical_broker_origin(&grant.broker_origin)
         || !valid_uuid(&grant.scope.station_id)
@@ -932,6 +989,44 @@ fn validate_native_grant(
         return Err(NativeRedemptionError::GrantInvalid);
     }
     Ok(route)
+}
+
+fn native_route_for_grant(grant: &NativeRelayClientGrantV2) -> NativeRelayGrantRoute {
+    NativeRelayGrantRoute {
+        broker_origin: grant.broker_origin.clone(),
+        station_id: grant.scope.station_id.clone(),
+        enrollment_id: grant.scope.enrollment_id.clone(),
+        routing_generation: grant.scope.routing_generation,
+        grant_id: grant.credential.id.clone(),
+    }
+}
+
+fn same_native_grant(
+    stored: &NativeRelayClientGrantV2,
+    expected: &NativeRelayClientGrantV2,
+) -> bool {
+    stored.version == expected.version
+        && stored.broker_origin == expected.broker_origin
+        && stored.scope == expected.scope
+        && stored.station_signing_key_id == expected.station_signing_key_id
+        && stored.station_signing_generation == expected.station_signing_generation
+        && stored.surface == expected.surface
+        && stored.proof_public_key == expected.proof_public_key
+        && stored.credential.id == expected.credential.id
+        && stored.expires_at == expected.expires_at
+        && same_grant_secret(
+            stored.credential.secret.expose(),
+            expected.credential.secret.expose(),
+        )
+}
+
+fn same_grant_secret(stored: &str, expected: &str) -> bool {
+    // Use ring's constant-time HMAC verification instead of String equality.
+    // The fixed domain key is not secret; this comparison protects the
+    // deletion decision from leaking whether a replacement bearer matches.
+    let key = hmac::Key::new(hmac::HMAC_SHA256, b"station-native-grant-local-match-v1");
+    let expected_tag = hmac::sign(&key, expected.as_bytes());
+    hmac::verify(&key, stored.as_bytes(), expected_tag.as_ref()).is_ok()
 }
 
 fn station_signing_key_id(jwk: &P256PublicJwk) -> String {
@@ -1379,6 +1474,7 @@ mod tests {
             &transport,
             &authority,
         );
+        let stored_grant = sample_grant(&prepared, NOW + 3_600_000);
         let metadata = service.redeem("Local", 7, prepared.invitation).unwrap();
         let request = server.join().unwrap();
         assert!(String::from_utf8_lossy(&request).contains("I".repeat(43).as_str()));
@@ -1389,7 +1485,9 @@ mod tests {
             .metadata(&prepared.owner, &metadata.route, NOW)
             .unwrap()
             .is_some());
-        authority.revoke(&prepared.owner, &metadata.route).unwrap();
+        assert!(authority
+            .revoke_if_matches(&prepared.owner, &stored_grant)
+            .unwrap());
         assert!(authority
             .metadata(&prepared.owner, &metadata.route, NOW)
             .unwrap()
@@ -1483,6 +1581,10 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let origin = format!("http://{address}");
         let prepared = prepared(origin.clone(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let mut preexisting = sample_grant(&prepared, NOW + 3_600_000);
+        preexisting.credential.secret = SecretText(Zeroizing::new("O".repeat(43)));
+        let preexisting_metadata = grants.store(&prepared.owner, &preexisting, NOW).unwrap();
         let changed = prepared.authority.clone();
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
@@ -1537,7 +1639,6 @@ mod tests {
             (request, retire)
         });
         let transport = UreqNativeBrokerTransport::new();
-        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
         let service = service(
             &prepared.authority,
             &prepared.proof_keys,
@@ -1552,10 +1653,161 @@ mod tests {
             .starts_with("POST /broker/v1/native/grants/redeem "));
         assert!(String::from_utf8_lossy(&retire_request)
             .starts_with("POST /broker/v1/native/grants/retire "));
+        assert!(grants
+            .metadata(&prepared.owner, &preexisting_metadata.route, NOW)
+            .unwrap()
+            .is_some());
+        let binding = NativeRelayGrantBinding {
+            owner: prepared.owner.clone(),
+            route: preexisting_metadata.route.clone(),
+        };
+        let account = native_grant_account(&binding).unwrap();
+        let backend = grants.backend.lock().unwrap();
+        let stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(backend.values.get(&account).unwrap()).unwrap();
+        assert_eq!(stored.grant.credential.secret.expose(), "O".repeat(43));
     }
 
     #[test]
-    fn ambiguous_keyring_write_is_locally_revoked_when_exact_broker_retire_fails() {
+    fn stale_before_store_and_failed_retire_reports_grant_id_without_retry_credential() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let origin = format!("http://{address}");
+        let prepared = prepared(origin.clone(), 7);
+        let changed = prepared.authority.clone();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let redeem = read_request(&mut socket);
+            let (_, body) = request_header_body(&redeem);
+            changed.0.lock().unwrap().profile.revision = 8;
+            let grant = grant_body(body, NOW + 3_600_000);
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                grant.len()
+            )
+            .unwrap();
+            socket.write_all(&grant).unwrap();
+            drop(socket);
+
+            let (mut retire, _) = listener.accept().unwrap();
+            let request = read_request(&mut retire);
+            let (header, _) = request_header_body(&request);
+            let header = String::from_utf8_lossy(header).to_ascii_lowercase();
+            assert!(header.starts_with("post /broker/v1/native/grants/retire http/1.1"));
+            assert!(header.contains(&format!("authorization: bearer {}", "s".repeat(43))));
+            write!(
+                retire,
+                "HTTP/1.1 503 Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let transport = UreqNativeBrokerTransport::new();
+        let service = service(
+            &prepared.authority,
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+        );
+        let failure = service.redeem("Local", 7, prepared.invitation).unwrap_err();
+        assert_eq!(failure.primary, NativeRedemptionError::StaleProfile);
+        assert_eq!(
+            failure.cleanup,
+            NativeGrantCleanupDisposition::Pending {
+                local_revoke_failed: false,
+                broker_retire_failed: true,
+            }
+        );
+        assert_eq!(
+            failure
+                .recovery
+                .as_ref()
+                .map(|recovery| recovery.credential_status),
+            Some(NativeGrantRecoveryCredentialStatus::NotStored)
+        );
+        let expected_grant_id = "G".repeat(22);
+        assert_eq!(
+            failure
+                .recovery
+                .as_ref()
+                .map(|recovery| recovery.grant_id.as_str()),
+            Some(expected_grant_id.as_str())
+        );
+        server.join().unwrap();
+        assert!(grants.backend.lock().unwrap().values.is_empty());
+    }
+
+    #[test]
+    fn duplicate_grant_id_retires_new_response_without_deleting_existing_keyring_secret() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let origin = format!("http://{address}");
+        let prepared = prepared(origin.clone(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let mut existing = sample_grant(&prepared, NOW + 3_600_000);
+        existing.credential.secret = SecretText(Zeroizing::new("O".repeat(43)));
+        let existing_metadata = grants.store(&prepared.owner, &existing, NOW).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let redeem = read_request(&mut socket);
+            let (_, body) = request_header_body(&redeem);
+            let replacement_grant = grant_body(body, NOW + 3_600_000);
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                replacement_grant.len()
+            )
+            .unwrap();
+            socket.write_all(&replacement_grant).unwrap();
+            drop(socket);
+
+            let (mut retire, _) = listener.accept().unwrap();
+            let retire_request = read_request(&mut retire);
+            let (header, _) = request_header_body(&retire_request);
+            let header = String::from_utf8_lossy(header).to_ascii_lowercase();
+            assert!(header.contains(&format!("authorization: bearer {}", "s".repeat(43))));
+            let receipt = serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_RETIRE_VERSION,
+                "retired": true,
+            }))
+            .unwrap();
+            write!(
+                retire,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                receipt.len()
+            )
+            .unwrap();
+            retire.write_all(&receipt).unwrap();
+        });
+        let transport = UreqNativeBrokerTransport::new();
+        let service = service(
+            &prepared.authority,
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+        );
+        let failure = service.redeem("Local", 7, prepared.invitation).unwrap_err();
+        assert_eq!(failure.primary, NativeRedemptionError::GrantExists);
+        assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::Complete);
+        server.join().unwrap();
+        assert!(grants
+            .metadata(&prepared.owner, &existing_metadata.route, NOW)
+            .unwrap()
+            .is_some());
+        let binding = NativeRelayGrantBinding {
+            owner: prepared.owner.clone(),
+            route: existing_metadata.route,
+        };
+        let account = native_grant_account(&binding).unwrap();
+        let backend = grants.backend.lock().unwrap();
+        let stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(backend.values.get(&account).unwrap()).unwrap();
+        assert_eq!(stored.grant.credential.secret.expose(), "O".repeat(43));
+    }
+
+    #[test]
+    fn ambiguous_keyring_write_preserves_retry_credential_when_broker_retire_fails() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let address = listener.local_addr().unwrap();
         let origin = format!("http://{address}");
@@ -1607,17 +1859,46 @@ mod tests {
                 broker_retire_failed: true,
             }
         );
+        let expected_grant_id = "G".repeat(22);
+        assert_eq!(
+            failure
+                .recovery
+                .as_ref()
+                .map(|recovery| recovery.grant_id.as_str()),
+            Some(expected_grant_id.as_str())
+        );
+        assert_eq!(
+            failure
+                .recovery
+                .as_ref()
+                .map(|recovery| recovery.credential_status),
+            Some(NativeGrantRecoveryCredentialStatus::RetainedOrUnknown)
+        );
         server.join().unwrap();
+        // Current metadata is intentionally informational only. Before any
+        // signaling consumer is mounted, failed-retirement grants need a
+        // cleanup-pending quarantine that makes this lookup return None.
+        let route = failure.recovery.as_ref().unwrap();
+        let route = NativeRelayGrantRoute {
+            broker_origin: route.broker_origin.clone(),
+            station_id: route.station_id.clone(),
+            enrollment_id: route.enrollment_id.clone(),
+            routing_generation: route.routing_generation,
+            grant_id: route.grant_id.clone(),
+        };
+        assert!(grants
+            .metadata(&prepared.owner, &route, NOW)
+            .unwrap()
+            .is_some());
         let backend = grants.backend.lock().unwrap();
         assert!(backend
             .values
             .values()
-            .all(|value| !value.contains(&"S".repeat(43))));
+            .any(|value| value.contains(&"S".repeat(43))));
         assert!(backend
             .values
             .iter()
-            .filter(|(account, _)| account.starts_with(GRANT_INDEX_PREFIX))
-            .all(|(_, value)| value == "[]"));
+            .any(|(account, value)| { account.starts_with(GRANT_INDEX_PREFIX) && value != "[]" }));
     }
 
     #[test]
@@ -1656,7 +1937,10 @@ mod tests {
         let vault = NativeRelayGrantVault::new(backend);
         let grant = sample_grant(&prepared, NOW + 3_600_000);
         assert_eq!(
-            vault.store(&prepared.owner, &grant, NOW).unwrap_err(),
+            vault
+                .store(&prepared.owner, &grant, NOW)
+                .unwrap_err()
+                .primary,
             NativeRedemptionError::GrantStore
         );
         let backend = vault.backend.lock().unwrap();
@@ -1879,6 +2163,7 @@ where
             .map_err(|_| NativeRedemptionError::GrantInvalid)?;
         let now = (self.now)();
         let route = validate_returned_grant(&before, &invitation, &public, &grant, now)?;
+        let mut store_write_disposition: Option<NativeGrantStoreWriteDisposition> = None;
         let commit_result = self
             .context_provider
             .with_current_context(profile_name, |current| {
@@ -1887,7 +2172,17 @@ where
                 }
                 validate_profile_context(&current)?;
                 validate_invitation_and_trust(&current, &invitation, now, Some(&public))?;
-                let metadata = self.grants.store(&owner, &grant, now)?;
+                let metadata = match self.grants.store(&owner, &grant, now) {
+                    Ok(metadata) => {
+                        store_write_disposition =
+                            Some(NativeGrantStoreWriteDisposition::MayHaveWritten);
+                        metadata
+                    }
+                    Err(failure) => {
+                        store_write_disposition = Some(failure.write_disposition);
+                        return Err(failure.primary);
+                    }
+                };
                 if metadata.route != route {
                     return Err(NativeRedemptionError::GrantInvalid);
                 }
@@ -1897,8 +2192,19 @@ where
             // Exact local revoke and self-retire target only this returned
             // grant ID and credential. Cleanup status is returned separately
             // so it never masks the original profile/storage failure.
-            let local_revoke_failed = self.grants.revoke(&owner, &route).is_err();
+            let local_cleanup_required = matches!(
+                store_write_disposition,
+                Some(NativeGrantStoreWriteDisposition::MayHaveWritten)
+            );
             let broker_retire_failed = self.http.retire_own_grant(&grant).is_err();
+            // If this response may have been stored, keep its exact credential
+            // when the broker cannot confirm retirement. If storage never ran
+            // (or rejected a duplicate), the response secret is gone and only
+            // the nonsecret grant ID remains for operator revocation. The
+            // grant vault is not an active signaling surface in this tranche.
+            let local_revoke_failed = local_cleanup_required
+                && !broker_retire_failed
+                && self.grants.revoke_if_matches(&owner, &grant).is_err();
             let cleanup = if !local_revoke_failed && !broker_retire_failed {
                 NativeGrantCleanupDisposition::Complete
             } else {
@@ -1907,7 +2213,26 @@ where
                     broker_retire_failed,
                 }
             };
-            return Err(NativeRedemptionFailure { primary, cleanup });
+            let recovery =
+                (local_revoke_failed || broker_retire_failed).then(|| NativeGrantRecoveryInfo {
+                    broker_origin: route.broker_origin.clone(),
+                    station_id: route.station_id.clone(),
+                    enrollment_id: route.enrollment_id.clone(),
+                    routing_generation: route.routing_generation,
+                    grant_id: route.grant_id.clone(),
+                    credential_status: if local_cleanup_required
+                        && (broker_retire_failed || local_revoke_failed)
+                    {
+                        NativeGrantRecoveryCredentialStatus::RetainedOrUnknown
+                    } else {
+                        NativeGrantRecoveryCredentialStatus::NotStored
+                    },
+                });
+            return Err(NativeRedemptionFailure {
+                primary,
+                cleanup,
+                recovery,
+            });
         }
         commit_result.map_err(NativeRedemptionFailure::from)
     }
