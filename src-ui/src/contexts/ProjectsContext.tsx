@@ -1,6 +1,6 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
-import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
