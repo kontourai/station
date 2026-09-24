@@ -22,7 +22,7 @@ import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
 import { LazyBoundary } from './LazyBoundary';
-import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
+import { PreviewDownloadLink } from './PreviewDownloadLink';
 import { Empty, SkeletonBlock } from './state';
 
 /**
@@ -202,6 +202,16 @@ const previewMarkdownComponents: NonNullable<Options['components']> = {
   img: MarkdownImage,
 };
 
+function fileKindLabel(kind: FilePreviewKind, mediaType: string): string {
+  if (kind === 'pdf') return 'PDF';
+  if (kind === 'markdown') return 'Markdown';
+  if (kind === 'json') return 'JSON';
+  const type = mediaType.toLowerCase().split(';')[0].trim();
+  if (type === 'text/csv') return 'CSV';
+  if (kind === 'text') return 'Text';
+  return type;
+}
+
 function prettyJson(text: string): string {
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
@@ -231,6 +241,10 @@ export default function FilePreviewContent({
     [current, kind, pdfInline],
   );
   const name = current.name || 'Attachment';
+  const download = <PreviewDownloadLink href={current.url} name={name} />;
+  // The canvas viewer carries Download at the end of its own zoom toolbar;
+  // every other body gets one slim row naming the file type.
+  const viewerOwnsToolbar = kind === 'pdf' && !pdfInline && Boolean(pdfBlob);
 
   let body: ReactNode;
   if (kind === 'pdf') {
@@ -246,7 +260,7 @@ export default function FilePreviewContent({
     ) : pdfBlob ? (
       <LazyBoundary
         load={loadPdfCanvasViewer}
-        componentProps={{ blob: pdfBlob }}
+        componentProps={{ blob: pdfBlob, actions: download }}
         pending={<SkeletonBlock count={3} label="Loading PDF preview" />}
       />
     ) : (
@@ -299,16 +313,19 @@ export default function FilePreviewContent({
 
   return (
     <>
-      <ResponsiveSurfaceActions className="file-preview__actions">
-        <a
-          className="button button--secondary"
-          href={current.url}
-          download={name}
-        >
-          Download
-        </a>
-      </ResponsiveSurfaceActions>
-      <div className="file-preview__body">{body}</div>
+      {!viewerOwnsToolbar && (
+        <div className="file-preview__toolbar">
+          <span className="file-preview__kind">
+            {fileKindLabel(kind, current.mediaType)}
+          </span>
+          {download}
+        </div>
+      )}
+      <div
+        className={`file-preview__body${isText ? ' file-preview__body--fit' : ''}`}
+      >
+        {body}
+      </div>
     </>
   );
 }

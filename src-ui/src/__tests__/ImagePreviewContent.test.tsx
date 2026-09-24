@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   releaseAttachmentObjectUrl,
@@ -30,6 +30,18 @@ afterEach(() => {
 });
 
 describe('ImagePreviewContent', () => {
+  test('offers the image for download at the end of the zoom toolbar', () => {
+    const item = { url: 'blob:shot', mediaType: 'image/png', name: 'shot.png' };
+    render(
+      <ImagePreviewContent current={item} items={[item]} onSelect={() => {}} />,
+    );
+
+    const download = screen.getByRole('link', { name: 'Download shot.png' });
+    expect(download.getAttribute('href')).toBe('blob:shot');
+    expect(download.getAttribute('download')).toBe('shot.png');
+    expect(download.closest('.image-inspector__toolbar')).not.toBeNull();
+  });
+
   test('holds every gallery image, so prev/next never lands on a revoked sibling', () => {
     storeAttachmentObjectUrl('a', 'blob:a');
     storeAttachmentObjectUrl('b', 'blob:b');

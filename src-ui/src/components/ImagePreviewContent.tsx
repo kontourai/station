@@ -1,6 +1,7 @@
 import { Button } from './Button';
 import { useRetainedAttachmentObjectUrls } from './chat/attachment-object-urls';
 import { ImageInspector } from './ImageInspector';
+import { PreviewDownloadLink } from './PreviewDownloadLink';
 
 export interface PreviewItem {
   url: string;
@@ -58,6 +59,12 @@ export default function ImagePreviewContent({
         src={current.url}
         name={current.name || 'Preview'}
         onNavigate={selectAdjacentImage}
+        actions={
+          <PreviewDownloadLink
+            href={current.url}
+            name={current.name || 'image'}
+          />
+        }
       />
     </>
   );

@@ -6823,16 +6823,37 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* File Preview (non-image attachments) */
-.file-preview__actions {
+.file-preview__toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
 }
-.file-preview__actions .button {
-  min-height: 44px;
+.file-preview__kind {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+/* The preview's Download: an icon at the end of whichever toolbar the viewer
+   shows, with a full 44px target. */
+.preview-download {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
   text-decoration: none;
+}
+.preview-download svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .file-preview__body {
   flex: 1;
@@ -6840,6 +6861,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+/* Text previews size to their content: a three-line note should not sit in
+   a nearly empty full-height panel. The panel keeps its height cap. */
+.file-preview__body--fit {
+  flex: 0 1 auto;
+}
+.image-preview-panel:has(.file-preview__body--fit) {
+  height: auto;
+  max-height: 90dvh;
 }
 .file-preview__frame {
   flex: 1;
@@ -6868,6 +6898,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .file-preview__markdown {
   padding: 4px 8px;
   overflow-wrap: anywhere;
+}
+.file-preview__markdown ul,
+.file-preview__markdown ol {
+  padding-inline-start: 1.5em;
+}
+.file-preview__markdown ul {
+  list-style: disc;
+}
+.file-preview__markdown ol {
+  list-style: decimal;
 }
 .file-preview__notice {
   margin: 0;
