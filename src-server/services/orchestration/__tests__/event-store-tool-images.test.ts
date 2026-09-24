@@ -414,7 +414,7 @@ describe('EventStore ingress for tool-returned images', () => {
     expect(chargedBytes('thread-a')).toBe(dataUrl.length);
   });
 
-  test('replaying the same raw event id charges nothing more (duplicate refunds)', () => {
+  test('replaying the same raw event id charges nothing more (a duplicate never reaches the charge)', () => {
     store.appendEvent(screenshotResult('thread-a'));
     store.appendEvent(screenshotResult('thread-a'));
     expect(store.appendEventIfAbsent(screenshotResult('thread-a'))).toBe(
@@ -423,22 +423,31 @@ describe('EventStore ingress for tool-returned images', () => {
     expect(chargedBytes('thread-a')).toBe(dataUrl.length);
   });
 
-  test('an append that fails refunds the charge, and its retry charges once', () => {
+  test('an append that throws after writing the charge rolls it back with the event', () => {
+    // Throws inside the append savepoint, AFTER the charge statement ran, so
+    // only the transaction — not any refund bookkeeping — can undo it.
     const spy = vi
       .spyOn(
-        store as unknown as { appendIngressedEvent: () => number },
-        'appendIngressedEvent',
+        store as unknown as { projectConversationHistoryEvent: () => void },
+        'projectConversationHistoryEvent',
       )
       .mockImplementationOnce(() => {
-        throw new Error('simulated append failure');
+        throw new Error('simulated failure inside the append');
       });
-    expect(() => store.appendEvent(screenshotResult('thread-a'))).toThrow(
-      'simulated append failure',
-    );
+    expect(() =>
+      store.appendEvent(store.projectLiveEvent(screenshotResult('thread-a'))),
+    ).toThrow('simulated failure inside the append');
+    expect(spy).toHaveBeenCalled();
     expect(chargedBytes('thread-a')).toBe(0);
+    expect(store.listEvents('thread-a')).toEqual([]);
     spy.mockRestore();
     store.appendEvent(screenshotResult('thread-a'));
     expect(chargedBytes('thread-a')).toBe(dataUrl.length);
+  });
+
+  test('a projection that is never appended (a crash in between) charges nothing', () => {
+    store.projectLiveEvent(screenshotResult('thread-a'));
+    expect(chargedBytes('thread-a')).toBe(0);
   });
 
   test('an event the ingress refuses after charging its image holds no budget', () => {

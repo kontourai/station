@@ -2803,19 +2803,22 @@ export class EventStore {
 
   /**
    * Per live tool event (thread + event id): the blob refs this ingress wrote
-   * and the quota it charged for them, until the append that persists the
-   * event settles them.
+   * and the quota its images will be charged, until the append that persists
+   * the event settles them.
    *
    * - `refs` let the append of the same projected event — which arrives
    *   reference-only — bind what this store itself wrote.
-   * - `charges` make the quota charge idempotent per (event, blob ref): a
-   *   second projection of the same event charges nothing more. The append
-   *   commits them; a failed append, a duplicate event id, or eviction from
-   *   this bounded ledger refunds them, so a retry or a replay never charges
-   *   twice and an event that never persists holds no budget.
+   * - `charges` are PLANNED, not written. Projection only reads the budget to
+   *   decide whether an image is kept; the charge is written by the append,
+   *   inside the same savepoint as the event row
+   *   ({@link chargeCommittedToolImages}). So a thrown append rolls it back, a
+   *   duplicate event id never reaches it, and a crash between projection and
+   *   append leaves nothing charged — no refund bookkeeping exists to lose.
+   *   Keyed by blob ref, so one (event, blob) pair is charged at most once.
    *
-   * An entry that ages out only costs the image its preview (the append then
-   * finds no ref it may bind), never an unauthorized binding.
+   * An entry that ages out only costs the image its preview and its charge
+   * (the append then finds nothing to bind or charge), never an unauthorized
+   * binding.
    */
   private readonly pendingToolImages = new Map<
     string,
@@ -2839,72 +2842,71 @@ export class EventStore {
       while (this.pendingToolImages.size > LIVE_TOOL_IMAGE_REF_MEMORY) {
         const oldest = this.pendingToolImages.keys().next().value;
         if (oldest === undefined) break;
-        this.settleToolImageCharges(oldest, false);
+        this.settleToolImageCharges(oldest);
       }
     }
     return pending;
   }
 
   /**
-   * Settle a tool event's pending quota charges: keep them when the event
-   * committed, refund them otherwise (append failure, duplicate, eviction).
+   * Forget a tool event's pending entry once its append has finished (either
+   * way): whatever was charged was charged inside the append's own savepoint.
    */
-  private settleToolImageCharges(key: string | undefined, committed: boolean) {
-    if (key === undefined) return;
-    const pending = this.pendingToolImages.get(key);
-    if (!pending) return;
-    this.pendingToolImages.delete(key);
-    if (committed) return;
-    for (const bytes of pending.charges.values()) {
-      try {
-        this.refundToolImageCapacity(pending.threadId, bytes);
-      } catch {
-        // Over-counting is the safe direction; a refund never fails a caller.
-      }
-    }
+  private settleToolImageCharges(key: string | undefined) {
+    if (key !== undefined) this.pendingToolImages.delete(key);
   }
 
   /**
-   * Charge a tool image against the same per-chat and per-Station attachment
-   * budget user uploads draw on, in ONE conditional statement: atomic on its
-   * own and safe inside a caller's transaction. Returns false, charging
-   * nothing, when either budget would be exceeded.
+   * Whether `encodedBytes` more would still fit the per-chat and per-Station
+   * attachment budget user uploads draw on. Read-only: projection decides with
+   * it, and the append writes the charge.
    */
-  private chargeToolImageCapacity(
+  private toolImageCapacityAllows(
     threadId: string,
     encodedBytes: number,
   ): boolean {
-    const result = this.db
+    const row = this.db
       .prepare(
-        `INSERT INTO orchestration_attachment_quota (thread_id, encoded_bytes)
-         SELECT ?, ?
-          WHERE COALESCE((SELECT encoded_bytes FROM orchestration_attachment_quota
-                           WHERE thread_id = ?), 0) + ? <= ?
-            AND (SELECT COALESCE(SUM(encoded_bytes), 0)
-                   FROM orchestration_attachment_quota) + ? <= ?
-         ON CONFLICT(thread_id) DO UPDATE SET
-           encoded_bytes = encoded_bytes + excluded.encoded_bytes`,
+        `SELECT
+           COALESCE((SELECT encoded_bytes FROM orchestration_attachment_quota
+                      WHERE thread_id = ?), 0) AS thread_bytes,
+           (SELECT COALESCE(SUM(encoded_bytes), 0)
+              FROM orchestration_attachment_quota) AS store_bytes`,
       )
-      .run(
-        threadId,
-        encodedBytes,
-        threadId,
-        encodedBytes,
-        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES,
-        encodedBytes,
-        CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES,
-      ) as { changes: number | bigint };
-    return Number(result.changes) > 0;
+      .get(threadId) as { thread_bytes: number; store_bytes: number };
+    return (
+      Number(row.thread_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES &&
+      Number(row.store_bytes) + encodedBytes <=
+        CHAT_ATTACHMENT_MAX_STORE_ENCODED_BYTES
+    );
   }
 
-  private refundToolImageCapacity(threadId: string, encodedBytes: number) {
-    this.db
-      .prepare(
-        `UPDATE orchestration_attachment_quota
-            SET encoded_bytes = MAX(encoded_bytes - ?, 0)
-          WHERE thread_id = ?`,
-      )
-      .run(encodedBytes, threadId);
+  /**
+   * Write the planned charges of the tool event being appended. Called only
+   * inside the append's savepoint, on the path that inserts the event row, so
+   * the charge commits and rolls back with the event.
+   *
+   * Unconditional by design: the keep-or-drop decision was made at projection
+   * from the same budget, and in this process projection and append run
+   * synchronously back to back (`orchestration-service.ts` `projectLiveEvent`
+   * then `appendEvent`), so nothing charges in between. A second process
+   * writing the same home between the two could overshoot by one event's
+   * images.
+   */
+  private chargeCommittedToolImages(key: string | undefined): void {
+    const pending =
+      key === undefined ? undefined : this.pendingToolImages.get(key);
+    if (!pending || pending.charges.size === 0) return;
+    const insert = this.db.prepare(
+      `INSERT INTO orchestration_attachment_quota (thread_id, encoded_bytes)
+       VALUES (?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET
+         encoded_bytes = encoded_bytes + excluded.encoded_bytes`,
+    );
+    for (const bytes of pending.charges.values()) {
+      insert.run(pending.threadId, bytes);
+    }
   }
 
   private isAttachmentBoundToThread(ref: string, threadId: string): boolean {
@@ -2992,9 +2994,17 @@ export class EventStore {
       const ref = attachmentBlobRefFor(bytes);
       const pending = this.pendingToolImagesFor(event);
       // The digest is known before any write, so a spent budget writes
-      // nothing, and one (event, blob) pair is charged at most once.
+      // nothing, and one (event, blob) pair is planned at most once. Images
+      // already planned for this event count against the budget too.
       if (!pending.charges.has(ref)) {
-        if (!this.chargeToolImageCapacity(event.threadId, dataUrl.length)) {
+        let planned = 0;
+        for (const bytes of pending.charges.values()) planned += bytes;
+        if (
+          !this.toolImageCapacityAllows(
+            event.threadId,
+            planned + dataUrl.length,
+          )
+        ) {
           notKept.push({
             name: attachment.name,
             reason:
@@ -3005,10 +3015,7 @@ export class EventStore {
         pending.charges.set(ref, dataUrl.length);
       }
       if (this.attachmentBlobs.writeBytes(bytes) !== ref) {
-        const charged = pending.charges.get(ref);
         pending.charges.delete(ref);
-        if (charged !== undefined)
-          this.refundToolImageCapacity(event.threadId, charged);
         notKept.push({ name: attachment.name, reason: 'could not be stored' });
         return descriptor;
       }
@@ -3085,8 +3092,8 @@ export class EventStore {
     try {
       persistedPayload = projectWithIdentity(persisted.payload);
     } catch (error) {
-      // Refused after its images were charged: the event will never persist.
-      this.settleToolImageCharges(persisted.toolImageKey, false);
+      // Refused after its images were planned: the event will never persist.
+      this.settleToolImageCharges(persisted.toolImageKey);
       throw error;
     }
     return {
@@ -3260,22 +3267,18 @@ export class EventStore {
       );
     }
     const ingress = this.prepareEventIngress(event);
-    // A tool image's quota charge is kept only if THIS append commits the
-    // event; a failure or a duplicate event id refunds it.
-    let committed = false;
+    // A tool image's quota charge is written inside this append's savepoint
+    // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
     try {
-      return this.appendIngressedEvent(ingress, declaredOutputs, () => {
-        committed = true;
-      });
+      return this.appendIngressedEvent(ingress, declaredOutputs);
     } finally {
-      this.settleToolImageCharges(ingress.persisted.toolImageKey, committed);
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
     }
   }
 
   private appendIngressedEvent(
     ingress: ReturnType<EventStore['prepareEventIngress']>,
     declaredOutputs: readonly NativeOutputTerminalAdmission[],
-    markCommitted: () => void,
   ): number {
     const event = ingress.event;
     const startedAt = performance.now();
@@ -3410,6 +3413,7 @@ export class EventStore {
         return Number(existing.sequence);
       }
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+      this.chargeCommittedToolImages(persisted.toolImageKey);
       this.projectConversationHistoryEvent(event);
       this.projectMessageSearchEvent(event);
       this.projectRequestState(event, requestId, nextSequence);
@@ -3422,7 +3426,6 @@ export class EventStore {
           workItemAdmission.association,
         );
       this.db.exec('RELEASE SAVEPOINT append_event_history');
-      markCommitted();
       this.commitSessionWorkItemAdmission(workItemAdmission);
     } catch (error) {
       try {
@@ -4019,13 +4022,10 @@ export class EventStore {
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
     const ingress = this.prepareEventIngress(event);
-    let committed = false;
     try {
-      const sequence = this.appendIngressedEventIfAbsent(ingress);
-      committed = sequence !== undefined;
-      return sequence;
+      return this.appendIngressedEventIfAbsent(ingress);
     } finally {
-      this.settleToolImageCharges(ingress.persisted.toolImageKey, committed);
+      this.settleToolImageCharges(ingress.persisted.toolImageKey);
     }
   }
 
@@ -4065,6 +4065,7 @@ export class EventStore {
       absent = result.changes === 0;
       if (!absent) {
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
         this.projectRequestState(event, requestId, nextSequence);
