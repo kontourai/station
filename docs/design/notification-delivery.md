@@ -239,10 +239,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   device itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below
-  that gets one final empty card and then nothing. That final card is best
-  effort: nothing flushes on a scope change, so it goes out with the next
-  lifecycle event or card refresh, and a restart in between forgets it (the
-  phone's last card then expires on its own, within two hours). A phone
+  that gets one final empty card and then nothing. A scope change requests
+  a flush (`DevicePairingService.onDeviceAccessChanged`), so that card goes
+  out at once, subject to the same per-phone interval and backoff as any
+  other send. Whether the last card a phone accepted had rows is kept with
+  its registration (`cardShown`), so a restart before that flush still sends
+  the final card, and a phone that never showed a row is never sent one. A
+  revoked or replaced device has no registration left to send to; its last
+  card expires on its own, within two hours. A phone
   paired by code but reached through Tailscale Serve lists sessions as its
   WhoIs person, and a local-UI device's requests resolve to the local
   operator, so either one's in-app list can differ from its card; the card
