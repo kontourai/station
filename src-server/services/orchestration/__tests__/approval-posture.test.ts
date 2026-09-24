@@ -740,6 +740,17 @@ describe('server-ordered approval posture (#2436)', () => {
       expect(startStamp('c-op-claude')).toBe('host');
     });
 
+    test('#2569: an engine with no approval knob still gets its confinement, so an ACP full-access mode can be withheld', async () => {
+      await start('c-acp-unattended', 'acp');
+      expect(acp.starts.at(-1)?.confinement).toBe('workspace');
+      await turn('c-acp-unattended', { modelOptions: { mode: 'yolo' } });
+      expect(acp.turns.at(-1)?.confinement).toBe('workspace');
+      await start('c-acp-operator', 'acp', undefined, undefined, {
+        operator: true,
+      });
+      expect(acp.starts.at(-1)?.confinement).toBe('host');
+    });
+
     test('a caller-supplied confinement, stamp or grant look-alike is ignored', async () => {
       stationDefault = 'never';
       await service.dispatch(

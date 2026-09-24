@@ -165,15 +165,6 @@ const ACP_TOOL_SERVER_SKIP_REASON_MAP: Record<
   'delivery-failed': 'delivery-failed',
 };
 
-/** #2569: `modelOptions` without an ACP mode that was not applied. */
-function withoutAcpMode(
-  modelOptions: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!modelOptions) return modelOptions;
-  const { mode: _withheld, ...rest } = modelOptions;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
 function toCapabilityUndelivered(
   skip: AcpToolServerSkip,
 ): CapabilityUndelivered {
@@ -1194,7 +1185,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       // (the resume branch below) returns nothing, so a resumed session
       // stays honestly unset here.
       let reportedModel: string | undefined;
-      let startModeWithheld = false;
       let verifiedModelSelection:
         | ReturnType<typeof modelSelectionReceipt>
         | undefined;
@@ -1256,14 +1246,14 @@ export class AcpAdapter implements ProviderAdapterShape {
         }
         // #2569: a full-access mode is the ACP form of approval `never`;
         // outside a `host` session it is not applied, and the session keeps
-        // (and reports) the connection's own current mode.
+        // (and reports, as `acpSessionMode`) the connection's own current
+        // mode. `mode` is not an effective-model-option key, so nothing
+        // reports the withheld request as applied.
         const requestedMode = permittedAcpSessionMode(
           modeCatalog,
           requestedAcpSessionMode(input.modelOptions),
           input.confinement,
         );
-        startModeWithheld =
-          requestedAcpSessionMode(input.modelOptions) !== requestedMode;
         if (requestedMode) {
           if (modeCatalog.modes.length === 0) {
             throw new Error(
@@ -1350,12 +1340,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           const deliveryMetadata = mergeCapabilityDeliveryMetadata(
             {
               ...input.metadata,
-              ...effectiveModelMetadata(
-                input.modelId,
-                startModeWithheld
-                  ? withoutAcpMode(input.modelOptions)
-                  : input.modelOptions,
-              ),
+              ...effectiveModelMetadata(input.modelId, input.modelOptions),
               ...reportedModelMetadata(reportedModel),
               ...(verifiedModelSelection
                 ? {
@@ -1488,14 +1473,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     }
     const turnCatalog = record.acpModeCatalog ?? { modes: [] };
-    // #2569: see startSession; a withheld mode is not reported either.
+    // #2569: see startSession.
     const requestedMode = permittedAcpSessionMode(
       turnCatalog,
       requestedAcpSessionMode(input.modelOptions),
       input.confinement,
     );
-    const turnModeWithheld =
-      requestedAcpSessionMode(input.modelOptions) !== requestedMode;
     if (requestedMode && requestedMode !== record.currentModeId) {
       const catalog = turnCatalog;
       if (catalog.modes.length === 0) {
@@ -1558,9 +1541,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       metadata: {
         ...effectiveModelMetadata(
           input.modelId ?? record.session.model,
-          turnModeWithheld
-            ? withoutAcpMode(input.modelOptions)
-            : input.modelOptions,
+          input.modelOptions,
         ),
         // Independent review MEDIUM-1: carries the server-owned
         // `firstTurnInstructionsComposed` marker onto THIS turn's own
