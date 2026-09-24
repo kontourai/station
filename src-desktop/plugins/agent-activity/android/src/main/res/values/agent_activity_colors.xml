@@ -1,0 +1,10 @@
+<!-- Phase tints (Tailwind 600 stops on the light shade). Promoted Live Update
+     cards drop text colour, so these only tint the ordinary card. -->
+<resources>
+    <color name="agent_activity_working">#0284C7</color>
+    <color name="agent_activity_attention">#D97706</color>
+    <color name="agent_activity_input">#4F46E5</color>
+    <color name="agent_activity_waiting">#64748B</color>
+    <color name="agent_activity_done">#059669</color>
+    <color name="agent_activity_failed">#DC2626</color>
+</resources>

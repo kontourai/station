@@ -17,6 +17,7 @@ export function SettingsToggle({
   checked,
   className,
   describedBy,
+  disabled,
   label,
   onChange,
   children,
@@ -24,6 +25,7 @@ export function SettingsToggle({
   checked: boolean;
   className: string;
   describedBy?: string;
+  disabled?: boolean;
   label: string;
   onChange: () => void;
   children: ReactNode;
@@ -36,6 +38,7 @@ export function SettingsToggle({
       aria-checked={checked}
       aria-describedby={describedBy}
       aria-label={label}
+      disabled={disabled}
       onClick={onChange}
     >
       <span

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-open-live-update-settings"
+description = "Enables the open_live_update_settings command without any pre-configured scope."
+commands.allow = ["open_live_update_settings"]
+
+[[permission]]
+identifier = "deny-open-live-update-settings"
+description = "Denies the open_live_update_settings command without any pre-configured scope."
+commands.deny = ["open_live_update_settings"]

@@ -952,6 +952,20 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(chatInputPropsMock.current?.disabled).toBe(false);
   });
 
+  test('allows a draft during an authorized active-turn continuation wait', () => {
+    renderDock({
+      session: buildSession({
+        conversationOpenState: {
+          status: 'resolved',
+          canContinue: false,
+          continuationPending: true,
+        } as ChatSession['conversationOpenState'],
+      }),
+    });
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
+  });
+
   // #834: the exact open resolution the server now returns for a STOPPED
   // conversation — continuable through the successor reserve, while the
   // current child's answerability decoration stays `past_resume` (the steady

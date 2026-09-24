@@ -111,3 +111,23 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^sk-sentinel-secret-9f8e7d6c5b4a$''']
 paths = ['''(^|/)src-server/tools/__tests__/station-control-delegation\.supervision\.test\.ts$''']
+
+[[allowlists]]
+description = "AES-GCM known-answer vector for sealed agent-activity cards: key and registration id are the byte sequences 0..31 and 0..15, published so the Station sealer and the phone opener are pinned to one answer (not credentials)"
+condition = "AND"
+regexTarget = "secret"
+regexes = [
+  '''^AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8$''',
+  '''^AAECAwQFBgcICQoLDA0ODw$''',
+]
+paths = [
+  '''(^|/)packages/contracts/src/native-push\.ts$''',
+  '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/AgentSealTest\.kt$''',
+]
+
+[[allowlists]]
+description = "PEM template for an RSA key the push-gateway tests generate at runtime with WebCrypto; no key material is committed"
+condition = "AND"
+regexTarget = "match"
+regexes = ['''-----BEGIN PRIVATE KEY-----\\n\$\{btoa\(binary\)''']
+paths = ['''(^|/)deploy/push-gateway/test/helpers\.ts$''']

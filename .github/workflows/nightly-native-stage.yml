@@ -209,6 +209,14 @@ jobs:
       ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
       ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
       ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
+      # Firebase client identity for agent-activity push (public values that
+      # ship in every APK; repository variables keep them out of source so
+      # secret scanners do not flag the API key). All four or none: the
+      # plugin's Gradle build refuses a partial set.
+      STATION_FIREBASE_API_KEY: ${{ vars.STATION_FIREBASE_API_KEY }}
+      STATION_FIREBASE_PROJECT_ID: ${{ vars.STATION_FIREBASE_PROJECT_ID }}
+      STATION_FIREBASE_SENDER_ID: ${{ vars.STATION_FIREBASE_SENDER_ID }}
+      STATION_FIREBASE_APP_ID: ${{ vars.STATION_FIREBASE_APP_ID_NIGHTLY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
