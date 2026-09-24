@@ -30,7 +30,10 @@ export function isChatInForeground(ids: {
   threadId: string;
   conversationId?: string;
 }): boolean {
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+  if (
+    typeof document !== 'undefined' &&
+    document.visibilityState === 'hidden'
+  ) {
     return false;
   }
   const navigation = navigationStore.getSnapshot();

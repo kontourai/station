@@ -21,12 +21,12 @@ import { NotificationContainer } from '../components/notifications/NotificationC
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { navigationStore } from '../contexts/NavigationContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
+import { registerFullscreenChatSurface } from '../hooks/orchestration/chatForeground';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import {
   resetTurnAttentionNotifications,
   STOP_FACT_GRACE_MS,
 } from '../hooks/orchestration/turnAttentionNotifications';
-import { registerFullscreenChatSurface } from '../hooks/orchestration/chatForeground';
 
 const BG = 'chat-background';
 const FG = 'chat-foreground';
