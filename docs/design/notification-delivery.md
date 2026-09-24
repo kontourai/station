@@ -232,8 +232,13 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   `@kontourai/station-contracts/native-push` is the known-answer vector for
   the phone's opener.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
-  lifecycle events (never streamed content), coalesces per Station, reads the
-  session read model, and sends one card per registered phone: at most five
+  lifecycle events (never streamed content), coalesces per Station, and reads
+  the session read model once per reading principal: each phone reads with
+  the authority a request carrying its own device credential resolves to
+  (`pairedDevicePrincipal` — the device's tailnet person binding, else the
+  device itself), so its card holds exactly what that phone may list and
+  never a session its device cannot read. It sends one card per registered
+  phone: at most five
   rows, attention first (approval, input), then failed, then live, then
   sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
   phases through `sessionAttentionDisposition`, the adjudication the bell
@@ -255,9 +260,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   two minutes; `alert_id` is SHA-256 of Station, session, phase and entry.
   Several new entries for one phone are one grouped alert ("2 agents need
   you", up to five titles listed) whose id is derived from the sorted set.
+  The ids a phone has been sent are kept (bounded) with its registration in
+  the sidecar, so a restart or token rotation does not raise a group again.
+  A finished entry only counts a terminal event after the latest
+  `turn.started`; otherwise the observation time stands in.
 - **Delivery.** Per phone, at most one send every three seconds (the gateway
   allows 30 a minute per token); a change inside the interval is coalesced
-  into the next send. 503, 429, other 5xx and network errors wait for the
+  into the next send. 503, 429, 401 (which can be transient), other 5xx and
+  network errors wait for the
   publisher's single unref'd timer with backoff (5 s, ×3, at most 5 min,
   8 timed attempts; after that only a new event retries). A live card is
   re-sent 30 minutes before its two-hour expiry, and the publisher flushes

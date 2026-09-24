@@ -26,6 +26,8 @@ function fixture() {
   roots.push(home);
   mkdirSync(join(home, 'security'), { mode: 0o700 });
   return {
+    home,
+    reopen: () => new NativePushRegistrationStore(home),
     store: new NativePushRegistrationStore(home),
     path: join(home, 'security', 'native-push-registrations.json'),
   };
@@ -81,7 +83,7 @@ describe('NativePushRegistrationStore', () => {
   });
 
   test('refuses a record with an unknown field', () => {
-    const { store, path } = fixture();
+    const { store, path, reopen } = fixture();
     const registration = store.upsert('device-1', REQUEST, KEY, 1);
     writeFileSync(
       path,
@@ -91,13 +93,56 @@ describe('NativePushRegistrationStore', () => {
       }),
       { mode: 0o600 },
     );
-    expect(() => store.list()).toThrow(NativePushRegistrationStoreError);
+    expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 
   test.runIf(posix)('refuses a loosely permissioned file', () => {
-    const { store, path } = fixture();
+    const { store, path, reopen } = fixture();
     store.upsert('device-1', REQUEST, KEY, 1);
     chmodSync(path, 0o644);
+    expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
+  });
+
+  test('serves reads from memory after the first, and its own writes keep it current', () => {
+    const { store, path } = fixture();
+    store.upsert('device-1', REQUEST, KEY, 1);
+    // Not re-read from disk: an external edit is invisible to this writer…
+    writeFileSync(path, '{ garbage', { mode: 0o600 });
+    expect([...store.list().keys()]).toEqual(['device-1']);
+    // …and its own write replaces both file and cache.
+    store.upsert('device-2', REQUEST, KEY, 2);
+    expect([...store.list().keys()].sort()).toEqual(['device-1', 'device-2']);
+    expect(readFileSync(path, 'utf8')).toContain('device-2');
+  });
+
+  test('a failed read is not cached', () => {
+    const { store, path } = fixture();
+    writeFileSync(path, '{ garbage', { mode: 0o600 });
     expect(() => store.list()).toThrow(NativePushRegistrationStoreError);
+    rmSync(path);
+    expect(store.list().size).toBe(0);
+  });
+
+  test('records delivered alert ids durably, bounded, and keeps them across token rotation', () => {
+    const { store, reopen } = fixture();
+    const first = store.upsert('device-1', REQUEST, KEY, 1);
+    const ids = Array.from({ length: 130 }, (_, i) =>
+      i.toString(16).padStart(64, '0'),
+    );
+    store.recordAlerted('device-1', first.registrationId, ids);
+    store.upsert(
+      'device-1',
+      { ...REQUEST, token: `fcm-token-${'z'.repeat(40)}` },
+      KEY,
+      2,
+    );
+    const alerted = reopen().list().get('device-1')?.alerted ?? [];
+    expect(alerted).toHaveLength(128);
+    expect(alerted.at(-1)).toBe(ids.at(-1));
+    // A stale registrationId records nothing.
+    store.recordAlerted('device-1', 'other', ['f'.repeat(64)]);
+    expect(reopen().list().get('device-1')?.alerted).not.toContain(
+      'f'.repeat(64),
+    );
   });
 });

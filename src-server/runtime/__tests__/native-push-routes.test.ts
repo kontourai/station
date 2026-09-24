@@ -422,7 +422,7 @@ describe('native push routes', () => {
     expect(again.payloadKey).not.toBe(first.payloadKey);
   });
 
-  test('a registry written by the pre-release build (nativePush on the device) still loads, and the field is dropped', async () => {
+  test('a registry written by the pre-release build (nativePush on the device) still loads, and the field is dropped at once', async () => {
     const harness = createHarness();
     const paired = await pairDevice(harness);
     const registry = JSON.parse(readFileSync(harness.registryPath, 'utf8'));
@@ -440,12 +440,14 @@ describe('native push routes', () => {
       homeDir: harness.homeDir,
       environmentId: ENVIRONMENT_ID,
     });
-    expect(reloaded.identifyDevice(paired.credential)?.id).toBe(
-      paired.device.id,
-    );
-    reloaded.revokeDevice(paired.device.id, 'operator-credential');
+    // Rewritten on load, before any other call (identifyDevice itself
+    // writes usage), not left for some unrelated later write: an older
+    // Station reading this file next must find it clean.
     expect(readFileSync(harness.registryPath, 'utf8')).not.toContain(
       'nativePush',
+    );
+    expect(reloaded.identifyDevice(paired.credential)?.id).toBe(
+      paired.device.id,
     );
   });
 

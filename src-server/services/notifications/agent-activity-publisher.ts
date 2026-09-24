@@ -10,8 +10,9 @@
  *   content), and only while at least one phone is registered — a Station
  *   with no registration makes no reads and no gateway traffic;
  * - a `KeyedCoalescingWorker` that coalesces bursts (~1 s) into one read of
- *   the session read model, builds the card, and seals it separately to each
- *   registered phone that has not received it;
+ *   the session read model per reading principal — each phone sees exactly
+ *   the sessions its own paired device may read — builds that card, and
+ *   seals it separately to each registered phone that has not received it;
  * - one unref'd timer that re-flushes when a delivery failed (with backoff),
  *   when a device was held back by the per-device send interval, when a live
  *   card nears its expiry on the phone, and once shortly after boot;
@@ -24,8 +25,8 @@
  *
  * Gateway answers: 200 sent; 410 the token is dead — clear that device's
  * registration (only if it still holds that token); 503/429/5xx and network
- * errors wait for the timer with backoff; 401/400/413/422 are logged and the
- * card is not retried.
+ * errors — and 401, which can be transient — wait for the timer with
+ * backoff; 400/413/422 are logged and the card is not retried.
  */
 import type { NativePushSealedData } from '@kontourai/station-contracts/native-push';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -66,6 +67,8 @@ const MAX_TIMED_RETRIES = 8;
 /** Re-send a live card this long before the phone would expire it. */
 const REFRESH_BEFORE_EXPIRY_MS = 30 * 60_000;
 const BOOT_FLUSH_DELAY_MS = 5_000;
+/** Earliest re-check after a flush that could not reach the devices. */
+const STALLED_FLUSH_RETRY_MS = 60_000;
 /** Alert ids remembered per device, so an alert is raised once. */
 const ALERTED_MEMORY = 256;
 const CARD_KEY = 'card';
@@ -187,6 +190,26 @@ function latestOf(
   return latest;
 }
 
+/** Events the lifecycle fold turns into `completed` (session-lifecycle-service.ts). */
+function endsCompleted(event: CanonicalRuntimeEvent): boolean {
+  if (event.method === 'turn.completed')
+    return event.finishReason !== 'cancelled';
+  if (event.method === 'session.exited') return event.exitCode === 0;
+  if (event.method === 'session.state-changed')
+    return event.to === 'completed' || event.sessionState === 'completed';
+  return false;
+}
+
+/** Events the lifecycle fold turns into `failed`. */
+function endsFailed(event: CanonicalRuntimeEvent): boolean {
+  if (event.method === 'runtime.error') return true;
+  if (event.method === 'session.exited')
+    return event.exitCode !== undefined && event.exitCode !== 0;
+  if (event.method === 'session.state-changed')
+    return event.to === 'errored' || event.sessionState === 'failed';
+  return false;
+}
+
 /**
  * Which entry into `phase` the session is in, from its lifecycle event log
  * (the same projection events the read model folds): the open request for a
@@ -210,11 +233,27 @@ function phaseEntryFromEvents(
   } else if (phase === 'running' || phase === 'starting') {
     event = latestOf(events, ['turn.started']);
     if (event) key = `turn:${event.turnId ?? event.eventId}`;
-  } else if (phase === 'completed') {
-    event = latestOf(events, ['turn.completed', 'session.exited']);
-    if (event) key = `event:${event.eventId}`;
-  } else if (phase === 'failed') {
-    event = latestOf(events, ['runtime.error', 'session.exited']);
+  } else if (phase === 'completed' || phase === 'failed') {
+    // Only a terminal event of THIS run counts: one that predates the latest
+    // turn.started belongs to an earlier outcome, and reusing it would both
+    // repeat that outcome's alert id and date this one outside the window.
+    const turnStarted = latestOf(events, ['turn.started']);
+    const since = turnStarted ? Date.parse(turnStarted.createdAt) : -Infinity;
+    event = latestOf(
+      events.filter(
+        (candidate) =>
+          Date.parse(candidate.createdAt) >= since &&
+          (phase === 'completed'
+            ? endsCompleted(candidate)
+            : endsFailed(candidate)),
+      ),
+      [
+        'turn.completed',
+        'runtime.error',
+        'session.exited',
+        'session.state-changed',
+      ],
+    );
     if (event) key = `event:${event.eventId}`;
   } else {
     event = latestOf(events, ['session.state-changed']);
@@ -256,6 +295,11 @@ export interface AgentActivityDevicePairing {
     registration: NativePushRegistration;
   }>;
   clearNativePush(deviceId: string, expectedToken?: string): unknown;
+  recordNativePushAlerts(
+    deviceId: string,
+    registrationId: string,
+    alertIds: readonly string[],
+  ): void;
   environmentId(): string;
 }
 
@@ -265,11 +309,22 @@ interface AgentActivityLogger {
 
 type Cancel = () => void;
 
+export interface AgentActivitySessionReader {
+  principalId: string;
+  listSessions(): Promise<AgentActivitySessionRow[]>;
+}
+
 export interface AgentActivityPublisherOptions {
   eventBus: EventBus;
   devicePairing: AgentActivityDevicePairing;
   signingKey: { read(): PushSigningKey | null };
-  listSessions: () => Promise<AgentActivitySessionRow[]>;
+  /**
+   * Who a registered device reads as, and how to read the sessions it may
+   * see — the same read authority that device's own requests carry. Null
+   * when the device is no longer a readable paired device. Devices resolving
+   * to the same principal share one read per flush.
+   */
+  sessionReaderFor: (deviceId: string) => AgentActivitySessionReader | null;
   gateway: PushGatewayConfig;
   logger: AgentActivityLogger;
   /** Hosted mode or an invalid gateway URL: do not even subscribe. */
@@ -294,7 +349,9 @@ type SendOutcome = 'sent' | 'unregistered' | 'retryable' | 'rejected';
 function classify(status: number): SendOutcome {
   if (status >= 200 && status < 300) return 'sent';
   if (status === 410) return 'unregistered';
-  if (status === 429 || status >= 500) return 'retryable';
+  // 401 can be transient (clock skew, a key the gateway has not seen yet):
+  // retried on the timer like 429/5xx, and bounded the same way.
+  if (status === 401 || status === 429 || status >= 500) return 'retryable';
   return 'rejected';
 }
 
@@ -350,7 +407,11 @@ export function wireAgentActivityPublisher(
   const setTimer = options.setTimer ?? defaultSetTimer;
   const { logger, devicePairing } = options;
 
-  const snapshots = new Map<string, AgentActivitySnapshot>();
+  /** Per reading principal: what that principal's sessions were last seen as. */
+  const snapshotsByPrincipal = new Map<
+    string,
+    Map<string, AgentActivitySnapshot>
+  >();
   const devices = new Map<string, DeviceState>();
   const warned = new Set<string>();
   let lastUpdatedAt = 0;
@@ -364,6 +425,11 @@ export function wireAgentActivityPublisher(
     logger.warn(message);
   }
 
+  /**
+   * The registrations, or null when they could not be read. A failed read is
+   * not "nobody is registered": it must not discard per-device delivery
+   * state.
+   */
   function registrations() {
     try {
       const list = devicePairing.listNativePushRegistrations();
@@ -374,11 +440,15 @@ export function wireAgentActivityPublisher(
         'registrations',
         `agent-activity: native push registrations are unreadable (${errorMessage(error)}); not sending`,
       );
-      return [];
+      return null;
     }
   }
 
-  function refreshSnapshots(rows: AgentActivitySessionRow[], at: number) {
+  function refreshSnapshots(
+    snapshots: Map<string, AgentActivitySnapshot>,
+    rows: AgentActivitySessionRow[],
+    at: number,
+  ) {
     const seen = new Set<string>();
     for (const row of rows) {
       const phase = agentActivityPhaseFor(row);
@@ -387,7 +457,15 @@ export function wireAgentActivityPublisher(
       const previous = snapshots.get(row.sessionId);
       let enteredAt: number;
       let entryKey: string;
-      if (row.entry) {
+      // An entry event older than the phase this publisher already saw the
+      // session leave for is stale evidence, the same rule phaseEntryTime
+      // applies to the fallback time.
+      const staleEntry =
+        row.entry !== undefined &&
+        previous !== undefined &&
+        previous.phase !== phase &&
+        row.entry.at < previous.enteredAt;
+      if (row.entry && !staleEntry) {
         enteredAt = Math.min(row.entry.at, at);
         entryKey = row.entry.key;
       } else if (previous?.phase === phase) {
@@ -408,6 +486,13 @@ export function wireAgentActivityPublisher(
     }
     for (const sessionId of [...snapshots.keys()])
       if (!seen.has(sessionId)) snapshots.delete(sessionId);
+  }
+
+  function alreadyAlerted(
+    registration: NativePushRegistration,
+    state: DeviceState,
+  ): Set<string> {
+    return new Set([...(registration.alerted ?? []), ...state.alerted]);
   }
 
   function stateFor(deviceId: string, registration: NativePushRegistration) {
@@ -462,7 +547,7 @@ export function wireAgentActivityPublisher(
     }
   }
 
-  function scheduleWake(at: number) {
+  function scheduleWake(at: number, minDelayMs = 0) {
     if (stopped) return;
     const wakes: number[] = [];
     for (const state of devices.values()) {
@@ -475,7 +560,7 @@ export function wireAgentActivityPublisher(
         wakes.push(state.deliveredExpiresAt - REFRESH_BEFORE_EXPIRY_MS);
     }
     const next = wakes.length
-      ? Math.max(Math.min(...wakes), at + 1)
+      ? Math.max(Math.min(...wakes), at + Math.max(1, minDelayMs))
       : undefined;
     if (next === timerAt) return;
     cancelTimer?.();
@@ -499,7 +584,7 @@ export function wireAgentActivityPublisher(
     updatedAt: number,
   ) {
     const pendingAlerts = card.alertables.filter(
-      (entry) => !state.alerted.includes(entry.id),
+      (entry) => !alreadyAlerted(registration, state).has(entry.id),
     );
     const plaintext = composeAgentActivityPlaintext(
       card,
@@ -549,20 +634,46 @@ export function wireAgentActivityPublisher(
     state.failures = 0;
     delete state.retryAt;
     state.cardKey = card.contentKey;
-    state.alerted = [
-      ...state.alerted,
-      ...pendingAlerts.map((entry) => entry.id),
-    ].slice(-ALERTED_MEMORY);
+    const alertIds = pendingAlerts.map((entry) => entry.id);
+    state.alerted = [...state.alerted, ...alertIds].slice(-ALERTED_MEMORY);
+    if (alertIds.length > 0) {
+      // Durable, so a restart or token rotation cannot re-raise a group.
+      try {
+        devicePairing.recordNativePushAlerts(
+          deviceId,
+          registration.registrationId,
+          alertIds,
+        );
+      } catch (error) {
+        logger.warn('agent-activity: could not record delivered alerts', {
+          error: errorMessage(error),
+        });
+      }
+    }
     state.deliveredActive = outcome === 'sent' && card.active;
     state.deliveredExpiresAt = card.expiresAt;
   }
 
   async function flush(): Promise<void> {
+    let delivered = false;
+    try {
+      delivered = await flushOnce();
+    } finally {
+      // Always re-arm, even when the session read threw: a live card's
+      // refresh must not be lost to one failed read. A flush that could not
+      // look at the devices waits at least a minute, so a persistent failure
+      // cannot spin the timer.
+      scheduleWake(now(), delivered ? 0 : STALLED_FLUSH_RETRY_MS);
+    }
+  }
+
+  /** True when the devices were examined (whatever each outcome was). */
+  async function flushOnce(): Promise<boolean> {
     const targets = registrations();
+    if (targets === null) return false;
     if (targets.length === 0) {
       devices.clear();
-      scheduleWake(now());
-      return;
+      return true;
     }
     let key: PushSigningKey | null;
     try {
@@ -575,19 +686,42 @@ export function wireAgentActivityPublisher(
         'key',
         'agent-activity: the push signing key file is unreadable or unsafe; not sending',
       );
-      return;
+      return false;
     }
     if (!key) {
       warnOnce('no-key', 'agent-activity: registrations exist but no push key');
-      return;
+      return false;
     }
     const at = now();
-    refreshSnapshots(await options.listSessions(), at);
-    const card = buildAgentActivityCard({
-      sessions: [...snapshots.values()],
-      stationId: devicePairing.environmentId(),
-      now: at,
-    });
+    const stationId = devicePairing.environmentId();
+    // One card per reading principal: a phone's card holds exactly the
+    // sessions its own device may read. Devices sharing a principal share
+    // the read.
+    const cards = new Map<string, AgentActivityCard>();
+    const principalOf = new Map<string, string>();
+    for (const { deviceId, registration } of targets) {
+      if (registration.stationKey !== key.thumbprint) continue;
+      const reader = options.sessionReaderFor(deviceId);
+      if (!reader) continue;
+      principalOf.set(deviceId, reader.principalId);
+      if (cards.has(reader.principalId)) continue;
+      let snapshots = snapshotsByPrincipal.get(reader.principalId);
+      if (!snapshots) {
+        snapshots = new Map();
+        snapshotsByPrincipal.set(reader.principalId, snapshots);
+      }
+      refreshSnapshots(snapshots, await reader.listSessions(), at);
+      cards.set(
+        reader.principalId,
+        buildAgentActivityCard({
+          sessions: [...snapshots.values()],
+          stationId,
+          now: at,
+        }),
+      );
+    }
+    for (const principalId of [...snapshotsByPrincipal.keys()])
+      if (!cards.has(principalId)) snapshotsByPrincipal.delete(principalId);
     const due: Array<() => Promise<void>> = [];
     let updatedAt: number | undefined;
     for (const { deviceId, registration } of targets) {
@@ -604,15 +738,33 @@ export function wireAgentActivityPublisher(
         } catch {}
         continue;
       }
+      const principalId = principalOf.get(deviceId);
+      const card = principalId ? cards.get(principalId) : undefined;
+      if (!card) {
+        // Not (or no longer) a device that may read sessions: send nothing.
+        warnOnce(
+          `unreadable:${deviceId}`,
+          'agent-activity: a registered device can no longer read sessions; not sending to it',
+        );
+        devices.delete(deviceId);
+        continue;
+      }
       const state = stateFor(deviceId, registration);
+      const alerted = alreadyAlerted(registration, state);
       const changed =
         state.cardKey !== card.contentKey ||
-        card.alertables.some((entry) => !state.alerted.includes(entry.id));
+        card.alertables.some((entry) => !alerted.has(entry.id));
       const refresh =
         state.deliveredActive === true &&
         state.deliveredExpiresAt !== undefined &&
         state.deliveredExpiresAt - at <= REFRESH_BEFORE_EXPIRY_MS;
-      if (!changed && !refresh) continue;
+      if (!changed && !refresh) {
+        // Nothing is pending for this phone (a change inside the send
+        // interval may have reverted): nothing to retry, so no timer.
+        delete state.retryAt;
+        state.failures = 0;
+        continue;
+      }
       if (state.retryAt !== undefined && at < state.retryAt) continue;
       if (
         state.lastAttemptAt !== undefined &&
@@ -634,7 +786,7 @@ export function wireAgentActivityPublisher(
     for (const deviceId of [...devices.keys()])
       if (!targets.some((target) => target.deviceId === deviceId))
         devices.delete(deviceId);
-    scheduleWake(now());
+    return true;
   }
 
   const worker = new KeyedCoalescingWorker<string, undefined>(() => flush(), {
@@ -663,7 +815,7 @@ export function wireAgentActivityPublisher(
         ?.method;
       if (typeof method !== 'string' || !CARD_RELEVANT_METHODS.has(method))
         return;
-      if (registrations().length === 0) return;
+      if (!registrations()?.length) return;
       requestFlush();
     } catch (error) {
       logger.warn('agent-activity: listener failed', {
@@ -679,7 +831,7 @@ export function wireAgentActivityPublisher(
   cancelTimer = setTimer(() => {
     cancelTimer = undefined;
     timerAt = undefined;
-    if (registrations().length > 0) requestFlush();
+    if (registrations()?.length) requestFlush();
   }, BOOT_FLUSH_DELAY_MS);
 
   return {
