@@ -69,8 +69,9 @@ For a shorter independent comparison, the Station operator can also run
 `npm run --silent connection:key -- fingerprint --home=<absolute-home-path>`.
 It prints the full key ID and an 80-bit, 16-character confirmation code derived
 from the Station ID, enrollment, key generation, and public key. Compare both
-values through a separate channel. The current browser form still uses its
-full-thumbprint approval step and does not display the short code yet. A future
+values through a separate channel. The browser's Station signing-key form now
+shows the code alongside the full key ID from the public report; compare both
+with the operator before approving. A future
 relay candidate will carry a Station-signed, short-lived statement bound to
 the selected broker and one client-generated challenge; its signature proves
 possession of the included key only. It does not approve the Station. The recipient must verify the
