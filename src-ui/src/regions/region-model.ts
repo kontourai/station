@@ -600,6 +600,13 @@ export interface PhonePaneLayerOrigin {
  * selection and visibility as they were. A pane the layer did not mint is
  * left where it is.
  */
+export function projectPhoneLayerPaneToOrigin(
+  arrangement: RegionArrangement,
+  layer: PhonePaneLayer,
+): RegionArrangement {
+  return returnLayerPane(arrangement, layer);
+}
+
 function returnLayerPane(
   arrangement: RegionArrangement,
   layer: PhonePaneLayer,
@@ -719,17 +726,19 @@ export function restorePhonePaneLayer(
 
 /**
  * End a phone layer IN PLACE, for the fold opening under it (a narrow window
- * widened): no Back, so no return to Chat. A pane the layer moved out of
- * another region goes back there (the record must not lose it — review
- * M2/M-b); any other pane stays as an ordinary tab of the layer's region,
- * which a device with every region shows in its strip. Only the maximize the
- * layer added is undone.
+ * widened): no Back, so no return to Chat, and the pane stays where the user
+ * is looking at it — visible, selected and mounted as an ordinary tab of the
+ * layer's region, which a device with every region shows in its strip.
+ * Moving it back to its origin here would remount it (dropping an unguarded
+ * draft) and hide what the user was reading. Only the maximize the layer
+ * added is undone. The RECORD still puts a moved pane back in its origin
+ * (`projectPhoneLayerPaneToOrigin`, applied by the provider's persist).
  */
 export function endPhonePaneLayerInPlace(
   arrangement: RegionArrangement,
   layer: PhonePaneLayer,
 ): RegionArrangement {
-  const next = layer.origin ? returnLayerPane(arrangement, layer) : arrangement;
+  const next = arrangement;
   if (!next[layer.region].visible) return next;
   return updateRegion(next, layer.region, {
     maximized: layer.previous.maximized,

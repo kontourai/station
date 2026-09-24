@@ -37,6 +37,7 @@ import {
   openPhonePaneLayer,
   type PhonePaneLayer,
   placeSurface as placeSurfaceInArrangement,
+  projectPhoneLayerPaneToOrigin,
   REGION_SURFACE_REGISTRY,
   type RegionArrangement,
   type RegionId,
@@ -410,6 +411,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
   const phoneLayerRef = useRef<PhonePaneLayer | null>(null);
   const layerDockMemoryRef = useRef(false);
+  // A layer the fold ended in place whose pane the RECORD still owes to its
+  // origin region (see the fold-open effect and `persistRegionArrangement`).
+  const foldEndedLayerRef = useRef<PhonePaneLayer | null>(null);
   // Set by a layer's restore, applied at the end of the mirror effect.
   const pendingDockMemoryRef = useRef<boolean | null>(null);
   // Whether the open layer maximized its region, so a Back the user cancels
@@ -749,17 +753,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // The layer is a bottom-only device's (review M3): when the fold opens (a
   // narrow window widened, split view resized) the layer ENDS where it
-  // stands (`endPhonePaneLayerInPlace`). A pane it moved out of another
-  // region goes back there, so the record keeps it where the user put it
-  // (that move remounts the pane in its own region's host); any other pane
-  // stays as an ordinary tab — the device now has a tab strip — and is not
-  // unmounted by a resize nobody chose. Only the maximize the layer added is
-  // undone. The history entry goes with the registration.
+  // stands (`endPhonePaneLayerInPlace`): its pane stays visible, selected
+  // and mounted as an ordinary tab — the device now has a tab strip — and
+  // only the maximize the layer added is undone. A pane the layer moved out
+  // of another region is NOT moved back live (that would remount it and hide
+  // what the user was reading); the RECORD keeps projecting it into its
+  // origin (`foldEndedLayerRef`, applied in `persistRegionArrangement`) for
+  // as long as it is still a tab of the layer's region. The history entry
+  // goes with the registration.
   useEffect(() => {
     if (bottomOnly) return;
     const layer = phoneLayerRef.current;
     if (!layer) return;
     setPhoneLayer(null);
+    foldEndedLayerRef.current = layer.mintedTab && layer.origin ? layer : null;
     const next = endPhonePaneLayerInPlace(regionsRef.current, layer);
     if (next === regionsRef.current) {
       navigationStore.lastDockMaximized = layerDockMemoryRef.current;
@@ -863,10 +870,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // open, so a reload never finds a pane over Chat with no layer (and no
     // tab strip) to take it away again.
     const layer = phoneLayerRef.current;
+    // A layer the fold ended in place (above) leaves a moved pane as a tab
+    // of Chat's region; the record keeps it in its origin while it is still
+    // there, and forgets the projection once the user moves or closes it.
+    const ended = foldEndedLayerRef.current;
+    if (
+      ended &&
+      !regionsRef.current[ended.region].panes.includes(ended.surfaceId)
+    )
+      foldEndedLayerRef.current = null;
     const latest = toRegionArrangementRecord(
       layer
         ? restorePhonePaneLayer(regionsRef.current, layer)
-        : regionsRef.current,
+        : foldEndedLayerRef.current
+          ? projectPhoneLayerPaneToOrigin(
+              regionsRef.current,
+              foldEndedLayerRef.current,
+            )
+          : regionsRef.current,
     );
     if (
       persistedRecordRef.current &&

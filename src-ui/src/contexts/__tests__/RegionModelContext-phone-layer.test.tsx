@@ -489,10 +489,12 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(false));
   });
 
-  // Delta review M-b: the fold-open ending undid only the maximize, so a
-  // pane the layer had moved out of a hidden side region was left in Chat's
-  // region and the record lost it from the region the user put it in.
-  test('widening out of the fold returns a moved pane to its region, and the record keeps it there', async () => {
+  // Delta review M-b, as decided in round 4: the fold-open ending leaves a
+  // pane the layer moved out of a hidden side region where the user is
+  // looking at it — visible, selected, mounted (moving it back would remount
+  // it and drop an unguarded draft) — but the RECORD must not lose it from
+  // the region the user put it in: it projects the origin placement.
+  test('widening out of the fold keeps a moved pane on screen, while the record keeps it in its region', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 600,
@@ -531,11 +533,13 @@ describe('a pane opened on a phone opens over Chat', () => {
     });
     act(() => window.dispatchEvent(new Event('resize')));
     await waitFor(() => expect(current().phoneLayer).toBeNull());
-    expect(current().regions.right).toMatchObject({
-      panes: [PR],
-      visible: false,
+    expect(current().regions.bottom).toMatchObject({
+      panes: ['chat', PR],
+      occupant: PR,
+      visible: true,
+      maximized: false,
     });
-    expect(current().regions.bottom.panes).toEqual(['chat']);
+    expect(current().regions.right.panes).toEqual([]);
     await settle();
     expect(record()).toBe(before);
   });
