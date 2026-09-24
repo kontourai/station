@@ -279,6 +279,50 @@ describe('plugin command effect coordinator', () => {
     await vi.waitFor(() => expect(coordinator._debug.inFlightCount).toBe(0));
   });
 
+  test('a settlement that keeps failing keeps retrying past the first backoff step (station#1418/#1419 review round 2, HIGH)', async () => {
+    // `backoffFor(1) === BACKOFF_START_MS` (1000ms), so a coordinator that
+    // reschedules its next flush at a FIXED 1000ms delay still coincidentally
+    // catches the record's first retry. `backoffFor(2) === 2000ms` is where a
+    // fixed reschedule diverges from the record's own growing backoff: it
+    // fires too early, finds nothing ready (`pendingGroups` excludes a record
+    // whose `nextAttemptAt` is still in the future), and nothing re-arms a
+    // timer for it — the record silently stops retrying forever. This drives
+    // three failed cycles and asserts every one is attempted.
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike: fakeWindow(),
+    });
+    coordinator.runCommand(baseInput());
+    await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(1));
+
+    // Cycle 1 fails.
+    settleCalls[0].resolve(null);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(2));
+
+    // Cycle 2 fails — this is the cycle a fixed-delay reschedule misses.
+    settleCalls[1].resolve(null);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(3));
+
+    // Cycle 3 fails too; still retrying.
+    settleCalls[2].resolve(null);
+    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.waitFor(() => expect(settleCalls).toHaveLength(4));
+
+    settleCalls[3].resolve([
+      { requestId: admitCalls[0].request.requestId, status: 'settled' },
+    ]);
+    await vi.waitFor(() => expect(coordinator._debug.inFlightCount).toBe(0));
+  });
+
   test('a lost admission response (never resolves) times out into a no-effectId cancel', async () => {
     const { transport, admitCalls, settleCalls } = scriptedTransport();
     const coordinator = createPluginCommandEffectCoordinator({
@@ -549,6 +593,46 @@ describe('plugin command effect coordinator', () => {
     expect(settleCalls[0].options.keepalive).toBe(false);
   });
 
+  test("a retained record keeps its OWN captured same-origin-cookie-auth eligibility across a switch, not the coordinator's CURRENT value (station#1418/#1419 review round 2, HIGH)", async () => {
+    const { transport, admitCalls, settleCalls } = scriptedTransport();
+    const windowLike = fakeWindow();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike,
+    });
+    const apply = vi.fn(() => true);
+    // Admitted while this document's credential is NOT same-origin-cookie
+    // eligible (native, browser-relay, or simply the default before any
+    // signal has arrived).
+    coordinator.runCommand(baseInput({ apply }));
+    await vi.waitFor(() => expect(admitCalls).toHaveLength(1));
+    admitCalls[0].resolve({
+      kind: 'admitted',
+      receipt: receiptFor(admitCalls[0]),
+    });
+    await flushMicrotasks();
+
+    // Switch Stations. The reset's own flush attempt (keepalive always
+    // false there) is left unresolved, so the record is retained without
+    // its `attempts`/`nextAttemptAt` ever advancing.
+    coordinator.resetForAuthorityChange();
+    expect(settleCalls).toHaveLength(1);
+    expect(settleCalls[0].options.keepalive).toBe(false);
+    expect(coordinator._debug.retainedSettlementCount).toBe(1);
+
+    // The NEW Station's live signal says THIS document is now same-origin-
+    // cookie-auth eligible. That describes the NEW identity — it must not
+    // retroactively apply to a record retained from the OLD one.
+    coordinator.setCookieAuthEligible(true);
+
+    windowLike.fire('pagehide');
+    expect(settleCalls).toHaveLength(2);
+    // The retained record's OWN capture at admission time was `false`; the
+    // coordinator's current (now `true`) flag must never override it.
+    expect(settleCalls[1].options.keepalive).toBe(false);
+  });
+
   test('a Station/authority switch drops in-flight state and mints a fresh identity', async () => {
     const { transport, admitCalls } = scriptedTransport();
     const storage = fakeStorage();
@@ -626,6 +710,33 @@ describe('plugin command effect coordinator', () => {
     ]);
     await flushMicrotasks();
     expect(coordinator._debug.retainedSettlementCount).toBe(0);
+  });
+
+  test('retainedSettlements is bounded by count: excess entries are dropped oldest-first with a console.warn naming the effect (station#1418/#1419 review round 2, HIGH)', async () => {
+    // Without a bound, a settlement that can never authenticate again (its
+    // Station is no longer active) would grow this map by one on every
+    // subsequent switch and live for the tab's lifetime.
+    const { transport, admitCalls } = scriptedTransport();
+    const coordinator = createPluginCommandEffectCoordinator({
+      transport,
+      storage: fakeStorage(),
+      windowLike: fakeWindow(),
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // One more than the bound: each command is admitted, applied, and
+    // survives its own Station switch, so every one ends up retained.
+    for (let index = 0; index < 17; index += 1) {
+      coordinator.runCommand(baseInput());
+      const call = admitCalls[admitCalls.length - 1];
+      call.resolve({ kind: 'admitted', receipt: receiptFor(call) });
+      await flushMicrotasks();
+      coordinator.resetForAuthorityChange();
+    }
+    expect(coordinator._debug.retainedSettlementCount).toBe(16);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exceeded the retained-settlement count bound'),
+    );
+    warnSpy.mockRestore();
   });
 
   test('cancelRequest marks a request cancelled before its receipt arrives, settling `aborted`', async () => {
