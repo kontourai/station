@@ -2007,6 +2007,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectRoots: conversationProjectDirectory
         ? [conversationProjectDirectory]
         : [],
+      // The same holds for RELATIVE paths in an isolated worktree; the anchor
+      // compares this with the checkout.
+      sessionDirectory: sessionDisplayCwd,
       conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
@@ -2028,6 +2031,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationProjectSlug,
       dockBottomOnly,
       dockProjectSlug,
+      sessionDisplayCwd,
       setLayout,
     ],
   );

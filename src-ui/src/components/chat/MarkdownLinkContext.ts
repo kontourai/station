@@ -55,6 +55,12 @@ export interface MarkdownLinkContextValue {
    * guessed one.
    */
   conversationId?: string | null;
+  /**
+   * The directory the session runs in. When it is not the project checkout
+   * (an isolated worktree) the preview would read a different copy of the
+   * files the model named, so path mentions stay text.
+   */
+  sessionDirectory?: string | null;
 }
 
 export const MarkdownLinkContext =

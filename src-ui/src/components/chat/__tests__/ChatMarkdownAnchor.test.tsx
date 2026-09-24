@@ -306,6 +306,30 @@ describe('how a recognised link looks', () => {
   });
 });
 
+describe('a web link Station lets through', () => {
+  test('opens in a new tab, never replacing the running Station tab', () => {
+    // Web, no region model: the pull request has no dock to go to, so the
+    // anchor's default runs — and must not navigate Station away.
+    model = null;
+    for (const href of [
+      'https://github.com/o/r/pull/1',
+      'https://example.test/docs',
+      'https://github.com/o/r/blob/main/a.ts',
+    ]) {
+      const anchor = mount(href);
+      expect(anchor.getAttribute('target'), href).toBe('_blank');
+      expect(anchor.getAttribute('rel'), href).toBe('noopener noreferrer');
+      cleanup();
+    }
+    // A path never leaves Station, and outside a conversation nothing changes.
+    expect(mount('src/app.ts').hasAttribute('target')).toBe(false);
+    cleanup();
+    expect(
+      mount('https://example.test/docs', null).hasAttribute('target'),
+    ).toBe(false);
+  });
+});
+
 describe('a forge file link (github.com/.../blob/...)', () => {
   const url = 'https://github.com/kontourai/station/blob/main/src/app.ts#L4';
 

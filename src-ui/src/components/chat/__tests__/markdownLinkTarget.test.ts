@@ -86,16 +86,6 @@ describe('classifying a link in a chat message (#2049)', () => {
       expect(classifyMarkdownLink(escaping), escaping).toBeNull();
   });
 
-  test('a bare file name with a line is a path, though it parses as a scheme', () => {
-    expect(classifyMarkdownLink('README.md:42')).toEqual({
-      kind: 'path',
-      path: 'README.md',
-      lineRange: { start: 42, end: 42 },
-    });
-    // A real scheme with digits after it stays what it was.
-    expect(classifyMarkdownLink('mailto:1@example.test')).toBeNull();
-  });
-
   test('a leading ./ names the same file, not a traversal', () => {
     expect(classifyMarkdownLink('./src/app.ts')).toEqual({
       kind: 'path',

@@ -172,6 +172,24 @@ describe('path mentions in a rendered chat message', () => {
     expect(existenceAsks).toEqual([]);
   });
 
+  test('a session in an isolated worktree links no mentions and asks nothing', () => {
+    // The preview reads the project checkout; the model's paths name the
+    // worktree's files, which may differ.
+    existing.add('src/app.ts');
+    render(
+      <MarkdownLinkContext.Provider
+        value={{
+          ...CONVERSATION,
+          sessionDirectory: '/work/worktrees/lane',
+        }}
+      >
+        <MarkdownRenderer>Edit src/app.ts now.</MarkdownRenderer>
+      </MarkdownLinkContext.Provider>,
+    );
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(existenceAsks).toEqual([]);
+  });
+
   test('outside a conversation a mention stays text and asks nothing', () => {
     existing.add('src/app.ts');
     renderInConversation('Edit src/app.ts now.', false);

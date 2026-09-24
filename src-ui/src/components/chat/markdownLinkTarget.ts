@@ -77,9 +77,6 @@ const REPO_FILE_PATH = /^\/([^/]+)\/([^/]+)(?:\/-)?\/blob\/([^/]+)\/(.+)$/;
  */
 const LINE_SUFFIX = /:(\d{1,9})(?::\d{1,9}|-(\d{1,9}))?$/;
 
-/** `name.ext:12…` with no directory: a path, though it parses as a scheme. */
-const BARE_FILE_WITH_LINE = /^[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,9}:\d/;
-
 /** `#L12` or `#L12-L34` — the line anchor both forges append to a file URL. */
 const LINE_ANCHOR = /^L(\d{1,9})(?:-L?(\d{1,9}))?$/;
 
@@ -181,10 +178,6 @@ export function classifyMarkdownLink(
   options: MarkdownLinkClassifyOptions = {},
 ): MarkdownLinkTarget | null {
   if (!href) return null;
-  // `README.md:42` has the shape of a scheme (`readme.md:`); a file name with
-  // an extension followed by a line number is a path, not a URL.
-  if (BARE_FILE_WITH_LINE.test(href))
-    return classifyPathReference(href, options);
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
     let url: URL;
     try {

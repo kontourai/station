@@ -19,6 +19,7 @@ import {
   type MarkdownLinkTarget,
 } from './markdownLinkTarget';
 import { PATH_MENTION_ATTRIBUTE } from './remarkPathMentions';
+import { sessionRunsInProjectDirectory } from './sessionDirectory';
 import { useWorkspaceFileExists } from './useWorkspaceFileExists';
 
 /**
@@ -149,7 +150,15 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
     // A path written in prose is a link only inside a conversation, only when
     // it names a file in that conversation's checkout, and only once the
     // server has said the file is there. Until then it is the text it was.
-    if (!link?.projectSlug || target?.kind !== 'path') return <>{children}</>;
+    if (
+      !link?.projectSlug ||
+      !sessionRunsInProjectDirectory(
+        link.sessionDirectory,
+        link.projectRoots?.[0],
+      ) ||
+      target?.kind !== 'path'
+    )
+      return <>{children}</>;
     return (
       <PathMentionAnchor
         anchorProps={anchorProps}
@@ -221,9 +230,18 @@ function LinkAnchor({
   const chip = target ? chipFor(target, raw) : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
     activate(event, clickTarget, link, model);
+  // A web URL the handler lets through (no dock for a pull request, an
+  // external site, a forge file) must not replace the running Station tab;
+  // #2049 specified "a new tab on web". Paths never leave, so they get none.
+  const leaves =
+    !!link &&
+    !!clickTarget &&
+    clickTarget.kind !== 'path' &&
+    anchorProps.target === undefined;
+  const newTab = leaves ? { target: '_blank', rel: 'noopener noreferrer' } : {};
   if (!chip) {
     return (
-      <a {...anchorProps} href={href} onClick={onClick}>
+      <a {...anchorProps} {...newTab} href={href} onClick={onClick}>
         {children}
       </a>
     );
@@ -238,6 +256,7 @@ function LinkAnchor({
   return (
     <a
       {...anchorProps}
+      {...newTab}
       className={className}
       href={href}
       onClick={onClick}
@@ -296,7 +315,10 @@ function RepoFileAnchor({
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   // Same repository AND the ref the checkout is on: a link to the file at an
   // older commit or another branch is different code, and the local preview
-  // shows only the working tree.
+  // shows only the working tree. Known limits: the ref is compared with the
+  // LOCAL branch name, a checkout behind its upstream still counts, and a
+  // branch name containing `/` is read as ref + directory — mismatches of the
+  // first kind fall back to the forge, which is the safe direction.
   const local =
     !!identity &&
     same(identity.host, target.host) &&
