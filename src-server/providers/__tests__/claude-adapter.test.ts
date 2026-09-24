@@ -1138,6 +1138,98 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('a provider turn still open when the SDK iterator ends is closed there, with its trigger and no authority', async () => {
+      const controlled = createMockQuery([replyFrame('iterator-end')]);
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'iterator-end',
+      });
+      await flush();
+      await flush();
+      const started = events.find((event) => event.method === 'turn.started');
+      expect(started).toMatchObject({ metadata: { trigger: 'provider' } });
+      expect(
+        events.find((event) => event.method === 'turn.completed'),
+      ).toMatchObject({
+        turnId: started.turnId,
+        finishReason: 'other',
+        metadata: { trigger: 'provider' },
+      });
+      await adapter.stopSession('iterator-end');
+    });
+
+    test('a provider turn whose result never came is closed when the next SDK turn begins', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'provider-turn-next-init';
+      await adapter.startSession({ provider: 'claude', threadId });
+      const init = (capabilities: string[]) => ({
+        type: 'system',
+        subtype: 'init',
+        session_id: threadId,
+        cwd: '/workspace',
+        model: 'claude-sonnet-4-6',
+        capabilities,
+        uuid: `init-${crypto.randomUUID()}`,
+      });
+      // A CLI that reports command lifecycle: an init with no `started`
+      // before it is a turn the engine opened itself.
+      controlled.push(init(['msg_lifecycle_v1']));
+      await flush();
+      const first = events.find((event) => event.method === 'turn.started');
+      expect(first).toMatchObject({ metadata: { trigger: 'provider' } });
+      // Its result is lost; the engine starts another turn of its own.
+      controlled.push(init(['msg_lifecycle_v1']));
+      await flush();
+      const starts = events.filter((event) => event.method === 'turn.started');
+      expect(starts).toHaveLength(2);
+      expect(
+        events.find((event) => event.method === 'turn.completed'),
+      ).toMatchObject({
+        turnId: first.turnId,
+        finishReason: 'other',
+        metadata: { trigger: 'provider' },
+      });
+      await adapter.stopSession(threadId);
+    });
+
+    test('a reply to a user message Station did not send is not taken for a turn the engine opened itself', async () => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'foreign-user-message';
+      await adapter.startSession({ provider: 'claude', threadId });
+      controlled.push({
+        ...replyFrame(threadId),
+        user_message_uuid: 'not-a-station-turn',
+        user_message_uuids: ['not-a-station-turn'],
+      });
+      await flush();
+      expect(events.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
+      // It does not block a send the way a provider turn would.
+      await expect(
+        adapter.sendTurn({ threadId, input: 'mine' }),
+      ).resolves.toMatchObject({ turnId: expect.any(String) });
+      await adapter.stopSession(threadId);
+    });
+
     test('Stop on a provider turn aborts it with its trigger, and a send after the Stop is accepted', async () => {
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
