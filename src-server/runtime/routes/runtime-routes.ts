@@ -5199,9 +5199,13 @@ export function configureRuntimeRoutes(
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
         const authority = conversationReadAuthorityForRequest(request);
+        // #2561: the owner set, so a caller who may read a shared or
+        // pre-principal chat also finds the bytes it carried.
         return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
           ref,
-          isSessionReadAuthority(authority) ? authority.userId : undefined,
+          isSessionReadAuthority(authority)
+            ? context.orchestrationService.transcriptOwnerConstraint(authority)
+            : undefined,
         );
       },
       canReadSession: (threadId, request) =>

@@ -5,11 +5,13 @@
  * pre-principal chat (owned by the Station's former OS alias) that the same
  * caller can open.
  */
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -57,6 +59,15 @@ describe('usage receipts owner set (#2561)', () => {
       } as never);
     }
     vi.useRealTimers();
+    // Production's personal conversation access (`runtime-initialize.ts`),
+    // backed by a real pairing store with no paired devices: the operator is
+    // the account's only member.
+    const pairingHome = makeTempDir('usage-owner-set-pairing-');
+    mkdirSync(join(pairingHome, 'security'), { mode: 0o700 });
+    const pairing = new DevicePairingService({
+      homeDir: pairingHome,
+      environmentId: '33333333-3333-4333-8333-333333333333',
+    });
     const orchestration = new OrchestrationService({
       eventStore: store,
       adoptionLedger: store.createAdoptionLedger(),
@@ -64,6 +75,12 @@ describe('usage receipts owner set (#2561)', () => {
       adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
       logger: { debug() {}, warn() {} },
       legacyPersonalOwner: LEGACY_ALIAS,
+      personalConversationAccess: {
+        canRead: (requesterId, ownerId) =>
+          pairing.canSharePersonalConversation(requesterId, ownerId),
+        ownerIds: (requesterId) =>
+          pairing.personalConversationOwnerIds(requesterId),
+      },
     });
     return orchestration;
   }
@@ -108,9 +125,12 @@ describe('usage receipts owner set (#2561)', () => {
     expect(read.coverage).not.toBe('unknown');
   });
 
-  test('without home possession the operator principal sees only its own chats', () => {
+  test('without home possession the operator principal still sees the account’s pre-principal chats, through the personal owner set', () => {
+    // `personalConversationOwnerIds` names the account's members and the
+    // owner set adds the legacy alias for any member, as transcript reads do.
     const orchestration = setup();
     expect(threadsFor(orchestration, false).threads).toEqual([
+      'legacy-owned',
       'operator-owned',
     ]);
   });

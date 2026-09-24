@@ -346,6 +346,18 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * append racing its startup reads can fail with `database is locked`.
        */
       seed?: (store: EventStore) => void;
+      /**
+       * Share one personal conversation account across the operator and
+       * approved devices through the real pairing store, exactly as
+       * `runtime-initialize.ts` wires `personalConversationAccess`.
+       */
+      personalAccess?: boolean;
+      /** A real event bus, so the `/events` relay can be observed. */
+      eventBus?: EventBus;
+      /** A real action-operation service behind `/api/action-operations`. */
+      actionOperations?: unknown;
+      /** Rows `/monitoring/events?start=` reads, before its authorization. */
+      monitoringRows?: unknown[];
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -416,6 +428,16 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
         logger: { debug() {}, warn() {} },
         legacyPersonalOwner: getCachedUser().alias,
+        ...(principalReads.personalAccess
+          ? {
+              personalConversationAccess: {
+                canRead: (requesterId: string, ownerId: string) =>
+                  pairing.canSharePersonalConversation(requesterId, ownerId),
+                ownerIds: (requesterId: string) =>
+                  pairing.personalConversationOwnerIds(requesterId),
+              },
+            }
+          : {}),
       });
       orchestration.initialize();
       // Registered BEFORE the barrier is awaited. The barrier resolves only
@@ -555,6 +577,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             }),
           }
         : {}),
+      ...(principalReads.eventBus ? { eventBus: principalReads.eventBus } : {}),
+      ...(principalReads.actionOperations
+        ? { actionOperations: principalReads.actionOperations }
+        : {}),
+      ...(principalReads.monitoringRows
+        ? { queryEventsFromDisk: async () => principalReads.monitoringRows }
+        : {}),
       ...(principalReads.eventLogPath
         ? {
             eventLogPath: principalReads.eventLogPath,
@@ -575,6 +604,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                       orchestration!.readSessionMessages.bind(orchestration),
                     listAgentRuns:
                       orchestration!.listAgentRuns.bind(orchestration),
+                    transcriptOwnerConstraint:
+                      orchestration!.transcriptOwnerConstraint.bind(
+                        orchestration,
+                      ),
                   }
                 : {}),
             }),
@@ -2298,21 +2331,35 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    */
   describe('formerly OS-alias session reads decide with the request principal (#2561)', () => {
     const makeTempDir = trackTempDirs();
-    async function operatorSetup() {
-      const h = await setup('operator', true, undefined, false, false, {
-        extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+    // Production shares one personal conversation account across the
+    // operator and approved devices (`personalConversationAccess`), so these
+    // setups wire the real pairing store's membership. `stranger-owned`
+    // belongs to someone who is neither the operator nor a paired device.
+    type PrincipalReads = NonNullable<Parameters<typeof setup>[5]>;
+    async function principalSetup(
+      extra: PrincipalReads = {},
+      mode: 'operator' | 'home' = 'operator',
+    ) {
+      const h = await setup(mode, true, undefined, false, false, {
+        ...extra,
+        extraOwners: [
+          ['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID],
+          ['stranger-owned', 'human:tailscale-serve:stranger@example'],
+        ],
+        personalAccess: true,
       });
       searchCleanup.unshift(async () => {
         await h.roomRuntime.close();
       });
       return h;
     }
+    const operatorSetup = () => principalSetup();
     const operatorHeaders = {
       Authorization: `Bearer ${OPERATOR_SECRET}`,
       'Content-Type': 'application/json',
     };
 
-    test('run inventory lists each caller’s own session: the operator’s for the operator bearer, the device’s for the device bearer', async () => {
+    test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {
       const { app, paired } = await operatorSetup();
       const runsFor = async (credential: string) => {
         const response = await app.request(
@@ -2331,32 +2378,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         expect(response.status, JSON.stringify(body)).toBe(200);
         return (body.data ?? []).map((run) => run.sourceId).sort();
       };
-      // `legacy-owned` carries the OS alias; only a home-possession operator
-      // reads it, so neither remote bearer does.
-      await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual([
-        'operator-owned',
-      ]);
-      await expect(runsFor(paired.credential)).resolves.toEqual([
+      // One personal account: the operator, the approved device and the
+      // person who requested it read each other's sessions, and the
+      // pre-principal (OS alias) session maps to the operator.
+      const account = [
         'device-owned',
-      ]);
+        'legacy-owned',
+        'operator-owned',
+        'whois-owned',
+      ];
+      await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual(account);
+      await expect(runsFor(paired.credential)).resolves.toEqual(account);
     });
 
     test('every moved route family resolves the principal before its handler reads it', async () => {
       const logs: string[] = [];
-      const { app, roomRuntime } = await setup(
-        'operator',
-        true,
-        undefined,
-        false,
-        false,
-        {
-          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
-          onLog: (entry) => logs.push(entry),
-          eventLogPath: makeTempDir('station-principal-events-'),
-        },
-      );
-      searchCleanup.unshift(async () => {
-        await roomRuntime.close();
+      const { app } = await principalSetup({
+        onLog: (entry) => logs.push(entry),
+        eventLogPath: makeTempDir('station-principal-events-'),
       });
       // A route that reads the principal authority without the binding
       // middleware throws `Conversation request authority was not resolved`.
@@ -2427,44 +2466,37 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       );
     });
 
-    test('attachment bytes open for the owner of the chat that carried them, not for another caller', async () => {
-      const pixels = Buffer.alloc(6 * 1024, 7);
-      const { app, store, paired, roomRuntime } = await setup(
-        'operator',
-        true,
-        undefined,
-        false,
-        false,
-        {
-          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
-          seed: (seeded) => {
-            seeded.appendEvent({
-              eventId: 'operator-owned:upload',
-              provider: 'claude',
-              threadId: 'operator-owned',
-              createdAt: '2026-09-04T00:00:03Z',
-              method: 'turn.started',
-              turnId: 'operator-owned:upload-turn',
-              prompt: 'what is in this screenshot?',
-              metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
-              attachments: [
-                {
-                  kind: 'image',
-                  name: 'screenshot.png',
-                  mimeType: 'image/png',
-                  size: pixels.length,
-                  dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
-                },
-              ],
-            });
+    /** An image upload on `threadId`; each fill byte is a distinct blob. */
+    function seedImage(
+      store: EventStore,
+      threadId: string,
+      owner: string,
+      fill: number,
+    ) {
+      const pixels = Buffer.alloc(6 * 1024, fill);
+      store.appendEvent({
+        eventId: `${threadId}:upload`,
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-09-04T00:00:03Z',
+        method: 'turn.started',
+        turnId: `${threadId}:upload-turn`,
+        prompt: 'what is in this screenshot?',
+        metadata: { userId: owner },
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screenshot.png',
+            mimeType: 'image/png',
+            size: pixels.length,
+            dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
           },
-        },
-      );
-      searchCleanup.unshift(async () => {
-        await roomRuntime.close();
+        ],
       });
+    }
+    function blobRefOf(store: EventStore, threadId: string) {
       const [ref] = store
-        .listEvents('operator-owned')
+        .listEvents(threadId)
         .flatMap((event) =>
           'attachments' in event.payload
             ? (event.payload.attachments ?? []).flatMap((attachment) =>
@@ -2472,49 +2504,88 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               )
             : [],
         );
-      expect(ref).toMatch(/^sha256-/);
-      const openAs = (credential: string) =>
-        app.request(
+      expect(ref, threadId).toMatch(/^sha256-/);
+      return ref!;
+    }
+    const openAttachment = async (app: Hono, ref: string, credential: string) =>
+      (
+        await app.request(
           `/api/attachments/${ref}`,
           { headers: { Authorization: `Bearer ${credential}` } },
           REMOTE_TAILNET_ENV,
-        );
-      expect((await openAs(OPERATOR_SECRET)).status).toBe(200);
-      expect((await openAs(paired.credential)).status).toBe(404);
+        )
+      ).status;
+
+    test('attachment bytes open for every member of the personal account, never for a stranger’s chat', async () => {
+      const { app, store, paired } = await principalSetup({
+        seed: (seeded) => {
+          seedImage(seeded, 'operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID, 7);
+          seedImage(
+            seeded,
+            'stranger-owned',
+            'human:tailscale-serve:stranger@example',
+            9,
+          );
+        },
+      });
+      const operatorImage = blobRefOf(store, 'operator-owned');
+      const strangerImage = blobRefOf(store, 'stranger-owned');
+      // The paired device (orchestration:read) shares the operator's
+      // personal account, so it opens the operator's image too.
+      await expect(
+        openAttachment(app, operatorImage, OPERATOR_SECRET),
+      ).resolves.toBe(200);
+      await expect(
+        openAttachment(app, operatorImage, paired.credential),
+      ).resolves.toBe(200);
+      await expect(
+        openAttachment(app, strangerImage, OPERATOR_SECRET),
+      ).resolves.toBe(404);
+      await expect(
+        openAttachment(app, strangerImage, paired.credential),
+      ).resolves.toBe(404);
     });
 
-    test('the usage rollup counts the operator’s own chats for the operator bearer and no other person’s', async () => {
+    test('the home-possession operator opens the image of a chat written before principal ownership', async () => {
+      const { app, store, paired } = await principalSetup(
+        {
+          seed: (seeded) =>
+            seedImage(seeded, 'legacy-owned', getCachedUser().alias, 8),
+        },
+        'home',
+      );
+      // In `home` mode the paired credential carries home possession.
+      await expect(
+        openAttachment(
+          app,
+          blobRefOf(store, 'legacy-owned'),
+          paired.credential,
+        ),
+      ).resolves.toBe(200);
+    });
+
+    test('the usage rollup counts the personal account’s chats for the operator bearer and no stranger’s', async () => {
       // A paired device's standard grant has no analytics scope, so only the
       // operator reads the rollup here.
-      const { app, roomRuntime } = await setup(
-        'operator',
-        true,
-        undefined,
-        false,
-        false,
-        {
-          extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
-          usage: true,
-          seed: (seeded) => {
-            for (const threadId of [
-              'operator-owned',
-              'device-owned',
-              'whois-owned',
-            ])
-              seeded.appendEvent({
-                eventId: `${threadId}:usage`,
-                threadId,
-                turnId: `${threadId}:turn`,
-                provider: 'claude',
-                method: 'token-usage.updated',
-                createdAt: new Date().toISOString(),
-                promptTokens: 1,
-              } as never);
-          },
+      const { app } = await principalSetup({
+        usage: true,
+        seed: (seeded) => {
+          for (const threadId of [
+            'operator-owned',
+            'device-owned',
+            'whois-owned',
+            'stranger-owned',
+          ])
+            seeded.appendEvent({
+              eventId: `${threadId}:usage`,
+              threadId,
+              turnId: `${threadId}:turn`,
+              provider: 'claude',
+              method: 'token-usage.updated',
+              createdAt: new Date().toISOString(),
+              promptTokens: 1,
+            } as never);
         },
-      );
-      searchCleanup.unshift(async () => {
-        await roomRuntime.close();
       });
       const usageThreadsFor = async (credential: string) => {
         const response = await app.request(
@@ -2531,7 +2602,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ].sort();
       };
       await expect(usageThreadsFor(OPERATOR_SECRET)).resolves.toEqual([
+        'device-owned',
         'operator-owned',
+        'whois-owned',
       ]);
     });
 
@@ -2580,7 +2653,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(view.status, JSON.stringify(viewed)).toBe(200);
       expect(viewed.state, JSON.stringify(viewed)).toBe('ok');
 
-      for (const sessionId of ['made-up-session', 'whois-owned']) {
+      for (const sessionId of ['made-up-session', 'stranger-owned']) {
         const refused = await app.request(
           '/api/shares',
           {

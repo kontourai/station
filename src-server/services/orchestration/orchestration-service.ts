@@ -4620,6 +4620,16 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * #2561: the owner set a transcript read may open for `authority`, for
+   * owner-narrowed SQL (attachment candidates) that must agree with
+   * `canUserReadSession` rather than match one exact owner id.
+   */
+  transcriptOwnerConstraint(authority: SessionReadAuthority) {
+    this.initialize();
+    return this.sessionAuthz.transcriptOwnerConstraint(authority);
+  }
+
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);

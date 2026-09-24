@@ -3218,10 +3218,28 @@ export class EventStore {
    */
   listAttachmentCandidateThreads(
     ref: string,
-    ownerUserId: string | undefined,
+    /**
+     * One owner id, or (#2561) the owner set a transcript read may open
+     * (`SessionAuthorization.transcriptOwnerConstraint`), so a caller who
+     * may read a shared or pre-principal chat also finds its bytes.
+     */
+    owners:
+      | string
+      | {
+          ownerUserId: string;
+          legacyOwnerUserId?: string;
+          ownerUserIds?: readonly string[];
+        }
+      | undefined,
     limit = ATTACHMENT_CANDIDATE_THREAD_LIMIT,
   ): string[] {
     if (!isAttachmentBlobRef(ref)) return [];
+    const ownerIds =
+      owners === undefined
+        ? [null]
+        : transcriptOwnerIds(
+            typeof owners === 'string' ? { ownerUserId: owners } : owners,
+          );
     return (
       this.db
         .prepare(
@@ -3230,10 +3248,11 @@ export class EventStore {
              LEFT JOIN orchestration_conversation_history h
                ON h.thread_id = r.thread_id
             WHERE r.blob_ref = ?
-              AND (h.owner_user_id IS NULL OR h.owner_user_id = ?)
+              AND (h.owner_user_id IS NULL
+                OR h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')}))
             LIMIT ?`,
         )
-        .all(ref, ownerUserId ?? null, limit) as Array<{ thread_id: string }>
+        .all(ref, ...ownerIds, limit) as Array<{ thread_id: string }>
     ).map((row) => row.thread_id);
   }
 
