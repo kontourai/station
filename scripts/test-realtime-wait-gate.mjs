@@ -42,7 +42,7 @@ const TEST_PATH = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/;
 const CODE_PATH = /\.[cm]?[jt]sx?$/;
 const WAIVER = /real-time:\s*\S/;
 
-export const REALTIME_WAIT_PATTERNS = Object.freeze([
+const REALTIME_WAIT_PATTERNS = Object.freeze([
   Object.freeze({
     id: 'promise-sleep',
     // A promise that settles after a fixed real delay, typically awaited
@@ -185,7 +185,7 @@ function git(root, args) {
   });
 }
 
-export function runRealtimeWaitGate(root, base) {
+function runRealtimeWaitGate(root, base) {
   const head = git(root, ['rev-parse', 'HEAD']).trim();
   // Explicit prefixes, unquoted paths and no textconv: a user's diff.noprefix,
   // a non-ASCII filename or a textconv driver must not hide added lines.
@@ -249,7 +249,7 @@ export function realtimeWaitAnnotations(findings) {
   );
 }
 
-export function formatRealtimeWaitReport(result) {
+function formatRealtimeWaitReport(result) {
   if (result.scannedLines === 0) {
     return `[test-realtime-wait] no test lines added between ${result.base} and ${result.head}; nothing to check.`;
   }
