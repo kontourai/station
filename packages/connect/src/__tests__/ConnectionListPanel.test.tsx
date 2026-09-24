@@ -67,6 +67,7 @@ function renderPanel(
     onMakeDefaultProfile,
     canEditSharedProfiles,
     canRemoveSharedProfiles,
+    sharedProfilesVisibleToCli,
     onStartEdit = vi.fn(),
     onRemove = () => {},
   }: {
@@ -76,6 +77,7 @@ function renderPanel(
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
     canEditSharedProfiles?: boolean;
     canRemoveSharedProfiles?: boolean;
+    sharedProfilesVisibleToCli?: boolean;
     onStartEdit?: (connection: SavedConnection) => void;
     onRemove?: (connectionId: string) => void;
   } = {},
@@ -88,6 +90,7 @@ function renderPanel(
       localStationOwnerId={localStationOwnerId}
       canEditSharedProfiles={canEditSharedProfiles}
       canRemoveSharedProfiles={canRemoveSharedProfiles}
+      sharedProfilesVisibleToCli={sharedProfilesVisibleToCli}
       editingId={null}
       editName=""
       editUrl=""
@@ -799,6 +802,7 @@ describe('ConnectionListPanel', () => {
       renderPanel(vi.fn(), {
         connections: [sharedProfile],
         canRemoveSharedProfiles: true,
+        sharedProfilesVisibleToCli: true,
         onRemove,
       });
       fireEvent.click(
@@ -817,6 +821,21 @@ describe('ConnectionListPanel', () => {
         }),
       );
       expect(onRemove).toHaveBeenCalledWith('station-profile:kontour');
+    });
+
+    it('does not mention the CLI where no CLI shares the saved Stations', () => {
+      renderPanel(vi.fn(), {
+        connections: [sharedProfile],
+        canRemoveSharedProfiles: true,
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More actions for Station One' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Station' }));
+      expect(
+        screen.getByText('Removes it from this device only.'),
+      ).toBeTruthy();
+      expect(screen.queryByText(/station CLI/)).toBeNull();
     });
   });
 

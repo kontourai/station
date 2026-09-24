@@ -90,6 +90,8 @@ interface ConnectionsContextType {
   updateSharedProfile?: (input: SavedStationEdit) => Promise<void>;
   /** Host-owned removal of a shared saved Station from this device. */
   removeSharedProfile?: (input: SavedStationRemoval) => Promise<void>;
+  /** Whether the station CLI on this device reads the same saved Stations. */
+  sharedProfilesVisibleToCli?: boolean;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
   removeCredential: (id: string) => void;
@@ -266,6 +268,7 @@ export function ConnectionsProvider({
   makeDefaultProfile,
   updateSharedProfile,
   removeSharedProfile,
+  sharedProfilesVisibleToCli,
   prepareActiveConnection,
   retirePreparedConnection,
   nativeShell,
@@ -295,6 +298,7 @@ export function ConnectionsProvider({
   makeDefaultProfile?: ConnectionsContextType['makeDefaultProfile'];
   updateSharedProfile?: ConnectionsContextType['updateSharedProfile'];
   removeSharedProfile?: ConnectionsContextType['removeSharedProfile'];
+  sharedProfilesVisibleToCli?: boolean;
   /**
    * Optional host-owned preparation for a transient active-connection choice.
    * It must not persist a CLI/shared default. The provider awaits it before
@@ -469,6 +473,7 @@ export function ConnectionsProvider({
             },
           }
         : {}),
+      ...(sharedProfilesVisibleToCli ? { sharedProfilesVisibleToCli } : {}),
       ...(removeSharedProfile
         ? {
             removeSharedProfile: async (input: SavedStationRemoval) => {
@@ -616,6 +621,7 @@ export function ConnectionsProvider({
     makeDefaultProfile,
     updateSharedProfile,
     removeSharedProfile,
+    sharedProfilesVisibleToCli,
     prepareActiveConnection,
     retirePreparedConnection,
     advanceActivation,

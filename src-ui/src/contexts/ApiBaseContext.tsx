@@ -187,6 +187,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
           ? (input) => nativeProfileRepository().updateProfile(input)
           : undefined
       }
+      sharedProfilesVisibleToCli={profile.isTauri && !profile.isMobile}
       removeSharedProfile={
         profile.isTauri
           ? async (input) => {

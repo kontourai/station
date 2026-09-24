@@ -214,6 +214,7 @@ export function ConnectionManagerModalContent({
     makeDefaultProfile,
     updateSharedProfile,
     removeSharedProfile,
+    sharedProfilesVisibleToCli,
     getConnectionCredential,
     commitEndpointCandidate,
     failEndpointCandidate,
@@ -1035,6 +1036,7 @@ export function ConnectionManagerModalContent({
             }}
             canEditSharedProfiles={Boolean(updateSharedProfile)}
             canRemoveSharedProfiles={Boolean(removeSharedProfile)}
+            sharedProfilesVisibleToCli={sharedProfilesVisibleToCli}
             editError={editError}
             editPending={editPending}
             onCancelEdit={() => {
