@@ -168,19 +168,24 @@ describe('Codex host image read bounds', () => {
     expect(methods(published)).toEqual(['tool.started']);
   });
 
-  test('past the queue bound a notification is delivered at once instead of queued', async () => {
+  test('at the queue bound the pending read settles early and the queue flushes in order', async () => {
     vi.useFakeTimers();
     const { record, published, viewHangingImage, completeTurn } = harness();
     viewHangingImage();
     record.queuedNotifications = MAX_QUEUED_NOTIFICATIONS;
     completeTurn();
-    expect(methods(published)).toEqual(['tool.started', 'turn.completed']);
-    await vi.advanceTimersByTimeAsync(HOST_IMAGE_READ_DEADLINE_MS);
+    // No time passes: the bound, not the deadline, settles the read.
+    await vi.advanceTimersByTimeAsync(0);
     expect(methods(published)).toEqual([
       'tool.started',
-      'turn.completed',
       'tool.completed',
+      'turn.completed',
     ]);
+    expect(
+      published.find((event) => event.method === 'tool.completed'),
+    ).toMatchObject({
+      output: '[image not shown: the viewed image could not be read in time]',
+    });
   });
 
   test('contract: a server approval request is not held behind a pending image read', async () => {

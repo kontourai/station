@@ -506,7 +506,21 @@ function handleCodexItemCompleted(
   // Only the session's own workspace is readable; with none known, the read
   // is refused and the output says so.
   const cwd = record.session.cwd;
+  // The transport may cut the wait short (queue bound): that settles through
+  // the deadline's own outcome, so the note is the same.
+  let expire: () => void = () => {};
+  const expired = new Promise<void>((resolve) => {
+    expire = resolve;
+  });
+  record.expireHostImageRead = expire;
   return deriveHostToolOutputAndImages(item, {
     roots: typeof cwd === 'string' && cwd.length > 0 ? [cwd] : [],
-  }).then(settle);
+    expire: expired,
+  })
+    .then(settle)
+    .finally(() => {
+      if (record.expireHostImageRead === expire) {
+        record.expireHostImageRead = undefined;
+      }
+    });
 }

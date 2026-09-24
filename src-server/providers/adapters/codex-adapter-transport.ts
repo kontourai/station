@@ -105,8 +105,8 @@ export function createCodexSessionRecord(options: {
 
 /**
  * How many notifications may wait behind a pending host image read before
- * later ones are delivered out of order instead of queued. The read's own
- * deadline normally drains the queue long before this.
+ * that read is settled early (as if its deadline passed) so the queue drains
+ * in order. The read's own deadline normally drains it long before this.
  */
 export const MAX_QUEUED_NOTIFICATIONS = 10_000;
 
@@ -684,8 +684,11 @@ export class CodexAdapterTransport {
     // Bounded three ways:
     // - time: the read itself has a deadline (`HOST_IMAGE_READ_DEADLINE_MS`)
     //   after which it settles as an omission marker, so the queue drains;
-    // - size: past `MAX_QUEUED_NOTIFICATIONS` a notification is delivered
-    //   immediately, out of order, rather than growing the chain further;
+    // - size: at `MAX_QUEUED_NOTIFICATIONS` the pending read is settled now,
+    //   through its deadline outcome (the "could not be read in time" note),
+    //   and the queue then flushes IN ORDER. Order is never broken: a turn's
+    //   terminal passing its own image tool would close the tool card as
+    //   stopped (`background-tasks-store.ts`) and drop the real result;
     // - lifetime: queued work for a session that has since stopped or been
     //   unregistered is discarded, never run against a closed record.
     //
@@ -696,11 +699,10 @@ export class CodexAdapterTransport {
     // is safe because approvals bind to their call by request/call id, never
     // by position, and the approval must not wait on an unrelated file read.
     const barrier = record?.notificationBarrier;
-    if (
-      record &&
-      barrier &&
-      (record.queuedNotifications ?? 0) < MAX_QUEUED_NOTIFICATIONS
-    ) {
+    if (record && barrier) {
+      if ((record.queuedNotifications ?? 0) >= MAX_QUEUED_NOTIFICATIONS) {
+        record.expireHostImageRead?.();
+      }
       record.queuedNotifications = (record.queuedNotifications ?? 0) + 1;
       const queued = barrier.then(() => {
         record.queuedNotifications = (record.queuedNotifications ?? 1) - 1;

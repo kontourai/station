@@ -126,6 +126,8 @@ export interface CodexSessionRecord {
   notificationBarrier?: Promise<void>;
   /** Notifications currently queued behind {@link notificationBarrier}. */
   queuedNotifications?: number;
+  /** Settles the pending host image read now, as if its deadline passed. */
+  expireHostImageRead?: () => void;
   terminationPromise?: Promise<void>;
   /** Total raw stdout bytes accepted while a bounded adoption/recovery phase is active. */
   stdoutIngressLimit?: {

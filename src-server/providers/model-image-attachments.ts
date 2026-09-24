@@ -294,6 +294,12 @@ export interface HostImageReadScope {
   roots: readonly string[];
   /** Defaults to {@link HOST_IMAGE_READ_DEADLINE_MS}. */
   deadlineMs?: number;
+  /**
+   * Settles the read early through the same outcome as the deadline (the
+   * "could not be read in time" marker) — used when a caller can no longer
+   * afford to wait, e.g. its notification queue hit its bound.
+   */
+  expire?: Promise<void>;
 }
 
 function isInside(path: string, root: string): boolean {
@@ -321,11 +327,14 @@ export async function addWorkspaceImageFile(
 ): Promise<ModelImageOutcome> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<ModelImageOutcome>((resolve) => {
+    const expired = () =>
+      resolve(omitted('the viewed image could not be read in time'));
     timer = setTimeout(
-      () => resolve(omitted('the viewed image could not be read in time')),
+      expired,
       scope.deadlineMs ?? HOST_IMAGE_READ_DEADLINE_MS,
     );
     timer.unref?.();
+    void scope.expire?.then(expired);
   });
   try {
     const read = await Promise.race([
