@@ -58,7 +58,7 @@ function decodeBase64(base64: string): Uint8Array<ArrayBuffer> {
  * and fail inside the app. Inline parts decode their data URL; fetched parts
  * hand back the Blob the attachment cache minted the URL from.
  */
-export function previewBlob(item: PreviewItem): Blob | undefined {
+function previewBlob(item: PreviewItem): Blob | undefined {
   if (item.url.startsWith('data:')) {
     const parsed = parseChatAttachmentDataUrl(item.url);
     if (!parsed) return undefined;
@@ -172,10 +172,10 @@ function PreviewMarkdownAnchor({
   node?: unknown;
 }) {
   const target = classifyMarkdownLink(href);
-  // A pull request is an ordinary web page here: there is no conversation to
-  // open it as a pane beside.
-  if (target?.kind !== 'external' && target?.kind !== 'pull-request')
-    return <span>{children}</span>;
+  // Pull requests and forge files are ordinary web pages here: there is no
+  // conversation or project to open them as a pane beside. Every absolute
+  // target carries its web `url`; relative paths carry none.
+  if (!target || !('url' in target)) return <span>{children}</span>;
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!hostOwnsExternalLinks()) return;
     event.preventDefault();

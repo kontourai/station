@@ -4249,6 +4249,28 @@ enum ParsedStationProfileLockRecord {
 }
 
 const PROFILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
+// How long a desktop writer keeps retrying a saved Station lock (the
+// profiles.json lock and the genesis lock) held by a LIVE owner. Wall-clock,
+// not an attempt count: each attempt also runs the stale-lock probe, whose
+// cost varies by host, so a fixed number of naps measured the host rather
+// than the holder. The deadline stops new retries; the call can still run
+// past it by a probe already in flight plus the final probe taken at expiry.
+// The CLI uses the same bound for the same locks (packages/cli
+// profile-store.ts).
+const PROFILE_LOCK_WAIT: Duration = Duration::from_secs(10);
+// Mobile takes the profile lock on every saved Station READ, from Tauri sync
+// commands on the main thread, where Android reports an ANR after 5s. Keep
+// its wait at the old nominal budget (500 naps of 10ms), never the desktop
+// bound: a crashed v1 lock stays unreclaimable for five minutes, and each
+// read in that window waits this long before reporting busy.
+#[cfg(any(mobile, test))]
+const PROFILE_LOCK_MOBILE_WAIT: Duration = Duration::from_secs(5);
+// The stale-lock probe creates and fsyncs a guard lock and resolves the
+// owner's birth. It runs once on first contention (a dead holder is reclaimed
+// at once), then at this interval, and once more before giving up, rather than
+// on every 10ms nap where it competes with the holder being waited for.
+const PROFILE_LOCK_RECLAIM_PROBE_INTERVAL: Duration = Duration::from_millis(250);
+const PROFILE_LOCK_NAP: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProfileLockOwnerLiveness {
@@ -4473,7 +4495,7 @@ fn profile_lock_record_bytes(birth: &str) -> Result<Vec<u8>, String> {
     Ok(contents)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn legacy_profile_lock_record_bytes() -> Result<Vec<u8>, String> {
     let created_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4499,9 +4521,15 @@ fn lock_station_profiles_with_identity(
     lock_station_profiles_with_record(path, &|| profile_lock_record_bytes(birth), birth_for_pid)
 }
 
-#[cfg(mobile)]
+#[cfg(any(mobile, test))]
 fn lock_station_profiles_legacy(path: &std::path::Path) -> Result<StationProfileLock, String> {
-    lock_station_profiles_with_record(path, &legacy_profile_lock_record_bytes, &|_| Ok(None))
+    lock_station_profiles_with_record_within(
+        path,
+        &legacy_profile_lock_record_bytes,
+        &|_| Ok(None),
+        PROFILE_LOCK_MOBILE_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
 }
 
 fn lock_station_profiles_with_record(
@@ -4509,17 +4537,34 @@ fn lock_station_profiles_with_record(
     record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
     birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
 ) -> Result<StationProfileLock, String> {
+    lock_station_profiles_with_record_within(
+        path,
+        record_bytes,
+        birth_for_pid,
+        PROFILE_LOCK_WAIT,
+        PROFILE_LOCK_RECLAIM_PROBE_INTERVAL,
+    )
+}
+
+fn lock_station_profiles_with_record_within(
+    path: &std::path::Path,
+    record_bytes: &dyn Fn() -> Result<Vec<u8>, String>,
+    birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
+    wait: Duration,
+    probe_interval: Duration,
+) -> Result<StationProfileLock, String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
 
     let lock_path = path.with_extension("json.lock");
     let mut reclaimed_stale_lock = false;
     // Windows hardens and verifies each newly-created lock through the ACL
-    // authority. A competing bundled channel can therefore hold the lock for
-    // longer than the old one-second poll window; keep the wait bounded to
-    // five seconds rather than turning ordinary Stable/Beta/Nightly startup
-    // contention into a false "busy" failure.
-    for _ in 0..500 {
+    // authority, and a competing CLI or bundled channel may be fsyncing its
+    // publication. Wait boundedly for that live holder rather than turning
+    // ordinary Stable/Beta/Nightly/CLI contention into a false "busy" failure.
+    let started = std::time::Instant::now();
+    let mut next_probe_at: Option<std::time::Instant> = None;
+    loop {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -4539,13 +4584,22 @@ fn lock_station_profiles_with_record(
                 return Ok(lock);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let now = std::time::Instant::now();
+                let expired = now.duration_since(started) >= wait;
                 if !reclaimed_stale_lock
-                    && reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)?
+                    && (expired || next_probe_at.is_none_or(|at| now >= at))
                 {
-                    reclaimed_stale_lock = true;
-                    continue;
+                    next_probe_at = Some(now + probe_interval);
+                    if reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)? {
+                        reclaimed_stale_lock = true;
+                        continue;
+                    }
                 }
-                std::thread::sleep(Duration::from_millis(10));
+                let elapsed = started.elapsed();
+                if expired || elapsed >= wait {
+                    break;
+                }
+                std::thread::sleep(PROFILE_LOCK_NAP.min(wait - elapsed));
             }
             Err(error) => return Err(format!("lock saved Station metadata: {error}")),
         }
@@ -17134,6 +17188,163 @@ mod tests {
         let lock = lock_station_profiles(&profile_path).expect("reclaims stale lock");
         drop(lock);
         assert!(!lock_path.exists());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn profile_lock_wait_test_directory(label: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "station-profile-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    /// A slow stale-lock probe must not stretch the wait: the bound is wall
+    /// clock, and the probe backs off instead of running on every nap. The
+    /// held lock is a real v2 record naming this live process with the birth
+    /// the probe reports, so it is never reclaimable and the wait runs out.
+    #[cfg(unix)]
+    #[test]
+    fn live_profile_lock_wait_is_wall_clock_bounded_with_a_backed_off_probe() {
+        let directory = profile_lock_wait_test_directory("lock-wait-bound");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let probes = std::cell::Cell::new(0_u32);
+        let slow_probe = |pid: u32| -> Result<Option<String>, String> {
+            if pid == own_pid {
+                probes.set(probes.get() + 1);
+            }
+            // Stands in for a loaded host where each owner-birth probe
+            // (a `ps` spawn on macOS) takes tens of milliseconds.
+            std::thread::sleep(Duration::from_millis(40));
+            Ok((pid == own_pid).then(|| "test-process-birth".to_string()))
+        };
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &slow_probe,
+            Duration::from_millis(1_000),
+            Duration::from_millis(250),
+        )
+        .err()
+        .expect("a live holder is never reclaimed");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= Duration::from_millis(1_000), "{elapsed:?}");
+        // An attempt count of 10ms naps plus a 40ms probe each would run far
+        // past this; the wall-clock bound ends near 1s.
+        assert!(elapsed < Duration::from_millis(2_500), "{elapsed:?}");
+        // First contention, every 250ms, and a final probe: about one per
+        // 250ms waited (5-6 here). Probing on every nap measured 14 here. The
+        // bound scales with the measured wait so a loaded host is not a
+        // false regression.
+        let probe_budget = u32::try_from(elapsed.as_millis().div_ceil(250)).unwrap() + 2;
+        assert!(
+            (2..=probe_budget).contains(&probes.get()),
+            "probes: {} (budget {probe_budget})",
+            probes.get()
+        );
+        drop(held);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// The probe backs off, so the only probe after a holder's late death may
+    /// be the one taken as the wait runs out. It must still happen: giving up
+    /// without it reports "busy" for a lock that is provably stale.
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_wait_probes_once_more_before_giving_up() {
+        let directory = profile_lock_wait_test_directory("lock-wait-final-probe");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        let own_pid = std::process::id();
+        let started = std::time::Instant::now();
+        // Until 200ms in, the owner is this live process; afterwards the probe
+        // reports a different birth for the pid, i.e. proven PID reuse.
+        let reused_later = |pid: u32| -> Result<Option<String>, String> {
+            let birth = if started.elapsed() < Duration::from_millis(200) {
+                "test-process-birth"
+            } else {
+                "reused-process-birth"
+            };
+            Ok((pid == own_pid).then(|| birth.to_string()))
+        };
+        let lock = lock_station_profiles_with_record_within(
+            &profile_path,
+            &|| profile_lock_record_bytes("test-process-birth"),
+            &reused_later,
+            Duration::from_millis(600),
+            Duration::from_secs(60),
+        )
+        .expect("the final probe reclaims the now-stale lock");
+        // The reclaim already removed the holder's file; forget it so its drop
+        // does not unlink the new owner's lock.
+        std::mem::forget(held);
+        drop(lock);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// station#2461 review: mobile locks on every read from the main thread.
+    /// A crashed v1 owner younger than five minutes is not reclaimable, so a
+    /// read waits the full bound; it must stay at the mobile budget, not the
+    /// desktop one.
+    #[cfg(unix)]
+    #[test]
+    fn mobile_legacy_lock_wait_stays_within_the_mobile_budget() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = profile_lock_wait_test_directory("lock-wait-mobile");
+        let profile_path = directory.join("profiles.json");
+        let lock_path = profile_path.with_extension("json.lock");
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        // A dead owner (an unrepresentable pid) that crashed just now.
+        std::fs::write(
+            &lock_path,
+            format!("{{\"schemaVersion\":1,\"pid\":4294967295,\"createdAt\":{created_at}}}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let started = std::time::Instant::now();
+        let error = lock_station_profiles_legacy(&profile_path)
+            .err()
+            .expect("a fresh v1 lock is not reclaimable");
+        let elapsed = started.elapsed();
+        assert!(error.contains("busy"), "{error}");
+        assert!(elapsed >= PROFILE_LOCK_MOBILE_WAIT, "{elapsed:?}");
+        // Well under the desktop bound, and no longer than the old nominal
+        // 5s budget plus the final probe and scheduling slack.
+        assert!(elapsed < Duration::from_millis(6_500), "{elapsed:?}");
+        assert!(lock_path.exists(), "the fresh v1 lock is retained");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn profile_lock_waits_for_a_live_holder_to_release() {
+        let directory = profile_lock_wait_test_directory("lock-wait-release");
+        let profile_path = directory.join("profiles.json");
+        let held = lock_station_profiles(&profile_path).expect("first writer holds the lock");
+        // Taken before the releaser starts, so the release cannot precede it.
+        let started = std::time::Instant::now();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            drop(held);
+        });
+        let lock = lock_station_profiles(&profile_path).expect("waits for the live holder");
+        assert!(started.elapsed() >= Duration::from_millis(300));
+        releaser.join().unwrap();
+        drop(lock);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

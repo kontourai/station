@@ -311,6 +311,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
+    'tests/browser-relay-route-acceptance.spec.ts':
+      'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
@@ -353,6 +355,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/registry.spec.ts',
     'tests/registry-install.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
     'tests/connect-modal.spec.ts',
@@ -1110,6 +1113,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Connections CRUD plus Agent app discovery hit, miss, Add-catalog placement, and Model-only first-run honesty.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/browser-relay-route-acceptance.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser UI action proving a broker invitation cannot be saved before this browser independently approves the exact Station enrollment; the full local grant/Pion protocol remains covered by the browser transport lab.',
     exceptions: [],
   },
   {

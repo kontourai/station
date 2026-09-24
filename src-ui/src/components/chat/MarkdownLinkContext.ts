@@ -42,6 +42,25 @@ export interface MarkdownLinkContextValue {
   openPathInMain:
     | ((path: string, lineRange?: WorkspaceFilePreviewLineRange) => void)
     | null;
+  /**
+   * Absolute directories an absolute path in this conversation may name a
+   * file under — today the project's checkout, the directory the preview
+   * reads. An absolute path is a file link only inside one of these, and is
+   * previewed relative to it.
+   */
+  projectRoots?: readonly string[];
+  /**
+   * The conversation whose linked pull requests carry a state (open, merged)
+   * a pull-request link can show. Absent: links show no state rather than a
+   * guessed one.
+   */
+  conversationId?: string | null;
+  /**
+   * The directory the session runs in. When it is not the project checkout
+   * (an isolated worktree) the preview would read a different copy of the
+   * files the model named, so path mentions stay text.
+   */
+  sessionDirectory?: string | null;
 }
 
 export const MarkdownLinkContext =

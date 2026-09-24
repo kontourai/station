@@ -46,6 +46,58 @@ function wrapper(store: ConnectionStore) {
 const POLL = 80;
 
 describe('useConnectionStatus', () => {
+  it('uses one broker-route probe target and never records it as a direct endpoint', async () => {
+    const store = new ConnectionStore({ storage: memoryAdapter() });
+    const route = store.addBrokerRoute({
+      name: 'Broker route',
+      applicationOrigin: 'https://station.example.test',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.test',
+        scope: {
+          stationId: 'station_00000001',
+          enrollmentId: 'enroll_00000001',
+          routingGeneration: 2,
+          browserOrigin: window.location.origin,
+        },
+      },
+    });
+    store.setPreparedBrokerRouteActive(route.id);
+    const checkHealth = vi.fn().mockResolvedValue(true);
+    const probeEndpoint = vi
+      .fn()
+      .mockResolvedValue({ ok: true, bootId: 'route-boot' });
+    const recordDirectSuccess = vi.spyOn(store, 'recordEndpointSuccess');
+    const recordRouteSuccess = vi.spyOn(store, 'recordBrokerRouteSuccess');
+
+    const { result } = renderHook(
+      () =>
+        useConnectionStatus({
+          checkHealth,
+          probeEndpoint,
+          pollInterval: 60_000,
+        }),
+      { wrapper: wrapper(store) },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+    expect(probeEndpoint).toHaveBeenCalledOnce();
+    expect(probeEndpoint.mock.calls[0]?.[0]).toBe(
+      'https://station.example.test',
+    );
+    expect(probeEndpoint.mock.calls[0]?.[1]).toBeUndefined();
+    expect(probeEndpoint.mock.calls[0]?.[4]).toEqual(route.brokerRoute);
+    expect(checkHealth).not.toHaveBeenCalled();
+    expect(recordDirectSuccess).not.toHaveBeenCalled();
+    expect(recordRouteSuccess).toHaveBeenCalledWith(
+      route.id,
+      undefined,
+      'route-boot',
+    );
+    expect(
+      store.getAll().find((item) => item.id === route.id)?.endpoints,
+    ).toEqual([]);
+  });
+
   it('does not turn a clean native no-connection state into an invalid address', async () => {
     const checkHealth = vi.fn();
     const emptyStore = new ConnectionStore({ storage: memoryAdapter() });

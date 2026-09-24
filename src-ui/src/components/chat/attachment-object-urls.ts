@@ -106,7 +106,7 @@ export function peekAttachmentObjectUrl(ref: string): string | undefined {
  * a URL this cache does not own (a data: URL, a markdown image's http URL) is a
  * no-op.
  */
-export function retainAttachmentObjectUrl(objectUrl: string): () => void {
+function retainAttachmentObjectUrl(objectUrl: string): () => void {
   for (const [ref, entry] of entries) {
     if (entry.objectUrl !== objectUrl) continue;
     entry.holders += 1;

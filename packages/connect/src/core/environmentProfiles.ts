@@ -317,6 +317,9 @@ const KIND_RANK: Record<AccessEndpointKind, number> = {
   // it, but dies with the launcher — rank below the supervised bases.
   'ssh-forward': 1,
   'tailnet-https': 1,
+  // A broker route is an encrypted application path, not a direct HTTP
+  // candidate. Its dedicated probe is supplied by useConnectionStatus.
+  'broker-route': 1,
   'lan-https': 2,
   manual: 3,
   'lan-http': 4,

@@ -457,6 +457,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // Which of a message's path mentions are previewable files: the same
+  // project-owned, root-contained read as the preview itself, answering only
+  // with the subset of the caller's own paths that resolve.
+  {
+    id: '/api/projects/:slug/file-preview/exists:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/exists',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Inspection reads a single already-addressed session output. Its event ID
   // is part of the URL and the route requires a strict empty body; it does
   // not mutate owner state. Match only this leaf so any future nested POST
