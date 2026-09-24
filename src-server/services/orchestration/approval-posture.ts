@@ -50,6 +50,37 @@ function concrete(mode: unknown): ApprovalMode | undefined {
     : undefined;
 }
 
+/** Strictness order of the concrete postures: lower is stricter. */
+const STRICTNESS: Readonly<Record<string, number>> = {
+  ask: 0,
+  auto: 1,
+  never: 2,
+};
+
+function strictness(
+  mode: ApprovalMode,
+  defaultResolution: ApprovalMode | undefined,
+): number | undefined {
+  const resolved = mode === 'connection-default' ? defaultResolution : mode;
+  return resolved === undefined ? undefined : STRICTNESS[resolved];
+}
+
+/**
+ * Whether `pick` is at least as strict as `standing`. Ask is at least as
+ * strict as any posture, the engine's own configuration included (see
+ * `resolveDefaultPick`). Otherwise both must be rankable.
+ */
+function atLeastAsStrict(
+  pick: ApprovalMode,
+  standing: ApprovalMode,
+  defaultResolution: ApprovalMode | undefined,
+): boolean {
+  const picked = strictness(pick, defaultResolution);
+  if (picked === STRICTNESS.ask) return true;
+  const stands = strictness(standing, defaultResolution);
+  return picked !== undefined && stands !== undefined && picked <= stands;
+}
+
 export class ApprovalPosture {
   /**
    * Threads to which Station itself passed a concrete posture (a start or a
@@ -98,22 +129,49 @@ export class ApprovalPosture {
   }
 
   /**
-   * Compare-and-set (#2436 MEDIUM-1): the decision that stands against a pick
-   * made having seen `basedOnSequence` (`null`: having seen none), or
-   * `undefined` when the pick may be recorded. A pick made without knowing a
-   * newer decision does not overwrite it, whatever order the two reach the
-   * server in. `basedOnSequence === undefined` is an unconditional caller.
+   * Compare-and-set (#2436 MEDIUM-1, narrowed by the orchestrator's decision
+   * of 2026-09-23): the decision that stands against a pick made having seen
+   * `basedOnSequence` (`null`: having seen none), or `undefined` when the pick
+   * may be recorded. `basedOnSequence === undefined` is an unconditional
+   * caller.
+   *
+   * Only a pick LOOSER than the standing decision is held to the basis. A
+   * pick at least as strict (ask < auto < never) is always recorded: it can
+   * never leave the engine more permissive than the decision it replaces, so
+   * a second device's Ask on a full-access session is never refused for not
+   * having seen that session's history. A Default pick, on either side, is
+   * ranked by what it resolves to (`defaultResolution`, from
+   * `defaultPickResolution`); a Default that resolves to the engine's own
+   * configuration cannot be ranked, so it is held to the basis, and only Ask
+   * outranks it.
    */
   supersedingDecision(
     threadId: string,
+    pick: ApprovalMode,
     basedOnSequence: number | null | undefined,
+    defaultResolution: ApprovalMode | undefined,
   ): ApprovalPostureDecision | undefined {
     if (basedOnSequence === undefined) return undefined;
     const standing = this.decision(threadId);
     if (!standing) return undefined;
-    return basedOnSequence === null || standing.sequence > basedOnSequence
-      ? standing
-      : undefined;
+    if (basedOnSequence !== null && standing.sequence <= basedOnSequence)
+      return undefined;
+    return atLeastAsStrict(pick, standing.approvalMode, defaultResolution)
+      ? undefined
+      : standing;
+  }
+
+  /**
+   * What a Default pick on `threadId` resolves to now: the Agent's default,
+   * else this Station's, else `ask` on a thread Station set a posture on,
+   * else `undefined` (the engine's own configuration). Read before the
+   * compare-and-set step, which must stay synchronous.
+   */
+  defaultPickResolution(input: {
+    threadId: string;
+    agentSlug?: string;
+  }): Promise<ApprovalMode | undefined> {
+    return this.resolveDefaultPick(input);
   }
 
   /**

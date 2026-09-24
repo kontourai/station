@@ -327,7 +327,7 @@ export interface ExecutionTargetExecutionDependencies
       clientOrigin?: ClientOrigin;
       principal?: PrincipalRef;
     },
-  ) => SetApprovalModeResult | undefined;
+  ) => Promise<SetApprovalModeResult | undefined>;
   /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
@@ -603,7 +603,7 @@ export async function executeForegroundMessage(
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
   const approvalMode = input.setApprovalMode
-    ? deps.recordApprovalMode?.(resolved.access, {
+    ? await deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,
         provider: resolved.provider,
         approvalMode: input.setApprovalMode,

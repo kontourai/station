@@ -6693,7 +6693,7 @@ export class OrchestrationService {
               'This engine has no approval control.',
             );
           }
-          const result = this.recordApprovalModeDecision({
+          const result = await this.recordApprovalModeDecision({
             threadId: command.threadId,
             provider,
             approvalMode: command.approvalMode,
@@ -7512,28 +7512,40 @@ export class OrchestrationService {
    * sequence, which is the order every client folds and the order
    * `ApprovalPosture.resolve` applies.
    *
-   * Compare-and-set: with `basedOnSequence` given, the pick is recorded only
-   * if no newer decision exists for the conversation; otherwise nothing is
-   * written and the result names the decision that stands. The check and the
-   * append run in one synchronous step, so no other decision can land
-   * between them.
+   * Compare-and-set: with `basedOnSequence` given, a pick LOOSER than the
+   * standing decision is recorded only if no newer decision exists for the
+   * conversation; otherwise nothing is written and the result names the
+   * decision that stands. A pick at least as strict is always recorded
+   * (`ApprovalPosture.supersedingDecision`). What a Default pick resolves to
+   * is read first; the check and the append then run in one synchronous
+   * step, so no other decision can land between them.
    *
    * The thread need not have a session yet: the foreground executor records a
    * pick its first send carries BEFORE that session starts, so the spawn is
    * already in it. Authorization belongs to the caller (the command route
    * and the executor's own authorized entry points).
    */
-  recordApprovalModeDecision(input: {
+  async recordApprovalModeDecision(input: {
     threadId: string;
     provider: EngineId;
     approvalMode: ApprovalMode;
     basedOnSequence?: number | null;
     clientOrigin?: ClientOrigin;
     principal?: PrincipalRef;
-  }): SetApprovalModeResult {
+  }): Promise<SetApprovalModeResult> {
+    const agentSlug = this.readLatestSessionStartMetadata(
+      input.threadId,
+    )?.agentSlug;
+    const defaultResolution = await this.approvalPosture.defaultPickResolution({
+      threadId: input.threadId,
+      ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+    });
+    // Synchronous from here to the append: the compare-and-set step.
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
+      input.approvalMode,
       input.basedOnSequence,
+      defaultResolution,
     );
     if (standing) {
       return {

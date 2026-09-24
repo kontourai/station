@@ -301,9 +301,22 @@ A session spawned before this change has nothing recorded.
   carries it.
 - **Compare-and-set.** Every pick names the latest decision sequence the chat
   had folded when the user picked. `null` means it had folded none.
-  - The server records the pick only if no newer decision exists for the
-    conversation. Otherwise it drops the pick and returns the standing
+  - **Only a looser pick is held to its basis** (orchestrator decision,
+    2026-09-23). Strictness is ask < auto < never. A pick at least as strict
+    as the decision that stands is always recorded. It can never leave the
+    engine more permissive than the decision it replaces, so a second
+    device's Ask on a full-access session is never refused for not having
+    seen that session's history.
+  - A looser pick is recorded only if no newer decision exists for the
+    conversation. Otherwise the server drops it and returns the standing
     decision.
+  - A Default pick, on either side of the comparison, is ranked by what it
+    resolves to now (§4.3), read before the synchronous check. A Default that
+    resolves to the engine's own configuration cannot be ranked, so it is
+    held to its basis, and only Ask outranks it (Ask is at least as strict
+    as any posture). The resolution uses the thread's recorded Agent; a pick
+    recorded before its session's first start is ranked by the Station
+    default alone, which can only hold a pick, never loosen one.
   - The client folds that decision, clears the queue, and adds a one-line
     note: "Your approval pick was not applied: another device had already set
     it to …".
@@ -312,8 +325,10 @@ A session spawned before this change has nothing recorded.
 - **What this closes.**
   - **G-off.** An offline full access that never saw the phone's later Ask is
     dropped.
-  - **The duplicate-carry race.** The command and a send that carries the same
-    queued pick record it once.
+  - **The duplicate-carry race.** The command and a send that carry the same
+    queued pick can both be recorded, since the second is as strict as the
+    first. The posture does not move. Two looser picks on one stale basis
+    record once.
   - **The spawn window.** A carried pick is recorded before its session
     starts.
 
@@ -368,7 +383,27 @@ A session spawned before this change has nothing recorded.
   - `/chat/:id/continue`;
   - the conversation handoff;
   - `/delegations`, and a delegation continue;
-  - task dispatch (`runtimeConfig.modelOptions`).
+  - Task dispatch and Starter Work's `start-task` launch
+    (`runtimeConfig.modelOptions`); see below.
+- **Task dispatch is enforced in the dispatcher, not only at routes.** A
+  review found `POST /api/starter-work/launch` passed
+  `dispatch.runtimeConfig` to `TaskDispatcher.dispatch` with no gate.
+  - Two options were weighed: enforce at the dispatcher, or gate every route
+    plus a source-invariant test that fails when a new route calls `dispatch`
+    with a `runtimeConfig` and no gate. The dispatcher was chosen because it
+    CAN carry the caller's authority, and a rule in the seam covers present
+    and future callers by construction. A text scan can only notice a new
+    caller written in the shape it expects.
+  - `TaskDispatcher.dispatch` refuses a full-access `runtimeConfig` unless the
+    intent carries a `FullAccessGrant` (outcome `forbidden`), before anything
+    is reserved.
+  - The grant is a required field (`FullAccessGrant | null`), so every caller
+    states its authority where it calls, and the compiler rejects one that
+    forgets. It is a branded type minted only by `fullAccessGrantFor` from a
+    request's own authority (`mayGrantFullAccess`). Unattended callers (the
+    external monitor, the board intent, e2e control) pass `null`.
+  - The tasks and starter routes keep an early 403 from the same derivation,
+    so a refused Starter launch leaves no Task behind.
 - **The refusal.** It is 403 with `approval-full-access-not-granted`, decided
   before the send or the command has any effect.
 - **Who can reach a session at all.** Command authorization
@@ -384,6 +419,13 @@ A session spawned before this change has nothing recorded.
 - **Precedence at a session start:** the recorded decision, then the Agent's
   default, then the Station's. A Default pick returns to the Agent's default.
   A member can tighten below it at any time.
+- **A Default pick needs no grant, even where it resolves to full access
+  (owner decision, 2026-09-23, fork 1).** A member without
+  `approval:full-access` who picks Default on a chat whose Agent (or Station)
+  default is `never` gets full access. That is intended: the owner explicitly
+  wants members to get an Agent's full-access default. The authority was
+  exercised once, where the default was set (§4.8 on the Agent write, the
+  settings route for the Station default), not at each pick.
 - **Write authority.** Saving `never` needs the same authority as §4.8.
   - Every Agent write from outside the server goes through `POST /agents` or
     `PUT /agents/:slug`: the editor, the SDK and CLI, and the Station-control
@@ -471,8 +513,9 @@ The acceptance bar is the invariant.
   - the recorded event;
   - M1;
   - a same-posture re-pick;
-  - compare-and-set: G-off, a basis of `null`, the duplicate-carry race, and
-    the spawn window;
+  - compare-and-set: G-off, a basis of `null`, the duplicate-carry race, the
+    spawn window, a fresh device's stricter pick recorded, and a Default
+    ranked by its resolution (including one that cannot be ranked);
   - dormant respawn;
   - the credential-profile recovery replay (HIGH-2);
   - Codex, and refusal on an engine with no knob;
@@ -492,6 +535,13 @@ The acceptance bar is the invariant.
   - a revoked grant;
   - sends refused before running;
   - Agent writes, from a delegation device and from the operator.
+- **Task dispatch authority**
+  (`src-server/routes/orchestration/__tests__/task-dispatch-full-access.routes.test.ts`).
+  Real pairing, auth boundary, tasks and starter routes, a real
+  `StarterRegistry` and a real `TaskDispatcher`. It covers a device refused on
+  both routes (with no Task left behind), a stricter posture allowed, and a
+  granted device and the operator reaching the engine at `never`. The
+  dispatcher's own refusal, for any caller, is in `task-dispatcher.test.ts`.
 - **Client lifecycle** (`approvalPick.lifecycle.test.tsx`). It covers:
   - the pick as a command, and the compare-and-set basis;
   - a superseded note;

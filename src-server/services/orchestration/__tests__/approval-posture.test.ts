@@ -359,23 +359,76 @@ describe('server-ordered approval posture (#2436)', () => {
       ).toBe(true);
     });
 
-    test('the duplicate-carry race: the same pick sent twice on one basis is recorded once', async () => {
+    test('the duplicate-carry race: the same pick sent twice on one basis leaves the posture unchanged', async () => {
       await start('t-dup');
       const seen = await decide('t-dup', 'auto', desktop);
       // The command and a send carrying the same queued pick both arrive.
       const first = await decide('t-dup', 'ask', desktop, seen.sequence);
       const second = await decide('t-dup', 'ask', desktop, seen.sequence);
       expect(first.recorded).toBe(true);
-      expect(second).toEqual({
-        threadId: 't-dup',
+      // As strict as the decision that stands, so it is recorded again; the
+      // posture does not move.
+      expect(second).toMatchObject({ recorded: true, approvalMode: 'ask' });
+      expect(second.sequence).toBeGreaterThan(first.sequence);
+      await turn('t-dup');
+      expect(claude.lastTurnMode()).toBe('ask');
+    });
+
+    test("a fresh device's stricter pick is recorded, whatever it has seen", async () => {
+      await start('t-fresh');
+      await decide('t-fresh', 'never', desktop);
+      // A phone that has seen no decision tightens: never refused.
+      const phoneAuto = await decide('t-fresh', 'auto', phone, null);
+      expect(phoneAuto).toMatchObject({ recorded: true, approvalMode: 'auto' });
+      const phoneAsk = await decide('t-fresh', 'ask', phone, null);
+      expect(phoneAsk).toMatchObject({ recorded: true, approvalMode: 'ask' });
+      // Loosening on the same stale basis is still held to it.
+      const phoneNever = await decide('t-fresh', 'never', phone, null);
+      expect(phoneNever).toMatchObject({
         recorded: false,
         approvalMode: 'ask',
-        sequence: first.sequence,
+        sequence: phoneAsk.sequence,
       });
+      await turn('t-fresh');
+      expect(claude.lastTurnMode()).toBe('ask');
+    });
+
+    test('a Default pick is ranked by what it resolves to', async () => {
+      // Resolves to the Station default Ask: stricter than never, recorded.
+      stationDefault = 'ask';
+      await start('t-default-ask');
+      await decide('t-default-ask', 'never', desktop);
+      expect(
+        await decide('t-default-ask', 'connection-default', phone, null),
+      ).toMatchObject({ recorded: true, approvalMode: 'connection-default' });
+      await turn('t-default-ask');
+      expect(claude.lastTurnMode()).toBe('ask');
+
+      // Resolves to the Station default never: looser than Ask, held.
+      stationDefault = 'never';
+      await start('t-default-never');
+      await decide('t-default-never', 'ask', desktop);
+      expect(
+        await decide('t-default-never', 'connection-default', phone, null),
+      ).toMatchObject({ recorded: false, approvalMode: 'ask' });
+      await turn('t-default-never');
+      expect(claude.lastTurnMode()).toBe('ask');
+    });
+
+    test("a Default that resolves to the engine's own configuration cannot be ranked, so it is held to its basis", async () => {
+      await start('t-default-engine');
+      await decide('t-default-engine', 'auto', desktop);
+      expect(
+        await decide('t-default-engine', 'connection-default', phone, null),
+      ).toMatchObject({ recorded: false, approvalMode: 'auto' });
+      // Ask outranks anything, the engine's own configuration included.
+      expect(
+        await decide('t-default-engine', 'ask', phone, null),
+      ).toMatchObject({ recorded: true });
     });
 
     test('the spawn window: a pick recorded before its session exists is the posture the session spawns in', async () => {
-      const recorded = service.recordApprovalModeDecision({
+      const recorded = await service.recordApprovalModeDecision({
         threadId: 't-spawn-window',
         provider: 'claude',
         approvalMode: 'never',
