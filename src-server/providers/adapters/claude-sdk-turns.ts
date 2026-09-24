@@ -578,7 +578,9 @@ export type ClaudeResultTarget =
  * Which turn a `result` closes. Its user uuids name the turn(s) it answers;
  * a result naming none is the running turn's (a provider turn's carries
  * `origin: task-notification`), and with nothing running, the oldest queued
- * send's — the SDK runs prompts in the order they were pushed. Resolved
+ * send's — the SDK runs prompts in the order they were pushed — unless the
+ * CLI reports command lifecycle, in which case a queued send has not started
+ * and the result closes nothing. Resolved
  * WITHOUT changing the ledger; {@link settleClaudeResultTarget} removes it.
  */
 export function resolveClaudeResultTarget(
@@ -598,6 +600,9 @@ export function resolveClaudeResultTarget(
     return { kind: 'turn', turn, folded: named.slice(0, -1) };
   }
   if (ledger.running) return { kind: 'turn', turn: ledger.running, folded: [] };
+  // With lifecycle messages a queued send has provably not started, so a
+  // result naming nobody is not its result (#2324 delta review).
+  if (ledger.lifecycleMessages === true) return { kind: 'none' };
   const head = ledger.queued[0];
   return head ? { kind: 'turn', turn: head, folded: [] } : { kind: 'none' };
 }
