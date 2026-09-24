@@ -54,8 +54,8 @@ import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensure
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
-import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
   useChatDockActions,

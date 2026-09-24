@@ -375,7 +375,9 @@
 .chat-dock-inbox--touch .chat-dock-inbox__item,
 .chat-dock-inbox--touch .chat-dock-inbox__item:hover,
 .chat-dock-inbox--touch .chat-dock-inbox__item:focus-visible,
-.chat-dock-inbox--touch .chat-dock-inbox__row.is-current .chat-dock-inbox__item {
+.chat-dock-inbox--touch
+  .chat-dock-inbox__row.is-current
+  .chat-dock-inbox__item {
   border-color: transparent;
   background: transparent;
 }
