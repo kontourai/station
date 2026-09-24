@@ -32,6 +32,7 @@
     "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
     "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
     "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
+    "./client/plugin-command-effects": "./src/client/plugin-command-effects.ts",
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
