@@ -546,7 +546,7 @@ type EventStoreIngressLocation =
 /** How many live tool events' pending blob refs/charges are remembered. */
 const LIVE_TOOL_IMAGE_REF_MEMORY = 256;
 
-/** An event as it will persist, plus the tool-image ledger entry to settle. */
+/** An event as it will persist, plus the pending-ref ledger entry to settle. */
 type PersistedIngressForm = {
   payload: CanonicalRuntimeEvent;
   blobRefs: string[];
@@ -2771,14 +2771,34 @@ export class EventStore {
       );
       if (attachmentError) throw new EventStoreIngressError(attachmentError);
     }
+    // #2483: the same binding rule as a tool's images (see
+    // `persistedToolImages`). A reference without bytes is bound only when this
+    // store wrote it while projecting this same live event — the live path
+    // projects, then appends the reference-only form — or when it is already
+    // bound to this thread. Otherwise a replayed, imported or relayed event
+    // naming a digest held in someone else's private thread would bind it here,
+    // and the attachment route would serve it. The name and type stay; only
+    // the reference goes, so the transcript shows a chip with no preview.
+    const key = this.toolImageKey(event);
+    const live = this.pendingToolImages.get(key);
     const blobRefs: string[] = [];
     let stripped = 0;
+    let changed = false;
     const attachments = event.attachments.map(
       (attachment): PersistedChatAttachment => {
         if (attachment.dataUrl === undefined) {
-          if (isAttachmentBlobRef(attachment.blobRef))
-            blobRefs.push(attachment.blobRef);
-          return attachment;
+          const { blobRef, ...descriptor } = attachment;
+          if (
+            isAttachmentBlobRef(blobRef) &&
+            (live?.refs.has(blobRef) ||
+              this.isAttachmentBoundToThread(blobRef, event.threadId))
+          ) {
+            blobRefs.push(blobRef);
+            return attachment;
+          }
+          if (blobRef === undefined) return attachment;
+          changed = true;
+          return descriptor;
         }
         const parsed = parseChatAttachmentDataUrl(attachment.dataUrl);
         if (!parsed)
@@ -2790,15 +2810,22 @@ export class EventStore {
           throw new Error(
             'Attachment projection could not store attachment bytes.',
           );
+        this.pendingToolImagesFor(event).refs.add(ref);
         blobRefs.push(ref);
+        changed = true;
         stripped += attachment.dataUrl.length;
         const { dataUrl: _bytes, ...metadata } = attachment;
         return { ...metadata, blobRef: ref };
       },
     );
-    if (stripped === 0) return { payload: event, blobRefs };
-    this.observeAttachmentBytesStripped(stripped, event.provider);
-    return { payload: { ...event, attachments }, blobRefs };
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: { ...event, attachments },
+      blobRefs,
+      toolImageKey: key,
+    };
   }
 
   private observeAttachmentBytesStripped(bytes: number, provider: string) {
@@ -2813,9 +2840,10 @@ export class EventStore {
   }
 
   /**
-   * Per live tool event (thread + event id): the blob refs this ingress wrote
-   * and the quota its images will be charged, until the append that persists
-   * the event settles them.
+   * Per live event (thread + event id): the blob refs this ingress wrote and,
+   * for a tool's images, the quota they will be charged, until the append that
+   * persists the event settles them. A `turn.started`'s attachments record
+   * their refs here too (#2483); they carry no charge.
    *
    * - `refs` let the append of the same projected event — which arrives
    *   reference-only — bind what this store itself wrote.
