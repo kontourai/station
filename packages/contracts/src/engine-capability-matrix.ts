@@ -424,6 +424,15 @@ export type SubagentActionCell =
       /** Whether the action reaches one subagent, its turn, or the whole session. */
       scope: 'per-task' | 'turn' | 'session';
       evidence: string;
+      /**
+       * #2486: this action has no softer path — invoking it also ends the
+       * reporting session's own active turn (the engine offers nothing that
+       * stops one subagent while leaving the turn running). Absent/false
+       * means the action is scoped exactly to what `scope` says. A client
+       * rendering this control's copy reads this flag rather than assuming
+       * every engine's stop behaves the same way.
+       */
+      endsParentTurn?: boolean;
     };
 
 /**
@@ -875,13 +884,33 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
         'collabAgentToolCall spawnAgent/wait and subAgentActivity ThreadItems; child-thread turn/completed and thread/tokenUsage/updated',
       adapterModule: 'codex-adapter-child-work.ts',
     },
+    // #2486: a client `turn/interrupt {threadId: child, turnId}` stops a
+    // child, but the parent is never told — its own `wait` collabAgentToolCall
+    // takes 100s+ to notice, or never resolves within any bounded window
+    // (live captures: codex-0.155.1-collab-v1-client-turn-interrupt.jsonl).
+    // The only mechanism that unblocks the parent promptly is interrupting
+    // the parent's OWN active turn too, proven live
+    // (codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl: the
+    // parent's turn/completed arrives ~4ms after its own interrupt request,
+    // vs never within the capture window otherwise). Codex offers no softer
+    // path, so `stopProviderTask` (codex-adapter.ts) always ends the
+    // parent's turn too — `endsParentTurn: true` below. Resume has no wire
+    // mechanism at all (no client method reactivates an interrupted child),
+    // so it stays unsupported.
     subagentControl: {
-      state: 'none',
-      // Observed, not controlled. A client `turn/interrupt {threadId: child,
-      // turnId}` does stop a child, but the parent is never told: a v1
-      // parent re-waited on it and hung (captured). No per-child stop is
-      // wired until that is solved.
-      reason: 'No per-child stop is wired.',
+      state: 'wired',
+      stop: {
+        state: 'available',
+        invocation: 'client-request',
+        scope: 'per-task',
+        endsParentTurn: true,
+        evidence:
+          'codex-adapter.ts stopProviderTask: turn/interrupt on the child, then on the parent (proven live in codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl and codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl)',
+      },
+      resume: {
+        state: 'unsupported',
+        reason: 'No client method reactivates an interrupted child.',
+      },
     },
     builtInTools: {
       state: 'documented',

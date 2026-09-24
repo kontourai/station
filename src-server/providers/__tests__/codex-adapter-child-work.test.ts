@@ -17,6 +17,8 @@ import { describe, expect, test } from 'vitest';
 import {
   CODEX_CHILD_PENDING_BYTES_MAX,
   codexChildHeldStats,
+  codexRunningChildTurnId,
+  codexRunningChildTurns,
   SETTLED_AWAITING_OWN_TERMINAL_MAX,
 } from '../adapters/codex-adapter-child-work.js';
 import {
@@ -181,6 +183,12 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     // Nothing can open a Codex child thread, so no handle is invented.
     expect(item.result?.handle).toBeUndefined();
     expect(item.usage?.toolUses).toBeUndefined();
+    // #2486 review: stoppability is derived, not stamped once and kept — a
+    // settled child is never stoppable again, so `controls` is cleared on
+    // settle (see `syncChildStopControl`/the settle `identity.controls: {}`
+    // trick in codex-adapter-child-work.ts), even though it WAS offered
+    // while the child was running (this same capture, mid-replay — see the
+    // dedicated turn-id-tracking test below).
     expect(item.controls).toBeUndefined();
   });
 
@@ -286,6 +294,61 @@ describe('#2458 Codex subagents as child work — real captures', () => {
       expect(child(events).status).toBe('cancelled');
       expect(child(events).usage?.durationMs).toBeGreaterThan(0);
     }
+  });
+
+  test('#2486: the running child’s own active turn id is tracked from its turn/started, the target a per-child turn/interrupt needs, and cleared once it settles', () => {
+    const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
+    const childDone = capture.findIndex((line) => {
+      const { msg } = JSON.parse(line);
+      return msg.method === 'turn/completed' && msg.params.threadId === CHILD;
+    });
+    expect(childDone).toBeGreaterThan(0);
+    const before = replayCodexCapture(capture, { limit: childDone });
+    expect(child(before.events).status).toBe('running');
+    expect(codexRunningChildTurnId(before.record, CHILD)).toBe(
+      '00000000-0000-7000-8000-000000000005',
+    );
+    expect(codexRunningChildTurns(before.record)).toEqual([
+      { childId: CHILD, turnId: '00000000-0000-7000-8000-000000000005' },
+    ]);
+    // #2486 review: the control is offered the moment a target exists.
+    expect(child(before.events).controls).toEqual({
+      stop: 'provider-task-stop',
+    });
+
+    const after = replayCodexCapture(capture, { limit: childDone + 1 });
+    // Settled (cancelled): nothing may target it for a stop any more.
+    expect(child(after.events).status).toBe('cancelled');
+    expect(codexRunningChildTurnId(after.record, CHILD)).toBeUndefined();
+    expect(codexRunningChildTurns(after.record)).toEqual([]);
+    // #2486 review: and the control goes with it — never survives a settle.
+    expect(child(after.events).controls).toBeUndefined();
+  });
+
+  test('#2486: a child registered but whose own turn/started has not yet arrived has no target turn id — nothing may guess one', () => {
+    // spawnAgent registers the child (running) before its OWN turn/started
+    // necessarily arrives on its separate stream.
+    const capture = CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED;
+    const spawned = capture.findIndex((line) => {
+      const { msg } = JSON.parse(line);
+      const item = msg.params?.item;
+      return (
+        msg.method === 'item/completed' &&
+        item?.type === 'collabAgentToolCall' &&
+        item.tool === 'spawnAgent'
+      );
+    });
+    expect(spawned).toBeGreaterThan(0);
+    const { record, events } = replayCodexCapture(capture, {
+      limit: spawned + 1,
+    });
+    expect(child(events).status).toBe('running');
+    expect(codexRunningChildTurnId(record, CHILD)).toBeUndefined();
+    expect(codexRunningChildTurns(record)).toEqual([]);
+    // #2486 review: a control offered here would be a button
+    // `stopProviderTask` could only answer `no-active-task` — the row must
+    // not render Stop before there is a real target to stop.
+    expect(child(events).controls).toBeUndefined();
   });
 
   test('a model interruptAgent (v2 activity `interrupted`) is a stop request the child turn confirms as cancelled', () => {
