@@ -370,6 +370,33 @@ export function selectGlobalChildWork(
 }
 
 /**
+ * The open chat a session thread names, or undefined — declining when more
+ * than one chat would match rather than picking the first. The store's own
+ * lookup takes the first chat whose current session or conversation id
+ * matches; two open chats can carry one conversation id (an outbound-queue
+ * projection creates a chat under its queue group's key with the
+ * conversation id it recorded), and the first-match rule would then put one
+ * chat's children and notices in the other.
+ */
+export function uniqueChatKey(
+  chats: Readonly<
+    Record<string, { currentSessionId?: string; conversationId?: string }>
+  >,
+  threadId: string,
+): string | undefined {
+  if (chats[threadId]) return threadId;
+  const one = (matches: string[]) =>
+    matches.length === 1 ? matches[0] : undefined;
+  const byCurrent = Object.keys(chats).filter(
+    (key) => chats[key]?.currentSessionId === threadId,
+  );
+  if (byCurrent.length > 0) return one(byCurrent);
+  return one(
+    Object.keys(chats).filter((key) => chats[key]?.conversationId === threadId),
+  );
+}
+
+/**
  * The ONE rule for "this session thread belongs to this chat", shared by the
  * chat's child list and its subagent notice so the two cannot disagree: the
  * key itself (a thread with no chat still reads its own work, as

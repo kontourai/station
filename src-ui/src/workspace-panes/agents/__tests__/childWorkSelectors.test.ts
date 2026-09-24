@@ -56,6 +56,7 @@ import {
   selectChatChildWork,
   selectGlobalChildWork,
   subagentNoticeFor,
+  uniqueChatKey,
 } from '../childWorkSelectors';
 
 function delegate(
@@ -344,5 +345,20 @@ describe('what the chat says about subagents it cannot show', () => {
     expect(emptyStateFor({ scope: 'chat', hasChat: true }).label).toBe(
       'No subagents running',
     );
+  });
+});
+
+describe('which open chat a session thread names', () => {
+  test('a unique match resolves; an ambiguous one declines instead of taking the first', () => {
+    const chats = {
+      'chat-a': { currentSessionId: 'exec-a', conversationId: 'conv-shared' },
+      'chat-b': { currentSessionId: 'exec-b', conversationId: 'conv-shared' },
+      'chat-c': { conversationId: 'conv-c' },
+    };
+    expect(uniqueChatKey(chats, 'chat-a')).toBe('chat-a');
+    expect(uniqueChatKey(chats, 'exec-b')).toBe('chat-b');
+    expect(uniqueChatKey(chats, 'conv-c')).toBe('chat-c');
+    expect(uniqueChatKey(chats, 'conv-shared')).toBe(undefined);
+    expect(uniqueChatKey(chats, 'nobody')).toBe(undefined);
   });
 });

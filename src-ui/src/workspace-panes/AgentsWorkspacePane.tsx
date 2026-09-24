@@ -45,6 +45,7 @@ import {
   selectGlobalChildWork,
   subagentNoticeFor,
   threadInChat,
+  uniqueChatKey,
 } from './agents/childWorkSelectors';
 import './agents/AgentsWorkspacePane.css';
 
@@ -144,8 +145,9 @@ function useChildWorkInput(
       engine: global.registry,
       settledObservedAt: global.settledObservedAt,
       delegateParentOf: (threadId: string) => tasks.delegateParents[threadId],
+      // Declines an ambiguous match (R-B) rather than taking the first chat.
       chatKeyFor: (threadId: string) =>
-        activeChatsStore.getChatKeyForExecutionSession(threadId),
+        uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
       chatFacts: (chatKey: string) => {
         const chat = activeChatsStore.getSnapshot()[chatKey];
         return { provider: chat?.orchestrationProvider, title: chat?.title };
@@ -283,6 +285,11 @@ export function AgentsWorkspacePane() {
     return () => clearInterval(id);
   }, [runningCount]);
 
+  // One session index per input, not one per reporter (R-D).
+  const chatMembership = useMemo(
+    () => (chatKey ? threadInChat(input, chatKey) : undefined),
+    [input, chatKey],
+  );
   const subagentNotice =
     scope === 'chat' && chatKey
       ? subagentNoticeFor({
@@ -291,7 +298,7 @@ export function AgentsWorkspacePane() {
           // D4: the selector's own membership rule, so a continuation
           // session's refusal (resolved through its conversation) counts.
           observed: Object.entries(global.observability)
-            .filter(([threadId]) => threadInChat(input, chatKey)(threadId))
+            .filter(([threadId]) => chatMembership?.(threadId))
             .map(([, observed]) => observed),
         })
       : undefined;

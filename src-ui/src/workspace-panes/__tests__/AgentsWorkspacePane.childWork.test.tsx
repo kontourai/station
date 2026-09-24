@@ -562,3 +562,34 @@ test('a continuation session’s server refusal counts for its conversation’s 
     screen.getByText('Continuation sessions do not report subagents yet.'),
   ).toBeTruthy();
 });
+
+test('a refusal from a conversation two open chats share is attributed to neither', () => {
+  openChat('codex');
+  activeChatsStore.updateChat(CHAT, { conversationId: 'conv-shared' });
+  activeChatsStore.initChat('chat-other', {
+    agentSlug: 'agent',
+    agentName: 'Agent',
+    title: 'Other',
+    conversationId: 'conv-shared',
+  });
+  try {
+    sessionsResult = {
+      data: [{ threadId: 'exec-continuation', conversationId: 'conv-shared' }],
+    };
+    childWorkGlobalStore.reconcileSnapshot(API, [
+      {
+        threadId: 'exec-continuation',
+        childWork: {
+          children: {
+            observability: 'not-reported',
+            reason: 'Belongs to one of the two chats.',
+          },
+        },
+      },
+    ]);
+    render(<AgentsWorkspacePane />);
+    expect(screen.queryByText('Belongs to one of the two chats.')).toBeNull();
+  } finally {
+    activeChatsStore.removeChat('chat-other');
+  }
+});

@@ -32,6 +32,13 @@ import type { OrchestrationEvent } from '../hooks/orchestration/types';
 /** Settled children kept across every reporter, oldest-settled evicted first. */
 export const GLOBAL_CHILD_WORK_FINISHED_LIMIT = 50;
 
+/**
+ * Stations whose partitions this window keeps, least recently written first
+ * out (R-C): a partition for a Station the window left is released once
+ * this many others have been written since.
+ */
+export const GLOBAL_CHILD_WORK_PARTITION_LIMIT = 4;
+
 /** Reporters whose observability this store remembers, oldest dropped first. */
 export const GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT = 256;
 
@@ -91,7 +98,16 @@ function eventTime(iso: string | undefined): number {
 function commit(next: GlobalChildWorkState): void {
   if (next === state) return;
   state = next;
-  partitions = { ...partitions, [current]: next };
+  // Re-inserting moves this Station to the most-recently-written end.
+  const rest = { ...partitions };
+  delete rest[current];
+  const keys = Object.keys(rest);
+  for (const key of keys.slice(
+    0,
+    Math.max(0, keys.length - (GLOBAL_CHILD_WORK_PARTITION_LIMIT - 1)),
+  ))
+    delete rest[key];
+  partitions = { ...rest, [current]: next };
   for (const listener of listeners) listener();
 }
 

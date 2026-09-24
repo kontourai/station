@@ -22,6 +22,7 @@ import {
   childWorkGlobalStore,
   GLOBAL_CHILD_WORK_FINISHED_LIMIT,
   GLOBAL_CHILD_WORK_OBSERVABILITY_LIMIT,
+  GLOBAL_CHILD_WORK_PARTITION_LIMIT,
 } from '../child-work-global-store';
 
 /** The Station these events arrive from (the store is partitioned by it). */
@@ -113,6 +114,32 @@ describe('child-work global store', () => {
     expect(
       childWorkGlobalStore.getPartition('http://station-a.test').registry.items,
     ).toEqual(a.registry.items);
+  });
+
+  test('partitions are bounded: the least recently written Station is released', () => {
+    const write = (apiBase: string) =>
+      childWorkGlobalStore.ingest(apiBase, {
+        provider: 'codex',
+        threadId: 'exec',
+        createdAt: at(),
+        method: 'child-work.updated',
+        // A new child each time: an identical upsert changes nothing.
+        delta: { kind: 'upsert', item: running('exec', `c-${++seq}`) },
+      });
+    const held = (apiBase: string) =>
+      Object.keys(childWorkGlobalStore.getPartition(apiBase).registry.items)
+        .length > 0;
+    const bases = Array.from(
+      { length: GLOBAL_CHILD_WORK_PARTITION_LIMIT + 1 },
+      (_, index) => `http://station-${index}.test`,
+    );
+    for (const base of bases.slice(0, -1)) write(base);
+    // Writing to the oldest again makes it the most recent.
+    write(bases[0]);
+    write(bases[bases.length - 1]);
+    expect(held(bases[0])).toBe(true);
+    expect(held(bases[1])).toBe(false);
+    for (const base of bases.slice(2)) expect(held(base)).toBe(true);
   });
 
   test('a delta naming another reporter is not recorded', () => {

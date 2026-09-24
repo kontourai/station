@@ -17,6 +17,14 @@
   border: 0;
 }
 
+.agents-pane__scope-actions > .button[aria-pressed="true"] {
+  /* The pressed scope's treatment is keyed on the SAME attribute assistive
+     tech reads, so the two agree from the first render. */
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
 .agents-pane__section-qualifier {
   color: var(--text-tertiary);
   font-weight: 500;
@@ -28,5 +36,6 @@
   margin: 0;
   padding: var(--space-1) var(--space-2);
   color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  /* The rows' secondary text size, legible at 390px. */
+  font-size: var(--text-xs);
 }
