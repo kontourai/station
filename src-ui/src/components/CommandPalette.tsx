@@ -334,6 +334,15 @@ export function CommandPalette() {
   // does. Gated on `isDockOpen` so this never claims a chat is focused while
   // no Chat surface is actually showing it, and it never guesses among
   // several open chats — only the one navigationStore itself calls active.
+  //
+  // Forward coupling (#1418/#1419 review round 2, MEDIUM): `isDockOpen` is
+  // incomplete — a full-screen Chat surface never sets it, so a plugin
+  // seed-composer command run while Chat is full-screen wrongly sees no
+  // active chat here. The sibling branch fix/reduce-tool-toasts-20260924
+  // (not merged; do not import it from here) adds
+  // `src-ui/src/hooks/orchestration/chatForeground.ts` with
+  // `isChatInForeground`, which covers both cases. Switch this gate to it
+  // once that branch merges.
   const activeChatId = useMemo(() => {
     if (!isDockOpen) return null;
     const resolved =
