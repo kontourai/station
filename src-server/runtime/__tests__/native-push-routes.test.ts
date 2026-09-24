@@ -19,6 +19,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
+import { NativePushRegistrationStore } from '../../services/notifications/native-push-registration-store.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
@@ -505,5 +506,19 @@ describe('native push routes', () => {
         'k'.repeat(43),
       ),
     ).toThrow(DevicePairingError);
+  });
+  test('a registration left behind for a revoked device is never listed', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
+    // As if dropping it had failed: the entry is still in the sidecar.
+    new NativePushRegistrationStore(harness.homeDir).upsert(
+      paired.device.id,
+      androidBody(TOKEN_A) as NativePushRegistrationRequest,
+      'k'.repeat(43),
+      1,
+    );
+    expect(readFileSync(harness.sidecarPath, 'utf8')).toContain(TOKEN_A);
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
   });
 });
