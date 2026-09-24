@@ -137,7 +137,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
-  isSessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -1026,6 +1025,14 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
+/**
+ * Candidate threads an attachment read may judge, matching the event store's
+ * per-query bound. The read-predicate calls are therefore bounded at this;
+ * the number of store queries is up to one per readable owner, a count that
+ * comes from the caller and never from the reference.
+ */
+const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -1454,9 +1461,9 @@ export function configureRuntimeRoutes(
   ]) {
     context.app.use(path, bindConversationReadAuthority);
   }
-  // These two families are classified per method leaf in the pairing-scope
-  // table, so an all-method `use` would register unclassified routes.
-  context.app.on('GET', '/api/attachments/*', bindConversationReadAuthority);
+  // `/api/board` is classified per method leaf in the pairing-scope table, so
+  // an all-method `use` would register unclassified routes. (`/api/attachments`
+  // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
   context.app.on(
     'POST',
@@ -2139,6 +2146,12 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Attachment bytes authorize through the thread that carried them, so they
+  // must resolve the same principal that owns that thread. The OS alias never
+  // matches a principal-owned Session, and every stored attachment 404'd.
+  // GET only: the route has one leaf, and `use` would register every method
+  // with the route-coverage guard.
+  context.app.get('/api/attachments/:ref', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -5199,15 +5212,27 @@ export function configureRuntimeRoutes(
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
-        const authority = conversationReadAuthorityForRequest(request);
-        // #2561: the owner set, so a caller who may read a shared or
-        // pre-principal chat also finds the bytes it carried.
-        return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
-          ref,
-          isSessionReadAuthority(authority)
-            ? context.orchestrationService.transcriptOwnerConstraint(authority)
-            : undefined,
+        // One bounded, owner-narrowed query per owner the caller could read
+        // (their own, shared personal-account owners, and the legacy alias
+        // where the home-possession bridge admits it). The owner list comes
+        // from the caller, never from the reference, so a digest bound only
+        // to other people's threads costs the same as an unbound one.
+        // Ownerless rows come back with the first owner's query and count
+        // toward the bound; under an ownerless `deny` policy four of them
+        // could crowd out a later owner's readable thread.
+        const owners = context.orchestrationService.attachmentCandidateOwnerIds(
+          conversationReadAuthorityForRequest(request),
         );
+        const threads = new Set<string>();
+        for (const owner of owners) {
+          for (const threadId of runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+            ref,
+            owner,
+          ))
+            threads.add(threadId);
+          if (threads.size >= ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST) break;
+        }
+        return [...threads].slice(0, ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST);
       },
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(

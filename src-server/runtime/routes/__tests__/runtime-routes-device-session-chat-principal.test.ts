@@ -87,6 +87,7 @@ import {
   ActionOperationService,
   FileActionOperationStore,
 } from '../../../services/operations/action-operation-service.js';
+import { attachmentBlobRefFor } from '../../../services/orchestration/attachment-blob-store.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -338,7 +339,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
      * formerly alias-decided routes call (`readSessionMessages`,
      * `listAgentRuns`) on the real service rather than an inert stub.
      */
-    principalReads: {
+    orchestrationExtras: {
       extraOwners?: ReadonlyArray<readonly [string, string]>;
       /** Receives every runtime log call, so a masked 500 stays visible. */
       onLog?: (entry: string) => void;
@@ -346,23 +347,19 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       eventLogPath?: string;
       /** Back the usage rollup with the real orchestration usage source. */
       usage?: boolean;
-      /**
-       * Extra events, appended before the orchestration runtime starts: an
-       * append racing its startup reads can fail with `database is locked`.
-       */
-      seed?: (store: EventStore) => void;
-      /**
-       * Share one personal conversation account across the operator and
-       * approved devices through the real pairing store, exactly as
-       * `runtime-initialize.ts` wires `personalConversationAccess`.
-       */
-      personalAccess?: boolean;
       /** A real event bus, so the `/events` relay can be observed. */
       eventBus?: EventBus;
       /** A real action-operation service behind `/api/action-operations`. */
       actionOperations?: unknown;
       /** Rows `/monitoring/events?start=` reads, before its authorization. */
       monitoringRows?: unknown[];
+      // Extra rows written before the orchestration runtime starts. Writing
+      // after it starts races its own connections for the SQLite write lock.
+      seed?: (store: EventStore) => void;
+      // The production personal-conversation sharing policy
+      // (`runtime-initialize.ts` wires it through EnvironmentSecurityService,
+      // which delegates 1:1 to this same DevicePairingService).
+      personalSharing?: boolean;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -378,7 +375,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
-        ...(principalReads.extraOwners ?? []),
+        ...(orchestrationExtras.extraOwners ?? []),
       ]) {
         if (taskReferences)
           store.upsertSession({
@@ -421,19 +418,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             outputText: 'An exact public answer.',
           });
       }
-      principalReads.seed?.(store);
+      orchestrationExtras.seed?.(store);
       orchestration = new OrchestrationService({
         eventStore: store,
-        adoptionLedger: store.createAdoptionLedger(),
-        eventBus: new EventBus(),
-        adapterRegistry: {
-          register() {},
-          get: () => undefined,
-          list: () => [],
-        },
-        logger: { debug() {}, warn() {} },
-        legacyPersonalOwner: getCachedUser().alias,
-        ...(principalReads.personalAccess
+        ...(orchestrationExtras.personalSharing
           ? {
               personalConversationAccess: {
                 canRead: (requesterId: string, ownerId: string) =>
@@ -443,6 +431,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               },
             }
           : {}),
+        adoptionLedger: store.createAdoptionLedger(),
+        eventBus: new EventBus(),
+        adapterRegistry: {
+          register() {},
+          get: () => undefined,
+          list: () => [],
+        },
+        logger: { debug() {}, warn() {} },
+        legacyPersonalOwner: getCachedUser().alias,
       });
       orchestration.initialize();
       // Registered BEFORE the barrier is awaited. The barrier resolves only
@@ -543,12 +540,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         getProjectHomeDir: () => roomHomeDir,
         loadAppConfig: () => ({}),
       },
-      logger: principalReads.onLog
+      logger: orchestrationExtras.onLog
         ? Object.fromEntries(
             ['debug', 'info', 'warn', 'error', 'fatal'].map((level) => [
               level,
               (...args: unknown[]) =>
-                principalReads.onLog?.(JSON.stringify(args)),
+                orchestrationExtras.onLog?.(JSON.stringify(args)),
             ]),
           )
         : { debug() {}, info() {}, warn() {}, error() {} },
@@ -563,7 +560,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
-      ...(principalReads.usage
+      ...(orchestrationExtras.usage
         ? {
             // Forwards `listUsageReceipts`, which the production ref in
             // `station-runtime.ts` does not (it exposes only
@@ -582,16 +579,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             }),
           }
         : {}),
-      ...(principalReads.eventBus ? { eventBus: principalReads.eventBus } : {}),
-      ...(principalReads.actionOperations
-        ? { actionOperations: principalReads.actionOperations }
+      ...(orchestrationExtras.eventBus
+        ? { eventBus: orchestrationExtras.eventBus }
         : {}),
-      ...(principalReads.monitoringRows
-        ? { queryEventsFromDisk: async () => principalReads.monitoringRows }
+      ...(orchestrationExtras.actionOperations
+        ? { actionOperations: orchestrationExtras.actionOperations }
         : {}),
-      ...(principalReads.eventLogPath
+      ...(orchestrationExtras.monitoringRows
         ? {
-            eventLogPath: principalReads.eventLogPath,
+            queryEventsFromDisk: async () => orchestrationExtras.monitoringRows,
+          }
+        : {}),
+      ...(orchestrationExtras.eventLogPath
+        ? {
+            eventLogPath: orchestrationExtras.eventLogPath,
             // The live relay's first frame reports ACP status.
             acpBridge: deepStub({ getStatus: () => ({ connections: [] }) }),
           }
@@ -603,18 +604,16 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               sessionQueries: orchestration!.sessionQueries,
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
-              ...(principalReads.extraOwners
+              ...(orchestrationExtras.extraOwners
                 ? {
                     readSessionMessages:
                       orchestration!.readSessionMessages.bind(orchestration),
                     listAgentRuns:
                       orchestration!.listAgentRuns.bind(orchestration),
-                    transcriptOwnerConstraint:
-                      orchestration!.transcriptOwnerConstraint.bind(
-                        orchestration,
-                      ),
                   }
                 : {}),
+              attachmentCandidateOwnerIds:
+                orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
             }),
           }
         : {}),
@@ -2351,7 +2350,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID],
           ['stranger-owned', 'human:tailscale-serve:stranger@example'],
         ],
-        personalAccess: true,
+        personalSharing: true,
       });
       searchCleanup.unshift(async () => {
         await h.roomRuntime.close();
@@ -2469,104 +2468,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(`${frame}\n${logs.join('\n')}`).not.toContain(
         'Conversation request authority was not resolved',
       );
-    });
-
-    /** An image upload on `threadId`; each fill byte is a distinct blob. */
-    function seedImage(
-      store: EventStore,
-      threadId: string,
-      owner: string,
-      fill: number,
-    ) {
-      const pixels = Buffer.alloc(6 * 1024, fill);
-      store.appendEvent({
-        eventId: `${threadId}:upload`,
-        provider: 'claude',
-        threadId,
-        createdAt: '2026-09-04T00:00:03Z',
-        method: 'turn.started',
-        turnId: `${threadId}:upload-turn`,
-        prompt: 'what is in this screenshot?',
-        metadata: { userId: owner },
-        attachments: [
-          {
-            kind: 'image',
-            name: 'screenshot.png',
-            mimeType: 'image/png',
-            size: pixels.length,
-            dataUrl: `data:image/png;base64,${pixels.toString('base64')}`,
-          },
-        ],
-      });
-    }
-    function blobRefOf(store: EventStore, threadId: string) {
-      const [ref] = store
-        .listEvents(threadId)
-        .flatMap((event) =>
-          'attachments' in event.payload
-            ? (event.payload.attachments ?? []).flatMap((attachment) =>
-                attachment.blobRef ? [attachment.blobRef] : [],
-              )
-            : [],
-        );
-      expect(ref, threadId).toMatch(/^sha256-/);
-      return ref!;
-    }
-    const openAttachment = async (app: Hono, ref: string, credential: string) =>
-      (
-        await app.request(
-          `/api/attachments/${ref}`,
-          { headers: { Authorization: `Bearer ${credential}` } },
-          REMOTE_TAILNET_ENV,
-        )
-      ).status;
-
-    test('attachment bytes open for every member of the personal account, never for a stranger’s chat', async () => {
-      const { app, store, paired } = await principalSetup({
-        seed: (seeded) => {
-          seedImage(seeded, 'operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID, 7);
-          seedImage(
-            seeded,
-            'stranger-owned',
-            'human:tailscale-serve:stranger@example',
-            9,
-          );
-        },
-      });
-      const operatorImage = blobRefOf(store, 'operator-owned');
-      const strangerImage = blobRefOf(store, 'stranger-owned');
-      // The paired device (orchestration:read) shares the operator's
-      // personal account, so it opens the operator's image too.
-      await expect(
-        openAttachment(app, operatorImage, OPERATOR_SECRET),
-      ).resolves.toBe(200);
-      await expect(
-        openAttachment(app, operatorImage, paired.credential),
-      ).resolves.toBe(200);
-      await expect(
-        openAttachment(app, strangerImage, OPERATOR_SECRET),
-      ).resolves.toBe(404);
-      await expect(
-        openAttachment(app, strangerImage, paired.credential),
-      ).resolves.toBe(404);
-    });
-
-    test('the home-possession operator opens the image of a chat written before principal ownership', async () => {
-      const { app, store, paired } = await principalSetup(
-        {
-          seed: (seeded) =>
-            seedImage(seeded, 'legacy-owned', getCachedUser().alias, 8),
-        },
-        'home',
-      );
-      // In `home` mode the paired credential carries home possession.
-      await expect(
-        openAttachment(
-          app,
-          blobRefOf(store, 'legacy-owned'),
-          paired.credential,
-        ),
-      ).resolves.toBe(200);
     });
 
     test('the usage rollup counts the personal account’s chats for the operator bearer and no stranger’s', async () => {
@@ -2819,6 +2720,239 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         );
         expect(refused.status, sessionId).toBe(404);
       }
+    });
+  });
+
+  // A stored attachment's bytes authorize through the thread that carried
+  // them, so `/api/attachments/:ref` must narrow and authorize with the SAME
+  // principal and owner policy that governs that thread. It once used the OS
+  // alias (`getCachedUser().alias`) while Sessions are owned by the resolved
+  // principal (`human:local:operator` here), so every stored attachment
+  // answered 404 on every device; then it narrowed to the caller's own id,
+  // which dropped threads the read policy admits through personal sharing or
+  // the legacy OS-alias bridge. The factory test
+  // (`routes/orchestration/__tests__/attachments.routes.test.ts`) injects its
+  // own deps and could not see either; these go through the production
+  // `configureRuntimeRoutes` wiring and the real credential pipeline.
+  describe('GET /api/attachments/:ref through the real wiring', () => {
+    function attachmentTurn(
+      store: EventStore,
+      threadId: string,
+      owner: string | undefined,
+      bytes: Buffer,
+    ) {
+      const metadata = owner ? { metadata: { userId: owner } } : {};
+      if (owner)
+        store.appendEvent({
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-24T00:00:00Z',
+          ...metadata,
+        });
+      store.appendEvent({
+        eventId: `${threadId}:turn`,
+        threadId,
+        turnId: `${threadId}:turn`,
+        provider: 'claude',
+        method: 'turn.started',
+        createdAt: '2026-09-24T00:00:01Z',
+        prompt: 'read this note',
+        ...metadata,
+        attachments: [
+          {
+            kind: 'file',
+            name: `${threadId}.txt`,
+            mimeType: 'text/plain',
+            size: bytes.length,
+            dataUrl: `data:text/plain;base64,${bytes.toString('base64')}`,
+          },
+        ],
+      });
+      return attachmentBlobRefFor(bytes);
+    }
+
+    async function fetchAttachment(app: Hono, ref: string, credential: string) {
+      const response = await app.request(
+        `/api/attachments/${ref}`,
+        { headers: { Authorization: `Bearer ${credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      const body = Buffer.from(await response.arrayBuffer());
+      return { status: response.status, body };
+    }
+
+    const operatorBytes = Buffer.from('attachment bytes owned by the operator');
+    const ownerlessBytes = Buffer.from(
+      'attachment bytes on an ownerless thread',
+    );
+    const legacyBytes = Buffer.from(
+      'attachment bytes on a pre-principal alias thread',
+    );
+
+    test('the chat principal that owns the thread reads its bytes; a device the policy does not admit gets 404', async () => {
+      let ref = '';
+      let ownerlessRef = '';
+      const { app, store, roomRuntime, paired } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          seed: (seedStore) => {
+            ref = attachmentTurn(
+              seedStore,
+              'operator-attachment-owned',
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              operatorBytes,
+            );
+            ownerlessRef = attachmentTurn(
+              seedStore,
+              'ownerless-attachment',
+              undefined,
+              ownerlessBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      // The discriminating premise: if the alias were the principal, the
+      // alias-based narrowing would have found this thread too.
+      expect(getCachedUser().alias).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
+      expect(store.listAttachmentThreads(ref)).toEqual([
+        'operator-attachment-owned',
+      ]);
+      expect(
+        store.listAttachmentCandidateThreads(ref, getCachedUser().alias),
+      ).toEqual([]);
+
+      const owner = await fetchAttachment(app, ref, OPERATOR_SECRET);
+      expect(owner.status, owner.body.toString()).toBe(200);
+      expect(owner.body).toEqual(operatorBytes);
+
+      // This Station has no personal sharing, so a paired device resolves to
+      // its own `human:device:<id>` principal and reads nothing it does not
+      // own.
+      const device = await fetchAttachment(app, ref, paired.credential);
+      expect(device.status, device.body.toString()).toBe(404);
+      expect(device.body.byteLength).toBe(0);
+
+      // The owner narrowing alone refuses the device above, so that 404
+      // cannot tell whether the session-read predicate still runs. The
+      // ownerless thread passes the narrowing (`owner_user_id IS NULL`) and is
+      // refused ONLY by the predicate: this Station does not grant
+      // single-user-compat ownerless access.
+      expect(
+        store.listAttachmentCandidateThreads(
+          ownerlessRef,
+          `human:device:${paired.device.id}`,
+        ),
+      ).toEqual(['ownerless-attachment']);
+      const refused = await fetchAttachment(
+        app,
+        ownerlessRef,
+        paired.credential,
+      );
+      expect(refused.status, refused.body.toString()).toBe(404);
+      expect(refused.body.byteLength).toBe(0);
+    });
+
+    test('a pre-principal thread owned by the OS alias stays readable by the home-possession local operator, and only by it', async () => {
+      let legacyRef = '';
+      const { app, roomRuntime, paired } = await setup(
+        'home',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          seed: (seedStore) => {
+            legacyRef = attachmentTurn(
+              seedStore,
+              'alias-attachment-owned',
+              getCachedUser().alias,
+              legacyBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      // `setup('home')` mints a home-possession device credential, which
+      // resolves to the local operator WITH the home-possession fact — the
+      // only authority the legacy bridge admits.
+      const home = await fetchAttachment(app, legacyRef, paired.credential);
+      expect(home.status, home.body.toString()).toBe(200);
+      expect(home.body).toEqual(legacyBytes);
+
+      // The operator secret over a remote peer is the same principal with no
+      // home-possession fact: the bridge must not admit it.
+      const remoteOperator = await fetchAttachment(
+        app,
+        legacyRef,
+        OPERATOR_SECRET,
+      );
+      expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);
+    });
+
+    test('personal conversation sharing admits a paired device to the operator’s thread, and still not to an ownerless one', async () => {
+      let ref = '';
+      let ownerlessRef = '';
+      const { app, roomRuntime, paired, pairing } = await setup(
+        'operator',
+        true,
+        undefined,
+        false,
+        false,
+        {
+          personalSharing: true,
+          seed: (seedStore) => {
+            ref = attachmentTurn(
+              seedStore,
+              'operator-attachment-owned',
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              operatorBytes,
+            );
+            ownerlessRef = attachmentTurn(
+              seedStore,
+              'ownerless-attachment',
+              undefined,
+              ownerlessBytes,
+            );
+          },
+        },
+      );
+      searchCleanup.unshift(async () => {
+        await roomRuntime.close();
+      });
+      const devicePrincipal = `human:device:${paired.device.id}`;
+      // The premise, from the real pairing store: this device is a member of
+      // the one personal conversation account and may read the operator's
+      // conversations.
+      expect(
+        pairing.canSharePersonalConversation(
+          devicePrincipal,
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
+      ).toBe(true);
+
+      const shared = await fetchAttachment(app, ref, paired.credential);
+      expect(shared.status, shared.body.toString()).toBe(200);
+      expect(shared.body).toEqual(operatorBytes);
+
+      const refused = await fetchAttachment(
+        app,
+        ownerlessRef,
+        paired.credential,
+      );
+      expect(refused.status, refused.body.toString()).toBe(404);
+      expect(refused.body.byteLength).toBe(0);
     });
   });
 });
