@@ -69,6 +69,7 @@ function ToastCard({
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
+  const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
   const shortcut = getSessionShortcut(notification.sessionId);
 
@@ -121,6 +122,7 @@ function ToastCard({
             {isActivity && (
               <span className="toast-card__eyebrow">Tool Activity</span>
             )}
+            {isTurn && <span className="toast-card__eyebrow">Agent turn</span>}
             {isPairing && (
               <span className="toast-card__eyebrow">
                 Device Pairing Request
