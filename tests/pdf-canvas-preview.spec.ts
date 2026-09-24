@@ -30,8 +30,12 @@ const CSP = Object.entries(
 
 /**
  * A small, valid PDF: each page a blue band, a line of Helvetica (drawn with
- * a system font) and a line of Symbol, which pdf.js must load from the
- * bundled standard fonts through the main-thread side-file factory.
+ * a system font), a line of Symbol, and a line in a non-embedded Japanese
+ * font encoded with the predefined 78-EUC-V CMap. pdf.js must load the
+ * Symbol font and both CMaps (78-EUC-V and the 78-EUC-H it builds on) from
+ * the bundle through the main-thread side-file factory; both CMaps are
+ * under Vite's 4 KB inlining limit, so they also prove the side-files are
+ * emitted as assets rather than `data:` URLs the CSP refuses to fetch.
  */
 function tinyPdf(pageCount: number): string {
   const objects: string[] = [];
@@ -39,11 +43,13 @@ function tinyPdf(pageCount: number): string {
   objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
   objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
   objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
+  objects[5] =
+    '<< /Type /Font /Subtype /Type0 /BaseFont /Ryumin-Light /Encoding /78-EUC-V /DescendantFonts [<< /Type /Font /Subtype /CIDFontType0 /BaseFont /Ryumin-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >> /FontDescriptor << /Type /FontDescriptor /FontName /Ryumin-Light /Flags 4 /FontBBox [0 -120 1000 880] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >> >>] >>';
   for (let i = 0; i < pageCount; i += 1) {
-    const pageId = 5 + i * 2;
-    const content = `0.2 0.4 0.8 rg 72 600 300 120 re f BT /F1 36 Tf 0 0 0 rg 72 500 Td (Station page ${i + 1}) Tj ET BT /F2 36 Tf 72 420 Td (abg) Tj ET`;
+    const pageId = 6 + i * 2;
+    const content = `0.2 0.4 0.8 rg 72 600 300 120 re f BT /F1 36 Tf 0 0 0 rg 72 500 Td (Station page ${i + 1}) Tj ET BT /F2 36 Tf 72 420 Td (abg) Tj ET BT /F3 36 Tf 72 340 Td <B0A1B0A2> Tj ET`;
     objects[pageId] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${pageId + 1} 0 R >>`;
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${pageId + 1} 0 R >>`;
     objects[pageId + 1] =
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
     kids.push(`${pageId} 0 R`);
@@ -207,11 +213,13 @@ test('draws a real PDF to canvas under the app CSP where the engine has no viewe
 }) => {
   const workers: string[] = [];
   page.on('worker', (worker) => workers.push(worker.url()));
-  const symbolFonts: string[] = [];
+  const sideFiles: string[] = [];
   page.on('response', (response) => {
-    const path = new URL(response.url()).pathname;
-    if (response.ok() && /^\/assets\/FoxitSymbol-[^/]+\.pfb$/.test(path))
-      symbolFonts.push(path);
+    const match =
+      /^\/assets\/(FoxitSymbol|78-EUC-[HV])-[^/]+\.(pfb|bcmap)$/.exec(
+        new URL(response.url()).pathname,
+      );
+    if (response.ok() && match) sideFiles.push(match[1]);
   });
   const problems = await mount(page);
 
@@ -240,9 +248,9 @@ test('draws a real PDF to canvas under the app CSP where the engine has no viewe
   await region.evaluate((element) => {
     element.scrollTop = 0;
   });
-  // The non-embedded Symbol font came from the bundle, as an emitted asset
-  // rather than an inlined data: URL the CSP would refuse.
-  expect(symbolFonts).toHaveLength(1);
+  // The non-embedded Symbol font and both CMaps came from the bundle, as
+  // emitted assets rather than inlined data: URLs the CSP would refuse.
+  expect(sideFiles.sort()).toEqual(['78-EUC-H', '78-EUC-V', 'FoxitSymbol']);
   // Parsed off the main thread, in the bundled same-origin worker.
   expect(
     workers.some((url) => url.startsWith(`${ORIGIN}/assets/pdf.worker`)),
