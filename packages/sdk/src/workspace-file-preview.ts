@@ -7,6 +7,7 @@ import { _getApiBase } from './api-core.js';
 import { mutateJson } from './client/http.js';
 
 export type {
+  WorkspaceFileExistence,
   WorkspaceFilePreview,
   WorkspaceFilePreviewLineRange,
   WorkspaceFilePreviewPaneState,
@@ -18,6 +19,7 @@ export type {
 export {
   isWorkspaceFilePreviewImageDataUrl,
   parseWorkspaceOpenFilePreviewIntent,
+  WORKSPACE_FILE_EXISTENCE_MAX_PATHS,
   WORKSPACE_FILE_PREVIEW_MAX_BYTES,
   WORKSPACE_FILE_PREVIEW_MAX_IMAGE_DIMENSION,
   WORKSPACE_FILE_PREVIEW_MAX_IMAGE_FINAL_RASTER_BYTES,
@@ -34,6 +36,7 @@ export {
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
 } from './client/projects';
+export { listExistingProjectWorkspaceFiles } from './client/workspace-file-existence';
 export { useProjectWorkspaceFilePreviewQuery } from './query-domains/workspaceProjects';
 
 export interface WorkspaceFilePreviewDownload {

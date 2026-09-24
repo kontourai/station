@@ -1,3 +1,5 @@
+import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
+
 export interface SavedConnection {
   profileVersion: 4;
   id: string;
@@ -80,6 +82,11 @@ export interface SavedConnection {
       capturedAt: string;
     };
   };
+  /** Secret-free browser routing metadata; the route grant lives in IndexedDB. */
+  brokerRoute?: {
+    brokerOrigin: string;
+    scope: SelfHostedBrokerScopeV1;
+  };
 }
 
 export interface DirectHttpAccessMethod {
@@ -125,6 +132,7 @@ export type AccessEndpointKind =
   // adapter has emitted this kind at runtime since before it joined this
   // union — the union was lying about the runtime vocabulary.
   | 'ssh-forward'
+  | 'broker-route'
   | 'manual';
 
 /**

@@ -66,6 +66,7 @@ import {
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
 import { EnvironmentStatus } from './settings/EnvironmentStatus';
 import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
@@ -1026,6 +1027,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {sectionVisible('plugin-visibility') && (
                   <PluginVisibilitySection />
                 )}
+                {/* #1973: SSH device hosts. Operator-only (the same gate as
+              plugin visibility); the panel itself is lazy-loaded. */}
+                {sectionVisible('device-hosts') && <DeviceHostsSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,

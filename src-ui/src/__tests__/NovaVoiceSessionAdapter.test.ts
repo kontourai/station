@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
-import { describe, expect, it, vi } from 'vitest';
+
+import { setClientRawEgressPolicyResolver } from '@kontourai/station-sdk/client';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   NovaVoiceSessionAdapter,
   type NovaVoiceSessionAdapterDependencies,
@@ -62,6 +64,8 @@ function createHarness(options?: {
     close: vi.fn(async () => undefined),
   } as unknown as AudioContext;
   const track = vi.fn();
+  const createSocket = vi.fn(() => socket as unknown as WebSocket);
+  const createVoiceSession = vi.fn(async () => ({ sessionId: 'rest-session' }));
   class FakeAudioWorkletNode {
     readonly port = { onmessage: null };
     readonly connect = vi.fn();
@@ -71,18 +75,19 @@ function createHarness(options?: {
     FakeAudioWorkletNode;
   const dependencies: NovaVoiceSessionAdapterDependencies = {
     apiBase: 'http://localhost:3000',
+    connectionId: 'direct-1',
     credentialProvider: {
       getCredential: () => undefined,
       getProtocolVersion: () => 1,
     },
     pageHref: () => 'http://localhost:5173/',
-    createSocket: () => socket as unknown as WebSocket,
+    createSocket,
     createAudioContext: () => context,
     getUserMedia:
       options?.getUserMedia ??
       (async () => ({ getTracks: () => [] }) as unknown as MediaStream),
     fetchVoicePort: options?.fetchVoicePort ?? (async () => 3002),
-    createVoiceSession: async () => ({ sessionId: 'rest-session' }),
+    createVoiceSession,
     deriveVoiceWsUrl: () => 'ws://localhost:3002/?agent=station-voice',
     isRemoteEndpoint: () => false,
     createAuthGate: (_remote, _credentials, onAuthenticated) => ({
@@ -95,10 +100,14 @@ function createHarness(options?: {
     adapter: new NovaVoiceSessionAdapter(dependencies),
     context,
     socket,
+    createSocket,
+    createVoiceSession,
     source,
     track,
   };
 }
+
+afterEach(() => setClientRawEgressPolicyResolver(undefined));
 
 async function startHarness(harness: ReturnType<typeof createHarness>) {
   const started = harness.adapter.start();
@@ -110,6 +119,72 @@ async function startHarness(harness: ReturnType<typeof createHarness>) {
 }
 
 describe('NovaVoiceSessionAdapter', () => {
+  it('rechecks selected-route policy after voice port lookup before opening a socket', async () => {
+    let releasePort!: (port: number) => void;
+    const port = new Promise<number>((resolve) => {
+      releasePort = resolve;
+    });
+    const harness = createHarness({ fetchVoicePort: () => port });
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'direct',
+      apiBase: 'http://localhost:3000',
+      connectionId: 'direct-1',
+      activationEpoch: 'selection-1',
+      isCurrent: () => true,
+    }));
+
+    const starting = harness.adapter.start();
+    await Promise.resolve();
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'broker',
+      apiBase: 'http://localhost:3000',
+      connectionId: 'broker-1',
+      activationEpoch: 'selection-2',
+      isCurrent: () => true,
+    }));
+    releasePort(3002);
+
+    const result = await starting;
+    if (result.ok)
+      throw new Error('Voice unexpectedly started on a broker route');
+    expect(result.error?.message).toContain(
+      'Browser broker routes do not support direct voice connections',
+    );
+    expect(harness.createSocket).not.toHaveBeenCalled();
+  });
+
+  it('closes a socket before voice authentication when selection changes after creation', async () => {
+    const harness = createHarness();
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'direct',
+      apiBase: 'http://localhost:3000',
+      connectionId: 'direct-1',
+      activationEpoch: 'selection-1',
+      isCurrent: () => true,
+    }));
+    const starting = harness.adapter.start();
+    await flush();
+    expect(harness.createSocket).toHaveBeenCalledTimes(1);
+
+    setClientRawEgressPolicyResolver(() => ({
+      kind: 'broker',
+      apiBase: 'http://localhost:3000',
+      connectionId: 'broker-1',
+      activationEpoch: 'selection-2',
+      isCurrent: () => true,
+    }));
+    harness.socket.open();
+
+    const result = await starting;
+    if (result.ok)
+      throw new Error('Voice unexpectedly started on a broker route');
+    expect(result.error.message).toContain(
+      'Browser broker routes do not support direct voice connections',
+    );
+    expect(harness.socket.close).toHaveBeenCalled();
+    expect(harness.createVoiceSession).not.toHaveBeenCalled();
+  });
+
   it('normalizes Nova UI state and publishes frozen presentation snapshots', async () => {
     const harness = createHarness();
     const snapshots = [harness.adapter.getSnapshot()];

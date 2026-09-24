@@ -766,6 +766,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       '/api/projects/my-proj/file-preview/download',
       'orchestration:read',
     ],
+    ['POST', '/api/projects/my-proj/file-preview/exists', 'orchestration:read'],
     [
       'DELETE',
       '/api/projects/my-proj/terminals/terminal-1',
@@ -1006,6 +1007,19 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       method: 'POST',
       path: '/api/projects/:slug/file-preview/download',
     });
+  });
+
+  test('declares the path-existence check as its own exact project read leaf', () => {
+    expect(
+      matchPairingScopeRule('POST', '/api/projects/:slug/file-preview/exists'),
+    ).toMatchObject({
+      origin: 'explicit',
+      prefix: '/api/projects/:slug/file-preview/exists',
+      scope: 'orchestration:read',
+    });
+    expect(
+      isLeafScopeDeclared('POST', '/api/projects/:slug/file-preview/exists'),
+    ).toBe(true);
   });
 
   test('keeps Project preview and its attachment handoff at read authority', () => {

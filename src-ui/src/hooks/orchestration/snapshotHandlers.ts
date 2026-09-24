@@ -8,6 +8,7 @@ import {
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
+import { reconcileChildWorkSnapshot } from './childWorkHandlers';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationSnapshotPayload } from './types';
@@ -518,6 +519,13 @@ export function applyOrchestrationSnapshot(
       streamingMessage: undefined,
     });
   }
+
+  // #2456: the snapshot is the only thing a client that missed live deltas
+  // hears about child work, so each row's `childWork` view reaches the chat
+  // through the same reducer a live delta does. A replay never feeds it.
+  // The live stream's snapshot is FULL (never thread-filtered), so a
+  // recorded reporter it no longer lists is gone (D2).
+  if (!replayId) reconcileChildWorkSnapshot(payload.sessions);
 
   if (!isReconnectFallback || !options || replayId) return;
   // Bounded catch-up guardrail (archive#1225): force a real refetch for every

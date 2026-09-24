@@ -107,3 +107,41 @@
   padding: var(--space-1, 4px) var(--space-2, 8px);
   position: absolute;
 }
+
+/*
+ * Fit mode (#1970): the canvas is sized inline to the largest box at the
+ * frame's aspect, centred on a black stage, so a device screen is drawn
+ * exactly rather than letterboxed inside its own element.
+ */
+.live-surface__stage--fit {
+  align-items: center;
+  background: #000;
+  display: flex;
+  justify-content: center;
+}
+
+.live-surface__canvas--fit {
+  flex: 0 0 auto;
+  height: auto;
+  overflow: hidden;
+  width: auto;
+}
+
+.live-surface__liveness {
+  color: var(--accent-warning, var(--text-primary));
+}
+
+/*
+ * A host's overlay (#1971), laid exactly over the fitted canvas box: the
+ * stage centres the canvas, so the overlay centres itself the same way and
+ * takes the same inline size. It never takes pointers — input still lands
+ * on the canvas beneath.
+ */
+.live-surface__overlay {
+  left: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}

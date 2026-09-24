@@ -271,3 +271,38 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* A floated device whose host is being asked again: the player keeps its
+   place (and its Close) and says so, instead of showing nothing. */
+.float-over-chat__waiting {
+  align-items: center;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 13px;
+  height: 100%;
+  justify-content: center;
+  margin: 0;
+  padding: 12px;
+  text-align: center;
+}
+
+/* Why a floater went away: in the chat's flow just above the composer
+   (after the float's marker), so the player, which keeps clear of
+   everything docked below the marker, never covers it. */
+.float-over-chat__notice-bar {
+  align-items: center;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.float-over-chat__notice-text {
+  flex: 1 1 200px;
+  font-size: 0.8125rem;
+  margin: 0;
+}

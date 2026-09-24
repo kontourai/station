@@ -237,6 +237,14 @@ export function installAccountBoundDeviceGate(
         // this path must stay forbidden rather than ride the self-read.
         (path === '/api/auth/authority' &&
           (c.req.method === 'GET' || c.req.method === 'HEAD')) ||
+        // A fresh account-bound Device reaches the Station through the
+        // encrypted application channel before it has a page-host cookie.
+        // The browser gate needs this exact protected Station self-identity
+        // read to admit the UI after signed Device/session activation. Its
+        // Device and account proofs are still checked above; other system
+        // status, management and execution leaves stay forbidden.
+        (path === '/api/system/identity' &&
+          (method === 'GET' || method === 'HEAD')) ||
         path === PUBLIC_DEVICE_PAIRING_REQUEST_PATH ||
         path === PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH;
       if (!permitted) {
