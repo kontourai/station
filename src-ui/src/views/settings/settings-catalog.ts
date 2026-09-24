@@ -15,6 +15,8 @@ export type SettingsSectionId =
   | 'feature-previews'
   | 'answer-shares'
   | 'plugin-visibility'
+  // #1973: machines this Station runs simulators and emulators on over SSH.
+  | 'device-hosts'
   | 'host-runtime'
   | 'sources'
   | 'telemetry'
@@ -96,6 +98,9 @@ export const SETTINGS_SECTIONS = [
     title: 'Plugin visibility',
     group: 'this-station',
   },
+  // #1973: operator-only, like plugin visibility: the hosts are machines
+  // Station reaches with the operator's own ssh keys.
+  { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
   // #2182: where this Station gets agents, skills, plugins and layouts from.
   { id: 'sources', title: 'Sources', group: 'this-station' },
@@ -209,6 +214,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Plugin visibility',
     section: 'plugin-visibility',
     keywords: ['plugins share grant collaborator board panes'],
+    conditional: 'operator',
+  },
+  {
+    id: 'device-hosts',
+    title: 'Device hosts',
+    section: 'device-hosts',
+    keywords: ['ssh remote simulator emulator'],
     conditional: 'operator',
   },
   {

@@ -68,6 +68,15 @@ export interface LiveSurfaceRouteOptions {
   now?: () => number;
 }
 
+/**
+ * Added by the Device pane lane (#1970, D12): `?projectSlug=` names the
+ * Project a request is made from. The routes never read it; it is context
+ * for the surface's AUTHORIZER, which receives the request (a device shared
+ * with a Project is reachable by that Project's admins only when the
+ * request names it). It never grants anything by itself.
+ */
+const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
+
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
   'quality',
@@ -168,7 +177,8 @@ export function createLiveSurfaceRoutes(
     if (
       queryKeys.some(
         (key) =>
-          !STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) ||
+          (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
+            key !== AUTHORIZATION_CONTEXT_QUERY_KEY) ||
           (c.req.queries(key)?.length ?? 0) > 1,
       )
     )

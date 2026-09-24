@@ -2,6 +2,11 @@ import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  deviceHubEndpointFromToolchain,
+  explicitDeviceHubEndpoint,
+} from '../../devices/device-hub-endpoint.js';
+import { createDeviceHubConnection } from '../../devices/toolchain/device-hub-connection.js';
+import {
   LocalMobileDeviceHost,
   parseMobileDeviceHubOrigin,
 } from '../mobile-device-host.js';
@@ -237,5 +242,105 @@ describe('mobile device host', () => {
         fetch,
       }).capture(target),
     ).rejects.toMatchObject({ code: 'invalid-response' });
+  });
+});
+
+describe('read lanes (#1970)', () => {
+  test('screenshots in flight never starve the inventory', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, options) => {
+      if (options?.method === 'POST') {
+        await gate;
+        return new Response(png, { headers: { 'content-type': 'image/png' } });
+      }
+      return Response.json(inventory());
+    });
+    const host = new LocalMobileDeviceHost({
+      endpoint: 'http://127.0.0.1:43871',
+      fetch,
+    });
+    const shots = [host.screenshot(target), host.screenshot(target)];
+    // The screenshot lane is full...
+    await expect(host.screenshot(target)).rejects.toMatchObject({
+      code: 'busy',
+    });
+    // ...and the inventory lane still answers.
+    expect(await host.inventory()).toMatchObject({ state: 'ready' });
+    release();
+    await Promise.all(shots);
+  });
+});
+
+// Lane E's managed-hub cases (#1970), carried across the integration: the
+// host no longer takes a `managedHub` callback — it reaches the supervised
+// hub only through `deviceHubEndpointFromToolchain`, which the runtime wires
+// to `DeviceToolchainService`. Refusing a bad origin is now the supervisor's
+// job (it builds the connection from a port it launched), so that case lives
+// with the toolchain tests rather than here.
+describe('mobile device host: the managed hub (#1970)', () => {
+  test("reads from the managed hub, resolved per request, with each launch's guard secret", async () => {
+    const fetch = fixtureFetch();
+    const launches = [50001, 50002].map((port) =>
+      createDeviceHubConnection({
+        port,
+        version: '0.10.1',
+        secret: `secret-${port}`,
+        fetch,
+      }),
+    );
+    const ensureHub = vi.fn(async () => launches.shift());
+    const host = new LocalMobileDeviceHost({
+      hub: deviceHubEndpointFromToolchain(
+        { ensureHub },
+        explicitDeviceHubEndpoint(undefined),
+      ),
+    });
+    expect((await host.inventory()).state).toBe('ready');
+    expect((await host.inventory()).state).toBe('ready');
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:50001/api/devices',
+      'http://127.0.0.1:50002/api/devices',
+    ]);
+    expect(
+      fetch.mock.calls.map(
+        ([, init]) =>
+          (init?.headers as Record<string, string> | undefined)?.[
+            'x-station-hub-secret'
+          ],
+      ),
+    ).toEqual(['secret-50001', 'secret-50002']);
+  });
+
+  test('an explicit endpoint is used when the toolchain defers to it', async () => {
+    const fetch = fixtureFetch();
+    // DeviceToolchainService.ensureHub answers undefined whenever
+    // STATION_MOBILE_DEVICE_HUB_URL is configured.
+    const host = new LocalMobileDeviceHost({
+      hub: deviceHubEndpointFromToolchain(
+        { ensureHub: async () => undefined },
+        explicitDeviceHubEndpoint('http://127.0.0.1:43871', { fetch }),
+      ),
+    });
+    await host.inventory();
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://127.0.0.1:43871/api/devices');
+  });
+
+  test('no running managed hub and no explicit endpoint reads as not-configured', async () => {
+    const fetch = fixtureFetch();
+    const host = new LocalMobileDeviceHost({
+      fetch,
+      hub: deviceHubEndpointFromToolchain(
+        { ensureHub: async () => undefined },
+        explicitDeviceHubEndpoint(undefined, { fetch }),
+      ),
+    });
+    expect(await host.inventory()).toMatchObject({
+      state: 'unavailable',
+      failure: 'not-configured',
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

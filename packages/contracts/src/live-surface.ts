@@ -48,6 +48,14 @@ export interface LiveSurfaceFrameHeader {
    * client's own receive time.
    */
   capturedAt: number;
+  /**
+   * Optional (added by the Device pane lane, #1970): how far clockwise a
+   * viewer turns THIS frame to show it upright. A simulator can stream its
+   * raw portrait framebuffer while the device is held in landscape. Input
+   * coordinates then address the ROTATED image (what the viewer shows), in
+   * rotated surface pixels; the producer maps them back. Absent means 0.
+   */
+  rotation?: LiveSurfaceFrameRotation;
 }
 
 export type LiveSurfaceModifiers = {
@@ -81,9 +89,51 @@ export type LiveSurfaceInput =
       code: string;
       modifiers?: LiveSurfaceModifiers;
     }
-  | { kind: 'text'; text: string };
+  | { kind: 'text'; text: string }
+  /**
+   * A hardware button on a device surface (#1970). A CONTROL action like any
+   * other input: it needs the lease, and a human pressing it auto-claims. Not
+   * every platform has every button (iOS has no Back); a producer refuses a
+   * button its platform lacks rather than approximating it.
+   */
+  | { kind: 'device-button'; button: LiveSurfaceDeviceButton }
+  /** Rotate a device surface to an absolute orientation (#1970). */
+  | { kind: 'rotate'; orientation: LiveSurfaceOrientation };
 
 export type LiveSurfaceInputKind = LiveSurfaceInput['kind'];
+
+export type LiveSurfaceDeviceButton = 'home' | 'back' | 'recents' | 'power';
+
+export const LIVE_SURFACE_DEVICE_BUTTONS: readonly LiveSurfaceDeviceButton[] = [
+  'home',
+  'back',
+  'recents',
+  'power',
+];
+
+/**
+ * A device's physical orientation, named from the device's point of view
+ * (the side the home edge is on is `portrait`). Distinct from how a viewer
+ * must turn a frame to show it upright, which is `LiveSurfaceFrameHeader.rotation`.
+ */
+export type LiveSurfaceOrientation =
+  | 'portrait'
+  | 'landscape-left'
+  | 'portrait-upside-down'
+  | 'landscape-right';
+
+export const LIVE_SURFACE_ORIENTATIONS: readonly LiveSurfaceOrientation[] = [
+  'portrait',
+  'landscape-left',
+  'portrait-upside-down',
+  'landscape-right',
+];
+
+/** Quarter turns clockwise a viewer applies to a frame to show it upright. */
+export type LiveSurfaceFrameRotation = 0 | 90 | 180 | 270;
+
+export const LIVE_SURFACE_FRAME_ROTATIONS: readonly LiveSurfaceFrameRotation[] =
+  [0, 90, 180, 270];
 
 export type LiveSurfaceController =
   | {
@@ -411,6 +461,32 @@ export function parseLiveSurfaceInput(value: unknown): LiveSurfaceInput | null {
       if (!boundedText(record.text, LIVE_SURFACE_TEXT_MAX_LENGTH)) return null;
       return { kind: 'text', text: record.text };
     }
+    case 'device-button': {
+      if (!onlyKeys(record, ['kind', 'button'])) return null;
+      if (
+        !LIVE_SURFACE_DEVICE_BUTTONS.includes(
+          record.button as LiveSurfaceDeviceButton,
+        )
+      )
+        return null;
+      return {
+        kind: 'device-button',
+        button: record.button as LiveSurfaceDeviceButton,
+      };
+    }
+    case 'rotate': {
+      if (!onlyKeys(record, ['kind', 'orientation'])) return null;
+      if (
+        !LIVE_SURFACE_ORIENTATIONS.includes(
+          record.orientation as LiveSurfaceOrientation,
+        )
+      )
+        return null;
+      return {
+        kind: 'rotate',
+        orientation: record.orientation as LiveSurfaceOrientation,
+      };
+    }
     default:
       return null;
   }
@@ -593,7 +669,12 @@ export function parseLiveSurfaceFrameHeader(
       'height',
       'deviceScaleFactor',
       'capturedAt',
+      'rotation',
     ]) ||
+    (record.rotation !== undefined &&
+      !LIVE_SURFACE_FRAME_ROTATIONS.includes(
+        record.rotation as LiveSurfaceFrameRotation,
+      )) ||
     !isLiveSurfaceId(record.surfaceId) ||
     !intInRange(record.seq, 0, Number.MAX_SAFE_INTEGER) ||
     !isLiveSurfaceEpoch(record.epoch) ||
@@ -617,6 +698,9 @@ export function parseLiveSurfaceFrameHeader(
     height: record.height as number,
     deviceScaleFactor: record.deviceScaleFactor as number,
     capturedAt: record.capturedAt as number,
+    ...(record.rotation === undefined || record.rotation === 0
+      ? {}
+      : { rotation: record.rotation as LiveSurfaceFrameRotation }),
   };
 }
 
@@ -645,6 +729,118 @@ export interface LiveSurfaceStreamState {
    */
   wedged?: boolean;
   wedgedSince?: number | null;
+  /**
+   * Optional producer-reported liveness (added by the Device pane lane,
+   * #1970). VIDEO and INPUT are separate channels on a device: a simulator's
+   * picture can keep streaming while the socket that carries taps is down,
+   * and a viewer must be told that rather than left tapping into nothing.
+   *
+   * - `inputChannel`: whether input can reach the surface right now.
+   *   `reconnecting` and `down` both mean input is refused
+   *   (`dispatch-failed`) until it is `connected` again.
+   * - `videoMode`: `live` is a real stream; `snapshot-poll` is the honest
+   *   name for a fallback that polls still screenshots at a low rate.
+   * - `videoDegradedReason`: why the video is not `live`, when it is not.
+   * - `orientation`: the device's orientation, when the producer knows it.
+   */
+  inputChannel?: LiveSurfaceInputChannelState;
+  videoMode?: LiveSurfaceVideoMode;
+  videoDegradedReason?: LiveSurfaceVideoDegradedReason;
+  orientation?: LiveSurfaceOrientation;
+  /**
+   * Which host produces the surface, when the producer runs on a named
+   * host (a device on the Station's own machine is `local`; D13).
+   */
+  hostId?: string;
+}
+
+export type LiveSurfaceInputChannelState =
+  | 'connected'
+  | 'reconnecting'
+  | 'down';
+export type LiveSurfaceVideoMode = 'live' | 'snapshot-poll';
+/**
+ * - `decoder-unavailable`: the stream needs a local decoder (Android's H.264)
+ *   and none is installed; frames come from polled screenshots instead.
+ * - `decoder-failed`: the decoder was found but could not keep running.
+ */
+export type LiveSurfaceVideoDegradedReason =
+  | 'decoder-unavailable'
+  | 'decoder-failed';
+
+/** The producer-owned part of a stream state record (see above). */
+export interface LiveSurfaceProducerStatus {
+  inputChannel?: LiveSurfaceInputChannelState;
+  videoMode?: LiveSurfaceVideoMode;
+  videoDegradedReason?: LiveSurfaceVideoDegradedReason;
+  orientation?: LiveSurfaceOrientation;
+  hostId?: string;
+}
+
+/** A host id: short, URL-safe, and never a path or address. */
+export const LIVE_SURFACE_HOST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+const INPUT_CHANNEL_STATES: readonly LiveSurfaceInputChannelState[] = [
+  'connected',
+  'reconnecting',
+  'down',
+];
+const VIDEO_MODES: readonly LiveSurfaceVideoMode[] = ['live', 'snapshot-poll'];
+const VIDEO_DEGRADED_REASONS: readonly LiveSurfaceVideoDegradedReason[] = [
+  'decoder-unavailable',
+  'decoder-failed',
+];
+
+/**
+ * Strictly parse the producer-owned status fields out of `record`; null when
+ * any present field is malformed. Absent fields stay absent.
+ */
+function parseProducerStatus(
+  record: Record<string, unknown>,
+): LiveSurfaceProducerStatus | null {
+  const out: LiveSurfaceProducerStatus = {};
+  if (record.inputChannel !== undefined) {
+    if (
+      !INPUT_CHANNEL_STATES.includes(
+        record.inputChannel as LiveSurfaceInputChannelState,
+      )
+    )
+      return null;
+    out.inputChannel = record.inputChannel as LiveSurfaceInputChannelState;
+  }
+  if (record.videoMode !== undefined) {
+    if (!VIDEO_MODES.includes(record.videoMode as LiveSurfaceVideoMode))
+      return null;
+    out.videoMode = record.videoMode as LiveSurfaceVideoMode;
+  }
+  if (record.videoDegradedReason !== undefined) {
+    if (
+      !VIDEO_DEGRADED_REASONS.includes(
+        record.videoDegradedReason as LiveSurfaceVideoDegradedReason,
+      )
+    )
+      return null;
+    out.videoDegradedReason =
+      record.videoDegradedReason as LiveSurfaceVideoDegradedReason;
+  }
+  if (record.orientation !== undefined) {
+    if (
+      !LIVE_SURFACE_ORIENTATIONS.includes(
+        record.orientation as LiveSurfaceOrientation,
+      )
+    )
+      return null;
+    out.orientation = record.orientation as LiveSurfaceOrientation;
+  }
+  if (record.hostId !== undefined) {
+    if (
+      typeof record.hostId !== 'string' ||
+      !LIVE_SURFACE_HOST_ID_PATTERN.test(record.hostId)
+    )
+      return null;
+    out.hostId = record.hostId;
+  }
+  return out;
 }
 
 export interface LiveSurfaceViewerIdentity {
@@ -665,6 +861,11 @@ export function parseLiveSurfaceStreamState(
       'viewer',
       'wedged',
       'wedgedSince',
+      'inputChannel',
+      'videoMode',
+      'videoDegradedReason',
+      'orientation',
+      'hostId',
     ]) ||
     (record.wedged !== undefined && typeof record.wedged !== 'boolean') ||
     (record.wedgedSince !== undefined &&
@@ -676,6 +877,8 @@ export function parseLiveSurfaceStreamState(
     return null;
   const lease = parseLiveSurfaceControlLease(record.lease);
   if (!lease || lease.surfaceId !== record.surfaceId) return null;
+  const producerStatus = parseProducerStatus(record);
+  if (!producerStatus) return null;
   let viewer: LiveSurfaceViewerIdentity | undefined;
   if (record.viewer !== undefined) {
     const identity = plainRecord(record.viewer);
@@ -697,6 +900,7 @@ export function parseLiveSurfaceStreamState(
     ...(record.wedgedSince === undefined
       ? {}
       : { wedgedSince: record.wedgedSince as number | null }),
+    ...producerStatus,
   };
 }
 
