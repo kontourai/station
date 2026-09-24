@@ -27,10 +27,16 @@
  * new code to the helper that removes in a hook.
  *
  * The baseline is per file, so a regression is attributed to the file that
- * made it. Counts below the baseline also fail, so a migration has to record
- * its lower number (`--update`) and the slack cannot be spent later by
- * someone else. `--update` only lowers or removes rows; it refuses to raise
- * one or add a file.
+ * made it. A count below its row is reported but does not fail: under a merge
+ * queue, two changes that each lower the same row merge cleanly into a count
+ * below both, and failing then would red whichever change gates next rather
+ * than either author. `--update` records lower counts; it only lowers or
+ * removes rows and refuses to raise one or add a file, so a rename or split of
+ * a baselined file migrates it to trackTempDirs() instead.
+ *
+ * It sees `mkdtemp(` and `mkdtempSync(` calls by name. An aliased import
+ * (`mkdtemp as mk`), `promisify(mkdtemp)` or passing the function by reference
+ * are not counted: it steers authors to the helper, it is not a proof.
  *
  *   node scripts/test-temp-dir-ratchet.mjs [--update]
  */
@@ -146,8 +152,7 @@ export function evaluate(counts, files, baseline) {
     under,
     missingSentinels,
     total: Object.values(counts).reduce((sum, count) => sum + count, 0),
-    ok:
-      over.length === 0 && under.length === 0 && missingSentinels.length === 0,
+    ok: over.length === 0 && missingSentinels.length === 0,
   };
 }
 
@@ -218,14 +223,13 @@ function main(argv) {
     return 1;
   }
   if (result.under.length > 0) {
-    console.error(
-      'FAIL: raw mkdtemp calls fell below the baseline; record the lower count:',
+    console.log(
+      'NOTE: raw mkdtemp calls fell below the baseline; record the lower count with',
     );
+    console.log('`node scripts/test-temp-dir-ratchet.mjs --update`:');
     for (const row of result.under) {
-      console.error(`  ${row.file}: ${row.count} (baseline ${row.ceiling})`);
+      console.log(`  ${row.file}: ${row.count} (baseline ${row.ceiling})`);
     }
-    console.error('Run: node scripts/test-temp-dir-ratchet.mjs --update');
-    return 1;
   }
   console.log(
     `OK: ${result.total} raw mkdtemp calls across ${files.length} test files, at the baseline; new temp dirs use trackTempDirs().`,

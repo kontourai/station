@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
-import { trackTempDirs } from '../temp-dirs.js';
+import { removeTempDirs, trackTempDirs } from '../temp-dirs.js';
 
 /**
  * Each case creates a directory in one test and checks it in the NEXT one:
@@ -80,5 +80,27 @@ describe('file lifetime', () => {
   test('removed once its scope finished', () => {
     expect(shared).not.toBe('');
     expect(existsSync(shared)).toBe(false);
+  });
+});
+
+describe('removeTempDirs', () => {
+  test('one directory that will not go does not leak the others', () => {
+    const attempted: string[] = [];
+    const stuck = new Error('EBUSY');
+    expect(() =>
+      removeTempDirs(['a', 'b', 'c'], (directory) => {
+        attempted.push(directory);
+        if (directory === 'a') throw stuck;
+      }),
+    ).toThrow(stuck);
+    expect(attempted).toEqual(['a', 'b', 'c']);
+  });
+
+  test('several failures are reported together', () => {
+    expect(() =>
+      removeTempDirs(['a', 'b'], () => {
+        throw new Error('EBUSY');
+      }),
+    ).toThrow(AggregateError);
   });
 });

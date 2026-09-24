@@ -60,11 +60,13 @@ describe('test temp-dir ratchet decisions', () => {
     ]);
   });
 
-  test('a file below its row, including one gone entirely, is under', () => {
+  test('a file below its row, including one gone entirely, is reported but not a failure', () => {
     const result = evaluate({ 'a.test.ts': 1 }, allSentinels, {
       files: { 'a.test.ts': 2, 'gone.test.ts': 4 },
     });
-    expect(result.ok).toBe(false);
+    // Under a merge queue two lowerings of one row merge below both; failing
+    // would red whichever change gates next, not either author.
+    expect(result.ok).toBe(true);
     expect(result.under).toEqual([
       { file: 'a.test.ts', count: 1, ceiling: 2 },
       { file: 'gone.test.ts', count: 0, ceiling: 4 },
@@ -216,16 +218,16 @@ describe('test temp-dir ratchet at the process boundary', () => {
     );
   });
 
-  test('exits 1 when a file falls below its row without --update', () => {
+  test('exits 0 and asks for --update when a file falls below its row', () => {
     const result = run(
       repo(
         { 'scripts/__tests__/migrated.test.ts': "makeTempDir('x-');\n" },
         { 'scripts/__tests__/migrated.test.ts': 2 },
       ),
     );
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('fell below the baseline');
-    expect(result.stderr).toContain(
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('fell below the baseline');
+    expect(result.stdout).toContain(
       'scripts/__tests__/migrated.test.ts: 0 (baseline 2)',
     );
   });
