@@ -79,6 +79,7 @@ import type { LoadedDeploymentAuthentication } from '../../../services/identity/
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { attachmentBlobRefFor } from '../../../services/orchestration/attachment-blob-store.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -324,6 +325,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     deploymentAuthentication?: LoadedDeploymentAuthentication,
     withMembership = false,
     withLocalAccounts = false,
+    // Extra rows written before the orchestration runtime starts. Writing
+    // after it starts races its own connections for the SQLite write lock.
+    seed?: (store: EventStore) => void,
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
     const roomHomeDir = mkdtempSync(
@@ -380,6 +384,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             outputText: 'An exact public answer.',
           });
       }
+      seed?.(store);
       orchestration = new OrchestrationService({
         eventStore: store,
         adoptionLedger: store.createAdoptionLedger(),
@@ -2220,5 +2225,135 @@ describe('device-session chat principal resolution over the REAL auth path (stat
 
     await roomRuntime.close();
     store.close();
+  });
+
+  // A stored attachment's bytes authorize through the thread that carried
+  // them, so `/api/attachments/:ref` must resolve the SAME principal that owns
+  // that thread. It once narrowed and authorized with the OS alias
+  // (`getCachedUser().alias`) while Sessions are owned by the resolved
+  // principal (`human:local:operator` here), so every stored attachment
+  // answered 404 on every device. The factory test
+  // (`routes/orchestration/__tests__/attachments.routes.test.ts`) injects its
+  // own deps and could not see that; this goes through the production
+  // `configureRuntimeRoutes` wiring and the real credential pipeline.
+  test('attachment bytes resolve the chat principal that owns the thread, and still refuse a caller who cannot read it', async () => {
+    const bytes = Buffer.from('attachment bytes owned by the operator');
+    const ref = attachmentBlobRefFor(bytes);
+    const threadId = 'operator-attachment-owned';
+    const ownerlessBytes = Buffer.from(
+      'attachment bytes on an ownerless thread',
+    );
+    const ownerlessRef = attachmentBlobRefFor(ownerlessBytes);
+    const ownerlessThread = 'ownerless-attachment';
+    const { app, store, roomRuntime, paired } = await setup(
+      'operator',
+      true,
+      undefined,
+      false,
+      false,
+      (seedStore) => {
+        seedStore.appendEvent({
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-24T00:00:00Z',
+          metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        });
+        seedStore.appendEvent({
+          eventId: `${threadId}:turn`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-24T00:00:01Z',
+          prompt: 'read this note',
+          metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+          attachments: [
+            {
+              kind: 'file',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              size: bytes.length,
+              dataUrl: `data:text/plain;base64,${bytes.toString('base64')}`,
+            },
+          ],
+        });
+        // An ownerless thread; see its assertion below.
+        seedStore.appendEvent({
+          eventId: `${ownerlessThread}:turn`,
+          threadId: ownerlessThread,
+          turnId: `${ownerlessThread}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-24T00:00:02Z',
+          prompt: 'read this other note',
+          attachments: [
+            {
+              kind: 'file',
+              name: 'other.txt',
+              mimeType: 'text/plain',
+              size: ownerlessBytes.length,
+              dataUrl: `data:text/plain;base64,${ownerlessBytes.toString('base64')}`,
+            },
+          ],
+        });
+      },
+    );
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    // The discriminating premise: if the alias were the principal, the
+    // alias-based narrowing would have found this thread too.
+    expect(getCachedUser().alias).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
+
+    // The blob is written and bound, and its thread is principal-owned: the
+    // alias narrowing the route used to apply drops it.
+    expect(store.listAttachmentThreads(ref)).toEqual([threadId]);
+    expect(
+      store.listAttachmentCandidateThreads(ref, LOCAL_OPERATOR_PRINCIPAL_ID),
+    ).toEqual([threadId]);
+    expect(
+      store.listAttachmentCandidateThreads(ref, getCachedUser().alias),
+    ).toEqual([]);
+
+    const owner = await app.request(
+      `/api/attachments/${ref}`,
+      { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+      REMOTE_TAILNET_ENV,
+    );
+    expect(owner.status, await owner.clone().text()).toBe(200);
+    expect(Buffer.from(await owner.arrayBuffer())).toEqual(bytes);
+
+    // A paired device resolves to its own `human:device:<id>` principal and
+    // cannot read the operator's thread.
+    const device = await app.request(
+      `/api/attachments/${ref}`,
+      { headers: { Authorization: `Bearer ${paired.credential}` } },
+      REMOTE_TAILNET_ENV,
+    );
+    expect(device.status, await device.clone().text()).toBe(404);
+    expect((await device.arrayBuffer()).byteLength).toBe(0);
+
+    // The owner-narrowing SQL alone refuses the device above (a principal-owned
+    // row never matches another principal), so that 404 cannot tell whether
+    // the session-read predicate still runs. The ownerless thread passes the
+    // narrowing (`owner_user_id IS NULL`) and is refused ONLY by the
+    // predicate: this Station does not grant single-user-compat ownerless
+    // access, so a paired device must still get a 404.
+    expect(
+      store.listAttachmentCandidateThreads(
+        ownerlessRef,
+        `human:device:${paired.device.id}`,
+      ),
+    ).toEqual([ownerlessThread]);
+    const refused = await app.request(
+      `/api/attachments/${ownerlessRef}`,
+      { headers: { Authorization: `Bearer ${paired.credential}` } },
+      REMOTE_TAILNET_ENV,
+    );
+    expect(refused.status, await refused.clone().text()).toBe(404);
+    expect((await refused.arrayBuffer()).byteLength).toBe(0);
   });
 });
