@@ -26,6 +26,7 @@ import {
   removeProfile,
   resolveDefaultProfile,
   setDefaultProfile,
+  setProfileStoreLockTimingForTests,
   upsertProfile,
   writeProfileStore,
 } from '../commands/profile-store.js';
@@ -40,8 +41,12 @@ beforeEach(() => {
   previousRoot = process.env.STATION_ROOT;
   process.env.STATION_HOME = home;
   process.env.STATION_ROOT = home;
+  // Tests that expect a live holder to refuse the write do not need the full
+  // production wait to prove it; the wait itself is pinned below.
+  setProfileStoreLockTimingForTests({ storeWaitMs: 250 });
 });
 afterEach(() => {
+  setProfileStoreLockTimingForTests();
   if (previousHome === undefined) delete process.env.STATION_HOME;
   else process.env.STATION_HOME = previousHome;
   if (previousRoot === undefined) delete process.env.STATION_ROOT;
@@ -545,13 +550,103 @@ describe('shared saved Station store', () => {
       })}\n`,
       { mode: 0o600 },
     );
+    const started = performance.now();
     expect(() =>
       upsertProfile({
         name: 'live-owner',
         endpoint: 'https://live.example.test',
       }),
     ).toThrow(/store is busy/);
+    // It refused only after waiting out the bound for the live owner.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(250);
   });
+
+  // A lock record naming a real, live child process that releases it (by
+  // unlinking, as a finished writer does) after `holdMs`. The record is the
+  // exact v2 protocol shape, bound to the child's own pid and birth.
+  function holdLiveLock(path: string, holdMs: number) {
+    const holder = spawn(
+      process.execPath,
+      [
+        '--eval',
+        `setTimeout(() => { try { require('node:fs').unlinkSync(process.env.STATION_HELD_LOCK); } catch {} }, ${holdMs});`,
+      ],
+      {
+        env: { ...process.env, STATION_HELD_LOCK: path },
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
+    const birth = lookupProcessBirthFingerprint(holder.pid!);
+    expect(birth).toBeTruthy();
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ schemaVersion: 2, pid: holder.pid, birth, createdAt: Date.now() })}\n`,
+      { mode: 0o600 },
+    );
+    chmodSync(path, 0o600);
+    return { holder, exited: once(holder, 'close') };
+  }
+
+  test('a write waits for a live store-lock holder instead of failing at once', async () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
+    const probes: string[] = [];
+    // Production wait (10s); only the probe observer is added.
+    setProfileStoreLockTimingForTests({
+      onReclaimProbe: (path) => probes.push(path),
+    });
+    const lock = `${profilesPath()}.lock`;
+    const { holder, exited } = holdLiveLock(lock, 1_500);
+    let elapsed: number;
+    try {
+      const started = performance.now();
+      // A Desktop write holding the lock for 1.5s used to make this CLI write
+      // exit with "store is busy" immediately.
+      upsertProfile({
+        name: 'waited',
+        endpoint: 'https://waited.example.test',
+      });
+      elapsed = performance.now() - started;
+    } finally {
+      holder.kill();
+      await exited;
+    }
+    expect(findProfile('waited')).toBeDefined();
+    // It waited for the holder's release rather than reclaiming a live lock.
+    expect(elapsed).toBeGreaterThanOrEqual(1_000);
+    // The stale-lock probe backs off: once at once, then every 250ms (about
+    // 7 over 1.5s), not on every 10ms nap (well over 50 on any host).
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    expect(probes.length).toBeLessThanOrEqual(12);
+    expect(new Set(probes)).toEqual(new Set([lock]));
+  }, 30_000);
+
+  test('a cold start waits for a live genesis holder with a backed-off probe', async () => {
+    const probes: string[] = [];
+    setProfileStoreLockTimingForTests({
+      onReclaimProbe: (path) => probes.push(path),
+    });
+    const genesisLock = join(
+      dirname(home),
+      `.${basename(home)}.station-profile-store-genesis.json.lock`,
+    );
+    const { holder, exited } = holdLiveLock(genesisLock, 1_500);
+    let elapsed: number;
+    try {
+      const started = performance.now();
+      ensureProfileStoreGenesis(home);
+      elapsed = performance.now() - started;
+    } finally {
+      holder.kill();
+      await exited;
+    }
+    expect(readProfileStore().revision).toBe(0);
+    expect(elapsed).toBeGreaterThanOrEqual(1_000);
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    expect(probes.length).toBeLessThanOrEqual(12);
+    expect(new Set(probes)).toEqual(new Set([genesisLock]));
+  }, 30_000);
 
   test('reclaims a v2 PID-reuse record without waiting five minutes', () => {
     upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
