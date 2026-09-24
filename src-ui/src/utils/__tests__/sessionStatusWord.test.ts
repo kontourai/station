@@ -67,6 +67,7 @@ describe('the four shapes where the raw state and the fold disagree', () => {
   test('reported child work keeps a completed or ready parent Running without reviving closed or failed sessions', () => {
     const conversationActivity: ConversationTurnActivity = {
       conversationId: 'thread-1',
+      currentThreadId: 'thread-1',
       asOfSequence: 9,
       runningChildWork: { count: 1, producers: ['engine-subagent'] },
     };

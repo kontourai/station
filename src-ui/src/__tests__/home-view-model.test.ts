@@ -9,6 +9,7 @@ import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   buildActiveChatTaskItems,
   buildHomeWorkItems,
+  buildOrchestrationItems,
   chatTaskSessionId,
   type HomeWorkItem,
 } from '../views/home/home-view-model';
@@ -983,6 +984,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
       lifecycleState: 'canceled',
       conversationActivity: {
         conversationId: attachedButIdle.threadId,
+        currentThreadId: attachedButIdle.threadId,
         asOfSequence: 7,
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
@@ -1001,6 +1003,55 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(
       orchestrationLifecycleLabel({ ...session, lifecycleState: 'failed' }),
     ).toBe('Failed');
+  });
+
+  test('a stopped predecessor does not borrow current sibling child work', () => {
+    const conversationId = 'lineage-child-work';
+    const currentThreadId = 'lineage-child-work:session:b';
+    const activity: NonNullable<
+      OrchestrationSessionSummary['conversationActivity']
+    > = {
+      conversationId,
+      currentThreadId,
+      asOfSequence: 8,
+      runningChildWork: { count: 1, producers: ['engine-subagent'] },
+    };
+    const predecessor = {
+      ...attachedButIdle,
+      threadId: conversationId,
+      conversationId,
+      controlMode: 'station-owned',
+      lifecycleState: 'canceled',
+      conversationActivity: activity,
+    } as OrchestrationSessionSummary;
+    const current = {
+      ...predecessor,
+      threadId: currentThreadId,
+      updatedAt: '2026-09-24T12:00:00.000Z',
+    };
+    expect(orchestrationLifecycleLabel(predecessor)).toBe('Stopped');
+    expect(orchestrationLifecycleLabel(current)).toBe('Running');
+    const rows = buildOrchestrationItems([predecessor, current], []);
+    expect(
+      rows.find((row) => row.orchestrationThreadId === conversationId),
+    ).toMatchObject({
+      lifecycleLabel: 'Stopped',
+    });
+    expect(
+      rows.find((row) => row.orchestrationThreadId === currentThreadId),
+    ).toMatchObject({
+      lifecycleLabel: 'Running',
+      activeReason: 'background',
+    });
+    const [conversation] = buildHomeWorkItems({
+      chats: {},
+      agents: [],
+      sessions: [predecessor, current],
+    });
+    expect(conversation).toMatchObject({
+      lifecycleLabel: 'Running',
+      activeReason: 'background',
+    });
   });
 
   // A genuinely failed run is terminal and must never borrow the actionable
@@ -1206,6 +1257,7 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
           status: 'idle',
           conversationActivity: {
             conversationId: 'no-session-child-work',
+            currentThreadId: 'no-session-child-work',
             asOfSequence: 8,
             runningChildWork: { count: 1, producers: ['engine-subagent'] },
           },
@@ -2068,6 +2120,70 @@ describe('#2309 Home running state reads the conversation activity record', () =
     },
     10,
   );
+
+  test('background work belongs to the current execution or the conversation, not an older child chat', () => {
+    const oldThread = `${conversationId}:session:old`;
+    const childActivity: NonNullable<
+      OrchestrationSessionSummary['conversationActivity']
+    > = {
+      conversationId,
+      currentThreadId: childThread,
+      asOfSequence: 91,
+      runningChildWork: { count: 1, producers: ['engine-subagent'] },
+    };
+    const sessions = [
+      {
+        ...base,
+        threadId: oldThread,
+        lifecycleState: 'canceled' as const,
+        conversationActivity: childActivity,
+      },
+      {
+        ...base,
+        threadId: childThread,
+        updatedAt: '2026-09-22T18:55:25Z',
+        lifecycleState: 'canceled' as const,
+        conversationActivity: childActivity,
+      },
+    ];
+    const { conversationId: _omit, ...oldChat } = chat;
+    const [oldRow] = buildActiveChatTaskItems({
+      chats: {
+        [oldThread]: {
+          ...oldChat,
+          orchestrationStatus: 'running',
+          conversationActivity: childActivity,
+        },
+      },
+      agents: [],
+      sessions,
+    });
+    expect(oldRow.lifecycleLabel).toBe('Recent');
+    const [rootRow] = buildActiveChatTaskItems({
+      chats: {
+        [conversationId]: { ...oldChat, orchestrationStatus: 'running' },
+      },
+      agents: [],
+      sessions: [
+        {
+          ...base,
+          lifecycleState: 'canceled',
+          conversationActivity: childActivity,
+        },
+        ...sessions,
+      ],
+    });
+    expect(rootRow.lifecycleLabel).toBe('Recent');
+    const [conversationRow] = buildActiveChatTaskItems({
+      chats: { [conversationId]: { ...chat, orchestrationStatus: 'running' } },
+      agents: [],
+      sessions,
+    });
+    expect(conversationRow).toMatchObject({
+      lifecycleLabel: 'Running',
+      activeReason: 'background',
+    });
+  });
 
   test('a turn running in a lineage child reads Running, even when the idle root row is newest', () => {
     const [row] = buildActiveChatTaskItems({

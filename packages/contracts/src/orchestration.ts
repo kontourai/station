@@ -601,6 +601,8 @@ export interface TurnProgressObservation {
  */
 export interface ConversationTurnActivity {
   conversationId: string;
+  /** Execution child the server would continue, even when no turn is open. */
+  currentThreadId?: string;
   /**
    * Running children reported by the engine across this conversation's
    * execution lineage. This never implies an open turn and never enables

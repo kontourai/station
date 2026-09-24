@@ -63,6 +63,7 @@ describe('HomeWorkRow turn progress observation (station#4054)', () => {
       hasActiveTurn: false,
       conversationActivity: {
         conversationId: 'turn-progress-observation',
+        currentThreadId: 'turn-progress-observation',
         asOfSequence: 4,
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
@@ -76,6 +77,7 @@ describe('HomeWorkRow turn progress observation (station#4054)', () => {
       hasActiveTurn: false,
       conversationActivity: {
         conversationId: 'turn-progress-observation',
+        currentThreadId: 'turn-progress-observation',
         asOfSequence: 5,
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },

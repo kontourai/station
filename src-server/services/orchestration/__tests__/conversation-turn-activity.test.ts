@@ -396,6 +396,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     }
     // Warm before the child starts, so the lineage change must invalidate.
     expect(projection.readConversation(ROOT).openTurn).toBeUndefined();
+    expect(projection.readForThread(ROOT)?.currentThreadId).toBe(CHILD_2);
     const started = append(CHILD_2, {
       method: 'turn.started',
       turnId: 'child-turn',
@@ -500,6 +501,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     store.deleteThread(ROOT);
     expect(projection.readConversation(ROOT)).toEqual({
       conversationId: ROOT,
+      currentThreadId: ROOT,
       asOfSequence: 0,
     });
   });

@@ -1348,7 +1348,11 @@ describe('OrchestrationService', () => {
       currentSessionId: child,
       // #2309: the rebinding frame also carries the conversation's activity
       // (nothing committed on either child yet).
-      activity: { conversationId: root, asOfSequence: 0 },
+      activity: {
+        conversationId: root,
+        currentThreadId: child,
+        asOfSequence: 0,
+      },
     });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(

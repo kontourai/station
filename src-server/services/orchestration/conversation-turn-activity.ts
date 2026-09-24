@@ -336,7 +336,11 @@ export class ConversationTurnActivityProjection {
       )
         lastTool = state.lastTool;
     }
-    const activity: ConversationTurnActivity = { conversationId, asOfSequence };
+    const activity: ConversationTurnActivity = {
+      conversationId,
+      currentThreadId,
+      asOfSequence,
+    };
     if (runningChildren.length > 0 || followUpPending) {
       const oldestStartedAt = runningChildren.reduce(
         (oldest, item) =>
