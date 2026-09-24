@@ -422,6 +422,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // travelled back, so navigation's inbound sync may hide or restore Chat's
   // region meanwhile; that must not read as the user dismissing the layer.
   const layerBackPendingRef = useRef(false);
+  // `toggleSurface` is declared above the layer's exits; it reaches the
+  // current one through this.
+  const closePhoneLayerRef = useRef<() => void>(() => {});
   const setPhoneLayer = useCallback((layer: PhonePaneLayer | null) => {
     phoneLayerRef.current = layer;
     setPhoneLayerState(layer);
@@ -655,6 +658,19 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // says it does something it does not.
       const surface = resolveRegionSurface(surfaceId);
       if (!surface) return;
+      // "Hide <pane>" for the pane a phone layer is showing is the way back
+      // to Chat, not a hide of Chat's region: the toggle rule would hide the
+      // whole folded region, Chat with it.
+      const layer = phoneLayerRef.current;
+      const layerRegion = layer ? regionsRef.current[layer.region] : null;
+      if (
+        layer?.surfaceId === surfaceId &&
+        layerRegion?.visible &&
+        layerRegion.occupant === surfaceId
+      ) {
+        closePhoneLayerRef.current();
+        return;
+      }
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,
         surfaceId,
@@ -773,6 +789,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     () => navigationStore.runNavigationGuards(restorePhoneLayer),
     [restorePhoneLayer],
   );
+  closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {
     if (!phoneLayerOpen) return;
     return registerDialogHistory(

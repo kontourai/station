@@ -372,6 +372,28 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(window.history.state).toEqual(stateBefore);
   });
 
+  // Review M1: the folded menu's "Hide <pane>" row is `toggleSurface`, whose
+  // rule hides the folded region — which is Chat's. Hiding the layer's own
+  // pane must be the way back to Chat instead.
+  test('hiding the layer’s own pane returns to Chat rather than hiding Chat’s region', async () => {
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    act(() => current().toggleSurface(PR));
+    await waitFor(() =>
+      expect(current().regions.bottom).toMatchObject({
+        panes: ['chat'],
+        occupant: 'chat',
+        visible: true,
+        maximized: false,
+      }),
+    );
+    expect(current().phoneLayer).toBeNull();
+    await waitFor(() => expect(onLayerEntry()).toBe(false));
+  });
+
   test('the layer is never persisted: the record holds the pre-layer arrangement', async () => {
     await mount();
     act(() => {
