@@ -10,6 +10,11 @@ The SDK wraps core app contexts and exposes them through stable React hooks, UI 
 
 ## Setup
 
+`fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
+cursor as `Last-Event-ID` on the first request and continues updating the cursor
+from accepted SSE frames during transport retries. Callers should provide the
+last event they applied for the same server authority.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane

@@ -150,6 +150,8 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     ensureOrchestrationEventStream(apiBase);
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(2);
+    const second = requestsTo(apiBase)[1]?.[1] as RequestInit | undefined;
+    expect(new Headers(second?.headers).get('Last-Event-ID')).toBe('5');
   });
 
   test('an ensure in the same tick as the abort already replaces the stream', async () => {
@@ -252,6 +254,25 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(1);
+  });
+
+  test('returning after a long hidden period restarts the live stream with its cursor', async () => {
+    const apiBase = 'http://recovery.test/long-hidden';
+    const hidden = vi.spyOn(document, 'hidden', 'get');
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+    hidden.mockReturnValue(false);
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    hidden.mockReturnValue(true);
+    document.dispatchEvent(new Event('visibilitychange'));
+    now.mockReturnValue(1_031_000);
+    hidden.mockReturnValue(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+    const second = requestsTo(apiBase)[1]?.[1] as RequestInit | undefined;
+    expect(new Headers(second?.headers).get('Last-Event-ID')).toBe('5');
   });
 
   test('recovery signals retry a parked (401) stream at most once per floor interval', async () => {

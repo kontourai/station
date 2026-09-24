@@ -103,8 +103,11 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
  */
 const requestedBases = new Set<string>();
 let recoveryListenersInstalled = false;
+let hiddenSince: number | undefined;
 /** apiBases whose chats this document has already seeded from a snapshot. */
 const basesWithSnapshot = new Set<string>();
+/** Last sequence this document applied, retained when a transport is replaced. */
+const appliedCursors = new Map<string, string>();
 
 function reensureRequestedStreams(): void {
   if (
@@ -113,6 +116,22 @@ function reensureRequestedStreams(): void {
   )
     return;
   for (const apiBase of requestedBases) ensureOrchestrationEventStream(apiBase);
+}
+
+function recoverAfterVisibilityChange(): void {
+  if ((globalThis as { document?: { hidden?: boolean } }).document?.hidden) {
+    hiddenSince = Date.now();
+    return;
+  }
+  const hiddenFor = hiddenSince === undefined ? 0 : Date.now() - hiddenSince;
+  hiddenSince = undefined;
+  if (hiddenFor > 30_000) {
+    for (const owned of activeSources.values()) {
+      if (!owned.ended && !owned.connection.signal.aborted)
+        owned.connection.restart();
+    }
+  }
+  reensureRequestedStreams();
 }
 
 function installRecoveryListeners(): void {
@@ -124,7 +143,7 @@ function installRecoveryListeners(): void {
   };
   scope.document?.addEventListener(
     'visibilitychange',
-    reensureRequestedStreams,
+    recoverAfterVisibilityChange,
   );
   scope.window?.addEventListener('focus', reensureRequestedStreams);
   scope.window?.addEventListener('online', reensureRequestedStreams);
@@ -308,6 +327,8 @@ export function ensureOrchestrationEventStream(
   // independent dedup of its own. Safe unconditionally: a pre-archive#1092 host
   // never sets a frame `id:`, so the guard never drops anything against it.
   const cursor = createStreamCursorTracker();
+  const initialLastEventId = appliedCursors.get(apiBase);
+  cursor.adopt(initialLastEventId);
   // archive#1225: the FIRST snapshot this stream instance ever receives is
   // always the ordinary connect-time snapshot (a brand-new stream has no
   // `Last-Event-ID` yet, so `resolveStreamResumePlan` always picks the
@@ -326,6 +347,7 @@ export function ensureOrchestrationEventStream(
   let receiving = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
+    initialLastEventId,
     // station#2301: lets the server's stream open/close lines say WHICH
     // document connected — see `clientDocumentSession.ts`.
     headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
@@ -347,6 +369,10 @@ export function ensureOrchestrationEventStream(
         receiving = true;
       }
       if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
+        if (parseStreamSequence(raw.id) !== undefined) {
+          cursor.adopt(raw.id);
+          appliedCursors.set(apiBase, raw.id!);
+        }
         setStreamConnectionState(apiBase, 'caught-up');
         recordReplayConnection(apiBase, 'caught-up');
       } else if (raw.event === 'orchestration:snapshot') {
@@ -356,6 +382,8 @@ export function ensureOrchestrationEventStream(
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
         cursor.adopt(raw.id);
+        if (parseStreamSequence(raw.id) !== undefined)
+          appliedCursors.set(apiBase, raw.id!);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
         applyOrchestrationSnapshot(payload, {
@@ -367,6 +395,8 @@ export function ensureOrchestrationEventStream(
         basesWithSnapshot.add(apiBase);
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
+        if (parseStreamSequence(raw.id) !== undefined)
+          appliedCursors.set(apiBase, raw.id!);
         // archive#1410: the frame is a wrapper, not a bare event — the
         // server attaches a completed turn's provenance envelope as a
         // SIBLING of `event` so the canonical event itself stays untouched.
