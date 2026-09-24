@@ -1555,6 +1555,8 @@ describe('station-control operations tools (characterization)', () => {
 
   test("#2436: update_config refuses to raise the Station's default approval mode to full access", async () => {
     const tools = await registerTools();
+    // Answers any call, so a missing refusal shows up as the call itself.
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, data: {} }));
     const refused = await tools.update_config!({
       updates: { defaultApprovalMode: 'never', defaultMaxTurns: 5 },
     });
@@ -1565,7 +1567,6 @@ describe('station-control operations tools (characterization)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     // Any other setting, and a stricter default, still reach the route.
-    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: {} }));
     await tools.update_config!({ updates: { defaultApprovalMode: 'ask' } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
