@@ -155,6 +155,9 @@ describe('RelayRouteProfiles', () => {
     await waitFor(() =>
       expect(screen.getByText('Station key untrusted')).toBeTruthy(),
     );
+    expect(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(
       screen.getByRole('heading', { name: 'Edit broker route' }),
@@ -287,6 +290,7 @@ describe('RelayRouteProfiles', () => {
     });
 
     renderRoutes();
+    await screen.findByText('Station key untrusted');
     fireEvent.click(
       screen.getByRole('button', { name: 'Prepare native Station identity' }),
     );
@@ -346,6 +350,16 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByText('Station key approved');
     expect(screen.getByText(/Route remains disconnected/)).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Prepare native Station identity' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Public install proof metadata' }),
+    ).toBeNull();
+    expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Revoke Station key trust' }),
+    ).toBeTruthy();
     fireEvent.change(
       screen.getByLabelText(
         'Type the current full key ID to confirm revocation',
@@ -365,5 +379,8 @@ describe('RelayRouteProfiles', () => {
       }),
     );
     await screen.findByText('Station key trust revoked');
+    expect(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    ).toBeTruthy();
   });
 });

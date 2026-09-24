@@ -168,6 +168,8 @@ export function RelayRouteKeyApproval({
       }),
     onSuccess: async () => {
       setRevokeKeyId('');
+      setSurface(null);
+      setInvitation('');
       setMessage('Station signing-key trust revoked on this device.');
       await refresh();
     },
@@ -210,6 +212,8 @@ export function RelayRouteKeyApproval({
           ? statusQuery.data.status
           : 'mismatch'
         : 'untrusted';
+  const canStartEnrollment =
+    trustStatusCurrent && (status === 'untrusted' || status === 'revoked');
   const canApprove = Boolean(
     candidate &&
       candidateMatchesRoute &&
@@ -328,7 +332,7 @@ export function RelayRouteKeyApproval({
           </section>
         )}
 
-      {!candidate && !surfaceMatchesRoute && (
+      {canStartEnrollment && !candidate && !surfaceMatchesRoute && (
         <div className="relay-route-key-approval__prepare">
           <p className="connections-computers__note">
             First prepare this device’s public install proof. The operator needs
@@ -345,7 +349,7 @@ export function RelayRouteKeyApproval({
           </Button>
         </div>
       )}
-      {!candidate && surfaceMatchesRoute && surface && (
+      {canStartEnrollment && !candidate && surfaceMatchesRoute && surface && (
         <section
           className="relay-route-key-approval__surface"
           aria-label="Public install proof metadata"
