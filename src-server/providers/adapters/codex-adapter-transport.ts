@@ -7,6 +7,10 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { findCliBinary } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
+  routeCodexChildNotification,
+  settleOpenCodexChildren,
+} from './codex-adapter-child-work.js';
+import {
   deriveApprovalToolName,
   extractThreadId,
   hasId,
@@ -106,7 +110,18 @@ export function createCodexSessionRecord(options: {
 export class CodexAdapterTransport {
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly sessions = new Map<string, CodexSessionRecord>();
-  private readonly threadLookup = new Map<string, CodexSessionRecord>();
+  /**
+   * #2458 fix round (P1a): codex thread id → record, PER EMITTING PROCESS.
+   * Each session runs its own app-server, and a thread id is only meaningful
+   * on the process streaming it: two sessions may resume the same codex
+   * thread, and a process may stream, as its own child, a thread id another
+   * session owns. A single global map let the later registration capture the
+   * earlier session's events (and, with a process guard on top, drop them).
+   */
+  private readonly threadLookup = new Map<
+    CodexProcessLike,
+    Map<string, CodexSessionRecord>
+  >();
 
   constructor(
     private readonly now: () => Date,
@@ -137,14 +152,23 @@ export class CodexAdapterTransport {
 
   unregisterSession(record: CodexSessionRecord): void {
     this.sessions.delete(record.externalThreadId);
-    if (record.codexThreadId) {
-      this.threadLookup.delete(record.codexThreadId);
+    const threads = this.threadLookup.get(record.process);
+    if (threads) {
+      for (const [threadId, owner] of threads) {
+        if (owner === record) threads.delete(threadId);
+      }
+      if (threads.size === 0) this.threadLookup.delete(record.process);
     }
   }
 
   setCodexThreadId(record: CodexSessionRecord, codexThreadId: string): void {
     record.codexThreadId = codexThreadId;
-    this.threadLookup.set(codexThreadId, record);
+    let threads = this.threadLookup.get(record.process);
+    if (!threads) {
+      threads = new Map();
+      this.threadLookup.set(record.process, threads);
+    }
+    threads.set(codexThreadId, record);
   }
 
   handleProcess(record: CodexSessionRecord): void {
@@ -643,13 +667,37 @@ export class CodexAdapterTransport {
       return;
     }
     const threadId = extractThreadId(notification.params);
+    // #2458: resolved only among the threads of the process that EMITTED
+    // the line (see `threadLookup`). A miss is a thread this process streams
+    // but no session registered on it: a subagent's stream.
+    const ownHit = threadId
+      ? this.threadLookup.get(emittingRecord.process)?.get(threadId)
+      : undefined;
     const record = ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method)
       ? emittingRecord
       : threadId
-        ? this.threadLookup.get(threadId)
+        ? ownHit
         : emittingRecord;
 
     if (!record && threadId) {
+      // #2458: a thread this transport does not own is a Codex subagent's
+      // stream on the emitting process's stdio. It goes to the child-work
+      // mapper and NEVER to `handleCodexNotification`: a child's
+      // `turn/completed` would close the parent's turn and its token usage
+      // would be counted as the parent's.
+      try {
+        routeCodexChildNotification(
+          {
+            record: emittingRecord,
+            nowIso: () => this.now().toISOString(),
+            publish: (event) => this.publish(event),
+          },
+          threadId,
+          notification,
+        );
+      } catch {
+        this.onNotificationError?.(notification.method);
+      }
       return;
     }
 
@@ -819,6 +867,13 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
+      publish: (event) => this.publish(event),
+    });
+    // #2458: a subagent still running when its session ends can never
+    // report again, so it settles `unresolved` — same doors, same moment.
+    settleOpenCodexChildren({
+      record,
+      nowIso: () => nowIso,
       publish: (event) => this.publish(event),
     });
   }

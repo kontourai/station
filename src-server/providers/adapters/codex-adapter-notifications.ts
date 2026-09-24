@@ -3,6 +3,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
+  observeCodexSubagentItem,
+  observeCodexThreadStarted,
+} from './codex-adapter-child-work.js';
+import {
   codexResumeCursor,
   deriveToolArguments,
   deriveToolName,
@@ -204,6 +208,15 @@ export function handleCodexNotification(
         cacheReadTokens:
           extractTokenFigure(usage.cachedInputTokens) ?? undefined,
       });
+      return;
+    }
+    case 'thread/started': {
+      // #2458: a thread a subagent spawn created registers as child work;
+      // the session's own thread start maps to nothing here.
+      observeCodexThreadStarted(
+        { record, nowIso, publish },
+        notification.params,
+      );
       return;
     }
     case 'account/rateLimits/updated': {
@@ -418,6 +431,17 @@ function handleCodexItemStarted(
   const itemId = extractString(params.item.id);
   const type = extractString(params.item.type);
   if (!turnId || !itemId || !type) return;
+  // #2458: a subagent item is child work, never a tool call.
+  if (
+    observeCodexSubagentItem(
+      { record, nowIso, publish },
+      { item: params.item, turnId },
+      'started',
+      record.codexThreadId,
+    )
+  ) {
+    return;
+  }
 
   const toolName = deriveToolName(params.item);
   if (!toolName) return;
@@ -447,6 +471,16 @@ function handleCodexItemCompleted(
   const turnId = extractString(params.turnId);
   const itemId = extractString(params.item.id);
   if (!turnId || !itemId) return;
+  if (
+    observeCodexSubagentItem(
+      { record, nowIso, publish },
+      { item: params.item, turnId },
+      'completed',
+      record.codexThreadId,
+    )
+  ) {
+    return;
+  }
   const toolName = record.toolNames.get(itemId);
   if (!toolName || !record.openToolCalls.has(itemId)) return;
   const preview = projectBoundedToolOutput(deriveToolOutput(params.item));

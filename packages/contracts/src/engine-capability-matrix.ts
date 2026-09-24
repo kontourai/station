@@ -840,25 +840,28 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `item/fileChange/requestApproval` to the `apply_patch` tool identity.
     subagentObservability: {
       state: 'declared',
-      signals: ['lifecycle'],
-      // `collabAgent/started` and `collabAgent/activity` notifications with a
-      // seven-state `CollabAgentStatus`, plus `CollabAgentToolCallThreadItem`
-      // and `SubAgentActivityThreadItem` in the v2 thread stream (codex-cli
-      // 0.145.0, default schema — not experimental-gated).
-      evidence: 'collabAgent/started, collabAgent/activity',
-      adapterModule: 'codex-adapter-events.ts',
+      signals: ['lifecycle', 'usage', 'result', 'nesting'],
+      // #2458, live captures against codex-cli 0.155.1 (committed as
+      // `src-server/providers/__tests__/fixtures/codex-0.155.1-collab-*`).
+      // There are NO `collabAgent/*` notifications: the parent thread
+      // reports children as ThreadItems — v1 `collabAgentToolCall`
+      // (`spawnAgent` receiverThreadIds, `wait` agentsStates) or v2
+      // `subAgentActivity` (agentThreadId, agentPath) — and each child
+      // streams its own `turn/completed` (status, durationMs, final
+      // agentMessage) and `thread/tokenUsage/updated` on the parent's stdio.
+      // Nesting is depth: agentPath segments (v2) or the spawning thread
+      // (v1). No progress line is mapped.
+      evidence:
+        'collabAgentToolCall spawnAgent/wait and subAgentActivity ThreadItems; child-thread turn/completed and thread/tokenUsage/updated',
+      adapterModule: 'codex-adapter-child-work.ts',
     },
     subagentControl: {
       state: 'none',
-      // Not wired, and not yet consumed at all: Station has no `collabAgent`
-      // handling, so both subagent thread items are dropped. The protocol
-      // would support it — a subagent is a first-class thread
-      // (`ThreadSourceKind` includes `subAgent`), its id is published on
-      // `CollabAgentToolCallThreadItem.receiverThreadIds` and
-      // `SubAgentActivityThreadItem.agentThreadId`, and `Thread/resume`
-      // rejoins a running thread while `Turn/interrupt` takes `{threadId,
-      // turnId}`.
-      reason: 'No collabAgent handling is wired.',
+      // Observed, not controlled. A client `turn/interrupt {threadId: child,
+      // turnId}` does stop a child, but the parent is never told: a v1
+      // parent re-waited on it and hung (captured). No per-child stop is
+      // wired until that is solved.
+      reason: 'No per-child stop is wired.',
     },
     builtInTools: {
       state: 'documented',

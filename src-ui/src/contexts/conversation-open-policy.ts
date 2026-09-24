@@ -19,11 +19,21 @@ interface ConversationOpenPolicyState {
  * conversation (#1582 E3/B6).
  *
  * `busy` is an authorized active-turn wait and still blocks writes.
- * `read-only` is the verdict: the read failed, or it resolved to
- * `missing-session`/`unavailable`, or denied continuation without an active-turn wait. Only that earns error
- * chrome.
+ * `read-only` is a verdict the server derived: the Session is gone
+ * (`missing-session`), or it resolved and denied continuation without an
+ * active-turn wait.
+ * `unverified` is a failed CHECK, not a verdict (#2424): the read itself
+ * failed, or the server could not resolve it (`unavailable`). It blocks writes
+ * like `read-only` does, but it may not claim the conversation is read-only —
+ * a transient failure is retryable, and saying "read-only" is what made a
+ * slow host look like a broken chat.
  */
-type ConversationOpenPhase = 'resolving' | 'busy' | 'writable' | 'read-only';
+type ConversationOpenPhase =
+  | 'resolving'
+  | 'busy'
+  | 'writable'
+  | 'read-only'
+  | 'unverified';
 
 export function conversationOpenPhase(
   state: ConversationOpenPolicyState,
@@ -31,8 +41,9 @@ export function conversationOpenPhase(
   // Pending is read FIRST and on its own. A resolution left over from a prior
   // read is not an answer about the read now in flight.
   if (state.conversationOpenPending) return 'resolving';
-  if (state.conversationOpenFailed) return 'read-only';
   const resolution = state.conversationOpenState;
+  if (state.conversationOpenFailed || resolution?.status === 'unavailable')
+    return 'unverified';
   if (
     resolution?.status === 'resolved' &&
     !resolution.canContinue &&
