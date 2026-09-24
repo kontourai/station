@@ -8,6 +8,11 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
+// This UI-lane tsconfig has no type declarations for 'jsdom' (a vitest
+// environment transitive dep, not a workspace dependency of this lane) —
+// same cross-runtime-import reasoning as the `vi.importActual<any>` server
+// module loads below.
+// @ts-expect-error no type declarations for 'jsdom' in this typecheck lane
 import { JSDOM } from 'jsdom';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { ChatMessage } from '../types';
@@ -42,9 +47,11 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 vi.stubGlobal('document', dom.window.document);
 vi.stubGlobal('navigator', dom.window.navigator);
 vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
-if (globalThis.IS_REACT_ACT_ENVIRONMENT === undefined) {
-  // @ts-expect-error test-only global React reads to silence act() warnings.
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+if (
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT === undefined
+) {
+  // Test-only global React reads to silence act() warnings.
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 }
 
 const apiBase = 'http://sync-property.test';
@@ -293,7 +300,10 @@ async function clientGraph(
         session?.orchestrationHistoryRevision,
         session?.currentSessionId,
         transcriptView.result.current.messages.length,
-        transcriptView.result.current.watermark,
+        // `watermark` is only on the non-replay branch of the hook's return
+        // union; this test never uses replay threads, but TS cannot narrow
+        // that from the runtime session shape.
+        (transcriptView.result.current as { watermark?: number }).watermark,
       ]);
       if (key === previousKey) break;
       previousKey = key;
