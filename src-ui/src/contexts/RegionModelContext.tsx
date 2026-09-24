@@ -409,6 +409,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     null,
   );
   const phoneLayerRef = useRef<PhonePaneLayer | null>(null);
+  const layerDockMemoryRef = useRef(false);
   const setPhoneLayer = useCallback((layer: PhonePaneLayer | null) => {
     phoneLayerRef.current = layer;
     setPhoneLayerState(layer);
@@ -539,6 +540,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           layer: phoneLayerRef.current,
         });
         if (opened) {
+          // The maximize memory as the layer found it: the layer's own
+          // maximize is mirrored into it, and a close from a hidden Chat
+          // would otherwise forward that as the memory (see the restore).
+          if (!phoneLayerRef.current)
+            layerDockMemoryRef.current = navigationStore.lastDockMaximized;
           commit(opened.arrangement, opened.layer.region);
           setPhoneLayer(opened.layer);
           return {
@@ -677,8 +683,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const layer = phoneLayerRef.current;
     if (!layer) return;
     setPhoneLayer(null);
-    const next = restorePhonePaneLayer(regionsRef.current, layer);
-    if (next === regionsRef.current) return;
+    const current = regionsRef.current;
+    const next = restorePhonePaneLayer(current, layer);
+    if (next === current) return;
+    // A layer opened over a HIDDEN Chat region closes it again, and the
+    // mirror forwards the maximize a region closes FROM as
+    // `lastDockMaximized` (archive#945) — which here is the layer's own, not
+    // the user's. Hand the mirror the memory the layer found instead, so the
+    // next `focusSession` reopens Chat the way it would have.
+    if (current[layer.region].visible && !next[layer.region].visible)
+      mirroredRegionsRef.current = updateRegion(
+        mirroredRegionsRef.current,
+        layer.region,
+        { maximized: layerDockMemoryRef.current },
+      );
     regionsRef.current = next;
     setRegions(next);
   }, [setPhoneLayer]);

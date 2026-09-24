@@ -220,6 +220,52 @@ describe('a pane opened on a phone opens over Chat', () => {
     expect(maximizeParam()).toBe('true');
   });
 
+  /**
+   * A layer over a HIDDEN Chat region shows the region maximized and hides
+   * it again on Back. The archive#945 close rule forwards the maximize a
+   * region closes FROM as `lastDockMaximized`, which here would be the
+   * layer's own — and the next `focusSession` would reopen Chat Full though
+   * the user never asked for it. The memory the layer found must survive.
+   */
+  test('over a hidden Chat, Back hides the region again and leaves the maximize memory as it was', async () => {
+    window.history.replaceState({}, '', '/');
+    navigationStore.navigate('/', { dock: null, maximize: null });
+    navigationStore.lastDockMaximized = false;
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(current().regions.bottom.visible).toBe(false);
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() =>
+      expect(current().regions.bottom).toMatchObject({
+        occupant: PR,
+        visible: true,
+        maximized: true,
+      }),
+    );
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(current().regions.bottom).toMatchObject({
+        panes: ['chat'],
+        visible: false,
+      }),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+    );
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
   test('a second pane opened over the first replaces it, and one Back still returns to Chat', async () => {
     await mount();
     const pushes = vi.spyOn(window.history, 'pushState');
