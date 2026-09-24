@@ -103,24 +103,40 @@ describe('NativePushRegistrationStore', () => {
     expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
   });
 
-  test('serves reads from memory after the first, and its own writes keep it current', () => {
-    const { store, path } = fixture();
+  test('another process writing the file is seen at the next read', () => {
+    const { store, reopen } = fixture();
     store.upsert('device-1', REQUEST, KEY, 1);
-    // Not re-read from disk: an external edit is invisible to this writer…
-    writeFileSync(path, '{ garbage', { mode: 0o600 });
     expect([...store.list().keys()]).toEqual(['device-1']);
-    // …and its own write replaces both file and cache.
+    // A second writer over the same file (as `station environment reset`
+    // is): this instance's cache must not outlive the file it came from.
+    const other = reopen();
+    other.retain(new Set());
+    expect(store.list().size).toBe(0);
+    // And this instance's next write cannot resurrect what the other removed.
     store.upsert('device-2', REQUEST, KEY, 2);
-    expect([...store.list().keys()].sort()).toEqual(['device-1', 'device-2']);
-    expect(readFileSync(path, 'utf8')).toContain('device-2');
+    expect([...reopen().list().keys()]).toEqual(['device-2']);
   });
 
-  test('a failed read is not cached', () => {
-    const { store, path } = fixture();
+  test('its own writes keep the cache current', () => {
+    const { store, reopen } = fixture();
+    store.upsert('device-1', REQUEST, KEY, 1);
+    store.upsert('device-2', REQUEST, KEY, 2);
+    expect([...store.list().keys()].sort()).toEqual(['device-1', 'device-2']);
+    expect([...reopen().list().keys()].sort()).toEqual([
+      'device-1',
+      'device-2',
+    ]);
+  });
+
+  test('a failed read is not cached: once the file is repaired, the next read sees it', () => {
+    const { store, path, reopen } = fixture();
+    const good = reopen();
+    good.upsert('device-1', REQUEST, KEY, 1);
+    const goodContent = readFileSync(path, 'utf8');
     writeFileSync(path, '{ garbage', { mode: 0o600 });
     expect(() => store.list()).toThrow(NativePushRegistrationStoreError);
-    rmSync(path);
-    expect(store.list().size).toBe(0);
+    writeFileSync(path, goodContent, { mode: 0o600 });
+    expect([...store.list().keys()]).toEqual(['device-1']);
   });
 
   test('records delivered alert ids durably, bounded, and keeps them across token rotation', () => {

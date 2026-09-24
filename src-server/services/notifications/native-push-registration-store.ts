@@ -13,6 +13,7 @@
  * pushes.
  */
 import { randomBytes } from 'node:crypto';
+import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   NATIVE_PUSH_ANDROID_PACKAGES,
@@ -136,17 +137,34 @@ interface StoreFile {
 export class NativePushRegistrationStore {
   readonly #path: string;
   /**
-   * The last good read or write. This process is the file's only writer, so
-   * the cache is replaced on every write here; a failed read is never cached.
+   * The last good read or write, and the file identity it was taken from.
+   * Other processes write this file too (`station environment reset` runs
+   * its own pairing service), so a cached value is served only while the
+   * file's identity (inode, size, change and modification times) is
+   * unchanged — a stat, not a parse. A failed read is never cached.
    */
-  #cache: Map<string, NativePushRegistration> | undefined;
+  #cache:
+    | { identity: string; registrations: Map<string, NativePushRegistration> }
+    | undefined;
 
   constructor(homeDir: string) {
     this.#path = join(homeDir, 'security', FILE_NAME);
   }
 
+  #identity(): string {
+    try {
+      const status = lstatSync(this.#path);
+      return `${status.dev}:${status.ino}:${status.size}:${status.mtimeMs}:${status.ctimeMs}`;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'absent';
+      return `unreadable:${Date.now()}:${Math.random()}`;
+    }
+  }
+
   #read(): Map<string, NativePushRegistration> {
-    if (this.#cache) return cloneAll(this.#cache);
+    const identity = this.#identity();
+    if (this.#cache?.identity === identity)
+      return cloneAll(this.#cache.registrations);
     let value: unknown;
     try {
       value = readPrivateJsonFile(this.#path, MAX_FILE_BYTES, LABEL);
@@ -154,7 +172,10 @@ export class NativePushRegistrationStore {
       throw new NativePushRegistrationStoreError();
     }
     const result = new Map<string, NativePushRegistration>();
-    if (value === null) return result;
+    if (value === null) {
+      this.#cache = { identity, registrations: new Map() };
+      return result;
+    }
     const file = value as Partial<StoreFile> | null;
     if (
       !file ||
@@ -171,7 +192,7 @@ export class NativePushRegistrationStore {
         throw new NativePushRegistrationStoreError();
       result.set(deviceId, clone(registration));
     }
-    this.#cache = cloneAll(result);
+    this.#cache = { identity, registrations: cloneAll(result) };
     return result;
   }
 
@@ -182,7 +203,10 @@ export class NativePushRegistrationStore {
     };
     this.#cache = undefined;
     writePrivateJsonFileSync(this.#path, file, MAX_FILE_BYTES, LABEL);
-    this.#cache = cloneAll(registrations);
+    this.#cache = {
+      identity: this.#identity(),
+      registrations: cloneAll(registrations),
+    };
   }
 
   list(): Map<string, NativePushRegistration> {

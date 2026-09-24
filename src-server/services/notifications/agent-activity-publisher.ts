@@ -345,6 +345,8 @@ export interface AgentActivityPublisher {
 }
 
 type SendOutcome = 'sent' | 'unregistered' | 'retryable' | 'rejected';
+/** complete: every phone examined; partial: some principals' reads failed; stalled: nothing examined. */
+type FlushOutcome = 'complete' | 'partial' | 'stalled';
 
 function classify(status: number): SendOutcome {
   if (status >= 200 && status < 300) return 'sent';
@@ -417,6 +419,8 @@ export function wireAgentActivityPublisher(
   let lastUpdatedAt = 0;
   let stopped = false;
   let cancelTimer: Cancel | undefined;
+  /** Set when a flush could not examine something: look again then. */
+  let stalledWakeAt: number | undefined;
   let timerAt: number | undefined;
 
   function warnOnce(key: string, message: string) {
@@ -547,9 +551,12 @@ export function wireAgentActivityPublisher(
     }
   }
 
-  function scheduleWake(at: number, minDelayMs = 0) {
+  function scheduleWake(at: number, floorMs = 1) {
     if (stopped) return;
     const wakes: number[] = [];
+    // Independent of any device state: even a first flush that could read
+    // nothing is looked at again.
+    if (stalledWakeAt !== undefined) wakes.push(stalledWakeAt);
     for (const state of devices.values()) {
       if (state.retryAt !== undefined) wakes.push(state.retryAt);
       if (
@@ -560,7 +567,7 @@ export function wireAgentActivityPublisher(
         wakes.push(state.deliveredExpiresAt - REFRESH_BEFORE_EXPIRY_MS);
     }
     const next = wakes.length
-      ? Math.max(Math.min(...wakes), at + Math.max(1, minDelayMs))
+      ? Math.max(Math.min(...wakes), at + floorMs)
       : undefined;
     if (next === timerAt) return;
     cancelTimer?.();
@@ -655,25 +662,29 @@ export function wireAgentActivityPublisher(
   }
 
   async function flush(): Promise<void> {
-    let delivered = false;
+    let outcome: FlushOutcome = 'stalled';
     try {
-      delivered = await flushOnce();
+      outcome = await flushOnce();
     } finally {
-      // Always re-arm, even when the session read threw: a live card's
-      // refresh must not be lost to one failed read. A flush that could not
-      // look at the devices waits at least a minute, so a persistent failure
-      // cannot spin the timer.
-      scheduleWake(now(), delivered ? 0 : STALLED_FLUSH_RETRY_MS);
+      // Always re-arm, even when a read threw: a live card's refresh must
+      // not be lost to one failed read. A flush that could not examine the
+      // devices at all waits at least a minute for everything — any wake
+      // already due would otherwise fire again at once and spin; a failure
+      // confined to some principals has already pushed their phones' wakes
+      // out by the same minute.
+      const at = now();
+      stalledWakeAt =
+        outcome === 'complete' ? undefined : at + STALLED_FLUSH_RETRY_MS;
+      scheduleWake(at, outcome === 'stalled' ? STALLED_FLUSH_RETRY_MS : 1);
     }
   }
 
-  /** True when the devices were examined (whatever each outcome was). */
-  async function flushOnce(): Promise<boolean> {
+  async function flushOnce(): Promise<FlushOutcome> {
     const targets = registrations();
-    if (targets === null) return false;
+    if (targets === null) return 'stalled';
     if (targets.length === 0) {
       devices.clear();
-      return true;
+      return 'complete';
     }
     let key: PushSigningKey | null;
     try {
@@ -686,11 +697,11 @@ export function wireAgentActivityPublisher(
         'key',
         'agent-activity: the push signing key file is unreadable or unsafe; not sending',
       );
-      return false;
+      return 'stalled';
     }
     if (!key) {
       warnOnce('no-key', 'agent-activity: registrations exist but no push key');
-      return false;
+      return 'stalled';
     }
     const at = now();
     const stationId = devicePairing.environmentId();
@@ -699,18 +710,34 @@ export function wireAgentActivityPublisher(
     // the read.
     const cards = new Map<string, AgentActivityCard>();
     const principalOf = new Map<string, string>();
+    const failedPrincipals = new Set<string>();
     for (const { deviceId, registration } of targets) {
       if (registration.stationKey !== key.thumbprint) continue;
       const reader = options.sessionReaderFor(deviceId);
       if (!reader) continue;
       principalOf.set(deviceId, reader.principalId);
-      if (cards.has(reader.principalId)) continue;
+      if (
+        cards.has(reader.principalId) ||
+        failedPrincipals.has(reader.principalId)
+      )
+        continue;
+      let rows: AgentActivitySessionRow[];
+      try {
+        rows = await reader.listSessions();
+      } catch (error) {
+        // Isolated: only this principal's phones wait for the retry.
+        failedPrincipals.add(reader.principalId);
+        logger.warn('agent-activity: session read failed', {
+          error: errorMessage(error),
+        });
+        continue;
+      }
       let snapshots = snapshotsByPrincipal.get(reader.principalId);
       if (!snapshots) {
         snapshots = new Map();
         snapshotsByPrincipal.set(reader.principalId, snapshots);
       }
-      refreshSnapshots(snapshots, await reader.listSessions(), at);
+      refreshSnapshots(snapshots, rows, at);
       cards.set(
         reader.principalId,
         buildAgentActivityCard({
@@ -721,7 +748,15 @@ export function wireAgentActivityPublisher(
       );
     }
     for (const principalId of [...snapshotsByPrincipal.keys()])
-      if (!cards.has(principalId)) snapshotsByPrincipal.delete(principalId);
+      if (!cards.has(principalId) && !failedPrincipals.has(principalId))
+        snapshotsByPrincipal.delete(principalId);
+    // What a phone that may no longer read is sent, once: an empty card,
+    // which clears the last one instead of leaving it until it expires.
+    const retiredCard = buildAgentActivityCard({
+      sessions: [],
+      stationId,
+      now: at,
+    });
     const due: Array<() => Promise<void>> = [];
     let updatedAt: number | undefined;
     for (const { deviceId, registration } of targets) {
@@ -739,15 +774,27 @@ export function wireAgentActivityPublisher(
         continue;
       }
       const principalId = principalOf.get(deviceId);
-      const card = principalId ? cards.get(principalId) : undefined;
+      if (principalId !== undefined && failedPrincipals.has(principalId)) {
+        // Its read failed: nothing about this phone is known this time. Try
+        // it again with the stalled-read retry, not at once.
+        const waiting = devices.get(deviceId);
+        if (waiting) waiting.retryAt = at + STALLED_FLUSH_RETRY_MS;
+        continue;
+      }
+      let card = principalId ? cards.get(principalId) : undefined;
       if (!card) {
-        // Not (or no longer) a device that may read sessions: send nothing.
+        // Not (or no longer) a device that may read sessions. A phone that
+        // was shown a card gets one final empty card; nothing after that.
         warnOnce(
           `unreadable:${deviceId}`,
-          'agent-activity: a registered device can no longer read sessions; not sending to it',
+          'agent-activity: a registered device may not read sessions; sending it no activity',
         );
-        devices.delete(deviceId);
-        continue;
+        const previous = devices.get(deviceId);
+        if (previous?.cardKey === undefined) {
+          devices.delete(deviceId);
+          continue;
+        }
+        card = retiredCard;
       }
       const state = stateFor(deviceId, registration);
       const alerted = alreadyAlerted(registration, state);
@@ -786,7 +833,7 @@ export function wireAgentActivityPublisher(
     for (const deviceId of [...devices.keys()])
       if (!targets.some((target) => target.deviceId === deviceId))
         devices.delete(deviceId);
-    return true;
+    return failedPrincipals.size > 0 ? 'partial' : 'complete';
   }
 
   const worker = new KeyedCoalescingWorker<string, undefined>(() => flush(), {

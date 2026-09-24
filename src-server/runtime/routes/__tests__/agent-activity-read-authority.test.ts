@@ -31,10 +31,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
-import {
-  createOrchestrationRequestPrincipalResolver,
-  pairedDevicePrincipal,
-} from '../../bootstrap/orchestration-request-principal.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../bootstrap/orchestration-request-principal.js';
 import { createAgentActivitySessionReader } from '../agent-activity-session-reader.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -66,17 +63,34 @@ function openCard(sealed: string, registration: NativePushRegistration) {
   ) as Record<string, string>;
 }
 
-function pair(pairing: DevicePairingService, name: string) {
+function pair(
+  pairing: DevicePairingService,
+  name: string,
+  tailnetLogin?: string,
+) {
   const offer = pairing.createOffer({
     endpoint: 'https://station.example.test',
   });
-  const request = pairing.requestPairing({
-    requesterPosition: 'off-box',
+  const base = {
+    requesterPosition: 'off-box' as const,
     offerId: offer.offerId,
     proof: offer.challenge,
     deviceName: name,
-  });
-  pairing.confirmRequest(request.requestId, { kind: 'presented-credential' });
+  };
+  const request = tailnetLogin
+    ? pairing.requestPairing({
+        ...base,
+        source: 'tailnet',
+        requester: { provider: 'tailscale-serve', login: tailnetLogin },
+      })
+    : pairing.requestPairing(base);
+  pairing.confirmRequest(
+    request.requestId,
+    { kind: 'presented-credential' },
+    tailnetLogin
+      ? { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'verified-ingress' }
+      : undefined,
+  );
   return pairing.exchange({
     offerId: offer.offerId,
     proof: offer.challenge,
@@ -136,6 +150,7 @@ async function fixture() {
     environmentId: ENVIRONMENT_ID,
   });
   const phone = pair(pairing, 'Pixel');
+  const alicePhone = pair(pairing, 'Alice phone', 'alice@example.com');
   const store = new EventStore(join(home, 'orchestration.sqlite'));
   cleanups.push(() => store.close());
   const eventBus = new EventBus();
@@ -156,7 +171,8 @@ async function fixture() {
     },
   } as never);
   service.initialize();
-  const devicePrincipal = pairedDevicePrincipal(phone.device).id;
+  // Owners written as literal principal ids — not derived from the code
+  // under test.
   seedFinishedSession(
     store,
     'cli',
@@ -166,13 +182,22 @@ async function fixture() {
   seedFinishedSession(
     store,
     'phone',
-    devicePrincipal,
+    `human:device:${phone.device.id}`,
     'Task started on the phone',
+  );
+  seedFinishedSession(
+    store,
+    'alice',
+    'human:tailscale-serve:alice@example.com',
+    'Task Alice started',
   );
   seedFinishedSession(store, 'foreign', STRANGER, 'Someone else’s task');
 
-  // The phone's own session list, through the real route and the runtime's
-  // request-principal resolver, authenticated as the paired device.
+  // The phones' own view, through the real route and the runtime's
+  // request-principal resolver, authenticated as each paired device.
+  const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
+    environmentSecurityService: pairing,
+  });
   const app = new Hono();
   app.use('*', async (c, next) => {
     const bearer = c.req.header('authorization')?.replace(/^Bearer /, '');
@@ -188,22 +213,19 @@ async function fixture() {
       });
     await next();
   });
+  app.get('/whoami', (c) => c.json({ id: resolvePrincipal(c).id }));
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
       eventBus,
       logger: { debug() {} },
-      resolvePrincipal: createOrchestrationRequestPrincipalResolver({
-        environmentSecurityService: pairing,
-      }),
+      resolvePrincipal,
     }),
   );
-  const phoneList = async () => {
+  const ownList = async (credential: string) => {
     const response = await app.request(
       '/api/orchestration/sessions/read-model',
-      {
-        headers: { authorization: `Bearer ${phone.credential}` },
-      },
+      { headers: { authorization: `Bearer ${credential}` } },
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -211,19 +233,47 @@ async function fixture() {
     };
     return body.data.map((session) => session.displayTitle).sort();
   };
+  const whoami = async (credential: string) =>
+    (
+      (await (
+        await app.request('/whoami', {
+          headers: { authorization: `Bearer ${credential}` },
+        })
+      ).json()) as { id: string }
+    ).id;
 
   const keys = new PushSigningKeyStore(home, () => pairing.environmentId());
   const key = await keys.loadOrCreate();
-  const registration = pairing.setNativePush(
-    phone.device.id,
-    {
-      token: `fcm-token-${'a'.repeat(60)}`,
-      packageName: 'io.kontourai.station',
-      platform: 'android',
-    },
-    key.thumbprint,
-  );
-  const cards: Array<Record<string, string>> = [];
+  const registrations = new Map<string, NativePushRegistration>();
+  for (const [device, token] of [
+    [phone.device.id, `fcm-token-${'a'.repeat(60)}`],
+    [alicePhone.device.id, `fcm-token-${'b'.repeat(60)}`],
+  ] as const) {
+    const registration = pairing.setNativePush(
+      device,
+      { token, packageName: 'io.kontourai.station', platform: 'android' },
+      key.thumbprint,
+    );
+    registrations.set(registration.registrationId, registration);
+  }
+  const reader = createAgentActivitySessionReader({
+    listDevices: () => pairing.listDevices(),
+    listSessionReadModel: (authority) =>
+      service.listSessionReadModel(authority),
+    listProjectionEvents: (threadIds) =>
+      new Map(
+        [...store.listSessionProjectionEventsForThreads(threadIds)].map(
+          ([threadId, events]) => [
+            threadId,
+            events.map((event) => event.payload),
+          ],
+        ),
+      ),
+    projectNames: () => new Map(),
+  });
+  /** Cards delivered, by device id. */
+  const cards = new Map<string, Array<Record<string, string>>>();
+  let clock = Date.now();
   const publisher = wireAgentActivityPublisher({
     eventBus,
     devicePairing: pairing,
@@ -231,30 +281,45 @@ async function fixture() {
     gateway: resolvePushGatewayConfig({})!,
     logger: { warn: vi.fn() },
     windowMs: 1,
+    now: () => clock,
     setTimer: () => () => {},
-    sessionReaderFor: createAgentActivitySessionReader({
-      listDevices: () => pairing.listDevices(),
-      listSessionReadModel: (authority) =>
-        service.listSessionReadModel(authority),
-      listProjectionEvents: (threadIds) =>
-        new Map(
-          [...store.listSessionProjectionEventsForThreads(threadIds)].map(
-            ([threadId, events]) => [
-              threadId,
-              events.map((event) => event.payload),
-            ],
-          ),
-        ),
-      projectNames: () => new Map(),
-    }),
+    sessionReaderFor: reader,
     fetchImpl: (async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(Buffer.from(init.body as Buffer)));
-      cards.push(openCard(body.data.sealed, registration));
+      const registration = registrations.get(body.data.device_id);
+      if (!registration) throw new Error('unknown registration');
+      const deviceId = [phone, alicePhone].find(
+        (paired) =>
+          pairing
+            .listNativePushRegistrations()
+            .find((entry) => entry.deviceId === paired.device.id)?.registration
+            .registrationId === registration.registrationId,
+      )?.device.id;
+      const list = cards.get(deviceId ?? '?') ?? [];
+      list.push(openCard(body.data.sealed, registration));
+      cards.set(deviceId ?? '?', list);
       return new Response('{}', { status: 200 });
     }) as unknown as typeof fetch,
   });
   cleanups.push(() => void publisher.stop());
-  return { service, phoneList, publisher, cards };
+  const flush = async () => {
+    publisher.requestFlush();
+    await publisher.drain();
+  };
+  return {
+    service,
+    pairing,
+    phone,
+    alicePhone,
+    ownList,
+    whoami,
+    reader,
+    flush,
+    cards,
+    advance: (ms: number) => {
+      clock += ms;
+    },
+  };
 }
 
 const cardTitles = (card: Record<string, string> | undefined) =>
@@ -263,17 +328,63 @@ const cardTitles = (card: Record<string, string> | undefined) =>
     .map(([, row]) => row.split('\t')[1])
     .sort();
 
-test("the phone's card lists exactly the sessions the phone's own session list returns", async () => {
-  const { phoneList, publisher, cards } = await fixture();
-  const listed = await phoneList();
-  // What the device may read: the operator's and its own, not a stranger's.
-  expect(listed).toEqual(['Operator CLI task', 'Task started on the phone']);
+test('each phone reads as the principal its own requests resolve to', async () => {
+  const f = await fixture();
+  // Literal expectations, then parity with the runtime's resolver.
+  expect(await f.whoami(f.phone.credential)).toBe(
+    `human:device:${f.phone.device.id}`,
+  );
+  expect(await f.whoami(f.alicePhone.credential)).toBe(
+    'human:tailscale-serve:alice@example.com',
+  );
+  expect(f.reader(f.phone.device.id)?.principalId).toBe(
+    await f.whoami(f.phone.credential),
+  );
+  expect(f.reader(f.alicePhone.device.id)?.principalId).toBe(
+    await f.whoami(f.alicePhone.credential),
+  );
+});
 
-  publisher.requestFlush();
-  await publisher.drain();
-  expect(cards).toHaveLength(1);
-  expect(cardTitles(cards[0])).toEqual(listed);
-  expect(JSON.stringify(cards[0])).not.toContain('Someone else');
+test("each phone's card lists exactly the sessions that phone's own session list returns", async () => {
+  const f = await fixture();
+  await f.flush();
+  for (const paired of [f.phone, f.alicePhone]) {
+    const listed = await f.ownList(paired.credential);
+    expect(listed).toEqual([
+      'Operator CLI task',
+      'Task Alice started',
+      'Task started on the phone',
+    ]);
+    const delivered = f.cards.get(paired.device.id) ?? [];
+    expect(delivered).toHaveLength(1);
+    expect(cardTitles(delivered[0])).toEqual(listed);
+    expect(JSON.stringify(delivered[0])).not.toContain('Someone else');
+  }
+});
+
+test('a phone narrowed below orchestration:read gets one final empty card, then nothing', async () => {
+  const f = await fixture();
+  await f.flush();
+  expect(f.cards.get(f.phone.device.id)).toHaveLength(1);
+  f.pairing.setDeviceScope(f.phone.device.id, ['inference:invoke'], {
+    kind: 'presented-credential',
+  });
+  expect(f.reader(f.phone.device.id)).toBeNull();
+  f.advance(5000);
+  await f.flush();
+  const delivered = f.cards.get(f.phone.device.id) ?? [];
+  expect(delivered).toHaveLength(2);
+  expect(cardTitles(delivered[1])).toEqual([]);
+  expect(delivered[1]).toMatchObject({
+    active: 'false',
+    activity_active_count: '0',
+  });
+  expect(delivered[1]?.alert_id).toBeUndefined();
+  f.advance(5000);
+  await f.flush();
+  expect(f.cards.get(f.phone.device.id)).toHaveLength(2);
+  // The other phone is unaffected.
+  expect(f.cards.get(f.alicePhone.device.id)).toHaveLength(1);
 });
 
 test('the OS alias is not a reading principal: it sees none of these sessions', async () => {

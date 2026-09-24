@@ -234,10 +234,15 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with
-  the authority a request carrying its own device credential resolves to
+  the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
-  device itself), so its card holds exactly what that phone may list and
-  never a session its device cannot read. It sends one card per registered
+  device itself), so a card never holds a session that credential may not
+  read. Only a person's device with `orchestration:read`, not bound to a
+  deployment account, may register or be read for; a device narrowed below
+  that gets one final empty card and then nothing. A phone paired by code but
+  reached through Tailscale Serve lists sessions as its WhoIs person, so its
+  in-app list can differ from its card; the card never exceeds what the
+  device credential may read. It sends one card per registered
   phone: at most five
   rows, attention first (approval, input), then failed, then live, then
   sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
