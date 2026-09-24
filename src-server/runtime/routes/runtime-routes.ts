@@ -1120,8 +1120,8 @@ export function configureRuntimeRoutes(
   // it must never decide a session or conversation read. The callers left
   // read only `.mode` (personal vs hosted, which comes from the tenant context
   // and registry, not the user), except the hosted public share view (see
-  // there) and the pull-request and file-preview reads a separate change
-  // moves onto the principal. New session reads use
+  // there), the usage rollup (see there), and the pull-request and
+  // file-preview reads a separate change moves onto the principal. New session reads use
   // `conversationReadAuthorityForRequest`.
   const readAuthorityForRequest = (request: Request) =>
     sessionReadAuthorityFromRequest(
@@ -1440,7 +1440,6 @@ export function configureRuntimeRoutes(
   // before the chat block. A request whose principal cannot be resolved fails
   // here rather than reading as the OS alias.
   for (const path of [
-    '/api/analytics/usage-rollup',
     '/integrations/:serverId/ui/:toolName/initial-result',
     '/tool-approval/:approvalId',
     '/api/shares',
@@ -1911,7 +1910,10 @@ export function configureRuntimeRoutes(
     createAnalyticsRoutes(
       context.usageAggregator,
       undefined,
-      conversationReadAuthorityForRequest,
+      // Still the alias, deliberately: production's usage source forwards no
+      // receipts, so the rollup is empty for every authority (#2568). Move it
+      // to the principal together with its owner set when that is wired.
+      readAuthorityForRequest,
       () =>
         peerCredentialStore
           .list()

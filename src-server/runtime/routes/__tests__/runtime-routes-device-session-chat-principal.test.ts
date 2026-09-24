@@ -75,7 +75,6 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
@@ -345,8 +344,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       onLog?: (entry: string) => void;
       /** The monitoring event directory `/api/insights` reads. */
       eventLogPath?: string;
-      /** Back the usage rollup with the real orchestration usage source. */
-      usage?: boolean;
       /** A real event bus, so the `/events` relay can be observed. */
       eventBus?: EventBus;
       /** A real action-operation service behind `/api/action-operations`. */
@@ -560,25 +557,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
-      ...(orchestrationExtras.usage
-        ? {
-            // Forwards `listUsageReceipts`, which the production ref in
-            // `station-runtime.ts` does not (it exposes only
-            // `listSessionUsage`), so this exercises the route's authority
-            // wiring, not today's production data path.
-            usageAggregator: new UsageAggregator(roomHomeDir, {
-              get: () => ({
-                listSessionUsage: () => [],
-                listUsageReceipts: (authority, stationId, request) =>
-                  orchestration!.listUsageReceipts(
-                    authority,
-                    stationId,
-                    request,
-                  ),
-              }),
-            }),
-          }
-        : {}),
       ...(orchestrationExtras.eventBus
         ? { eventBus: orchestrationExtras.eventBus }
         : {}),
@@ -2410,7 +2388,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const requests: ReadonlyArray<readonly [string, string, unknown?]> = [
         ['GET', '/api/runs'],
         ['GET', '/api/runs/made-up-run'],
-        ['GET', '/api/analytics/usage-rollup?from=2026-09-01&to=2026-09-07'],
         ['GET', '/notifications'],
         ['POST', '/notifications', { title: 'Probe' }],
         ['GET', '/api/attention'],
@@ -2468,50 +2445,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(`${frame}\n${logs.join('\n')}`).not.toContain(
         'Conversation request authority was not resolved',
       );
-    });
-
-    test('the usage rollup counts the personal account’s chats for the operator bearer and no stranger’s', async () => {
-      // A paired device's standard grant has no analytics scope, so only the
-      // operator reads the rollup here.
-      const { app } = await principalSetup({
-        usage: true,
-        seed: (seeded) => {
-          for (const threadId of [
-            'operator-owned',
-            'device-owned',
-            'whois-owned',
-            'stranger-owned',
-          ])
-            seeded.appendEvent({
-              eventId: `${threadId}:usage`,
-              threadId,
-              turnId: `${threadId}:turn`,
-              provider: 'claude',
-              method: 'token-usage.updated',
-              createdAt: new Date().toISOString(),
-              promptTokens: 1,
-            } as never);
-        },
-      });
-      const usageThreadsFor = async (credential: string) => {
-        const response = await app.request(
-          '/api/analytics/usage-rollup?localOnly=1',
-          { headers: { Authorization: `Bearer ${credential}` } },
-          REMOTE_TAILNET_ENV,
-        );
-        const body = (await response.json()) as {
-          data?: { receipts?: Array<{ threadId?: string }> };
-        };
-        expect(response.status, JSON.stringify(body)).toBe(200);
-        return [
-          ...new Set((body.data?.receipts ?? []).map((r) => r.threadId)),
-        ].sort();
-      };
-      await expect(usageThreadsFor(OPERATOR_SECRET)).resolves.toEqual([
-        'device-owned',
-        'operator-owned',
-        'whois-owned',
-      ]);
     });
 
     test('action operations list the operator’s own operations for the operator bearer', async () => {

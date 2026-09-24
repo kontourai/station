@@ -270,7 +270,6 @@ import {
   messageTenantScopeKey,
   querySessionOwner,
   queryTranscriptMessages,
-  transcriptOwnerIds,
 } from './transcript-search-queries.js';
 import {
   createTurnDeduplicator,
@@ -4450,9 +4449,6 @@ export class EventStore {
    */
   listUsageReceiptEvents(options: {
     ownerUserId: string;
-    /** #2561: the same owner set every transcript read matches. */
-    legacyOwnerUserId?: string;
-    ownerUserIds?: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
@@ -4465,7 +4461,6 @@ export class EventStore {
     model?: string;
     processEpoch: number;
   }> {
-    const ownerIds = transcriptOwnerIds(options);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4497,7 +4492,7 @@ export class EventStore {
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
           WHERE e.method = 'token-usage.updated'
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
+            AND h.owner_user_id = ?
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
           ORDER BY e.observed_at ASC, e.id ASC
@@ -4506,7 +4501,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        ...ownerIds,
+        options.ownerUserId,
         options.tenantId ?? null,
         options.tenantId ?? null,
         options.after?.observedAt ?? null,
@@ -4531,14 +4526,10 @@ export class EventStore {
    */
   listUsageCoverageEvents(options: {
     ownerUserId: string;
-    /** #2561: the same owner set as the receipt rows. */
-    legacyOwnerUserId?: string;
-    ownerUserIds?: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
   }): PersistedRuntimeEvent[] {
-    const ownerIds = transcriptOwnerIds(options);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4547,7 +4538,7 @@ export class EventStore {
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
           WHERE e.method IN ('turn.completed', 'turn.aborted', 'token-usage.updated', 'session.configured')
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
+            AND h.owner_user_id = ?
             AND (? IS NULL OR h.tenant_id = ?)
           ORDER BY e.observed_at ASC, e.id ASC
           LIMIT 1001`,
@@ -4555,7 +4546,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        ...ownerIds,
+        options.ownerUserId,
         options.tenantId ?? null,
         options.tenantId ?? null,
       ) as any[];

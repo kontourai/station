@@ -13,8 +13,7 @@ export class TranscriptReadLimitError extends Error {}
 /** Recency only breaks comparable FTS relevance; shared with the write owner's public constant. */
 export const MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY = 0.000000001;
 
-/** The owner ids a transcript read may match; shared by every owner-scoped query. */
-export function transcriptOwnerIds(options: {
+function transcriptOwnerIds(options: {
   ownerUserId: string;
   legacyOwnerUserId?: string;
   ownerUserIds?: readonly string[];
