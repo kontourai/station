@@ -11,7 +11,10 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../platform/openExternalLink';
-import { attachmentBlobForObjectUrl } from './chat/attachment-object-urls';
+import {
+  attachmentBlobForObjectUrl,
+  useRetainedAttachmentObjectUrl,
+} from './chat/attachment-object-urls';
 import { markdownCodeComponents } from './chat/HighlightedCodeBlock';
 import { LazyMarkdown } from './chat/LazyMarkdown';
 import { MarkdownImage } from './chat/markdown-images';
@@ -202,6 +205,9 @@ export default function FilePreviewContent({
 }: {
   current: PreviewItem;
 }) {
+  // The dialog holds what it shows: the opening chip's hold ends when it
+  // unmounts, and eviction would then revoke the bytes under an open preview.
+  useRetainedAttachmentObjectUrl(current.url);
   const kind = filePreviewKind(current.mediaType);
   const isText = kind === 'markdown' || kind === 'json' || kind === 'text';
   const pdfInline = kind === 'pdf' && canRenderPdfInline();

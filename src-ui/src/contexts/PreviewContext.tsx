@@ -3,11 +3,9 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react';
-import { retainAttachmentObjectUrl } from '../components/chat/attachment-object-urls';
 import type { PreviewItem } from '../components/ImagePreviewContent';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
@@ -47,14 +45,6 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
     setCurrent(null);
     setItems([]);
   }, []);
-
-  // The dialog holds what it shows. The opening chip's hold ends when the chip
-  // unmounts, and cache eviction then revokes the URL under an open preview.
-  const currentUrl = current?.url;
-  useEffect(
-    () => (currentUrl ? retainAttachmentObjectUrl(currentUrl) : undefined),
-    [currentUrl],
-  );
 
   // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this

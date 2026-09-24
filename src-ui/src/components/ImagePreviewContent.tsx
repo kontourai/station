@@ -1,4 +1,5 @@
 import { Button } from './Button';
+import { useRetainedAttachmentObjectUrl } from './chat/attachment-object-urls';
 import { ImageInspector } from './ImageInspector';
 
 export interface PreviewItem {
@@ -17,6 +18,8 @@ export default function ImagePreviewContent({
   items: readonly PreviewItem[];
   onSelect: (item: PreviewItem) => void;
 }) {
+  // Same hold as the file preview: see FilePreviewContent.
+  useRetainedAttachmentObjectUrl(current.url);
   const currentIdx = items.findIndex((item) => item.url === current.url);
   const selectAdjacentImage = (direction: -1 | 1) => {
     const next = items[currentIdx + direction];

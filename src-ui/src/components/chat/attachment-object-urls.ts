@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 /**
  * Object URLs for attachment blobs fetched from `GET /api/attachments/:ref`
  * (archive#3385).
@@ -111,6 +113,15 @@ export function retainAttachmentObjectUrl(objectUrl: string): () => void {
     return () => releaseAttachmentObjectUrl(ref);
   }
   return () => {};
+}
+
+/**
+ * Hold `objectUrl` for as long as the calling component shows it. Used by the
+ * preview dialog's (lazily loaded) bodies rather than the eager provider, so
+ * the cache stays out of the entry chunk.
+ */
+export function useRetainedAttachmentObjectUrl(objectUrl: string): void {
+  useEffect(() => retainAttachmentObjectUrl(objectUrl), [objectUrl]);
 }
 
 /**
