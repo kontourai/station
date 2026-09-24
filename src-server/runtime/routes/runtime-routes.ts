@@ -633,6 +633,33 @@ export function pullRequestThreadForProject<
   );
 }
 
+/**
+ * The session a pull-request request names by `?thread=`, for a caller allowed
+ * to read it: its worktree names a branch and a remote, which are that
+ * session's to disclose. `'refused'` when the caller may not read it; the
+ * project filter then keeps another project's session from rebinding the
+ * checkout (`pullRequestThreadForProject`). Authority is checked before any
+ * session is listed.
+ */
+export async function pullRequestSessionForReader<
+  T extends { threadId: string; projectSlug?: string },
+>(
+  deps: {
+    canRead: (threadId: string) => boolean;
+    listSessions: () => Promise<T[]>;
+  },
+  threadId: string | undefined,
+  projectSlug: string,
+): Promise<T | undefined | 'refused'> {
+  if (!threadId) return undefined;
+  if (!deps.canRead(threadId)) return 'refused';
+  return pullRequestThreadForProject(
+    await deps.listSessions(),
+    threadId,
+    projectSlug,
+  );
+}
+
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
   projectSharedTasks?: ProjectSharedTaskStore;
@@ -4117,6 +4144,14 @@ export function configureRuntimeRoutes(
                 context.orchestrationService.listSessions(
                   INTERNAL_SESSION_READ_SCOPE,
                 ),
+              projectDirectory: async (slug) => {
+                try {
+                  return context.projectService.getProject(slug)
+                    .workingDirectory;
+                } catch {
+                  return undefined;
+                }
+              },
             },
             projectSlug,
             thread,
@@ -4366,26 +4401,24 @@ export function configureRuntimeRoutes(
         } catch {
           return { available: false, reason: 'Project is unavailable' };
         }
-        const threadId = routeContext.req.query('thread');
-        // A session's worktree names its branch and remote: resolve it only
-        // for a caller allowed to read that session.
-        if (
-          threadId &&
-          !context.orchestrationService.canUserReadSession(
-            threadId,
-            readAuthorityForRequest(routeContext.req.raw),
-          )
-        )
-          return { available: false, reason: 'Session is unavailable' };
-        const session = threadId
-          ? pullRequestThreadForProject(
-              await context.orchestrationService.listSessions(
+        const threaded = await pullRequestSessionForReader(
+          {
+            canRead: (id) =>
+              context.orchestrationService.canUserReadSession(
+                id,
+                readAuthorityForRequest(routeContext.req.raw),
+              ),
+            listSessions: () =>
+              context.orchestrationService.listSessions(
                 INTERNAL_SESSION_READ_SCOPE,
               ),
-              threadId,
-              projectSlug,
-            )
-          : undefined;
+          },
+          routeContext.req.query('thread'),
+          projectSlug,
+        );
+        if (threaded === 'refused')
+          return { available: false, reason: 'Session is unavailable' };
+        const session = threaded;
         return pullRequestContextResolver.resolve({
           // EXPAND — 111 lines above this file's own comment warning about
           // exactly this. Raw, it reaches `git remote -v` with a `~/…` cwd

@@ -387,8 +387,8 @@ describe('a forge file link (github.com/.../blob/...)', () => {
     contextQueries.length = 0;
     mount(url, {
       ...CONVERSATION,
+      projectRoots: ['/work/repo'],
       sessionDirectory: '/wt/lane',
-      sessionWorktree: '/wt/lane',
       threadId: 'thread-7',
     });
     expect(contextQueries).toContainEqual({

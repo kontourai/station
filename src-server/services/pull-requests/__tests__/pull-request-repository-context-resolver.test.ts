@@ -350,6 +350,7 @@ describe('PullRequestRepositoryContextResolver', () => {
    * request's own identity picks the one child checkout it belongs to.
    */
   test('an umbrella project resolves to the one child whose remote names the repository', async () => {
+    let outside: string | undefined;
     const umbrella = realpathSync(
       mkdtempSync(join(tmpdir(), 'station-umbrella-')),
     );
@@ -359,9 +360,7 @@ describe('PullRequestRepositoryContextResolver', () => {
         mkdirSync(join(umbrella, name, '.git'), { recursive: true });
       mkdirSync(join(umbrella, 'plain-folder'));
       // A symlinked child points outside the project and is never followed.
-      const outside = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-outside-')),
-      );
+      outside = realpathSync(mkdtempSync(join(tmpdir(), 'station-outside-')));
       mkdirSync(join(outside, '.git'));
       symlinkSync(outside, join(umbrella, 'linked'));
       const asked: string[] = [];
@@ -412,7 +411,7 @@ describe('PullRequestRepositoryContextResolver', () => {
       // claims the same repository, so asking would have made it ambiguous.
       expect(asked).not.toContain(join(umbrella, 'linked'));
       expect(asked).not.toContain(join(umbrella, 'plain-folder'));
-      rmSync(outside, { recursive: true, force: true });
+
       // A repository no child holds, or a request naming none, stays refused.
       for (const repository of [
         { host: 'github.com', owner: 'kontourai', name: 'absent' },
@@ -442,6 +441,7 @@ describe('PullRequestRepositoryContextResolver', () => {
       ).resolves.toMatchObject({ available: false });
     } finally {
       rmSync(umbrella, { recursive: true, force: true });
+      if (outside) rmSync(outside, { recursive: true, force: true });
     }
   });
 
@@ -450,6 +450,38 @@ describe('PullRequestRepositoryContextResolver', () => {
    * SAME repository. Counting remotes rather than repositories made every
    * pull-request read for that project 404 as "ambiguous".
    */
+  test('an umbrella lookup runs at most eight git reads at once', async () => {
+    const umbrella = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
+    );
+    try {
+      for (let index = 0; index < 20; index += 1)
+        mkdirSync(join(umbrella, `repo-${index}`, '.git'), { recursive: true });
+      let inFlight = 0;
+      let peak = 0;
+      const readRemotes = async (path: string) => {
+        if (path === umbrella) return { ok: true as const, remotes: [] };
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((done) => setTimeout(done, 5));
+        inFlight -= 1;
+        return { ok: true as const, remotes: [] };
+      };
+      await new PullRequestRepositoryContextResolver({
+        git: git() as any,
+        readRemotes: readRemotes as any,
+      }).resolve({
+        projectWorkingDirectory: umbrella,
+        requireBranchState: false,
+        repository: { host: 'github.com', owner: 'o', name: 'r' },
+      });
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(8);
+    } finally {
+      rmSync(umbrella, { recursive: true, force: true });
+    }
+  });
+
   test('several remotes for one repository are one identity, not an ambiguity', async () => {
     const twoRemotes = async () => ({
       ok: true as const,

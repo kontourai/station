@@ -185,7 +185,6 @@ describe('path mentions in a rendered chat message', () => {
         value={{
           ...CONVERSATION,
           sessionDirectory: '/work/worktrees/lane',
-          sessionWorktree: '/work/worktrees/lane',
         }}
       >
         <MarkdownRenderer>Edit src/app.ts now.</MarkdownRenderer>
@@ -202,7 +201,6 @@ describe('path mentions in a rendered chat message', () => {
         value={{
           ...CONVERSATION,
           sessionDirectory: '/work/worktrees/lane',
-          sessionWorktree: '/work/worktrees/lane',
           threadId: 'thread-7',
         }}
       >
@@ -226,11 +224,11 @@ describe('path mentions in a rendered chat message', () => {
     );
   });
 
-  test('a session in a subfolder or another directory links nothing, thread or not', () => {
-    // The server reads a thread's WORKTREE only; for any other directory it
-    // would answer from the checkout root, a different file than the model
-    // named (review H1).
-    existing.add('src/app.ts');
+  test('a session outside the checkout asks about ITS directory, never the checkout root', () => {
+    // A subfolder session writes paths relative to the subfolder. Whether
+    // that directory may be read is the server's call (#2476 review H1): the
+    // UI only ever asks through the thread, so a refusal leaves the mention
+    // as text instead of answering from the checkout root.
     existing.add('app.ts');
     render(
       <MarkdownLinkContext.Provider
@@ -240,11 +238,16 @@ describe('path mentions in a rendered chat message', () => {
           threadId: 'thread-7',
         }}
       >
-        <MarkdownRenderer>Edit app.ts and src/app.ts now.</MarkdownRenderer>
+        <MarkdownRenderer>
+          Edit app.ts and /work/repo/pkg/app.ts now.
+        </MarkdownRenderer>
       </MarkdownLinkContext.Provider>,
     );
-    expect(screen.queryByRole('link')).toBeNull();
-    expect(existenceAsks).toEqual([]);
+    expect(existenceAsks.length).toBeGreaterThan(0);
+    for (const [, path, thread] of existenceAsks) {
+      expect(path).toBe('app.ts');
+      expect(thread).toBe('thread-7');
+    }
   });
 
   test('a refused worktree preview never falls back to the checkout route', () => {
@@ -257,7 +260,6 @@ describe('path mentions in a rendered chat message', () => {
           ...CONVERSATION,
           openPathInMain,
           sessionDirectory: '/work/worktrees/lane',
-          sessionWorktree: '/work/worktrees/lane',
           threadId: 'thread-7',
         }}
       >

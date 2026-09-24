@@ -2007,17 +2007,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectId: conversationProjectId,
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
-      // The project checkout, the directory the session runs in, and — only
-      // for an isolated worktree, the one directory the server can read for a
-      // session — that worktree and the thread that reads it (#2476).
+      // The project checkout, and the directory the session runs in with the
+      // thread the server reads it through (#2476).
       projectRoots: conversationProjectDirectory
         ? [conversationProjectDirectory]
         : [],
       sessionDirectory: sessionDisplayCwd,
-      sessionWorktree:
-        activeOrchestrationSession?.workspaceIsolation?.mode === 'worktree'
-          ? (activeOrchestrationSession.workspaceIsolation.path ?? null)
-          : null,
       threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
       openPathInMain:
@@ -2042,7 +2037,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       dockProjectSlug,
       sessionDisplayCwd,
       activeOrchestrationSession?.threadId,
-      activeOrchestrationSession?.workspaceIsolation,
       setLayout,
     ],
   );

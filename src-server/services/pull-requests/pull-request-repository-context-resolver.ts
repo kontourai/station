@@ -44,8 +44,30 @@ interface PullRequestRepositoryContextInput {
   repository?: { host: string; owner: string; name: string };
 }
 
-/** Bound on the children an umbrella lookup inspects. */
+/** Bound on the checkouts an umbrella lookup inspects. */
 const UMBRELLA_MAX_CHILDREN = 256;
+/** How many `git remote -v` an umbrella lookup runs at once. */
+const UMBRELLA_GIT_CONCURRENCY = 8;
+
+/** `items.map(fn)` with at most `limit` calls in flight, results in order. */
+async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
 
 const PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS = 5_000;
 
@@ -215,14 +237,20 @@ export class PullRequestRepositoryContextResolver {
     directory: string,
     repository: { host: string; owner: string; name: string },
   ): Promise<{ path: string; remotes: CheckoutRemote[] } | undefined> {
+    let home: string | undefined;
+    try {
+      home = realpathSync(homedir());
+    } catch {
+      // No home directory on this host: nothing to protect, keep scanning.
+    }
     let entries: string[];
     try {
-      if (realpathSync(directory) === realpathSync(homedir())) return undefined;
+      if (realpathSync(directory) === home) return undefined;
       entries = readdirSync(directory, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
         .map((entry) => entry.name)
-        .slice(0, UMBRELLA_MAX_CHILDREN)
-        .filter((name) => existsSync(join(directory, name, '.git')));
+        .filter((name) => existsSync(join(directory, name, '.git')))
+        .slice(0, UMBRELLA_MAX_CHILDREN);
     } catch {
       return undefined;
     }
@@ -232,8 +260,10 @@ export class PullRequestRepositoryContextResolver {
       repository.name.toLowerCase(),
     ]);
     const read = this.deps.readRemotes ?? readCheckoutRemotes;
-    const found = await Promise.all(
-      entries.map(async (name) => {
+    const found = await mapBounded(
+      entries,
+      UMBRELLA_GIT_CONCURRENCY,
+      async (name) => {
         const path = join(directory, name);
         const remotes = await read(path);
         if (!remotes.ok || remotes.remotes.length === 0) return undefined;
@@ -246,7 +276,7 @@ export class PullRequestRepositoryContextResolver {
         return names.length === 1 && names[0] === want
           ? { path, remotes: remotes.remotes }
           : undefined;
-      }),
+      },
     );
     const matches = found.filter((match) => match !== undefined);
     return matches.length === 1 ? matches[0] : undefined;

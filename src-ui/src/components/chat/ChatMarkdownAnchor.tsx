@@ -52,13 +52,12 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * a relative URL that resolves against Station's own routes.
  */
 /**
- * Where this conversation's file paths live (#2476). A session in an isolated
- * worktree: that worktree, read through its thread id — the one directory
- * other than the checkout the server will read for a session. A session in the
- * project checkout: the checkout. Anything else (a subfolder, another
- * directory, a worktree with no thread id to read it): mentions are not
- * linked (`resolvable: false`), because the server would read a different
- * directory than the one the model's paths name.
+ * Where this conversation's file paths live (#2476). A session in the project
+ * checkout: the checkout. A session anywhere else: its own directory, read
+ * through its thread id — the server reads that directory only when it can
+ * vouch it is this project's, and otherwise answers nothing (no mention links,
+ * a preview is refused), never the checkout's copy. Without a thread id there
+ * is no way to read it, and mentions are not linked (`resolvable: false`).
  */
 function fileScope(link: MarkdownLinkContextValue | null): {
   roots: readonly string[];
@@ -66,18 +65,16 @@ function fileScope(link: MarkdownLinkContextValue | null): {
   resolvable: boolean;
 } {
   if (!link) return { roots: [], resolvable: false };
-  if (link.sessionWorktree)
-    return link.threadId
-      ? {
-          roots: [link.sessionWorktree],
-          thread: link.threadId,
-          resolvable: true,
-        }
-      : { roots: [], resolvable: false };
   if (
     sessionRunsInProjectDirectory(link.sessionDirectory, link.projectRoots?.[0])
   )
     return { roots: link.projectRoots ?? [], resolvable: true };
+  if (link.threadId && link.sessionDirectory)
+    return {
+      roots: [link.sessionDirectory],
+      thread: link.threadId,
+      resolvable: true,
+    };
   return { roots: [], resolvable: false };
 }
 
