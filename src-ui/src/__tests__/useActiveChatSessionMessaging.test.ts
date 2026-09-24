@@ -1463,6 +1463,41 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat.ephemeralMessages ?? []).toEqual([]);
   });
 
+  it('#2324 (D4): a refused send whose provider turn already ended by the time the refusal lands starts draining from the queue at once', async () => {
+    // Only the drain's settle timer is faked, so its send never runs here:
+    // what is under test is that the drain STARTED (it pops the head and
+    // marks itself settling synchronously), not the drained send.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new CodedOrchestrationError(
+          400,
+          'The agent is replying on its own; your message will be sent when it finishes.',
+          'provider_turn_in_progress',
+        ),
+      );
+      // The server shows no open turn: the provider turn's end — the queue's
+      // only trigger — has already passed.
+      activeChatsStore.updateChat(sessionId, {
+        conversationId: 'conversation-r',
+        conversationActivity: {
+          conversationId: 'conversation-r',
+          asOfSequence: 3,
+        },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'after it ended');
+      });
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      expect(chat.queuedMessages).toEqual([]);
+      expect(chat.queueDrainSettling).toBe(true);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('queues on a steering engine when queueOnBusy is requested', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
