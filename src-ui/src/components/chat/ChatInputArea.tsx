@@ -472,15 +472,15 @@ export function ChatInputArea({
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : allowDraftWhileDisabled
       ? 'Draft a follow-up while this turn finishes…'
-    : turnInFlight
-      ? busyFollowUp === 'steer'
-        ? isMobile
-          ? 'Steer this turn…'
-          : 'Steer this turn… (Enter steers; Queue waits)'
-        : 'Queue a follow-up…'
-      : workingDirectory && mentionRequestScope
-        ? 'Type a message — @ files, / for commands…'
-        : 'Type a message — / for commands…';
+      : turnInFlight
+        ? busyFollowUp === 'steer'
+          ? isMobile
+            ? 'Steer this turn…'
+            : 'Steer this turn… (Enter steers; Queue waits)'
+          : 'Queue a follow-up…'
+        : workingDirectory && mentionRequestScope
+          ? 'Type a message — @ files, / for commands…'
+          : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
