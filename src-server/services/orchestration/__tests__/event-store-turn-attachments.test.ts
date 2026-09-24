@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createAttachmentRoutes } from '../../../routes/orchestration/attachments.js';
 import { attachmentBlobRefFor } from '../attachment-blob-store.js';
 import { EventStore } from '../event-store.js';
@@ -189,20 +189,42 @@ describe('EventStore binding of turn.started attachment references (#2483)', () 
 
   test('a projection refused part-way leaves nothing to vouch for a later append', () => {
     const twoFiles = uploadTurn('evt-refused', 'thread-r', 'alice');
+    const other = Buffer.alloc(6 * 1024, 9);
     twoFiles.attachments = [
       twoFiles.attachments![0]!,
       {
         ...twoFiles.attachments![0]!,
-        name: 'broken.png',
-        dataUrl: 'data:image/png;base64,',
+        name: 'second.png',
+        size: other.length,
+        dataUrl: `data:image/png;base64,${other.toString('base64')}`,
       },
     ];
-    expect(() => store.projectLiveEvent(twoFiles)).toThrow();
+    // The first attachment's bytes are written; the second write fails, so
+    // the projection throws after recording the first ref as this event's.
+    const blobs = (
+      store as unknown as {
+        attachmentBlobs: { write(base64: string): string | undefined };
+      }
+    ).attachmentBlobs;
+    const realWrite = blobs.write.bind(blobs);
+    let writes = 0;
+    const spy = vi
+      .spyOn(blobs, 'write')
+      .mockImplementation((base64) =>
+        ++writes === 1 ? realWrite(base64) : undefined,
+      );
+    expect(() => store.projectLiveEvent(twoFiles)).toThrow(
+      'could not store attachment bytes',
+    );
+    expect(writes).toBe(2);
+    spy.mockRestore();
+
     // The same thread and event id arriving later reference-only: the refused
     // projection's write must not count as this ingress having written it.
     store.appendEvent(bareRefTurn('evt-refused', 'thread-r', 'alice', ref));
     expect(persistedAttachment('thread-r', 'evt-refused')).not.toHaveProperty(
       'blobRef',
     );
+    expect(store.listAttachmentThreads(ref)).toEqual([]);
   });
 });
