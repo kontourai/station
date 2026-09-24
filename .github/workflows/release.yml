@@ -522,6 +522,14 @@ jobs:
       # The channel is part of the signed app identity, not provider-managed
       # feed configuration. Keep it valid even when no optional feed exists.
       VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
+      # Firebase client identity for agent-activity push (public values that
+      # ship in every APK; repository variables keep them out of source so
+      # secret scanners do not flag the API key). All four or none: the
+      # plugin's Gradle build refuses a partial set.
+      STATION_FIREBASE_API_KEY: ${{ vars.STATION_FIREBASE_API_KEY }}
+      STATION_FIREBASE_PROJECT_ID: ${{ vars.STATION_FIREBASE_PROJECT_ID }}
+      STATION_FIREBASE_SENDER_ID: ${{ vars.STATION_FIREBASE_SENDER_ID }}
+      STATION_FIREBASE_APP_ID: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_FIREBASE_APP_ID_BETA || vars.STATION_FIREBASE_APP_ID_STABLE }}
       VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
       NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
