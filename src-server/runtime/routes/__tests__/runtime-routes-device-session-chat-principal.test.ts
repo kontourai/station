@@ -335,6 +335,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       extraOwners?: ReadonlyArray<readonly [string, string]>;
       /** Receives every runtime log call, so a masked 500 stays visible. */
       onLog?: (entry: string) => void;
+      /** The monitoring event directory `/api/insights` reads. */
+      eventLogPath?: string;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -524,6 +526,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
+      ...(principalReads.eventLogPath
+        ? {
+            eventLogPath: principalReads.eventLogPath,
+            // The live relay's first frame reports ACP status.
+            acpBridge: deepStub({ getStatus: () => ({ connections: [] }) }),
+          }
+        : {}),
       ...(runtimeSearch ? { runtimeSearch } : {}),
       ...(taskReferences
         ? {
@@ -2313,6 +2322,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         {
           extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
           onLog: (entry) => logs.push(entry),
+          eventLogPath: mkdtempSync(
+            join(tmpdir(), 'station-principal-events-'),
+          ),
         },
       );
       searchCleanup.unshift(async () => {
@@ -2328,6 +2340,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['GET', '/api/runs'],
         ['GET', '/api/runs/made-up-run'],
         ['GET', '/notifications'],
+        ['POST', '/notifications', { title: 'Probe' }],
         ['GET', '/api/attention'],
         ['POST', '/api/attention/made-up/ack'],
         ['GET', '/api/action-operations'],
@@ -2336,6 +2349,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['GET', '/monitoring/metrics'],
         ['GET', `/api/attachments/sha256-${'0'.repeat(64)}`],
         ['GET', '/api/board?kind=session&id=operator-owned'],
+        [
+          'POST',
+          '/api/board/unpin',
+          { reference: { kind: 'session', id: 'operator-owned' }, name: 'x' },
+        ],
         ['POST', '/tool-approval/made-up', { approved: true }],
         [
           'POST',
@@ -2360,6 +2378,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           `${method} ${path}`,
         ).not.toContain('Conversation request authority was not resolved');
       }
+      // The live relay reads the authority inside its stream, so read its
+      // first frame and hang up rather than waiting for the stream to end.
+      const abort = new AbortController();
+      const stream = await app.request(
+        '/events',
+        { headers: operatorHeaders, signal: abort.signal },
+        REMOTE_TAILNET_ENV,
+      );
+      const reader = stream.body!.getReader();
+      const first = await reader.read();
+      abort.abort();
+      await reader.cancel().catch(() => undefined);
+      const frame = new TextDecoder().decode(first.value ?? new Uint8Array());
+      expect(stream.status).toBe(200);
+      expect(frame).toContain('data:');
+      expect(`${frame}\n${logs.join('\n')}`).not.toContain(
+        'Conversation request authority was not resolved',
+      );
     });
 
     test('attachment bytes open for the owner of the chat that carried them, not for another caller', async () => {
