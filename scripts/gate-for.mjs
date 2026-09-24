@@ -9,10 +9,17 @@
 //   npm run gate:for -- src-ui/src/App.tsx docs/x.md  # hypothetical paths
 //
 // With explicit paths the surfaces are evaluated as-is, which answers the
-// question BEFORE writing anything. The output is a report, not a gate: it
-// runs nothing and always exits 0 unless the repository itself is unreadable.
+// question BEFORE writing anything. The output is a report plus matching
+// Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
+// or required governance context cannot be read.
 import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildExplainGuidance,
+  loadRepoMap,
+  loadRepoStandards,
+} from '@kontourai/veritas';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import {
   changedPathsSince,
@@ -110,6 +117,65 @@ export function gateReport({ changedPaths, baseSha }) {
   return lines.join('\n');
 }
 
+function addGuidanceRule(selected, rule, filePath) {
+  const existing = selected.get(rule.id);
+  if (existing) existing.paths.add(filePath);
+  else selected.set(rule.id, { rule, paths: new Set([filePath]) });
+}
+
+function guidanceLinesForRule({ rule, paths }) {
+  const lines = [
+    `  ${rule.id} (${rule.enforcementLevel}) — ${[...paths].join(', ')}`,
+    `    ${rule.summary}`,
+  ];
+  if (rule.evidenceCheckIds.length > 0)
+    lines.push(`    Evidence checks: ${rule.evidenceCheckIds.join(', ')}`);
+  for (const item of rule.mustDo) lines.push(`    Do: ${item}`);
+  for (const item of rule.mustNotDo) lines.push(`    Do not: ${item}`);
+  return lines;
+}
+
+/** Present the exact Veritas path guidance during Station's required pre-edit route. */
+export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
+  if (changedPaths.length === 0)
+    return 'Veritas guidance: no changed paths to brief.';
+  const repoMap = loadRepoMap(resolve(rootDir, '.veritas/repo-map.json'));
+  const repoStandards = loadRepoStandards(
+    resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
+  );
+  const selected = new Map();
+  for (const filePath of changedPaths) {
+    const guidance = buildExplainGuidance({
+      rootDir,
+      repoMap,
+      repoStandards,
+      filePath,
+    });
+    for (const rule of guidance.rules)
+      addGuidanceRule(selected, rule, filePath);
+  }
+  if (selected.size === 0)
+    return 'Veritas guidance: no matching rules for these paths.';
+  return [
+    'Veritas guidance for the intended paths:',
+    ...[...selected.values()].flatMap(guidanceLinesForRule),
+  ].join('\n');
+}
+
+function writeBriefedReport(changedPaths, baseSha) {
+  try {
+    const guidance = veritasGuidanceForPaths(changedPaths);
+    process.stdout.write(
+      `${gateReport({ changedPaths, baseSha })}\n\n${guidance}\n`,
+    );
+  } catch (error) {
+    console.error(
+      `gate-for: Veritas path briefing failed: ${error instanceof Error ? error.message : error}`,
+    );
+    process.exitCode = 2;
+  }
+}
+
 export function parseArgs(argv) {
   let base = 'origin/main';
   const explicit = [];
@@ -147,9 +213,7 @@ export function main(argv = process.argv.slice(2)) {
     // Explicit-paths mode never consults git: the caller supplied the scope,
     // so the deciders get a truthy sentinel instead of a resolved sha and the
     // verdict depends only on the paths given.
-    process.stdout.write(
-      `${gateReport({ changedPaths: explicit, baseSha: 'explicit-paths' })}\n`,
-    );
+    writeBriefedReport(explicit, 'explicit-paths');
     return;
   }
   const baseSha = resolveBaseSha(base);
@@ -160,10 +224,14 @@ export function main(argv = process.argv.slice(2)) {
     // Fail OPEN like the deciders themselves: an unreadable diff means the
     // scope is unknown, and unknown scope reports every gate as applicable.
     changedPaths = [];
+    console.error(
+      'gate-for: changed paths are unavailable, so Veritas cannot brief the edit scope.',
+    );
     process.stdout.write(`${gateReport({ changedPaths, baseSha: '' })}\n`);
+    process.exitCode = 2;
     return;
   }
-  process.stdout.write(`${gateReport({ changedPaths, baseSha })}\n`);
+  writeBriefedReport(changedPaths, baseSha);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

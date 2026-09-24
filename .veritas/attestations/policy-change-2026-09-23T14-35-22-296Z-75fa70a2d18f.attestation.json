@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-23T14:35:22.296Z",
+  "repoStandardsHash": "sha256:3d66bb78c16cb4b3a307ff7989fa40a8268d4ceb38246838aa22faa46671edc1",
+  "repoMapHash": "sha256:dd02c66694ae97542e66d4c75d5e07459839b49051f79e03605e05774c98badc",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+  "validUntilDays": 90,
+  "notes": "Require the provisioned Codex Veritas hook artifact and preserve its singular PreToolUse contract through the repo-governance evidence lane.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+    "approvalRef": "conversation:2026-09-22:ensure-full-flow-enforced",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "49130f9afa43db1d34b5b2ad3ab1fdaadac57dff3194b945d5946c176919cde4",
+        "validUntil": "2026-12-22T14:35:22.296Z"
+      },
+      "createdAt": "2026-09-23T14:35:22.296Z",
+      "updatedAt": "2026-09-23T14:35:22.296Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Require the provisioned Codex Veritas hook artifact and preserve its singular PreToolUse contract through the repo-governance evidence lane.",
+      "observedAt": "2026-09-23T14:35:22.296Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "49130f9afa43db1d34b5b2ad3ab1fdaadac57dff3194b945d5946c176919cde4",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-23T14:35:22.296Z",
+        "validUntil": "2026-12-22T14:35:22.296Z",
+        "contentHash": "49130f9afa43db1d34b5b2ad3ab1fdaadac57dff3194b945d5946c176919cde4"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-23T14-35-22-296Z-75fa70a2d18f"
+      ],
+      "createdAt": "2026-09-23T14:35:22.296Z",
+      "verifiedAt": "2026-09-23T14:35:22.296Z"
+    }
+  }
+}

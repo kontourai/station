@@ -35,6 +35,8 @@
           ".veritas/repo-standards/default.repo-standards.json",
           ".veritas/authority/default.authority-settings.json",
           ".veritas/proof-families/repo-guardrails.families.json",
+          ".codex/hooks.json",
+          ".codex/config.toml",
           "veritas.claims.json",
           "docs/reference/contracts.md",
           "SECURITY.md",
@@ -288,6 +290,83 @@
           "scripts/__tests__/verification-receipt.test.ts",
           "scripts/__tests__/vitest-worktree-exclusion.test.ts",
           "scripts/__tests__/catch-log.test.ts"
+        ]
+      }
+    },
+    {
+      "id": "session-lifecycle-recovery-contract",
+      "kind": "required-artifacts",
+      "classification": "promotable-policy",
+      "enforcementLevel": "Require",
+      "evidenceCheckIds": ["session-transition-contract"],
+      "message": "Session, provider, and reconnect changes need one explicit transition and recovery proof across every affected entry point.",
+      "owner": "station-runtime",
+      "rollback_switch": null,
+      "explain": {
+        "summary": "Session bugs cluster at boundaries: Stop during startup, late provider completion, interrupted replacement, restart, and reconnect. For changed named files, Veritas now requires the focused session transition check. That check proves its named transitions, not every provider or browser recovery path; broader integration and device claims still need their own evidence.",
+        "mustDo": [
+          "Name the pre-state, command, durable outcome, provider effect certainty, and UI state for each changed transition; include a late or duplicate outcome and a restart or reconnect case.",
+          "Exercise the canonical Session command and EventStore path, then assert the route or UI consumer that shows Stop, progress, or failure.",
+          "Keep a possibly accepted provider effect distinct from a safe retry; retain the exact conversation, execution Session, provider instance, and turn identity."
+        ],
+        "mustNotDo": [
+          "Do not infer that a provider stopped from a UI status change or a process-local flag.",
+          "Do not replace a session, retry a possibly accepted turn, or hide a stale connection without a durable reconciliation outcome."
+        ],
+        "exampleGood": "Stop during provider startup records the boundary, a delayed accepted turn cannot revive it, and a reconnected client sees the same final state.",
+        "exampleBad": "A Stop button test mocks a successful response but never reaches the provider invocation boundary or the reconnect projection.",
+        "contextLinks": [
+          "docs/plans/issue-class-prevention.md",
+          "docs/architecture/module-map.md",
+          "docs/guides/testing.md"
+        ]
+      },
+      "match": {
+        "artifacts": [
+          "src-server/services/orchestration/session-lifecycle-module.ts",
+          "src-server/services/orchestration/session-turn-boundary.ts",
+          "src-server/services/orchestration/conversation-session-lineage.ts",
+          "src-server/services/orchestration/session-command-module.ts",
+          "src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts",
+          "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+          "src-server/services/orchestration/__tests__/interrupted-turn-recovery.test.ts"
+        ]
+      }
+    },
+    {
+      "id": "bounded-background-work-contract",
+      "kind": "required-artifacts",
+      "classification": "promotable-policy",
+      "enforcementLevel": "Require",
+      "evidenceCheckIds": ["bounded-work-contract"],
+      "message": "Background work needs explicit input, concurrency, retry, retention, and shutdown bounds with an observable failure state.",
+      "owner": "station-runtime",
+      "rollback_switch": null,
+      "explain": {
+        "summary": "Repeated failed work and accumulated events can turn a local defect into sustained CPU, disk, or memory growth. For changed named files, Veritas now requires the focused bounded work check. It proves retry, queue, and stall cases in those suites; other background paths still need inventory, measurement, and their own checks.",
+        "mustDo": [
+          "State the maximum payload, queue depth, concurrent workers, retry attempts or backoff, retention window, and cancellation or shutdown owner for changed background work.",
+          "Prove a permanent failure stops retrying, a transient failure recovers within the bound, and a slow consumer cannot grow memory or disk without limit.",
+          "Expose a failed, deferred, or unavailable state with enough context to repair it."
+        ],
+        "mustNotDo": [
+          "Do not retry an unchanged permanent failure on every turn or timer tick.",
+          "Do not treat a timeout or dropped delivery as proof that an external effect did not happen."
+        ],
+        "exampleGood": "A repeatedly failing workspace scan backs off, reports its state, and preserves the last good result without accumulating child processes.",
+        "exampleBad": "A timer retries the same expensive scan after every failed turn and leaves a partial child or temporary file behind.",
+        "contextLinks": [
+          "docs/plans/issue-class-prevention.md",
+          "docs/architecture/module-map.md",
+          "docs/guides/testing.md"
+        ]
+      },
+      "match": {
+        "artifacts": [
+          "src-server/services/operational-events/operational-event-delivery.ts",
+          "src-ui/src/lib/outboundQueue.ts",
+          "src-server/services/orchestration/__tests__/turn-stall-watchdog.test.ts",
+          "src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts"
         ]
       }
     },

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-23T05:50:09.654Z",
+  "repoStandardsHash": "sha256:b717a2f79f39ffe9e4c2ebfb24a837f2498dda251031fa256452c2fc47c8decf",
+  "repoMapHash": "sha256:dd02c66694ae97542e66d4c75d5e07459839b49051f79e03605e05774c98badc",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+  "validUntilDays": 90,
+  "notes": "Promote reviewed session lifecycle and bounded work contracts to required evidence; repair Repo Map schema kinds and redundant route field.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-23T02-59-17-456Z-7f64d294dacc",
+    "approvalRef": "conversation:2026-09-22:approve-advisory-rules-and-attestation",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "057a0f76388f519d85854f73fd5200950975153b52b7ddcfca55c01bba75f6b9",
+        "validUntil": "2026-12-22T05:50:09.654Z"
+      },
+      "createdAt": "2026-09-23T05:50:09.654Z",
+      "updatedAt": "2026-09-23T05:50:09.654Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Promote reviewed session lifecycle and bounded work contracts to required evidence; repair Repo Map schema kinds and redundant route field.",
+      "observedAt": "2026-09-23T05:50:09.654Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "057a0f76388f519d85854f73fd5200950975153b52b7ddcfca55c01bba75f6b9",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-23T05:50:09.654Z",
+        "validUntil": "2026-12-22T05:50:09.654Z",
+        "contentHash": "057a0f76388f519d85854f73fd5200950975153b52b7ddcfca55c01bba75f6b9"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-23T05-50-09-654Z-bb9f3c6e634a"
+      ],
+      "createdAt": "2026-09-23T05:50:09.654Z",
+      "verifiedAt": "2026-09-23T05:50:09.654Z"
+    }
+  }
+}
