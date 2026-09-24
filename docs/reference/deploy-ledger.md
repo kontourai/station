@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-24T02:27:24Z | nightly-desktop | 0.1.11-nightly.2458.1 | `1bfdde4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35941621675) |
 | 2026-09-24T02:27:21Z | nightly-android | 0.1.11-nightly.2458.1 | `1bfdde4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35941621675) |
 | 2026-09-24T02:23:57Z | nightly-npm | 0.6.0-nightly.2458.35941621675 | `1bfdde4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35941621675) |
 | 2026-09-23T17:38:49Z | nightly-desktop | 0.1.11-nightly.2457.2 | `ac819b5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35890429058) |
@@ -129,6 +130,50 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-24T02:27:24Z · nightly-desktop · 0.1.11-nightly.2458.1
+
+- Ship SHA: `1bfdde4c7935155996e685e582cff9c5a0551c6e`
+- Artifact built at: `2026-09-24T01:40:05.976Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35941621675)
+
+### Changelog
+
+Commits since `ac819b5` ([full sha](https://github.com/kontourai/station/commit/ac819b5ab35b7bc449a0501c4691a61935cbfc76)):
+
+**Features**
+
+- [#2382](https://github.com/kontourai/station/pull/2382) feat: enforce evidence for recurring session and background-work bugs
+- [#2444](https://github.com/kontourai/station/pull/2444) feat(browser): a Browser pane Station and its agents can drive
+- [#2341](https://github.com/kontourai/station/pull/2341) feat: server-authoritative turn activity, end to end (#2309 Phase A + B)
+- [#2447](https://github.com/kontourai/station/pull/2447) feat(relay): enroll independently revocable broker routing grants
+- [#2408](https://github.com/kontourai/station/pull/2408) feat(connections): save broker routes without direct fallback
+
+**Fixes**
+
+- [#2462](https://github.com/kontourai/station/pull/2462) fix(ci): fix two intermittent Nightly failures at their cause
+- [#2453](https://github.com/kontourai/station/pull/2453) fix(muse): run headless exec with --approval-mode never so escalated approvals cannot hang a turn
+- [#2450](https://github.com/kontourai/station/pull/2450) fix(nightly): read signed media entitlements as plist
+- [#2448](https://github.com/kontourai/station/pull/2448) fix(chat): give the orchestration event stream the current authority's QueryClient (#2307)
+- [#2445](https://github.com/kontourai/station/pull/2445) fix(ci): give broad-graph SDK modules explicit impact boundaries (#2326)
+- [#2434](https://github.com/kontourai/station/pull/2434) fix(native): preserve media permissions and Android backup policy
+- [#2446](https://github.com/kontourai/station/pull/2446) fix: publish lab relay readiness atomically; scope the authority-isolation key check (#2440)
+- [#2431](https://github.com/kontourai/station/pull/2431) fix(chat): a turn running in a lineage child reseeds its conversation chat on reconnect (#2303)
+- [#2437](https://github.com/kontourai/station/pull/2437) fix(muse): hold the turn open while muse background work runs, and deliver its follow-up on the same turn (#2300)
+- [#2438](https://github.com/kontourai/station/pull/2438) fix(nightly): wait out npm registry read lag before binding the CLI receipt
+- [#2426](https://github.com/kontourai/station/pull/2426) fix(ui): show the active Station in compact connection chrome
+- [#2429](https://github.com/kontourai/station/pull/2429) fix(plugins): load shared modules in strict-mode plugin bundles
+- [#2378](https://github.com/kontourai/station/pull/2378) fix(chat): state a turn's working duration only from its known start; keep an open turn's prompt above its activity (#2304)
+
+**CI / workflow**
+
+- [#2422](https://github.com/kontourai/station/pull/2422) ci: disable account-dependent checks in CI until #2318
+
+**Other**
+
+- [#2432](https://github.com/kontourai/station/pull/2432) test(e2e): model the authority observation in the shared shell fixture
+- [#2430](https://github.com/kontourai/station/pull/2430) test(gallery): re-baseline plugins for the New plugin action (#2375)
 
 ## 2026-09-24T02:27:21Z · nightly-android · 0.1.11-nightly.2458.1
 
