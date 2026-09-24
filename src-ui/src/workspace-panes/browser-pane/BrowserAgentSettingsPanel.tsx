@@ -62,25 +62,19 @@ export function BrowserAgentSettingsPanel({
               timed out may still finish later.
             </span>
           </span>
-          {/* #2425: the state is told by more than colour — the thumb's
-              side, an outlined (off) or filled (on) track, and a word. The
-              switch's own aria-checked is what assistive tech reads, so the
-              word is hidden from it. */}
-          <span
-            className="browser-pane__switch"
-            data-state={settings.data.browserEvaluate ? 'on' : 'off'}
-          >
-            <Toggle
-              checked={settings.data.browserEvaluate}
-              disabled={update.isPending}
-              describedBy={descriptionId}
-              label="Let agents run JavaScript in this Project's pages"
-              onChange={(next) => update.mutate(next)}
-            />
-            <span className="browser-pane__switch-state" aria-hidden="true">
-              {settings.data.browserEvaluate ? 'On' : 'Off'}
-            </span>
-          </span>
+          {/* #2425/#2441: the shared Toggle already tells the state by more
+              than colour (the thumb's side, an outlined or filled track).
+              This switch hands the browser to agents, so it also says the
+              state in a word; that word is aria-hidden because the switch's
+              own aria-checked is what assistive tech reads. */}
+          <Toggle
+            checked={settings.data.browserEvaluate}
+            disabled={update.isPending}
+            describedBy={descriptionId}
+            label="Let agents run JavaScript in this Project's pages"
+            onChange={(next) => update.mutate(next)}
+            showStateLabel
+          />
         </div>
       )}
       {update.isError ? (

@@ -254,6 +254,7 @@ export function handleTurnStartedEvent(
       currentChat,
       approvalMode,
       eventStreamPosition(event),
+      event.threadId,
     ),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }

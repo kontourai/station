@@ -94,11 +94,38 @@ describe('#749 conversation open controller', () => {
     expect(conversationOpenPhase({ conversationOpenPending: true })).toBe(
       'resolving',
     );
+    // #2424: a failed read is a failed CHECK. It refuses writes like a
+    // verdict does, but it is not one.
     expect(conversationOpenPhase({ conversationOpenFailed: true })).toBe(
-      'read-only',
+      'unverified',
     );
+    expect(conversationCanMutate({ conversationOpenFailed: true })).toBe(false);
+    const unresolved: ConversationOpenResolution = {
+      status: 'unavailable',
+      conversation,
+      transcript: { available: false, owner: 'runtime' },
+      canContinue: false,
+      answerability: notAnswerable,
+      recoveryActions: ['retry', 'start-new'],
+    };
+    expect(conversationOpenPhase({ conversationOpenState: unresolved })).toBe(
+      'unverified',
+    );
+    expect(conversationCanMutate({ conversationOpenState: unresolved })).toBe(
+      false,
+    );
+    // The verdicts the server derived stay verdicts.
     expect(
       conversationOpenPhase({ conversationOpenState: resolved(false) }),
+    ).toBe('read-only');
+    expect(
+      conversationOpenPhase({
+        conversationOpenState: {
+          ...unresolved,
+          status: 'missing-session',
+          transcript: { available: false, owner: 'runtime' },
+        },
+      }),
     ).toBe('read-only');
     expect(
       conversationOpenPhase({ conversationOpenState: resolved(true) }),
