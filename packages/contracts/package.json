@@ -49,6 +49,7 @@
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",
+    "./child-work": "./src/child-work.ts",
     "./channel-assurance": "./src/channel-assurance.ts",
     "./channel-identity": "./src/channel-identity.ts",
     "./channel-log": "./src/channel-log.ts",
