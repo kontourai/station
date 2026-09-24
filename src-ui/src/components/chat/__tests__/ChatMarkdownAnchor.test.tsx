@@ -431,6 +431,22 @@ describe('a forge file link (github.com/.../blob/...)', () => {
     expect(openNativeExternalLink).toHaveBeenCalledTimes(3);
   });
 
+  test('a session whose directory cannot be read opens the forge, not a refused local path', () => {
+    toastStore.clear();
+    tauri = true;
+    repositoryContext = station('main');
+    const anchor = mount(url, {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/elsewhere/lane',
+      threadId: null,
+    });
+    expect(click(anchor)).toBe(false);
+    expect(openNativeExternalLink).toHaveBeenCalledWith(url);
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(toastStore.getSnapshot()).toHaveLength(0);
+  });
+
   test('in a worktree session the ref is compared with the WORKTREE branch', () => {
     contextQueries.length = 0;
     mount(url, {

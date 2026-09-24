@@ -417,7 +417,8 @@ function RepoFileAnchor({
 }) {
   // In a worktree session the ref to compare is the WORKTREE's branch, which
   // is also the copy the preview then reads.
-  const thread = fileScope(rest.link).thread;
+  const scope = fileScope(rest.link);
+  const thread = scope.thread;
   const context = usePullRequestContextQuery({
     project: rest.link.projectSlug ?? '',
     ...(thread ? { thread } : {}),
@@ -425,7 +426,12 @@ function RepoFileAnchor({
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   const { ref, path } = splitForgeRefPath(target, identity?.branch);
+  // A session whose directory this UI cannot read has no local copy to
+  // open: the context above then describes the CHECKOUT, which is not where
+  // the session works, and a path click would be refused. The forge is the
+  // one place the link still resolves.
   const local =
+    scope.resolvable &&
     !!identity &&
     same(identity.host, target.host) &&
     same(identity.repository.owner, target.owner) &&
