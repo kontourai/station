@@ -232,12 +232,13 @@ enum LiveActivities {
 
   #if DEBUG
     @MainActor
+    @discardableResult
     static func startPreview(registrationId: String, stationKey: String?, sealed: String, staleAfter: Double)
-      throws
+      throws -> StationActivity
     {
       let state = StationAgentActivityAttributes.ContentState(
         v: liveActivityStateVersion, rid: registrationId, sk: stationKey, sealed: sealed)
-      _ = try StationActivity.request(
+      return try StationActivity.request(
         attributes: StationAgentActivityAttributes(rid: registrationId),
         content: ActivityContent(state: state, staleDate: Date().addingTimeInterval(staleAfter)),
         pushType: nil)
@@ -251,7 +252,10 @@ enum LiveActivities {
   /// be checked on a simulator without a Station or APNs. The registration is
   /// NATIVE_PUSH_SEALED_TEST_VECTOR's (packages/contracts/src/native-push.ts).
   /// Cases: `kat` (renders), `bad-seal`, `bad-key` (placeholder), `stale`
-  /// (goes stale 5 s in), `stale-past` (stale from the first render).
+  /// (goes stale 5 s in), `stale-past` (an update whose stale date has
+  /// already passed, which is how a Station that stopped updating looks).
+  /// ActivityKit does not show an activity requested with a past stale date,
+  /// so `stale-past` starts fresh and then updates with one.
   enum DebugPreview {
     static let registrationId = "AAECAwQFBgcICQoLDA0ODw"
     static let payloadKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
@@ -308,12 +312,17 @@ enum LiveActivities {
           case "stale":
             staleAfter = 5
           case "stale-past":
-            staleAfter = -60
+            staleAfter = 2
           default:
             break
           }
-          try LiveActivities.startPreview(
+          let activity = try LiveActivities.startPreview(
             registrationId: registrationId, stationKey: key, sealed: sealed, staleAfter: staleAfter)
+          if preview == "stale-past" {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            await activity.update(
+              ActivityContent(state: activity.content.state, staleDate: Date(timeIntervalSinceNow: -1)))
+          }
           NSLog("[agent-activity] preview \(preview) started")
         } catch {
           NSLog("[agent-activity] preview \(preview) failed: \(error)")
