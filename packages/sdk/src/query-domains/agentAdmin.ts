@@ -537,7 +537,11 @@ export async function updateAppConfig(
   });
   const result = await response.json();
   if (!result.success) {
-    throw new Error(result.error);
+    // The route's stable refusal code (e.g. #2436's
+    // `approval-full-access-not-granted`) travels with the message, so a
+    // caller can explain a refusal rather than offer a retry that cannot
+    // succeed.
+    throw Object.assign(new Error(result.error), { code: result.code });
   }
   return {
     data: result.data as Record<string, unknown>,

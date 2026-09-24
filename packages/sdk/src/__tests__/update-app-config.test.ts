@@ -54,6 +54,28 @@ describe('updateAppConfig', () => {
     );
   });
 
+  test("#2436: a refusal carries the route's stable code with its message", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            code: 'approval-full-access-not-granted',
+            error: 'This device is not allowed to give an agent full access.',
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    await expect(
+      updateAppConfig({ defaultApprovalMode: 'never' }),
+    ).rejects.toMatchObject({
+      message: 'This device is not allowed to give an agent full access.',
+      code: 'approval-full-access-not-granted',
+    });
+  });
+
   test('resolves with ignoredKeys undefined when the route omits it (nothing was stripped)', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
