@@ -1882,7 +1882,9 @@ const SCREENS: Screen[] = [
       });
       // #2639: a refused request (the route sets `source` itself since #2597)
       // must fail here, not as a toast that never appears.
-      expect(status).toBe(201);
+      expect(status, 'POST /notifications for "Reduced motion is active"').toBe(
+        201,
+      );
       await expect(page.getByText('Reduced motion is active')).toBeVisible({
         timeout: 10_000,
       });
@@ -2348,7 +2350,9 @@ const SCREENS: Screen[] = [
       });
       // #2639: a refused request (the route sets `source` itself since #2597)
       // must fail here, not as a toast that never appears.
-      expect(status).toBe(201);
+      expect(status, 'POST /notifications for "Overlay gallery toast"').toBe(
+        201,
+      );
       await expect(page.getByText('Overlay gallery toast')).toBeVisible({
         timeout: 10_000,
       });
@@ -2386,7 +2390,9 @@ const SCREENS: Screen[] = [
       });
       // #2639: a refused request (the route sets `source` itself since #2597)
       // must fail here, not as a toast that never appears.
-      expect(status).toBe(201);
+      expect(status, 'POST /notifications for "Toast with an action"').toBe(
+        201,
+      );
       const toast = page.locator('.toast-card', {
         hasText: 'Toast with an action',
       });
