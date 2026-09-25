@@ -494,6 +494,8 @@ describe('conversation-store adapter (station#1879)', () => {
 });
 
 describe('ConversationStoreAdapter.readableIds (cheap readability)', () => {
+  // An authorization answer (see the method's docblock for how it differs
+  // from `get`), decided without loading any transcript.
   test('decides session ids through the authorizer and file ids through one listing, loading no transcript', async () => {
     // A full read would answer (not-found) if it were ever reached.
     const read = vi.fn(async () => ({ status: 'not-found' as const }));

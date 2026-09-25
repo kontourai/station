@@ -420,8 +420,19 @@ class ConversationStoreAdapter implements KnowledgeStoreAdapter {
    * Which of `ids` the current caller may read, without loading a transcript
    * where the session authorizer can decide: session-backed ids through
    * `canReadConversation`, and the rest through ONE listing of the
-   * file-memory conversations (not a scan per id). Same answer as
-   * `get(id) !== null` for each id.
+   * file-memory conversations (not a scan per id).
+   *
+   * This is an AUTHORIZATION answer, not `get(id) !== null`. It differs from
+   * `get` in these cases, each in a safe direction:
+   * - a conversation whose lineage spans several sessions is readable only
+   *   when every linked session is (`get` reads the one thread): may HIDE a
+   *   node `get` would return;
+   * - a session `get` cannot project (no session row any more, or no
+   *   assigned agent) but whose recorded owner the caller may read: may SHOW
+   *   such a node, and only to a caller already entitled to that session;
+   * - a store failure: `get` throws, this answers from the authorizer and
+   *   never throws for a session id.
+   * It never admits a session the caller is not authorized to read.
    */
   async readableIds(ids: readonly string[]): Promise<Set<string>> {
     const readable = new Set<string>();
