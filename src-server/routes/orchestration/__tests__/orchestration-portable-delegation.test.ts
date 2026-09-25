@@ -1184,6 +1184,159 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     });
   });
 
+  describe('POST /chat foreground — a nonportable Project workspace on a peer refuses (#480 scope correction)', () => {
+    // The FOREGROUND thread path (ProjectSettings default environment) has
+    // no portable admission: resolved onto a peer, a sender-local slug
+    // would execute an UNRELATED same-slug Project there. The refusal must
+    // come from the REAL executeExecutionTargetMessage through the REAL
+    // route composition, BEFORE any remote POST/provider effect.
+    const PEER_API_FG = 'https://peer-fg.example';
+    const PEER_ENV_FG = 'env-peer-fg';
+    const peerPosts: Array<{ url: string; body: unknown }> = [];
+    let unwrapFetch: (() => void) | undefined;
+    beforeEach(() => {
+      peerPosts.length = 0;
+      const inner = globalThis.fetch;
+      const wrapped: typeof fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        // Recorded remote POST counter over the WHOLE peer surface: the
+        // refusal is proven by zero POSTs anywhere on the peer, not by a
+        // single-endpoint absence.
+        if (url.startsWith(PEER_API_FG) && init?.method === 'POST') {
+          try {
+            peerPosts.push({
+              url,
+              body: JSON.parse(String(init?.body ?? '{}')),
+            });
+          } catch {
+            peerPosts.push({ url, body: undefined });
+          }
+        }
+        return inner(input, init);
+      };
+      vi.stubGlobal('fetch', wrapped);
+      unwrapFetch = () => {
+        vi.stubGlobal('fetch', inner as never);
+      };
+      routes.push(
+        {
+          match: (url) =>
+            !url.startsWith(PEER_API_FG) &&
+            url.endsWith('/.well-known/station/v1'),
+          reply: () => ({ environmentId: 'env-self', capabilities: {} }),
+        },
+        {
+          match: (url) => url.includes('/api/environments/ssh'),
+          reply: () => ({ success: true, data: [] }),
+        },
+        {
+          match: (url) =>
+            url.includes(`/api/environments/peers/${PEER_ENV_FG}/credential`),
+          reply: () => ({
+            success: true,
+            data: {
+              environmentId: PEER_ENV_FG,
+              apiBase: PEER_API_FG,
+              scope: 'peer',
+              credential: 'peer-cred-fg',
+              label: 'peer-fg',
+            },
+          }),
+        },
+        {
+          match: (url) =>
+            url.startsWith(PEER_API_FG) &&
+            url.endsWith('/.well-known/station/v1'),
+          reply: () => ({ environmentId: PEER_ENV_FG, capabilities: {} }),
+        },
+        {
+          // The receiver's SAME-SLUG DIFFERENT-IDENTITY Project: if the
+          // nonportable slug ever reached the peer, work would run here.
+          match: (url) =>
+            url.startsWith(PEER_API_FG) && url.includes('/api/projects/local'),
+          reply: () => ({
+            success: true,
+            data: {
+              id: 'prj_peer_local_incarnation',
+              slug: 'local',
+              workingDirectory: '/peer/unrelated/checkout',
+            },
+          }),
+        },
+        {
+          match: (url) =>
+            url.startsWith(PEER_API_FG) &&
+            url.includes('/api/orchestration/chat'),
+          reply: () => ({
+            success: true,
+            data: {
+              conversationId: 'conv:remote',
+              providerTurnId: 'turn:remote',
+            },
+          }),
+        },
+      );
+    });
+    afterEach(() => {
+      unwrapFetch?.();
+      unwrapFetch = undefined;
+    });
+
+    function foregroundApp() {
+      return createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          executeForegroundMessage: async (input: never) => {
+            const { executeExecutionTargetMessage } = await import(
+              '../../../tools/station-control-delegation.js'
+            );
+            return executeExecutionTargetMessage(input, undefined);
+          },
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+    }
+
+    function postChat(target: unknown) {
+      return foregroundApp().request('/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Hello there', target }),
+      }) as Promise<Response>;
+    }
+
+    test('a saved peer default resolving a sender Project slug refuses 403 with zero remote POST', async () => {
+      const res = await postChat({
+        environment: { kind: 'saved', id: PEER_ENV_FG },
+        agent: 'planner',
+        workspace: { kind: 'project', projectSlug: 'local' },
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_not_offered',
+        error:
+          'This Station does not currently offer execution for the requested Project resource.',
+      });
+      // Zero POSTs anywhere on the peer: the same-slug different-identity
+      // fixture was never read for execution and nothing ran there.
+      expect(peerPosts).toHaveLength(0);
+    });
+
+    test('peer foreground WITHOUT a Project workspace keeps its prior contract and forwards', async () => {
+      const res = await postChat({
+        environment: { kind: 'saved', id: PEER_ENV_FG },
+        agent: 'planner',
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(peerPosts).toHaveLength(1);
+      expect(peerPosts[0]!.url).toContain('/api/orchestration/chat');
+      expect(
+        (peerPosts[0]!.body as Record<string, any>).target?.workspace,
+      ).toBeUndefined();
+    });
+  });
+
   describe('isInboundDelegationPeer derivation (verified device kind is decisive)', () => {
     test('a delegation device kind is a peer even when display identity names the operator', async () => {
       const { isInboundDelegationPeer } = await import(

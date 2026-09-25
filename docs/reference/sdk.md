@@ -660,6 +660,53 @@ an account principal or tenant. A same-origin cookie-account change that leaves
 that connection generation unchanged is therefore outside this tranche; full
 account/principal cache lifetime composition remains required.
 
+### `useProjectIdentityQuery(slug: string, config?)`
+
+Reads a Project's portable identity for personal-peer placement (#480). It
+accepts the same scoped configuration as `useProjectQuery` — the cache key
+carries the API base, authority key and slug, so a late identity response
+for a previous Home or authority can never satisfy the current selection,
+and a missing scope fails closed instead of reading ambient state. Callers
+that know the local Project record they selected should also pass
+`expectedProjectId`: it joins the cache key and validates the response's
+`association.localProjectId`, so a same-slug delete/recreate (or a stale
+server answer) never delivers the previous incarnation's portable id or
+resources as success — the read surfaces a typed
+`ProjectIdentityIncarnationMismatchError` and recovers through the
+ordinary refetch when fresh data carries the correct association. Omitted,
+the hook keeps its prior slug-keyed behavior. The identity carries the
+portable Project id plus its public repository
+labels/ids (no checkout paths, no credentials); the declared
+execution-root repository, else a sole repository, selects the executable
+resource, while multiple repositories require an explicit choice. Only a
+404 read carrying the not-prepared code is a verified not-prepared Project
+(prepare one explicitly before placing it); a 404 without that code — an
+older Station, a proxy, or a Project that no longer exists here — stays
+unavailable with retry, never an absence claim or speculative setup help.
+A denied, failed or malformed read refuses visibly and never reads as
+absence. Offer eligibility stays unverified until an authorized
+controller-side offer query exists — the receiving Station confirms on
+submit. Placement itself is supported only through the portable
+delegation intent (`project-portable`) dispatched by the delegation
+launcher; the foreground thread-execution path has no portable admission
+in this slice, so a non-portable Project workspace resolved onto a paired
+Station is refused rather than run as an unrelated same-slug Project, and
+the thread-default environment picker preserves — but no longer newly
+offers — paired-Station selections.
+
+### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
+
+Dispatches one delegated task. The mutation variable is backwards
+compatible with the original published shape — a plain `DelegateTaskInput`,
+which resolves against the hook's `apiBase` default and the ambient
+authority exactly as before. The recommended form is the per-invocation
+envelope — `{ input, apiBase?, requestScope? }` — which freezes the Home
+address and authority the caller captured for that dispatch: a rotation
+across the awaits refuses instead of sending the old intent under new
+credentials, and a late option change cannot redirect an in-flight call.
+The public request body stays exactly the input (prompt, target, optional
+parent task) in both forms; the scope is transport-only and never sent.
+
 ### Durable Project query identity and startup seeding
 
 A verified host may additionally supply `durableAuthorityId` to Project list,

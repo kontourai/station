@@ -406,16 +406,28 @@ export class StationHttpError extends Error {
    */
   readonly retryAfterMs?: number;
 
+  /**
+   * The envelope's machine `code`, when it sent one (`{success:false,
+   * error, code}`). Status says WHAT happened (404); the code says WHICH
+   * one (a verified not-prepared Project vs. a removed one) — branch on
+   * this, never on the message text. Absent on old servers, proxies and
+   * non-JSON bodies, which is itself the signal that nothing is verified.
+   */
+  readonly code?: string;
+
   constructor(
     status: number,
     message?: string,
-    options?: { retryAfterMs?: number },
+    options?: { retryAfterMs?: number; code?: string },
   ) {
     super(message ?? `HTTP ${status}`);
     this.name = 'StationHttpError';
     this.status = status;
     if (options?.retryAfterMs !== undefined) {
       this.retryAfterMs = options.retryAfterMs;
+    }
+    if (options?.code !== undefined) {
+      this.code = options.code;
     }
   }
 }
@@ -466,6 +478,17 @@ export function envelopeErrorMessage(body: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+/**
+ * The envelope's machine `code` (`{success:false, error, code}`), or
+ * `undefined` when the body carried none — an old server, a proxy HTML page,
+ * or a non-JSON body. Only an explicit non-empty string counts: absence is
+ * the unverified signal, never a default.
+ */
+export function envelopeErrorCode(body: unknown): string | undefined {
+  const code = (body as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' && code.trim() ? code : undefined;
 }
 
 /**
