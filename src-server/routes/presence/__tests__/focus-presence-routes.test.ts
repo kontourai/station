@@ -29,6 +29,12 @@ const phone: RuntimeAuthenticatedRequestPrincipal = {
   source: 'session',
 };
 
+let lastSeq = 0;
+const nextSeq = () => {
+  lastSeq += 1;
+  return lastSeq;
+};
+
 function harness(principal: RuntimeAuthenticatedRequestPrincipal | undefined) {
   const presence = new FocusPresence({ now: () => 5_000 });
   const app = new Hono();
@@ -60,7 +66,14 @@ function harness(principal: RuntimeAuthenticatedRequestPrincipal | undefined) {
         'content-type': 'application/json',
         ...(header === null ? {} : { 'x-station-client-session': header }),
       },
-      body: typeof body === 'string' ? body : JSON.stringify(body),
+      body:
+        typeof body === 'string'
+          ? body
+          : JSON.stringify(
+              body && typeof body === 'object' && !('seq' in body)
+                ? { ...body, seq: nextSeq() }
+                : body,
+            ),
     });
   return { presence, post };
 }
@@ -200,6 +213,26 @@ describe('POST /api/presence/focus', () => {
     expect((await post({ clientSessionId: TAB, state: 'hidden' })).status).toBe(
       204,
     );
+    expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
+  });
+
+  test('seq must be a positive safe integer', async () => {
+    const { presence, post } = harness(phone);
+    for (const seq of [0, -1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(
+        (await post({ clientSessionId: TAB, state: 'focused', seq })).status,
+        `seq ${String(seq)}`,
+      ).toBe(400);
+    }
+    expect(presence.snapshot().size).toBe(0);
+  });
+
+  test('a late focused after hidden is acknowledged but leaves hidden', async () => {
+    const { presence, post } = harness(phone);
+    await post({ clientSessionId: TAB, state: 'focused', seq: 1 });
+    await post({ clientSessionId: TAB, state: 'hidden', seq: 2 });
+    const late = await post({ clientSessionId: TAB, state: 'focused', seq: 1 });
+    expect(late.status).toBe(204);
     expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
   });
 });

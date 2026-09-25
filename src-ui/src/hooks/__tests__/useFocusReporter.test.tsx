@@ -19,6 +19,7 @@ import {
   FOCUS_HEARTBEAT_MS,
   FOCUS_REPORT_DEBOUNCE_MS,
   FOCUS_REPORT_TIMEOUT_MS,
+  retryAfterMs,
 } from '../focusReporter';
 import { useFocusReporter } from '../useFocusReporter';
 
@@ -64,6 +65,12 @@ function holdNextSend() {
       }),
   );
   return (response: Response = ok()) => release(response);
+}
+
+function sentSeqs(): number[] {
+  return mocks.authenticatedFetch.mock.calls.map(
+    ([, init]) => JSON.parse(init.body).seq,
+  );
 }
 
 function sentStates(): string[] {
@@ -112,6 +119,7 @@ describe('useFocusReporter', () => {
     expect(JSON.parse(init.body)).toEqual({
       clientSessionId: CLIENT_DOCUMENT_SESSION_ID,
       state: 'focused',
+      seq: 1,
     });
   });
 
@@ -146,7 +154,12 @@ describe('useFocusReporter', () => {
   test('pagehide reports hidden even while the document still reads visible', async () => {
     await mountSettled();
     await fire(window, 'pagehide');
+    await advance(FOCUS_HEARTBEAT_MS);
     expect(sentStates()).toEqual(['hidden']);
+    // Restored from the back/forward cache: it reports what it reads again.
+    await fire(window, 'pageshow');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(sentStates()).toEqual(['hidden', 'focused']);
   });
 
   test('a rate-limited hidden is resent after Retry-After until accepted', async () => {
@@ -205,13 +218,13 @@ describe('useFocusReporter', () => {
     expect(sentStates()).toEqual(['focused', 'hidden']);
     expect(mocks.authenticatedFetch.mock.calls[1][1].keepalive).toBe(true);
 
-    // The overtaken focused lands afterwards: hidden is said again so the
-    // server cannot be left holding the older state.
+    // The older focused lands afterwards. Its lower seq means the server
+    // ignores it; the client needs no repair and sends nothing more.
+    expect(sentSeqs()).toEqual([1, 2]);
     release();
     await advance(0);
-    expect(sentStates()).toEqual(['focused', 'hidden', 'hidden']);
     await advance(FOCUS_HEARTBEAT_MS * 5);
-    expect(sentStates()).toEqual(['focused', 'hidden', 'hidden']);
+    expect(sentStates()).toEqual(['focused', 'hidden']);
   });
 
   test('pagehide during an in-flight report sends hidden at once', async () => {
@@ -251,6 +264,52 @@ describe('useFocusReporter', () => {
     expect(sentStates()).toEqual(['focused', 'visible']);
   });
 
+  test('a hidden that fails with 503 is retried until acknowledged', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch
+      .mockImplementationOnce(async () => status(503))
+      .mockImplementationOnce(async () => status(503));
+    await setVisibility('hidden');
+    await advance(2_000);
+    await advance(4_000);
+    expect(sentStates()).toEqual(['hidden', 'hidden', 'hidden']);
+    await advance(RETRY_WINDOW_MS);
+    expect(sentStates()).toEqual(['hidden', 'hidden', 'hidden']);
+  });
+
+  test('visible again while the hidden is in flight re-sends focused once hidden is acknowledged', async () => {
+    await mountSettled();
+    const release = holdNextSend();
+    await setVisibility('hidden');
+    await setVisibility('visible');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(sentStates()).toEqual(['hidden']);
+    release();
+    await advance(0);
+    expect(sentStates()).toEqual(['hidden', 'focused']);
+  });
+
+  test('a report that times out may have landed, so the retry sends the current state anyway', async () => {
+    holdNextSend();
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await advance(FOCUS_REPORT_TIMEOUT_MS);
+    await advance(2_000);
+    expect(sentStates()).toEqual(['focused', 'focused']);
+    expect(sentSeqs()).toEqual([1, 2]);
+  });
+
+  test('every send, retries included, carries a strictly higher seq', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch.mockImplementationOnce(async () => status(503));
+    focused = false;
+    await fire(window, 'blur');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await advance(2_000);
+    await setVisibility('hidden');
+    expect(sentSeqs()).toEqual([2, 3, 4]);
+  });
+
   test('400 and 403 are not retried', async () => {
     for (const code of [400, 403]) {
       mocks.authenticatedFetch
@@ -262,6 +321,32 @@ describe('useFocusReporter', () => {
       expect(sentStates(), `status ${code}`).toEqual(['focused']);
       unmount();
     }
+  });
+
+  test('Retry-After is parsed strictly and clamped to [1 s, 5 min]', () => {
+    const now = Date.parse('2026-09-24T12:00:00Z');
+    expect(retryAfterMs('7', now)).toBe(7_000);
+    expect(retryAfterMs('0', now)).toBe(1_000);
+    expect(retryAfterMs('99999999', now)).toBe(300_000);
+    expect(retryAfterMs('-1', now)).toBe(60_000);
+    expect(retryAfterMs('5.5', now)).toBe(60_000);
+    expect(retryAfterMs('soon-ish', now)).toBe(60_000);
+    expect(retryAfterMs(null, now)).toBe(60_000);
+    expect(retryAfterMs('Thu, 24 Sep 2026 12:00:30 GMT', now)).toBe(30_000);
+    expect(retryAfterMs('Thu, 24 Sep 2026 11:00:00 GMT', now)).toBe(1_000);
+    expect(retryAfterMs('Fri, 24 Sep 2027 12:00:00 GMT', now)).toBe(300_000);
+  });
+
+  test('a huge Retry-After waits the 5 minute cap, not a timer overflow', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch.mockImplementationOnce(async () =>
+      status(429, { 'Retry-After': '99999999' }),
+    );
+    await setVisibility('hidden');
+    await advance(299_999);
+    expect(sentStates()).toEqual(['hidden']);
+    await advance(1);
+    expect(sentStates()).toEqual(['hidden', 'hidden']);
   });
 
   test('Retry-After as an HTTP-date is honoured', async () => {

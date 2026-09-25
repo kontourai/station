@@ -440,7 +440,11 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
             'Content-Type': 'application/json',
             'X-Station-Client-Session': TAB,
           },
-          body: JSON.stringify({ clientSessionId: TAB, state: 'focused' }),
+          body: JSON.stringify({
+            clientSessionId: TAB,
+            state: 'focused',
+            seq: 1,
+          }),
         },
         {
           incoming: { socket: { remoteAddress: '100.96.12.7' } },

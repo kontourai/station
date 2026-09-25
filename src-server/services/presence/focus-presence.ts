@@ -18,6 +18,15 @@ import {
  * per surface. A report older than the lease reads as absent — a client that
  * closed or froze without saying so stops counting as present on its own.
  *
+ * Ordering: each report carries its document's send counter (`seq`). A
+ * report whose seq is not above the last one applied for that document is
+ * ignored — acknowledged, state unchanged, not counted against the rate — so
+ * a slow older report that lands after a newer one cannot undo it. A new
+ * document id starts fresh. The counter is kept while the document's entry
+ * is: once the lease drops it, the next report from that document applies
+ * whatever its seq (a report more than a lease late is not a real case — the
+ * client abandons sends after 10 s).
+ *
  * The rate limit only refuses reports that would RAISE a document's state (a
  * new document, or hidden → visible → focused). A report that keeps or lowers
  * an existing document's state is always taken: refusing a "hidden" would
@@ -60,7 +69,12 @@ export type FocusReporter = (
 };
 
 export type FocusReportResult =
-  | { readonly accepted: true; readonly surfaceId: SurfaceId }
+  | {
+      readonly accepted: true;
+      readonly surfaceId: SurfaceId;
+      /** False when the report was older than one already applied. */
+      readonly applied: boolean;
+    }
   | { readonly accepted: false; readonly retryAfterMs: number };
 
 export interface FocusPresenceOptions {
@@ -75,6 +89,7 @@ export interface FocusPresenceOptions {
 interface SessionReport {
   state: FocusState;
   reportedAt: number;
+  seq: number;
 }
 
 interface SurfaceRecord {
@@ -115,19 +130,23 @@ export class FocusPresence {
     reporter: FocusReporter,
     clientSessionId: string,
     state: FocusState,
+    seq: number,
   ): FocusReportResult {
     const now = this.#now();
     this.#expire(now);
     const surfaceId = focusSurfaceId(reporter);
     let surface = this.#surfaces.get(surfaceId);
+    const previous = surface?.sessions.get(clientSessionId);
+    if (previous && seq <= previous.seq) {
+      return { accepted: true, surfaceId, applied: false };
+    }
     if (surface) {
       if (now - surface.windowStartedAt >= this.#reportWindowMs) {
         surface.windowStartedAt = now;
         surface.windowCount = 0;
       }
-      const existing = surface.sessions.get(clientSessionId);
       const raises =
-        !existing || STATE_RANK[state] > STATE_RANK[existing.state];
+        !previous || STATE_RANK[state] > STATE_RANK[previous.state];
       if (raises && surface.windowCount >= this.#reportsPerWindow) {
         return {
           accepted: false,
@@ -156,8 +175,8 @@ export class FocusPresence {
     }
     // Re-insert so Map order stays oldest-report-first for eviction.
     surface.sessions.delete(clientSessionId);
-    surface.sessions.set(clientSessionId, { state, reportedAt: now });
-    return { accepted: true, surfaceId };
+    surface.sessions.set(clientSessionId, { state, reportedAt: now, seq });
+    return { accepted: true, surfaceId, applied: true };
   }
 
   /** Unexpired surfaces, optionally restricted to `surfaceIds`. */

@@ -30,6 +30,14 @@ export interface FocusReport {
   /** The reporting document's `X-Station-Client-Session` UUID. */
   clientSessionId: string;
   state: FocusState;
+  /**
+   * Per-document send counter: a positive safe integer, starting at 1 for
+   * each `clientSessionId` and strictly increasing with every send, retries
+   * included. The server ignores a report whose seq is not above the last
+   * one it applied for that document, so a late older report cannot
+   * overwrite a newer one.
+   */
+  seq: number;
 }
 
 /**

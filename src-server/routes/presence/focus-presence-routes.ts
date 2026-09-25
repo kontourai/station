@@ -8,7 +8,9 @@
  * refused), the operator credential as `local:<clientSessionId>`. Station's
  * internal token and delegation grants (another Station, not a person) have
  * no focus to report and are refused. The body supplies only the reporting
- * document's session id and its state.
+ * document's session id (which must equal its `X-Station-Client-Session`
+ * header), its state, and its send counter `seq`. A report older than one
+ * already applied for that document is answered 204 and changes nothing.
  */
 import {
   FOCUS_STATES,
@@ -82,11 +84,14 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
       return c.json({ error: 'invalid_request' }, 400);
     }
     const record = body as Record<string, unknown>;
-    const { clientSessionId, state } = record;
+    const { clientSessionId, state, seq } = record;
     if (
       Object.keys(record).some(
-        (key) => key !== 'clientSessionId' && key !== 'state',
+        (key) => key !== 'clientSessionId' && key !== 'state' && key !== 'seq',
       ) ||
+      typeof seq !== 'number' ||
+      !Number.isSafeInteger(seq) ||
+      seq < 1 ||
       typeof clientSessionId !== 'string' ||
       !CLIENT_SESSION_ID_PATTERN.test(clientSessionId) ||
       !isFocusState(state)
@@ -122,6 +127,7 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
       reporter,
       clientSessionId.toLowerCase(),
       state,
+      seq,
     );
     if (!result.accepted) {
       c.header(
