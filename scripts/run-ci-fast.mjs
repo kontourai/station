@@ -45,7 +45,7 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // selection, down from 570s (9.5min). The selection budget observed to be too
 // small was the seven-minute one #4273 replaced, and the 385-test hosted
 // selection that exhausted it fits inside 500s. If a real selection ever
-// needs more than this, raise the twelve-minute lane budget rather than
+// needs more than this, raise the lane budget rather than
 // dropping an invariant back out of the list — the gap this list closes is
 // that a violation was unobservable before merge, and a shorter static set
 // restores exactly that.
@@ -67,6 +67,11 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // infrastructure errors. The real levers are the policy-pinned twelve-minute
 // budget (an owner decision; verification-policy-gate.test.ts pins it) and a
 // shorter static set (the typecheck aggregate is its largest member).
+//
+// #2577 pulled the first lever: the budget is now fifteen minutes, sized
+// from 88 hosted runs (see CI_FAST_TIMEOUT_MS in verification-lanes.mjs),
+// and the typecheck aggregate now starts its longest lanes first. The
+// reserve stays 220s for the reason above.
 export const FAST_STATIC_RESERVE_MS = 220_000;
 export const CONTENT_INTEGRITY_FAST_COMMAND = Object.freeze([
   'npm',

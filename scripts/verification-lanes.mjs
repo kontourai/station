@@ -47,8 +47,24 @@ export const CANONICAL_COMPLETION_COMMAND = 'npm run full:regression';
  * deadline canceled it. Twelve minutes retains a finite, non-completion lane
  * while leaving conservative measured headroom for the slower fleet host
  * rather than treating its timeout as a changed-test failure.
+ *
+ * Raised 12 -> 15 minutes by #2577, from measurement rather than a round
+ * number. Across 88 hosted `fast-checks` runs (2026-09-24, 2-slot 15.6 GiB
+ * ubuntu-22.04 runners), the lane is two parts. The affected-test selection
+ * plus the first statics took 41-476s and is the variable, PR-shaped part
+ * that this lane exists to run. Everything from `verification:policy:gate`
+ * onward (lint, veritas, `build:connect`, the cold 12-lane typecheck
+ * aggregate) took 165-315s, median ~295s, whatever the PR touched; the
+ * typecheck alone is ~190s of it (sum ~340s of `tsc` over two slots). That
+ * fixed tail arrived with station#4273 and the 2026-09-14 statics, and left
+ * the selection ~420s of a 720s budget. Four runs (including #2566 on 3 of 5
+ * attempts) timed out with every completed phase green; one attempt of #2566
+ * passed at 719s. The worst observed need is ~790s (476s + 315s); fifteen
+ * minutes is that with ~14% margin. `fast-checks`' job `timeout-minutes`
+ * must still contain this plus its other bounded steps (ci-workflow-contract
+ * pins that sum).
  */
-export const CI_FAST_TIMEOUT_MS = 12 * 60_000;
+export const CI_FAST_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * The full completion claim is phase-attested. The coordinator admits these

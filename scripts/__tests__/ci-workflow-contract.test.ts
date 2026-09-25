@@ -28,6 +28,7 @@ import {
 } from '../resolve-android-build-run.mjs';
 import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
 import {
+  CI_FAST_TIMEOUT_MS,
   COVERAGE_LANE_TIMEOUT_MS,
   FULL_REGRESSION_PHASES,
 } from '../verification-lanes.mjs';
@@ -1181,6 +1182,35 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('fences fast-checks around the ci:fast budget plus every other bounded step', () => {
+    // #2577: the lane budget and this job fence are separate literals. Raising
+    // the lane alone would let the job be killed before the coordinator's own
+    // deadline fires and writes its receipt, so the fence must contain the
+    // lane's budget, every step's own bound, and the unbounded setup/post
+    // steps (checkout, dependencies:ci, build:ui, ...; ~2 minutes observed
+    // across 88 hosted runs, budgeted at three).
+    type Step = { name?: string; run?: string; 'timeout-minutes'?: number };
+    const job = (
+      load(workflow('ci.yml')) as {
+        jobs: Record<string, { 'timeout-minutes'?: number; steps: Step[] }>;
+      }
+    ).jobs['fast-checks'];
+    const lane = job.steps.filter(
+      (step) => step.run?.trim() === 'npm run ci:fast',
+    );
+    expect(lane).toHaveLength(1);
+    // The lane step is bounded by its coordinator deadline, not a step timeout.
+    expect(lane[0]['timeout-minutes']).toBeUndefined();
+    const boundedStepsMs = job.steps.reduce(
+      (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+      0,
+    );
+    const unboundedAllowanceMs = 3 * 60_000;
+    expect((job['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
+      CI_FAST_TIMEOUT_MS + boundedStepsMs + unboundedAllowanceMs,
+    );
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
@@ -1192,7 +1222,7 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
-    expect(fastChecks).toContain('timeout-minutes: 45');
+    expect(fastChecks).toContain('timeout-minutes: 55');
     expect(fastChecks).toContain('timeout-minutes: 20');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");

@@ -280,7 +280,9 @@ const MAX_PHYSICAL_HOST_CAPACITY_JOB_TIMEOUT_MINUTES = Math.floor(
 );
 const DESKTOP_WIN_HOST_ID = 'desktop-win';
 const FAST_FEEDBACK_LEASE_WEIGHT = 1;
-export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 45;
+// Matches ci.yml's fast-checks fence; raised 45 -> 55 with the fifteen-minute
+// ci:fast budget (#2577).
+export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 55;
 const MAX_NON_FAST_DESKTOP_WIN_LEASE_WEIGHT = 9;
 const REQUIRED_CAPACITY_INPUTS = [
   'coordination-root',
