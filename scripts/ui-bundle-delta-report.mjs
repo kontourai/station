@@ -224,7 +224,11 @@ function runNpm(args, cwd, env) {
  */
 const DELTA_BUILD_DIR = 'dist-ui-delta';
 
-/** Observe mode: an over-ceiling tree must still yield a measurement. */
+/**
+ * Observe mode: an over-ceiling tree must still yield a measurement.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {NodeJS.ProcessEnv}
+ */
 export function deltaBuildEnv(env = process.env) {
   return {
     ...env,
