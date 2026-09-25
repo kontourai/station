@@ -1783,6 +1783,9 @@ export function wireAgentActivityPublisher(
         // interval may have reverted): nothing to retry, so no timer.
         delete state.retryAt;
         state.failures = 0;
+        // No card waiting any more: notifications owe it no slot.
+        if (registration.platform === 'android')
+          sendFloor.clearCardDeferrals(deviceId);
         continue;
       }
       if (state.retryAt !== undefined && at < state.retryAt) continue;

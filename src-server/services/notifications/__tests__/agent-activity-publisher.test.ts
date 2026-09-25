@@ -846,6 +846,49 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('held back only by its own last card, the card does not count against notifications (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const deferCard = vi.spyOn(sendFloor, 'deferCard');
+    const h = await harness({ sendFloor });
+    await h.pairAndRegister();
+    const events = sessionEvents('s1', 'running', START);
+    h.sessions.set('s1', events);
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // A change inside the card's own interval: held back, not by a notification.
+    h.advance(1000);
+    events.push(openRequest('s1', 'req-A', 'approval', START + 1000));
+    h.emit('request.opened');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(2);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.publisher.stop();
+  });
+
+  test('a card with nothing left to send clears its hold-backs, so an idle phone is never skipped (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // Hold-backs counted earlier, for an update that is no longer waiting.
+    sendFloor.deferCard(deviceId);
+    sendFloor.deferCard(deviceId);
+    h.advance(10_000);
+    h.emit('turn.started');
+    await h.settle();
+    // Nothing changed: no card is pending, and the count is gone.
+    expect(h.delivered).toHaveLength(1);
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
+    await h.publisher.stop();
+  });
+
   test('a change that reverts inside the send interval leaves no retry timer spinning', async () => {
     const h = await harness();
     await h.pairAndRegister();

@@ -13,7 +13,9 @@
  * card is held back by a slot a notification took it says so
  * (`deferCard`), and once it has been held back {@link CARD_YIELD_AFTER}
  * times the notification channel leaves the next slot free for it
- * (`takeCardYield`). The card's own send (`recordCard`) clears the count.
+ * (`takeCardYield`). The card's own send (`recordCard`) clears the count,
+ * and so does the card having nothing left to send (`clearCardDeferrals`),
+ * so a stale count never delays a notification to an idle phone.
  */
 
 /** Deferrals after which notifications leave the card the next slot. */
@@ -36,6 +38,8 @@ export interface NativePushSendFloor {
   recordCard(deviceId: string, at: number): void;
   /** The card was held back by a slot a notification holds. */
   deferCard(deviceId: string): void;
+  /** The card has nothing waiting any more; forget its hold-backs. */
+  clearCardDeferrals(deviceId: string): void;
   /**
    * Whether the card has waited long enough that the next slot is its own;
    * true clears the count, so a notification yields at most once for it.
@@ -73,6 +77,9 @@ export function createNativePushSendFloor(): NativePushSendFloor {
     },
     deferCard(deviceId) {
       cardDeferrals.set(deviceId, (cardDeferrals.get(deviceId) ?? 0) + 1);
+    },
+    clearCardDeferrals(deviceId) {
+      cardDeferrals.delete(deviceId);
     },
     takeCardYield(deviceId) {
       if ((cardDeferrals.get(deviceId) ?? 0) < CARD_YIELD_AFTER) return false;
