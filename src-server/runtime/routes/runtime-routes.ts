@@ -132,7 +132,6 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
@@ -256,6 +255,7 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
@@ -279,6 +279,7 @@ import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
+import { createFocusPresenceRoutes } from '../../routes/presence/focus-presence-routes.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
@@ -467,6 +468,7 @@ import type { PluginInstallationHost } from '../../services/plugins/plugin-insta
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -526,6 +528,7 @@ import {
   StarterRegistry,
   type StarterScheduledCheckOwner,
 } from '../../services/starter-work/starter-registry.js';
+import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -741,6 +744,12 @@ export interface ConfigureRuntimeRoutesContext {
   // (`wireTurnCompletionNotifications`), so both sides observe the SAME
   // connection state instead of two independently-tracked counts.
   orchestrationStreamPresence: OrchestrationStreamPresence;
+  /**
+   * #2585: focus presence written by `POST /api/presence/focus`. The runtime
+   * supplies its one shared instance; a composition without one gets a
+   * route-local instance nothing else reads.
+   */
+  focusPresence?: FocusPresence;
   layoutService: LayoutService;
   modelCatalog?: BedrockModelCatalog;
   acpBridge: ACPManager;
@@ -3006,65 +3015,7 @@ export function configureRuntimeRoutes(
               ),
             checkScheduled: () => checkStarterAgentReadiness('station'),
           },
-          {
-            read: async (sessionId) => {
-              const detail = await context.orchestrationService.readSession(
-                sessionId,
-                INTERNAL_SESSION_READ_SCOPE,
-              );
-              return detail
-                ? {
-                    threadId: detail.session.threadId,
-                    controlMode: detail.session.controlMode,
-                  }
-                : null;
-            },
-            continue: async ({ sourceSessionId, operationId }) => {
-              try {
-                const outcome =
-                  await context.orchestrationService.dispatchWithReceipt({
-                    type: 'adoptSession',
-                    sourceThreadId: sourceSessionId,
-                    idempotencyKey: operationId,
-                  });
-                const session = outcome.result as
-                  | AdoptedSessionResult
-                  | undefined;
-                if (!session?.threadId)
-                  return {
-                    state: 'unavailable' as const,
-                    reason:
-                      'Station accepted continuation without an exact child Session.',
-                    retrySafe: true,
-                    receiptId: outcome.receipt.commandId,
-                  };
-                return {
-                  state: 'continued' as const,
-                  session,
-                  receiptId: outcome.receipt.commandId,
-                };
-              } catch (error) {
-                const observed = error as {
-                  message?: string;
-                  receipt?: { commandId?: string };
-                  receiptStatus?: 'persisted' | 'unavailable';
-                };
-                return {
-                  state:
-                    observed.receiptStatus === 'persisted'
-                      ? ('failed' as const)
-                      : ('indeterminate' as const),
-                  reason:
-                    observed.message ??
-                    'The Session continuation outcome is unavailable.',
-                  retrySafe: true,
-                  ...(observed.receipt?.commandId
-                    ? { receiptId: observed.receipt.commandId }
-                    : {}),
-                };
-              }
-            },
-          },
+          createStarterSessionOwner(context.orchestrationService),
           context.getLiveAppConfig,
           owners,
           scheduledChecks,
@@ -3358,6 +3309,8 @@ export function configureRuntimeRoutes(
         resolveClientOrigin: resolveClientOriginForRequest,
         isRequestPrincipalCurrent,
         resolveAgentDispatchActor,
+        fullAccessGrantFor: (c) =>
+          fullAccessGrantForRequest(c as unknown as Context),
       }),
     }),
   );
@@ -5536,6 +5489,15 @@ export function configureRuntimeRoutes(
           ) !== null
         );
       },
+    }),
+  );
+  context.app.route(
+    '/api/presence',
+    createFocusPresenceRoutes({
+      presence: context.focusPresence ?? new FocusPresence(),
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      resolvePrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
     }),
   );
   context.app.route(
