@@ -149,6 +149,7 @@ import { projectSessionLifecycle } from '../../services/orchestration/session-li
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
@@ -1041,6 +1042,9 @@ export class StationRuntime {
       onRosterOp: (op) => orchestrationStreamPresenceRosterOps.add(1, { op }),
     },
   );
+  // #2585: which surfaces are being looked at. Written by the focus route,
+  // read by notification delivery; one instance so both see the same truth.
+  public readonly focusPresence = new FocusPresence();
   private framework!: VoltAgentFramework | StrandsFramework;
   // Different-origin MCP Apps sandbox proxy. It uses an ephemeral loopback port
   // by default; MCP_UI_FRAME_PORT can pin that port for deployments.
@@ -4082,6 +4086,7 @@ export class StationRuntime {
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,
+      focusPresence: this.focusPresence,
       layoutService: this.layoutService,
       modelCatalog: this.modelCatalog,
       acpBridge: this.acpBridge,
