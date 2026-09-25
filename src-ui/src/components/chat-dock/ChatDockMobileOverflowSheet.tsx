@@ -26,8 +26,6 @@ export function ChatDockMobileOverflowSheet({
   overflow: ChatDockMobileOverflowActions;
   showConnection?: boolean;
   onNewChat?: () => void;
-  onOpenActivity?: () => void;
-  activeCount?: number;
   branchLabel?: string | null;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };

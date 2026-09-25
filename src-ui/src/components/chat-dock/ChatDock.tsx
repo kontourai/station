@@ -2186,10 +2186,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 setTaskSwitcherMode('tasks');
                 setIsTaskSwitcherOpen(true);
               }}
-              onOpenActivity={() => {
-                setTaskSwitcherMode('activity');
-                setIsTaskSwitcherOpen(true);
-              }}
               onToggleSidebar={(trigger) =>
                 window.dispatchEvent(
                   new CustomEvent('toggle-sidebar', { detail: { trigger } }),

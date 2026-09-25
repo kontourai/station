@@ -127,7 +127,6 @@ function renderHeader(
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
       activityTriggerRef={createRef<HTMLButtonElement>()}
       onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
-      onOpenActivity={vi.fn()}
       onToggleSidebar={vi.fn()}
       onDragPointerDown={vi.fn()}
       onDragClickCapture={vi.fn()}

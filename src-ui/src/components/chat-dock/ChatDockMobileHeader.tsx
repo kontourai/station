@@ -49,8 +49,7 @@ export interface ChatDockMobileOverflowActions {
    * toggles, like the task switcher's row: the overflow sheet dismisses
    * itself on the tap, so there is no open state for it to toggle against.
    * Absent: no row (ChatDock omits it when there is no chat for the sheet to
-   * read). Not `onOpenActivity`, which opens the task switcher's Activity
-   * mode — a different surface that merely contains another route here.
+   * read).
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
@@ -83,7 +82,6 @@ interface ChatDockMobileHeaderProps {
   taskSwitcherTriggerRef: RefObject<HTMLButtonElement | null>;
   activityTriggerRef: RefObject<HTMLButtonElement | null>;
   onOpenTaskSwitcher: () => void;
-  onOpenActivity: () => void;
   onToggleSidebar: (trigger: HTMLElement) => void;
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
@@ -106,7 +104,6 @@ export function ChatDockMobileHeader({
   taskSwitcherTriggerRef,
   activityTriggerRef,
   onOpenTaskSwitcher,
-  onOpenActivity,
   onToggleSidebar,
   onDragPointerDown,
   onDragClickCapture,
@@ -250,8 +247,6 @@ export function ChatDockMobileHeader({
             projectScope,
             showConnection,
             onNewChat,
-            onOpenActivity,
-            activeCount,
             branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
             onClose: () => setIsOverflowOpen(false),
