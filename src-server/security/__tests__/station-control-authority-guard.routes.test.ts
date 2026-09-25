@@ -64,6 +64,8 @@ import {
   installStationControlStdioCallerCredential,
   STATION_CONTROL_CALLER_PATH,
   STATION_CONTROL_CALLER_TOKEN_HEADER,
+  stationControlCallerPrincipal,
+  withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import {
   __resetStationServerSelfAttestationForTests,
@@ -451,6 +453,8 @@ interface Row {
   readonly tool: string;
   readonly args: Record<string, unknown>;
   readonly route: string;
+  /** The job a scheduler row edits, when it matters (grants are per job). */
+  readonly job?: string;
   /** Per caller: `allowed` or the exact typed refusal. */
   readonly expect: Record<string, 'allowed' | string>;
 }
@@ -524,6 +528,41 @@ const ROWS: readonly Row[] = [
     },
   },
   {
+    tool: 'update_job',
+    args: { name: 'nightly', trustAllTools: true },
+    route: 'PUT /scheduler/jobs/:target',
+    expect: {
+      'bound op-': 'station_control_person_only',
+      'delegated-custody op-': 'station_control_person_only',
+      'bearer-exposed op-': 'station_control_person_only',
+      'pooled none': 'station_control_person_only',
+    },
+  },
+  {
+    // M1: `granted` holds a person's unattended grant, so changing what it
+    // runs is a person's step — decided by the server (the tool cannot read
+    // the grant store), and the typed code reaches the agent.
+    tool: 'update_job',
+    args: { name: 'granted', prompt: 'run something else' },
+    job: 'granted',
+    route: 'PUT /scheduler/jobs/:target',
+    expect: {
+      'bound op-': 'station_control_person_only',
+      'delegated-custody op-': 'station_control_assurance_insufficient',
+      'pooled none': 'station_control_caller_required',
+    },
+  },
+  {
+    tool: 'update_job',
+    args: { name: 'plain', prompt: 'run something else' },
+    job: 'plain',
+    route: 'PUT /scheduler/jobs/:target',
+    expect: {
+      'bound op-': 'allowed',
+      'bound person-': 'station_control_role_required',
+    },
+  },
+  {
     tool: 'board_pin',
     args: {
       reference: { kind: 'session', id: 's' },
@@ -555,7 +594,7 @@ function cases(row: Row) {
 describe('each policy class through the real tools, per delivery channel', () => {
   for (const row of ROWS)
     for (const { channel, prefix, outcome } of cases(row))
-      test(`${row.tool}${row.args.trustAllTools ? ' (trustAllTools)' : ''} via ${channel} (${prefix}) → ${outcome}`, async () => {
+      test(`${row.tool}${row.args.trustAllTools ? ' (trustAllTools)' : ''}${row.job ? ` (${row.job} job)` : ''} via ${channel} (${prefix}) → ${outcome}`, async () => {
         const sessionId = nextSession(prefix);
         const { result, hits: reached } = await callTool(
           channel,
@@ -580,17 +619,22 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
   // the enforcement point — is what decides.
   for (const row of ROWS)
     for (const { channel, prefix, outcome } of cases(row))
-      test(`${row.route}${row.args.trustAllTools ? ' (trustAllTools)' : ''} with a ${channel} (${prefix}) caller → ${outcome}`, async () => {
+      test(`${row.route}${row.args.trustAllTools ? ' (trustAllTools)' : ''}${row.job ? ` (${row.job} job)` : ''} with a ${channel} (${prefix}) caller → ${outcome}`, async () => {
         const sessionId = nextSession(prefix);
         const caller = forwardedCaller(channel, sessionId);
         const [method, pattern] = row.route.split(' ') as [string, string];
-        const path = pattern.replace(':target', 'nightly');
+        const path = pattern.replace(':target', row.job ?? 'nightly');
+        // What each tool actually sends: update_config its `updates`,
+        // update_job every field but the route's `name`.
+        const { name: _jobName, ...jobEdit } = row.args;
         const body =
           method === 'GET'
             ? undefined
             : row.tool === 'update_config'
               ? row.args.updates
-              : row.args;
+              : row.tool === 'update_job'
+                ? jobEdit
+                : row.args;
         hits.length = 0;
         const response = await rest(
           method,
@@ -776,6 +820,58 @@ describe('who the guard does not decide', () => {
         status: 403,
         code: 'station_control_route_unmapped',
       });
+  });
+});
+
+describe('the server guard alone gives agents a typed refusal (F2)', () => {
+  // The tool-side check is switched off by handing the tool a caller context
+  // that claims a bound operator while forwarding no credential: the tool
+  // lets the call through, and only the server guard decides.
+  const toolSideOff = <T>(operation: () => T): T =>
+    withStationControlCallerContext(
+      {
+        token: undefined,
+        resolve: () => ({
+          sessionId: 'claims-operator',
+          assurance: 'bound',
+          principal: stationControlCallerPrincipal(
+            LOCAL_OPERATOR_PRINCIPAL_ID,
+            'session-owner',
+          ),
+        }),
+      },
+      operation,
+    );
+  const handlers = () =>
+    (
+      createStationControlMcpServer() as unknown as {
+        _registeredTools: Record<
+          string,
+          { handler: (args: unknown, extra?: unknown) => Promise<any> }
+        >;
+      }
+    )._registeredTools;
+
+  test.each([
+    ['disable_job', { name: 'nightly' }],
+    [
+      'board_pin',
+      {
+        reference: { kind: 'session', id: 's' },
+        name: 'w',
+        block: { type: 'card', body: 'hello' },
+      },
+    ],
+  ] as const)('%s keeps the server’s code and error', async (name, args) => {
+    const handler = handlers()[name]?.handler;
+    const result = await toolSideOff(() => handler!(args, {}));
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      code: 'station_control_caller_required',
+      error: expect.stringContaining('verified calling session'),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
   });
 });
 

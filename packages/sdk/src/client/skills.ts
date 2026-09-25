@@ -13,12 +13,18 @@
  */
 
 import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  StationHttpError,
+} from './http';
 export interface SkillsEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+  code?: string;
 }
 
 /**
@@ -94,7 +100,13 @@ export async function installRegistrySkill(
   );
   const result = (await response.json()) as SkillsEnvelope<unknown>;
   if (!result.success) {
-    throw new Error(result.message || 'Install failed');
+    // Keep the envelope's machine `code` (e.g. a typed refusal) and read the
+    // `error` field a refusal answers with, not only `message`.
+    throw new StationHttpError(
+      response.status,
+      result.message || result.error || 'Install failed',
+      typeof result.code === 'string' ? { code: result.code } : undefined,
+    );
   }
   return result;
 }

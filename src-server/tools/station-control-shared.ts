@@ -490,9 +490,15 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
         data: typed.receipt,
       };
     }
+    // #2377: the server's typed `code` (a station-control authority refusal,
+    // or any other envelope code the SDK error kept) survives, so an agent
+    // can act on it even when no tool-side check answered first.
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Request failed',
+      ...(err instanceof Error && typeof typed.code === 'string'
+        ? { code: typed.code }
+        : {}),
     };
   }
 }
