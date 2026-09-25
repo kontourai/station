@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OperationalEventEnvelope } from '@kontourai/station-contracts/operational-event';
 import { PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS } from '@kontourai/station-contracts/plugin-command-effect';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   createPluginCommandEffectService,
   FilePluginCommandEffectStore,
@@ -13,6 +13,9 @@ import {
   settlePluginCommandEffectsForResponse,
   withdrawPluginCommandEffects,
 } from '../plugin-command-effects.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -25,8 +28,7 @@ const START = Date.parse('2026-09-16T12:00:00.000Z');
 const WAIT = 60_000;
 
 function home() {
-  const dir = mkdtempSync(join(tmpdir(), 'station-command-effects-'));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = makeTempDir('station-command-effects-');
   return dir;
 }
 

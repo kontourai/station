@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { verifyPluginActivation } from '../../../services/plugins/plugin-activation-plan.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
@@ -13,6 +13,9 @@ import {
   pluginInstallationGeneration,
 } from '../../../services/plugins/plugin-runtime-artifact.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -36,8 +39,7 @@ const commands = [
 ];
 
 function home() {
-  const dir = mkdtempSync(join(tmpdir(), 'station-command-inventory-'));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = makeTempDir('station-command-inventory-');
   const plugins = join(dir, 'plugins');
   mkdirSync(plugins);
   return { dir, plugins };

@@ -11,6 +11,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { STATION_CONTROL_MCP_PATH } from '../../../routes/mcp/station-control-mcp-route.js';
 import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import {
@@ -34,6 +35,9 @@ import {
   mintStationControlMcpToken,
 } from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 async function configureRuntimeRoutes(
   context: Parameters<typeof configureRuntimeRoutesProduction>[0],
@@ -317,8 +321,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
   });
 
   test('F6: the real runtime wiring refuses plugin command effects on a hosted registry and not on a personal runtime', async () => {
-    const hostedHome = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));
-    directories.push(hostedHome);
+    const hostedHome = makeTempDir('station-runtime-routes-');
     const registryPath = join(hostedHome, 'tenants.json');
     writeFileSync(
       registryPath,
@@ -356,8 +359,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     }
 
     delete process.env[registryFileEnv];
-    const personalHome = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));
-    directories.push(personalHome);
+    const personalHome = makeTempDir('station-runtime-routes-');
     const personal = new Hono();
     await configureRuntimeRoutes(runtimeContext(personal, personalHome));
     const response = await personal.request(

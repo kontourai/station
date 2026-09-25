@@ -12,15 +12,15 @@
  * so "internal" here is the principal that boundary actually binds for
  * station-control's headers, not a caller the test hands the route.
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { PrincipalUnresolvedError } from '../../../services/identity/principal-resolver.js';
@@ -32,6 +32,9 @@ import {
 import { PLUGIN_PERSON_APPROVAL_REQUIRED } from '../plugin-person-approval.js';
 import { createPluginRoutes } from '../plugins.js';
 import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 const OPERATOR = 'operator-credential-for-command-effects';
 
@@ -78,8 +81,7 @@ afterEach(async () => {
 });
 
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), 'station-command-effect-person-'));
-  cleanup.push(root);
+  const root = makeTempDir('station-command-effect-person-');
   const home = join(root, 'home');
   const pluginsDir = join(home, 'plugins');
   mkdirSync(pluginsDir, { recursive: true });

@@ -22,8 +22,7 @@
  * - F1: a lifecycle change commits even when the ledger cannot record it.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   PluginCommandEffectReceipt,
@@ -37,6 +36,7 @@ import {
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   clearAll,
   registerPluginRegistryProvider,
@@ -49,6 +49,9 @@ import { PluginVisibilityService } from '../../../services/plugins/plugin-visibi
 import { createPluginRoutes } from '../plugins.js';
 import { createRegistryRoutes } from '../registry.js';
 import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 const CONSENT_PORT = 4979;
 const CONSENT_HOST = `localhost:${CONSENT_PORT}`;
@@ -138,8 +141,7 @@ function harness(
     reconciliation?: boolean;
   } = {},
 ) {
-  const home = mkdtempSync(join(tmpdir(), 'station-command-lifecycle-'));
-  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-command-lifecycle-');
   // Registry routes read through the Station home schema gate.
   ensureStationHomeSchemaSync(home);
   const plugins = join(home, 'plugins');

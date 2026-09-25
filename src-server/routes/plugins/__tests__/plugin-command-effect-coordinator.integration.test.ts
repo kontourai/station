@@ -14,8 +14,7 @@
  * stays outstanding (`winding-down`) until the coordinator's own ack proves
  * it, and only then does the withdrawal read `completed`.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -24,11 +23,15 @@ import {
   type PluginCommandEffectAdmitOutcome,
   type PluginCommandEffectTransport,
 } from '../../../../src-ui/src/components/plugin-command-effect-coordinator';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
 import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import { createPluginRoutes } from '../plugins.js';
 import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
+
+// Removed in an after-hook even when an assertion fails (#2421).
+const makeTempDir = trackTempDirs();
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -43,8 +46,7 @@ const logger = {
 } as never;
 
 function harness() {
-  const home = mkdtempSync(join(tmpdir(), 'station-command-coordinator-'));
-  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-command-coordinator-');
   const plugins = join(home, 'plugins');
   const pluginDir = join(plugins, 'demo');
   mkdirSync(pluginDir, { recursive: true });
