@@ -1909,10 +1909,7 @@ export function configureRuntimeRoutes(
     startedMetadata: (threadId) =>
       context.orchestrationService.firstStartedMetadataOfThread(threadId),
     sessionEngine: (threadId) =>
-      context.orchestrationEventStore?.firstEventByMethod(
-        threadId,
-        'session.started',
-      )?.provider,
+      context.orchestrationService.firstStartedEngineOfThread(threadId),
     loadAgentSpec: (agentSlug) => context.agentService.getAgent(agentSlug),
     isRegistryDefaultAgent: async (agentSlug) =>
       (

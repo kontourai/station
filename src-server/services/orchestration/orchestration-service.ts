@@ -4032,13 +4032,32 @@ export class OrchestrationService {
   firstStartedMetadataOfThread(
     threadId: string,
   ): Record<string, unknown> | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.metadata;
+  }
+
+  /**
+   * #2601: the engine (`provider`) of the SAME record
+   * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
+   * and its metadata can never come from two different events.
+   */
+  firstStartedEngineOfThread(threadId: string): string | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.provider;
+  }
+
+  private firstStartedRecordOfThread(
+    threadId: string,
+  ): { metadata: Record<string, unknown>; provider?: string } | undefined {
     const store = this.options.eventStore;
     for (const method of ['session.started', 'session.configured'] as const) {
-      const payload = store?.firstEventByMethod(threadId, method)?.payload as
-        | { metadata?: unknown }
-        | undefined;
+      const event = store?.firstEventByMethod(threadId, method);
+      const payload = event?.payload as { metadata?: unknown } | undefined;
       if (payload?.metadata && typeof payload.metadata === 'object')
-        return payload.metadata as Record<string, unknown>;
+        return {
+          metadata: payload.metadata as Record<string, unknown>,
+          ...(typeof event?.provider === 'string'
+            ? { provider: event.provider }
+            : {}),
+        };
     }
     return undefined;
   }

@@ -67,7 +67,10 @@ export interface RequestDelegationSources {
   resolveCaller(request: Request): StationControlCaller | null;
   /** The metadata a session STARTED with (its first `session.started`). */
   startedMetadata(sessionId: string): Record<string, unknown> | undefined;
-  /** The engine (`provider`) a session was started on, from the same record. */
+  /**
+   * The engine (`provider`) of the same record `startedMetadata` reads
+   * (`OrchestrationService.firstStartedEngineOfThread`).
+   */
   sessionEngine(sessionId: string): string | undefined;
   /**
    * The Agent spec for a slug. Throws `AgentConfigNotFoundError` when no spec
@@ -151,9 +154,17 @@ const CLEAN_AGENT_ID = /^[a-z][a-z0-9-]{0,63}$/;
  * Follows `composeAgentExecutionConfigLoader`: a registry default Agent
  * (`station`, and `claude`/`codex` once adopted) is deliberately never
  * written to `agents/`, so ABSENCE of its spec is ordinary and means the
- * default policy (`createChildDelegationContext` with no spec). A spec that
- * exists but cannot be read, or an absent spec for a slug the registry does
- * not list, is refused: its policy may be stricter than the default.
+ * default policy (`createChildDelegationContext` with no spec).
+ *
+ * Today no stored spec can carry a delegation policy: the agent schema
+ * (`schemas/agent.schema.json`, `additionalProperties: false`) has no
+ * `delegation` field, so every readable spec also yields the default policy
+ * (as it does for Station's own engine). The spec is still read, and a spec
+ * that exists but cannot be read, or an absent spec for a slug the registry
+ * does not list, is refused rather than defaulted: the derivation never
+ * asserts a policy for an Agent Station could not read, the posture of
+ * `composeAgentExecutionConfigLoader`, and a policy field added to the
+ * schema later cannot be bypassed by making the spec unreadable.
  */
 async function callerAgentPolicy(
   agentSlug: string,
