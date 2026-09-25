@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
@@ -5665,12 +5666,13 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('connection env reaches the claude-auth readiness check', () => {
+    const makeTempDir = trackTempDirs();
     let home: string;
 
     // An isolated home with no ambient credentials: nothing on this host can
     // make the negative control pass or the positive case pass by accident.
     beforeEach(() => {
-      home = mkdtempSync(join(tmpdir(), 'station-claude-readiness-auth-'));
+      home = makeTempDir('station-claude-readiness-auth-');
       vi.stubEnv('HOME', home);
       vi.stubEnv('USERPROFILE', home);
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
@@ -5680,7 +5682,6 @@ describe('ClaudeAdapter', () => {
 
     afterEach(() => {
       vi.unstubAllEnvs();
-      rmSync(home, { recursive: true, force: true });
     });
 
     // Drives the adapter's own readiness derivation and evaluates the auth
@@ -5695,8 +5696,7 @@ describe('ClaudeAdapter', () => {
       });
       await adapter.getPrerequisites?.();
       const detectAuthState =
-        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0]
-          .detectAuthState;
+        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0].detectAuthState;
       return detectAuthState();
     }
 

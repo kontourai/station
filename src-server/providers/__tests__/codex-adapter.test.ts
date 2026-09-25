@@ -1,11 +1,18 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
@@ -3640,7 +3647,7 @@ describe('CodexAdapter', () => {
   });
 
   describe('the login probe runs under the connection env', () => {
-    let root: string;
+    const makeTempDir = trackTempDirs();
     let globalHome: string;
     let probedEnvs: Array<Record<string, string> | undefined>;
 
@@ -3675,12 +3682,8 @@ describe('CodexAdapter', () => {
       return prerequisites.find((entry) => entry.id === 'codex-auth')?.status;
     };
 
-    afterEach(() => {
-      rmSync(root, { recursive: true, force: true });
-    });
-
     test('configHome (CODEX_HOME) is the account readiness reports on', async () => {
-      root = mkdtempSync(join(tmpdir(), 'station-codex-readiness-auth-'));
+      const root = makeTempDir('station-codex-readiness-auth-');
       globalHome = join(root, 'global');
       mkdirSync(globalHome);
       const configHome = join(root, 'codex-proxy');
