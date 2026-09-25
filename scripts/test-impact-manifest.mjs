@@ -777,7 +777,14 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'WSL quarantine exact-list pin parses this source outside the module graph',
   },
   {
+    // SUPPLEMENTAL (#2176). As an ordinary edge its one test set
+    // `hasExplicitBoundary`, which cancelled the `ci-fast` escalation
+    // `package.json` is listed for in ESCALATION_PATHS: a scripts or
+    // dependency edit completed green on a documentation check. The doc
+    // suite still runs; the root manifest still escalates. A dependency bump
+    // escalates through the lockfile regardless, so this adds no lane to one.
     pattern: 'package.json',
+    supplemental: true,
     tests: ['scripts/__tests__/public-doc-contract-examples.test.ts'],
     reason: 'public npm-command example authority',
   },

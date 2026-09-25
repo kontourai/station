@@ -453,6 +453,19 @@ describe('changed verification selection', () => {
     ]);
     expect(selection.lanes).toEqual([]);
   });
+  test('a root package.json change escalates and still names its readers (#2176)', () => {
+    // Before, its ordinary doc-example edge cancelled the escalation, so a
+    // package.json-only change completed on one documentation suite.
+    const selection = selectChangedVerification(['package.json']);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+    expect(selection.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/public-doc-contract-examples.test.ts',
+        'scripts/__tests__/basis-mcp-apps.test.ts',
+      ]),
+    );
+  });
   test('uses a bounded named gate for docs and fails closed for risky selection', () => {
     expect(
       selectChangedVerification([scenarios.deferredEdges.docs]).lanes,
