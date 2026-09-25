@@ -3,6 +3,7 @@ import {
   agentAlertAllowed,
   createNotificationPreferencesClient,
   DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
+  FAILED_READ_CLIENT_NOTIFICATION_PREFERENCES,
   isWithinQuietHours,
 } from '../lib/notification-preferences-client';
 
@@ -26,7 +27,7 @@ describe('notification preferences client (#2587 seam for #2586)', () => {
       fetch,
     });
     expect(await client.read()).toEqual({
-      available: false,
+      status: 'unavailable',
       preferences: DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
     });
     expect(await client.mute({ kind: 'agent', agent: 'builder' })).toBe(
@@ -35,10 +36,32 @@ describe('notification preferences client (#2587 seam for #2586)', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  test('reads quiet hours, mutes and this surface’s hideContent', async () => {
+  test('a failed read is not consent: content-free copy, and mute reports failed', async () => {
+    for (const fetch of [
+      async () => response(503),
+      async () => {
+        throw new TypeError('network');
+      },
+      async () => response(200, 'not a document'),
+    ]) {
+      const client = createNotificationPreferencesClient({
+        apiBase: 'http://s',
+        fetch,
+      });
+      expect(await client.read()).toEqual({
+        status: 'failed',
+        preferences: FAILED_READ_CLIENT_NOTIFICATION_PREFERENCES,
+      });
+      expect(await client.mute({ kind: 'agent', agent: 'builder' })).toBe(
+        'failed',
+      );
+    }
+    expect(FAILED_READ_CLIENT_NOTIFICATION_PREFERENCES.hideContent).toBe(true);
+  });
+
+  test('reads quiet hours and mutes; per-surface hideContent waits for #2586', async () => {
     const client = createNotificationPreferencesClient({
       apiBase: 'http://s',
-      surfaceId: 'local:abc',
       fetch: async () =>
         response(200, {
           success: true,
@@ -53,14 +76,16 @@ describe('notification preferences client (#2587 seam for #2586)', () => {
           },
         }),
     });
+    // A stored hideContent is not honoured yet: no stable desktop surface id
+    // exists for a preference to name (TODO #2586).
     expect(await client.read()).toEqual({
-      available: true,
+      status: 'ok',
       preferences: {
         agentNotifications: 'attention-only',
         perAgent: { builder: 'off' },
         perProject: {},
         quietHours: { start: '22:00', end: '07:00', allowAttention: true },
-        hideContent: true,
+        hideContent: false,
       },
     });
   });

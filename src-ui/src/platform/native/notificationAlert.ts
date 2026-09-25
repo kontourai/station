@@ -4,7 +4,6 @@ import type {
 } from '@kontourai/station-contracts/notification';
 import { BLOCKING_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
-import { CLIENT_DOCUMENT_SESSION_ID } from '../../hooks/clientDocumentSession';
 import {
   agentAlertAllowed,
   type ClientNotificationPreferences,
@@ -29,8 +28,13 @@ import { notifyNatively } from './notify';
  *   authority, so every record it returns is one this client may see.
  * - **Seeded on first observation**, exactly like the blocking path: the
  *   backlog present when a connection is first observed is never announced.
- * - **Preferences** (quiet hours, `hideContent`, mutes) come through the
- *   preferences client, whose defaults are today's behaviour.
+ * - **Delivered only.** A `pending` (scheduled) record is neither announced
+ *   nor seeded; it alerts once it is delivered.
+ * - **Preferences** (quiet hours, mutes) come through the preferences
+ *   client. A Station without the route gets the defaults; one whose
+ *   preferences could not be read gets content-free copy, because its
+ *   wishes are unknown. Per-surface `hideContent` for this desktop surface
+ *   is not honoured yet — it needs the stable surface id #2586 defines.
  *
  * Clicking the OS notification cannot open its target here:
  * `tauri-plugin-notification` 2.4.0 on desktop posts through a
@@ -46,7 +50,7 @@ export interface NotificationAlertDeps {
 }
 
 /** Ids observed per connection; module state for the same reason as blockingAlert. */
-let observed: { apiBase: string; ids: Set<string> } | null = null;
+let observed: { scopeKey: string; ids: Set<string> } | null = null;
 
 /** Test seam: a fresh module per case without reaching into module state. */
 export function resetNotificationAlertState(): void {
@@ -58,12 +62,8 @@ function defaultDeps(apiBase: string): NotificationAlertDeps {
     isWindowFocused: () =>
       document.visibilityState === 'visible' && document.hasFocus(),
     readPreferences: async () =>
-      (
-        await createNotificationPreferencesClient({
-          apiBase,
-          surfaceId: `local:${CLIENT_DOCUMENT_SESSION_ID}`,
-        }).read()
-      ).preferences,
+      (await createNotificationPreferencesClient({ apiBase }).read())
+        .preferences,
     notify: notifyNatively,
     now: () => new Date(),
   };
@@ -73,20 +73,27 @@ const BLOCKING = new Set<string>(
   Object.values(BLOCKING_NOTIFICATION_CATEGORIES),
 );
 
-/** Returns how many OS alerts were posted. */
+/**
+ * Returns how many OS alerts were posted. `scopeKey` identifies the
+ * connection the list was read from (defaults to `apiBase`); two saved
+ * Stations sharing one endpoint must pass distinct keys, or one's backlog
+ * reads as new on the other.
+ */
 export async function reconcileNotificationAlerts(
   notifications: readonly Notification[],
   apiBase: string,
   deps: NotificationAlertDeps = defaultDeps(apiBase),
+  scopeKey: string = apiBase,
 ): Promise<number> {
   const enveloped = notifications.flatMap((notification) => {
     if (BLOCKING.has(notification.category)) return [];
+    if (notification.status !== 'delivered') return [];
     const envelope = readNotificationEnvelope(notification);
     return envelope ? [{ notification, envelope }] : [];
   });
   const ids = new Set(enveloped.map(({ notification }) => notification.id));
-  if (observed?.apiBase !== apiBase) {
-    observed = { apiBase, ids };
+  if (observed?.scopeKey !== scopeKey) {
+    observed = { scopeKey, ids };
     return 0;
   }
   const seen = observed.ids;
@@ -134,7 +141,8 @@ export function shouldRaiseOsAlert(
 }
 
 /**
- * `hideContent` replaces the text with fixed, content-free copy: an OS
+ * `hideContent` (today: only when the preferences could not be read) replaces
+ * the text with fixed, content-free copy: an OS
  * notification renders on a lock screen and in a notification centre with
  * nothing authenticating the reader.
  */

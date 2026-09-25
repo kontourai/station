@@ -245,6 +245,32 @@ describe('reconcileNotificationAlerts', () => {
     expect(d.notify).not.toHaveBeenCalled();
   });
 
+  test('a pending record is neither announced nor seeded until it is delivered', async () => {
+    const d = deps();
+    await reconcileNotificationAlerts([], A, d);
+    const scheduled = agentNotification('n-1', {}, { status: 'pending' });
+    await reconcileNotificationAlerts([scheduled], A, d);
+    expect(d.notify).not.toHaveBeenCalled();
+    await reconcileNotificationAlerts(
+      [{ ...scheduled, status: 'delivered' }],
+      A,
+      d,
+    );
+    expect(d.notify).toHaveBeenCalledTimes(1);
+  });
+
+  test('a new scope key reseeds even on the same endpoint', async () => {
+    const d = deps();
+    await reconcileNotificationAlerts([], A, d, `${A}\nconn-a`);
+    await reconcileNotificationAlerts(
+      [agentNotification('b-1'), agentNotification('b-2')],
+      A,
+      d,
+      `${A}\nconn-b`,
+    );
+    expect(d.notify).not.toHaveBeenCalled();
+  });
+
   test('leaves legacy records and blocking categories to their own paths', async () => {
     const d = deps();
     await reconcileNotificationAlerts([], A, d);
@@ -279,6 +305,35 @@ describe('reconcileNotificationAlerts with its default host wiring', () => {
     });
   });
   afterEach(() => vi.restoreAllMocks());
+
+  test('a failed preferences read posts content-free copy, an absent route the text', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    authenticatedFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    });
+    await reconcileNotificationAlerts([], A);
+    await reconcileNotificationAlerts([agentNotification('n-1')], A);
+    expect(notifyNatively).toHaveBeenLastCalledWith({
+      title: 'Station',
+      body: 'An agent sent you a notification.',
+    });
+
+    authenticatedFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    });
+    await reconcileNotificationAlerts(
+      [agentNotification('n-1'), agentNotification('n-2')],
+      A,
+    );
+    expect(notifyNatively).toHaveBeenLastCalledWith({
+      title: 'Tests pass on fix-login',
+      body: 'All 212 tests green.',
+    });
+  });
 
   test('reads focus from the document: unfocused posts, focused does not', async () => {
     const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);

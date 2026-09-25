@@ -1,4 +1,3 @@
-import { BLOCKING_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import {
   LIVE_NOTIFICATION_STATUSES,
   useNotificationsQuery,
@@ -17,7 +16,8 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  *   tray already owns.
  * - **Enveloped notifications** (`notificationAlert.ts`) — agent and other
  *   producers' records with `metadata.envelope`: only while this window is not
- *   in use, honouring quiet hours / `hideContent` / mutes.
+ *   in use, honouring quiet hours and mutes (per-surface `hideContent`
+ *   waits for #2586's stable desktop surface id).
  *
  * The original account of the blocking alert follows.
  *
@@ -50,40 +50,24 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * matching, copy, dedupe, and the notifier load on first alert.
  */
 export function useNotificationOsAlerts(): void {
-  const { apiBase } = useApiBase();
+  const { apiBase, connectionId } = useApiBase();
   const profile = usePlatformProfile();
   const enabled = profile.isTauri && profile.isDesktop && !profile.isMobile;
-  const { data } = useNotificationsQuery(
+  const { data, dataUpdatedAt } = useNotificationsQuery(
     { status: LIVE_NOTIFICATION_STATUSES },
     { refetchInterval: 10_000, enabled },
   );
-
   useEffect(() => {
     if (!enabled || !data) return;
-    let local = false;
-    try {
-      local = ['localhost', '127.0.0.1', '[::1]'].includes(
-        new URL(apiBase).hostname,
-      );
-    } catch {
-      /* Remote/unknown targets keep their existing delivery path. */
-    }
-    // Owned local pairing requests are announced by the tray, including while
-    // this WebView is closed. Do not post the same request a second time here.
-    const alerts = local
-      ? data.filter(
-          (item) =>
-            item.category !== BLOCKING_NOTIFICATION_CATEGORIES.devicePairing,
-        )
-      : data;
-    void import('../platform/native/blockingAlert').then((module) =>
-      module.reconcileBlockingAlerts(alerts, apiBase),
+    // Connection scoping, the local-pairing filter and both channels live in
+    // the lazily loaded `osAlerts` chunk (entry-bundle budget).
+    void import('../platform/native/osAlerts').then((module) =>
+      module.reconcileOsAlerts({
+        notifications: data,
+        apiBase,
+        scopeKey: `${apiBase}\n${connectionId ?? ''}`,
+        dataUpdatedAt,
+      }),
     );
-    // Always handed over, envelope or not: the channel seeds on its first
-    // observation, so skipping lists without an envelope would seed — and so
-    // silently swallow — the first agent notification of the session.
-    void import('../platform/native/notificationAlert').then((module) =>
-      module.reconcileNotificationAlerts(data, apiBase),
-    );
-  }, [apiBase, data, enabled]);
+  }, [apiBase, connectionId, data, dataUpdatedAt, enabled]);
 }

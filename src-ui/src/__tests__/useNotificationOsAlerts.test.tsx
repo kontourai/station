@@ -52,6 +52,8 @@ describe('useNotificationOsAlerts (#2587)', () => {
       expect(reconcileEnveloped).toHaveBeenCalledWith(
         [pairing],
         'http://localhost:4100',
+        undefined,
+        'http://localhost:4100\n',
       ),
     );
     // The blocking channel keeps its local-pairing filter; the envelope

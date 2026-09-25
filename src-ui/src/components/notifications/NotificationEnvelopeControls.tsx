@@ -89,7 +89,7 @@ function MuteActions({
     mutationFn: (target: NotificationMuteTarget) => client.mute(target),
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
-  if (preferences.data?.available !== true) return null;
+  if (preferences.data?.status !== 'ok') return null;
   const targets: Array<{ label: string; target: NotificationMuteTarget }> = [];
   if (source.agent) {
     targets.push({

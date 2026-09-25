@@ -132,6 +132,18 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
   });
 
+  test('a failed preferences read offers no Mute either', async () => {
+    authenticatedFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    });
+    renderHistoryItem();
+    await waitFor(() => expect(authenticatedFetch).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
+  });
+
   test('Open goes to the calling session and marks the notification read', async () => {
     preferencesRoute(false);
     render(
