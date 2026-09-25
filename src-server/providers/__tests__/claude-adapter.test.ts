@@ -97,6 +97,7 @@ import {
   readBundledClaudeCodeVersion,
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
+import { loadClaudeTaskCapture } from './claude-task-captures.js';
 
 function createMockQuery(
   messages: any[],
@@ -2977,6 +2978,189 @@ describe('ClaudeAdapter', () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  describe('#2482 model catalog cache', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** A probe that answers after `answer()` is called, or fails with `fail`. */
+    function deferredProbe(
+      models: Array<{ value: string; displayName: string }>,
+    ) {
+      const query = createMockQuery([], models);
+      let answer: () => void = () => {};
+      const answered = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      query.supportedModels.mockImplementation(async () => {
+        await answered;
+        return models;
+      });
+      return { query, answer };
+    }
+
+    test('declares its catalog identity-mapped, and every entry it builds keeps originalId === id', async () => {
+      // The declaration lets selector validation skip the catalog read. It
+      // is only true while the catalog never rewrites: a model whose
+      // `resolvedModel` differs is exactly where a rewrite would appear.
+      mockQuery.mockReturnValue(
+        createMockQuery(
+          [],
+          [
+            {
+              value: 'sonnet',
+              displayName: 'Sonnet',
+              resolvedModel: 'claude-sonnet-4-6-20260701',
+            },
+            { value: 'claude-opus-4-6', displayName: 'Opus' },
+          ],
+        ),
+      );
+      const adapter = new ClaudeAdapter();
+
+      expect(adapter.metadata.modelCatalogIdentityMapped).toBe(true);
+      const { models } = await adapter.listModelCatalog();
+      expect(models.map((model) => model.id)).toEqual([
+        'sonnet',
+        'claude-opus-4-6',
+      ]);
+      for (const model of models) expect(model.originalId).toBe(model.id);
+    });
+
+    test('ten concurrent readers share one probe', async () => {
+      const probe = deferredProbe([{ value: 'sonnet', displayName: 'Sonnet' }]);
+      mockQuery.mockReturnValue(probe.query);
+      const adapter = new ClaudeAdapter();
+
+      const pending = Array.from({ length: 10 }, () =>
+        adapter.listModelCatalog(),
+      );
+      // Let every reader reach the shared flight before the probe answers.
+      await vi.waitFor(() =>
+        expect(probe.query.supportedModels).toHaveBeenCalled(),
+      );
+      probe.answer();
+      const results = await Promise.all(pending);
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(probe.query.supportedModels).toHaveBeenCalledTimes(1);
+      for (const result of results) {
+        expect(result.models).toEqual([
+          { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+        ]);
+      }
+    });
+
+    test('reuses an answer inside the TTL and probes again after it', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
+      mockQuery.mockImplementation(() =>
+        createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+      );
+      const adapter = new ClaudeAdapter();
+
+      await adapter.listModelCatalog();
+      vi.setSystemTime(new Date('2026-09-24T00:00:29.999Z'));
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(new Date('2026-09-24T00:00:30.000Z'));
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('a failed probe is not cached', async () => {
+      const failing = createMockQuery([]);
+      failing.supportedModels.mockRejectedValue(new Error('probe exploded'));
+      mockQuery
+        .mockReturnValueOnce(failing)
+        .mockReturnValueOnce(
+          createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+        );
+      const adapter = new ClaudeAdapter();
+
+      await expect(adapter.listModelCatalog()).rejects.toThrow(
+        'probe exploded',
+      );
+      await expect(adapter.listModelCatalog()).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('a probe its only reader abandoned is not cached', async () => {
+      const abandoned = deferredProbe([
+        { value: 'stale', displayName: 'Stale' },
+      ]);
+      mockQuery
+        .mockReturnValueOnce(abandoned.query)
+        .mockReturnValueOnce(
+          createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+        );
+      const adapter = new ClaudeAdapter();
+      const controller = new AbortController();
+
+      const first = adapter.listModelCatalog({ signal: controller.signal });
+      await vi.waitFor(() =>
+        expect(abandoned.query.supportedModels).toHaveBeenCalled(),
+      );
+      controller.abort(new Error('reader left'));
+      // The probe answers anyway, after its last reader is gone.
+      abandoned.answer();
+      await expect(first).rejects.toThrow('reader left');
+
+      await expect(adapter.listModelCatalog()).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+    });
+
+    test('one reader leaving does not cancel the probe another reader shares', async () => {
+      const probe = deferredProbe([{ value: 'sonnet', displayName: 'Sonnet' }]);
+      mockQuery.mockReturnValue(probe.query);
+      const adapter = new ClaudeAdapter();
+      const leaving = new AbortController();
+
+      const left = adapter.listModelCatalog({ signal: leaving.signal });
+      const staying = adapter.listModelCatalog();
+      await vi.waitFor(() =>
+        expect(probe.query.supportedModels).toHaveBeenCalled(),
+      );
+      leaving.abort(new Error('reader left'));
+      await expect(left).rejects.toThrow('reader left');
+      probe.answer();
+
+      await expect(staying).resolves.toEqual({
+        models: [{ id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' }],
+      });
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(
+        mockQuery.mock.calls[0][0].options.abortController.signal.aborted,
+      ).toBe(false);
+    });
+
+    test('a different connection routing is a different catalog', async () => {
+      mockQuery.mockImplementation(() =>
+        createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]),
+      );
+      let baseUrl = 'http://127.0.0.1:8318';
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => ({ ANTHROPIC_BASE_URL: baseUrl }),
+      });
+
+      await adapter.listModelCatalog();
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+
+      baseUrl = 'http://127.0.0.1:9999';
+      await adapter.listModelCatalog();
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(mockQuery.mock.calls[1][0].options.env.ANTHROPIC_BASE_URL).toBe(
+        'http://127.0.0.1:9999',
+      );
+    });
+  });
+
   test('rejects approval responses for unknown requests', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
@@ -3522,7 +3706,7 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    test('when the last subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
+    test('when a subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
       const threadId = 'thread-task-ended-approval';
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
@@ -3556,7 +3740,9 @@ describe('ClaudeAdapter', () => {
         {
           signal,
           toolUseID: 'toolu-sub',
-          agentID: 'agent-bg',
+          // Captured (claude-2.1.281-subagent-permission.jsonl): a
+          // subagent's canUseTool agentID IS its task_id.
+          agentID: 'task-bg',
           suggestions: [],
         },
       );
@@ -3602,11 +3788,12 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    // #2348: `onNoLiveTasks` infers "no subagent can be waiting" from the
-    // tracked task set, and that inference can be wrong. Its settlement must
-    // deny the one call, never send the cancel mapping's `interrupt: true`,
-    // which may abort a subagent that is still running.
-    describe('#2348: a wrong "no task is live" settles with a plain denial', () => {
+    // #2348: a subagent's settle withdraws only the requests THAT subagent
+    // raised (canUseTool's agentID is its task_id — captured in
+    // claude-2.1.281-subagent-permission.jsonl). The old "no task is live"
+    // sweep withdrew a sibling's request whenever the settle was processed
+    // after the sibling's canUseTool but before its task_started.
+    describe('#2348: a subagent settle withdraws only its own requests', () => {
       async function subagentHarness(threadId: string) {
         const controlled = createControlledMockQuery();
         mockQuery.mockReturnValue(controlled);
@@ -3637,7 +3824,7 @@ describe('ClaudeAdapter', () => {
         return { controlled, adapter, until, askAs, turn };
       }
 
-      test("subagent A's settle, processed after B's canUseTool, does not interrupt B", async () => {
+      test("A's settle, interleaved with B's canUseTool, withdraws A's request and leaves B's answerable", async () => {
         const threadId = 'thread-settle-lag';
         const { controlled, adapter, until, askAs } =
           await subagentHarness(threadId);
@@ -3651,10 +3838,14 @@ describe('ClaudeAdapter', () => {
           session_id: 's-1',
         });
         await until((event) => event.method === 'tool.started');
+        const aPermission = askAs('task-a', 'toolu-a-bash');
+        const aOpened = await until(
+          (event) => event.method === 'request.opened',
+        );
 
         // B's permission arrives by direct callback, while B's own
         // `task_started` is still behind A's settle in the message stream.
-        const bPermission = askAs('agent-b', 'toolu-b-bash');
+        const bPermission = askAs('task-b', 'toolu-b-bash');
         const bOpened = await until(
           (event) => event.method === 'request.opened',
         );
@@ -3666,30 +3857,41 @@ describe('ClaudeAdapter', () => {
           uuid: 'u-a2',
           session_id: 's-1',
         });
+        controlled.push({
+          type: 'system',
+          subtype: 'task_notification',
+          task_id: 'task-a',
+          tool_use_id: 'toolu-a',
+          status: 'completed',
+          summary: 'done',
+          output_file: '/tmp/a.output',
+          uuid: 'u-a3',
+          session_id: 's-1',
+        });
 
-        const result = await bPermission;
-        expect(result).toMatchObject({ behavior: 'deny' });
-        expect(result).not.toHaveProperty('interrupt');
+        // A's request: withdrawn with a plain denial, never an interrupt.
+        const aResult = await aPermission;
+        expect(aResult).toMatchObject({ behavior: 'deny' });
+        expect(aResult).not.toHaveProperty('interrupt');
         expect(
           await until((event) => event.method === 'request.resolved'),
-        ).toMatchObject({ requestId: bOpened.requestId, status: 'cancelled' });
-        // Still never answerable later, so no grant can be minted for it.
-        await expect(
-          adapter.respondToRequest(
-            threadId,
-            bOpened.requestId,
-            'acceptForSession',
-          ),
-        ).rejects.toThrow('Unknown Claude permission request');
-        // B, still running, can ask again.
-        void askAs('agent-b', 'toolu-b-retry');
-        expect(
-          await until((event) => event.method === 'request.opened'),
-        ).toMatchObject({ payload: { agentId: 'agent-b' } });
+        ).toMatchObject({ requestId: aOpened.requestId, status: 'cancelled' });
+        // Both of A's terminals have been processed…
+        await until(
+          (event) =>
+            event.method === 'child-work.updated' &&
+            event.delta.kind === 'settle' &&
+            event.delta.result?.summary === 'done',
+        );
+        // …and B's request survived them: the user's answer reaches B.
+        await adapter.respondToRequest(threadId, bOpened.requestId, 'accept');
+        await expect(bPermission).resolves.toMatchObject({
+          behavior: 'allow',
+        });
         await adapter.stopSession(threadId);
       });
 
-      test('an untracked (skip_transcript) task’s request is not interrupted when the main turn completes', async () => {
+      test("the main turn completing withdraws no subagent's request", async () => {
         const threadId = 'thread-untracked-task';
         const { controlled, adapter, until, askAs } =
           await subagentHarness(threadId);
@@ -3703,12 +3905,10 @@ describe('ClaudeAdapter', () => {
           uuid: 'u-h1',
           session_id: 's-1',
         });
-        const permission = askAs('agent-ambient', 'toolu-ambient-bash');
+        const permission = askAs('task-ambient', 'toolu-ambient-bash');
         const opened = await until(
           (event) => event.method === 'request.opened',
         );
-
-        // The main turn completes; nothing is tracked, so the sweep runs.
         controlled.push({
           type: 'result',
           is_error: false,
@@ -3718,20 +3918,17 @@ describe('ClaudeAdapter', () => {
           uuid: 'main-result',
           session_id: 's-1',
         });
+        await until((event) => event.method === 'turn.completed');
 
-        const result = await permission;
-        expect(result).toMatchObject({ behavior: 'deny' });
-        expect(result).not.toHaveProperty('interrupt');
-        expect(
-          await until((event) => event.method === 'request.resolved'),
-        ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+        await adapter.respondToRequest(threadId, opened.requestId, 'accept');
+        await expect(permission).resolves.toMatchObject({ behavior: 'allow' });
         await adapter.stopSession(threadId);
       });
 
       test('an interrupt still cancels a subagent request with interrupt', async () => {
         const threadId = 'thread-interrupt-keeps-cancel';
         const { adapter, until, askAs, turn } = await subagentHarness(threadId);
-        const permission = askAs('agent-b', 'toolu-b-bash');
+        const permission = askAs('task-b', 'toolu-b-bash');
         await until((event) => event.method === 'request.opened');
 
         await adapter.interruptTurn(threadId, turn.turnId);
@@ -7467,5 +7664,338 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
         expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+/**
+ * #2457: the adapter's child work at its session seams — the per-task stop
+ * (`stopProviderTask` → `Query.stopTask`) answered by the engine's own
+ * captured frames, and the session end settling every child the engine can
+ * no longer report on, BEFORE `session.exited`.
+ */
+describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
+  afterEach(() => {
+    mockQuery.mockReset();
+  });
+
+  const stopCapture = loadClaudeTaskCapture('stop-task');
+  const stopAt = stopCapture.findIndex((line) =>
+    line.probe?.startsWith('STOP_TASK '),
+  );
+  const capturedChildId = stopCapture[stopAt].probe!.slice('STOP_TASK '.length);
+  /** The captured frames up to the stop: the agent is running. */
+  const beforeStop = stopCapture
+    .slice(0, stopAt)
+    .flatMap((line) => (line.message ? [line.message] : []));
+  /** The engine's answer to `stopTask`, as captured. */
+  const stopAnswer = stopCapture
+    .slice(stopAt + 1)
+    .flatMap((line) =>
+      (line.message as { task_id?: string } | undefined)?.task_id ===
+      capturedChildId
+        ? [line.message]
+        : [],
+    );
+
+  function endableQuery({ endOnClose = true } = {}) {
+    const pending: unknown[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+    const end = () => {
+      ended = true;
+      wake?.();
+      wake = null;
+    };
+    return {
+      push(message: unknown) {
+        pending.push(message);
+        wake?.();
+        wake = null;
+      },
+      end,
+      async *[Symbol.asyncIterator]() {
+        for (;;) {
+          while (pending.length === 0) {
+            if (ended) return;
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+          yield pending.shift();
+        }
+      },
+      stopTask: vi.fn<(taskId: string) => Promise<void>>(),
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      supportedModels: vi.fn().mockResolvedValue([]),
+      // `endOnClose: false` models an engine whose iterator does not end at
+      // close(), so stopSession's grace elapses (station#1569).
+      close: vi.fn().mockImplementation(() => {
+        if (endOnClose) end();
+      }),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  async function runningChild(
+    threadId: string,
+    options: { endOnClose?: boolean; streamStopGraceMs?: number } = {},
+  ) {
+    const query = endableQuery({ endOnClose: options.endOnClose });
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter(
+      options.streamStopGraceMs !== undefined
+        ? { streamStopGraceMs: options.streamStopGraceMs }
+        : undefined,
+    );
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    for (const message of beforeStop) query.push(message);
+    const seen: any[] = [];
+    const until = async (predicate: (event: any) => boolean): Promise<any> => {
+      for (let step = 0; step < 60; step++) {
+        const next = await iterator.next();
+        if (next.done) throw new Error('stream ended');
+        seen.push(next.value);
+        if (predicate(next.value)) return next.value;
+      }
+      throw new Error('expected event never arrived');
+    };
+    await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'snapshot' &&
+        event.delta.running.some(
+          (item: { childId: string }) => item.childId === capturedChildId,
+        ),
+    );
+    return { adapter, query, until, seen, iterator };
+  }
+
+  const childSettles = (events: any[]) =>
+    events.flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === capturedChildId
+        ? [event.delta.status]
+        : [],
+    );
+
+  test("R4: stopping a resumed agent's re-run by its child id reaches Query.stopTask as the SDK task_id", async () => {
+    const threadId = 'thread-child-rerun-stop';
+    const nested = loadClaudeTaskCapture('nested-agent');
+    const starts = nested.flatMap((line, index) => {
+      const message = line.message as
+        | {
+            subtype?: string;
+            task_id?: string;
+            tool_use_id?: string;
+            task_type?: string;
+          }
+        | undefined;
+      return message?.subtype === 'task_started' &&
+        message.task_type === 'local_agent'
+        ? [{ index, taskId: message.task_id!, toolUseId: message.tool_use_id! }]
+        : [];
+    });
+    // Premise: the inner agent's task_id is started twice.
+    const rerunStart = starts[2];
+    expect(rerunStart.taskId).toBe(starts[1].taskId);
+    const rerunKey = `${rerunStart.taskId}:${rerunStart.toolUseId}`;
+    const query = endableQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    for (const line of nested.slice(0, rerunStart.index + 1)) {
+      if (line.message) query.push(line.message);
+    }
+    for (let step = 0; step < 120; step++) {
+      const { value } = await iterator.next();
+      if (
+        value.method === 'child-work.updated' &&
+        value.delta.kind === 'snapshot' &&
+        value.delta.running.some(
+          (item: { childId: string }) => item.childId === rerunKey,
+        )
+      )
+        break;
+      if (step === 119) throw new Error('the re-run was never listed');
+    }
+    query.stopTask.mockResolvedValue(undefined);
+    await expect(adapter.stopProviderTask(threadId, rerunKey)).resolves.toEqual(
+      { outcome: 'stopped', taskId: rerunKey },
+    );
+    expect(query.stopTask).toHaveBeenCalledWith(rerunStart.taskId);
+    await adapter.stopSession(threadId);
+  });
+
+  test("stopProviderTask reaches Query.stopTask; the engine's stopped answer settles the child cancelled and clears it", async () => {
+    const threadId = 'thread-child-stop';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockImplementation(async () => {
+      for (const message of stopAnswer) query.push(message);
+    });
+
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).resolves.toEqual({ outcome: 'stopped', taskId: capturedChildId });
+    expect(query.stopTask).toHaveBeenCalledWith(capturedChildId);
+    await until(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'settle' &&
+        event.delta.result !== undefined,
+    );
+    expect(childSettles(seen)).toEqual(['cancelled', 'cancelled']);
+    // Settled: the next stop is the documented race, not a second stopTask.
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).resolves.toEqual({ outcome: 'no-active-task', taskId: capturedChildId });
+    expect(query.stopTask).toHaveBeenCalledTimes(1);
+    // Nothing is left to settle at the session end.
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['cancelled', 'cancelled']);
+  });
+
+  test('stopSession settles a still-running child unresolved, before session.exited', async () => {
+    const threadId = 'thread-child-session-end';
+    const { adapter, until, seen } = await runningChild(threadId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    const end = seen.findIndex((event) => event.method === 'session.exited');
+    const unresolved = seen.findIndex(
+      (event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'snapshot' &&
+        event.delta.running.length === 0,
+    );
+    expect(unresolved).toBeGreaterThan(-1);
+    expect(unresolved).toBeLessThan(end);
+    // An empty snapshot, not a settle: nothing observed says how it ended.
+    expect(childSettles(seen)).toEqual([]);
+  });
+
+  test('a stop the engine never answers settles stopped-unconfirmed at the session end, before session.exited', async () => {
+    const threadId = 'thread-child-stop-unanswered';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockResolvedValue(undefined);
+    await adapter.stopProviderTask(threadId, capturedChildId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['stopped-unconfirmed']);
+    const settleAt = seen.findIndex(
+      (event) =>
+        event.method === 'child-work.updated' && event.delta.kind === 'settle',
+    );
+    expect(settleAt).toBeLessThan(
+      seen.findIndex((event) => event.method === 'session.exited'),
+    );
+  });
+
+  test('the engine process ending on its own settles the running child too', async () => {
+    const threadId = 'thread-child-process-exit';
+    const { query, until } = await runningChild(threadId);
+    query.end();
+    // Bounded: without the settle nothing more is published at all, and the
+    // failure should say so rather than time the test out.
+    const emptied = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(emptied, 'no empty snapshot after the engine ended').not.toBeNull();
+    expect(emptied.delta).toMatchObject({
+      producer: 'engine-subagent',
+      reporterThreadId: threadId,
+    });
+  });
+
+  test('R1: when the stop grace elapses, a real stopped outcome the SDK drains afterwards corrects stopped-unconfirmed to cancelled', async () => {
+    const threadId = 'thread-child-late-outcome';
+    const { adapter, query, until, seen } = await runningChild(threadId, {
+      endOnClose: false,
+      streamStopGraceMs: 20,
+    });
+    query.stopTask.mockResolvedValue(undefined);
+    await adapter.stopProviderTask(threadId, capturedChildId);
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual(['stopped-unconfirmed']);
+    // The engine's own answer drains after the stop.
+    for (const message of stopAnswer) query.push(message);
+    const corrected = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.status === 'cancelled',
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(corrected, 'the drained outcome was never mapped').not.toBeNull();
+    expect(childSettles(seen).slice(0, 2)).toEqual([
+      'stopped-unconfirmed',
+      'cancelled',
+    ]);
+  });
+
+  test("R2: a child's pending approval is withdrawn when the stream ends with the child unsettled, and cannot be granted later", async () => {
+    const threadId = 'thread-child-approval-at-end';
+    const { adapter, query, until } = await runningChild(threadId);
+    const canUseTool = mockQuery.mock.calls.at(-1)![0].options.canUseTool;
+    const permission = canUseTool(
+      'Bash',
+      { command: 'npm test' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'toolu-child-bash',
+        agentID: capturedChildId,
+        suggestions: [],
+      },
+    );
+    const opened = await until((event) => event.method === 'request.opened');
+    query.end();
+    const result = await Promise.race([
+      permission,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(result, 'the child approval was never settled').not.toBeNull();
+    expect(result).toMatchObject({ behavior: 'deny' });
+    expect(result).not.toHaveProperty('interrupt');
+    expect(
+      await until((event) => event.method === 'request.resolved'),
+    ).toMatchObject({ requestId: opened.requestId, status: 'cancelled' });
+    await expect(
+      adapter.respondToRequest(threadId, opened.requestId, 'acceptForSession'),
+    ).rejects.toThrow('Unknown Claude permission request');
+  });
+
+  test('R3: a stopTask that rejects leaves no stop marker — the session end reports the child unresolved, not stopped-unconfirmed', async () => {
+    const threadId = 'thread-child-stop-rejected';
+    const { adapter, query, until, seen } = await runningChild(threadId);
+    query.stopTask.mockRejectedValue(new Error('control channel closed'));
+    await expect(
+      adapter.stopProviderTask(threadId, capturedChildId),
+    ).rejects.toThrow('control channel closed');
+    await adapter.stopSession(threadId);
+    await until((event) => event.method === 'session.exited');
+    expect(childSettles(seen)).toEqual([]);
+    expect(
+      seen.some(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+    ).toBe(true);
   });
 });

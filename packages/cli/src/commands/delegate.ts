@@ -67,6 +67,7 @@ import {
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
+  type DelegatedTaskReason,
   type DelegatedTaskRequestResponseHandle,
   type DelegatedTaskSnapshot,
   type DelegationOptions,
@@ -383,6 +384,45 @@ function supervisionLines(
   return lines;
 }
 
+/**
+ * #2265: renders the serving Station's re-validated provider-plan quota
+ * facts beneath the reason line. The reset text is provider-reported civil
+ * time with no timezone — it is repeated verbatim for display and never
+ * turned into a countdown or an interpreted instant. Rendered only for the
+ * allowlisted quota code with well-shaped fields; anything else renders
+ * nothing (honest unknown, never a client-side invention).
+ */
+function providerQuotaLines(reason: DelegatedTaskReason): string[] {
+  if (reason.code !== 'provider-plan-quota-exhausted') return [];
+  const lines: string[] = [];
+  if (
+    typeof reason.quotaWindow === 'string' &&
+    /^[1-9][0-9]{0,2} hours?$/.test(reason.quotaWindow)
+  ) {
+    lines.push(`Provider limit window: ${reason.quotaWindow}`);
+  }
+  if (
+    typeof reason.resetReported === 'string' &&
+    /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/.test(
+      reason.resetReported,
+    )
+  ) {
+    lines.push(
+      `Provider-reported reset: ${reason.resetReported} (no timezone given; wait before continuing)`,
+    );
+  }
+  if (
+    typeof reason.retryAfterMs === 'number' &&
+    Number.isInteger(reason.retryAfterMs) &&
+    reason.retryAfterMs > 0
+  ) {
+    lines.push(
+      `Provider retry-after: ${formatDurationMs(reason.retryAfterMs)}`,
+    );
+  }
+  return lines;
+}
+
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   const lines = [
     `Task ${snapshot.taskId}: ${snapshot.status}${
@@ -412,6 +452,7 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
         snapshot.reason.detail ? ` — ${snapshot.reason.detail}` : ''
       }`,
     );
+    lines.push(...providerQuotaLines(snapshot.reason));
   }
   if (snapshot.transitionReason) {
     lines.push(`Transition: ${snapshot.transitionReason}`);

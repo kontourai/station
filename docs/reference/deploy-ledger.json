@@ -1,5 +1,216 @@
 [
   {
+    "timestampUtc": "2026-09-24T22:28:31Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2458.6",
+    "sha": "f18562c4fc01edf17abdeaec88ff150ae80edf3e",
+    "artifactBuiltAt": "2026-09-24T21:40:10.415Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36061294532",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36061294532)"
+    ],
+    "changelog": {
+      "previousSha": "e390f5a83b50b2aa97e4287f43b4a5fc986697e8",
+      "groups": {
+        "feat": [
+          "[#2511](https://github.com/kontourai/station/pull/2511) feat(mobile): reopen last selected Station on launch",
+          "[#2533](https://github.com/kontourai/station/pull/2533) feat(claude): report subagents on the child-work contract (#2457)"
+        ],
+        "fix": [
+          "[#2550](https://github.com/kontourai/station/pull/2550) fix(server): stored attachments load on every device",
+          "[#2554](https://github.com/kontourai/station/pull/2554) fix(ui): iOS and iPadOS draw attachment PDFs with pdf.js",
+          "[#2538](https://github.com/kontourai/station/pull/2538) fix(test): remove test temp dirs in hooks and ratchet raw mkdtemp calls",
+          "[#2551](https://github.com/kontourai/station/pull/2551) fix(cli,scripts): process identity follow-ups — fail-safe stop, lease upgrade window, missing tests",
+          "[#2546](https://github.com/kontourai/station/pull/2546) fix(claude): stop spawning a CLI to validate every Claude start's model (#2482)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2547](https://github.com/kontourai/station/pull/2547) test(e2e): name the Project on coding calls, as the #2471 confinement requires"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T22:28:28Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2458.6",
+    "sha": "f18562c4fc01edf17abdeaec88ff150ae80edf3e",
+    "artifactBuiltAt": "2026-09-24T21:37:49.290Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36061294532",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36061294532)"
+    ],
+    "changelog": {
+      "previousSha": "847ec8d05e6cea06d33706e8eb8bbd168f875bfb",
+      "groups": {
+        "feat": [
+          "[#2511](https://github.com/kontourai/station/pull/2511) feat(mobile): reopen last selected Station on launch",
+          "[#2533](https://github.com/kontourai/station/pull/2533) feat(claude): report subagents on the child-work contract (#2457)",
+          "[#2512](https://github.com/kontourai/station/pull/2512) feat: agent activity on the phone — Android Live Updates via a Station-signed push gateway",
+          "[#2519](https://github.com/kontourai/station/pull/2519) feat(agents-pane): render child work for any engine, per chat and across conversations (#2459)",
+          "[#2524](https://github.com/kontourai/station/pull/2524) feat(relay): add native proof client and Station key candidates",
+          "[#2522](https://github.com/kontourai/station/pull/2522) feat(relay): proof-bound native signaling and renewal"
+        ],
+        "fix": [
+          "[#2550](https://github.com/kontourai/station/pull/2550) fix(server): stored attachments load on every device",
+          "[#2554](https://github.com/kontourai/station/pull/2554) fix(ui): iOS and iPadOS draw attachment PDFs with pdf.js",
+          "[#2538](https://github.com/kontourai/station/pull/2538) fix(test): remove test temp dirs in hooks and ratchet raw mkdtemp calls",
+          "[#2551](https://github.com/kontourai/station/pull/2551) fix(cli,scripts): process identity follow-ups — fail-safe stop, lease upgrade window, missing tests",
+          "[#2546](https://github.com/kontourai/station/pull/2546) fix(claude): stop spawning a CLI to validate every Claude start's model (#2482)",
+          "[#2532](https://github.com/kontourai/station/pull/2532) fix(desktop): open any https link the user clicks, not only GitHub issue URLs",
+          "[#2288](https://github.com/kontourai/station/pull/2288) fix(delegation): surface supported provider quota failures",
+          "[#2531](https://github.com/kontourai/station/pull/2531) fix(pull-requests,file-preview): reads without a pushed branch, umbrella projects, and worktree sessions preview their own files",
+          "[#2508](https://github.com/kontourai/station/pull/2508) fix(chat): keep draft focusable during active continuation",
+          "[#2528](https://github.com/kontourai/station/pull/2528) fix(release): make the packaged Android permission audit read real build output (#2473)",
+          "[#2526](https://github.com/kontourai/station/pull/2526) fix(attachments): bind a bare turn.started reference only when this store wrote it (#2483)",
+          "[#2471](https://github.com/kontourai/station/pull/2471) fix: server-ordered approval posture, coding exec grant and confinement, plugin publish export, typed SDK contexts (#2436 #2412 #2374 #2399 and 7 more)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2547](https://github.com/kontourai/station/pull/2547) test(e2e): name the Project on coding calls, as the #2471 confinement requires",
+          "[#2536](https://github.com/kontourai/station/pull/2536) test(gallery): expect #2426's compact Station label and re-baseline"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T22:24:13Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2458.36061294532",
+    "sha": "f18562c4fc01edf17abdeaec88ff150ae80edf3e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36061294532",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2458.36061294532 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e390f5a83b50b2aa97e4287f43b4a5fc986697e8",
+      "groups": {
+        "feat": [
+          "[#2511](https://github.com/kontourai/station/pull/2511) feat(mobile): reopen last selected Station on launch",
+          "[#2533](https://github.com/kontourai/station/pull/2533) feat(claude): report subagents on the child-work contract (#2457)"
+        ],
+        "fix": [
+          "[#2550](https://github.com/kontourai/station/pull/2550) fix(server): stored attachments load on every device",
+          "[#2554](https://github.com/kontourai/station/pull/2554) fix(ui): iOS and iPadOS draw attachment PDFs with pdf.js",
+          "[#2538](https://github.com/kontourai/station/pull/2538) fix(test): remove test temp dirs in hooks and ratchet raw mkdtemp calls",
+          "[#2551](https://github.com/kontourai/station/pull/2551) fix(cli,scripts): process identity follow-ups — fail-safe stop, lease upgrade window, missing tests",
+          "[#2546](https://github.com/kontourai/station/pull/2546) fix(claude): stop spawning a CLI to validate every Claude start's model (#2482)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2547](https://github.com/kontourai/station/pull/2547) test(e2e): name the Project on coding calls, as the #2471 confinement requires"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T17:56:23Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2458.5",
+    "sha": "e390f5a83b50b2aa97e4287f43b4a5fc986697e8",
+    "artifactBuiltAt": "2026-09-24T17:08:03.868Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36031064921",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 36031064921)",
+      "android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:36031064921:play-upload-or-query (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "847ec8d05e6cea06d33706e8eb8bbd168f875bfb",
+      "groups": {
+        "feat": [
+          "[#2512](https://github.com/kontourai/station/pull/2512) feat: agent activity on the phone — Android Live Updates via a Station-signed push gateway",
+          "[#2519](https://github.com/kontourai/station/pull/2519) feat(agents-pane): render child work for any engine, per chat and across conversations (#2459)",
+          "[#2524](https://github.com/kontourai/station/pull/2524) feat(relay): add native proof client and Station key candidates",
+          "[#2522](https://github.com/kontourai/station/pull/2522) feat(relay): proof-bound native signaling and renewal"
+        ],
+        "fix": [
+          "[#2532](https://github.com/kontourai/station/pull/2532) fix(desktop): open any https link the user clicks, not only GitHub issue URLs",
+          "[#2288](https://github.com/kontourai/station/pull/2288) fix(delegation): surface supported provider quota failures",
+          "[#2531](https://github.com/kontourai/station/pull/2531) fix(pull-requests,file-preview): reads without a pushed branch, umbrella projects, and worktree sessions preview their own files",
+          "[#2508](https://github.com/kontourai/station/pull/2508) fix(chat): keep draft focusable during active continuation",
+          "[#2528](https://github.com/kontourai/station/pull/2528) fix(release): make the packaged Android permission audit read real build output (#2473)",
+          "[#2526](https://github.com/kontourai/station/pull/2526) fix(attachments): bind a bare turn.started reference only when this store wrote it (#2483)",
+          "[#2471](https://github.com/kontourai/station/pull/2471) fix: server-ordered approval posture, coding exec grant and confinement, plugin publish export, typed SDK contexts (#2436 #2412 #2374 #2399 and 7 more)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2536](https://github.com/kontourai/station/pull/2536) test(gallery): expect #2426's compact Station label and re-baseline"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
+    "timestampUtc": "2026-09-24T17:49:08Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2458.36031064921",
+    "sha": "e390f5a83b50b2aa97e4287f43b4a5fc986697e8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36031064921",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2458.36031064921 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "847ec8d05e6cea06d33706e8eb8bbd168f875bfb",
+      "groups": {
+        "feat": [
+          "[#2512](https://github.com/kontourai/station/pull/2512) feat: agent activity on the phone — Android Live Updates via a Station-signed push gateway",
+          "[#2519](https://github.com/kontourai/station/pull/2519) feat(agents-pane): render child work for any engine, per chat and across conversations (#2459)",
+          "[#2524](https://github.com/kontourai/station/pull/2524) feat(relay): add native proof client and Station key candidates",
+          "[#2522](https://github.com/kontourai/station/pull/2522) feat(relay): proof-bound native signaling and renewal"
+        ],
+        "fix": [
+          "[#2532](https://github.com/kontourai/station/pull/2532) fix(desktop): open any https link the user clicks, not only GitHub issue URLs",
+          "[#2288](https://github.com/kontourai/station/pull/2288) fix(delegation): surface supported provider quota failures",
+          "[#2531](https://github.com/kontourai/station/pull/2531) fix(pull-requests,file-preview): reads without a pushed branch, umbrella projects, and worktree sessions preview their own files",
+          "[#2508](https://github.com/kontourai/station/pull/2508) fix(chat): keep draft focusable during active continuation",
+          "[#2528](https://github.com/kontourai/station/pull/2528) fix(release): make the packaged Android permission audit read real build output (#2473)",
+          "[#2526](https://github.com/kontourai/station/pull/2526) fix(attachments): bind a bare turn.started reference only when this store wrote it (#2483)",
+          "[#2471](https://github.com/kontourai/station/pull/2471) fix: server-ordered approval posture, coding exec grant and confinement, plugin publish export, typed SDK contexts (#2436 #2412 #2374 #2399 and 7 more)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2536](https://github.com/kontourai/station/pull/2536) test(gallery): expect #2426's compact Station label and re-baseline"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-09-24T12:31:36Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2458.4",

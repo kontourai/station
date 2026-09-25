@@ -95,6 +95,13 @@ import { snapshotSessionSourceAffinity } from '../sessions/session-source-affini
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
+  type ClaudeChildWorkState,
+  clearClaudeChildStopRequested,
+  markClaudeChildStopRequested,
+  resolveClaudeChildStop,
+  settleOpenClaudeChildren,
+} from './claude-adapter-child-work.js';
+import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
@@ -114,6 +121,13 @@ import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
 } from './claude-mcp-passthrough.js';
+import {
+  CLAUDE_MODEL_CATALOG_MAX_ENTRIES,
+  CLAUDE_MODEL_CATALOG_TTL_MS,
+  CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS,
+  claudeModelCatalogKey,
+  KeyedCatalogSingleFlight,
+} from './claude-model-catalog-cache.js';
 import { CLAUDE_DEFAULT_MODEL, CLAUDE_KNOWN_MODELS } from './claude-models.js';
 import {
   claudeResumeSessionId,
@@ -565,8 +579,10 @@ type ClaudeSessionRecord = {
    * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime.
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
-  /** Mirrors `ClaudeMessageState.onNoLiveTasks` (#2316). */
-  onNoLiveTasks?: () => void;
+  /** Mirrors `ClaudeMessageState.onTaskSettled` (#2348). */
+  onTaskSettled?: (taskId: string) => void;
+  /** Mirrors `ClaudeMessageState.childWork` (#2457). */
+  childWork?: ClaudeChildWorkState;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -1018,6 +1034,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     },
     defaultModel: CLAUDE_DEFAULT_MODEL,
     knownModels: CLAUDE_KNOWN_MODELS,
+    // #2482: `probeModelCatalog` builds every entry with `originalId: id`.
+    modelCatalogIdentityMapped: true,
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -1047,6 +1065,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     string,
     Promise<CliCommandResult | null>
   >();
+  /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
+  private readonly modelCatalog = new KeyedCatalogSingleFlight<{
+    models: ModelOption[];
+    truncated?: boolean;
+  }>({
+    ttlMs: CLAUDE_MODEL_CATALOG_TTL_MS,
+    timeoutMs: CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS,
+    timeoutMessage: 'Claude model discovery timed out.',
+  });
 
   constructor(private readonly options: ClaudeAdapterOptions = {}) {}
 
@@ -1339,11 +1366,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
     };
-    // #2316: with no subagent task live, no subagent can still be waiting on
-    // a permission request; settle any it left behind.
-    record.onNoLiveTasks = () =>
+    // #2316/#2348: a subagent that ended can no longer be waiting on the
+    // permission requests it raised; withdraw exactly those. Its siblings'
+    // requests stay answerable.
+    record.onTaskSettled = (taskId) =>
       this.cancelPendingRequests(record, input.threadId, {
-        subagentsOnly: true,
+        agentId: taskId,
       });
     record.streamTask = this.consumeMessages(record);
     this.sessions.set(input.threadId, record);
@@ -1676,21 +1704,35 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * station#1877: stop ONE subagent, leaving the turn and its siblings
-   * running. `Query.stopTask` makes the engine emit a `task_notification`
-   * with status `stopped`, so the settle travels the ordinary path and no
-   * terminal is synthesised here.
+   * running. `Query.stopTask` makes the engine emit `task_updated` `killed`
+   * and a `task_notification` with status `stopped` (captured:
+   * `claude-2.1.281-stop-task.jsonl`), so the settle travels the ordinary
+   * path and no terminal is synthesised here. The request is recorded so a
+   * session that ends before that settle reports `stopped-unconfirmed`
+   * rather than `unresolved` (#2457).
    */
   async stopProviderTask(
     threadId: string,
     taskId: string,
   ): Promise<ProviderTaskStopResult> {
     const record = this.requireSession(threadId);
+    // #2457: `taskId` is the child id a client holds, which for a re-run of
+    // a resumed agent is not the engine's own `task_id`.
+    const target = resolveClaudeChildStop(record, taskId);
     // A subagent can settle between a client rendering its stop control and
     // this request landing. That race is a normal outcome, not an error.
-    if (!record.activeTasks?.has(taskId)) {
+    if (!record.activeTasks?.has(target.taskId)) {
       return { outcome: 'no-active-task', taskId };
     }
-    await record.query.stopTask(taskId);
+    markClaudeChildStopRequested(record, target.childId);
+    try {
+      await record.query.stopTask(target.taskId);
+    } catch (error) {
+      // The request never reached the engine, so no stop was requested: a
+      // session end must not report this child `stopped-unconfirmed`.
+      clearClaudeChildStopRequested(record, target.childId);
+      throw error;
+    }
     return { outcome: 'stopped', taskId };
   }
 
@@ -1734,16 +1776,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private cancelPendingRequests(
     record: ClaudeSessionRecord,
     threadId: string,
-    options: { subagentsOnly?: boolean } = {},
+    options: { agentId?: string } = {},
   ): void {
     for (const [requestId, pending] of [...record.pendingRequests]) {
-      if (options.subagentsOnly && !pending.agentId) continue;
-      // #2348: the subagents-only sweep runs on an inference (no task
-      // tracked as live) that can be wrong, so it denies the one call
+      if (options.agentId !== undefined && pending.agentId !== options.agentId)
+        continue;
+      // #2348: withdrawing one ended subagent's requests denies the one call
       // rather than interrupting. Every other caller ends the turn or the
       // session for real and keeps the interrupting cancel.
       this.cancelPendingRequest(record, threadId, requestId, {
-        withdraw: options.subagentsOnly === true,
+        withdraw: options.agentId !== undefined,
       });
     }
   }
@@ -2211,22 +2253,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     truncated?: boolean;
   }> {
     const maxEntries = Math.min(
-      1000,
-      Math.max(1, Math.floor(options?.maxEntries ?? 1000)),
+      CLAUDE_MODEL_CATALOG_MAX_ENTRIES,
+      Math.max(
+        1,
+        Math.floor(options?.maxEntries ?? CLAUDE_MODEL_CATALOG_MAX_ENTRIES),
+      ),
     );
     options?.signal?.throwIfAborted();
-
-    const abortController = new AbortController();
-    const abortProbe = () => abortController.abort(options?.signal?.reason);
-    options?.signal?.addEventListener('abort', abortProbe, { once: true });
     // #1551: the discovery probe must run the SAME executable a session will,
     // or the model catalog is reported by a different Claude Code than the
     // one that answers the turn. This is the probe's first await, so an abort
     // can now land BEFORE the spawn — refuse there rather than spawning a
     // process only to close it.
-    const claudeExecutable = launchedClaudeExecutable(
-      await this.resolveClaudeExecutable(),
-    );
+    const resolution = await this.resolveClaudeExecutable();
+    const claudeExecutable = launchedClaudeExecutable(resolution);
     options?.signal?.throwIfAborted();
     // station#2072: discovery sees the connection env + config home, so a
     // proxy-routed connection lists the proxy's catalog, not the global
@@ -2234,6 +2274,40 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // applies. (Unlike the credential-profile app-home env, which stays
     // session-scoped by archive#896 design.)
     const connectionEnv = await this.resolveConnectionEnv();
+    // #2482: every probe is a whole Claude Code process, and the picker asks
+    // about ten times per page load. Readers of the same executable + routing
+    // share one probe and reuse its answer for the TTL.
+    const catalog = await this.modelCatalog.read(
+      claudeModelCatalogKey({
+        executable: claudeExecutable,
+        installedVersion: resolution.installedVersion,
+        bundledVersion: resolution.bundledVersion,
+        connectionEnv,
+      }),
+      (signal) =>
+        this.probeModelCatalog(signal, claudeExecutable, connectionEnv),
+      options?.signal,
+    );
+    const truncated =
+      catalog.truncated === true || catalog.models.length > maxEntries;
+    return {
+      models: catalog.models
+        .slice(0, maxEntries)
+        .map((model) => ({ ...model })),
+      ...(truncated ? { truncated: true } : {}),
+    };
+  }
+
+  private async probeModelCatalog(
+    signal: AbortSignal,
+    claudeExecutable: string | null,
+    connectionEnv: Record<string, string> | undefined,
+  ): Promise<{ models: ModelOption[]; truncated?: boolean }> {
+    const maxEntries = CLAUDE_MODEL_CATALOG_MAX_ENTRIES;
+    signal.throwIfAborted();
+    const abortController = new AbortController();
+    const abortProbe = () => abortController.abort(signal.reason);
+    signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
     const sdkQuery = query({
       prompt: promptQueue,
@@ -2313,7 +2387,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(truncated ? { truncated: true } : {}),
       };
     } finally {
-      options?.signal?.removeEventListener('abort', abortProbe);
+      signal.removeEventListener('abort', abortProbe);
       promptQueue.close();
       sdkQuery.close();
     }
@@ -2859,10 +2933,35 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         `Claude session '${record.session.threadId}' did not end its message stream within ${graceMs}ms of close(); settling still-open tool calls as unresolved. A result that still arrives will supersede that.`,
       );
     }
+    this.settleSessionEnd(record);
+  }
+
+  /**
+   * Session end: every open `tool_use` (station#1558) and every still-running
+   * child (#2457) is settled — the engine can report on neither any more,
+   * and the `close-kills` capture shows it sends no terminal of its own.
+   * Idempotent; runs before `session.exited`.
+   */
+  private settleSessionEnd(record: ClaudeSessionRecord): void {
+    const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
+    const endedChildren = settleOpenClaudeChildren({
+      provider: this.provider,
+      record,
+      publish,
+      createdAt: new Date().toISOString(),
+    });
+    // A child that ended with the session can no longer be waiting on the
+    // approvals it raised (canUseTool's agentID is its task_id): withdraw
+    // them, so a late "Allow for this session" cannot mint a grant.
+    for (const taskId of endedChildren) {
+      this.cancelPendingRequests(record, record.session.threadId, {
+        agentId: taskId,
+      });
+    }
     settleUnresolvedClaudeToolCalls({
       provider: this.provider,
       record: record as ClaudeMessageState,
-      publish: (event) => this.publish(event),
+      publish,
     });
   }
 
@@ -2886,11 +2985,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // This is the one settle site that covers a process exit nobody asked
       // for; `stopSession` covers the deliberate stop. Whichever runs first
       // empties the map, so the other publishes nothing.
-      settleUnresolvedClaudeToolCalls({
-        provider: this.provider,
-        record: record as ClaudeMessageState,
-        publish: (event) => this.publish(event),
-      });
+      this.settleSessionEnd(record);
     }
   }
 

@@ -2,10 +2,12 @@ import { describe, expect, test } from 'vitest';
 import {
   canSessionLifecycleStateResume,
   isSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
   isSessionLifecycleStateStopped,
   isSessionLifecycleStateTerminal,
   SESSION_LIFECYCLE_STATES,
   SESSION_LIFECYCLE_TRANSITIONS,
+  sessionLifecycleOutcome,
   validateSessionLifecycleTransition,
 } from '../session-lifecycle.js';
 
@@ -17,6 +19,7 @@ describe('session lifecycle contract', () => {
       'needs_input',
       'review_pending',
       'blocked',
+      'idle',
       'completed',
       'failed',
       'canceled',
@@ -97,6 +100,7 @@ describe('session lifecycle contract', () => {
         'needs_input',
         'review_pending',
         'blocked',
+        'idle',
         'failed',
       ]);
     });
@@ -109,6 +113,49 @@ describe('session lifecycle contract', () => {
       expect(isSessionLifecycleStateStopped('failed')).toBe(true);
       expect(canSessionLifecycleStateResume('failed')).toBe(true);
       expect(SESSION_LIFECYCLE_TRANSITIONS.failed).toContain('running');
+    });
+
+    // #2540: a finished turn rests in `idle` — reusable (not stopped, not
+    // terminal, resumable), yet at rest, and a completed outcome.
+    test('idle is at rest and a completed outcome, but neither stopped nor terminal', () => {
+      expect(isSessionLifecycleStateTerminal('idle')).toBe(false);
+      expect(isSessionLifecycleStateStopped('idle')).toBe(false);
+      expect(canSessionLifecycleStateResume('idle')).toBe(true);
+      expect(isSessionLifecycleStateAtRest('idle')).toBe(true);
+      expect(statesWhere(isSessionLifecycleStateAtRest)).toEqual([
+        'idle',
+        'completed',
+        'failed',
+        'canceled',
+      ]);
+      expect(
+        Object.fromEntries(
+          SESSION_LIFECYCLE_STATES.map((state) => [
+            state,
+            sessionLifecycleOutcome(state) ?? null,
+          ]),
+        ),
+      ).toEqual({
+        queued: null,
+        running: null,
+        needs_input: null,
+        review_pending: null,
+        blocked: null,
+        idle: 'completed',
+        completed: 'completed',
+        failed: 'failed',
+        canceled: 'cancelled',
+      });
+      // Only an explicit close ends an idle session; nothing re-queues it.
+      expect(validateSessionLifecycleTransition('idle', 'running').ok).toBe(
+        true,
+      );
+      expect(validateSessionLifecycleTransition('idle', 'completed').ok).toBe(
+        true,
+      );
+      expect(validateSessionLifecycleTransition('completed', 'idle').ok).toBe(
+        false,
+      );
     });
 
     test('every predicate agrees with the map it derives from', () => {

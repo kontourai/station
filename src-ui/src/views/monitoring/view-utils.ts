@@ -1,5 +1,5 @@
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
-import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
+import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
 import { K, monitoringAgentName } from '@shared/monitoring-keys';
 import type {
   AgentStats,
@@ -188,7 +188,7 @@ export function monitoringSessionCounts(
     // computed, so it is only counted when it has an open turn.
     if (
       session.lifecycleState &&
-      !isSessionLifecycleStateStopped(session.lifecycleState)
+      !isSessionLifecycleStateAtRest(session.lifecycleState)
     ) {
       activeSessions += 1;
     }
