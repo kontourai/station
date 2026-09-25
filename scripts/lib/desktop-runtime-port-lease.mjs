@@ -130,7 +130,16 @@ export async function withDesktopRuntimeListenerLease(work, options = {}) {
   } finally {
     const current = readLease(path);
     if (current?.owner?.nonce === lease.owner.nonce) {
-      rmSync(path, { recursive: true, force: true });
+      // Retire the directory with one atomic rename before deleting it.
+      // Deleting in place empties `path` before removing it, and a rename
+      // onto an EMPTY directory succeeds: a waiter would claim the lease
+      // inside that window and the owner's final rmdir would then fail with
+      // ENOTEMPTY (#2648). While it still holds our lease.json, `path`
+      // cannot be claimed (non-empty) or reclaimed (we are alive), so the
+      // rename moves our own directory and nothing else.
+      const retired = `${path}.retired-${lease.owner.nonce}`;
+      renameSync(path, retired);
+      rmSync(retired, { recursive: true, force: true });
     }
   }
 }
