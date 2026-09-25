@@ -272,6 +272,7 @@ test.describe('Agents pane child work (#2459)', () => {
       const row = actions.getByRole('menuitem', {
         name: 'Background tasks — 1 running',
       });
+      await expect(row).toBeVisible();
       const box = await row.boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
       await row.click();
