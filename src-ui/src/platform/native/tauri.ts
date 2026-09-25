@@ -7,9 +7,9 @@ import type {
   BundledServerStatus,
   HapticFeedbackKind,
   NativeAgentActivityLaunchRoute,
+  NativeAgentActivityPhoneStatus,
   NativeAgentActivityPushToken,
   NativeAgentActivityRegistration,
-  NativeAgentActivityStatus,
   NativeBrowserPreviewGrantResult,
   NativeBrowserPreviewHostErrorCode,
   NativeBrowserPreviewObservation,
@@ -21,6 +21,7 @@ import type {
   NativeCommandResult,
   NativeConsentOutcome,
   NativeEventSubscription,
+  NativeIosAgentActivityStatus,
   NativePairingDeepLinkEvent,
   NativePlatformAdapter,
   NativePlatformError,
@@ -577,14 +578,55 @@ function errorMessage(error: unknown): string {
   return message.slice(0, 500);
 }
 
-/** Tauri plugin id of the Android agent-activity plugin (src-desktop/plugins/agent-activity). */
+/** Tauri plugin id of the agent-activity plugin (src-desktop/plugins/agent-activity). */
 const AGENT_ACTIVITY_PLUGIN = 'plugin:station-agent-activity';
+
+function isApnsEnvironment(value: unknown): value is 'production' | 'sandbox' {
+  return value === 'production' || value === 'sandbox';
+}
+
+/** The iOS plugin's `status` reply (AgentActivityPlugin.swift). */
+function parseIosAgentActivityStatus(
+  candidate: Record<string, unknown>,
+): NativeIosAgentActivityStatus | null {
+  const booleans = [
+    'liveActivitiesSupported',
+    'liveActivitiesEnabled',
+    'frequentPushesEnabled',
+    'pushConfigured',
+    'configured',
+  ] as const;
+  if (
+    typeof candidate.osVersion !== 'string' ||
+    typeof candidate.packageName !== 'string' ||
+    candidate.packageName.length === 0 ||
+    booleans.some((key) => typeof candidate[key] !== 'boolean') ||
+    (candidate.apnsEnvironment !== undefined &&
+      !isApnsEnvironment(candidate.apnsEnvironment))
+  )
+    return null;
+  return {
+    platform: 'ios',
+    osVersion: candidate.osVersion,
+    packageName: candidate.packageName,
+    liveActivitiesSupported: candidate.liveActivitiesSupported as boolean,
+    liveActivitiesEnabled: candidate.liveActivitiesEnabled as boolean,
+    frequentPushesEnabled: candidate.frequentPushesEnabled as boolean,
+    pushConfigured: candidate.pushConfigured as boolean,
+    configured: candidate.configured as boolean,
+    ...(isApnsEnvironment(candidate.apnsEnvironment)
+      ? { apnsEnvironment: candidate.apnsEnvironment }
+      : {}),
+  };
+}
 
 function parseAgentActivityStatus(
   value: unknown,
-): NativeAgentActivityStatus | null {
+): NativeAgentActivityPhoneStatus | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
+  if (candidate.platform === 'ios')
+    return parseIosAgentActivityStatus(candidate);
   const booleans = [
     'notificationsEnabled',
     'liveUpdatesSupported',
@@ -616,12 +658,23 @@ function parseAgentActivityPushToken(
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
   if (candidate.state === 'unconfigured') return { state: 'unconfigured' };
+  // Only the iOS plugin answers this, below iOS 18.
+  if (candidate.state === 'unsupported') return { state: 'unsupported' };
   if (
     candidate.state === 'available' &&
     typeof candidate.token === 'string' &&
     candidate.token.length > 0
-  )
-    return { state: 'available', token: candidate.token };
+  ) {
+    // Only an iOS reply names the APNs environment its token belongs to.
+    if (candidate.apnsEnvironment === undefined)
+      return { state: 'available', token: candidate.token };
+    if (!isApnsEnvironment(candidate.apnsEnvironment)) return null;
+    return {
+      state: 'available',
+      token: candidate.token,
+      apnsEnvironment: candidate.apnsEnvironment,
+    };
+  }
   return null;
 }
 
@@ -1322,7 +1375,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
   async agentActivityStatus(): Promise<
-    NativeCommandResult<NativeAgentActivityStatus>
+    NativeCommandResult<NativeAgentActivityPhoneStatus>
   > {
     return this.agentActivityCommand(
       'agent-activity-status',
@@ -1432,9 +1485,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   }
 
   /**
-   * The plugin is compiled into Android builds only, so the host's
-   * `remote-push` report — not a guess about the platform — decides whether
-   * a call is attempted at all.
+   * The plugin's native half exists only in Android builds and iOS builds
+   * with the Live Activity half, so the host's `remote-push` report — not a
+   * guess about the platform — decides whether a call is attempted at all.
    */
   private async agentActivityCommand<T>(
     command: NativeCommandName,
