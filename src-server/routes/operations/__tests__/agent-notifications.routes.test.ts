@@ -7,10 +7,7 @@
  * NotificationService store, and the real Web Push fan-out listener on the
  * same EventBus. Only the push transport and the device list are fakes.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { Hono } from 'hono';
@@ -23,6 +20,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
   isAgentOriginatedRequest,
@@ -79,6 +77,10 @@ const resolveRecord: StationControlCallerRecordResolver = (sessionId) => ({
   projectSlug: 'project-a',
 });
 
+// Created before the file's afterAll, so the store directory is removed after
+// the service has shut down (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
+
 let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let storeDir: string;
@@ -101,7 +103,7 @@ function quietLogger(): Logger {
 }
 
 beforeAll(async () => {
-  storeDir = mkdtempSync(join(tmpdir(), 'agent-notifications-routes-'));
+  storeDir = makeTempDir('agent-notifications-routes-');
   const eventBus = new EventBus();
   service = new NotificationService(eventBus, storeDir, 999_999);
   wireWebPushDelivery(
@@ -177,7 +179,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await service.shutdown();
-  rmSync(storeDir, { recursive: true, force: true });
   delete process.env.STATION_API_BASE;
 });
 

@@ -3,13 +3,11 @@
  * store (through the production `scheduleAgentNotificationVia` adapter), so
  * dedupe, dismissal and the stored envelope are the store's own behaviour.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { NotificationUrgency } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { StationControlCaller } from '../../../tools/station-control-shared.js';
 
 const metrics = vi.hoisted(() => ({
@@ -25,6 +23,10 @@ const {
   agentNotificationSessionContext,
   scheduleAgentNotificationVia,
 } = await import('../agent-notification-gate.js');
+
+// Created before the suite's own afterEach, so the directory is removed
+// after the service has shut down (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 
 const CALLER: StationControlCaller = Object.freeze({
   sessionId: 'session-a',
@@ -75,7 +77,7 @@ describe('AgentNotificationGate', () => {
   ) => ({ title, urgency: 'info' as NotificationUrgency, ...extra });
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'agent-notification-gate-'));
+    dir = makeTempDir('agent-notification-gate-');
     bus = new EventBus();
     service = new NotificationService(bus, dir, 999_999);
     clock = Date.parse('2026-09-24T12:00:00.000Z');
@@ -92,7 +94,6 @@ describe('AgentNotificationGate', () => {
 
   afterEach(async () => {
     await service.shutdown();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   test('sends a session-reader notification carrying the verified caller, never the request, as its source', async () => {
