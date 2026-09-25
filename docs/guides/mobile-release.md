@@ -327,29 +327,59 @@ The IPA then contains `PlugIns/StationAgentActivity.appex`, whose bundle ID is
 `<app id>.AgentActivity`. The app's exported entitlements add
 `aps-environment=production` and two keychain groups, in this order: the app's
 default group, then `<team>.<app id>.agentactivity`, which it shares with the
-widget. The app's `Info.plist` carries `StationApsEnvironment=production`.
+widget. The app's `Info.plist` carries two keys, written to the shipped
+`Info.plist` only for these channels (never to `src-desktop/Info.ios.plist`,
+which Stable shares):
 
-Before signing, the job checks both profiles. It refuses the extension profile
-unless it is for `<app id>.AgentActivity`, and it refuses the app profile
-unless the profile grants production push. After the build, the job audits
-the IPA:
+- `StationApsEnvironment=production`, which the plugin reads at runtime;
+- `NSSupportsLiveActivities=true`. Without it, ActivityKit reports Live
+  Activities as disabled, no activity starts, and no push-to-start token is
+  issued, even though everything is signed correctly.
+
+`NSSupportsLiveActivitiesFrequentUpdates` is deliberately left out. It only
+raises the budget for priority-10 updates, and the push gateway sends routine
+updates at priority 5 (`livePriority` in `deploy/push-gateway`); only start,
+end and alerting updates use priority 10. The key would also add a "More
+Frequent Updates" setting that changes nothing Station sends.
+
+Before signing, the job checks both profiles. It refuses either one unless it
+includes the distribution certificate imported for the build. It also refuses
+the extension profile unless it is for `<app id>.AgentActivity`, and the app
+profile unless it grants production push. After the build, the job audits the
+IPA:
 
 - the widget is the only extension, and its bundle ID and versions match the
   app;
-- the embedded profile is the imported one;
+- the app's and the widget's embedded profiles are the two imported for the
+  build (their UUIDs match);
 - the widget holds only the shared keychain group and has no push entitlement;
-- the app's entitlements and `StationApsEnvironment` are as described above.
+- the app's entitlements and both `Info.plist` keys are as described above;
+- the app executable contains the Swift `AgentActivityPlugin` class. The
+  Objective-C class list is read with `otool -oV`, because the App Store build
+  strips the plugin's init symbol.
 
-A Stable build fails the audit if it contains the widget. Local, simulator,
+A Stable build fails the audit if it contains the widget, declares
+`NSSupportsLiveActivities`, or contains the plugin class. Local, simulator,
 and development builds are unchanged: the committed `gen/apple` spec includes
 neither the plugin nor the extension.
 
-These builds leave `IOS_MOBILE_PROVISION` unset. When Tauri sees that
-variable, it writes export options whose `provisioningProfiles` list only the
-app, and Xcode's manual-signing export then refuses the unlisted extension.
-Instead, the job replaces `gen/apple/ExportOptions.plist` with export options
-that list both profiles. The committed file contains only `method`, so the
-replacement removes nothing else.
+The widget ships without its own privacy manifest. Neither its sources
+(`src-desktop/ios/StationAgentActivity`) nor the card code it shares with the
+plugin call any required-reason API (user defaults, file timestamps, system
+boot time, disk space, or active keyboards); it uses the keychain, CryptoKit,
+ActivityKit and WidgetKit. Add a `PrivacyInfo.xcprivacy` to the extension if
+that changes.
+
+These builds leave both `IOS_MOBILE_PROVISION` and `IOS_CERTIFICATE` unset,
+and the build fails if either is set. When Tauri 2.11.4 sees either variable,
+it signs manually and writes export options whose `provisioningProfiles`
+list only the app, and Xcode's manual-signing export then refuses the
+unlisted extension. Instead, the job replaces `gen/apple/ExportOptions.plist`
+with export options that list both profiles. The committed file contains
+only `method`, so the replacement removes nothing else. Tauri merges this file
+into a temporary copy that it deletes and never names, so the job cannot read
+that copy. The UUID check on the widget's embedded profile shows the export
+used the widget's profile.
 
 Each of `ios-beta` and `ios-nightly` holds two provisioning-profile secrets:
 
@@ -373,7 +403,10 @@ its App ID changes. For each channel:
 
 To rotate the app profile, follow the same steps for
 `io.kontourai.station.<channel>` with `APPLE_PROVISIONING_PROFILE_BASE64`, and
-add `--expected-aps-environment production` to the check in step 2. The next
+add `--expected-aps-environment production` to the check in step 2. To also
+check a profile against the current distribution certificate, add
+`--expected-certificate-sha1 <SHA-1>`, using the SHA-1 that
+`security find-identity -v -p codesigning` prints for that certificate. The next
 TestFlight run validates both profiles before building.
 
 ## Getting each new credential

@@ -517,6 +517,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture so launch-readiness retries are proven by its real exit status.
   'scripts/__tests__/nightly-android-install.test.ts',
   'scripts/__tests__/ios-store-signing-config.test.ts',
+  // Runs the TestFlight workflow's Live Activity resolve step through bash
+  // (which calls node) for each channel, so the enabled mapping is proven by
+  // executing the step rather than by matching its text.
+  'scripts/__tests__/testflight-live-activity-workflow.test.ts',
   // Runs the macOS Nightly build-only installer through a hermetic fixture
   // home and fake toolchain to prove owned staging/lock cleanup on failure.
   'ops/nightly/macos-build-only-cleanup.test.mjs',
