@@ -5,6 +5,7 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
@@ -63,6 +64,9 @@ export async function executeWorkspacePaneHostAction(
       ...(actor.ownerAttribution
         ? { ownerAttribution: actor.ownerAttribution }
         : {}),
+      ...(actor.fullAccessGrant
+        ? { fullAccessGrant: actor.fullAccessGrant }
+        : {}),
     },
     orchestration,
     admission,
@@ -86,16 +90,23 @@ export function createWorkspacePaneHostActorFor(deps: {
   resolveClientOrigin: (request: Request) => ClientOrigin;
   isRequestPrincipalCurrent: (request: Request) => boolean;
   resolveAgentDispatchActor: (request: Request) => unknown;
+  /**
+   * #2493: this request's full-access grant (`fullAccessGrantForRequest`).
+   * Not consulted for an agent-capable request, which starts confined.
+   */
+  fullAccessGrantFor: (c: PaneHostRequestContext) => FullAccessGrant | null;
 }): (c: PaneHostRequestContext) => WorkspacePaneHostActionActor {
   return (c) => {
     const principal = deps.resolvePrincipal(c);
     const agent = deps.resolveAgentDispatchActor(c.req.raw);
+    const fullAccessGrant = agent ? null : deps.fullAccessGrantFor(c);
     return {
       principal,
       readAuthority: deps.readAuthorityFor(principal.id),
       clientOrigin: deps.resolveClientOrigin(c.req.raw),
       isCurrent: () => deps.isRequestPrincipalCurrent(c.req.raw),
       ...(agent ? { ownerAttribution: 'unattributed-agent' as const } : {}),
+      ...(fullAccessGrant ? { fullAccessGrant } : {}),
     };
   };
 }
