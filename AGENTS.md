@@ -46,7 +46,7 @@ queue is part of it. What that means in practice:
 - **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
   removed and those behind it rebuild. Waiting PRs mean it is working.
 - **Arm, confirm once with the query above, then stop.** Never poll the queue;
-  `starved-pr-report` flags a PR that falls out.
+  a red or conflicted dequeue shows only on the PR itself.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
   `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
   `Merge-queue regression`

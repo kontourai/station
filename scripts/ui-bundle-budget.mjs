@@ -312,7 +312,7 @@ if (
           'is the LAST of the three steps below, not the first. The rule is that the',
           'bytes get owned:',
           '',
-          '  1. Confirm the growth is yours: build this tree and the merge-base in the SAME',
+          '  1. Measure your share: build this tree and the merge-base in the SAME',
           '     worktree with its OWN node_modules. Never symlink node_modules from another',
           "     worktree — @kontourai/* resolve through it into that tree's packages/ and you",
           '     will measure a plausible, wrong number (station#2776).',
