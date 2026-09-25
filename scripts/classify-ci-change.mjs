@@ -98,6 +98,73 @@ function isDesktopRustInput(changedPath) {
   return DESKTOP_RUST_BASENAMES.has(base);
 }
 
+/**
+ * What the PR gallery check (gallery-pr-check.yml) photographs is the whole
+ * product: `test:e2e:screenshot` builds the server and UI through
+ * `./station start` and boots them against a temp home. So its input set is
+ * NOT a list of UI directories — a server default, a contract, a bundled
+ * example or a dependency bump can move pixels as surely as a component. This
+ * scope is therefore an EXCLUSION list: a change is gallery-relevant unless
+ * every changed path is one the capture provably never reads. Anything
+ * unlisted — a new top-level directory included — runs the capture.
+ *
+ * Excluded, each for a stated reason:
+ * - docs/, .changeset/ and root-level Markdown: prose, never built or served.
+ * - AGENTS.md / CLAUDE.md anywhere: agent instructions, never imported.
+ * - repository-local agent/hook/governance config (.agents/, .codex/,
+ *   .githooks/, .veritas/, fallow-baselines/).
+ * - .github/ except the two gallery workflows: other workflows do not run in
+ *   the capture. (Under pull_request_target a candidate's own copy of this
+ *   workflow never executes anyway; it stays relevant so the answer is
+ *   honest.)
+ * - src-desktop/ except `tauri.conf.json`: the capture drives the web build,
+ *   and `vite.config.ts` is the one place that build reads the desktop tree
+ *   (it imports tauri.conf.json). classify-ci-change.test.ts derives that
+ *   exception from vite.config.ts rather than trusting this comment.
+ * - test-only sources (`__tests__/` directories, `*.test.*` files) and every
+ *   Playwright spec other than tests/screenshots.spec.ts: no build imports a
+ *   test file, and the capture runs only that one spec.
+ */
+const GALLERY_WORKFLOWS = new Set([
+  '.github/workflows/gallery-pr-check.yml',
+  '.github/workflows/nightly-gallery.yml',
+]);
+const GALLERY_IRRELEVANT_PREFIXES = Object.freeze([
+  'docs/',
+  '.changeset/',
+  '.agents/',
+  '.codex/',
+  '.githooks/',
+  '.veritas/',
+  'fallow-baselines/',
+]);
+const GALLERY_DESKTOP_INPUTS = new Set(['src-desktop/tauri.conf.json']);
+const GALLERY_CAPTURE_SPEC = 'tests/screenshots.spec.ts';
+const TEST_ONLY_SOURCE =
+  /(?:^|\/)__tests__\/|\.test\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/;
+
+function isGalleryInput(changedPath) {
+  if (GALLERY_WORKFLOWS.has(changedPath)) return true;
+  if (changedPath.startsWith('.github/')) return false;
+  if (
+    GALLERY_IRRELEVANT_PREFIXES.some((prefix) => changedPath.startsWith(prefix))
+  )
+    return false;
+  if (!changedPath.includes('/') && changedPath.endsWith('.md')) return false;
+  const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
+  if (base === 'AGENTS.md' || base === 'CLAUDE.md') return false;
+  if (changedPath.startsWith('src-desktop/'))
+    return GALLERY_DESKTOP_INPUTS.has(changedPath);
+  if (TEST_ONLY_SOURCE.test(changedPath)) return false;
+  if (
+    changedPath.startsWith('tests/') &&
+    changedPath.endsWith('.spec.ts') &&
+    changedPath !== GALLERY_CAPTURE_SPEC
+  )
+    return false;
+  return true;
+}
+
 function isDependencyInput(changedPath) {
   if (changedPath.startsWith('patches/')) return true;
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
@@ -276,6 +343,15 @@ export function classifyDesktopRustChangedPaths(paths) {
   };
 }
 
+export function classifyGalleryChangedPaths(paths) {
+  const normalized = [...new Set(paths.filter(Boolean))];
+  return {
+    relevant: normalized.some(isGalleryInput),
+    classification: 'classified',
+    changedFiles: normalized.length,
+  };
+}
+
 function classifyScopedGitRange(classifyPaths, options) {
   try {
     return classifyPaths(changedPathsForGitRange(options));
@@ -297,6 +373,10 @@ export function classifyDesktopRustGitRange(options) {
   return classifyScopedGitRange(classifyDesktopRustChangedPaths, options);
 }
 
+export function classifyGalleryGitRange(options) {
+  return classifyScopedGitRange(classifyGalleryChangedPaths, options);
+}
+
 /** `--scope` values that answer a single relevant=true|false question. */
 const RELEVANCE_SCOPES = Object.freeze({
   ios: { label: 'iOS', classify: classifyIosGitRange },
@@ -304,6 +384,7 @@ const RELEVANCE_SCOPES = Object.freeze({
     label: 'desktop Rust',
     classify: classifyDesktopRustGitRange,
   },
+  gallery: { label: 'gallery', classify: classifyGalleryGitRange },
 });
 
 export function classifyGitRange({ before, after, cwd = process.cwd() }) {

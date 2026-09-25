@@ -116,6 +116,7 @@ import {
   type AdvertisedAcpModeCatalog,
   advertisedAcpSessionModes,
   applyAdvertisedAcpSessionMode,
+  permittedAcpSessionMode,
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
@@ -1241,7 +1242,20 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (modeCatalog.modes.length > 0) {
           record.currentModeId = modeCatalog.currentModeId;
         }
-        const requestedMode = requestedAcpSessionMode(input.modelOptions);
+        // #2569: a full-access mode is the ACP form of approval `never`.
+        // Outside a `host` session it is not applied, and the session keeps
+        // (and reports, as `acpSessionMode`) the connection's own current
+        // mode. `mode` is not an effective-model-option key, so nothing
+        // reports the withheld request as applied.
+        //
+        // Only a fresh `session/new` applies a start mode: a credential
+        // re-establishment always resumes with `session/load`, so the
+        // `recoveryStart` copy needs no confinement of its own.
+        const requestedMode = permittedAcpSessionMode(
+          modeCatalog,
+          requestedAcpSessionMode(input.modelOptions),
+          input.confinement,
+        );
         if (requestedMode) {
           if (modeCatalog.modes.length === 0) {
             throw new Error(
@@ -1460,9 +1474,15 @@ export class AcpAdapter implements ProviderAdapterShape {
         'This engine did not advertise image attachment support.',
       );
     }
-    const requestedMode = requestedAcpSessionMode(input.modelOptions);
+    const turnCatalog = record.acpModeCatalog ?? { modes: [] };
+    // #2569: see startSession.
+    const requestedMode = permittedAcpSessionMode(
+      turnCatalog,
+      requestedAcpSessionMode(input.modelOptions),
+      input.confinement,
+    );
     if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = record.acpModeCatalog ?? { modes: [] };
+      const catalog = turnCatalog;
       if (catalog.modes.length === 0) {
         throw new Error(
           `ACP mode option unavailable: this session did not advertise a session mode.`,

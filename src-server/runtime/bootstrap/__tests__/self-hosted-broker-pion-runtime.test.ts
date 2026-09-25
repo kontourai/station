@@ -120,6 +120,13 @@ interface Harness {
     | undefined;
   withdrawShouldFail: boolean;
   answerShouldFail: boolean;
+  /**
+   * Settles when the runtime publishes its answer to the broker. The runtime
+   * publishes only after the peer entry exists, so a channel accepted after
+   * this is served; one accepted before it is refused and closed. Rejects if
+   * the adapter is closed first, which is how a failed admission ends.
+   */
+  admitted: Promise<void>;
 }
 
 async function harness(
@@ -145,7 +152,16 @@ async function harness(
       pair.publicKey,
     )) as StationConnectionSigningKey,
   };
+  let markAdmitted!: () => void;
+  let failAdmission!: (error: Error) => void;
+  const admitted = new Promise<void>((resolve, reject) => {
+    markAdmitted = resolve;
+    failAdmission = reject;
+  });
+  // Tests that expect admission to fail never await this.
+  admitted.catch(() => undefined);
   const h: Harness = {
+    admitted,
     trust,
     privateKey: wrong ? wrong.privateKey : pair.privateKey,
     current: trust,
@@ -220,6 +236,7 @@ async function harness(
         answer: { type: 'answer' as const, sdp: ANSWER_SDP },
         close: vi.fn(async () => {
           h.closeCalls += 1;
+          failAdmission(new Error('test_adapter_closed_before_admission'));
           resolveCleanup();
         }),
         cleanupComplete,
@@ -291,8 +308,11 @@ async function harness(
         h.capturedProof = (
           JSON.parse(init.body) as { connection: { stationProof: string } }
         ).connection.stationProof;
+        markAdmitted();
       } catch {
-        // Ignore parse failure; endpoint stub below reports it.
+        // Ignore parse failure; endpoint stub below reports it. A test awaiting
+        // admission gets a named failure instead of vitest's generic timeout.
+        failAdmission(new Error('test_answer_body_unparseable'));
       }
     }
     return origImpl(url);
@@ -512,7 +532,9 @@ describe('self-hosted broker pion factory', () => {
     const { h, runtime } = await harness();
     await runtime.start();
     try {
-      await waitFor(() => h.acceptCallback !== undefined);
+      // Admission completes in the background after start(): a channel
+      // accepted before the peer entry exists is refused, not queued (#2557).
+      await h.admitted;
       const received: unknown[] = [];
       let rawInbound: ((value: unknown) => void) | undefined;
       const raw = {
@@ -534,7 +556,9 @@ describe('self-hosted broker pion factory', () => {
       };
       const base = mod.__captured.length;
       h.acceptCallback!(raw as never);
-      await waitFor(() => mod.__captured.length > base);
+      // accept serves the channel synchronously.
+      expect(raw.close).not.toHaveBeenCalled();
+      expect(mod.__captured.length).toBe(base + 1);
       const entry = mod.__captured[base]!;
       const gated = entry.channel;
       // Outgoing before retirement passes through to the raw channel.

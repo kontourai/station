@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PNG } from 'pngjs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   baselineImageFileName,
   baselineImagesDir,
@@ -67,6 +68,9 @@ function runScript(args: string[], cwd: string) {
     };
   }
 }
+
+// Removed in an after-hook whether the test passed or not (#2421).
+const makeTempDir = trackTempDirs();
 
 describe('pixelSha256 / hashScreenshot', () => {
   it('is deterministic for identical pixels', () => {
@@ -239,6 +243,39 @@ describe('runBaseline and runDiff (in-process)', () => {
       total: 2,
       replaced: true,
     });
+  });
+
+  it('refuses a capture whose name or file would reach outside the gallery or baseline', () => {
+    // A gallery can be a downloaded CI artifact produced by a fork's code, so
+    // capture.json is untrusted input to the baseline writer.
+    dir = makeTempDir('screenshot-diff-');
+    const galleryDir = join(dir, 'gallery');
+    mkdirSync(galleryDir);
+    writeCapture(galleryDir, [{ name: 'a', ok: true }], null);
+    const capturePath = join(galleryDir, 'capture.json');
+    const capture = JSON.parse(readFileSync(capturePath, 'utf8'));
+    const baselinePath = join(dir, 'baseline', 'baseline.json');
+    const attempt = (screen: Record<string, unknown>) => {
+      writeFileSync(
+        capturePath,
+        JSON.stringify({
+          ...capture,
+          screens: [{ ...capture.screens[0], ...screen }],
+        }),
+      );
+      return () =>
+        runBaseline(
+          { gallery: galleryDir, baseline: baselinePath, allowPartial: false },
+          { log: () => {} },
+        );
+    };
+    expect(attempt({ name: '../../escaped' })).toThrow(/screen name/);
+    expect(existsSync(join(dir, 'escaped.png'))).toBe(false);
+    expect(attempt({ file: '../outside.png' })).toThrow(/outside the gallery/);
+    expect(attempt({ file: '/etc/hosts' })).toThrow(/outside the gallery/);
+    // The fixture itself is accepted, so the refusals above are about the
+    // hostile fields, not the harness.
+    expect(attempt({})().updated).toBe(1);
   });
 
   it('refuses a partial-selection capture without --allow-partial', () => {
