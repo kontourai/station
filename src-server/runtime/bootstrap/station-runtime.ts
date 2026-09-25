@@ -1,6 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
-import { currentKnowledgeReadAuthority } from '../../knowledge-store/knowledge-request-authority.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -34,6 +33,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { currentRequestReadAuthority } from '../request-read-authority-context.js';
 import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
@@ -3620,7 +3620,7 @@ export class StationRuntime {
               // Sessions are owned by principals: the adapter reads them as
               // the principal of the `/api/knowledge` request it runs inside
               // (bound by the runtime routes), and reads none outside one.
-              getReadAuthority: currentKnowledgeReadAuthority,
+              getReadAuthority: currentRequestReadAuthority,
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });

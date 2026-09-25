@@ -1,6 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
-import { runWithKnowledgeReadAuthority } from '../../knowledge-store/knowledge-request-authority.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -88,6 +87,10 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import {
+  currentRequestReadAuthority,
+  runWithRequestReadAuthority,
+} from '../request-read-authority-context.js';
 
 export {
   type BoundedBodyResult,
@@ -1166,15 +1169,16 @@ export function configureRuntimeRoutes(
   // alias principal — a caller locked out of the very session they just
   // created.
   //
-  // A caller with no request principal (MCP-UI evidence attach's
-  // `readSessionFlowRun`, the personal-mode spatial-board and starter-work
-  // resolvers, and the hosted-only approval-registry resolution above) acts
-  // for this Station's local operator on a personal Station. The cached OS
-  // alias used to fill this default; it owns no session, so every such read
-  // came back empty or reached only ownerless sessions, which no caller may
-  // read any more. A hosted Station keeps the alias: it names no hosted
-  // user, so a hosted default authority still reads nothing, rather than
-  // silently reading as an operator a hosted tenant never authenticated.
+  // The no-argument default is left with exactly two callers, neither of
+  // which reads a session for an HTTP request: the approval registry's
+  // hosted tenant resolution (it returns nothing unless the authority is
+  // hosted), and the board-intent bindings' construction-time default, which
+  // the operating-state route replaces with the request's own authority for
+  // every intent it executes. Request-reachable readers (spatial board,
+  // MCP-UI evidence attach, Starter Work owners, knowledge) use the request
+  // principal instead. On a personal Station the default names the local
+  // operator; a hosted Station keeps the alias, which names no hosted user,
+  // so a hosted default authority reads nothing.
   const readAuthorityForExecution = (resolvedUserId?: string) => {
     const execution = currentTenantExecutionContext();
     return sessionReadAuthorityFromRequest(
@@ -1366,6 +1370,21 @@ export function configureRuntimeRoutes(
     }
     return authority;
   };
+  // Binds this request's principal authority for process-singleton readers
+  // that run without a request (`request-read-authority-context.ts`). An
+  // unresolvable principal binds nothing, so they read no session.
+  const bindRequestReadAuthority = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    let authority: ReturnType<typeof conversationReadAuthorityForContext>;
+    try {
+      authority = conversationReadAuthorityForContext(c);
+    } catch {
+      return next();
+    }
+    return runWithRequestReadAuthority(authority, () => next());
+  };
   const bindConversationReadAuthority = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
     next: () => Promise<void>,
@@ -1480,6 +1499,16 @@ export function configureRuntimeRoutes(
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'POST',
+    '/integrations/:serverId/ui/call',
+    bindConversationReadAuthority,
+  );
+  context.app.on(
+    'GET',
+    '/api/spatial-board/resolved',
+    bindConversationReadAuthority,
+  );
   context.app.on(
     'GET',
     '/api/analytics/usage-rollup',
@@ -2857,10 +2886,12 @@ export function configureRuntimeRoutes(
       approvalRegistry: context.approvalRegistry,
       // An approved call attaches a Flow-evidence receipt when its session is
       // bound to a run (threadId present + flow binding); otherwise audit-only.
-      attachMcpUiEvidence: async ({ threadId, ...call }) => {
+      // M1: the caller names the thread, so it is read (and evidence
+      // attached to its run) only as the calling request's principal.
+      attachMcpUiEvidence: async ({ request, threadId, ...call }) => {
         const bound = await context.orchestrationService.readSessionFlowRun(
           threadId,
-          readAuthorityForExecution(),
+          conversationReadAuthorityForRequest(request),
         );
         if (!bound) return;
         await mcpUiEvidenceBridge.attach(bound, call);
@@ -4946,15 +4977,7 @@ export function configureRuntimeRoutes(
   // authority around every `/api/knowledge` request so a read sees exactly
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
-  context.app.use('/api/knowledge/*', async (c, next) => {
-    let authority: ReturnType<typeof conversationReadAuthorityForContext>;
-    try {
-      authority = conversationReadAuthorityForContext(c);
-    } catch {
-      return next();
-    }
-    return runWithKnowledgeReadAuthority(authority, () => next());
-  });
+  context.app.use('/api/knowledge/*', bindRequestReadAuthority);
   context.app.route(
     '/api/knowledge',
     createCrossProjectKnowledgeRoutes(
@@ -5328,7 +5351,9 @@ export function configureRuntimeRoutes(
       projects: context.projectService,
       tasks: context.taskGraphService,
       sessions: context.orchestrationService,
-      sessionAuthority: readAuthorityForExecution(),
+      // M1: each resolution reads as the requesting principal.
+      sessionAuthority: (request) =>
+        request ? conversationReadAuthorityForRequest(request) : undefined,
       approvals: context.approvalRegistry,
       reviews: reviewEvidence,
       flow: flowRunService,
@@ -5392,8 +5417,17 @@ export function configureRuntimeRoutes(
               .map((project) => project.slug),
           ),
       },
-      authority: readAuthorityForExecution(),
+      // M1: the Starter Work route's own request principal (bound below).
+      authority: currentRequestReadAuthority,
     });
+    // Starter inspection owners are built once and resolve references with
+    // no request of their own: bind each request's principal around the
+    // Starter Work routes so they read runs as that caller.
+    context.app.on(
+      ['GET', 'POST'],
+      '/api/starter-work/*',
+      bindRequestReadAuthority,
+    );
     context.app.route(
       '/api/starter-work',
       createStarterWorkRoutes(

@@ -48,7 +48,12 @@ interface StarterOwnerAdapters {
     ): Promise<IndependentReviewReceipt | null>;
     listAll(): Promise<ReviewEvidenceAggregate>;
   };
-  authority: SessionReadAuthority;
+  /**
+   * The authority of the request resolving a reference, read per resolution.
+   * With none, a run (session-backed) reference resolves as missing rather
+   * than as another principal's.
+   */
+  authority: () => SessionReadAuthority | undefined;
 }
 
 function approvalOrder(left: Notification, right: Notification): number {
@@ -152,7 +157,10 @@ export function createStarterOwnerAdapter(deps: StarterOwnerAdapters) {
         }
         if (reference.kind === 'receipt') {
           if (reference.owner === 'scheduler-run') {
-            const run = await deps.runs.readRun(reference.id, deps.authority);
+            const authority = deps.authority();
+            const run = authority
+              ? await deps.runs.readRun(reference.id, authority)
+              : null;
             if (!run) return { state: 'missing' };
             return run.source === 'schedule'
               ? { state: 'current', completion: schedulerCompletion(run) }

@@ -79,7 +79,6 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ensureConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
-import { currentKnowledgeReadAuthority } from '../../../knowledge-store/knowledge-request-authority.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
@@ -111,6 +110,7 @@ import {
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
+import { currentRequestReadAuthority } from '../../request-read-authority-context.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
@@ -375,6 +375,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * orchestration service, behind `/api/knowledge`.
        */
       knowledge?: boolean;
+      /**
+       * M1: the real session read model and Flow-run read behind the spatial
+       * board and MCP-UI evidence attach; each Flow-run read records whether
+       * the authority it was asked with can read the thread.
+       */
+      flowReads?: Array<{ threadId: string; readable: boolean }>;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -607,7 +613,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                 sessionReader: orchestration!,
                 fileStores: new Map(),
                 getUserId: () => getCachedUser().alias,
-                getReadAuthority: currentKnowledgeReadAuthority,
+                getReadAuthority: currentRequestReadAuthority,
                 projectHomeDir: roomHomeDir,
                 knowledgeStoresEnabled: true,
               });
@@ -642,6 +648,25 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
+              ...(orchestrationExtras.flowReads
+                ? {
+                    listSessionReadModel:
+                      orchestration!.listSessionReadModel.bind(orchestration),
+                    readSessionFlowRun: async (
+                      threadId: string,
+                      authority: never,
+                    ) => {
+                      orchestrationExtras.flowReads!.push({
+                        threadId,
+                        readable: orchestration!.canUserReadSession(
+                          threadId,
+                          authority,
+                        ),
+                      });
+                      return null;
+                    },
+                  }
+                : {}),
             }),
           }
         : {}),
@@ -2627,6 +2652,104 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(unscoped.status).toBe(403);
     });
 
+    function pairDelegationPeer(pairing: DevicePairingService) {
+      const offer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: pairingScopePresetString('delegation'),
+        kind: 'delegation',
+      });
+      const request = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Delegation peer',
+      });
+      pairing.confirmRequest(request.requestId, {
+        kind: 'presented-credential',
+      });
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+    }
+
+    // M1: the spatial board resolves pinned sessions as the requesting
+    // principal, never as a fixed operator authority.
+    test('the spatial board resolves an operator session for the operator and as missing for a non-member', async () => {
+      const { app, pairing } = await principalSetup({ flowReads: [] });
+      const pin = await app.request(
+        '/api/spatial-board/pins',
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            expectedRevision: 0,
+            pin: {
+              id: 'pin-operator',
+              reference: { kind: 'session', id: 'operator-owned' },
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              order: 0,
+            },
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(pin.status, await pin.clone().text()).toBe(200);
+      const stateFor = async (credential: string) => {
+        const response = await app.request(
+          '/api/spatial-board/resolved',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return JSON.stringify(body.data);
+      };
+      expect(await stateFor(OPERATOR_SECRET)).toContain('"state":"current"');
+      const peer = pairDelegationPeer(pairing);
+      const peerView = await stateFor(peer.credential);
+      expect(peerView).toContain('"state":"missing"');
+      expect(peerView).not.toContain('"state":"current"');
+    });
+
+    // M1: an MCP-UI call names its thread; the Flow-run read that decides
+    // whether evidence attaches must be the caller's.
+    test('MCP-UI evidence attach reads the named thread as the calling principal', async () => {
+      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
+      const { app, pairing } = await principalSetup({ flowReads });
+      const call = (credential: string) =>
+        app.request(
+          '/integrations/example-server/ui/call',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tool: 'example-tool',
+              arguments: {},
+              threadId: 'operator-owned',
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+      const operatorCall = await call(OPERATOR_SECRET);
+      const peer = pairDelegationPeer(pairing);
+      const peerCall = await call(peer.credential);
+      expect(
+        flowReads,
+        `${operatorCall.status} ${await operatorCall.text()} / ${peerCall.status} ${await peerCall.text()}`,
+      ).toEqual([
+        { threadId: 'operator-owned', readable: true },
+        { threadId: 'operator-owned', readable: false },
+      ]);
+    });
+
     // H1: the conversation knowledge adapter reads sessions as the principal
     // of the `/api/knowledge` request, never as a fixed operator authority.
     test('knowledge conversation records are the request principal’s: the operator reads the account’s, a delegation peer reads none of them', async () => {
@@ -2688,25 +2811,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       ]);
       // A delegation peer holds orchestration read access but is not a
       // member of the personal conversation account.
-      const peerOffer = pairing.createOffer({
-        endpoint: 'https://station.example.test',
-        scope: pairingScopePresetString('delegation'),
-        kind: 'delegation',
-      });
-      const peerRequest = pairing.requestPairing({
-        requesterPosition: 'off-box',
-        offerId: peerOffer.offerId,
-        proof: peerOffer.challenge,
-        deviceName: 'Delegation peer',
-      });
-      pairing.confirmRequest(peerRequest.requestId, {
-        kind: 'presented-credential',
-      });
-      const peer = pairing.exchange({
-        offerId: peerOffer.offerId,
-        proof: peerOffer.challenge,
-        requestId: peerRequest.requestId,
-      });
+      const peer = pairDelegationPeer(pairing);
       await expect(recordIds(peer.credential)).resolves.toEqual([]);
       const direct = await app.request(
         '/api/knowledge/roots/root:conversations/records/operator-note',
