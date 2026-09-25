@@ -1,5 +1,53 @@
 [
   {
+    "timestampUtc": "2026-09-25T12:32:31Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2459.36130497746",
+    "sha": "73fd03ce808e7ece843fb81574cd7cc440251ab2",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36130497746",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2459.36130497746 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "bdc00df5187d5cdd96e662cc087b16cd8c991425",
+      "groups": {
+        "feat": [
+          "[#2641](https://github.com/kontourai/station/pull/2641) feat(notifications): tapping an agent-activity card opens the session it names (#2515)",
+          "[#2566](https://github.com/kontourai/station/pull/2566) feat(connect): forget a shared saved Station from the app",
+          "[#2616](https://github.com/kontourai/station/pull/2616) feat(notifications): envelope contracts and a trusted write path; refuse cross-source dedupe",
+          "[#2602](https://github.com/kontourai/station/pull/2602) feat(notifications): iOS Live Activities through the push gateway (server + gateway)",
+          "[#2603](https://github.com/kontourai/station/pull/2603) feat(approvals): separate approval mode from confinement; confine every start that could not grant full access (#2493, #2559, #2569)",
+          "[#2604](https://github.com/kontourai/station/pull/2604) feat(presence): per-surface focus reports for notification routing",
+          "[#2576](https://github.com/kontourai/station/pull/2576) feat(agent-activity): use Station's mark for the status-bar icon (#2518)"
+        ],
+        "fix": [
+          "[#2623](https://github.com/kontourai/station/pull/2623) fix(tests): redirect TMPDIR into the vitest run root so every temp dir is removed with the run",
+          "[#2633](https://github.com/kontourai/station/pull/2633) fix(tests,agents): skills-root concurrent-create race and installer test budget",
+          "[#2605](https://github.com/kontourai/station/pull/2605) fix(regions): close the phone layer's disclosed gaps — reload, scoped guards, same-tick Back, fold-open return",
+          "[#2579](https://github.com/kontourai/station/pull/2579) fix(runtime): session reads across 13 route families decide with the request's principal, not the OS alias",
+          "[#2617](https://github.com/kontourai/station/pull/2617) fix(ui): let a cookie session read its own Station's Projects; relay and native reads keep requiring the enrolled credential"
+        ],
+        "ci": [
+          "[#2637](https://github.com/kontourai/station/pull/2637) ci: name the stalled typecheck lane and give hosted typecheck 4 slots",
+          "[#2615](https://github.com/kontourai/station/pull/2615) ci: size the ci:fast budget to measured runs and fence every job that runs it",
+          "[#2539](https://github.com/kontourai/station/pull/2539) ci(gallery): run the exact-pixel gallery diff on gallery-relevant PRs"
+        ],
+        "docs": [],
+        "other": [
+          "[#2635](https://github.com/kontourai/station/pull/2635) test(relay): wait for admission, not the accept callback (#2557)",
+          "[#2606](https://github.com/kontourai/station/pull/2606) test(authority): scope the no-refetch restore claim to A's shelf and force both Default orderings"
+        ]
+      },
+      "note": null,
+      "commitCount": 17
+    }
+  },
+  {
     "timestampUtc": "2026-09-25T05:50:30Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2459",
