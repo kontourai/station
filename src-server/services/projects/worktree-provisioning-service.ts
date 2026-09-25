@@ -3,6 +3,10 @@ import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { EngineId } from '@kontourai/station-contracts/provider';
+import {
+  isSessionLifecycleState,
+  sessionLifecycleOutcome,
+} from '@kontourai/station-contracts/session-lifecycle';
 import type {
   WorkspaceIsolationConfig,
   WorktreeCleanupPolicy,
@@ -112,9 +116,12 @@ export function terminalWorktreeStateForExit(input: {
   exitCode?: number;
   events: unknown[];
 }): WorktreeTerminalState {
+  const outcome = isSessionLifecycleState(input.lifecycleState)
+    ? sessionLifecycleOutcome(input.lifecycleState)
+    : undefined;
   // A clean terminal completion proves recovery succeeded even when its event
   // history contains an earlier runtime error.
-  if (input.lifecycleState === 'completed' && input.exitCode === 0) {
+  if (outcome === 'completed' && input.exitCode === 0) {
     return 'completed';
   }
   if (
@@ -129,9 +136,7 @@ export function terminalWorktreeStateForExit(input: {
   ) {
     return 'failed';
   }
-  if (input.lifecycleState === 'failed') return 'failed';
-  if (input.lifecycleState === 'completed') return 'completed';
-  if (input.lifecycleState === 'canceled') return 'cancelled';
+  if (outcome) return outcome;
   return input.exitCode === 0 ? 'completed' : 'cancelled';
 }
 

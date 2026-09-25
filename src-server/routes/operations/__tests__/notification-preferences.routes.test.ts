@@ -1,6 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import {
@@ -11,7 +9,8 @@ import {
   NOTIFICATION_PREFERENCES_PATH,
 } from '@kontourai/station-contracts/notification-preferences';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   matchPairingScopeRule,
   requiredPairingScope,
@@ -28,6 +27,8 @@ import {
 } from '../../../services/notifications/notification-preferences.js';
 import { createNotificationPreferencesRoutes } from '../notification-preferences.js';
 
+const makeTempDir = trackTempDirs();
+
 const PERSON: RuntimeAuthenticatedRequestPrincipal = {
   kind: 'credential',
   credential: 'person-credential',
@@ -40,7 +41,7 @@ let app: Hono;
 let desktopHost: DesktopHostChannel;
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'notification-preferences-routes-'));
+  home = makeTempDir('notification-preferences-routes-');
   desktopHost = new DesktopHostChannel();
   app = new Hono();
   app.route(
@@ -54,9 +55,6 @@ beforeEach(() => {
       },
     ),
   );
-});
-afterEach(async () => {
-  await rm(home, { recursive: true, force: true });
 });
 
 async function call(

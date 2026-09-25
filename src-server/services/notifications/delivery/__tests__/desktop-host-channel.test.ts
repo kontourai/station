@@ -10,6 +10,8 @@ import {
   DESKTOP_HOST_LEASE_MS,
   DesktopHostChannel,
   isDesktopHostSurface,
+  MAX_DESKTOP_HOST_FEEDS,
+  MAX_DEVICE_FEEDS,
 } from '../desktop-host-channel.js';
 import { wireNotificationDeliveryRouter } from '../router.js';
 
@@ -221,6 +223,45 @@ describe('DesktopHostChannel', () => {
       channel.read('device:laptop', 0).entries.map((e) => e.notificationId),
     ).toEqual(['n-1']);
     expect(channel.read('device:stranger', 0).entries).toEqual([]);
+  });
+
+  test('local desktop feeds and device feeds are bounded separately', () => {
+    let now = 0;
+    const channel = new DesktopHostChannel({ now: () => now });
+    const tick = () => {
+      now += 1;
+    };
+    for (let i = 0; i < MAX_DEVICE_FEEDS; i += 1) {
+      channel.read(`device:d${i}`, 0);
+      tick();
+    }
+    channel.read(DESKTOP, 0);
+    tick();
+    // A local caller churning through fresh installation ids...
+    for (let i = 0; i < 20; i += 1) {
+      channel.read(
+        desktopHostSurfaceId(`churn-${String(i).padStart(4, '0')}`),
+        0,
+      );
+      tick();
+    }
+    const surfaces = channel.registrations().map((r) => r.surface);
+    // ...never evicts a paired device's feed,
+    expect(surfaces.filter((s) => s.startsWith('device:'))).toHaveLength(
+      MAX_DEVICE_FEEDS,
+    );
+    // and local feeds stay within their own cap.
+    expect(surfaces.filter((s) => s.startsWith('local:'))).toHaveLength(
+      MAX_DESKTOP_HOST_FEEDS,
+    );
+    // Device churn never evicts the real desktop's feed either.
+    const fresh = new DesktopHostChannel({ now: () => now });
+    fresh.read(DESKTOP, 0);
+    for (let i = 0; i < 40; i += 1) {
+      tick();
+      fresh.read(`device:e${i}`, 0);
+    }
+    expect(fresh.registrations().map((r) => r.surface)).toContain(DESKTOP);
   });
 
   test('a feed keeps at most 100 entries', async () => {

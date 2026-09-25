@@ -103,6 +103,7 @@ const loadOutboundQueueFlushMount = () =>
   }));
 
 import { useFeatureSettings } from './hooks/useFeatureSettings';
+import { useFocusReporter } from './hooks/useFocusReporter';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
@@ -168,6 +169,9 @@ function App() {
   useNotificationOsAlerts();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
+  // #2585: tell Station whether this document is being looked at, so
+  // notification delivery can avoid interrupting a surface already in use.
+  useFocusReporter();
   // archive#1223: invalidate the persisted (cache-first) query whitelist the
   // moment the connection is confirmed reachable, so restored/stale data is
   // immediately followed by a fresh refetch.

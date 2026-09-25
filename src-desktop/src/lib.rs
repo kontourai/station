@@ -457,7 +457,7 @@ struct CredentialProfileStore {
     project_profiles: std::collections::HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct CredentialProfile {
@@ -1029,15 +1029,44 @@ fn profile_bindings_are_authorized(
     Ok(())
 }
 
+/// Whether `profile` appears unchanged (whole-profile equality, same name)
+/// in `current`, the store the host read under the write lock. The one test
+/// deciding whether a write may carry a credential reference the host never
+/// observed (#2565 renderer writes, #2570 pairing writes).
+fn profile_carried_unchanged(
+    current: &CredentialProfileStore,
+    profile: &CredentialProfile,
+) -> bool {
+    current
+        .profiles
+        .iter()
+        .any(|existing| existing.name == profile.name && existing == profile)
+}
+
+/// `current` is the store the host read under the write lock for this
+/// revision CAS; `store` is the renderer's proposed next store.
+///
+/// The renderer may never introduce a credential reference the host has not
+/// observed. It may, however, carry one forward untouched (#2565): a saved
+/// Station awaiting sign-in (`requires-auth`, never observed) must not block
+/// edits to every other Station. "Untouched" is whole-profile equality with
+/// the same-named profile in `current`, so the reference cannot move to
+/// another profile, and its endpoint, environment, development origin, relay
+/// route and configuration state cannot change while it is carried (flipping
+/// `requires-auth` to `configured` would make the next host start observe
+/// it as trusted).
 fn renderer_store_references_are_authorized(
     authority: &NativeProfileAuthorityState,
+    current: &CredentialProfileStore,
     store: &CredentialProfileStore,
 ) -> Result<(), String> {
     profile_bindings_are_authorized(authority, store)?;
     for profile in &store.profiles {
         if let Some(reference) = &profile.credential_ref {
             let key = credential_reference_key(reference)?;
-            if !authority.bindings.contains_key(&key) {
+            if !authority.bindings.contains_key(&key)
+                && !profile_carried_unchanged(current, profile)
+            {
                 return Err(
                     "Station renderer writes cannot add an unobserved credential reference"
                         .to_string(),
@@ -4215,8 +4244,12 @@ fn validate_pairing_default_transition(
     Err("Station pairing cannot replace an explicit active Station".to_string())
 }
 
+/// Non-target references must be host-observed with an unchanged binding, or
+/// (#2570) an unobserved reference carried unchanged from `current`, the store
+/// the host read under the write lock, per `profile_carried_unchanged`.
 fn pairing_store_references_are_authorized(
     authority: &NativeProfileAuthorityState,
+    current: &CredentialProfileStore,
     store: &CredentialProfileStore,
     entry: &PendingPairingCredential,
 ) -> Result<(), String> {
@@ -4227,14 +4260,23 @@ fn pairing_store_references_are_authorized(
             if key == target_key {
                 continue;
             }
-            let binding = authority.bindings.get(&key).ok_or_else(|| {
-                "Station renderer writes cannot add an unobserved credential reference".to_string()
-            })?;
-            if profile_credential_binding(profile)? != *binding {
-                return Err(
-                    "Station credential origin and environment bindings are host-authorized and cannot be changed through webview metadata"
-                        .to_string(),
-                );
+            match authority.bindings.get(&key) {
+                Some(binding) => {
+                    if profile_credential_binding(profile)? != *binding {
+                        return Err(
+                            "Station credential origin and environment bindings are host-authorized and cannot be changed through webview metadata"
+                                .to_string(),
+                        );
+                    }
+                }
+                None => {
+                    if !profile_carried_unchanged(current, profile) {
+                        return Err(
+                            "Station renderer writes cannot add an unobserved credential reference"
+                                .to_string(),
+                        );
+                    }
+                }
             }
             if authority.transitioning.contains(&key) {
                 return Err(
@@ -5218,7 +5260,7 @@ fn station_profile_store_write_with_host(
                     "native pairing credential handle is missing or expired".to_string()
                 })?;
             let reference_key = credential_reference_key(&entry.reference)?;
-            pairing_store_references_are_authorized(&state, &next_store, entry)?;
+            pairing_store_references_are_authorized(&state, &current_store, &next_store, entry)?;
             match &entry.phase {
                 NativePairingPhase::AwaitingRequiresAuth => {
                     validate_pairing_default_transition(&current_store, &next_store, None)?;
@@ -5268,7 +5310,7 @@ fn station_profile_store_write_with_host(
                 }
             }
         } else {
-            renderer_store_references_are_authorized(&state, &next_store)?;
+            renderer_store_references_are_authorized(&state, &current_store, &next_store)?;
         }
     }
     let mut temporary = None;
@@ -11154,6 +11196,334 @@ mod tests {
         (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
     }
 
+    /// #2565 through the real writer: the host reads `current` from disk under
+    /// the lock, so the carry rule is judged against the stored profile, never
+    /// against the renderer's own proposal.
+    #[cfg(not(mobile))]
+    fn writer_with_stored_pending_profile() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        WriterTestHost,
+        CredentialProfileStore,
+    ) {
+        let (directory, path, authority, pending, _handle, _contents, host) =
+            writer_pairing_fixture();
+        let stored = r#"{"schemaVersion":1,"revision":3,"defaultProfile":"one","projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#;
+        std::fs::write(&path, stored).unwrap();
+        let current = parse_station_profile_store(stored).unwrap();
+        // A restarted host observes only the configured Stations.
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &current).unwrap();
+        (directory, path, authority, pending, host, current)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_forgets_another_station_beside_a_pending_one() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let mut next = current.clone();
+        next.revision = 4;
+        next.profiles.retain(|profile| profile.name != "two");
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&next).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        let written =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(written.revision, 4);
+        assert_eq!(
+            written
+                .profiles
+                .iter()
+                .map(|profile| profile.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one", "pending"]
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_cannot_add_or_promote_an_unobserved_reference() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let refused = |next: &CredentialProfileStore| {
+            station_profile_store_write_with_host(
+                &host,
+                &authority,
+                &pending,
+                serde_json::to_string(next).unwrap(),
+                3,
+                None,
+            )
+            .unwrap_err()
+        };
+
+        let mut added = current.clone();
+        added.revision = 4;
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        let mut promoted = current.clone();
+        promoted.revision = 4;
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        let stored =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(stored.revision, 3, "a refused write must not publish");
+    }
+
+    /// #2570: the on-disk store carries a Station stuck at `requires-auth`
+    /// (never observed after restart) beside an observed one. Returns the
+    /// writer fixture, the stored store, and the pairing target's
+    /// `requires-auth` profile from the fixture's handle.
+    #[cfg(not(mobile))]
+    fn pairing_writer_beside_stuck_station() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        String,
+        WriterTestHost,
+        CredentialProfileStore,
+        CredentialProfile,
+    ) {
+        let (directory, path, authority, pending, handle, contents, host) =
+            writer_pairing_fixture();
+        let target = parse_station_profile_store(&contents).unwrap().profiles[0].clone();
+        let stored = r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"remote","endpoint":"https://remote.example","credentialRef":{"kind":"station-bearer","id":"remote-token"},"environmentId":"environment-remote","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"stuck","endpoint":"https://stuck.example","credentialRef":{"kind":"station-bearer","id":"stuck-token"},"environmentId":"environment-stuck","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#;
+        std::fs::write(&path, stored).unwrap();
+        let current = parse_station_profile_store(stored).unwrap();
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &current).unwrap();
+        (
+            directory, path, authority, pending, handle, host, current, target,
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn stored_revision(path: &std::path::Path) -> u64 {
+        parse_station_profile_store(&read_station_profile_store(path).unwrap())
+            .unwrap()
+            .revision
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn pairing_write_completes_beside_an_unchanged_pending_station() {
+        let (_directory, path, authority, pending, handle, host, current, target) =
+            pairing_writer_beside_stuck_station();
+        let mut requires_auth = current.clone();
+        requires_auth.revision = 1;
+        requires_auth.profiles.push(target.clone());
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&requires_auth).unwrap(),
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        assert_eq!(stored_revision(&path), 1);
+
+        // Stand in for the keyring commit so the configured write runs too.
+        pending.0.lock().unwrap().get_mut(&handle).unwrap().phase =
+            NativePairingPhase::KeyringWritten {
+                profile_name: target.name.clone(),
+            };
+        let mut configured = requires_auth.clone();
+        configured.revision = 2;
+        configured.profiles[2].configuration_state = "configured".to_string();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&configured).unwrap(),
+            1,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        let written =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(written.revision, 2);
+        assert_eq!(
+            written.profiles[1], current.profiles[1],
+            "stuck Station carried unchanged"
+        );
+        let state = authority.0.lock().unwrap();
+        assert!(state
+            .bindings
+            .contains_key("station-bearer:test-host-allocated"));
+        assert!(!state.bindings.contains_key("station-bearer:stuck-token"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn pairing_write_cannot_add_move_or_promote_a_non_target_unobserved_reference() {
+        let (_directory, path, authority, pending, handle, host, current, target) =
+            pairing_writer_beside_stuck_station();
+        let write = |next: &CredentialProfileStore, expected_revision: u64| {
+            station_profile_store_write_with_host(
+                &host,
+                &authority,
+                &pending,
+                serde_json::to_string(next).unwrap(),
+                expected_revision,
+                Some(handle.clone()),
+            )
+        };
+        let mut base = current.clone();
+        base.revision = 1;
+        base.profiles.push(target.clone());
+
+        let mut added = base.clone();
+        let mut extra = current.profiles[1].clone();
+        extra.name = "extra".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "extra-token".to_string(),
+        });
+        added.profiles.push(extra);
+        let mut moved = base.clone();
+        moved.profiles[1].name = "impostor".to_string();
+        let mut rebound = base.clone();
+        rebound.profiles[1].endpoint = "https://attacker.example".to_string();
+        let mut promoted = base.clone();
+        promoted.profiles[1].configuration_state = "configured".to_string();
+        for (label, next) in [
+            ("added", &added),
+            ("moved", &moved),
+            ("rebound", &rebound),
+            ("promoted", &promoted),
+        ] {
+            assert!(
+                write(next, 0)
+                    .unwrap_err()
+                    .contains("cannot add an unobserved credential reference"),
+                "{label}"
+            );
+            assert_eq!(stored_revision(&path), 0, "{label} must not publish");
+            assert!(matches!(
+                pending.0.lock().unwrap().get(&handle).unwrap().phase,
+                NativePairingPhase::AwaitingRequiresAuth
+            ));
+        }
+
+        // The configured write may not promote the stuck Station either.
+        write(&base, 0).unwrap();
+        pending.0.lock().unwrap().get_mut(&handle).unwrap().phase =
+            NativePairingPhase::KeyringWritten {
+                profile_name: target.name.clone(),
+            };
+        let mut configured_and_promoted = base.clone();
+        configured_and_promoted.revision = 2;
+        configured_and_promoted.profiles[2].configuration_state = "configured".to_string();
+        configured_and_promoted.profiles[1].configuration_state = "configured".to_string();
+        assert!(write(&configured_and_promoted, 1)
+            .unwrap_err()
+            .contains("cannot add an unobserved credential reference"));
+        assert_eq!(stored_revision(&path), 1);
+    }
+
+    /// #2570: local self-provision writes through a pairing handle with
+    /// stores built by `local_self_provision_next_store`; drive both of its
+    /// writes through the real writer beside a stuck Station.
+    #[cfg(not(mobile))]
+    #[test]
+    fn local_self_provision_writes_complete_beside_an_unchanged_pending_station() {
+        let (_directory, path, _authority, pending, _handle, host, _current, _target) =
+            pairing_writer_beside_stuck_station();
+        // A restarted host that observes only this store.
+        let authority = NativeProfileAuthority::default();
+        let mut store = local_self_provision_fixture_store();
+        store.revision = 0;
+        store.profiles.push(
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap())
+                .unwrap()
+                .profiles[1]
+                .clone(),
+        );
+        std::fs::write(&path, serde_json::to_string(&store).unwrap()).unwrap();
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &store).unwrap();
+        let reference = NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "local-grant:test".to_string(),
+        };
+        let client_instance_id = "22222222-2222-4222-8222-222222222222";
+        pending.0.lock().unwrap().insert(
+            "local-handle".to_string(),
+            PendingPairingCredential {
+                credential: "local-secret".into(),
+                reference: reference.clone(),
+                exact_origin: exact_origin("http://127.0.0.1:3141").unwrap(),
+                environment_id: "environment-local".into(),
+                client_instance_id: client_instance_id.into(),
+                expires_at: SystemTime::now() + Duration::from_secs(120),
+                phase: NativePairingPhase::AwaitingRequiresAuth,
+            },
+        );
+        let next = |revision: u64, state: &str| {
+            local_self_provision_next_store(
+                &store,
+                revision,
+                "local",
+                &reference,
+                "environment-local",
+                state,
+                2.0,
+                client_instance_id,
+            )
+            .unwrap()
+        };
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            next(1, "requires-auth"),
+            0,
+            Some("local-handle".to_string()),
+        )
+        .unwrap();
+        pending
+            .0
+            .lock()
+            .unwrap()
+            .get_mut("local-handle")
+            .unwrap()
+            .phase = NativePairingPhase::KeyringWritten {
+            profile_name: "local".to_string(),
+        };
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            next(2, "configured"),
+            1,
+            Some("local-handle".to_string()),
+        )
+        .unwrap();
+        assert_eq!(stored_revision(&path), 2);
+        assert!(authority
+            .0
+            .lock()
+            .unwrap()
+            .bindings
+            .contains_key("station-bearer:local-grant:test"));
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
@@ -15112,7 +15482,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &endpoint_mutation)
+            renderer_store_references_are_authorized(&authority, &trusted, &endpoint_mutation)
                 .unwrap_err()
                 .contains("origin and environment")
         );
@@ -15124,9 +15494,12 @@ mod tests {
             }"#,
         )
         .unwrap();
-        assert!(
-            renderer_store_references_are_authorized(&authority, &environment_mutation).is_err()
-        );
+        assert!(renderer_store_references_are_authorized(
+            &authority,
+            &trusted,
+            &environment_mutation
+        )
+        .is_err());
 
         let unknown_reference = parse_station_profile_store(
             r#"{
@@ -15136,7 +15509,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &unknown_reference)
+            renderer_store_references_are_authorized(&authority, &trusted, &unknown_reference)
                 .unwrap_err()
                 .contains("cannot add")
         );
@@ -15352,10 +15725,141 @@ mod tests {
         let mut restarted_authority = NativeProfileAuthorityState::default();
         observe_configured_profile_bindings(&mut restarted_authority, &requires_auth).unwrap();
         assert!(restarted_authority.bindings.is_empty());
+        let mut before_pending = requires_auth.clone();
+        before_pending.revision = 0;
+        before_pending.profiles.clear();
+        assert!(renderer_store_references_are_authorized(
+            &restarted_authority,
+            &before_pending,
+            &requires_auth
+        )
+        .unwrap_err()
+        .contains("cannot add"));
+        assert!(authorize_active_profile_in_state(
+            &mut restarted_authority,
+            &requires_auth,
+            "pending"
+        )
+        .unwrap_err()
+        .contains("not a configured host-observed credential"));
+        assert!(restarted_authority.active.is_none());
+    }
+
+    /// #2565: a saved Station awaiting sign-in is never observed, so its
+    /// reference is only acceptable in a renderer write when the host's
+    /// current store already carries the identical profile.
+    fn unobserved_pending_fixture() -> (NativeProfileAuthorityState, CredentialProfileStore) {
+        let current = parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":4,"defaultProfile":"one","projectProfiles":{},
+              "profiles":[
+                {"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let mut authority = NativeProfileAuthorityState::default();
+        observe_configured_profile_bindings(&mut authority, &current).unwrap();
+        assert!(!authority.bindings.contains_key(
+            &credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap())
+                .unwrap()
+        ));
+        (authority, current)
+    }
+
+    fn next_revision_of(current: &CredentialProfileStore) -> CredentialProfileStore {
+        let mut next = current.clone();
+        next.revision = current.revision + 1;
+        next
+    }
+
+    #[test]
+    fn renderer_write_may_carry_an_unchanged_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+
+        // (a) forget a different Station while the pending one is untouched.
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
+        renderer_store_references_are_authorized(&authority, &current, &forget_other).unwrap();
+
+        // (b) rename a different Station and make it default.
+        let mut rename_other = next_revision_of(&current);
+        rename_other.profiles[1].name = "two-renamed".to_string();
+        rename_other.default_profile = Some("two-renamed".to_string());
+        renderer_store_references_are_authorized(&authority, &current, &rename_other).unwrap();
+
+        // Forgetting the pending Station itself removes the reference.
+        let mut forget_pending = next_revision_of(&current);
+        forget_pending
+            .profiles
+            .retain(|profile| profile.name != "pending");
+        renderer_store_references_are_authorized(&authority, &current, &forget_pending).unwrap();
+    }
+
+    #[test]
+    fn renderer_write_cannot_add_or_move_or_rebind_an_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+        let refused = |next: &CredentialProfileStore| {
+            renderer_store_references_are_authorized(&authority, &current, next).unwrap_err()
+        };
+
+        // (c) a new unobserved reference is still refused.
+        let mut added = next_revision_of(&current);
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        // (d) moving the unobserved reference onto another profile name.
+        let mut moved = next_revision_of(&current);
+        moved.profiles[2].name = "impostor".to_string();
+        assert!(refused(&moved).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but repointing the endpoint.
+        let mut repointed = next_revision_of(&current);
+        repointed.profiles[2].endpoint = "https://attacker.example".to_string();
+        assert!(refused(&repointed).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but changing the environment binding.
+        let mut rebound = next_revision_of(&current);
+        rebound.profiles[2]._environment_id = Some("environment-other".to_string());
+        assert!(refused(&rebound).contains("cannot add an unobserved credential reference"));
+
+        // Promoting it to configured would make the next host start trust it.
+        let mut promoted = next_revision_of(&current);
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        // Moving the pending reference onto a different existing profile.
+        let mut swapped = next_revision_of(&current);
+        let pending_ref = swapped.profiles[2].credential_ref.take();
+        swapped.profiles.remove(2);
+        swapped.profiles[1].credential_ref = pending_ref;
+        assert!(refused(&swapped).contains("cannot add an unobserved credential reference"));
+    }
+
+    #[test]
+    fn renderer_write_still_refuses_an_unchanged_transitioning_reference() {
+        let (mut authority, current) = unobserved_pending_fixture();
+        authority.transitioning.insert(
+            credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap()).unwrap(),
+        );
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
         assert!(
-            renderer_store_references_are_authorized(&restarted_authority, &requires_auth)
+            renderer_store_references_are_authorized(&authority, &current, &forget_other)
                 .unwrap_err()
-                .contains("cannot add")
+                .contains("transitioning")
         );
     }
 

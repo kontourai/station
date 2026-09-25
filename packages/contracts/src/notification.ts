@@ -1,3 +1,5 @@
+import type { SurfaceId } from './presence.js';
+
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type NotificationStatus =
   | 'pending'
@@ -133,10 +135,11 @@ export type NotificationTarget =
 export type NotificationInterrupt = 'default' | 'silent';
 
 /**
- * A place a user reads notifications: a paired device, or one local-operator
- * client session (`x-station-client-session`).
+ * The delivery surface a read/dismiss marker names. Owned by
+ * `@kontourai/station-contracts/presence`; re-exported so notification
+ * imports keep working.
  */
-export type SurfaceId = `device:${string}` | `local:${string}`;
+export type { SurfaceId } from './presence.js';
 
 export interface NotificationEnvelopeV1 {
   v: 1;

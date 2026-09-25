@@ -102,6 +102,17 @@ test('restoration admits only a matching code-owned builtin and its project stat
   expect(
     filePreviewPanePresentationLabel('project-uuid', 'demo', instance, target),
   ).toBe('File Preview — src/main.ts');
+  // The same path read through a session's thread is a different file.
+  writeFilePreviewPaneState(target, instance.stateKey, {
+    version: '1.0',
+    projectSlug: 'demo',
+    path: 'src/main.ts',
+    wrap: true,
+    thread: 'thread-7',
+  });
+  expect(
+    filePreviewPanePresentationLabel('project-uuid', 'demo', instance, target),
+  ).toBe('File Preview (session directory) — src/main.ts');
 });
 
 test('rejects non-cryptographic or non-canonical nonce shapes', () => {

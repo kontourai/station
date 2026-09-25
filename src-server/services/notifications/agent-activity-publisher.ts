@@ -16,6 +16,8 @@
  * - one unref'd timer that re-flushes when a delivery failed (with backoff),
  *   when a device was held back by the per-device send interval, when a live
  *   card nears its expiry on the phone, and once shortly after boot;
+ * - a flush whenever a paired device's scope changes, so a phone that lost
+ *   read access gets its final empty card now, not on the next event;
  * - never throws into the bus and never blocks it: all work is asynchronous
  *   and every failure is caught and logged without the token or payload.
  *
@@ -300,6 +302,14 @@ export interface AgentActivityDevicePairing {
     registrationId: string,
     alertIds: readonly string[],
   ): void;
+  /** Whether the card a registration last accepted had rows (persisted). */
+  recordNativePushCardShown(
+    deviceId: string,
+    registrationId: string,
+    shown: boolean,
+  ): void;
+  /** Told after a device's scope changes; returns the unsubscribe. */
+  onDeviceAccessChanged(listener: (deviceId: string) => void): () => void;
   environmentId(): string;
 }
 
@@ -659,6 +669,22 @@ export function wireAgentActivityPublisher(
     }
     state.deliveredActive = outcome === 'sent' && card.active;
     state.deliveredExpiresAt = card.expiresAt;
+    const shown = card.rows.length > 0;
+    if (outcome === 'sent' && (registration.cardShown === true) !== shown) {
+      // Durable, so a device narrowed below read access before the next
+      // flush still gets its final empty card after a restart.
+      try {
+        devicePairing.recordNativePushCardShown(
+          deviceId,
+          registration.registrationId,
+          shown,
+        );
+      } catch (error) {
+        logger.warn('agent-activity: could not record the card shown', {
+          error: errorMessage(error),
+        });
+      }
+    }
   }
 
   async function flush(): Promise<void> {
@@ -816,12 +842,17 @@ export function wireAgentActivityPublisher(
       if (!card) {
         // Not (or no longer) a device that may read sessions. A phone that
         // was shown a card gets one final empty card; nothing after that.
+        // This process's delivery state says what the phone was sent; after
+        // a restart, the persisted bit says whether it still shows rows.
         warnOnce(
           `unreadable:${deviceId}`,
           'agent-activity: a registered device may not read sessions; sending it no activity',
         );
         const previous = devices.get(deviceId);
-        if (previous?.cardKey === undefined) {
+        if (
+          previous?.cardKey === undefined &&
+          registration.cardShown !== true
+        ) {
           devices.delete(deviceId);
           continue;
         }
@@ -902,6 +933,21 @@ export function wireAgentActivityPublisher(
     }
   });
 
+  // A scope change can take a phone's read access away (or give it back):
+  // flush now, through the same pacing and backoff as any other change, so
+  // a narrowed phone's final empty card does not wait for the next
+  // lifecycle event.
+  const unsubscribeAccess = devicePairing.onDeviceAccessChanged(() => {
+    try {
+      if (!registrations()?.length) return;
+      requestFlush();
+    } catch (error) {
+      logger.warn('agent-activity: listener failed', {
+        error: errorMessage(error),
+      });
+    }
+  });
+
   // Boot: phones registered before a restart get a current card (or have a
   // stale one cleared) without waiting for the next lifecycle event. Delayed
   // so session recovery can re-attach runtimes first.
@@ -920,6 +966,7 @@ export function wireAgentActivityPublisher(
       cancelTimer?.();
       cancelTimer = undefined;
       unsubscribe();
+      unsubscribeAccess();
       await worker.dispose();
     },
   };

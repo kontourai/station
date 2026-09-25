@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -149,6 +150,7 @@ import { projectSessionLifecycle } from '../../services/orchestration/session-li
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
@@ -944,11 +946,15 @@ export class StationRuntime {
         ),
     },
   });
-  // Muse Code spawns one `muse exec` per TURN rather than holding a
-  // per-session process, so there is no app-home/credential-profile closure to
-  // wire here (nothing is spawned at session start). The logger closure reads
-  // `this.logger` lazily for the same reason the Codex one above does.
+  // Muse Code runs one `muse serve` host per session (#2452), so approvals
+  // reach Station and workflow subagents appear as child work; a session
+  // whose host cannot be used falls back to one `muse exec` per turn. Muse's
+  // config (credential, settings, model) and data home (memory, plugins,
+  // session log) are the user's own either way — no `dataHome` override here
+  // — so there is no app-home/credential-profile closure to wire. The logger closure reads `this.logger` lazily for the same
+  // reason the Codex one above does.
   private museAdapter = new MuseAdapter({
+    serve: {},
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
@@ -1043,6 +1049,9 @@ export class StationRuntime {
       onRosterOp: (op) => orchestrationStreamPresenceRosterOps.add(1, { op }),
     },
   );
+  // #2585: which surfaces are being looked at. Written by the focus route,
+  // read by notification delivery; one instance so both see the same truth.
+  public readonly focusPresence = new FocusPresence();
   private framework!: VoltAgentFramework | StrandsFramework;
   // Different-origin MCP Apps sandbox proxy. It uses an ephemeral loopback port
   // by default; MCP_UI_FRAME_PORT can pin that port for deployments.
@@ -1475,12 +1484,10 @@ export class StationRuntime {
                 session: detail.session,
                 events: detail.events,
               });
+              // An exit while work was still in progress was cut off.
               const outcome =
-                lifecycle.lifecycleState === 'completed'
-                  ? 'completed'
-                  : lifecycle.lifecycleState === 'failed'
-                    ? 'failed'
-                    : 'cancelled';
+                sessionLifecycleOutcome(lifecycle.lifecycleState) ??
+                'cancelled';
               await this.projectTaskRoomRuntime?.publishAgentFinished({
                 taskId: task.id,
                 sessionId,
@@ -4085,6 +4092,7 @@ export class StationRuntime {
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,
+      focusPresence: this.focusPresence,
       layoutService: this.layoutService,
       modelCatalog: this.modelCatalog,
       acpBridge: this.acpBridge,

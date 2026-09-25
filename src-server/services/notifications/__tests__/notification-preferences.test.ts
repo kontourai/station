@@ -1,19 +1,12 @@
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type NotificationSource } from '@kontourai/station-contracts/notification';
 import {
   defaultNotificationPreferences,
   type NotificationPreferencesV1,
 } from '@kontourai/station-contracts/notification-preferences';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   applyNotificationPreferencesPatch,
   NOTIFICATION_PREFERENCES_FILE,
@@ -23,6 +16,8 @@ import {
   parseNotificationPreferences,
   preferencesRevision,
 } from '../notification-preferences.js';
+
+const makeTempDir = trackTempDirs();
 
 const AGENT: NotificationSource = {
   kind: 'agent',
@@ -202,10 +197,7 @@ describe('parseNotificationPreferences', () => {
 describe('NotificationPreferencesStore', () => {
   let home: string;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'notification-preferences-'));
-  });
-  afterEach(async () => {
-    await rm(home, { recursive: true, force: true });
+    home = makeTempDir('notification-preferences-');
   });
 
   test('a missing file reads as the defaults, not stored', () => {
@@ -299,10 +291,7 @@ describe('NotificationPreferencesStore', () => {
 describe('patch and compare-and-swap', () => {
   let home: string;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'notification-preferences-patch-'));
-  });
-  afterEach(async () => {
-    await rm(home, { recursive: true, force: true });
+    home = makeTempDir('notification-preferences-patch-');
   });
 
   test('a patch changes only its fields; null removes a map entry or the window', () => {
