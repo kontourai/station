@@ -150,5 +150,13 @@ public struct RegistrationKeychain {
 
 public struct KeychainError: Error, CustomStringConvertible {
   public let status: OSStatus
-  public var description: String { "keychain status \(status)" }
+  public var description: String {
+    // The build has the plugin half (STATION_IOS_LIVE_ACTIVITY=1) without
+    // the project half that grants the app the shared keychain group.
+    if status == errSecMissingEntitlement {
+      return
+        "keychain status \(status): this build lacks the keychain group it shares with the Live Activity widget; run scripts/ensure-ios-agent-activity-extension.mjs on the rendered gen/apple/project.yml, then xcodegen generate"
+    }
+    return "keychain status \(status)"
+  }
 }

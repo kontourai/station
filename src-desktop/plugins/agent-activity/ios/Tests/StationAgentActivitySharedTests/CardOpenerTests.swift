@@ -93,6 +93,14 @@ final class CardOpenerTests: XCTestCase {
     XCTAssertNil(try open(#""user_id""#), "a bare string")
   }
 
+  func testAMissingEntitlementNamesTheMissingProjectHalf() {
+    // What `configure` reports when only STATION_IOS_LIVE_ACTIVITY=1 was set.
+    let missing = KeychainError(status: errSecMissingEntitlement).description
+    XCTAssertTrue(missing.contains("-34018"), missing)
+    XCTAssertTrue(missing.contains("scripts/ensure-ios-agent-activity-extension.mjs"), missing)
+    XCTAssertEqual(KeychainError(status: errSecDuplicateItem).description, "keychain status -25299")
+  }
+
   func testDecodesUnpaddedBase64UrlStrictly() {
     XCTAssertEqual(Base64URL.decode(SealedTestVector.payloadKey), Data((0..<32).map { UInt8($0) }))
     XCTAssertEqual(Base64URL.decode("-_8"), Data([0xFB, 0xFF]))

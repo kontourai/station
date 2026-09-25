@@ -92,7 +92,7 @@ class AgentActivityPlugin: Plugin {
       try RegistrationKeychain(accessGroup: group).save(registration)
       invoke.resolve()
     } catch {
-      invoke.reject("registration not stored", error: error)
+      invoke.reject("registration not stored: \(error)", error: error)
     }
   }
 
