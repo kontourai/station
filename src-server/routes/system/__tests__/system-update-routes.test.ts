@@ -843,9 +843,11 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
       const body = await json(res);
       expect(body.success).toBe(false);
       expect(body.selfUpdateUnavailableCode).toBe('service-managed');
-      expect(body.error).toContain('`station service stop`');
-      expect(body.error).toContain('`station upgrade`');
-      expect(body.error).toContain('`station service start`');
+      expect(body.error).toContain('"station service stop"');
+      expect(body.error).toContain('"station upgrade"');
+      expect(body.error).toContain('"station service start"');
+      // Rendered as plain text in the settings card: no literal backticks.
+      expect(body.error).not.toContain('`');
       expect(vi.mocked(execGit)).not.toHaveBeenCalled();
       expect(execFileMock).not.toHaveBeenCalled();
       expect(spawnMock).not.toHaveBeenCalled();
@@ -948,9 +950,10 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
         selfUpdateUnavailableCode: 'service-managed',
       });
       expect(body.selfUpdateUnavailableReason).toContain(
-        '`station service stop`',
+        '"station service stop"',
       );
-      expect(body.selfUpdateUnavailableReason).toContain('`station upgrade`');
+      expect(body.selfUpdateUnavailableReason).toContain('"station upgrade"');
+      expect(body.selfUpdateUnavailableReason).not.toContain('`');
     },
   );
 

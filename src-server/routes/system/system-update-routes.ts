@@ -83,13 +83,17 @@ export function coreUpdateSupervision(
   return null;
 }
 
-/** The remedy for `service-managed`, phrased as a clause (the GET reason) … */
+/**
+ * The remedy for `service-managed`, phrased as a clause (the GET reason) …
+ * Plain quotes, not backticks: both strings render as plain text in the
+ * settings card, where backticks would print literally.
+ */
 const SERVICE_MANAGED_REASON =
-  'this server runs under the installed Station service, which restarts it on exit. Stop the service with `station service stop`, run `station upgrade`, then start it again with `station service start` (pass the same --instance/--base options the service was installed with)';
+  'this server runs under the installed Station service, which restarts it on exit. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with)';
 
 /** … and as the POST refusal sentence. */
 const SERVICE_MANAGED_REFUSAL =
-  'This Station server cannot update itself in place: it runs under the installed Station service, which restarts it on exit and would race the rebuild. Stop the service with `station service stop`, run `station upgrade`, then start it again with `station service start` (pass the same --instance/--base options the service was installed with).';
+  'This Station server cannot update itself in place: it runs under the installed Station service, which restarts it on exit and would race the rebuild. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with).';
 
 /**
  * The repository's owned dependency bootstrap, the same command `station

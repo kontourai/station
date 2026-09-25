@@ -3711,7 +3711,7 @@ refuses with `409` before any git or build work, because the service would
 restart it mid-update:
 
 ```json
-{ "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with `station service stop`, run `station upgrade`, then start it again with `station service start` ..." }
+{ "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with \"station service stop\", run \"station upgrade\", then start it again with \"station service start\" ..." }
 ```
 
 `GET /system/core-update` reports the same refusal up front as

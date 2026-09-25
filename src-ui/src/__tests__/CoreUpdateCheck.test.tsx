@@ -228,7 +228,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
       behindCheckout({
         selfUpdateUnavailableCode: 'service-managed',
         selfUpdateUnavailableReason:
-          'this server runs under the installed Station service, which restarts it on exit. Stop the service with `station service stop`, run `station upgrade`, then start it again with `station service start`',
+          'this server runs under the installed Station service, which restarts it on exit. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start"',
       }),
     );
     expect(
@@ -238,7 +238,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
       screen.getByText(
         /Server update cannot be applied from here: this server runs under the installed Station service/,
       ).textContent,
-    ).toContain('`station service stop`, run `station upgrade`');
+    ).toContain('"station service stop", run "station upgrade"');
     // The comparison facts are still reported; only the apply is withheld.
     expect(
       screen.getByText(
