@@ -963,6 +963,12 @@
       "reason": "legacy-cast"
     },
     {
+      "file": "src-server/routes/orchestration/orchestration.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ea2cd70f93fe94f03c604d75e82766ac8b545c2c7d2b8ace8b3a4ab53e3e25e3",
+      "reason": "legacy-cast"
+    },
+    {
       "file": "src-server/routes/plugins/plugin-home-role-routes.ts",
       "rule": "as-any",
       "fingerprint": "4e1090fde5c87dee0639a5e59ab499f9240057a8b70d200b3a492f3f651b1ac9",
@@ -1463,6 +1469,12 @@
     {
       "file": "src-server/runtime/routes/runtime-routes.ts",
       "rule": "as-unknown",
+      "fingerprint": "1b611671e3ca8ef47ce4865b3ff535bd55ae87232ecae6e5ea3349119e0d0212",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-unknown",
       "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
       "reason": "legacy-cast"
     },
@@ -1659,6 +1671,18 @@
       "reason": "legacy-cast"
     },
     {
+      "file": "src-server/services/notifications/delivery/router.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2d6a18a1d8e2d9fa58c43ca090cb841bd5c44923934c6feb7f4afb7a0f807021",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ec660d1c0d66d95892a622c833db9dbd0910a2286e4d8502e6e45b35cf21adb5",
+      "reason": "legacy-cast"
+    },
+    {
       "file": "src-server/services/notifications/notification-service.ts",
       "rule": "as-any",
       "fingerprint": "6aab944cb55cdfce180154e5609d4369d3d87f984fd270b1391eb57565a90bf9",
@@ -1674,6 +1698,18 @@
       "file": "src-server/services/notifications/notification-service.ts",
       "rule": "as-unknown",
       "fingerprint": "5395d3b1e410811babea245d9eed7b8c44805360295b1df002bf4fd2c8ce0b14",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5395d3b1e410811babea245d9eed7b8c44805360295b1df002bf4fd2c8ce0b14",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b202da3209727860cc2c9dbbb665266721ad2beab429b9ab69c82ae1b67778e2",
       "reason": "legacy-cast"
     },
     {
@@ -1709,19 +1745,13 @@
     {
       "file": "src-server/services/notifications/notification-service.ts",
       "rule": "as-any",
-      "fingerprint": "3ad168d55767ca6d08d370c98e2dd3d13bfe8812c8385d4b1943a78fe7b807f7",
+      "fingerprint": "65d97c3760ba9f4567a31b9d35986b9e29535521d0b8342900264bcfe0a7b79f",
       "reason": "legacy-cast"
     },
     {
       "file": "src-server/services/notifications/notification-service.ts",
       "rule": "as-unknown",
       "fingerprint": "b9a96261cd12ac68207de2a9f1257f78b71c3c2dcdb84b608cd9eb34a2e69c57",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/notifications/web-push-delivery.ts",
-      "rule": "as-unknown",
-      "fingerprint": "2d6a18a1d8e2d9fa58c43ca090cb841bd5c44923934c6feb7f4afb7a0f807021",
       "reason": "legacy-cast"
     },
     {
@@ -1866,6 +1896,12 @@
       "file": "src-server/services/orchestration/event-store.ts",
       "rule": "as-any",
       "fingerprint": "5b2a104434e234f7327b2c65005874176ef24423cae6c5c58a917e06c0900bb1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "01352ed45f4a86cf6de15cf0ec0a1523dc4f5584140dc534eb128d5ebd83e030",
       "reason": "legacy-cast"
     },
     {
