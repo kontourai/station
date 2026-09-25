@@ -1,4 +1,4 @@
-import { principalIdMatchesKind } from './principal.js';
+import { PRINCIPAL_KINDS, principalIdMatchesKind } from './principal.js';
 
 /** Durable execution-status envelope around an existing Station mutation. */
 export const ACTION_OPERATION_SCHEMA_VERSION =
@@ -111,7 +111,6 @@ export interface ActionOperationWatchSnapshot extends ActionOperationPage {
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const ACCOUNT_ID_MAX_LENGTH = 512;
-const PRINCIPAL_KINDS = ['human', 'agent', 'service', 'tenant'] as const;
 
 function record(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
