@@ -240,6 +240,40 @@ describe('tool-approval', () => {
       ).toBe(false);
     });
 
+    test('a split name borrowing the reserved prefix (mcp__station-control_x__y) cannot dodge the reserved-server checks for an authored station-control_* pattern', () => {
+      const split = 'mcp__station-control_x__y';
+      const borrower = {
+        id: 'station-control_x',
+        command: 'node',
+        args: ['/tmp/station-control_x.js'],
+      };
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL, borrower],
+          'authentic',
+        ),
+      ).toBe(false);
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      // Control: the genuine name under the same pattern is still approved.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__list_agents',
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL, borrower],
+          'authentic',
+        ),
+      ).toBe(true);
+    });
+
     test('when the reserved id appears twice, the ENTRY THAT WINS DELIVERY (last) decides — genuine last approves, impostor last does not', () => {
       // Delivery is last-write-wins on the server-id key
       // (claude-mcp-passthrough.ts), so the guard must key on the last entry.

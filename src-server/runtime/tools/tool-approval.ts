@@ -116,10 +116,31 @@ function reservedBuiltinServerForTool(toolName: string): string | null {
     const server = separatorIndex > 0 ? rest.slice(0, separatorIndex) : '';
     if (server && RESERVED_BUILTIN_SERVER_IDS.has(server)) return server;
   }
+  // Also the CANONICAL form: `mcp__station-control_x__y` canonicalizes to
+  // `station-control_x_y`, which a `station-control_*` pattern matches, so
+  // it must meet the reserved-server checks too (and fail them: its raw
+  // server is not the reserved id — see `masqueradesAsReserved`).
+  const canonical = canonicalizeExternalToolName(toolName);
   for (const id of RESERVED_BUILTIN_SERVER_IDS) {
-    if (toolName === id || toolName.startsWith(`${id}_`)) return id;
+    for (const name of [toolName, canonical]) {
+      if (name === id || name.startsWith(`${id}_`)) return id;
+    }
   }
   return null;
+}
+
+/**
+ * True when an `mcp__<server>__<tool>` name's REAL server (the first `__`
+ * segment the engine generated) is not the reserved id its canonical form
+ * resolved to: a differently named server borrowing the reserved prefix.
+ */
+function masqueradesAsReserved(toolName: string, reserved: string): boolean {
+  const prefix = 'mcp__';
+  if (!toolName.startsWith(prefix)) return false;
+  const rest = toolName.slice(prefix.length);
+  const separatorIndex = rest.indexOf('__');
+  const server = separatorIndex > 0 ? rest.slice(0, separatorIndex) : '';
+  return server !== reserved;
 }
 
 /**
@@ -242,6 +263,11 @@ export function isAutoApprovedExternalTool(
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
+  if (
+    reservedServer !== null &&
+    masqueradesAsReserved(toolName, reservedServer)
+  )
+    return false;
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
