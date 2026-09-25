@@ -27,23 +27,34 @@ export interface NativePushSendFloor {
 
 export function createNativePushSendFloor(): NativePushSendFloor {
   const last = new Map<string, number>();
-  const record = (deviceId: string, at: number) => {
+  /**
+   * Entries more than one interval older than `now` constrain nothing.
+   * `now` is always the real current time, never a reserved future slot:
+   * pruning against a slot seconds ahead would drop other phones' entries
+   * that still hold them back.
+   */
+  const prune = (now: number) => {
+    for (const [id, sentAt] of last)
+      if (sentAt < now - NATIVE_PUSH_MIN_SEND_INTERVAL_MS) last.delete(id);
+  };
+  const set = (deviceId: string, at: number) => {
     const previous = last.get(deviceId);
     if (previous === undefined || at > previous) last.set(deviceId, at);
-    // Entries older than the floor constrain nothing; keep the map small.
-    for (const [id, sentAt] of last)
-      if (sentAt < at - NATIVE_PUSH_MIN_SEND_INTERVAL_MS) last.delete(id);
   };
   return {
     lastSendAt: (deviceId) => last.get(deviceId),
-    record,
+    record(deviceId, at) {
+      prune(at);
+      set(deviceId, at);
+    },
     reserve(deviceId, at) {
+      prune(at);
       const previous = last.get(deviceId);
       const slot =
         previous === undefined
           ? at
           : Math.max(at, previous + NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
-      record(deviceId, slot);
+      set(deviceId, slot);
       return slot;
     },
   };
