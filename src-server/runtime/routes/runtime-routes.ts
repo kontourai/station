@@ -5215,6 +5215,7 @@ export function configureRuntimeRoutes(
     webPushEnabled,
     notificationPreferences,
     notificationDeliveryRouter,
+    desktopHostChannel,
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
@@ -5522,7 +5523,9 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/notifications',
-    createNotificationPreferencesRoutes(notificationPreferences),
+    createNotificationPreferencesRoutes(notificationPreferences, {
+      ...(desktopHostChannel ? { desktopHost: desktopHostChannel } : {}),
+    }),
   );
   context.app.route(
     '/api/attention',

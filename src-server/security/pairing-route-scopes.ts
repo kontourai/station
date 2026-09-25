@@ -382,7 +382,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // #2586: reading the preferences discloses which projects and agents a
   // person muted and their devices' ids; writing them decides what may
   // interrupt every device. Both sit on the operate tier.
-  ...(['GET', 'PUT'] as const).map(
+  ...(['GET', 'PUT', 'PATCH'] as const).map(
     (method): PairingScopeRouteRule => ({
       id: `/api/notifications/preferences:${method.toLowerCase()}`,
       method,
@@ -392,6 +392,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // The desktop host's decided-alert feed carries notification content; the
+  // route further requires the local operator.
+  {
+    id: '/api/notifications/deliveries:get',
+    method: 'GET',
+    prefix: '/api/notifications/deliveries',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({

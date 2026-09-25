@@ -3,10 +3,16 @@
  * audience turns into the surfaces allowed to be interrupted by it. Future
  * accounts change this file, not the router or the channels.
  *
- * - `owner`: the operator and every active paired device. That is the set
- *   Web Push has always fanned owner notifications out to (approvals,
- *   pairing requests, job failures), so routing them through here changes
- *   no one's delivery.
+ * - `owner`: the operator's local surfaces, plus active paired devices that
+ *   are the operator's: a device with no person binding (paired by the
+ *   operator, reading as its own device identity — the personal-mode
+ *   default), or one whose binding resolves to the operator principal. A
+ *   device bound to a person (a tailnet identity) or a deployment account is
+ *   NOT the owner's unless that binding resolves to the operator: nothing
+ *   proves that person is the owner, so owner notifications (approvals,
+ *   pairing requests, job failures) do not reach it. The pre-#2586 Web Push
+ *   fan-out sent owner notifications to every subscribed device; this
+ *   narrows it.
  * - `session-readers`: devices that can read the session by their OWN
  *   credential — the same authority the agent-activity card reads with
  *   (`canReadAgentActivity` + `pairedDevicePrincipal` +
@@ -36,6 +42,13 @@ export interface AudienceResolution {
    */
   principalOf?: ReadonlyMap<SurfaceId, string>;
   operatorPrincipalId?: string;
+  /**
+   * Every surface here belongs to one person even though their principal
+   * ids differ (an unbound paired device reads as its own device identity,
+   * the operator's tabs as the operator). Focus on any of them may quiet the
+   * others. Set only for `owner`.
+   */
+  onePerson?: boolean;
 }
 
 export interface AudienceResolver {
@@ -98,9 +111,13 @@ export function createPairingAudienceResolver(
         const principalOf = new Map<SurfaceId, string>();
         const surfaces = new Set<SurfaceId>();
         for (const device of activeDevices()) {
+          const principalId = principalOrUndefined(deps, device);
+          const owners =
+            device.principalBinding === undefined ||
+            principalId === deps.operatorPrincipalId;
+          if (!owners) continue;
           const surface = deviceSurfaceId(device.id);
           surfaces.add(surface);
-          const principalId = principalOrUndefined(deps, device);
           if (principalId) principalOf.set(surface, principalId);
         }
         return {
@@ -108,6 +125,7 @@ export function createPairingAudienceResolver(
           includesOperator: true,
           principalOf,
           operatorPrincipalId: deps.operatorPrincipalId,
+          onePerson: true,
         };
       }
       if (audience.kind === 'session-readers') {

@@ -374,6 +374,29 @@ describe('NotificationDeliveryRouter', () => {
       ]);
     });
 
+    test("an owner audience is one person: focus on the operator's desktop quiets their unbound phone", () => {
+      const { bus, plain, timers } = setup({
+        resolver: {
+          resolve: () => ({
+            deviceSurfaces: new Set([PHONE, LAPTOP]),
+            includesOperator: true,
+            // Different principal ids (a device identity and the operator)...
+            principalOf: new Map([
+              [PHONE, 'device-identity:phone'],
+              [LAPTOP, 'human:local:operator'],
+            ]),
+            operatorPrincipalId: 'human:local:operator',
+            // ...but the resolver vouches they are one person.
+            onePerson: true,
+          }),
+        },
+        focus: focusOn(LAPTOP, 'human:local:operator'),
+      });
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification());
+      expect(plain.deliveries).toHaveLength(0);
+      expect(timers).toHaveLength(1);
+    });
+
     test('with no liveness wired, focus is inert (the safe side)', () => {
       const { bus, plain } = setup({
         focus: focusOn(LAPTOP),

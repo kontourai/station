@@ -56,7 +56,10 @@ function resolver(
     canPrincipalReadSession,
     resolver: createPairingAudienceResolver({
       listDevices: overrides.listDevices ?? (() => DEVICES),
-      devicePrincipalId: (candidate) => `principal:${candidate.id}`,
+      devicePrincipalId: (candidate) =>
+        candidate.id === 'bound-to-operator'
+          ? OPERATOR
+          : `principal:${candidate.id}`,
       operatorPrincipalId: OPERATOR,
       canPrincipalReadSession,
       logger,
@@ -65,16 +68,35 @@ function resolver(
 }
 
 describe('createPairingAudienceResolver', () => {
-  test('owner: the operator and every active paired device (Web Push parity)', () => {
-    const { resolver: subject } = resolver();
+  test("owner: the operator and the operator's devices — unbound, or bound to the operator", () => {
+    const tailnetBinding = {
+      provider: 'tailscale-serve',
+      subject: 'alice@example.com',
+      approvedAt: 1,
+      approvalId: '22222222-2222-4222-8222-222222222222',
+      approvedBy: 'human:local:operator',
+    } as PairedDevice['principalBinding'];
+    const { resolver: subject } = resolver({
+      listDevices: () => [
+        ...DEVICES,
+        // Bound to another person: nothing proves they are the owner.
+        device({ id: 'alice-phone', principalBinding: tailnetBinding }),
+        // Bound, but the binding resolves to the operator.
+        device({ id: 'bound-to-operator', principalBinding: tailnetBinding }),
+      ],
+    });
     const result = subject.resolve(envelope({ kind: 'owner' }));
     expect([...result.deviceSurfaces].sort()).toEqual([
+      'device:bound-to-operator',
       'device:delegation',
       'device:no-read-scope',
       'device:other-person',
       'device:reader',
     ]);
+    expect(result.deviceSurfaces.has('device:alice-phone')).toBe(false);
     expect(result.includesOperator).toBe(true);
+    // One person: focus on any of these may quiet the others.
+    expect(result.onePerson).toBe(true);
   });
 
   test('session-readers: only devices whose own credential can read that session', () => {

@@ -15,10 +15,13 @@ import {
 } from '@kontourai/station-contracts/notification-preferences';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  applyNotificationPreferencesPatch,
   NOTIFICATION_PREFERENCES_FILE,
+  NotificationPreferencesConflictError,
   NotificationPreferencesInvalidError,
   NotificationPreferencesStore,
   parseNotificationPreferences,
+  preferencesRevision,
 } from '../notification-preferences.js';
 
 const AGENT: NotificationSource = {
@@ -112,6 +115,17 @@ describe('parseNotificationPreferences', () => {
       }),
     ],
     [
+      'quiet hours with an unknown time zone',
+      valid({
+        quietHours: {
+          start: '22:00',
+          end: '07:00',
+          allowAttention: false,
+          timeZone: 'Mars/Olympus',
+        },
+      }),
+    ],
+    [
       'quiet hours missing allowAttention',
       valid({ quietHours: { start: '22:00', end: '07:00' } }),
     ],
@@ -156,6 +170,18 @@ describe('parseNotificationPreferences', () => {
     ],
   ])('refuses %s', (_label, value) => {
     expect(parseNotificationPreferences(value)).toBeUndefined();
+  });
+
+  test("quiet hours may carry the person's IANA zone", () => {
+    const withZone = valid({
+      quietHours: {
+        start: '22:00',
+        end: '07:00',
+        allowAttention: false,
+        timeZone: 'America/Denver',
+      },
+    });
+    expect(parseNotificationPreferences(withZone)).toEqual(withZone);
   });
 
   test('a __proto__ key stays data and cannot change the prototype', () => {
@@ -259,12 +285,93 @@ describe('NotificationPreferencesStore', () => {
     set({ agentNotifications: 'attention-only' });
     expect(store.isMuted(AGENT)).toBe(false);
     expect(store.isMuted(AGENT, 'attention')).toBe(false);
-    expect(store.isMuted(AGENT, 'failed')).toBe(true);
+    expect(store.isMuted(AGENT, 'failed')).toBe(false);
+    expect(store.isMuted(AGENT, 'done')).toBe(true);
     expect(store.isMuted(AGENT, 'info')).toBe(true);
 
     set({ perProject: { 'project-a': 'off' } });
     expect(store.isMuted(AGENT)).toBe(true);
     set({ perProject: { 'project-a': 'off' }, perAgent: { builder: 'all' } });
     expect(store.isMuted(AGENT)).toBe(false);
+  });
+});
+
+describe('patch and compare-and-swap', () => {
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'notification-preferences-patch-'));
+  });
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test('a patch changes only its fields; null removes a map entry or the window', () => {
+    const base = parseNotificationPreferences(valid())!;
+    const { quietHours: _removed, ...withoutQuiet } = base;
+    expect(
+      applyNotificationPreferencesPatch(base, {
+        perAgent: { reviewer: 'off', builder: null },
+        quietHours: null,
+      }),
+    ).toEqual({ ...withoutQuiet, perAgent: { reviewer: 'off' } });
+  });
+
+  test.each<[string, unknown]>([
+    ['an empty patch', {}],
+    ['an unknown key', { schemaVersion: 2 }],
+    ['an invalid level', { perAgent: { builder: 'loud' } }],
+    ['a map that is not an object', { perProject: 'off' }],
+    ['a result that fails the strict parse', { escalateAfterMs: -1 }],
+  ])('refuses %s', (_label, value) => {
+    expect(
+      applyNotificationPreferencesPatch(
+        defaultNotificationPreferences(),
+        value,
+      ),
+    ).toBeUndefined();
+  });
+
+  test('patches to different fields from two readers both survive (no lost update)', () => {
+    const store = new NotificationPreferencesStore(home);
+    // Both "screens" read the same starting document...
+    store.read();
+    // ...and each patches its own field.
+    store.patch({ perAgent: { builder: 'off' } });
+    store.patch({
+      quietHours: { start: '22:00', end: '07:00', allowAttention: true },
+    });
+    const stored = new NotificationPreferencesStore(home).current();
+    expect(stored.perAgent).toEqual({ builder: 'off' });
+    expect(stored.quietHours?.start).toBe('22:00');
+  });
+
+  test('a patch is refused while the stored document is unreadable', () => {
+    writeFileSync(join(home, NOTIFICATION_PREFERENCES_FILE), '{', {
+      mode: 0o600,
+    });
+    expect(() =>
+      new NotificationPreferencesStore(home).patch({
+        agentNotifications: 'off',
+      }),
+    ).toThrow(NotificationPreferencesConflictError);
+  });
+
+  test('write with ifMatch is a compare-and-swap on the stored revision', () => {
+    const store = new NotificationPreferencesStore(home);
+    const first = store.current();
+    const etag = preferencesRevision(first);
+    // Someone else changes it in between.
+    store.patch({ perAgent: { builder: 'off' } });
+    expect(() =>
+      store.write({ ...first, agentNotifications: 'off' }, { ifMatch: etag }),
+    ).toThrow(NotificationPreferencesConflictError);
+    expect(store.current().perAgent).toEqual({ builder: 'off' });
+    const fresh = preferencesRevision(store.current());
+    expect(
+      store.write(
+        { ...store.current(), agentNotifications: 'off' },
+        { ifMatch: fresh },
+      ).agentNotifications,
+    ).toBe('off');
   });
 });

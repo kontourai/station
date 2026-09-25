@@ -233,9 +233,12 @@ export function wireNotificationDeliveryRouter(
         if (!inAudience(surface, audience)) continue;
         // The report must come from the principal this Station resolves the
         // surface to; a mismatch is not trusted to quiet anyone.
-        if (principalField(surface, audience).principalId !== entry.principalId)
+        if (resolvedPrincipal(surface, audience) !== entry.principalId)
           continue;
-        result.set(surface, entry);
+        result.set(surface, {
+          ...entry,
+          principalId: groupPrincipal(entry.principalId, audience),
+        });
         try {
           if (liveness.isLive(surface)) liveInApp.add(surface);
         } catch (error) {
@@ -542,12 +545,31 @@ function remember(map: Map<string, string>, id: string, value: string): void {
   }
 }
 
+function resolvedPrincipal(
+  surface: SurfaceId,
+  audience: AudienceResolution,
+): string | undefined {
+  return surface.startsWith('local:')
+    ? audience.operatorPrincipalId
+    : audience.principalOf?.get(surface);
+}
+
+/** The focus grouping key: one key for a one-person audience. */
+const ONE_PERSON = 'audience:one-person';
+function groupPrincipal(
+  principalId: string,
+  audience: AudienceResolution,
+): string {
+  return audience.onePerson ? ONE_PERSON : principalId;
+}
+
+/** The surface's focus group for the policy; absent when unresolved. */
 function principalField(
   surface: SurfaceId,
   audience: AudienceResolution,
 ): { principalId?: string } {
-  const principalId = surface.startsWith('local:')
-    ? audience.operatorPrincipalId
-    : audience.principalOf?.get(surface);
-  return principalId === undefined ? {} : { principalId };
+  const principalId = resolvedPrincipal(surface, audience);
+  return principalId === undefined
+    ? {}
+    : { principalId: groupPrincipal(principalId, audience) };
 }

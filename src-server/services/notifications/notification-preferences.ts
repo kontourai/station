@@ -14,6 +14,7 @@
  * a form that claims "all" while the person had chosen "off". Delivery,
  * which cannot stop to ask, uses the defaults and warns once.
  */
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
   NOTIFICATION_URGENCIES,
@@ -25,6 +26,7 @@ import {
   type AgentNotificationLevel,
   defaultNotificationPreferences,
   NOTIFICATION_ESCALATE_AFTER_MS_MAX,
+  type NotificationPreferencesPatch,
   type NotificationPreferencesV1,
   type NotificationQuietHours,
   type NotificationSurfacePreference,
@@ -90,8 +92,10 @@ export function isNotificationSourceMuted(
   if (source.kind !== 'agent') return false;
   const level = agentNotificationLevel(preferences, source);
   if (level === 'off') return true;
+  // Failures pass too: like a request for input, a failure is something
+  // the person acts on. `info` and `done` wait in the inbox.
   if (level === 'attention-only')
-    return urgency !== undefined && urgency !== 'attention';
+    return urgency === 'info' || urgency === 'done';
   return false;
 }
 
@@ -200,10 +204,44 @@ export class NotificationPreferencesStore
     return isNotificationSourceMuted(this.current(), source, urgency);
   }
 
-  /** Validates, persists (0600, atomic) and only then serves the value. */
-  write(value: unknown): NotificationPreferencesV1 {
+  /**
+   * Validates, persists (0600, atomic) and only then serves the value. With
+   * `ifMatch`, refuses unless the stored document is still that revision
+   * (compare-and-swap for read-modify-write clients).
+   */
+  write(
+    value: unknown,
+    options: { ifMatch?: string } = {},
+  ): NotificationPreferencesV1 {
     const preferences = parseNotificationPreferences(value);
     if (!preferences) throw new NotificationPreferencesInvalidError();
+    if (options.ifMatch !== undefined) {
+      const current = this.read();
+      if (
+        !current.ok ||
+        preferencesRevision(current.preferences) !== options.ifMatch
+      )
+        throw new NotificationPreferencesConflictError();
+    }
+    return this.#persist(preferences);
+  }
+
+  /**
+   * Applies a partial update to the stored document in one synchronous
+   * step (this process is the only writer), so concurrent patches — a mute
+   * from the inbox and a settings edit — never lose each other. Refused
+   * while the stored document is unreadable: patching the defaults would
+   * silently discard what the person had saved.
+   */
+  patch(value: unknown): NotificationPreferencesV1 {
+    const current = this.read();
+    if (!current.ok) throw new NotificationPreferencesConflictError();
+    const next = applyNotificationPreferencesPatch(current.preferences, value);
+    if (!next) throw new NotificationPreferencesInvalidError();
+    return this.#persist(next);
+  }
+
+  #persist(preferences: NotificationPreferencesV1): NotificationPreferencesV1 {
     try {
       writePrivateJsonFileSync(
         this.#path,
@@ -227,6 +265,64 @@ export class NotificationPreferencesInvalidError extends Error {
   constructor() {
     super('Notification preferences are invalid');
   }
+}
+
+/** The stored document changed (or is unreadable) since the caller read it. */
+export class NotificationPreferencesConflictError extends Error {
+  constructor() {
+    super('Notification preferences changed');
+  }
+}
+
+/** Content revision, served as the ETag and checked by `If-Match`. */
+export function preferencesRevision(
+  preferences: NotificationPreferencesV1,
+): string {
+  return `"${createHash('sha256').update(JSON.stringify(preferences)).digest('hex').slice(0, 32)}"`;
+}
+
+const PATCH_KEYS = new Set([
+  'agentNotifications',
+  'perProject',
+  'perAgent',
+  'perSurface',
+  'quietHours',
+  'escalateAfterMs',
+]);
+
+/**
+ * The patched document, or undefined when the patch (or its result) is
+ * invalid. The result goes through the same strict parse as a full write.
+ */
+export function applyNotificationPreferencesPatch(
+  current: NotificationPreferencesV1,
+  patch: unknown,
+): NotificationPreferencesV1 | undefined {
+  if (!isPlainRecord(patch)) return undefined;
+  const keys = Object.keys(patch);
+  if (keys.length === 0 || keys.some((key) => !PATCH_KEYS.has(key)))
+    return undefined;
+  const next: Record<string, unknown> = { ...current };
+  for (const key of keys) {
+    const value = (
+      patch as NotificationPreferencesPatch & Record<string, unknown>
+    )[key];
+    if (key === 'perProject' || key === 'perAgent' || key === 'perSurface') {
+      if (!isPlainRecord(value)) return undefined;
+      const merged: Array<[string, unknown]> = Object.entries(
+        current[key] as Record<string, unknown>,
+      ).filter(([name]) => !Object.hasOwn(value, name));
+      for (const [name, entry] of Object.entries(value))
+        if (entry !== null) merged.push([name, entry]);
+      next[key] = Object.fromEntries(merged);
+    } else if (key === 'quietHours') {
+      if (value === null) delete next.quietHours;
+      else next.quietHours = value;
+    } else {
+      next[key] = value;
+    }
+  }
+  return parseNotificationPreferences(next);
 }
 
 function parseLevelMap(
@@ -269,8 +365,10 @@ function parseSurfaceMap(
 function parseQuietHours(value: unknown): NotificationQuietHours | undefined {
   if (!isPlainRecord(value)) return undefined;
   const keys = Object.keys(value);
+  const hasZone = Object.hasOwn(value, 'timeZone');
   if (
-    keys.length !== 3 ||
+    keys.length !== (hasZone ? 4 : 3) ||
+    (hasZone && !isTimeZone(value.timeZone)) ||
     typeof value.start !== 'string' ||
     typeof value.end !== 'string' ||
     !CLOCK_PATTERN.test(value.start) ||
@@ -284,7 +382,19 @@ function parseQuietHours(value: unknown): NotificationQuietHours | undefined {
     start: value.start,
     end: value.end,
     allowAttention: value.allowAttention,
+    ...(hasZone ? { timeZone: value.timeZone as string } : {}),
   };
+}
+
+function isTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 64)
+    return false;
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isKey(key: string): boolean {

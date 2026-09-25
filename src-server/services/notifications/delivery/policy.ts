@@ -7,7 +7,8 @@
  * The rules, in the order they apply to every non-in-app channel:
  *  1. `interrupt: 'silent'`, or an agent source the preferences mute:
  *     in-app only.
- *  4. Quiet hours (Station time zone): nothing interrupts, except
+ *  4. Quiet hours (the person's stored IANA zone, else the host's):
+ *     nothing interrupts, except
  *     `attention` when `allowAttention` is set. Checked before 2 and 3, so a
  *     quiet window never becomes a deferred interruption either.
  *  5. The surface's `minUrgency`.
@@ -16,7 +17,11 @@
  *     info/done, and attention/failed are deferred by `escalateAfterMs` and
  *     sent later only if still unread and not dismissed (the router
  *     re-checks and re-plans with `phase: 'escalation'`). Attention is
- *     never dropped because of focus elsewhere — only delayed.
+ *     never dropped because of focus elsewhere — only delayed. Legacy
+ *     records follow the same rules at the urgency their category ranks as:
+ *     approvals and pairing requests are `attention`, job/turn failures
+ *     `failed` (both escalate if still unread), a completed turn `done`
+ *     (skipped on other surfaces while the person is looking at one).
  *     "Focused" means all three: the report says `focused`, it is within
  *     the lease, and the surface has a live in-app channel (`liveInApp`) —
  *     a tab whose event stream dropped cannot show the toast, so it must
@@ -138,7 +143,11 @@ export function plan(input: PlanInput): PlanStep[] {
   const muted = isNotificationSourceMuted(prefs, env.source, env.urgency);
   const quiet =
     prefs.quietHours !== undefined &&
-    isWithinQuietHours(prefs.quietHours, now, input.timeZone) &&
+    isWithinQuietHours(
+      prefs.quietHours,
+      now,
+      prefs.quietHours.timeZone ?? input.timeZone,
+    ) &&
     !(env.urgency === 'attention' && prefs.quietHours.allowAttention);
   const focusedBy = focusedPrincipals(input);
   const escalates = env.urgency === 'attention' || env.urgency === 'failed';

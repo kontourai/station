@@ -1136,9 +1136,12 @@ export {
 } from './query-domains/featurePreviews.js';
 export {
   fetchNotificationPreferences,
+  type NotificationPreferencesPatch,
   type NotificationPreferencesV1,
+  patchNotificationPreferences,
   updateNotificationPreferences,
   useNotificationPreferencesQuery,
+  usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
 export type {

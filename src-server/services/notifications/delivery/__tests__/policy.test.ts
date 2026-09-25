@@ -286,7 +286,9 @@ describe('plan() — rule 1, silent or muted', () => {
     ['off', 'attention', 'skip:muted'],
     ['off', 'info', 'skip:muted'],
     ['attention-only', 'attention', 'send:nothing-focused'],
-    ['attention-only', 'failed', 'skip:muted'],
+    // Failures pass attention-only: the person acts on them.
+    ['attention-only', 'failed', 'send:nothing-focused'],
+    ['attention-only', 'info', 'skip:muted'],
     ['attention-only', 'done', 'skip:muted'],
     ['all', 'info', 'send:nothing-focused'],
   ])('agentNotifications %s, %s → %s', (level, urgency, expected) => {
@@ -371,6 +373,30 @@ describe('plan() — rule 4, quiet hours', () => {
     expect(decision(plan(input({ prefs: later })), PHONE)).toBe(
       'send:nothing-focused',
     );
+  });
+
+  test("the window is read in the person's stored zone, not the host's", () => {
+    // 12:00 UTC is 21:00 in Tokyo: inside 20:00–23:00 there, outside in UTC.
+    const tokyo = prefs({
+      quietHours: {
+        start: '20:00',
+        end: '23:00',
+        allowAttention: false,
+        timeZone: 'Asia/Tokyo',
+      },
+    });
+    expect(
+      decision(plan(input({ prefs: tokyo, timeZone: 'UTC' })), PHONE),
+    ).toBe('skip:quiet-hours');
+    const { timeZone: _zone, ...hostZone } = tokyo.quietHours!;
+    expect(
+      decision(
+        plan(
+          input({ prefs: prefs({ quietHours: hostZone }), timeZone: 'UTC' }),
+        ),
+        PHONE,
+      ),
+    ).toBe('send:nothing-focused');
   });
 
   test('windows wrap midnight and are read in the Station time zone', () => {

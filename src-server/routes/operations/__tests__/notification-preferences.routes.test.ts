@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import {
   defaultNotificationPreferences,
+  desktopHostSurfaceId,
+  NOTIFICATION_DELIVERIES_PATH,
   NOTIFICATION_PREFERENCES_PATH,
 } from '@kontourai/station-contracts/notification-preferences';
 import { Hono } from 'hono';
@@ -14,9 +16,11 @@ import {
   requiredPairingScope,
 } from '../../../security/pairing-route-scopes.js';
 import {
+  bindRuntimeLocalOperator,
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { DesktopHostChannel } from '../../../services/notifications/delivery/desktop-host-channel.js';
 import {
   NOTIFICATION_PREFERENCES_FILE,
   NotificationPreferencesStore,
@@ -32,13 +36,20 @@ const PERSON: RuntimeAuthenticatedRequestPrincipal = {
 
 let home: string;
 let app: Hono;
+let desktopHost: DesktopHostChannel;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'notification-preferences-routes-'));
+  desktopHost = new DesktopHostChannel();
   app = new Hono();
   app.route(
     '/api/notifications',
-    createNotificationPreferencesRoutes(new NotificationPreferencesStore(home)),
+    createNotificationPreferencesRoutes(
+      new NotificationPreferencesStore(home),
+      {
+        desktopHost,
+      },
+    ),
   );
 });
 afterEach(async () => {
@@ -46,33 +57,37 @@ afterEach(async () => {
 });
 
 async function call(
-  method: 'GET' | 'PUT',
+  method: 'GET' | 'PUT' | 'PATCH',
   body?: unknown,
   principal: RuntimeAuthenticatedRequestPrincipal = PERSON,
+  options: { path?: string; headers?: Record<string, string> } = {},
 ) {
   const request = new Request(
-    `http://station.test${NOTIFICATION_PREFERENCES_PATH}`,
+    `http://station.test${options.path ?? NOTIFICATION_PREFERENCES_PATH}`,
     {
       method,
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...options.headers,
+      },
       ...(body === undefined
         ? {}
-        : {
-            headers: { 'content-type': 'application/json' },
-            body: typeof body === 'string' ? body : JSON.stringify(body),
-          }),
+        : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
     },
   );
   setRuntimeAuthenticatedRequestPrincipal(request, principal);
+  bindRuntimeLocalOperator(request, principal);
   const response = await app.fetch(request);
   return {
     status: response.status,
+    etag: response.headers.get('etag'),
     json: (await response.json()) as Record<string, unknown>,
   };
 }
 
 describe('GET/PUT /api/notifications/preferences', () => {
   test('both verbs sit on the operate tier by an explicit rule', () => {
-    for (const method of ['GET', 'PUT']) {
+    for (const method of ['GET', 'PUT', 'PATCH']) {
       expect(requiredPairingScope(method, NOTIFICATION_PREFERENCES_PATH)).toBe(
         PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       );
@@ -102,7 +117,10 @@ describe('GET/PUT /api/notifications/preferences', () => {
       },
     };
     const put = await call('PUT', next);
-    expect(put).toEqual({ status: 200, json: { success: true, data: next } });
+    expect(put).toMatchObject({
+      status: 200,
+      json: { success: true, data: next },
+    });
     const get = await call('GET');
     expect(get.json).toEqual({ success: true, data: next, stored: true });
   });
@@ -113,7 +131,7 @@ describe('GET/PUT /api/notifications/preferences', () => {
     ['malformed JSON', '{not json'],
   ])('PUT refuses %s with 400 and stores nothing', async (_label, body) => {
     const put = await call('PUT', body);
-    expect(put).toEqual({
+    expect(put).toMatchObject({
       status: 400,
       json: { success: false, error: 'invalid_preferences' },
     });
@@ -161,5 +179,105 @@ describe('GET/PUT /api/notifications/preferences', () => {
       deviceKind: 'device' as const,
     };
     expect((await call('GET', undefined, device)).status).toBe(200);
+  });
+});
+
+describe('compare-and-swap and PATCH', () => {
+  test('PUT with a stale If-Match is refused 412 and changes nothing', async () => {
+    const { etag } = await call('GET');
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
+    // Another writer (the inbox's mute) lands first.
+    expect((await call('PATCH', { perAgent: { builder: 'off' } })).status).toBe(
+      200,
+    );
+    const stale = await call(
+      'PUT',
+      { ...defaultNotificationPreferences(), agentNotifications: 'off' },
+      PERSON,
+      { headers: { 'if-match': etag! } },
+    );
+    expect(stale.status).toBe(412);
+    expect(stale.json.error).toBe('preferences_changed');
+    const after = await call('GET');
+    expect(after.json.data).toMatchObject({
+      agentNotifications: 'all',
+      perAgent: { builder: 'off' },
+    });
+    // With the fresh tag it goes through.
+    const fresh = await call(
+      'PUT',
+      { ...(after.json.data as object), agentNotifications: 'off' },
+      PERSON,
+      { headers: { 'if-match': after.etag! } },
+    );
+    expect(fresh.status).toBe(200);
+  });
+
+  test('PATCH changes only the fields it names', async () => {
+    await call('PATCH', { perProject: { alpha: 'attention-only' } });
+    const patched = await call('PATCH', { perAgent: { builder: 'off' } });
+    expect(patched.status).toBe(200);
+    expect(patched.json.data).toMatchObject({
+      perProject: { alpha: 'attention-only' },
+      perAgent: { builder: 'off' },
+    });
+  });
+
+  test('an invalid PATCH is 400', async () => {
+    expect(
+      (await call('PATCH', { perAgent: { builder: 'loud' } })).status,
+    ).toBe(400);
+  });
+});
+
+describe('GET /api/notifications/deliveries (desktop host feed)', () => {
+  const surface = desktopHostSurfaceId('7c9e6679-7425-40de-944b-e07fc1f90ae7');
+  const LOCAL: RuntimeAuthenticatedRequestPrincipal = {
+    ...PERSON,
+    locality: 'home-possession',
+  };
+  const feed = (query: string, principal = LOCAL) =>
+    call('GET', undefined, principal, {
+      path: `${NOTIFICATION_DELIVERIES_PATH}?${query}`,
+    });
+
+  test('operate tier by an explicit rule', () => {
+    expect(requiredPairingScope('GET', NOTIFICATION_DELIVERIES_PATH)).toBe(
+      PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    );
+  });
+
+  test('the local operator reads its feed and registers the host', async () => {
+    const result = await feed(`surface=${surface}&after=0`);
+    expect(result.status).toBe(200);
+    expect(result.json.data).toEqual({
+      entries: [],
+      cursor: 0,
+      leaseMs: 90_000,
+    });
+    expect(desktopHost.registrations()).toEqual([{ surface, ref: surface }]);
+  });
+
+  test('a remote person (not this machine) is refused', async () => {
+    const result = await feed(`surface=${surface}&after=0`, PERSON);
+    expect(result.status).toBe(403);
+    expect(desktopHost.registrations()).toEqual([]);
+  });
+
+  test('an internal agent caller is refused', async () => {
+    const result = await feed(`surface=${surface}&after=0`, {
+      ...LOCAL,
+      kind: 'internal',
+    });
+    expect(result.status).toBe(403);
+  });
+
+  test.each([
+    'surface=device:phone&after=0',
+    'surface=local:0b1d2c3e-session&after=0',
+    `surface=${surface}&after=-1`,
+    `surface=${surface}&after=abc`,
+  ])('a malformed query is 400 (%s)', async (query) => {
+    expect((await feed(query)).status).toBe(400);
   });
 });

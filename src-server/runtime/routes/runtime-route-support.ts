@@ -21,6 +21,7 @@ import {
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
 import { createPairingAudienceResolver } from '../../services/notifications/delivery/audience-resolver.js';
+import { DesktopHostChannel } from '../../services/notifications/delivery/desktop-host-channel.js';
 import {
   type NotificationDeliveryRouter,
   wireNotificationDeliveryRouter,
@@ -560,6 +561,9 @@ export function configureRuntimeSupportServices(
     context.configLoader.getProjectHomeDir(),
     context.logger,
   );
+  // The desktop app's native host reads its decided alerts from a feed;
+  // inert until a host polls it (#2586).
+  const desktopHostChannel = new DesktopHostChannel();
   const notificationDeliveryRouter: NotificationDeliveryRouter = webPushEnabled
     ? wireNotificationDeliveryRouter({
         eventBus: context.eventBus,
@@ -569,6 +573,7 @@ export function configureRuntimeSupportServices(
             webPushService,
             context.logger,
           ),
+          desktopHostChannel,
         ],
         resolver: createPairingAudienceResolver({
           listDevices: () =>
@@ -694,6 +699,7 @@ export function configureRuntimeSupportServices(
     webPushEnabled,
     notificationPreferences,
     notificationDeliveryRouter,
+    desktopHostChannel: webPushEnabled ? desktopHostChannel : undefined,
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,

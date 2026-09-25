@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   },
   devices: [] as Array<{ id: string; name: string; revokedAt: number | null }>,
   mutate: vi.fn(),
+  patch: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -22,6 +23,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePairedDevicesQuery: () => ({ data: state.devices }),
   useUpdateNotificationPreferencesMutation: () => ({
     mutate: state.mutate,
+    isPending: false,
+    error: null,
+  }),
+  usePatchNotificationPreferencesMutation: () => ({
+    mutate: state.patch,
     isPending: false,
     error: null,
   }),
@@ -34,8 +40,16 @@ function saved(): NotificationPreferencesV1 {
   return state.mutate.mock.calls[0]![0] as NotificationPreferencesV1;
 }
 
+/** The one PATCH a change sent: only the field it changed. */
+function patched(): Record<string, unknown> {
+  expect(state.mutate).not.toHaveBeenCalled();
+  expect(state.patch).toHaveBeenCalledTimes(1);
+  return state.patch.mock.calls[0]![0] as Record<string, unknown>;
+}
+
 beforeEach(() => {
   state.mutate.mockReset();
+  state.patch.mockReset();
   state.preferences = {
     isLoading: false,
     error: null,
@@ -48,35 +62,36 @@ beforeEach(() => {
 });
 
 describe('NotificationDeliverySettings', () => {
-  test('changing the agent level saves the whole document with only that field changed', () => {
+  test('changing the agent level patches only that field', () => {
     render(<NotificationDeliverySettings />);
     fireEvent.change(screen.getByLabelText('Agent notifications'), {
       target: { value: 'attention-only' },
     });
-    expect(saved()).toEqual({
-      ...defaultNotificationPreferences(),
-      agentNotifications: 'attention-only',
-    });
+    expect(patched()).toEqual({ agentNotifications: 'attention-only' });
   });
 
   test('turning quiet hours on writes a complete window; off removes it', () => {
     const { unmount } = render(<NotificationDeliverySettings />);
     fireEvent.click(screen.getByLabelText('Quiet hours'));
-    expect(saved().quietHours).toEqual({
-      start: '22:00',
-      end: '07:00',
-      allowAttention: true,
+    expect(patched()).toEqual({
+      quietHours: {
+        start: '22:00',
+        end: '07:00',
+        allowAttention: true,
+        // The server reads the window in the person's own zone.
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
     });
     unmount();
 
-    state.mutate.mockReset();
+    state.patch.mockReset();
     state.preferences.data = {
       ...defaultNotificationPreferences(),
       quietHours: { start: '22:00', end: '07:00', allowAttention: true },
     };
     render(<NotificationDeliverySettings />);
     fireEvent.click(screen.getByLabelText('Quiet hours'));
-    expect('quietHours' in saved()).toBe(false);
+    expect(patched()).toEqual({ quietHours: null });
   });
 
   test('a quiet window that would be empty is not saved', () => {
@@ -89,6 +104,7 @@ describe('NotificationDeliverySettings', () => {
       target: { value: '07:00' },
     });
     expect(state.mutate).not.toHaveBeenCalled();
+    expect(state.patch).not.toHaveBeenCalled();
   });
 
   test('per-device settings list active devices only and save under device:<id>', () => {
@@ -97,8 +113,10 @@ describe('NotificationDeliverySettings', () => {
     fireEvent.change(screen.getByLabelText('Pixel: interrupt for'), {
       target: { value: 'failed' },
     });
-    expect(saved().perSurface).toEqual({
-      'device:phone': { minUrgency: 'failed', hideContent: false },
+    expect(patched()).toEqual({
+      perSurface: {
+        'device:phone': { minUrgency: 'failed', hideContent: false },
+      },
     });
   });
 

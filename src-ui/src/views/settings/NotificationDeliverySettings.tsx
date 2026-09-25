@@ -2,11 +2,12 @@ import { type NotificationUrgency } from '@kontourai/station-contracts/notificat
 import {
   type AgentNotificationLevel,
   defaultNotificationPreferences,
-  type NotificationPreferencesV1,
+  type NotificationPreferencesPatch,
 } from '@kontourai/station-contracts/notification-preferences';
 import {
   useNotificationPreferencesQuery,
   usePairedDevicesQuery,
+  usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
@@ -14,7 +15,7 @@ import { ErrorState, SkeletonBlock } from '../../components/state';
 
 const LEVELS: Array<{ value: AgentNotificationLevel; label: string }> = [
   { value: 'all', label: 'All' },
-  { value: 'attention-only', label: 'Only when an agent needs me' },
+  { value: 'attention-only', label: 'Only requests and failures' },
   { value: 'off', label: 'Off (inbox only)' },
 ];
 
@@ -31,14 +32,24 @@ const DEFAULT_QUIET_HOURS = {
   allowAttention: true,
 };
 
+/** Quiet hours are read in the person's zone on the server; this is it. */
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Station-wide delivery preferences (#2586): how far notifications may
- * interrupt beyond the inbox. Every change saves the whole document at
- * once; there is no draft state to lose.
+ * interrupt beyond the inbox. Every change saves at once as a PATCH of
+ * that one field; there is no draft state to lose.
  */
 export default function NotificationDeliverySettings() {
   const preferences = useNotificationPreferencesQuery();
   const update = useUpdateNotificationPreferencesMutation();
+  const patch = usePatchNotificationPreferencesMutation();
   const devices = usePairedDevicesQuery();
 
   if (preferences.isLoading) {
@@ -63,8 +74,10 @@ export default function NotificationDeliverySettings() {
   }
 
   const current = preferences.data;
-  const save = (next: NotificationPreferencesV1) => update.mutate(next);
-  const disabled = update.isPending;
+  // One field at a time, applied server-side: a mute made elsewhere in the
+  // meantime is never overwritten by this screen's older copy.
+  const save = (next: NotificationPreferencesPatch) => patch.mutate(next);
+  const disabled = patch.isPending || update.isPending;
   const quiet = current.quietHours;
   const activeDevices = (devices.data ?? []).filter(
     (device) => device.revokedAt === null,
@@ -89,7 +102,6 @@ export default function NotificationDeliverySettings() {
             disabled={disabled}
             onChange={(event) =>
               save({
-                ...current,
                 agentNotifications: event.currentTarget
                   .value as AgentNotificationLevel,
               })
@@ -111,10 +123,14 @@ export default function NotificationDeliverySettings() {
             disabled={disabled}
             onChange={(event) => {
               if (event.currentTarget.checked)
-                save({ ...current, quietHours: DEFAULT_QUIET_HOURS });
+                save({
+                  quietHours: {
+                    ...DEFAULT_QUIET_HOURS,
+                    timeZone: browserTimeZone(),
+                  },
+                });
               else {
-                const { quietHours: _removed, ...rest } = current;
-                save(rest);
+                save({ quietHours: null });
               }
             }}
           />
@@ -131,7 +147,7 @@ export default function NotificationDeliverySettings() {
                 onChange={(event) => {
                   const start = event.currentTarget.value;
                   if (start && start !== quiet.end)
-                    save({ ...current, quietHours: { ...quiet, start } });
+                    save({ quietHours: { ...quiet, start } });
                 }}
               />
             </label>
@@ -145,7 +161,7 @@ export default function NotificationDeliverySettings() {
                 onChange={(event) => {
                   const end = event.currentTarget.value;
                   if (end && end !== quiet.start)
-                    save({ ...current, quietHours: { ...quiet, end } });
+                    save({ quietHours: { ...quiet, end } });
                 }}
               />
             </label>
@@ -158,7 +174,6 @@ export default function NotificationDeliverySettings() {
                 disabled={disabled}
                 onChange={(event) =>
                   save({
-                    ...current,
                     quietHours: {
                       ...quiet,
                       allowAttention: event.currentTarget.checked,
@@ -184,10 +199,7 @@ export default function NotificationDeliverySettings() {
                 hideContent: false,
               };
               const setSurface = (next: typeof surfacePrefs) =>
-                save({
-                  ...current,
-                  perSurface: { ...current.perSurface, [surface]: next },
-                });
+                save({ perSurface: { [surface]: next } });
               return (
                 <div key={device.id} className="settings__notification-sound">
                   <span>{device.name}</span>
@@ -229,9 +241,9 @@ export default function NotificationDeliverySettings() {
           </div>
         </>
       )}
-      {update.error && (
+      {(patch.error ?? update.error) && (
         <div className="settings__notif-error" role="alert">
-          {update.error.message}
+          {(patch.error ?? update.error)?.message}
         </div>
       )}
     </fieldset>
