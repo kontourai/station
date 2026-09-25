@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const root = resolve(import.meta.dirname, '../..');
 const script = join(root, 'scripts/ecosystem-manifest.mjs');
@@ -29,6 +30,7 @@ const publishBoundary = join(root, 'scripts/ecosystem-publish-boundary.sh');
 const workflow = join(root, '.github/workflows/ecosystem-packaging.yml');
 const keyTablePath = join(root, 'config/release-manifest-keys.json');
 const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 const RELEASE_KEY_ID = 'station-portable-release-2026-09';
 const NIGHTLY_KEY_ID = 'station-portable-nightly-2026-09';
 
@@ -461,8 +463,7 @@ type InstallFixture = {
 };
 
 function makeInstallFixture(prefix: string): InstallFixture {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  roots.push(dir);
+  const dir = makeTempDir(prefix);
   const fakeBin = join(dir, 'bin');
   mkdirSync(fakeBin, { recursive: true });
   writeFileSync(
@@ -654,8 +655,7 @@ describe('pinned manifest signing keys', () => {
   });
 
   it('pins signer and installer canonicalization to one golden vector', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-manifest-golden-'));
-    roots.push(dir);
+    const dir = makeTempDir('station-manifest-golden-');
     const privateKey = goldenPrivateKey();
     const publicKey = createPublicKey(privateKey);
     const privatePath = join(dir, 'golden-private.pem');
