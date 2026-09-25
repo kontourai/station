@@ -9966,49 +9966,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-weight: 600;
 }
 
-/* ── Activity / chat switcher rows: anatomy now shared with the desktop
-   inbox panel (`chat-dock-inbox__*`, kontourai/station#3312) — only the
-   sheet-chrome rules below remain. ── */
-.mobile-task-switcher__show-all {
-  min-height: 44px;
-  margin-top: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.mobile-task-switcher__show-all:hover {
-  background: var(--bg-hover);
-}
-
-/* archive#1301: the activity-mode entry point into the Background
-   tasks sheet. Same shell as `__show-all` (a bordered full-width row) but it
-   opens a separate surface rather than expanding this one, so it sits above
-   the groups instead of below them. */
-.mobile-task-switcher__background-tasks-row {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  width: 100%;
-  margin-bottom: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mobile-task-switcher__background-tasks-row:hover,
-.mobile-task-switcher__background-tasks-row:focus-visible {
-  background: var(--bg-hover);
-}
-
 /* Ambiguous shortcut conflicts (archive#2576): equal-priority claims on one
    chord mean which fires is registration order — worth shouting in the one
    place people look up their keys. */

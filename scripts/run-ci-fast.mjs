@@ -226,6 +226,20 @@ function remaining(startedAt, now = Date.now) {
   return FAST_FEEDBACK_TIMEOUT_MS - (now() - startedAt);
 }
 
+/**
+ * Human-readable label for a `[command, args]` pair, e.g.
+ * `node scripts/typecheck-aggregate.mjs` or `npm run veritas:readiness`.
+ * Used only for the per-step timing line below; never parsed back.
+ */
+export function describeCiFastCommand(command, args) {
+  return [command, ...args].join(' ');
+}
+
+/** One decimal place is enough resolution to answer "where did the time go". */
+export function formatCiFastElapsedSeconds(elapsedMs) {
+  return (elapsedMs / 1000).toFixed(1);
+}
+
 export function classifyCiFastCommandResult(result) {
   if (result?.error?.code === 'ETIMEDOUT')
     throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
@@ -276,11 +290,23 @@ export function runCiFast({
     ],
     ...FAST_STATIC_COMMANDS,
   ].entries()) {
+    const iterationStartedAt = now();
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
       throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
     const status = execute(command, args, { cwd, timeout });
+    // station#2621: the timed-out receipt for a candidate merge_group run
+    // showed no evidence at all of which step consumed the ~6 extra
+    // minutes -- every command's own stdout is buffered by its own tooling
+    // (npm-lane-aggregate.mjs prints nothing until every lane finishes) and
+    // this runner never stamped a boundary between commands. Printing one
+    // line per step, independent of whether the step's own tool prints
+    // anything, makes the next timeout receipt answer "where did the time
+    // go" without needing a bespoke reproduction.
+    report(
+      `[ci:fast] ${describeCiFastCommand(command, args)} ${formatCiFastElapsedSeconds(now() - iterationStartedAt)}s\n`,
+    );
     if (index === 0 && status === SELECTOR_DEFERRED_EXIT_CODE) {
       report(SELECTOR_DEFERRED_MESSAGE);
       continue;
