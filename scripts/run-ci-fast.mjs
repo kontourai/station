@@ -119,49 +119,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
-  Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
-  // ~4s of source reads through scripts/proof-family-lane.mjs. Until this
-  // joined the lane the governance proof was composed ONLY by
-  // `full:regression:raw`, and full-regression.yml declares no push,
-  // pull_request, merge_group or schedule trigger — it is reachable from
-  // nightly.yml, release.yml and ci.yml's workflow_dispatch job alone. So a
-  // governance violation could not be observed before merge at all, and after
-  // merge only by the next Nightly. Two reached main that way on 2026-09-14
-  // (the unreviewed `.message` egress from #2061's Boards create conflict, and
-  // #2080's third argument breaking a support-services guardrail literal), and
-  // the Nightly that was supposed to find them had itself been red since
-  // 2026-09-12 on an unrelated stale test, so nothing surfaced either one.
-  Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
-  // ~7s: biome over every source root. The pre-push hook has run this since
-  // #3141, but a hook is per-machine — it requires `core.hooksPath` to be
-  // configured, `--no-verify` bypasses it, and nothing in a pull request or a
-  // merge-queue candidate re-runs it. So formatting and organized imports were
-  // enforced pre-merge only by whoever's checkout happened to be armed, and
-  // otherwise first by `verify:static` inside the nightly full-regression
-  // gate — where, as that hook's own header says, the cost is a whole gate
-  // cycle for whoever finds it instead of three seconds for whoever wrote it.
-  Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
   // ~35s (15s on an idle host, 75s on this one at load 48). Repository
   // governance readiness: required artifacts, the AI instruction-file sync,
-  // the protected-standards attestation, and the evidence-checks it routes.
-  // Nothing enforced it anywhere before this — not ci:fast, not the pre-push
-  // hook, and not full:regression either, so the "run `veritas readiness` and
-  // address any FAIL lines" instruction every AGENTS.md carries rested
-  // entirely on the contributor remembering.
-  //
-  // Last of the three, and after `verification:policy:gate`, because it
-  // re-executes both as routed evidence-checks. When one of those is what
-  // broke, the direct gate above reports it in seconds under its own name
-  // rather than half a minute later inside a readiness report.
-  //
-  // Not redundant with the proof above, measured rather than assumed:
-  // `proof:repo-governance` evaluates three of the nine repo-standards rules
-  // (REPO_GOVERNANCE_RULE_IDS in scripts/proof-family-lane.mjs), readiness
-  // evaluates all nine plus the protected-standards attestation. Deleting
-  // docs/strategy/multi-agent-delivery-protocol.md leaves the proof, the
-  // policy gate and lint green and reds readiness alone, on
-  // `verification-conduct-sentinels-and-fault-injection`.
-  //
+  // the protected-standards attestation, and its configured evidence checks.
+  // Readiness owns the repo-governance, verification-policy, and
+  // style-standard checks, so keeping them out of the standalone list avoids
+  // running each command twice in the same ci:fast lane.
   // `--working-tree` does NOT narrow this to the diff, which matters because
   // a CI checkout has no diff. Measured both ways: a forbidden shared-root
   // import reds the run whether it is uncommitted or committed with a clean

@@ -142,16 +142,9 @@ describe('bounded ci:fast runner', () => {
       // generator succeed on this tree", and the typecheck aggregate below
       // resolves its output.
       [process.execPath, ['scripts/generate-basis-mcp-apps.mjs']],
-      ['npm', ['run', 'verification:policy:gate']],
-      // The governance proof, biome, and Veritas readiness. Each was
-      // composed only by the nightly full-regression gate or by a per-machine
-      // pre-push hook, so a violation of any of the three could not be
-      // observed on a pull request; two governance breaks reached main on
-      // 2026-09-14 while the Nightly that owned them was itself red.
-      ['npm', ['run', 'proof:repo-governance']],
-      ['npm', ['run', 'lint:check']],
-      // Ordered after the two evidence-checks it re-executes, so a failure in
-      // either reports under its own name first.
+      // Readiness owns the repo-governance, verification-policy, and
+      // style-standard evidence checks, so these commands run once through
+      // its configured evidence plan instead of being repeated here.
       ['npm', ['run', 'veritas:readiness']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
@@ -216,7 +209,7 @@ describe('bounded ci:fast runner', () => {
       runCiFast({
         env: { STATION_CI_FAST_BASE: 'base-sha' },
         execute(_command, args) {
-          return args[1] === 'verification:policy:gate'
+          return args[1] === 'veritas:readiness'
             ? CI_FAST_INFRASTRUCTURE_EXIT_CODE
             : 0;
         },
