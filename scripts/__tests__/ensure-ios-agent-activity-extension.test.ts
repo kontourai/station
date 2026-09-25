@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import YAML from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   EXTENSION_TARGET,
   ensureIosAgentActivity,
@@ -37,6 +37,8 @@ targets:
         embed: false
       - sdk: UIKit.framework
 `;
+
+const makeTempDir = trackTempDirs();
 
 const committedSpec = 'src-desktop/gen/apple/project.yml';
 const committedXcodeProject =
@@ -270,30 +272,26 @@ describe('iOS agent-activity extension project spec', () => {
   });
 
   test('the command exits non-zero on a refusal and leaves the spec as it was', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-ios-ensure-'));
-    try {
-      const path = join(dir, 'project.yml');
-      const project = withEntitlementProperties([
-        '        keychain-access-groups:',
-        '          - $(AppIdentifierPrefix)com.example.shared',
-      ]);
-      writeFileSync(path, project);
-      const result = spawnSync(
-        process.execPath,
-        [
-          'scripts/ensure-ios-agent-activity-extension.mjs',
-          path,
-          '--app-bundle-id',
-          'io.kontourai.station',
-        ],
-        { encoding: 'utf8' },
-      );
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('first keychain group');
-      expect(readFileSync(path, 'utf8')).toBe(project);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    const dir = makeTempDir('station-ios-ensure-');
+    const path = join(dir, 'project.yml');
+    const project = withEntitlementProperties([
+      '        keychain-access-groups:',
+      '          - $(AppIdentifierPrefix)com.example.shared',
+    ]);
+    writeFileSync(path, project);
+    const result = spawnSync(
+      process.execPath,
+      [
+        'scripts/ensure-ios-agent-activity-extension.mjs',
+        path,
+        '--app-bundle-id',
+        'io.kontourai.station',
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('first keychain group');
+    expect(readFileSync(path, 'utf8')).toBe(project);
   });
 
   test('the committed project does not carry the extension until a build enables it', () => {
