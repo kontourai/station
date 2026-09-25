@@ -261,32 +261,69 @@ export function isDirectoryPhysicallyWithin(
  */
 type DirectoryContainmentVerdict = 'within' | 'outside' | 'unanswerable';
 
+type RealpathOutcome =
+  | { kind: 'resolved'; realPath: string }
+  | { kind: 'absent' }
+  | { kind: 'unreadable' };
+
+/**
+ * `realpathSync`, tolerant of a benign concurrent create (#2596).
+ *
+ * Two Station writers publishing under the same skills root race here: one's
+ * `mkdir(root, { recursive: true })` can create `path` in the gap between a
+ * first failed `realpathSync` and the `componentExists` fallback that used to
+ * decide "unreadable" from "absent" — so "did not exist a moment ago, exists
+ * now" (a completely ordinary concurrent create) read as "exists but could
+ * not be read" and threw a hard refusal. Reproduced live: `installSkillFromRegistry`
+ * and `createLocalSkillIfAbsent` running concurrently against a fresh skills
+ * root failed roughly 1 in 10 times with exactly that message before this fix.
+ *
+ * One immediate retry resolves the now-real path — the directory's creation
+ * is already complete by the time `componentExists` observed it, so nothing
+ * needs to wait for it. A SECOND failure with the component still present is
+ * genuinely unreadable (permission denial, a symlink loop), not raced, and
+ * still refuses.
+ */
+function realpathSyncTolerantOfRace(path: string): RealpathOutcome {
+  try {
+    return { kind: 'resolved', realPath: realpathSync(path) };
+  } catch {
+    // ONLY a missing path is absent; the same distinction `componentExists`
+    // makes below applies here — "I could not tell" must never read as "yes".
+    if (!componentExists(path)) return { kind: 'absent' };
+    try {
+      return { kind: 'resolved', realPath: realpathSync(path) };
+    } catch {
+      return { kind: 'unreadable' };
+    }
+  }
+}
+
 function directoryContainmentVerdict(
   root: string,
   candidate: string,
 ): DirectoryContainmentVerdict {
   if (!isDirectoryWithin(root, candidate)) return 'outside';
   const resolvedRoot = resolve(root);
-  let realRoot: string;
-  try {
-    realRoot = realpathSync(resolvedRoot);
-  } catch {
-    // Absent is an answer; unreadable is not. A root that is simply not there
-    // yet leaves the lexical containment above as the whole answer; a dangling
-    // link, an unreadable ancestor or a loop leaves this unable to say where a
-    // write would land — and "I could not tell" must never read as "yes".
-    return componentExists(resolvedRoot) ? 'unanswerable' : 'within';
-  }
-  try {
-    const realTarget = realpathSync(nearestExistingAncestor(candidate));
-    // The ancestor may BE the root itself, which is inside itself for this
-    // purpose: the skill directory below it has simply not been created.
-    return realTarget === realRoot || isDirectoryWithin(realRoot, realTarget)
-      ? 'within'
-      : 'outside';
-  } catch {
-    return 'unanswerable';
-  }
+  // Absent is an answer; unreadable is not. A root that is simply not there
+  // yet leaves the lexical containment above as the whole answer; a dangling
+  // link, an unreadable ancestor or a loop leaves this unable to say where a
+  // write would land — and "I could not tell" must never read as "yes".
+  const rootOutcome = realpathSyncTolerantOfRace(resolvedRoot);
+  if (rootOutcome.kind === 'absent') return 'within';
+  if (rootOutcome.kind === 'unreadable') return 'unanswerable';
+  const realRoot = rootOutcome.realPath;
+
+  const candidateOutcome = realpathSyncTolerantOfRace(
+    nearestExistingAncestor(candidate),
+  );
+  if (candidateOutcome.kind !== 'resolved') return 'unanswerable';
+  // The ancestor may BE the root itself, which is inside itself for this
+  // purpose: the skill directory below it has simply not been created.
+  return candidateOutcome.realPath === realRoot ||
+    isDirectoryWithin(realRoot, candidateOutcome.realPath)
+    ? 'within'
+    : 'outside';
 }
 
 /**
