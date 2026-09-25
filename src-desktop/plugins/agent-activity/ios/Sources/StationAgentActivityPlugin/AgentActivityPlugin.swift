@@ -251,13 +251,15 @@ enum LiveActivities {
   /// starts a local Live Activity once the app is active, so the widget can
   /// be checked on a simulator without a Station or APNs. The registration is
   /// NATIVE_PUSH_SEALED_TEST_VECTOR's (packages/contracts/src/native-push.ts).
-  /// Cases: `kat` (renders), `bad-seal`, `bad-key` (placeholder), `stale`
-  /// (goes stale 5 s in), `stale-past` (an update whose stale date has
-  /// already passed, which is how a Station that stopped updating looks).
-  /// ActivityKit does not show an activity requested with a past stale date,
-  /// so `stale-past` starts fresh and then updates with one. The vector's
-  /// card carries `activity_expires_at` 1800007200000 (2027-01-15 UTC); from
-  /// then on `kat` renders the placeholder, as any expired card does.
+  /// Cases: `kat` (renders the card), `bad-seal`, `bad-key` (placeholder),
+  /// `stale` (ActivityKit marks it stale 5 s in, and it switches to "Waiting
+  /// for Station" with no card content), `stale-past` (an update whose stale
+  /// date has already passed, which is how a Station that stopped updating
+  /// looks: the same waiting view). ActivityKit does not show an activity
+  /// requested with a past stale date, so `stale-past` starts fresh and then
+  /// updates with one. The vector's card carries `activity_expires_at`
+  /// 1800007200000 (2027-01-15 UTC); from then on every valid case shows the
+  /// waiting view, as any expired card does.
   enum DebugPreview {
     static let registrationId = "AAECAwQFBgcICQoLDA0ODw"
     static let payloadKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"

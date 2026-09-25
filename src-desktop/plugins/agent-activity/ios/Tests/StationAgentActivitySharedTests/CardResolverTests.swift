@@ -25,11 +25,13 @@ final class CardResolverTests: XCTestCase {
     _ state: StationAgentActivityAttributes.ContentState,
     attributesRid: String = SealedTestVector.registrationId,
     now: Date = SealedTestVector.updatedAt,
+    contextIsStale: Bool = false,
     registration: AgentActivityRegistration?? = .none
   ) -> AgentActivityCard {
     let stored = registration ?? self.registration
-    return AgentActivityCardResolver.resolve(state: state, attributesRid: attributesRid, now: now) {
-      rid in
+    return AgentActivityCardResolver.resolve(
+      state: state, attributesRid: attributesRid, now: now, contextIsStale: contextIsStale
+    ) { rid in
       rid == stored?.id ? stored : nil
     }
   }
@@ -50,13 +52,33 @@ final class CardResolverTests: XCTestCase {
     XCTAssertEqual(model.hero?.project, "Login App")
   }
 
-  func testAnExpiredCardRendersThePlaceholderNotItsContent() {
+  func testAnExpiredCardIsStaleWithNoContent() {
     let expiry = SealedTestVector.expiresAtMillis
     guard case .card = resolve(state(), now: millis(expiry - 1)) else {
       return XCTFail("a card is current until its expiry")
     }
-    XCTAssertEqual(resolve(state(), now: millis(expiry)), .placeholder, "at its expiry")
-    XCTAssertEqual(resolve(state(), now: millis(expiry + 60_000)), .placeholder, "after it")
+    // `.stale` carries no model: nothing from an expired card can render.
+    XCTAssertEqual(resolve(state(), now: millis(expiry)), .stale, "at its expiry")
+    XCTAssertEqual(resolve(state(), now: millis(expiry + 60_000)), .stale, "after it")
+  }
+
+  func testActivityKitsStaleFlagIsStaleWithNoContent() {
+    // The Station's stale date is the expiry rounded down to whole seconds,
+    // so ActivityKit can say stale while the card is a moment from expiring.
+    let justBefore = millis(SealedTestVector.expiresAtMillis - 500)
+    guard case .card = resolve(state(), now: justBefore) else {
+      return XCTFail("current without the flag")
+    }
+    XCTAssertEqual(resolve(state(), now: justBefore, contextIsStale: true), .stale)
+  }
+
+  func testACardThatDoesNotVerifyIsThePlaceholderEvenWhenStale() {
+    let sealed = SealedTestVector.sealed
+    let tampered = String(sealed.dropLast()) + (sealed.last == "P" ? "Q" : "P")
+    let late = millis(SealedTestVector.expiresAtMillis + 60_000)
+    XCTAssertEqual(resolve(state(sealed: tampered), now: late), .placeholder)
+    XCTAssertEqual(resolve(state(sealed: tampered), contextIsStale: true), .placeholder)
+    XCTAssertEqual(resolve(state(sk: .some(nil)), now: late), .placeholder, "an unstamped state")
   }
 
   func testACardWithoutAReadableExpiryIsNotRendered() throws {

@@ -18,20 +18,23 @@ struct StationAgentActivityBundle: WidgetBundle {
 /// What one content update renders as, after every check has run.
 struct ResolvedCard {
   let card: AgentActivityCard
-  let stale: Bool
 
   init(_ context: ActivityViewContext<StationAgentActivityAttributes>) {
     card = AgentActivityCardResolver.resolve(
       state: context.state,
       attributesRid: context.attributes.rid,
+      contextIsStale: context.isStale,
       registration: RegistrationKeychain(accessGroup: nil).load)
-    stale = context.isStale
   }
 
+  /// The card's content; nil for the placeholder and for a stale card,
+  /// which shows nothing from the push.
   var model: ActivityModel? {
     if case .card(let model) = card { return model }
     return nil
   }
+
+  var stale: Bool { card == .stale }
 }
 
 struct StationAgentActivityWidget: Widget {
@@ -73,17 +76,23 @@ private let placeholderText = "Agent activity — open Station"
 private let staleText = "Waiting for Station"
 
 private func headline(_ resolved: ResolvedCard) -> String {
-  guard let model = resolved.model else { return placeholderText }
-  return resolved.stale ? staleText : model.summary
+  switch resolved.card {
+  case .placeholder: return placeholderText
+  case .stale: return staleText
+  case .card(let model): return model.summary
+  }
 }
 
 private func compactLabel(_ resolved: ResolvedCard) -> String {
-  guard let model = resolved.model else { return "Station" }
-  return resolved.stale ? "Waiting" : model.chip
+  switch resolved.card {
+  case .placeholder: return "Station"
+  case .stale: return "Waiting"
+  case .card(let model): return model.chip
+  }
 }
 
 private func phaseTint(_ resolved: ResolvedCard) -> Color {
-  guard let model = resolved.model, !resolved.stale else { return .gray }
+  guard let model = resolved.model else { return .gray }
   switch model.phase {
   case .approval?, .input?: return .orange
   case .failed?: return .red
@@ -93,8 +102,8 @@ private func phaseTint(_ resolved: ResolvedCard) -> Color {
 }
 
 private func symbolName(_ resolved: ResolvedCard) -> String {
-  guard let model = resolved.model else { return "square.stack.3d.up" }
   if resolved.stale { return "pause.circle" }
+  guard let model = resolved.model else { return "square.stack.3d.up" }
   switch model.phase {
   case .approval?: return "hand.raised.fill"
   case .input?: return "questionmark.bubble.fill"
@@ -126,8 +135,7 @@ struct AppIcon: View {
 struct MinimalView: View {
   let resolved: ResolvedCard
   var body: some View {
-    if let phase = resolved.model?.phase, !resolved.stale,
-      phase.needsUser || phase == .failed
+    if let phase = resolved.model?.phase, phase.needsUser || phase == .failed
     {
       PhaseSymbol(resolved: resolved)
     } else {
@@ -177,11 +185,13 @@ struct ExpandedDetail: View {
         ForEach(Array(model.rows.prefix(3).enumerated()), id: \.offset) { _, row in
           RowLine(row: row)
         }
-        if let action = model.action, !resolved.stale {
+        if let action = model.action {
           Text("\(action) in Station").font(.caption2).foregroundStyle(.secondary)
         }
       }
-      .opacity(resolved.stale ? 0.5 : 1)
+    } else if resolved.stale {
+      Text("Open Station for the latest.").font(.caption)
+        .foregroundStyle(.secondary)
     } else {
       Text("Open Station to see what your agents are doing.").font(.caption)
         .foregroundStyle(.secondary)
@@ -207,7 +217,7 @@ struct LockScreenView: View {
           }
         }
         Spacer(minLength: 6)
-        if resolved.model != nil { ChipLabel(resolved: resolved) }
+        if resolved.card != .placeholder { ChipLabel(resolved: resolved) }
       }
       if let model = resolved.model, model.rows.count > 1 {
         VStack(alignment: .leading, spacing: 2) {
