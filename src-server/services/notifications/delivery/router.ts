@@ -62,7 +62,7 @@ export interface FocusSource {
   ): ReadonlyMap<SurfaceId, FocusEntry>;
 }
 
-export const NO_FOCUS: FocusSource = { snapshotForPrincipals: () => new Map() };
+const NO_FOCUS: FocusSource = { snapshotForPrincipals: () => new Map() };
 
 /**
  * Whether a surface can show an in-app toast right now: a connected event
@@ -75,7 +75,7 @@ export interface InAppLiveness {
   isLive(surface: SurfaceId): boolean;
 }
 
-export const NO_LIVE_IN_APP: InAppLiveness = { isLive: () => false };
+const NO_LIVE_IN_APP: InAppLiveness = { isLive: () => false };
 
 interface RouterLogger {
   warn(message: string, meta?: Record<string, unknown>): void;

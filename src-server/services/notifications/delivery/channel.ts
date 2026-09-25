@@ -26,19 +26,6 @@ export type ChannelKind =
   | 'fcm-alert'
   | 'apns-alert';
 
-export interface ChannelRegistration {
-  kind: ChannelKind;
-  ref: string;
-}
-
-export interface DeliverySurface {
-  id: SurfaceId;
-  deviceId?: string;
-  /** Principal the surface reads as; absent when the resolver did not need it. */
-  principalId?: string;
-  channels: ChannelRegistration[];
-}
-
 export interface ChannelTarget {
   surface: SurfaceId;
   ref: string;
@@ -121,9 +108,7 @@ export function deliveryEnvelopeFor(notification: Notification): {
 }
 
 /** Whether the record carries an envelope at all, readable or not. */
-export function hasEnvelope(
-  notification: Pick<Notification, 'metadata'>,
-): boolean {
+function hasEnvelope(notification: Pick<Notification, 'metadata'>): boolean {
   const metadata = notification.metadata;
   return (
     typeof metadata === 'object' &&

@@ -69,7 +69,7 @@ export type NotificationPreferencesReadResult =
   | { ok: false; error: 'unreadable' };
 
 /** The effective level for an agent source: agent over project over global. */
-export function agentNotificationLevel(
+function agentNotificationLevel(
   preferences: NotificationPreferencesV1,
   source: Extract<NotificationSource, { kind: 'agent' }>,
 ): AgentNotificationLevel {
@@ -297,7 +297,7 @@ export class NotificationPreferencesConflictError extends Error {
   }
 }
 
-export const UNREADABLE_PREFERENCES_REVISION = '"unreadable"';
+const UNREADABLE_PREFERENCES_REVISION = '"unreadable"';
 
 /** Content revision, served as the ETag and checked by `If-Match`. */
 export function preferencesRevision(

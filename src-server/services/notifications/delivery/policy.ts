@@ -124,7 +124,7 @@ export function deliveryKey(surface: SurfaceId, channel: ChannelKind): string {
   return `${surface}|${channel}`;
 }
 
-export function isFocused(entry: FocusEntry | undefined, now: number): boolean {
+function isFocused(entry: FocusEntry | undefined, now: number): boolean {
   return (
     entry !== undefined &&
     entry.state === 'focused' &&

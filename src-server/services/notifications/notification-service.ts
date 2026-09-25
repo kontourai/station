@@ -147,7 +147,7 @@ export class NotificationEnvelopeValidationError extends Error {
  * internal producer's tag and block it forever.
  */
 export const REST_NOTIFICATION_SOURCE = 'api';
-export const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
+const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
 
 /**
  * Sources Station's own producers write under (every in-process
@@ -165,7 +165,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
 ]);
 
 /** Provider ids a provider may not register under: they name REST/agent writes. */
-export const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
+const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
   REST_NOTIFICATION_SOURCE,
   'sdk',
   'agent',
