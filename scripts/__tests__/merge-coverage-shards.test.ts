@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { mergeCoverageCorpus } from '../merge-coverage-shards.mjs';
 import {
   COVERAGE_SHARD_DIRECTORY,
@@ -50,16 +50,10 @@ function fullCoverage(id: string) {
   };
 }
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 function tempRoot() {
-  const root = mkdtempSync(join(tmpdir(), 'station-merge-coverage-shards-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-merge-coverage-shards-');
 }
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
 
 function writeShard(shardRoot: string, id: string, data: unknown) {
   mkdirSync(join(shardRoot, id), { recursive: true });
