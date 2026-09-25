@@ -447,6 +447,7 @@ function isFeed(value: unknown): value is SurfaceDeliveryFeed {
     typeof feed.surface === 'string' &&
     Number.isSafeInteger(feed.cursor) &&
     typeof feed.epoch === 'string' &&
+    (feed.now === undefined || typeof feed.now === 'string') &&
     Array.isArray(feed.entries) &&
     feed.entries.every(isEntry)
   );

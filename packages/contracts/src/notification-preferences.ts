@@ -153,6 +153,14 @@ export interface SurfaceDeliveryFeed {
   epoch: string;
   /** The host's registration lasts this long past each read. */
   leaseMs: number;
+  /**
+   * The server's clock when it answered (ISO 8601, UTC). A reader measures an
+   * entry's age as `now - at`, both on the server's clock, never against its
+   * own clock (a remote Station's clock may differ). Optional on the wire:
+   * servers before #2608 did not send it, and a reader then treats nothing as
+   * stale.
+   */
+  now?: string;
 }
 
 /** Owner decisions (#2582): everything on, three minute escalation, no quiet hours. */

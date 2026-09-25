@@ -164,6 +164,7 @@ export class DesktopHostChannel implements DeliveryChannel {
       cursor: this.#seq,
       epoch: this.#epoch,
       leaseMs: DESKTOP_HOST_LEASE_MS,
+      now: new Date(now).toISOString(),
     };
   }
 
