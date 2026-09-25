@@ -24,6 +24,7 @@ import {
   type DeliveryFeedDeps,
   pollDeliveryFeed,
   resetDeliveryFeedState,
+  type StoredCursor,
 } from '../platform/native/deliveryFeed';
 
 const A = 'http://127.0.0.1:4100';
@@ -56,6 +57,7 @@ function retract(seq: number, id: string) {
 function deps(
   answers: Array<SurfaceDeliveryFeed | undefined>,
   focused = false,
+  storage = new Map<string, StoredCursor>(),
 ) {
   const reads: Array<{ surface: string; after: number; epoch?: string }> = [];
   const notify = vi.fn(
@@ -69,8 +71,10 @@ function deps(
     },
     isWindowFocused: () => focused,
     notify,
+    loadCursor: (key) => storage.get(key),
+    saveCursor: (key, value) => void storage.set(key, value),
   };
-  return { d, reads, notify };
+  return { d, reads, notify, storage };
 }
 
 function feed(
@@ -84,6 +88,7 @@ function feed(
 describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
   beforeEach(() => {
     resetDeliveryFeedState();
+    localStorage.clear();
     notifyNatively.mockClear();
     authenticatedFetch.mockReset();
   });
@@ -165,6 +170,75 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
       { surface: SURFACE, after: 2, epoch: 'run-2' },
     ]);
     expect(notify).toHaveBeenCalledTimes(2);
+  });
+
+  test('a reload resumes from the stored cursor and posts what queued in between', async () => {
+    const storage = new Map<string, StoredCursor>();
+    const first = deps([feed(4)], false, storage);
+    await pollDeliveryFeed(A, SCOPE, first.d);
+
+    resetDeliveryFeedState(); // a reload: module state gone, storage kept
+    const second = deps(
+      [feed(6, [alert(5, 'n-1'), alert(6, 'n-2')])],
+      false,
+      storage,
+    );
+    expect(await pollDeliveryFeed(A, SCOPE, second.d)).toBe(2);
+    expect(second.reads).toEqual([
+      { surface: SURFACE, after: 4, epoch: 'run-1' },
+    ]);
+    expect(storage.get(`${SCOPE}\n${SURFACE}`)).toEqual({
+      cursor: 6,
+      epoch: 'run-1',
+    });
+  });
+
+  test('a reload after a server restart posts the new run’s feed from its start', async () => {
+    const storage = new Map<string, StoredCursor>([
+      [`${SCOPE}\n${SURFACE}`, { cursor: 40, epoch: 'run-1' }],
+    ]);
+    const { d, reads, notify } = deps(
+      [feed(1, [alert(1, 'n-1')], 'run-2')],
+      false,
+      storage,
+    );
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(reads).toEqual([{ surface: SURFACE, after: 40, epoch: 'run-1' }]);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  test('stored cursors are per connection: another connection still seeds', async () => {
+    const storage = new Map<string, StoredCursor>([
+      [`${SCOPE}\n${SURFACE}`, { cursor: 4, epoch: 'run-1' }],
+    ]);
+    const { d, notify } = deps(
+      [feed(9, [alert(8, 'b-1'), alert(9, 'b-2')])],
+      false,
+      storage,
+    );
+    expect(await pollDeliveryFeed(A, `${A}\nconn-b`, d)).toBe(0);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  test('default wiring persists the cursor in localStorage across a reload', async () => {
+    localStorage.clear();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    authenticatedFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: feed(3) }),
+    });
+    await pollDeliveryFeed(A, SCOPE);
+    resetDeliveryFeedState();
+    authenticatedFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: feed(4, [alert(4, 'n-1')]) }),
+    });
+    expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
+    expect(authenticatedFetch).toHaveBeenLastCalledWith(
+      `${A}/api/notifications/deliveries?surface=${encodeURIComponent(SURFACE)}&after=3&epoch=run-1`,
+    );
   });
 
   test('a new connection scope reseeds', async () => {

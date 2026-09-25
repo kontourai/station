@@ -18,9 +18,11 @@ import { notifyNatively } from './notify';
  * module does not re-decide any of that. It only
  * - reads the feed for `local:desktop-<installationId>` (reading also renews
  *   the host's lease, which is what makes the router target it at all);
- * - seeds on the first read of a connection: entries queued before this
- *   document started are not replayed as a burst (a reload loses at most
- *   what arrived between the last read and the reload — disclosed);
+ * - resumes across reloads: the cursor and epoch are kept in localStorage
+ *   per (endpoint, connection id, surface), so a reload reads on from where
+ *   the previous document stopped and posts what was queued in between;
+ * - seeds when there is no stored cursor (first run on a connection): the
+ *   feed's current backlog is not replayed as a burst;
  * - keeps one presentation guard: no OS alert while this window is focused
  *   (the entry is consumed, since the in-app toast already shows it);
  * - drops an alert whose retract arrives in the same read. A retract for an
@@ -39,10 +41,19 @@ export interface DeliveryFeedDeps {
   ): Promise<SurfaceDeliveryFeed | undefined>;
   isWindowFocused(): boolean;
   notify(input: { title: string; body?: string }): Promise<boolean>;
+  loadCursor(key: string): StoredCursor | undefined;
+  saveCursor(key: string, value: StoredCursor): void;
 }
 
+export interface StoredCursor {
+  cursor: number;
+  epoch: string;
+}
+
+const CURSOR_STORAGE_PREFIX = 'station.notificationDeliveryCursor:';
+
 let state: {
-  scopeKey: string;
+  storageKey: string;
   cursor: number | null;
   epoch?: string;
 } | null = null;
@@ -75,7 +86,37 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
     isWindowFocused: () =>
       document.visibilityState === 'visible' && document.hasFocus(),
     notify: notifyNatively,
+    loadCursor: (key) => {
+      try {
+        const value: unknown = JSON.parse(
+          localStorage.getItem(`${CURSOR_STORAGE_PREFIX}${key}`) ?? 'null',
+        );
+        return isStoredCursor(value) ? value : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    saveCursor: (key, value) => {
+      try {
+        localStorage.setItem(
+          `${CURSOR_STORAGE_PREFIX}${key}`,
+          JSON.stringify(value),
+        );
+      } catch {
+        /* Storage full or unavailable: the next reload seeds instead. */
+      }
+    },
   };
+}
+
+function isStoredCursor(value: unknown): value is StoredCursor {
+  if (typeof value !== 'object' || value === null) return false;
+  const stored = value as Partial<StoredCursor>;
+  return (
+    Number.isSafeInteger(stored.cursor) &&
+    (stored.cursor ?? -1) >= 0 &&
+    typeof stored.epoch === 'string'
+  );
 }
 
 /** One read of the feed. Returns how many OS alerts were posted. */
@@ -86,14 +127,17 @@ export async function pollDeliveryFeed(
 ): Promise<number> {
   const installationId = await deps.installationId();
   if (!installationId) return 0;
-  if (state?.scopeKey !== scopeKey) state = { scopeKey, cursor: null };
+  const surface = desktopHostSurfaceId(installationId);
+  const storageKey = `${scopeKey}\n${surface}`;
+  if (state?.storageKey !== storageKey) {
+    const stored = deps.loadCursor(storageKey);
+    state = stored
+      ? { storageKey, cursor: stored.cursor, epoch: stored.epoch }
+      : { storageKey, cursor: null };
+  }
   const current = state;
   const after = current.cursor ?? 0;
-  const feed = await deps.readFeed(
-    desktopHostSurfaceId(installationId),
-    after,
-    current.epoch,
-  );
+  const feed = await deps.readFeed(surface, after, current.epoch);
   // A connection switch while the read was in flight: this answer belongs
   // to the previous connection.
   if (state !== current || !feed) return 0;
@@ -104,6 +148,7 @@ export async function pollDeliveryFeed(
   const from = feed.epoch === current.epoch ? after : 0;
   current.cursor = feed.cursor;
   current.epoch = feed.epoch;
+  deps.saveCursor(storageKey, { cursor: feed.cursor, epoch: feed.epoch });
   if (seeding) return 0;
   const entries = [...feed.entries]
     .filter((entry) => entry.seq > from)
