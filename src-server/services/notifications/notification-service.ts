@@ -149,6 +149,28 @@ export class NotificationEnvelopeValidationError extends Error {
 export const REST_NOTIFICATION_SOURCE = 'api';
 export const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
 
+/**
+ * Sources Station's own producers write under (every in-process
+ * `schedule()`/`scheduleEnveloped()` caller; a test pins this against them).
+ * A record under one of these, or under a registered provider's id, owns its
+ * dedupe tag; any other source's record under a colliding tag was written by
+ * a request before #2597 and is taken over by the tag's rightful writer.
+ */
+export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
+  'agent',
+  'approval-inbox',
+  'device-pairing',
+  'scheduler',
+  'turn-completion',
+]);
+
+/** Provider ids a provider may not register under: they name REST/agent writes. */
+export const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  REST_NOTIFICATION_SOURCE,
+  'sdk',
+  'agent',
+]);
+
 export class NotificationDedupeSourceConflictError extends Error {
   constructor() {
     super('Notification dedupe tag belongs to another source');
@@ -227,7 +249,20 @@ export class NotificationService {
   }
 
   addProvider(provider: INotificationProvider): void {
+    // A provider named `api`/`sdk`/`agent` would receive the actions and
+    // dismissals of REST or agent records (dispatch is keyed by source).
+    if (RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id)) {
+      throw new RangeError(
+        `Notification provider id "${provider.id}" is reserved`,
+      );
+    }
     this.providers.set(provider.id, provider);
+  }
+
+  private ownsDedupeTags(source: string): boolean {
+    return (
+      INTERNAL_NOTIFICATION_SOURCES.has(source) || this.providers.has(source)
+    );
   }
 
   listProviders(): Array<{
@@ -402,6 +437,7 @@ export class NotificationService {
     updated: boolean;
   }> {
     let displaced: string | undefined;
+    let remaining = 0;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
@@ -412,16 +448,16 @@ export class NotificationService {
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
         if (existing && existing.source !== source) {
-          // A REST record holding a non-`api:` tag predates #2597's
-          // namespacing: that tag was never the request's to hold, so an
-          // internal/provider/agent writer takes it over (whatever its
-          // status) rather than being blocked forever.
-          if (
-            existing.source === REST_NOTIFICATION_SOURCE &&
-            source !== REST_NOTIFICATION_SOURCE
-          ) {
+          // A record under a source that is neither internal nor a
+          // registered provider can only have come from a request before
+          // #2597 (whose body chose any source: `api`, the SDK's `sdk`, a
+          // plugin string). That tag was never its to hold, so the writer
+          // takes it over (whatever its status) rather than being blocked
+          // forever. An internal/provider record still owns its tag.
+          if (!this.ownsDedupeTags(existing.source)) {
             all.splice(all.indexOf(existing), 1);
             displaced = existing.id;
+            remaining = all.length + 1;
             existing = undefined;
           } else {
             throw new NotificationDedupeSourceConflictError();
@@ -535,7 +571,14 @@ export class NotificationService {
       };
     });
 
-    if (displaced) this.clearTimer(displaced);
+    if (displaced) {
+      this.clearTimer(displaced);
+      // The displaced record is gone from the store: tell clients to refetch.
+      this.eventBus.emit(SERVER_EVENTS.NOTIFICATION_CLEARED, {
+        clearedCount: 1,
+        retainedCount: remaining,
+      });
+    }
     if (created) notificationOps.add(1, { op: 'schedule' });
 
     if (created && notification.status === 'delivered') {
