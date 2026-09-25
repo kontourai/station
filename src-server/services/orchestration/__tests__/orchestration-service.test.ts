@@ -1592,6 +1592,66 @@ describe('OrchestrationService', () => {
     },
   );
 
+  // B2: an unverified agent's (or an external sender's) dispatch is the
+  // operator's to read but acts for no one, on both dispatch paths.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'an unattributed Task session started by %s is readable by its owner and acts for no one',
+    async (_label, provider) => {
+      const root = join(tmp, `unattributed-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'unattributed-project',
+        title: 'Agent dispatch',
+        agentId: 'codex',
+      });
+      const dispatched = await composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      }).dispatch(task.id, {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // The start choke point stamps the marker the engine records.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({
+              userId: 'human:local:operator',
+              ownerAttribution: 'unattributed-agent',
+            }),
+          }),
+        );
+        return;
+      }
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:local:operator'),
+        ),
+      ).toBe(true);
+      expect(service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {

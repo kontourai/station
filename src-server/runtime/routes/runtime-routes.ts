@@ -78,6 +78,7 @@ import {
 } from '../../services/identity/relay-enrollment-service.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -1848,6 +1849,13 @@ export function configureRuntimeRoutes(
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );
+  // Who a session a non-orchestration route starts belongs to, decided
+  // exactly as `/api/orchestration` decides it for a start (B2): a request
+  // carrying Station's internal token is an agent, whose session is the
+  // verified caller's or, unverified, readable by the operator's account and
+  // acting for no one.
+  const sessionOwnerForRequest = (principalId: string, request: Request) =>
+    sessionOwnerStampFor(principalId, resolveAgentDispatchActor(request));
   context.app.route(
     '',
     createStationControlMcpRoutes({
@@ -2924,6 +2932,11 @@ export function configureRuntimeRoutes(
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
       readAuthorityForRequest: conversationReadAuthorityForRequest,
+      dispatchOwnerForRequest: (request) =>
+        sessionOwnerForRequest(
+          conversationReadAuthorityForRequest(request).userId,
+          request,
+        ),
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       sessionInventory,
@@ -4725,10 +4738,13 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(reviewEvidence, {
-      getUserId: (c) =>
-        resolveOrchestrationRequestPrincipal(
-          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-        ).id,
+      getOwner: (c) =>
+        sessionOwnerForRequest(
+          resolveOrchestrationRequestPrincipal(
+            c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+          ).id,
+          c.req.raw,
+        ),
       getTenantExecutionContext: currentTenantExecutionContext,
       reportError: (operation, error) =>
         reviewObserver.diagnostic({ operation, error }),
@@ -4833,6 +4849,11 @@ export function configureRuntimeRoutes(
     createOperatingStateRoutes(operatingStateService, {
       getWorkspacePath: resolveWorkspacePath,
       getSessionReadAuthority: conversationReadAuthorityForRequest,
+      dispatchOwnerForRequest: (request) =>
+        sessionOwnerForRequest(
+          conversationReadAuthorityForRequest(request).userId,
+          request,
+        ),
       intentBindingDeps: {
         taskGraphService: context.taskGraphService,
         taskDispatcher: context.taskDispatcher,
@@ -5366,10 +5387,13 @@ export function configureRuntimeRoutes(
             schedulerService.prepareStarterManualIntent(operationId),
         }),
         {
-          ownerUserIdForRequest: (c) =>
-            resolveOrchestrationRequestPrincipal(
-              c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-            ).id,
+          ownerForRequest: (c) =>
+            sessionOwnerForRequest(
+              resolveOrchestrationRequestPrincipal(
+                c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+              ).id,
+              c.req.raw,
+            ),
         },
       ),
     );

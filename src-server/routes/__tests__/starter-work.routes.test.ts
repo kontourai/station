@@ -11,7 +11,9 @@ import {
 import { createStarterWorkRoutes } from '../starter-work.js';
 
 /** The launching request's principal; these tests launch as one caller. */
-const STARTER_ROUTE_OPTIONS = { ownerUserIdForRequest: () => 'owner-1' };
+const STARTER_ROUTE_OPTIONS = {
+  ownerForRequest: () => ({ ownerUserId: 'owner-1' }),
+};
 
 function registry() {
   return {

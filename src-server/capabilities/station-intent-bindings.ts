@@ -50,6 +50,7 @@ import type {
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isHostedSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type { SessionOwnerStamp } from '../services/orchestration/session-owner-attribution.js';
 import type { TaskDispatcher } from '../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../services/projects/task-graph-service.js';
 import {
@@ -109,6 +110,12 @@ export interface StationIntentBindingDeps {
    */
   getSessionReadAuthority?: () => SessionReadAuthority | undefined;
   /**
+   * Who a board-dispatched session belongs to and whether it acts for them
+   * (`sessionOwnerStampFor`), resolved per request like the authority above.
+   * Absent, the authority's principal owns it.
+   */
+  getDispatchOwner?: () => SessionOwnerStamp | undefined;
+  /**
    * Lets runtime composition explicitly identify hosted execution while it
    * wires request context into board dispatch. A hosted authority remains the
    * default signal, and a missing hosted authority is inert.
@@ -154,11 +161,17 @@ function taskDispatchExecute(deps: StationIntentBindingDeps) {
     if (!authority) {
       throw new Error('Task dispatch requires a request principal');
     }
+    const owner = deps.getDispatchOwner?.() ?? {
+      ownerUserId: authority.userId,
+    };
     const input: TaskDispatchInput = { sourceSurface: 'console-board' };
     const outcome = await deps.taskDispatcher.dispatch(taskId, {
       ...input,
       fullAccessGrant: null,
-      ownerUserId: authority.userId,
+      ownerUserId: owner.ownerUserId,
+      ...(owner.ownerAttribution
+        ? { ownerAttribution: owner.ownerAttribution }
+        : {}),
     });
     if (outcome.kind !== 'dispatched') throw new Error(outcome.reason);
   };

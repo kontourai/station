@@ -34,7 +34,7 @@ export function createStarterSessionOwner(
       sourceSessionId,
       operationId,
       fullAccessGrant,
-      ownerUserId,
+      owner,
     }) => {
       try {
         const command = {
@@ -44,7 +44,10 @@ export function createStarterSessionOwner(
         };
         // The caller's principal authorizes the source and owns the child.
         const outcome = await orchestration.dispatchWithReceipt(command, {
-          userId: ownerUserId,
+          userId: owner.ownerUserId,
+          ...(owner.ownerAttribution
+            ? { ownerAttribution: owner.ownerAttribution }
+            : {}),
           ...(fullAccessGrant ? { fullAccessGrant } : {}),
         });
         const session = outcome.result as AdoptedSessionResult | undefined;

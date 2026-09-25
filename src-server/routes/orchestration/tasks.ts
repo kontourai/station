@@ -55,6 +55,7 @@ import {
 } from '../../services/evidence/task-answer-support-module.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
+import type { SessionOwnerStamp } from '../../services/orchestration/session-owner-attribution.js';
 import type {
   SessionAssistantTurnQueryOutcome,
   SessionToolResultQueryOutcome,
@@ -350,6 +351,13 @@ export function createTaskRoutes(
     sessionInventory?: SessionInventoryModule;
     sessionInventoryAppRead?: SessionInventoryAppReadModule;
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
+    /**
+     * Who a dispatch's session belongs to and whether it acts for them
+     * (`sessionOwnerStampFor`): production resolves Station's internal token
+     * as an unverified agent, whose session acts for no one. Without it the
+     * request authority's principal owns the session.
+     */
+    dispatchOwnerForRequest?: (request: Request) => SessionOwnerStamp;
     /**
      * The orchestration-owned exact answer resolver. It is injected at the
      * runtime seam so Task storage never receives a transcript store or an
@@ -1930,7 +1938,10 @@ export function createTaskRoutes(
       // The dispatched session belongs to the requesting principal. Without
       // a resolved request authority there is no one to own it, and an
       // ownerless session is readable by no caller.
-      const owner = options.readAuthorityForRequest?.(c.req.raw);
+      const authority = options.readAuthorityForRequest?.(c.req.raw);
+      const owner =
+        options.dispatchOwnerForRequest?.(c.req.raw) ??
+        (authority ? { ownerUserId: authority.userId } : undefined);
       if (!owner) {
         throw new Error('Task dispatch requires a resolved request principal');
       }
@@ -1938,7 +1949,10 @@ export function createTaskRoutes(
         ...getBody(c),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
         fullAccessGrant: fullAccessGrantForRequest(c),
-        ownerUserId: owner.userId,
+        ownerUserId: owner.ownerUserId,
+        ...(owner.ownerAttribution
+          ? { ownerAttribution: owner.ownerAttribution }
+          : {}),
       });
       if (outcome.kind === 'forbidden')
         return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);

@@ -33,6 +33,7 @@ interface ReviewOrchestrationPort {
 
 interface ReviewOrchestrationContext {
   userId?: string;
+  ownerAttribution?: ReviewExecutionInput['context']['ownerAttribution'];
   tenantExecutionContext?: ReviewExecutionInput['context']['tenantExecutionContext'];
 }
 
@@ -250,6 +251,9 @@ function orchestrationContext(
 ): ReviewOrchestrationContext {
   return {
     ...(input.context.userId ? { userId: input.context.userId } : {}),
+    ...(input.context.ownerAttribution
+      ? { ownerAttribution: input.context.ownerAttribution }
+      : {}),
     ...(input.context.tenantExecutionContext
       ? { tenantExecutionContext: input.context.tenantExecutionContext }
       : {}),

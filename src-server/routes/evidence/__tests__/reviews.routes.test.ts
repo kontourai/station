@@ -30,8 +30,13 @@ function app(service: Record<string, unknown>) {
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(service as never, {
       // The request's own principal, resolved from its Hono context.
-      getUserId: (context) =>
-        context.req.header('x-test-principal') ?? 'user:authenticated',
+      getOwner: (context) => ({
+        ownerUserId:
+          context.req.header('x-test-principal') ?? 'user:authenticated',
+        ...(context.req.header('x-test-agent')
+          ? { ownerAttribution: 'unattributed-agent' as const }
+          : {}),
+      }),
       getTenantExecutionContext: () => undefined,
       reportError: vi.fn(),
     }),
@@ -93,12 +98,30 @@ describe('review evidence routes', () => {
         userId: 'human:device:phone',
       }),
     );
+    // An unverified agent's review: the operator owns it but it acts for no one.
+    run.mockClear();
+    await app({ run }).request('/api/projects/station/reviews', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-test-principal': 'human:local:operator',
+        'x-test-agent': '1',
+      },
+      body: JSON.stringify(request),
+    });
+    expect(run).toHaveBeenLastCalledWith(
+      request,
+      expect.objectContaining({
+        userId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+      }),
+    );
     run.mockClear();
     const unresolved = new Hono();
     unresolved.route(
       '/api/projects/:slug/reviews',
       createReviewEvidenceRoutes({ run } as never, {
-        getUserId: () => {
+        getOwner: () => {
           throw new Error('principal unresolved');
         },
         getTenantExecutionContext: () => undefined,

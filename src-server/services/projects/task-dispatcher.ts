@@ -16,6 +16,7 @@ import {
   isFullAccessGrant,
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import type {
   SessionStartBoundaryClaim,
   TaskDispatchBoundaryClaim,
@@ -66,6 +67,13 @@ export type DispatchIntent = TaskDispatchInput & {
    * readable by no caller.
    */
   readonly ownerUserId: string;
+  /**
+   * Whether the session acts for `ownerUserId` (see `SessionOwnerStamp`): an
+   * unverified agent's or an external sender's dispatch passes
+   * `unattributed-agent`, so the session stays readable by the owner's
+   * account but acts for no one.
+   */
+  readonly ownerAttribution?: StartOwnerAttribution;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;

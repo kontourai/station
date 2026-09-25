@@ -67,6 +67,7 @@ import type {
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
@@ -2819,9 +2820,18 @@ export class TaskGraphService {
               },
             },
             // #2493: the dispatching request's grant, or none (a monitor, the
-            // board intent): the session runs `host` only with it.
-            input.fullAccessGrant
-              ? { fullAccessGrant: input.fullAccessGrant }
+            // board intent): the session runs `host` only with it. The owner
+            // attribution marks an unverified agent's or external sender's
+            // session to act for no one, at the service's start choke point.
+            input.fullAccessGrant || input.ownerAttribution
+              ? {
+                  ...(input.fullAccessGrant
+                    ? { fullAccessGrant: input.fullAccessGrant }
+                    : {}),
+                  ...(input.ownerAttribution
+                    ? { ownerAttribution: input.ownerAttribution }
+                    : {}),
+                }
               : undefined,
             {
               roomExecutionBinding: {
@@ -2840,7 +2850,12 @@ export class TaskGraphService {
           session: this.seedSession(
             reservation.sessionId,
             reservation.provider,
-            input.ownerUserId,
+            {
+              ownerUserId: input.ownerUserId,
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            },
             reservation.modelId,
             orchestrationService,
           ),
@@ -3767,7 +3782,7 @@ export class TaskGraphService {
   private seedSession(
     sessionId: string,
     provider: EngineId,
-    ownerUserId: string,
+    owner: SessionOwnerStamp,
     model?: string,
     orchestrationService = this.orchestrationService,
   ): ProviderSession {
@@ -3777,7 +3792,10 @@ export class TaskGraphService {
         provider,
         model,
         status: 'ready',
-        ownerUserId,
+        ownerUserId: owner.ownerUserId,
+        ...(owner.ownerAttribution
+          ? { ownerAttribution: owner.ownerAttribution }
+          : {}),
       });
     }
     const now = new Date().toISOString();

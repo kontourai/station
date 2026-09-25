@@ -222,6 +222,44 @@ describe('createStationHostIntentBindings', () => {
     expect(orchestrationDispatch).not.toHaveBeenCalled();
   });
 
+  test('a board "dispatch" intent carries the request\'s owner stamp, including an agent\'s unattributed marker', async () => {
+    const taskGraphService = createTempTaskGraphService();
+    const bindings = createStationHostIntentBindings({
+      taskGraphService,
+      taskDispatcher,
+      orchestrationService: {
+        dispatch: vi.fn(async () => undefined),
+        readSession: vi.fn(async () => null),
+      },
+      getSessionReadAuthority: intentAuthority,
+      getDispatchOwner: () => ({
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+      }),
+    });
+    const task = await taskGraphService.createTask({
+      projectId: 'project-alpha',
+      title: 'Agent board dispatch',
+    });
+    const resolution = resolveIntentBinding(
+      stationIntent('task dispatch', task.id),
+      bindings,
+    );
+    if (!resolution.bound) throw new Error('unreachable');
+    taskDispatcher.dispatch.mockClear();
+    taskDispatcher.dispatch.mockResolvedValueOnce({
+      kind: 'dispatched',
+      result: {} as TaskDispatchResult,
+    });
+    await resolution.execute(stationIntent('task dispatch', task.id));
+    expect(taskDispatcher.dispatch).toHaveBeenCalledWith(task.id, {
+      sourceSurface: 'console-board',
+      fullAccessGrant: null,
+      ownerUserId: 'human:local:operator',
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
   test('a board "dispatch" intent with no request principal dispatches nothing', async () => {
     const taskGraphService = createTempTaskGraphService();
     const bindings = createStationHostIntentBindings({

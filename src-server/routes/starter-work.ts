@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import type { SessionOwnerStamp } from '../services/orchestration/session-owner-attribution.js';
 import {
   StarterRegistry,
   StarterWorkPrerequisiteError,
@@ -173,11 +174,11 @@ export function createStarterWorkRoutes(
   registry: StarterRegistry,
   options: {
     /**
-     * The launching request's principal. A launch that starts or adopts a
-     * session records it as that session's owner; a request whose principal
-     * cannot be resolved throws here and never launches.
+     * Who a launched or adopted session belongs to and whether it acts for
+     * them (`sessionOwnerStampFor`); a request whose principal cannot be
+     * resolved throws here and never launches.
      */
-    ownerUserIdForRequest: (c: Context) => string;
+    ownerForRequest: (c: Context) => SessionOwnerStamp;
   },
 ) {
   const app = new Hono();
@@ -261,13 +262,13 @@ export function createStarterWorkRoutes(
               // #2493: continuing an attached session adopts it; the child
               // is `host` only for a request that may grant full access.
               fullAccessGrantForRequest(c),
-              options.ownerUserIdForRequest(c),
+              options.ownerForRequest(c),
             )
           : starterId === 'start-task'
             ? await registry.launchStartTask(
                 body,
                 fullAccessGrantForRequest(c),
-                options.ownerUserIdForRequest(c),
+                options.ownerForRequest(c),
               )
             : starterId === 'run-scheduled-check'
               ? await registry.launchScheduledCheck(body)

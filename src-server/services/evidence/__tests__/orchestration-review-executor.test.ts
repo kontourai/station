@@ -31,6 +31,8 @@ function input(signal = new AbortController().signal): ReviewExecutionInput {
     context: {
       requestedBy: { actorId: 'user:operator' },
       userId: 'operator',
+      // An unverified agent's review: the operator's to read, acting for no one.
+      ownerAttribution: 'unattributed-agent' as const,
     },
   };
 }
@@ -109,6 +111,12 @@ describe('OrchestrationReviewExecutor', () => {
         metadata: { userId: 'operator' },
       },
     });
+    // The owner stamp's attribution rides the start context, where the
+    // service's start choke point marks an unverified agent's session.
+    expect(orchestration.dispatchWithReceipt.mock.calls[0][1]).toEqual({
+      userId: 'operator',
+      ownerAttribution: 'unattributed-agent',
+    });
     expect(turn).toMatchObject({
       type: 'sendTurn',
       input: {
@@ -130,7 +138,7 @@ describe('OrchestrationReviewExecutor', () => {
     );
     expect(orchestration.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'stopSession' }),
-      { userId: 'operator' },
+      { userId: 'operator', ownerAttribution: 'unattributed-agent' },
     );
   });
 

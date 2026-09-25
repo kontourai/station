@@ -24,6 +24,23 @@ function orchestration() {
 }
 
 describe('createStarterSessionOwner (#2493)', () => {
+  test("an unverified agent's launch carries its unattributed marker to the adoption", async () => {
+    const { dispatchWithReceipt, owner } = orchestration();
+    await owner.continue({
+      sourceSessionId: 'attached',
+      operationId: 'op-3',
+      fullAccessGrant: null,
+      owner: {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+      },
+    });
+    expect((dispatchWithReceipt.mock.calls[0] as unknown[])[1]).toEqual({
+      userId: 'human:local:operator',
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
   test("a grant reaches the adoption dispatch's context", async () => {
     const { dispatchWithReceipt, owner } = orchestration();
     const grant = fullAccessGrantForTesting();
@@ -32,7 +49,7 @@ describe('createStarterSessionOwner (#2493)', () => {
         sourceSessionId: 'attached',
         operationId: 'op-1',
         fullAccessGrant: grant,
-        ownerUserId: 'human:device:phone',
+        owner: { ownerUserId: 'human:device:phone' },
       }),
     ).resolves.toMatchObject({ state: 'continued' });
     expect(dispatchWithReceipt).toHaveBeenCalledWith(
@@ -51,7 +68,7 @@ describe('createStarterSessionOwner (#2493)', () => {
       sourceSessionId: 'attached',
       operationId: 'op-2',
       fullAccessGrant: null,
-      ownerUserId: 'human:device:phone',
+      owner: { ownerUserId: 'human:device:phone' },
     });
     // The caller authorizes the source and owns the child; without it the
     // child would record no owner and be readable by no caller.

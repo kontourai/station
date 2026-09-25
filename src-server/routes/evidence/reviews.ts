@@ -5,14 +5,15 @@ import {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
 import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
+import type { SessionOwnerStamp } from '../../services/orchestration/session-owner-attribution.js';
 
 interface ReviewEvidenceRouteDeps {
   /**
-   * The requesting principal. It is recorded as the reviewer session's owner
-   * and authorizes that session's turn; a request whose principal cannot be
-   * resolved throws and runs no review.
+   * Who the reviewer session belongs to and whether it acts for them
+   * (`sessionOwnerStampFor`). The owner authorizes the session's turn; a
+   * request whose principal cannot be resolved throws and runs no review.
    */
-  getUserId(context: Context): string;
+  getOwner(context: Context): SessionOwnerStamp;
   getTenantExecutionContext(): TenantExecutionContext | undefined;
   reportError(operation: string, error: unknown): void;
 }
@@ -124,10 +125,14 @@ export function createReviewEvidenceRoutes(
     }
     if (request.target.projectSlug !== projectSlug) return rejected(context);
     try {
-      const userId = deps.getUserId(context);
+      const owner = deps.getOwner(context);
+      const userId = owner.ownerUserId;
       const status = await reviews.run(request, {
         requestedBy: { actorId: userId },
         userId,
+        ...(owner.ownerAttribution
+          ? { ownerAttribution: owner.ownerAttribution }
+          : {}),
         tenantExecutionContext: deps.getTenantExecutionContext(),
       });
       const code =

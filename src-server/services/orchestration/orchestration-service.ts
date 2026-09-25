@@ -7700,6 +7700,8 @@ export class OrchestrationService {
      * a started session does.
      */
     ownerUserId?: string;
+    /** See `SessionOwnerStamp`: an unverified start acts for no one. */
+    ownerAttribution?: StartOwnerAttribution;
   }): ProviderSession {
     this.initialize();
     const now = new Date().toISOString();
@@ -7712,7 +7714,16 @@ export class OrchestrationService {
         method: 'session.started',
         sessionId: input.threadId,
         initialState: 'created',
-        metadata: { userId: input.ownerUserId },
+        metadata: {
+          userId: input.ownerUserId,
+          ...sessionOwnerAttributionMetadata(
+            effectiveOwnerAttribution({
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            }),
+          ),
+        },
       } as CanonicalRuntimeEvent);
     }
     const session: ProviderSession = {

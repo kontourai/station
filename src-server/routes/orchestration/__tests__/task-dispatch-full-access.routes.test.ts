@@ -10,6 +10,7 @@
  * `TaskDispatcher` enforces the grant. Only the graph, the claim and the
  * engine start are fakes; the engine start records what it was asked for.
  */
+
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,9 +25,11 @@ import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { isFullAccessGrant } from '../../../security/coding-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { sessionOwnerStampFor } from '../../../services/orchestration/session-owner-attribution.js';
 import {
   createTaskDispatcher,
   type TaskDispatchRemoteSessions,
@@ -104,11 +107,16 @@ async function fixture() {
   // The engine start: records the modelOptions each session starts with.
   const started: Array<Record<string, unknown> | undefined> = [];
   // And the principal each session is recorded as belonging to.
-  const owners: string[] = [];
+  const owners: Array<{ ownerUserId: string; ownerAttribution?: string }> = [];
   const startOrSeed = vi.fn<TaskDispatchRemoteSessions['startOrSeed']>(
     async (_reservation, intent) => {
       started.push(intent.runtimeConfig?.modelOptions);
-      owners.push(intent.ownerUserId);
+      owners.push({
+        ownerUserId: intent.ownerUserId,
+        ...(intent.ownerAttribution
+          ? { ownerAttribution: intent.ownerAttribution }
+          : {}),
+      });
       return {
         session: { threadId: 'session-1', provider: 'claude' } as never,
         outcome: 'started',
@@ -147,7 +155,10 @@ async function fixture() {
 
   // #2493: the continue-session owner records the grant it is handed.
   const continueSession = vi.fn(
-    async (_input: { fullAccessGrant: unknown; ownerUserId: string }) => ({
+    async (_input: {
+      fullAccessGrant: unknown;
+      owner: { ownerUserId: string; ownerAttribution?: string };
+    }) => ({
       state: 'continued' as const,
       session: { threadId: 'adopted-child', controlMode: 'station-owned' },
     }),
@@ -220,6 +231,9 @@ async function fixture() {
     principals.set(c.req.raw, resolvePrincipal(c as never).id);
     await next();
   });
+  // Production's agent verdict with no station-control caller registry:
+  // every request carrying Station's internal token is an unverified agent.
+  const agentActor = createAgentDispatchActorResolver();
   app.route(
     '/api/tasks',
     createTaskRoutes(
@@ -232,13 +246,19 @@ async function fixture() {
             undefined,
             undefined,
           ),
+        dispatchOwnerForRequest: (request: Request) =>
+          sessionOwnerStampFor(principals.get(request)!, agentActor(request)),
       } as never,
     ),
   );
   app.route(
     '/api/starter-work',
     createStarterWorkRoutes(registry, {
-      ownerUserIdForRequest: (c) => resolvePrincipal(c as never).id,
+      ownerForRequest: (c) =>
+        sessionOwnerStampFor(
+          resolvePrincipal(c as never).id,
+          agentActor(c.req.raw),
+        ),
     }),
   );
 
@@ -367,14 +387,52 @@ test('each route records the requesting principal as the dispatched session owne
   expect((await f.dispatchTask(phone.credential, 'ask')).status).toBe(200);
   expect((await f.launchStarter(phone.credential, 'ask')).status).toBe(201);
   expect((await f.dispatchTask(f.operator.credential, 'ask')).status).toBe(200);
-  const devicePrincipal = f.owners[0]!;
-  // The device's own principal, never the operator's or an OS alias.
-  expect(devicePrincipal).toBe(`human:device:${phone.device.id}`);
+  // The device's own principal, never the operator's or an OS alias, and
+  // each acts for its owner (no unattributed marker).
+  const device = { ownerUserId: `human:device:${phone.device.id}` };
   expect(f.owners).toEqual([
-    devicePrincipal,
-    devicePrincipal,
-    LOCAL_OPERATOR_PRINCIPAL_ID,
+    device,
+    device,
+    { ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID },
   ]);
+});
+
+// B2: Station's internal token resolves to the operator, and any agent
+// holding a stdio child's env can present it. Both routes must record such a
+// session as the operator's (so the operator's account reads it) but acting
+// for no one, exactly as `/api/orchestration` does.
+test("an internal-token caller's dispatch and Starter launch are the operator's to read but act for no one", async () => {
+  const f = await fixture();
+  expect(
+    (
+      await f.postInternally('/api/tasks/task-1/dispatch', {
+        runtimeConfig: {
+          provider: 'claude',
+          modelOptions: { approvalMode: 'ask' },
+        },
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await f.postInternally('/api/starter-work/launch', {
+        starterId: 'start-task',
+        operationId: 'launch-internal',
+        task: { projectId: 'project-1', title: 'Agent task' },
+        dispatch: {
+          runtimeConfig: {
+            provider: 'claude',
+            modelOptions: { approvalMode: 'ask' },
+          },
+        },
+      })
+    ).status,
+  ).toBe(201);
+  const unattributed = {
+    ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    ownerAttribution: 'unattributed-agent',
+  };
+  expect(f.owners).toEqual([unattributed, unattributed]);
 });
 
 test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's full-access mode", async () => {
@@ -406,10 +464,17 @@ test.each([
       sourceSessionId: 'attached-source',
     };
     let response: { status: number; body: any };
-    // Station's internal principal and the operator both act as the
-    // operator; a device acts as itself.
-    let owner = LOCAL_OPERATOR_PRINCIPAL_ID;
+    // The operator in person acts as the operator and a device as itself.
+    // Station's internal principal is an unverified agent: the child is the
+    // operator's to read but acts for no one.
+    let owner: { ownerUserId: string; ownerAttribution?: string } = {
+      ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    };
     if (caller === 'internal') {
+      owner = {
+        ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerAttribution: 'unattributed-agent',
+      };
       response = await f.postInternally('/api/starter-work/launch', body);
     } else {
       let credential = f.operator.credential;
@@ -417,7 +482,7 @@ test.each([
         const phone = f.pair('Phone');
         if (caller === 'granted') f.grant(phone.device.id);
         credential = phone.credential;
-        owner = `human:device:${phone.device.id}`;
+        owner = { ownerUserId: `human:device:${phone.device.id}` };
       }
       response = await f.post(credential, '/api/starter-work/launch', body);
     }
@@ -427,6 +492,6 @@ test.each([
       isFullAccessGrant(f.continueSession.mock.calls[0]![0].fullAccessGrant),
     ).toBe(granted);
     // The adopted child belongs to the launching principal.
-    expect(f.continueSession.mock.calls[0]![0].ownerUserId).toBe(owner);
+    expect(f.continueSession.mock.calls[0]![0].owner).toEqual(owner);
   },
 );

@@ -63,6 +63,11 @@ function createApp(
         orchestrationService: { readSession },
       } as any,
       ...(authority ? { getSessionReadAuthority: () => authority } : {}),
+      // The request's owner stamp, as production derives it per request.
+      dispatchOwnerForRequest: (request: Request) => ({
+        ownerUserId: request.headers.get('x-test-owner') ?? 'owner',
+        ownerAttribution: 'unattributed-agent',
+      }),
     }),
   );
   return { app: parent, service, getWorkspacePath, readSession };
@@ -331,7 +336,10 @@ describe('operating-state routes', () => {
       '/api/projects/demo/operating-state/intent',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-owner': 'human:local:operator',
+        },
         body: JSON.stringify({
           intent: {
             id: 'i1',
@@ -348,6 +356,11 @@ describe('operating-state routes', () => {
       .mocked(createStationHostIntentBindings)
       .mock.calls.at(-1)![0];
     expect(deps.getSessionReadAuthority?.()).toBe(requestAuthority);
+    // And a dispatched session's owner stamp is this request's.
+    expect(deps.getDispatchOwner?.()).toEqual({
+      ownerUserId: 'human:local:operator',
+      ownerAttribution: 'unattributed-agent',
+    });
   });
 
   test('POST /intent never forwards a truthy-but-not-true consent as true', async () => {
