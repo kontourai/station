@@ -17,14 +17,22 @@ const NAME = ['t', '3'].join('');
 const ORG = ['ping', 'dotgg'].join('');
 
 /**
- * PCRE, matched case-insensitively: the product name with or without a space
- * before `code`, the company name, the product's per-user directory, and its
- * source organisation.
+ * PCRE, matched case-insensitively, one alternative per form:
+ * - the product and company names, however they are joined (`X code`,
+ *   `X-code`, `X_code`, `X.code`, `Xcode`, `X  tools`, `XTools`, …);
+ * - the product's per-user directory `.X` as a path segment (`~/.X`,
+ *   `$HOME/.X`, `'.X'` in a path-join call, `\.X\` on Windows);
+ * - its web domain;
+ * - the short possessive and adjective forms (`X's`, `X-style`), kept narrow
+ *   so an EC2 instance family or a `T1/T2/T3` test-row label does not match;
+ * - its source organisation.
  */
+const QUOTES_AND_SEPARATORS = `\\\\/'"\``;
 export const EXCLUDED_NAMES_PATTERN = [
-  `${NAME}\\s?code`,
-  `${NAME} tools`,
-  `/\\.${NAME}/`,
+  `${NAME}[\\s._-]*(?:code|tools)`,
+  `(?:^|[~${QUOTES_AND_SEPARATORS}])\\.${NAME}(?:[${QUOTES_AND_SEPARATORS}]|$)`,
+  `${NAME}\\.gg`,
+  `\\b${NAME}(?:-style|'s)\\b`,
   ORG,
 ].join('|');
 

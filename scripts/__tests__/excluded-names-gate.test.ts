@@ -48,30 +48,56 @@ function runGate(cwd: string) {
 
 describe('excluded-names gate', () => {
   it('exits non-zero and names the file and line for each spelling it bans', () => {
+    const lower = NAME.toLowerCase();
     const spellings = [
       `${NAME} Code`,
-      `${NAME.toLowerCase()}code`,
+      `${NAME}  Code`,
+      `${lower}code`,
+      `${lower}-code`,
+      `${lower}_code`,
+      `${lower}.code`,
+      `${NAME}Code`,
       `${NAME} Tools Inc.`,
-      `/home/me/.${NAME.toLowerCase()}/worktrees`,
+      `${NAME}Tools`,
+      `${lower}-tools`,
+      `/home/me/.${lower}/worktrees`,
+      `path.join(homedir(), '.${lower}')`,
+      `cd $HOME/.${lower}`,
+      `C:\\Users\\me\\.${lower}\\x`,
+      `~/.${lower}`,
+      `a ${NAME}-style fallback`,
+      `${NAME}'s relay`,
+      `https://${lower}.gg/`,
       `github.com/${['ping', 'dotgg'].join('')}/repo`,
     ];
-    for (const spelling of spellings) {
-      const dir = scratchRepo({
-        'clean.ts': 'export const ok = 1;\n',
-        'note.md': `intro\nAdapted from ${spelling}.\n`,
-      });
-      const result = runGate(dir);
-      expect(result.status, spelling).toBe(1);
-      expect(result.stderr).toContain('FAIL: 1 line(s)');
-      expect(result.stderr).toContain('note.md:2:');
-      expect(result.stderr).not.toContain('clean.ts');
-    }
+    // One committed file per spelling, the spelling on line 2, so the output
+    // must name every file: a spelling the pattern misses is a missing line.
+    const files: Record<string, string> = {
+      'clean.ts': 'export const ok = 1;\n',
+    };
+    spellings.forEach((spelling, index) => {
+      files[`s${index}.md`] = `intro\n${spelling}\n`;
+    });
+    const result = runGate(scratchRepo(files));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`FAIL: ${spellings.length} line(s)`);
+    spellings.forEach((spelling, index) => {
+      expect(result.stderr, spelling).toContain(`s${index}.md:2:`);
+    });
+    expect(result.stderr).not.toContain('clean.ts');
   });
 
   it('exits zero on a repository without the names', () => {
+    const lower = NAME.toLowerCase();
     const dir = scratchRepo({
-      'a.ts': `export const size = 'm${NAME.toLowerCase()}.micro';\n`,
-      'b.md': `The ${NAME} instance family and T1/T2/${NAME} test rows are fine.\n`,
+      'a.ts': `export const size = '${lower}.micro';\n`,
+      'b.md': [
+        `The ${NAME} instance family and T1/T2/${NAME} test rows are fine.`,
+        `${NAME} CPU-credit mode uses Standard credits.`,
+        `A cache at ~/.${lower}x/ is some other tool's directory.`,
+        `${NAME}s and ${NAME}-medium are instance sizes.`,
+        '',
+      ].join('\n'),
     });
     const result = runGate(dir);
     expect(result.stderr).toBe('');
@@ -97,6 +123,7 @@ describe('excluded-names gate', () => {
     const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
     const result = runGate(repoRoot);
     expect(result.stderr).not.toContain('excluded-names-gate');
+    expect(result.status).toBe(0);
     expect(pattern.test(`${NAME} Code`)).toBe(true);
   });
 });
