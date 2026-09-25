@@ -1266,6 +1266,8 @@ describe('Orchestration Routes', () => {
       ambientContext: '[Timezone: America/Denver]',
       clientTurnId: 'client-turn-1',
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -1944,6 +1946,8 @@ describe('Orchestration Routes', () => {
       environment: { kind: 'saved', id: 'env-remote' },
       model: undefined,
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2105,6 +2109,8 @@ describe('Orchestration Routes', () => {
         model: { override: 'gpt-5.6-sol' },
       },
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
     });
   });
 
@@ -2152,6 +2158,8 @@ describe('Orchestration Routes', () => {
         model: { options: { approvalMode: 'auto', effort: 'high' } },
       },
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
     });
   });
 
@@ -2192,6 +2200,8 @@ describe('Orchestration Routes', () => {
       principal: undefined,
       taskId: 'task:2',
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
     });
     expect(
       continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),
@@ -2495,6 +2505,8 @@ describe('Orchestration Routes', () => {
       principal: undefined,
       taskId: 'task:1',
       userId: 'bound-user',
+      // #2493: the test app has no auth boundary, so no grant.
+      fullAccessGrant: null,
     });
     expect(
       continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),

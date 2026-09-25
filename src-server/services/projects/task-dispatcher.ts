@@ -10,6 +10,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
   isFullAccessGrant,
@@ -47,12 +48,14 @@ type MonitorTaskDispatchIntent = Readonly<{
   onSessionAbandoned?: (sessionId: string) => void;
 }>;
 
-type DispatchIntent = TaskDispatchInput & {
+export type DispatchIntent = TaskDispatchInput & {
   /**
    * #2436: the caller's authority to start this Task's session at full
    * access (`runtimeConfig.modelOptions.approvalMode: 'never'`). Required so
    * that every caller, present and future, states it; `null` for a caller
    * acting without a request that may grant it. Enforced by `dispatch`.
+   * #2493: also carried to the session start, which runs `host` only with
+   * it, so an Agent or Station default of `never` stays confined otherwise.
    */
   readonly fullAccessGrant: FullAccessGrant | null;
   readonly signal?: AbortSignal;
@@ -218,8 +221,11 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     const startedAt = performance.now();
     // #2436: full access needs the caller's grant. Checked before anything
     // is reserved, so a refusal leaves the Task exactly as it was.
+    // #2569: an ACP agent's own full-access mode is the same request.
+    const options = intent.runtimeConfig?.modelOptions;
     if (
-      intent.runtimeConfig?.modelOptions?.approvalMode === 'never' &&
+      (options?.approvalMode === 'never' ||
+        isKnownFullAccessAcpModeId(options?.mode)) &&
       !isFullAccessGrant(intent.fullAccessGrant)
     ) {
       return {

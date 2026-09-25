@@ -36,7 +36,7 @@ export type {
 export interface OrchestrationSendTurnInput
   extends Omit<
     ProviderSendTurnInput,
-    'recoveryCorrelationId' | 'reviewIsolation'
+    'recoveryCorrelationId' | 'reviewIsolation' | 'confinement'
   > {
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
@@ -50,7 +50,7 @@ export interface OrchestrationSendTurnInput
  */
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
-  'credentialProfileRef' | 'reviewIsolation'
+  'credentialProfileRef' | 'reviewIsolation' | 'confinement'
 >;
 
 export type OrchestrationCommand =

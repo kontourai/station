@@ -112,6 +112,28 @@ describe('createAnswerShareRoutes', () => {
     );
   });
 
+  it('refuses a hosted mint the hosted view could never open (#2561)', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+    });
+    const mint = vi.fn(async () => ({ share: SUMMARY, token: 'the-token' }));
+    const app = createAnswerShareRoutes(mockService({ mint }), {
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest(
+          'account-user',
+          { tenantId: tenantId('alpha') },
+          registry,
+        ),
+    });
+    const response = await post(app, {
+      sessionId: 'thread-1',
+      turnId: 'turn-1',
+    });
+    expect(response.status).toBe(409);
+    expect(mint).not.toHaveBeenCalled();
+  });
+
   it('mints and returns the one-time token', async () => {
     const response = await post(createAnswerShareRoutes(mockService()), {
       sessionId: 'thread-1',
