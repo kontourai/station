@@ -36,13 +36,15 @@ function windowsFs(): ServiceFs {
       path: nodeFs.PathLike,
       options?: Parameters<typeof nodeFs.mkdirSync>[1],
     ) => nodeFs.mkdirSync(translate(path), options),
-    readFileSync: (
-      path: nodeFs.PathLike,
-      options?: nodeFs.ObjectEncodingOptions | BufferEncoding | null,
-    ) =>
-      options === undefined || options === null
-        ? nodeFs.readFileSync(translate(path))
-        : nodeFs.readFileSync(translate(path), options),
+    // A pass-through double: forward whatever options the code under test
+    // gave, without narrowing them to one of readFileSync's overloads.
+    readFileSync: (path: nodeFs.PathLike, options?: unknown) =>
+      (
+        nodeFs.readFileSync as (
+          path: nodeFs.PathLike,
+          options?: unknown,
+        ) => string | Buffer
+      )(translate(path), options),
     realpathSync: (path: nodeFs.PathLike) =>
       nodeFs.realpathSync(translate(path)),
     renameSync: (oldPath: nodeFs.PathLike, newPath: nodeFs.PathLike) =>
