@@ -12,10 +12,12 @@ const ROOT = resolve(__dirname, '../../..');
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 function invokedCommands(source: string): string[] {
-  return [...source.matchAll(/invokeTauri(?:<[^>]*>)?\(\s*'([a-z_]+)'/g)]
+  return [
+    ...source.matchAll(/invokeTauri(?:<[^>]*>)?\(\s*['"`]([a-z_]+)['"`]/g),
+  ]
     .map((match) => match[1] ?? '')
     .concat(
-      [...source.matchAll(/_COMMAND = '([a-z_]+)'/g)].map(
+      [...source.matchAll(/_COMMAND = ['"`]([a-z_]+)['"`]/g)].map(
         (match) => match[1] ?? '',
       ),
     );

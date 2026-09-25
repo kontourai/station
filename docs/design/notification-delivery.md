@@ -587,15 +587,24 @@ runtime and the two can never both alert. A shell without the command answers
   the webview stopped. Without either cursor the host reads without applying
   for up to 30 seconds (monotonic clock), then starts from the cursor its
   first read saw, so entries after that read still alert and an
-  already-alerted backlog is not replayed. An offer arriving after that is
-  refused, so entries queued between the webview's cursor and the host's
-  first read (while the app was closed for the upgrade) are not alerted.
-- **At-least-once.** A read is decided under the consumer lock, posted with
-  the lock released, and its cursor committed afterwards; a crash between
-  posting and the commit posts those entries again on the next run. A post
-  the OS refuses is not counted or remembered. Each OS call (show, and on
-  Linux close) runs on a helper thread bounded at five seconds, so a stalled
-  notification service never holds the consumer lock or blocks a handover.
+  already-alerted backlog is not replayed. An offer is refused once the host
+  has chosen its own start (a committed cursor, or a read that chose one
+  still being committed), so entries queued between the webview's cursor and
+  the host's first read (while the app was closed for the upgrade) are then
+  not alerted.
+- **Retry, skip and at-least-once.** A read is decided under the consumer
+  lock, its OS calls are made with the lock released, in order, and the
+  cursor is then committed up to the entry before the first post the OS
+  refused or the first call that did not answer; that entry and everything
+  after it are retried next poll. The same alert refused on three polls in a
+  row is skipped and logged, so one entry cannot hold the feed; a call that
+  does not answer is never counted towards that. Each OS call (show, and on
+  Linux close) runs on a helper thread bounded at five seconds, and while
+  four calls are still stuck (zbus has no method timeout) no new call is made
+  at all, so a stalled notification service costs at most four parked
+  threads, one attempt per poll, and never holds the consumer lock or blocks
+  a handover. A crash between posting and the commit, or a show that times
+  out but appears later, can show an alert twice.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the
