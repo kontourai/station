@@ -176,6 +176,7 @@
     "test": "npm run test:prepush",
     "test:changed": "node scripts/run-changed-verification.mjs",
     "test:focused": "node scripts/run-focused-tests.mjs",
+    "test:repo-scans": "node scripts/run-repo-scan-suites.mjs",
     "connection:key": "tsx scripts/connection-key.ts",
     "lab:collaboration": "tsx scripts/local-collaboration-lab.ts",
     "lab:browser-transport": "tsx scripts/browser-transport-lab.ts",

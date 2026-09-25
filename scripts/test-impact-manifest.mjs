@@ -464,17 +464,11 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
  * each generator input still selects it, so a new input without an edge reds
  * on the pull request that adds it.
  *
- * NOT here, deliberately: whole-repository source scans such as
+ * NOT here, deliberately: whole-tree source scans such as
  * `orchestration-source-invariants.test.ts` (#2553). Their honest edge is
- * every file under seven roots, and a supplemental test on every path is not
- * free: a supplemental test is a selection candidate, so a changed file whose
- * related discovery finds NOTHING stops escalating to `test-full` and
- * completes green on the unrelated scan alone (measured: exit 0, `completed`,
- * where the same change exits 3 with a `test-full` obligation without it).
- * `src-ui/src/**`'s vocabulary ratchet already has that property for UI
- * files. A repo-wide invariant belongs in ci:fast's fixed static set, or the
- * selector must stop letting supplemental tests satisfy an empty related
- * discovery — both owner decisions (#2176).
+ * every file under several roots, which would add them to nearly every
+ * selection and reshape every exact selection this manifest's tests pin. They
+ * run as their own pull-request job instead: `REPO_SCAN_SUITES` below.
  */
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
@@ -530,6 +524,37 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       reason: 'suite reads this file by path, outside the import graph (#2176)',
     }),
   ),
+]);
+
+/**
+ * #2176: suites whose subject is a whole source tree, read by walking it.
+ * No impact edge can honestly select them — the edge would be every file
+ * under the tree, and a supplemental test on every path is noise in the
+ * selection — so they run as their own pull-request job instead
+ * (`npm run test:repo-scans`, the `repo-scans` job in ci.yml). Before that
+ * they ran only in the merge queue's full corpus, where a violation cost a
+ * queue candidate (#2553).
+ *
+ * The ONE list: the runner, the CI job and the classification pin in
+ * `path-read-pin-boundary.test.ts` all read it. That pin requires every
+ * directory-walking suite the path-read scan cannot report to be either here
+ * or classified with a reason there.
+ */
+export const REPO_SCAN_SUITES = Object.freeze([
+  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
+  'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/publish-surface.test.ts',
+  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
+  'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  'src-server/security/__tests__/svg-response-tripwire.test.ts',
+  'src-server/services/devices/__tests__/device-host-resolver.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
+  'src-ui/src/__tests__/connection-host-copy.test.ts',
+  'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  'src-ui/src/__tests__/package-css-fork.test.ts',
+  'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
+  'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
 ]);
 
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([

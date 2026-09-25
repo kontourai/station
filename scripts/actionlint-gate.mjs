@@ -302,6 +302,9 @@ const FORK_SMOKE_JOB = Object.freeze({
 });
 const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}`;
+// #2176: the whole-tree source scans run for same-repository pull requests
+// only. A fork candidate never reaches it (fork-smoke owns forks).
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];
@@ -317,6 +320,7 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'fork-smoke',
   'full-regression',
   'manual-completion-diagnostics',
+  'repo-scans',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
@@ -1560,6 +1564,54 @@ function isPinnedPnpmSetup(step) {
   );
 }
 
+/**
+ * #2176: `repo-scans` runs the candidate's own tests exactly as fast-checks
+ * does, with the same authority — read-only contents, no credentials left in
+ * the checkout, same-repository heads only — and exactly two commands: the
+ * dependency install and `npm run test:repo-scans`.
+ */
+function repoScansFindings(file, job) {
+  const findings = [];
+  const jobId = 'repo-scans';
+  if (job.if !== REPO_SCANS_CONDITION)
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must use the exact same-repository pull_request_target guard',
+    });
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must declare only permissions: { contents: read }',
+    });
+  if (
+    (job.steps ?? []).some(
+      (step) =>
+        typeof step?.uses === 'string' &&
+        step.uses.startsWith('actions/checkout@') &&
+        step?.with?.['persist-credentials'] !== false,
+    )
+  )
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans checkout must set persist-credentials: false',
+    });
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      'actions/checkout@',
+      'actions/setup-node@',
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: undefined, run: 'npm run dependencies:ci' },
+      { name: 'Run repository source scans', run: 'npm run test:repo-scans' },
+    ]),
+  );
+  return findings;
+}
+
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
   return (job?.steps ?? [])
     .filter(
@@ -1869,6 +1921,8 @@ function primaryCiRouterFindings(file, document) {
 
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];
+  const scans = jobs['repo-scans'];
+  if (scans) findings.push(...repoScansFindings(file, scans));
   if (fast) {
     if (!hasExactSameRepositoryFastChecksGuard(file, 'fast-checks', fast.if))
       findings.push({

@@ -67,6 +67,7 @@ import {
   E2E_CONTRACT_BOUNDARIES,
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
+  REPO_SCAN_SUITES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -113,12 +114,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/changed-verification.test.ts',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
   'scripts/__tests__/guardrail-process-boundary.test.ts',
-  // This file. It reads suites through a computed `join(ROOT, file)`, which
-  // the scanner refuses by design; it previously also made an anchored
-  // self-read, which is what used to keep it reported. Being listed here is
-  // correct and safe: #1913 puts this suite on the unconditional prepush
-  // floor, so it no longer depends on a pin to be scheduled.
-  'scripts/__tests__/path-read-pin-boundary.test.ts',
   'scripts/__tests__/publish-oidc-exchange-status.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/release-sbom-generation.test.ts',
@@ -196,6 +191,101 @@ function selectedTests(paths: string[], manifest?: unknown): string[] {
     .tests.map(({ path }: { path: string }) => path)
     .sort();
 }
+
+/**
+ * #2176: the directory-walking suites among the unreported ones, classified.
+ * A suite that walks a source tree has no impact edge an honest selection
+ * could use, so it must be a whole-tree scan the `repo-scans` job runs
+ * (`REPO_SCAN_SUITES`), or say here why it is not one. Detection is a
+ * `readdir(`/`readdirSync(` call in the suite's text — deliberately loose:
+ * a false hit costs one entry below, a miss would leave a scanner unrun.
+ */
+const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
+    'walks its own fixture directory',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
+    'scoped scan; its root, packages/sdk/src/client/**, has an impact edge naming it',
+  'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
+    'walks its own fixture root',
+  'scripts/__tests__/release-sbom-generation.test.ts':
+    'lists a temporary directory it wrote',
+  'scripts/__tests__/verification-reporter.test.ts':
+    'lists a temporary workspace it wrote',
+  'src-server/services/evidence/__tests__/console-bridge-service.test.ts':
+    'lists a temporary segment directory',
+  'src-server/services/orchestration/__tests__/event-store.test.ts':
+    'lists a temporary attachments directory',
+  'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts':
+    'lists a temporary plugin home',
+  'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts':
+    'lists a temporary plugin data root',
+  'tests/builder-delivery-viewer.spec.ts':
+    'a Playwright spec; Vitest cannot schedule it (#1817)',
+});
+
+describe('whole-tree scans are run or classified (#2176)', () => {
+  const walkers = UNREPORTED_PATH_READING_SUITES.filter((file) =>
+    /\breaddir(?:Sync)?\s*\(/.test(readFileSync(join(ROOT, file), 'utf8')),
+  );
+
+  it('every directory-walking unreported suite is a repo scan or says why not', () => {
+    // Population first: an empty `walkers` would pass both checks below.
+    expect(walkers.length).toBeGreaterThanOrEqual(
+      Object.keys(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS).length,
+    );
+    expect(
+      walkers.filter(
+        (file) =>
+          !REPO_SCAN_SUITES.includes(file) &&
+          !(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS),
+      ),
+      'a suite walks a directory but is neither in REPO_SCAN_SUITES ' +
+        '(scripts/test-impact-manifest.mjs) nor classified here',
+    ).toEqual([]);
+    // And no classification outlives the walk it explains.
+    expect(
+      Object.keys(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS).filter(
+        (file) => !walkers.includes(file),
+      ),
+    ).toEqual([]);
+  });
+
+  it('every repo scan suite exists, is runnable by Vitest, and is not also classified away', () => {
+    expect(REPO_SCAN_SUITES.length).toBeGreaterThan(0);
+    for (const file of REPO_SCAN_SUITES) {
+      expect(existsSync(join(ROOT, file)), file).toBe(true);
+      expect(file.startsWith('tests/'), file).toBe(false);
+      expect(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS, file).toBe(false);
+    }
+    expect(new Set(REPO_SCAN_SUITES).size).toBe(REPO_SCAN_SUITES.length);
+  });
+
+  it('the repo-scans CI job runs exactly the one list, on same-repository pull requests', () => {
+    const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    expect(pkg.scripts['test:repo-scans']).toBe(
+      'node scripts/run-repo-scan-suites.mjs',
+    );
+    const runner = readFileSync(
+      join(ROOT, 'scripts/run-repo-scan-suites.mjs'),
+      'utf8',
+    );
+    expect(runner).toContain('runFocusedTests([...REPO_SCAN_SUITES])');
+    const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const job = ci.slice(
+      ci.indexOf('\n  repo-scans:\n'),
+      ci.indexOf('\n  fork-smoke:\n'),
+    );
+    expect(job).toContain('run: npm run test:repo-scans');
+    expect(job).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    expect(job).toContain(
+      'github.event.pull_request.head.sha || github.sha }}',
+    );
+  });
+});
 
 describe('path-read pins are discovered', () => {
   it('finds pins across the repository', () => {
