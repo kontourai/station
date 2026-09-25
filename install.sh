@@ -908,8 +908,10 @@ fi
 # Downgrade protection for the public-manifest path (archive#187). A signed
 # manifest proves who published a release, not that it is newer than what is
 # running: replaying an older, still-valid manifest must not roll an install
-# back silently. The installed version comes from the provenance that was
-# verified when the current release was installed.
+# back silently. The installed version is read from current/.station-release.json,
+# which was verified at install time but is re-read here and is writable by this
+# user: the check defends against a hostile manifest host replaying old releases,
+# not against a local actor running as this user (who can already rewrite it).
 #   newer manifest            -> install
 #   same version, same bytes  -> nothing to do (exit 0, no restart)
 #   same version, new bytes   -> refuse without the explicit opt-in below:
