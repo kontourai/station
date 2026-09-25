@@ -85,9 +85,11 @@ instant:
 
 The scheduled execution is a new attributable Agent run using the stored
 prompt; it does not silently resume the conversation that created it. Creating
-the job also does not grant unattended tool authority. Any standing grant must
-target the server-issued scheduled-job principal, and a delete/recreate gets a
-new identity. Use `get_job_logs` or the Runs surface to observe the result.
+the job also does not grant unattended tool authority. A per-job standing grant
+must target the server-issued scheduled-job principal, and a delete/recreate
+gets a new identity. An agent-wide opt-in is the agent's
+`tools.unattendedAutoApprove` list ([Unattended runs](agents.md#unattended-runs));
+`tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
 
 ## Delegate from chat
 

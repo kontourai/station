@@ -57,7 +57,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — tools that execute without user confirmation; all other tools trigger the approval flow
+- `autoApprove` — tools that execute without user confirmation in attended chat; all other tools trigger the approval flow
+- `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 - `aliases` — rename tools in prompts without changing the underlying tool name
 
 Station negotiates MCP automatically. It tries the current `2026-07-28`
@@ -116,6 +117,40 @@ Flow:
 5. `ApprovalRegistry.resolve()` unblocks the hook; the tool executes or is skipped
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
+
+### Unattended runs
+
+A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
+or a delegated child session that cannot grant approvals — never waits on an
+approval request. Station's engine either allows the call without asking or
+denies it.
+
+`autoApprove` is attended auto-approval. Attended chat matches a pattern against
+both the original MCP tool name (`station-control_delete_agent`) and the runtime
+name the model calls (`stationControl_deleteAgent`). Unattended runs match
+`autoApprove` against the runtime name only, so the usual
+`station-control_*` pattern does not apply there. Existing patterns that do
+match the runtime name, including `*`, keep working unattended as before.
+
+To let an agent run a tool unattended, list it in `unattendedAutoApprove`:
+
+```json
+{
+  "tools": {
+    "autoApprove": ["station-control_*"],
+    "unattendedAutoApprove": ["station-control_list_agents"]
+  }
+}
+```
+
+`unattendedAutoApprove` uses the same pattern syntax and name forms as
+attended `autoApprove`. It is honoured only after the other pre-tool checks:
+a delegated child's allow and block lists, config protection, and the approval
+guardian all still apply, and the guardian in enforce mode can still deny an
+opted-in tool. Attended chat ignores it and asks as before. External engines
+(Claude Code, ACP) do not deliver Station's unattended checks
+([delivery boundary](../conformance/tool-policy-delivery.md)), so the opt-in
+has no effect on them.
 
 ### Tool purpose display support
 
