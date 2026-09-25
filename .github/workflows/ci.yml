@@ -165,6 +165,25 @@ jobs:
         id: fast_ci
         env:
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+          # station#2621: `STATION_TYPECHECK_SLOTS` default-sizes from RAM
+          # alone (one slot per 8 GiB, rounded) because it exists to guard a
+          # SHARED dev host against several worktrees' `ci:fast` runs piling
+          # up concurrent `tsc` compilers. A `ubuntu-22.04` runner reports
+          # ~15.6 GiB here (confirmed from this job's own verification-receipt
+          # provenance) and rounds to 2 slots -- but it also has 4 vCPUs
+          # (same provenance), so 2 concurrent `tsc` compilers leave half the
+          # machine idle for the entire typecheck-aggregate step. This job is
+          # a single ephemeral VM with no sibling invocation to guard
+          # against, so the shared-host safety margin does not apply here.
+          # Measured fix: raising local concurrency from 2 to 4 cut the
+          # 12-lane aggregate's wall time from 361s to 91s (a contended
+          # sample, but a ~4x drop) with the heaviest lane (typecheck:ui)
+          # using ~2.2 GB RSS -- four concurrent lanes fit comfortably under
+          # 15.6 GB. This is the fix for the 12-minute ci:fast timeouts on
+          # #2617/#2548's merge-queue candidates (36091653389, 36086122830),
+          # where the receipt showed the run dying inside typecheck-aggregate
+          # with every earlier static command already green.
+          STATION_TYPECHECK_SLOTS: '4'
         run: npm run ci:fast
 
       - name: Report contract-test changes for review
@@ -280,6 +299,10 @@ jobs:
       - name: Run isolated fork smoke
         env:
           STATION_CI_FAST_BASE: ${{ github.event.pull_request.base.sha }}
+          # See the "Run fast CI lane" step's comment above: this job runs on
+          # the same 4 vCPU / ~15.6 GiB `ubuntu-22.04` fleet, single job per
+          # ephemeral VM, so the same fix applies.
+          STATION_TYPECHECK_SLOTS: '4'
         run: npm run ci:fast
 
   full-regression:
