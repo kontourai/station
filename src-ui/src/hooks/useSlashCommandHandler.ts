@@ -175,7 +175,7 @@ export function useSlashCommandHandler() {
       } catch (error) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Could not load built-in commands for ${command}: ${error instanceof Error ? error.message : 'unknown error'}`,
+          content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
         });
         cleanup();
         return true;
