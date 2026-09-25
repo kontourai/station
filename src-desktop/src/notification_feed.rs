@@ -47,11 +47,16 @@
 //! [`OsCallGate`] bounds each call, writes stuck calls off after 15
 //! saturated polls and resumes; once 16 calls have been written off, no OS
 //! notification call is made until restart. The dedupe of shown content is
-//! in memory and bounded. The poll thread is not joined on quit, so a crash
-//! or quit while a poll is posting reposts, on the next launch, the entry
-//! whose call was in progress or had just returned. A cursor that fails to
-//! save replays from the last saved cursor on the next launch, bounded by
-//! the staleness and the server's 60-minute retention.
+//! in memory and bounded. The poll thread is not joined on quit. The cursor
+//! is first saved after the first consumed entry, just before the next
+//! call, so a crash or quit during a read's first OS call replays, on the
+//! next launch, the whole read from the previous cursor. That includes
+//! entries consumed without a call (focus-suppressed, deduped, retracted),
+//! which are decided again with the in-memory dedupe gone. Later in the
+//! read, it reposts the entry whose call was in progress or had just
+//! returned. A cursor that fails to save replays from the last saved cursor
+//! on the next launch, bounded by the server's 60-minute retention and, when
+//! the server sends `now`, by the staleness.
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -654,8 +659,9 @@ pub(crate) struct Executed {
 /// outcome consumes the entry except `NotCalled`, which stops the poll
 /// before it (see the module comment). After each consumed entry that has
 /// another call after it, `consumed` gets the position just before that
-/// next call, so the cursor can be saved as the poll goes and a quit or
-/// crash mid-poll reposts at most the entry whose call was in progress.
+/// next call, so the cursor can be saved as the poll goes. Nothing is
+/// saved before the first call, so a quit or crash during it replays the
+/// whole read; after that, it reposts the entry whose call was in progress.
 /// The position through the last call is the plan's own commit.
 pub(crate) fn execute(
     plan: &mut Plan,
@@ -1730,10 +1736,14 @@ mod tests {
     #[derive(Default)]
     struct MemoryStore {
         saved: Option<HashMap<String, StoredCursor>>,
+        /// Every save in order, so a test can see a save the poll's final
+        /// commit later overwrote.
+        history: Vec<HashMap<String, StoredCursor>>,
     }
     impl CursorStore for MemoryStore {
         fn save(&mut self, cursors: &HashMap<String, StoredCursor>) {
             self.saved = Some(cursors.clone());
+            self.history.push(cursors.clone());
         }
     }
 
@@ -2256,6 +2266,14 @@ mod tests {
             assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
         }
         assert_eq!(sink.attempts, ["a", "b", "b", "b"]);
+        // No save, not even one a later commit overwrote, ever passed b: a
+        // quit mid-poll must not persist a cursor beyond the call not made.
+        let saved: Vec<u64> = store
+            .history
+            .iter()
+            .map(|cursors| cursors[ORIGIN].cursor)
+            .collect();
+        assert_eq!(saved, [1], "saves past seq(b) - 1: {saved:?}");
         // The gate calls again: b and everything after it runs, once.
         consumer.apply(ORIGIN, &batch, false, mono(3), &mut sink, &mut store);
         assert_eq!(sink.attempts[4..], ["b", "close:x", "c"]);

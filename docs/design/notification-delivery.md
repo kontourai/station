@@ -595,11 +595,11 @@ runtime and the two can never both alert. A shell without the command answers
 - **One attempt per entry.** A read is decided under the consumer lock, its
   OS calls are made with the lock released, in order, and the cursor is
   committed as far as the outcomes allow: saved past each consumed entry
-  before the next call, and through the whole read when the poll ends. Shown, refused by the OS, or timed
-  out (the call was made and did not answer within five seconds): the entry
-  is consumed, the cursor passes it, and it is never tried again. Refusals
-  and timeouts are logged at most once a minute. A show that answers late
-  still has its handle kept.
+  before the next call, and through the whole read when the poll ends.
+  Shown, refused by the OS, or timed out (the call was made and did not
+  answer within five seconds): the entry is consumed, the cursor passes it,
+  and it is never tried again. Refusals and timeouts are logged at most once
+  a minute. A show that answers late still has its handle kept.
 - **Only a call not made is retried.** When the breaker is open or the gate
   is disabled, no call is made: the poll stops before that entry, the cursor
   does not pass it, and nothing after it is posted in that poll.
@@ -620,12 +620,16 @@ runtime and the two can never both alert. A shell without the command answers
   the app restarts** (logged as an error). The consumer lock is never held
   across an OS call, so none of this blocks a handover.
 - **Duplicates.** The dedupe of shown content is in memory and bounded. The
-  poll thread is not joined on quit, so a crash or quit while a poll is
-  posting reposts, on the next launch, the entry whose call was in progress
-  or had just returned (the cursor is saved before each next call, not
-  inside one). A cursor file that fails to save (logged once per failure
-  streak) replays from the last saved cursor on the next launch, bounded by
-  the 15-minute staleness and the server's 60-minute retention.
+  poll thread is not joined on quit. The cursor is saved before each next
+  call, not inside one, and nothing is saved before a read's first call. So
+  a crash or quit during that first call replays, on the next launch, the
+  whole read from the previous cursor, including entries consumed without
+  a call (focus-suppressed, deduped, retracted), which are decided again
+  with the in-memory dedupe gone. Later in the read, it reposts the entry
+  whose call was in progress or had just returned. A cursor file that fails
+  to save (logged once per failure streak) replays from the last saved
+  cursor on the next launch, bounded by the server's 60-minute retention
+  and, when the server sends `now`, by the 15-minute staleness.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the
