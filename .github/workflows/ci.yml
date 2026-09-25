@@ -227,7 +227,11 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # Contains the fifteen-minute raw ci:fast budget (#2577) plus setup
+    # (checkout, actionlint, dependencies:ci; ~2 minutes observed on
+    # fast-checks). ci-workflow-contract.test.ts requires at least lane +
+    # bounded steps + 3 minutes = 18; twenty leaves room for a slow install.
+    timeout-minutes: 20
     steps:
       - name: Check out base policy for pull-request title gate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

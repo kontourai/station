@@ -1182,33 +1182,48 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
-  it('fences fast-checks around the ci:fast budget plus every other bounded step', () => {
-    // #2577: the lane budget and this job fence are separate literals. Raising
-    // the lane alone would let the job be killed before the coordinator's own
-    // deadline fires and writes its receipt, so the fence must contain the
-    // lane's budget, every step's own bound, and the unbounded setup/post
-    // steps (checkout, dependencies:ci, build:ui, ...; ~2 minutes observed
-    // across 88 hosted runs, budgeted at three).
-    type Step = { name?: string; run?: string; 'timeout-minutes'?: number };
-    const job = (
-      load(workflow('ci.yml')) as {
-        jobs: Record<string, { 'timeout-minutes'?: number; steps: Step[] }>;
-      }
-    ).jobs['fast-checks'];
-    const lane = job.steps.filter(
-      (step) => step.run?.trim() === 'npm run ci:fast',
+  it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
+    // #2577: the lane budget and each job fence are separate literals. Raising
+    // the lane alone lets a job be killed before the coordinator's own
+    // deadline fires and writes its receipt, so each fence must contain the
+    // lane's budget, every other step's own bound, and the unbounded
+    // setup/post steps (checkout, dependencies:ci, build:ui, ...; ~2 minutes
+    // observed across 88 hosted fast-checks runs, budgeted at three). Jobs
+    // are found by what they run, not by name, so a new caller (fork-smoke
+    // was the one first missed) is covered without editing this test.
+    type Step = { run?: string; 'timeout-minutes'?: number };
+    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    const runsCiFast = (step: Step) =>
+      typeof step.run === 'string' &&
+      /(^|[\s;&|])npm run ci:fast(?![\w:-])/.test(step.run);
+    const callers = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        ((document as { jobs?: Record<string, Job> } | null)?.jobs ??
+          {}) as Record<string, Job>,
+      )
+        .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
+        .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
     );
-    expect(lane).toHaveLength(1);
-    // The lane step is bounded by its coordinator deadline, not a step timeout.
-    expect(lane[0]['timeout-minutes']).toBeUndefined();
-    const boundedStepsMs = job.steps.reduce(
-      (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
-      0,
-    );
+    expect(callers.map(({ id }) => id).sort()).toEqual([
+      '.github/workflows/ci.yml#fast-checks',
+      '.github/workflows/ci.yml#fork-smoke',
+    ]);
     const unboundedAllowanceMs = 3 * 60_000;
-    expect((job['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
-      CI_FAST_TIMEOUT_MS + boundedStepsMs + unboundedAllowanceMs,
-    );
+    for (const { id, job } of callers) {
+      const steps = job.steps ?? [];
+      const lane = steps.filter(runsCiFast);
+      expect(lane, id).toHaveLength(1);
+      // The lane step is bounded by its coordinator deadline, not a step
+      // timeout; a step timeout below it would kill it first.
+      expect(lane[0]['timeout-minutes'], id).toBeUndefined();
+      const boundedStepsMs = steps.reduce(
+        (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+        0,
+      );
+      expect((job['timeout-minutes'] ?? 0) * 60_000, id).toBeGreaterThanOrEqual(
+        CI_FAST_TIMEOUT_MS + boundedStepsMs + unboundedAllowanceMs,
+      );
+    }
   });
 
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {

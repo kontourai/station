@@ -49,6 +49,7 @@ import {
   createWslQuarantinedTest,
   WSL_QUARANTINE_REASON,
 } from '../lib/wsl-host-class.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
@@ -751,7 +752,7 @@ describe('verification coordinator', () => {
         ],
       })}\n`,
     );
-    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
     try {
       const killed = await coordinateVerification({
         laneId: 'ci-fast',

@@ -42,14 +42,13 @@ export const CANONICAL_COMPLETION_LANE = 'full-regression';
 export const CANONICAL_COMPLETION_COMMAND = 'npm run full:regression';
 
 /**
- * Hard execution ceiling for diagnostic per-push feedback. The hosted lane
- * reached 6m55s with 385 selected tests before the seven-minute coordinator
- * deadline canceled it. Twelve minutes retains a finite, non-completion lane
- * while leaving conservative measured headroom for the slower fleet host
- * rather than treating its timeout as a changed-test failure.
+ * Hard execution ceiling for diagnostic per-push feedback: fifteen minutes,
+ * a finite, non-completion lane sized from hosted measurements so runner
+ * variance is not reported as a changed-test failure.
  *
- * Raised 12 -> 15 minutes by #2577, from measurement rather than a round
- * number. Across 88 hosted `fast-checks` runs (2026-09-24, 2-slot 15.6 GiB
+ * History: the seven-minute deadline canceled a hosted lane at 6m55s with
+ * 385 selected tests, and twelve minutes replaced it. Raised 12 -> 15
+ * minutes by #2577, from measurement rather than a round number. Across 88 hosted `fast-checks` runs (2026-09-24, 2-slot 15.6 GiB
  * ubuntu-22.04 runners), the lane is two parts. The affected-test selection
  * plus the first statics took 41-476s and is the variable, PR-shaped part
  * that this lane exists to run. Everything from `verification:policy:gate`
