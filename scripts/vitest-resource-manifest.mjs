@@ -414,6 +414,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #2529: runs the real `fallow audit` binary (single-shot, ~2s) against a
+  // throwaway git repository to prove its base snapshot lands in the Station
+  // temp root rather than the system temp directory.
+  'scripts/__tests__/fallow-base-cache.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download

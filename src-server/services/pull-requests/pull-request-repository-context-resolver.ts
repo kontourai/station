@@ -46,6 +46,10 @@ interface PullRequestRepositoryContextInput {
 
 /** Bound on the checkouts an umbrella lookup inspects. */
 const UMBRELLA_MAX_CHILDREN = 256;
+/** How long an umbrella lookup is reused. */
+const UMBRELLA_CACHE_TTL_MS = 30_000;
+/** Bound on remembered umbrella lookups (project × repository pairs). */
+const UMBRELLA_CACHE_MAX_ENTRIES = 64;
 /** How many `git remote -v` an umbrella lookup runs at once. */
 const UMBRELLA_GIT_CONCURRENCY = 8;
 
@@ -76,8 +80,48 @@ export class PullRequestRepositoryContextResolver {
     private readonly deps: {
       readRemotes?: CheckoutRemoteReader;
       git?: typeof execGit;
+      now?: () => number;
     } = {},
   ) {}
+
+  /**
+   * Recent umbrella lookups, so a pull-request panel's refetches (and several
+   * panes asking at once) do not re-run up to 256 `git remote -v` each time.
+   * Short-lived: a checkout cloned into the umbrella shows up within
+   * {@link UMBRELLA_CACHE_TTL_MS}. The in-flight promise is what is cached, so
+   * concurrent asks share one scan.
+   */
+  private readonly umbrellaCache = new Map<
+    string,
+    {
+      at: number;
+      result: Promise<{ path: string; remotes: CheckoutRemote[] } | undefined>;
+    }
+  >();
+
+  private cachedUmbrellaChild(
+    directory: string,
+    repository: { host: string; owner: string; name: string },
+  ): Promise<{ path: string; remotes: CheckoutRemote[] } | undefined> {
+    const now = (this.deps.now ?? Date.now)();
+    const key = JSON.stringify([
+      directory,
+      repository.host.toLowerCase(),
+      repository.owner.toLowerCase(),
+      repository.name.toLowerCase(),
+    ]);
+    const hit = this.umbrellaCache.get(key);
+    if (hit && now - hit.at < UMBRELLA_CACHE_TTL_MS) return hit.result;
+    const result = this.umbrellaChild(directory, repository);
+    this.umbrellaCache.delete(key);
+    this.umbrellaCache.set(key, { at: now, result });
+    while (this.umbrellaCache.size > UMBRELLA_CACHE_MAX_ENTRIES) {
+      const oldest = this.umbrellaCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.umbrellaCache.delete(oldest);
+    }
+    return result;
+  }
 
   async resolve(
     input: PullRequestRepositoryContextInput,
@@ -146,7 +190,7 @@ export class PullRequestRepositoryContextResolver {
       !input.requestedWorkingDirectory &&
       isolation?.mode !== 'worktree'
     ) {
-      const child = await this.umbrellaChild(
+      const child = await this.cachedUmbrellaChild(
         workingDirectory,
         input.repository,
       );

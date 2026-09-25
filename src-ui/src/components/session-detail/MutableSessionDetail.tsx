@@ -197,7 +197,12 @@ export function MutableSessionDetail({
       <div className="sessions-detail__scroll">
         <LazyBoundary
           load={loadConversationPullRequestLinks}
-          componentProps={{ conversationId: threadId }}
+          // The durable conversation, not this Session's own thread: a
+          // successor Session (after a context reset or a handoff) is not a
+          // conversation id, and the links belong to the conversation.
+          componentProps={{
+            conversationId: session.conversationId ?? threadId,
+          }}
           pending={
             <SkeletonBlock label="Reading linked pull requests" count={1} />
           }

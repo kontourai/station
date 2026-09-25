@@ -273,6 +273,18 @@ describe('TaskGraphService', () => {
     expect(
       service.listKeptDeclaredPullRequestsForSession(task.id, 'session-other'),
     ).toEqual([]);
+    // The conversation-wide reader answers for a SET of Sessions, any Task.
+    expect(
+      service.listKeptDeclaredPullRequestsForSessions([
+        'session-other',
+        'session-a',
+      ]),
+    ).toMatchObject([
+      { provenance: { sessionId: 'session-a', eventId: 'event-a' } },
+    ]);
+    expect(
+      service.listKeptDeclaredPullRequestsForSessions(['session-other']),
+    ).toEqual([]);
     await expect(
       service.deleteKeptDeclaredPullRequest(
         task.id,
