@@ -65,7 +65,10 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { StationControlToolRegistry } from '../../../tools/station-control-mcp-server.js';
 import { registerOperationsTools } from '../../../tools/station-control-operations-tools.js';
-import { __resetStationControlStdioCallerCredentialForTests } from '../../../tools/station-control-shared.js';
+import {
+  __resetStationControlStdioCallerCredentialForTests,
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+} from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -83,6 +86,24 @@ const ENVIRONMENT_ID = 'env-lineage-test';
 
 const PEER_ENVIRONMENT_ID = 'env-lineage-peer';
 const PEER_CREDENTIAL = 'test-only-peer-credential-lineage-suite';
+
+// Every non-internal principal the runtime boundary accepts, for the
+// caller-delegation route's auth boundary: an operator bearer, a paired
+// person's device, another Station's delegation grant (a peer), and a
+// browser's device-session cookie minted by the UI bootstrap.
+const OPERATOR_CREDENTIAL = 'test-only-operator-credential-lineage-suite';
+const DEVICE_CREDENTIAL = 'test-only-device-credential-lineage-suite';
+const PEER_GRANT_CREDENTIAL = 'test-only-peer-grant-credential-lineage-suite';
+// A device-session cookie value has the minted credential's exact shape.
+const BROWSER_SESSION_CREDENTIAL = 'test-only-browser-session-lineage'.padEnd(
+  43,
+  'x',
+);
+const DEVICE_IDS: Record<string, string> = {
+  [DEVICE_CREDENTIAL]: 'device-phone',
+  [PEER_GRANT_CREDENTIAL]: 'device-peer-station',
+  [BROWSER_SESSION_CREDENTIAL]: 'device-browser',
+};
 
 // The one stored Agent. Its spec carries no delegation policy: the agent
 // schema has no such field, so a stored Agent's children are bounded by the
@@ -117,10 +138,21 @@ const STARTED: Record<string, Record<string, unknown>> = {
   'session-broken': { agentSlug: 'broken' },
   // An adopted session (`attached-session-adoption.ts`): no Agent, an engine.
   'session-adopted': { adoptedFromThreadId: 'thread-attached-1' },
+  // An adopted session whose recorded engine is not a clean Agent id.
+  'session-adopted-unclean': { adoptedFromThreadId: 'thread-attached-2' },
   // A session with no recorded Agent that is not adopted either.
   'session-agentless': {},
+  // Not adopted and no Agent, but WITH a known engine: only adoption lets an
+  // engine name the caller, so this must be refused too.
+  'session-engine-only': {},
+  // A stored Agent whose spec carries a `delegation` policy.
+  'session-policied': { agentSlug: 'policied' },
 };
-const ENGINES: Record<string, string> = { 'session-adopted': 'codex' };
+const ENGINES: Record<string, string> = {
+  'session-adopted': 'codex',
+  'session-adopted-unclean': 'Codex/../planner',
+  'session-engine-only': 'codex',
+};
 const CONVERSATIONS: Record<string, string> = {
   'session-root': 'conversation-root',
   'session-child': 'conversation-child',
@@ -132,6 +164,9 @@ const CONVERSATIONS: Record<string, string> = {
   'session-broken': 'conversation-broken',
   'session-adopted': 'conversation-adopted',
   'session-agentless': 'conversation-agentless',
+  'session-adopted-unclean': 'conversation-adopted-unclean',
+  'session-engine-only': 'conversation-engine-only',
+  'session-policied': 'conversation-policied',
 };
 
 const resolveRecord = createStationControlCallerRecordResolver(
@@ -186,6 +221,7 @@ const makeTempDir = trackTempDirs({ lifetime: 'file' });
 let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let home: string;
+let agentService: AgentService;
 
 beforeAll(async () => {
   const logger = {
@@ -205,9 +241,28 @@ beforeAll(async () => {
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
-      verifyCredential: () => false,
+      verifyCredential: (candidate: string) =>
+        candidate === OPERATOR_CREDENTIAL || candidate in DEVICE_IDS,
       resolveGrantedScope: () => 'orchestration:read orchestration:operate',
-      resolveCredentialAuthority: () => 'operator-credential',
+      resolveCredentialAuthority: (candidate: string) =>
+        candidate === OPERATOR_CREDENTIAL
+          ? 'operator-credential'
+          : 'device-credential',
+      resolveCredentialDeviceId: (candidate: string) => DEVICE_IDS[candidate],
+      resolveCredentialDeviceKind: (candidate: string) =>
+        candidate === PEER_GRANT_CREDENTIAL ? 'delegation' : 'device',
+      resolvePairingSource: (candidate: string) =>
+        candidate === BROWSER_SESSION_CREDENTIAL
+          ? 'same-origin'
+          : candidate === DEVICE_CREDENTIAL
+            ? 'pairing-code'
+            : undefined,
+      resolveCredentialLocality: (candidate: string) =>
+        candidate === BROWSER_SESSION_CREDENTIAL
+          ? 'home-possession'
+          : undefined,
+      resolveCredentialMintKind: (candidate: string) =>
+        candidate === BROWSER_SESSION_CREDENTIAL ? 'ui-bootstrap' : undefined,
       now: () => Date.now(),
       maxFailures: 100,
       windowMs: 60_000,
@@ -286,7 +341,18 @@ beforeAll(async () => {
   const brokenDir = join(home, 'agents', 'broken');
   mkdirSync(brokenDir, { recursive: true });
   writeFileSync(join(brokenDir, 'agent.json'), '{ not json');
-  const agentService = new AgentService(
+  // A stored spec naming a delegation policy, written as a hand edit would be.
+  const policiedDir = join(home, 'agents', 'policied');
+  mkdirSync(policiedDir, { recursive: true });
+  writeFileSync(
+    join(policiedDir, 'agent.json'),
+    JSON.stringify({
+      name: 'Policied',
+      prompt: 'Plan',
+      delegation: { maxDepth: 5 },
+    }),
+  );
+  agentService = new AgentService(
     configLoader,
     { findLayoutsUsingAgent: () => [] } as never,
     new Map(),
@@ -656,6 +722,42 @@ describe('#2601 registry default Agents delegate under the default policy', () =
       defaultPolicyChild('codex', 'conversation-adopted'),
     );
   });
+
+  test('an adopted session whose recorded engine is not a clean Agent id is refused, not named by it', async () => {
+    const result = await callTool(
+      'session-adopted-unclean',
+      'delegate_task',
+      DELEGATE_ARGS,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('the session has no recorded Agent');
+    expect(delegateTask).not.toHaveBeenCalled();
+  });
+
+  test('a session with a known engine but no Agent and no adoption record is refused: only adoption lets an engine name the caller', async () => {
+    const result = await callTool(
+      'session-engine-only',
+      'delegate_task',
+      DELEGATE_ARGS,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('the session has no recorded Agent');
+    expect(delegateTask).not.toHaveBeenCalled();
+  });
+
+  test('a stored spec that names a delegation policy is unreadable today (the agent schema has no such field), so its sessions are refused rather than defaulted', async () => {
+    await expect(agentService.getAgent('policied')).rejects.toThrow(
+      /Invalid agent configuration/,
+    );
+    const result = await callTool(
+      'session-policied',
+      'delegate_task',
+      DELEGATE_ARGS,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("its Agent 'policied' could not be read");
+    expect(delegateTask).not.toHaveBeenCalled();
+  });
 });
 
 describe('#2601 send_message continuing a conversation', () => {
@@ -795,4 +897,171 @@ describe("#2601 Station's own engine: the attested context survives the real too
       parentTaskId: 'conversation-in-process',
     });
   });
+});
+
+describe('#2601 the caller-delegation route is internal-only', () => {
+  const PATH = '/api/orchestration/station-control/caller/delegation';
+  const internalHeaders = () => ({
+    [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+    [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+  });
+
+  test('an internal request with a verified per-session token gets ITS OWN session’s child context; with none, or a forged one, null', async () => {
+    for (const [sessionId, expected] of [
+      [
+        'session-child',
+        { depth: 2, parentConversationId: 'conversation-child' },
+      ],
+      ['session-root', { depth: 1, parentConversationId: 'conversation-root' }],
+    ] as const) {
+      const { token } = mintStationControlMcpToken(sessionId, 'url-token');
+      const response = await fetch(`${baseUrl}${PATH}`, {
+        headers: {
+          ...internalHeaders(),
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(
+        ((await response.json()) as { delegation: unknown }).delegation,
+      ).toMatchObject({ ...expected, rootConversationId: 'conversation-root' });
+    }
+    for (const headers of [
+      internalHeaders(),
+      { ...internalHeaders(), [STATION_CONTROL_CALLER_TOKEN_HEADER]: 'forged' },
+    ]) {
+      const response = await fetch(`${baseUrl}${PATH}`, { headers });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ delegation: null });
+    }
+  });
+
+  test.each([
+    ['an operator bearer', { authorization: `Bearer ${OPERATOR_CREDENTIAL}` }],
+    ['a paired device', { authorization: `Bearer ${DEVICE_CREDENTIAL}` }],
+    [
+      "a peer Station's delegation grant",
+      { authorization: `Bearer ${PEER_GRANT_CREDENTIAL}` },
+    ],
+    [
+      'a browser session',
+      { cookie: `station-device=${BROWSER_SESSION_CREDENTIAL}` },
+    ],
+  ])(
+    '%s gets 404 even when it presents a live per-session token',
+    async (_principal, credentialHeaders) => {
+      const { token } = mintStationControlMcpToken(
+        'session-child',
+        'url-token',
+      );
+      const response = await fetch(`${baseUrl}${PATH}`, {
+        headers: {
+          ...credentialHeaders,
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+        },
+      });
+      // The boundary ACCEPTED the credential (a refused one is 401/403), so
+      // this 404 is the route's own internal-only gate.
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: { code: 'not_found' } });
+    },
+  );
+});
+
+describe('#2601 forwards to a saved Environment with no verified caller', () => {
+  type Handler = (args: Record<string, unknown>) => Promise<{
+    isError?: boolean;
+    content: Array<{ text: string }>;
+  }>;
+  function rawTool(name: 'send_message' | 'delegate_task'): Handler {
+    const server = new McpServer({ name: 'lineage-raw', version: '0.0.0' });
+    registerOperationsTools(new StationControlToolRegistry(server));
+    return (
+      server as unknown as {
+        _registeredTools: Record<string, { handler: Handler }>;
+      }
+    )._registeredTools[name]!.handler;
+  }
+  const peerArgs = { environmentId: PEER_ENVIRONMENT_ID };
+
+  test('pre-#2601 behaviour kept: an unverified, unattested send_message forwards its claim to the peer as it was given', async () => {
+    const result = await rawTool('send_message')({
+      ...SEND_ARGS,
+      ...peerArgs,
+      _delegation: FORGED,
+    });
+    expect(result.isError).not.toBe(true);
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/chat/delegated');
+    expect(peerReceived[0]!.body.delegation).toEqual(FORGED);
+    expect(peerReceived[0]!.body).not.toHaveProperty('delegationAttestation');
+  });
+
+  test('pre-#2601 behaviour kept: an unverified, unattested delegate_task forwards no context', async () => {
+    const result = await rawTool('delegate_task')({
+      ...DELEGATE_ARGS,
+      ...peerArgs,
+      _delegation: FORGED,
+    });
+    expect(result.isError).not.toBe(true);
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
+    expect(peerReceived[0]!.body).not.toHaveProperty('delegation');
+  });
+});
+
+describe("#2601 Station's own engine forwarding to a saved Environment", () => {
+  type Handler = (args: Record<string, unknown>) => Promise<{
+    isError?: boolean;
+    content: Array<{ text: string }>;
+  }>;
+  /** The REAL tools behind the real `mcp-manager.ts` attesting wrapper. */
+  function stationEngineTool(name: 'send_message' | 'delegate_task') {
+    const server = new McpServer({ name: 'lineage-peer', version: '0.0.0' });
+    registerOperationsTools(new StationControlToolRegistry(server));
+    const handler = (
+      server as unknown as {
+        _registeredTools: Record<string, { handler: Handler }>;
+      }
+    )._registeredTools[name]!.handler;
+    const [wrapped] = wrapDelegationAwareTools(
+      [
+        {
+          name: `station-control_${name}`,
+          description: name,
+          parameters: {},
+          execute: (args: Record<string, unknown>) => handler(args),
+        } as never,
+      ],
+      { agentSlug: 'planner', toolId: 'station-control', spec: SPECS.planner },
+    );
+    return (args: Record<string, unknown>) =>
+      wrapped!.execute!(args, {
+        conversationId: 'conversation-in-process',
+      } as never) as ReturnType<Handler>;
+  }
+  const expected = () =>
+    createChildDelegationContext({
+      agentSlug: 'planner',
+      conversationId: 'conversation-in-process',
+      spec: SPECS.planner,
+    });
+
+  test.each([
+    ['delegate_task', DELEGATE_ARGS, '/api/orchestration/delegations'],
+    ['send_message', SEND_ARGS, '/api/orchestration/chat/delegated'],
+  ] as const)(
+    '%s: the peer receives the attested derived context, without the attestation',
+    async (name, args, path) => {
+      const result = await stationEngineTool(name)({
+        ...args,
+        environmentId: PEER_ENVIRONMENT_ID,
+      });
+      expect(result.isError).not.toBe(true);
+      expect(peerReceived).toHaveLength(1);
+      expect(peerReceived[0]!.path).toBe(path);
+      expect(peerReceived[0]!.body.delegation).toEqual(expected());
+      expect(peerReceived[0]!.body).not.toHaveProperty('delegationAttestation');
+    },
+  );
 });
