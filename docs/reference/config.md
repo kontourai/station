@@ -320,7 +320,7 @@ Controls which MCP servers and tools the agent can use.
 | `mcpServers` | string[] | IDs of MCP server integrations to connect (defined in `<STATION_HOME>/integrations/<id>/integration.json`) |
 | `available` | string[] | Allowlist of specific tool names exposed to the agent. Empty means all tools from connected servers |
 | `autoApprove` | string[] | Tool names that execute without user confirmation in attended chat. Unattended runs match these against the runtime tool name only |
-| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`; the approval guardian still applies. See [Unattended runs](../guides/agents.md#unattended-runs) |
+| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. The approval guardian is consulted first: a deny in enforce mode still blocks the call, while a defer, or any verdict in review mode, lets the opt-in allow it. See [Unattended runs](../guides/agents.md#unattended-runs) |
 
 ### guardrails
 

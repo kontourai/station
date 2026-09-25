@@ -91,9 +91,10 @@ export interface AgentTools {
    * #2613: explicit opt-in for tools this agent may run with nobody present —
    * scheduled jobs, `/invoke`, the CLI, and delegated children that cannot
    * grant approvals — on Station's own engine. Same pattern syntax and name
-   * forms as `autoApprove`. The approval guardian, delegation allow/block
-   * lists and config protection still apply. Absent means no unattended
-   * opt-in.
+   * forms as `autoApprove`. Delegation allow/block lists and config
+   * protection still apply; the approval guardian is consulted first, and an
+   * enforce-mode deny still blocks (a defer, or review mode, does not).
+   * Absent means no unattended opt-in.
    */
   unattendedAutoApprove?: string[];
   /**

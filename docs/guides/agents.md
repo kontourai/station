@@ -132,7 +132,11 @@ name the model calls (`stationControl_deleteAgent`). Unattended runs match
 `station-control_*` pattern does not apply there. Existing patterns that do
 match the runtime name, including `*`, keep working unattended as before.
 
-To let an agent run a tool unattended, list it in `unattendedAutoApprove`:
+To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
+a scheduled job, an operator can instead record an unattended tool grant for
+that job alone.
+
+Example:
 
 ```json
 {
@@ -145,9 +149,10 @@ To let an agent run a tool unattended, list it in `unattendedAutoApprove`:
 
 `unattendedAutoApprove` uses the same pattern syntax and name forms as
 attended `autoApprove`. It is honoured only after the other pre-tool checks:
-a delegated child's allow and block lists, config protection, and the approval
-guardian all still apply, and the guardian in enforce mode can still deny an
-opted-in tool. Attended chat ignores it and asks as before. External engines
+a delegated child's allow and block lists and config protection still apply,
+and the approval guardian is consulted first. A guardian deny in enforce mode
+still blocks an opted-in tool; a defer, or any verdict in review mode, does
+not. The guardian's modes are `review` and `enforce`. Attended chat ignores it and asks as before. External engines
 (Claude Code, ACP) do not deliver Station's unattended checks
 ([delivery boundary](../conformance/tool-policy-delivery.md)), so the opt-in
 has no effect on them.
