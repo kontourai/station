@@ -172,12 +172,15 @@ export function assertAppStoreDistributionProfile(plist, label = 'profile') {
  *   expectedTeam?: string,
  *   expectedBundleIdentifier?: string,
  *   expectedApsEnvironment?: string,
+ *   expectedCertificateSha1?: string,
  *   now?: Date,
  * }} [options]
  *
  * `expectedApsEnvironment` requires the profile to grant exactly that APNs
  * environment: an app whose signed entitlements name `aps-environment` fails
  * codesign against a profile without push, and only after the full build.
+ * `expectedCertificateSha1` requires the profile to name that signing
+ * certificate among its DeveloperCertificates, for the same reason.
  */
 export function inspectAppStoreDistributionProfile(
   plist,
@@ -186,6 +189,7 @@ export function inspectAppStoreDistributionProfile(
     expectedTeam,
     expectedBundleIdentifier,
     expectedApsEnvironment,
+    expectedCertificateSha1,
     now = new Date(),
   } = {},
 ) {
@@ -276,6 +280,17 @@ export function inspectAppStoreDistributionProfile(
       `${label} aps-environment ${profile.Entitlements['aps-environment'] ?? '(absent)'} does not match expected ${expectedApsEnvironment}; regenerate the profile after enabling Push Notifications on the App ID.`,
     );
   }
+  if (expectedCertificateSha1 !== undefined) {
+    const expected = expectedCertificateSha1.toUpperCase();
+    if (!/^[A-F0-9]{40}$/.test(expected))
+      throw new Error(
+        `${label} expected certificate SHA-1 must be 40 hexadecimal digits.`,
+      );
+    if (!certificateFingerprints.includes(expected))
+      throw new Error(
+        `${label} does not include the signing certificate ${expected}; regenerate the profile with the current Apple Distribution certificate.`,
+      );
+  }
   return {
     distribution: 'app-store-connect',
     name,
@@ -322,6 +337,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const teamIndex = process.argv.indexOf('--expected-team');
   const bundleIndex = process.argv.indexOf('--expected-bundle-id');
   const apsIndex = process.argv.indexOf('--expected-aps-environment');
+  const certificateIndex = process.argv.indexOf('--expected-certificate-sha1');
   const profilePath = process.argv[profileIndex + 1];
   if (profileIndex < 0 || !profilePath)
     throw new Error('Expected --station <path>');
@@ -332,13 +348,16 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     bundleIndex < 0 ? undefined : process.argv[bundleIndex + 1];
   const expectedApsEnvironment =
     apsIndex < 0 ? undefined : process.argv[apsIndex + 1];
+  const expectedCertificateSha1 =
+    certificateIndex < 0 ? undefined : process.argv[certificateIndex + 1];
   if (
     (teamIndex >= 0 && !expectedTeam) ||
     (bundleIndex >= 0 && !expectedBundleIdentifier) ||
-    (apsIndex >= 0 && !expectedApsEnvironment)
+    (apsIndex >= 0 && !expectedApsEnvironment) ||
+    (certificateIndex >= 0 && !expectedCertificateSha1)
   )
     throw new Error(
-      'Expected values after --expected-team, --expected-bundle-id and --expected-aps-environment',
+      'Expected values after --expected-team, --expected-bundle-id, --expected-aps-environment and --expected-certificate-sha1',
     );
   console.log(
     JSON.stringify(
@@ -346,6 +365,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
         expectedTeam,
         expectedBundleIdentifier,
         expectedApsEnvironment,
+        expectedCertificateSha1,
       }),
     ),
   );

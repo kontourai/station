@@ -91,6 +91,41 @@ describe('App Store iOS provisioning-profile gate', () => {
     ).toMatchObject({ distribution: 'app-store-connect' });
   });
 
+  test('requires the imported signing certificate among the profile certificates, when asked', () => {
+    const profile = fixture('app-store-realistic.plist');
+    const options = {
+      expectedTeam: 'ABCDE12345',
+      expectedBundleIdentifier: 'ai.kontour.station',
+      now: new Date('2026-08-27T00:00:00Z'),
+    };
+    const [fingerprint] = inspectAppStoreDistributionProfile(
+      profile,
+      options,
+    ).certificateFingerprints;
+    expect(fingerprint).toMatch(/^[A-F0-9]{40}$/);
+    // `security find-identity` prints upper case; lower case is accepted too.
+    for (const expected of [fingerprint, fingerprint.toLowerCase()])
+      expect(
+        inspectAppStoreDistributionProfile(profile, {
+          ...options,
+          expectedCertificateSha1: expected,
+        }),
+      ).toMatchObject({ certificateFingerprints: [fingerprint] });
+    const other = fingerprint.replace(/^./, (c) => (c === '0' ? '1' : '0'));
+    expect(() =>
+      inspectAppStoreDistributionProfile(profile, {
+        ...options,
+        expectedCertificateSha1: other,
+      }),
+    ).toThrow(`does not include the signing certificate ${other}`);
+    expect(() =>
+      inspectAppStoreDistributionProfile(profile, {
+        ...options,
+        expectedCertificateSha1: 'not-a-fingerprint',
+      }),
+    ).toThrow('40 hexadecimal digits');
+  });
+
   test('rejects missing, invalid, future, and post-expiry profile creation dates', () => {
     const profile = fixture('app-store-realistic.plist');
     const options = {
