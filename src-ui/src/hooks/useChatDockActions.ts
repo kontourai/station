@@ -4,6 +4,7 @@ import type { AgentData } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../contexts/active-chats-state';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useDismissPhoneLayer } from '../contexts/useDismissPhoneLayer';
 import type { FileAttachment } from '../types';
 import {
   type ChatExecutionMetadata,
@@ -64,6 +65,7 @@ export function useChatDockActions({
   const { apiBase } = useApiBase();
   const { lastDockMaximized, setDockState, setActiveChat } = useNavigation();
   const isMobile = useIsMobile();
+  const dismissPhoneLayer = useDismissPhoneLayer();
   const { updateChat, removeChat } = useActiveChatActions();
   const createChatSession = useCreateChatSession();
   const openConversationAction = useOpenConversation(apiBase);
@@ -88,7 +90,10 @@ export function useChatDockActions({
       // value here would silently drop a maximized dock back to normal size
       // on return instead of restoring it.
       // Phone: continue/resume is a destination, not a half-sheet over Home.
-      if (revealDock) setDockState(true, isMobile ? true : lastDockMaximized);
+      if (revealDock) {
+        dismissPhoneLayer();
+        setDockState(true, isMobile ? true : lastDockMaximized);
+      }
       updateChat(sessionId, { hasUnread: false });
     },
     [
@@ -99,6 +104,7 @@ export function useChatDockActions({
       lastDockMaximized,
       isMobile,
       updateChat,
+      dismissPhoneLayer,
     ],
   );
 
@@ -171,7 +177,10 @@ export function useChatDockActions({
       );
       setActiveSessionId(sessionId);
       setActiveChat(sessionId);
-      if (revealDock) setDockState(true, lastDockMaximized);
+      if (revealDock) {
+        dismissPhoneLayer();
+        setDockState(true, lastDockMaximized);
+      }
       if (initialMessage?.trim() || initialAttachments?.length) {
         updateChat(sessionId, {
           ...(initialMessage?.trim() ? { input: initialMessage } : {}),
@@ -189,6 +198,7 @@ export function useChatDockActions({
       setDockState,
       lastDockMaximized,
       updateChat,
+      dismissPhoneLayer,
     ],
   );
 
@@ -301,7 +311,10 @@ export function useChatDockActions({
       }
       setActiveSessionId(sessionId);
       setActiveChat(conversationId);
-      if (options.revealDock ?? true) setDockState(true, false);
+      if (options.revealDock ?? true) {
+        dismissPhoneLayer();
+        setDockState(true, false);
+      }
       return true;
     },
     [
@@ -313,6 +326,7 @@ export function useChatDockActions({
       setActiveSessionId,
       setActiveChat,
       setDockState,
+      dismissPhoneLayer,
     ],
   );
 

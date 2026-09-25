@@ -1,5 +1,6 @@
 import type { ModelLaunchCapabilities } from '@kontourai/station-contracts/provider';
 import type { ProviderSession } from '../adapter-shape.js';
+import type { MuseServeSession } from './muse-serve-session.js';
 
 /**
  * What muse can actually deliver for model selection, declared ONCE.
@@ -303,4 +304,11 @@ export interface MuseSessionRecord {
   activeTurn?: MuseActiveTurn;
   /** Set by `stopSession` so a child exit it caused is not re-classified. */
   stopped: boolean;
+  /**
+   * #2452: present when this session runs through a `muse serve` host; every
+   * turn, approval, interrupt and child stop then goes to it, and nothing
+   * above (`activeTurn`, the per-turn exec spawn) is used. Absent: the
+   * session runs on the `muse exec` path.
+   */
+  serve?: MuseServeSession;
 }

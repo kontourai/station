@@ -1666,6 +1666,36 @@ button:hover {
   outline-offset: -2px;
 }
 
+/* The phone layer's way back to Chat (`RegionChromeBar` onBackToChat): only
+   rendered while a pane is open over Chat on a bottom-only device, so the
+   44px touch floor is unconditional rather than a mobile media rule. The ring
+   is the product-level :focus-visible rule at the top of this file. */
+.region-chrome__back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.region-chrome__back:hover {
+  background: var(--bg-tertiary);
+}
+
+.region-chrome__back-glyph {
+  font-size: 1.4em;
+  line-height: 1;
+}
+
 /* The close, revealed the way the placement grab is (#1552 D3): on an
    engaged bar, or always where nothing can hover. */
 .region-tabs__close {
@@ -4320,6 +4350,8 @@ button.background-tasks-banner:focus-visible {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+  /* Wrapped inside the 1px box, some screen readers run the words together. */
+  white-space: nowrap;
 }
 
 /* archive#3341: the two shapes every clipboard call site needs once its copy
@@ -6832,16 +6864,43 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* File Preview (non-image attachments) */
-.file-preview__actions {
+.file-preview__toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
 }
-.file-preview__actions .button {
-  min-height: 44px;
+.file-preview__toolbar--end {
+  justify-content: flex-end;
+}
+.file-preview__kind {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+/* The preview's Download: an icon at the end of whichever toolbar the viewer
+   shows, with a full 44px target. */
+.preview-download {
+  /* Ends the row; if a narrow toolbar wraps, it stays at the trailing edge
+     rather than centred alone on a second line. */
+  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
   text-decoration: none;
+}
+.preview-download svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .file-preview__body {
   flex: 1;
@@ -6849,6 +6908,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+/* Text previews size to their content: a three-line note should not sit in
+   a nearly empty full-height panel. The panel keeps its height cap. */
+.file-preview__body--fit {
+  flex: 0 1 auto;
+}
+.image-preview-panel:has(.file-preview__body--fit) {
+  height: auto;
+  max-height: 90dvh;
 }
 .file-preview__frame {
   flex: 1;
@@ -6877,6 +6945,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .file-preview__markdown {
   padding: 4px 8px;
   overflow-wrap: anywhere;
+}
+.file-preview__markdown ul,
+.file-preview__markdown ol {
+  padding-inline-start: 1.5em;
+}
+.file-preview__markdown ul {
+  list-style: disc;
+}
+.file-preview__markdown ol {
+  list-style: decimal;
+}
+.file-preview__markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
 }
 .file-preview__notice {
   margin: 0;

@@ -2229,6 +2229,9 @@ export class OrchestrationService {
       ...(options.resumeCursorSupport
         ? { resumeCursorSupport: options.resumeCursorSupport }
         : {}),
+      perTurnModelOverride: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.modelLaunch
+          ?.overridePerTurn !== false,
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -3996,7 +3999,11 @@ export class OrchestrationService {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -4657,6 +4664,32 @@ export class OrchestrationService {
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);
+  }
+
+  /**
+   * Whether `authority` may read a CONVERSATION — the durable id a chat keeps
+   * across Sessions — with the same fail-closed rule the conversation
+   * transcript read uses (`readConversationEventWindow`): a conversation with
+   * a recorded lineage is readable only when every linked Session is; one
+   * without a lineage is a legacy one-Session conversation whose id IS its
+   * Session id, unless that id is a child Session of another conversation.
+   * Conversation-scoped routes (linked pull requests) asked
+   * `canUserReadSession(conversationId)`, which refuses a conversation whose
+   * id is not itself a readable Session.
+   */
+  canUserReadConversation(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): boolean {
+    this.initialize();
+    const store = this.options.eventStore;
+    const lineage = store?.conversationSessions(conversationId) ?? [];
+    if (lineage.length > 0)
+      return lineage.every((linked) =>
+        this.sessionAuthz.canReadSession(linked.sessionId, authority),
+      );
+    if (store?.conversationForSession(conversationId)) return false;
+    return this.sessionAuthz.canReadSession(conversationId, authority);
   }
 
   canUserMutateSession(

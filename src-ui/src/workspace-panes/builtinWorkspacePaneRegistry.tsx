@@ -490,9 +490,13 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
           // it would make a refusal a click that does nothing, where before
           // #2049 the row always opened the review.
           //
-          // The reachable refusals here are the model's own — no dock region
-          // free, a side region on a bottom-only device, an undeclared
-          // region. NOT the `''` projectId sentinel above: this callback is
+          // With no region named, the model does not refuse a surface it can
+          // resolve: on a fine pointer it reveals or places the pane by the
+          // surface's own rule (the first free dock region, else joining its
+          // default), and on a bottom-only device it opens the pane over
+          // Chat (the phone layer). So the reachable refusal is `no-surface`
+          // — a key the pull-request id grammar cannot mint. NOT the `''`
+          // projectId sentinel above: this callback is
           // only ever invoked from JSX rendered past the
           // `identity.state !== 'resolved'` early return, so `projectId` is
           // a real id by the time anyone can click. (Were it reachable the

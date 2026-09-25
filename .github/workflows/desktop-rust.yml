@@ -11,12 +11,16 @@ on:
     paths:
       - '.github/workflows/desktop-rust.yml'
       - 'src-desktop/**'
+      - 'packages/contracts/src/native-push.ts'
+      - 'scripts/run-agent-activity-android-unit-tests.mjs'
   push:
     branches:
       - main
     paths:
       - '.github/workflows/desktop-rust.yml'
       - 'src-desktop/**'
+      - 'packages/contracts/src/native-push.ts'
+      - 'scripts/run-agent-activity-android-unit-tests.mjs'
 
 permissions:
   contents: read
@@ -109,6 +113,45 @@ jobs:
           mkdir -p dist-server dist-desktop-runtime/node_modules
           cd src-desktop
           cargo check --target aarch64-linux-android --lib
+
+  # The agent-activity plugin's Kotlin unit tests: the notification model, the
+  # registration pin, and the AES-GCM known-answer vectors, including the
+  # phone's copy of NATIVE_PUSH_SEALED_TEST_VECTOR. They ran only by hand in a
+  # generated gen/android, so the phone's opener and the Station's sealer could
+  # drift apart unobserved (#2516). The script needs no Rust build: it gives
+  # Gradle the plugin plus the `tauri` crate's Android library that
+  # Cargo.lock resolves, under the checked-in gen/android root script and
+  # wrapper, and fails when a test class under src/test did not run.
+  #
+  # Same trust posture as android-cross-check: no new actions. The hosted image
+  # ships JDK 17 and the Android SDK (with accepted licenses), which is all
+  # Gradle needs to compile and run JVM unit tests.
+  agent-activity-android-unit-tests:
+    name: Agent-activity Kotlin unit tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Run the plugin's Kotlin unit tests
+        run: |
+          set -euo pipefail
+          if [ -z "${JAVA_HOME_17_X64:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
+            echo "::error::this image lacks JDK 17 or the Android SDK; the Kotlin unit tests cannot run" >&2
+            exit 1
+          fi
+          JAVA_HOME="$JAVA_HOME_17_X64" node scripts/run-agent-activity-android-unit-tests.mjs --no-daemon
 
   desktop-rust:
     runs-on: ubuntu-22.04

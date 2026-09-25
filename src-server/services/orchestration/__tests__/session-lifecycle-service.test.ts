@@ -9,6 +9,9 @@ import {
   projectSessionLifecycle,
 } from '../session-lifecycle-service.js';
 
+// #2540: an ordinary turn.completed leaves the session `idle` (at rest,
+// reusable), not the terminal `completed`; the guarantees below are unchanged
+// — a finished turn stays finished across re-attach and process death.
 describe('session-lifecycle-service', () => {
   test('normalizes approval requests into review_pending lifecycle metadata', () => {
     const event = normalizeCanonicalRuntimeEventLifecycle(
@@ -76,7 +79,7 @@ describe('session-lifecycle-service', () => {
     expect(
       projectSessionLifecycle({ session, events: userDone }),
     ).toMatchObject({
-      lifecycleState: 'completed',
+      lifecycleState: 'idle',
       transitionReason: 'turn_completed',
     });
     // Running while it works — not a stale "completed" …
@@ -96,7 +99,7 @@ describe('session-lifecycle-service', () => {
         events: [...userDone, providerStarted, providerDone],
       }),
     ).toMatchObject({
-      lifecycleState: 'completed',
+      lifecycleState: 'idle',
       transitionReason: 'provider_turn_completed',
     });
     // #2324 review F1: a provider turn that fails, likewise distinguishable.
@@ -122,7 +125,7 @@ describe('session-lifecycle-service', () => {
     expect(
       normalizeCanonicalRuntimeEventLifecycle(providerDone, 'running'),
     ).toMatchObject({
-      sessionState: 'completed',
+      sessionState: 'idle',
       transitionReason: 'provider_turn_completed',
     });
   });
@@ -336,7 +339,7 @@ describe('session-lifecycle-service', () => {
       ],
     });
 
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   test('normalize leaves bare attach events transition-neutral but honors explicit initial state (#1073)', () => {
@@ -491,7 +494,7 @@ describe('session-lifecycle-service', () => {
         ...attachEvents(base, '2026-07-28T11:00:00.000Z', 'b'),
       ],
     });
-    expect(completed.lifecycleState).toBe('completed');
+    expect(completed.lifecycleState).toBe('idle');
 
     const failed = projectSessionLifecycle({
       session,
@@ -665,7 +668,7 @@ describe('session-lifecycle-service', () => {
         ],
       });
 
-      expect(projection.lifecycleState).toBe('completed');
+      expect(projection.lifecycleState).toBe('idle');
       expect(projection.pendingReview).toBe(false);
     });
 
@@ -906,7 +909,7 @@ describe('session.configured does not imply work in flight (#1073)', () => {
         event('session.configured'),
       ],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   test('re-attaching after cancellation keeps it canceled', () => {
@@ -945,7 +948,7 @@ describe('an attached-but-idle runtime does not overwrite the outcome (#1121 rev
     updatedAt: '2026-07-28T12:00:00Z',
   } as never;
 
-  test('bedrock/ollama publishing state-changed -> idle after a turn keeps completed', () => {
+  test('bedrock/ollama publishing state-changed -> idle after a turn keeps the finished turn at rest', () => {
     // The exact emission order in bedrock-adapter.ts and ollama-adapter.ts:
     // turn.completed, then session.state-changed from running to idle. Before
     // this fix that final event folded the session back to 'running' after
@@ -959,7 +962,7 @@ describe('an attached-but-idle runtime does not overwrite the outcome (#1121 rev
         event('session.state-changed', { from: 'running', to: 'idle' }),
       ],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   test('an idle report on a non-terminal session reads queued, not running', () => {
@@ -1589,7 +1592,7 @@ describe('station#3581 review BLOCK 1: the write path stops minting the bad stam
     expect(normalized.transitionReason).toBeUndefined();
   });
 
-  test('normalizeCanonicalRuntimeEventLifecycle DOES stamp completed for the anchor turn own genuine completion', () => {
+  test('normalizeCanonicalRuntimeEventLifecycle DOES stamp the anchor turn own genuine completion as idle (#2540)', () => {
     const genuineEvent: CanonicalRuntimeEvent = {
       provider: 'codex',
       threadId: 'thread-3581-block1-write-genuine',
@@ -1606,7 +1609,7 @@ describe('station#3581 review BLOCK 1: the write path stops minting the bad stam
       'turn-2',
     );
 
-    expect(normalized.sessionState).toBe('completed');
+    expect(normalized.sessionState).toBe('idle');
   });
 });
 
@@ -1663,7 +1666,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         },
       ],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   test('a completed turn stays completed when the process is stopped with no exitCode', () => {
@@ -1681,7 +1684,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         },
       ],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   test('a persisted engine status of dead does not outrank a recorded completed turn', () => {
@@ -1689,7 +1692,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
       session: { ...session, status: 'dead' },
       events: [turnStarted, turnCompleted],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   // The discriminating negative: a turn that was still IN PROGRESS when the
@@ -1753,7 +1756,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         },
       ],
     });
-    expect(projection.lifecycleState).toBe('completed');
+    expect(projection.lifecycleState).toBe('idle');
   });
 
   // The two neighbours that must NOT be caught by that guard.

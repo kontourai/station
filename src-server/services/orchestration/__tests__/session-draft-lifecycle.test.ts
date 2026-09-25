@@ -503,7 +503,7 @@ describe('Draft lifecycle derivation (#2310)', () => {
       receipt(ROOT, 'rejected', 1, 'execution');
       const summary = summaryFor(ROOT, session);
       expect(summary.draft).toBe(false);
-      expect(summary.lifecycleState).toBe('completed');
+      expect(summary.lifecycleState).toBe('idle');
       expect(summary.terminalAttribution?.kind).not.toBe('send_refused');
     });
 
