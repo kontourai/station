@@ -360,7 +360,11 @@ export class NotificationService {
    * or agent tag. A tag smuggled in `metadata.dedupeTag` is refused.
    * In hosted mode the route passes the caller's tenant, and the tag is
    * `api:<tenantId>:<tag>` so two tenants' requests never share a record.
-   * (Tenant ids cannot contain `:`, so the forms never alias.)
+   * Tenant ids cannot contain `:`, so one tenant's tags never alias
+   * another's. A personal-mode `api:acme:foo` and tenant acme's `foo` are
+   * kept apart because a hosted request always carries a tenant (the route
+   * refuses a hosted request without one), so the unscoped form only ever
+   * exists in personal mode.
    */
   async scheduleFromRequest(
     opts: ScheduleNotificationOpts,
