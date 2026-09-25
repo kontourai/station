@@ -98,7 +98,9 @@ async function harness(
   const refused: string[] = [];
   const registrations = new Map<string, NativePushRegistration>();
   const sleeps: number[] = [];
-  const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+  /** Every gateway request, so `settle` waits for the real work, not ticks. */
+  const inFlight: Promise<unknown>[] = [];
+  const answer = async (url: string, init: RequestInit) => {
     expect(url).toBe('https://push.kontourai.io/v1/fcm/send');
     expect(init.redirect).toBe('error');
     const body = new Uint8Array(init.body as Buffer) as Uint8Array<ArrayBuffer>;
@@ -130,6 +132,11 @@ async function harness(
       plaintext: open(data.sealed ?? '', registration),
     });
     return new Response('{}', { status: options.answer ?? 200 });
+  };
+  const fetchImpl = vi.fn((url: string, init: RequestInit) => {
+    const response = answer(url, init);
+    inFlight.push(response);
+    return response;
   });
   const warn = vi.fn();
   async function pairAndRegister(name: string) {
@@ -213,9 +220,20 @@ async function harness(
     tablet,
     wiring,
     fetchImpl,
+    /**
+     * Until every gateway request (including any a floor wait started late)
+     * has answered and the channel has handled the answer. The gateway
+     * verifier runs on WebCrypto, so a fixed number of ticks is not enough
+     * on a loaded host.
+     */
     async settle() {
-      for (let i = 0; i < 20; i += 1)
-        await new Promise((resolve) => setImmediate(resolve));
+      let seen = -1;
+      while (seen !== inFlight.length) {
+        seen = inFlight.length;
+        await Promise.allSettled(inFlight);
+        for (let i = 0; i < 10; i += 1)
+          await new Promise((resolve) => setImmediate(resolve));
+      }
     },
   };
 }
