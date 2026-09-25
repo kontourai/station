@@ -48,6 +48,14 @@ export interface ApnsGatewayConfig {
   channelGlobalLimiter: RateLimiter;
   /** Deletes, per Station key: they give quota back, so kept apart from creates. */
   channelDeleteLimiter: RateLimiter;
+  /**
+   * Alerts, per device token, tighter than the shared per-token budget.
+   * Nothing binds a device token to the Station that registered it (there
+   * is no channelAuth for a device), so anyone who learns a token can send
+   * it fixed-text alerts with a key of their own; this bounds how often.
+   * Without it the alert route answers 503: it fails closed.
+   */
+  alertPerTokenLimiter?: RateLimiter;
 }
 
 export interface GatewayConfig {
@@ -441,21 +449,26 @@ async function liveActivity(
 }
 
 /**
- * A regular alert push. Limited like a Live Activity update: per device
- * token (so key rotation cannot evade it), per key, then globally. It
- * creates no channel, so the channel ceilings do not apply.
+ * A regular alert push. Limited first by its own tight per-device-token
+ * ceiling, then like a Live Activity update: per device token (so key
+ * rotation cannot evade it), per key, then globally. It creates no channel,
+ * so the channel ceilings do not apply.
  */
 async function alert(
   signed: Signed,
   config: GatewayConfig,
   apns: ApnsGatewayConfig,
 ): Promise<Response> {
+  if (!apns.alertPerTokenLimiter)
+    return json(503, { error: 'push delivery is not configured' });
   const parsed = parseAlertRequest(signed.body, apns.allowedBundles);
   if (!parsed.ok) return json(400, { error: parsed.reason });
   const { request } = parsed;
+  const tokenHash = await hashKey(request.deviceToken);
   if (
     !(await withinLimits([
-      [config.perTokenLimiter, await hashKey(request.deviceToken)],
+      [apns.alertPerTokenLimiter, tokenHash],
+      [config.perTokenLimiter, tokenHash],
       [config.perKeyLimiter, signed.stationKey],
       [config.globalLimiter, 'global'],
     ]))

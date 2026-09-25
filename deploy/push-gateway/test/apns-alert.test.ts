@@ -95,6 +95,7 @@ async function config(
       channelGlobalLimiter: allow,
       channelDeleteLimiter: allow,
       ledger: fakeLedger(),
+      alertPerTokenLimiter: allow,
     },
     nowSeconds: () => NOW,
     ...overrides,
@@ -171,7 +172,13 @@ for (const [environment, host] of [
 }
 
 test('the visible text is fixed per kind; quiet kinds do not sound and may wait', async () => {
-  for (const kind of ['attention', 'failed', 'done', 'hidden'] as const) {
+  for (const kind of [
+    'attention',
+    'failed',
+    'done',
+    'hidden',
+    'hidden-urgent',
+  ] as const) {
     const { calls, fetchImpl } = upstream();
     const response = await post(
       await config({ fetchImpl }),
@@ -181,7 +188,8 @@ test('the visible text is fixed per kind; quiet kinds do not sound and may wait'
     const aps = JSON.parse(calls[0].body).aps;
     assert.deepEqual(aps.alert, APNS_ALERT_TEXT[kind], kind);
     assert.equal(aps['mutable-content'], 1, kind);
-    const urgent = kind === 'attention' || kind === 'failed';
+    const urgent =
+      kind === 'attention' || kind === 'failed' || kind === 'hidden-urgent';
     assert.equal(aps.sound, urgent ? 'default' : undefined, kind);
     assert.equal(calls[0].headers['apns-priority'], urgent ? '10' : '5', kind);
   }
@@ -288,11 +296,11 @@ test('an unsigned or wrongly signed alert never reaches Apple or the limiters', 
   assert.deepEqual(log, []);
 });
 
-test('checks per device token, per key, then global, stopping at the first refusal', async () => {
+test('checks the alert per-token ceiling, then per device token, per key, global, stopping at the first refusal', async () => {
   const station = await stationKey();
   const thumbprint = await jwkThumbprint(station.publicJwk);
   const tokenHash = await bodyHash(new TextEncoder().encode(DEVICE_TOKEN));
-  const order = ['token', 'key', 'global'] as const;
+  const order = ['alert', 'token', 'key', 'global'] as const;
   for (const [index, refused] of order.entries()) {
     const log: string[] = [];
     const { calls, fetchImpl } = upstream();
@@ -302,14 +310,22 @@ test('checks per device token, per key, then global, stopping at the first refus
       perKeyLimiter: recording(log, 'key', refused !== 'key'),
       globalLimiter: recording(log, 'global', refused !== 'global'),
     });
+    assert.ok(cfg.apns);
+    cfg.apns.alertPerTokenLimiter = recording(
+      log,
+      'alert',
+      refused !== 'alert',
+    );
     const response = await post(cfg, alertBody(), station);
     assert.equal(response.status, 429, refused);
     assert.deepEqual(
       log,
-      [`token:${tokenHash}`, `key:${thumbprint}`, 'global:global'].slice(
-        0,
-        index + 1,
-      ),
+      [
+        `alert:${tokenHash}`,
+        `token:${tokenHash}`,
+        `key:${thumbprint}`,
+        'global:global',
+      ].slice(0, index + 1),
       refused,
     );
     assert.equal(calls.length, 0);
@@ -389,5 +405,40 @@ test('answers 503 until APNs is configured, before any limiter or Apple', async 
     assert.equal((await post(cfg, alertBody())).status, 503);
   }
   assert.deepEqual(log, []);
+  assert.equal(calls.length, 0);
+});
+
+test('the alert ceiling is per device token, whichever key signs: a stranger with fresh keys hits it', async () => {
+  // A fixed-window stand-in for the Workers binding: 6 a minute per key.
+  const counts = new Map<string, number>();
+  const sixPerToken: RateLimiter = {
+    limit: async ({ key }) => {
+      const next = (counts.get(key) ?? 0) + 1;
+      counts.set(key, next);
+      return { success: next <= 6 };
+    },
+  };
+  const { calls, fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  assert.ok(cfg.apns);
+  cfg.apns.alertPerTokenLimiter = sixPerToken;
+  const statuses: number[] = [];
+  for (let i = 0; i < 8; i += 1)
+    // A new self-minted key every time: key rotation does not reset it.
+    statuses.push((await post(cfg, alertBody(), await stationKey())).status);
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 200, 429, 429]);
+  assert.equal(calls.length, 6);
+  // Another device's budget is its own.
+  const other = await post(cfg, alertBody({ deviceToken: 'ef'.repeat(32) }));
+  assert.equal(other.status, 200);
+});
+
+test('without its own ceiling the alert route fails closed (503), Live Activities unaffected', async () => {
+  const { calls, fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  assert.ok(cfg.apns);
+  delete cfg.apns.alertPerTokenLimiter;
+  const response = await post(cfg, alertBody());
+  assert.equal(response.status, 503);
   assert.equal(calls.length, 0);
 });

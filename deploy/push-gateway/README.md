@@ -86,14 +86,19 @@ later push for the same notification replaces the shown one), and an
 expiration one hour out. `deviceToken` is the app's regular APNs device token,
 not a Live Activity token. The visible text is chosen by `kind` from a fixed
 vocabulary (`APNS_ALERT_TEXT` in `src/apns-request.ts`): `attention`,
-`failed`, `done`, or `hidden` for a surface that hides content. `attention`
-and `failed` sound and go out at priority 10; `done` and `hidden` are silent at
-priority 5. The body is `{ aps: { alert, sound?, "mutable-content": 1 },
+`failed`, `done`, and for a surface that hides content `hidden-urgent` or
+`hidden` (the same neutral text; urgency stays separate, so hiding content
+never quiets an urgent alert). `attention`, `failed` and `hidden-urgent` sound
+and go out at priority 10; `done` and `hidden` are silent at priority 5. The body is `{ aps: { alert, sound?, "mutable-content": 1 },
 station: { v: 1, rid, sk, sealed } }`: `sk` is stamped like `sk` on a Live
 Activity, and `sealed` (at most 3000 characters) is the notification sealed
 to the phone, for a Notification Service Extension to open (not built yet, so
-the fixed text is what shows). It is limited like a Live Activity update (per
-device token, per key, global) and spends no channel budget. `Unregistered`,
+the fixed text is what shows). Nothing binds a device token to a Station key,
+so a stranger who learns a token can send it fixed-text alerts with a key of
+their own: the route is therefore limited first by its own
+`ALERT_PER_TOKEN_LIMITER` (6 a minute per device token, whichever key signs;
+without the binding the route answers 503), then like a Live Activity update
+(per device token, per key, global). It spends no channel budget. `Unregistered`,
 `BadDeviceToken` and `DeviceTokenNotForTopic` mean `unregistered`. Not yet
 tried against Apple.
 

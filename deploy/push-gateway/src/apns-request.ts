@@ -17,12 +17,18 @@ const ALERT_BODY = 'Agent activity';
  * the Station's `kind`. A notification's own title and body travel only
  * inside `sealed`, for the Notification Service Extension to open on the
  * phone; without that extension the fixed text is what shows.
+ *
+ * `hidden` and `hidden-urgent` are for a surface that hides content: the
+ * same neutral text, so the lock screen does not say what kind of thing
+ * happened, while urgency (sound, priority) is carried separately. Hiding
+ * content never quiets an urgent alert.
  */
 export const APNS_ALERT_TEXT = {
   attention: { title: 'Station', body: 'Something needs your attention' },
   failed: { title: 'Station', body: 'Something failed' },
   done: { title: 'Station', body: 'Work finished' },
   hidden: { title: 'Station', body: 'You have a new notification' },
+  'hidden-urgent': { title: 'Station', body: 'You have a new notification' },
 } as const satisfies Record<string, { title: string; body: string }>;
 export type ApnsAlertKind = keyof typeof APNS_ALERT_TEXT;
 const ALERT_KINDS = Object.keys(APNS_ALERT_TEXT) as ApnsAlertKind[];
@@ -33,6 +39,7 @@ const ALERT_PAYLOAD_VERSION = 1;
 const URGENT_ALERT_KINDS: ReadonlySet<ApnsAlertKind> = new Set([
   'attention',
   'failed',
+  'hidden-urgent',
 ]);
 /** APNs caps apns-collapse-id at 64 bytes; the Station sends a hash. */
 const COLLAPSE_ID = /^[A-Za-z0-9_-]{16,64}$/;
