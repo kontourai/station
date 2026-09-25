@@ -157,10 +157,11 @@ test.describe('Agents pane child work (#2459)', () => {
     const scopeAll = page.getByRole('button', { name: 'All', exact: true });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
-    // Claude's subagent keeps exactly one Stop. Since #2533 its
-    // `subagentControl` cell is wired, so the pre-contract TaskRow bridge
-    // retires and the child-work row carries that Stop; a bridge that failed
-    // to retire would render a second one here.
+    // Claude's subagent keeps exactly one Stop, with no duplicate. Since
+    // #2533 its `subagentControl` cell is wired and the child-work row
+    // carries it. WHICH row carries it is not observable from this count: a
+    // TaskRow bridge that failed to retire replaces the child-work row, so
+    // the total stays 1. AgentsWorkspacePane.childWork.test.tsx pins that.
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(1);
 
     await scopeAll.click();
