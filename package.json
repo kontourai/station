@@ -67,7 +67,7 @@
     "veritas:coverage": "npm exec -- veritas readiness --check coverage --working-tree",
     "veritas:shadow": "npm exec -- veritas readiness --working-tree",
     "trust-reconcile-verify": "npm run full:regression",
-    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && npm run test:fixtures:guard",
+    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && node scripts/test-temp-dir-ratchet.mjs && node scripts/type-laundering-gate.mjs && npm run test:fixtures:guard",
     "verification:stress": "node scripts/run-verification-stress.mjs",
     "verification:stress:run": "node scripts/run-verification-stress.mjs --run",
     "coding-composition:gate": "node scripts/coding-composition-inventory-gate.mjs",
