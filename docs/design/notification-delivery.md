@@ -592,20 +592,19 @@ runtime and the two can never both alert. A shell without the command answers
   still being committed), so entries queued between the webview's cursor and
   the host's first read (while the app was closed for the upgrade) are then
   not alerted.
-- **What each OS call's outcome does.** A read is decided under the
-  consumer lock, its OS calls are made with the lock released, in order, and
-  the cursor is committed as far as the outcomes allow. A shown alert is
-  consumed. A call that was made but did not answer within five seconds is
-  treated as shown: consumed, remembered, never posted again (at-most-once),
-  and the poll stops there; if the show answers later its handle is still
-  kept. A call not made because the breaker is open stops the poll and is
-  retried next poll. A refused alert does not block later entries; the
-  cursor stops before it and it is retried, and dropped after three refusals
-  in a row. Once three distinct alerts are refused in a row the service
-  counts as down: refused alerts are dropped at once (at-most-once, logged
-  once per outage) until an alert is shown again. Refusal counts are kept per
-  Station origin, server run and entry, and start over when the entry is
-  consumed or the server restarts.
+- **One attempt per entry.** A read is decided under the consumer lock, its
+  OS calls are made with the lock released, in order, and the cursor is
+  committed as far as the outcomes allow. Shown, refused by the OS, or timed
+  out (the call was made and did not answer within five seconds): the entry
+  is consumed, the cursor passes it, and it is never tried again. Refusals
+  and timeouts are logged at most once a minute. A show that answers late
+  still has its handle kept.
+- **Only a call not made is retried.** When the breaker is open or the gate
+  is disabled, no call is made: the poll stops before that entry, the cursor
+  does not pass it, and nothing after it is posted in that poll.
+- **Stale entries.** An alert created more than 15 minutes ago (the entry's
+  `at`) is consumed without posting, so the backlog after the gate re-enables
+  or after a restart is not replayed.
 - **Stuck notification service.** zbus has no method timeout, so each OS
   call runs on a helper thread bounded at five seconds, and while four calls
   are still stuck no new call is made. After 15 polls in a row (about five
@@ -613,12 +612,18 @@ runtime and the two can never both alert. A shell without the command answers
   resume; once 16 calls have been written off over the process's lifetime,
   Station makes no OS notification call again and **desktop alerts stop until
   the app restarts** (logged as an error). The consumer lock is never held
-  across an OS call, so none of this blocks a handover. A crash between
-  posting and the commit can show an alert twice.
+  across an OS call, so none of this blocks a handover.
+- **Duplicates.** The dedupe of shown content is in memory and bounded.
+  Nothing past the committed cursor has been posted, so a restart repeats
+  nothing; the one exception is a crash between posting and the commit,
+  which posts those entries again.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the
-  pinned backend can: Linux (D-Bus `CloseNotification`). notify-rust 4.18's
+  pinned backend can: Linux (D-Bus `CloseNotification`). A retract that
+  arrives before its alert's late answer leaves a bounded tombstone, and the
+  late notification is closed as soon as it answers; an older post's late
+  answer never replaces a newer post's handle. notify-rust 4.18's
   macOS (NSUserNotificationCenter) and Windows handles expose no close, so
   there a retract only stops an alert not yet posted (a retract later in the
   same read). tauri-plugin-notification 2.4.0 cannot remove a delivered

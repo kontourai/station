@@ -26,27 +26,26 @@
 //! between the webview's cursor and this consumer's first read (while the
 //! app was closed for the upgrade) are then not alerted.
 //!
-//! **What each OS call's outcome does.** A read is decided under the
-//! consumer lock, its OS calls are made with the lock released, in order,
-//! and the cursor is then committed as far as the outcomes allow:
-//! - shown: consumed;
-//! - timed out (the call was made, no answer within 5 s): treated as shown —
-//!   consumed, remembered, never posted again (at-most-once), and the poll
-//!   stops there. A show that answers late still gets its handle kept;
-//! - not made (the breaker is open, [`OsCallGate`]): the poll stops before it
-//!   and the next poll retries it;
-//! - refused: later entries still run, and the cursor stops before it so the
-//!   next poll retries it; refused on [`MAX_REFUSALS`] polls in a row it is
-//!   dropped. After [`DOWN_AFTER_REFUSALS`] distinct entries are refused in a
-//!   row the service counts as down: refused alerts are dropped at once
-//!   (at-most-once, logged once per outage) until an alert is shown.
+//! **One attempt per entry.** A read is decided under the consumer lock, its
+//! OS calls are made with the lock released, in order, and the cursor is
+//! then committed as far as the outcomes allow:
+//! - shown, refused by the OS, or timed out (the call was made and did not
+//!   answer within 5 s): consumed. The cursor passes it and it is never tried
+//!   again. A refusal or timeout is logged, at most once a minute. A show
+//!   that answers late still gets its handle kept;
+//! - not called (the gate's breaker is open, or the gate is disabled): the
+//!   ONLY retried outcome. The poll stops before it, the cursor does not pass
+//!   it, and nothing after it is posted in that poll;
+//! - an alert created more than [`STALE_AFTER_MS`] ago (the entry's `at`) is
+//!   consumed without posting: the backlog after the gate re-enables or
+//!   after a restart is not replayed.
 //!
-//! Refusal counts are per Station origin, server run (epoch) and entry, and
-//! start over when the entry is consumed or the epoch changes. The gate
-//! writes stuck calls off after 15 saturated polls and resumes; once 16 calls
-//! have been written off, no OS notification call is made until restart.
-//! A crash between posting and the commit posts those entries again on the
-//! next run (the in-memory dedupe does not survive a restart).
+//! [`OsCallGate`] bounds each call, writes stuck calls off after 15
+//! saturated polls and resumes; once 16 calls have been written off, no OS
+//! notification call is made until restart. The dedupe of shown content is
+//! in memory and bounded. Nothing past the cursor has been posted, so a
+//! restart repeats nothing; the one exception is a crash between posting and
+//! the commit, which posts those entries again on the next run.
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -64,7 +63,9 @@
 //! whose answer is all new.
 //!
 //! **Retract** closes the OS notification this process posted for that id
-//! where the platform backend can: Linux (D-Bus `CloseNotification`). The
+//! where the platform backend can: Linux (D-Bus `CloseNotification`). A
+//! retract that arrives before its alert's late answer leaves a bounded
+//! tombstone, and the late notification is closed as soon as it answers. The
 //! pinned notify-rust 4.18 backends on macOS (NSUserNotificationCenter) and
 //! Windows return handles with no close, so there a retract only stops an
 //! alert that has not been posted yet (a retract later in the same read).
@@ -91,10 +92,10 @@ pub(crate) const ADOPTION_GRACE_MS: u64 = 30_000;
 const POSTED_MAX: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_STORED_ORIGINS: usize = 16;
-/// Polls in a row the OS may refuse the same alert before it is dropped.
-pub(crate) const MAX_REFUSALS: u32 = 3;
-/// Distinct alerts refused in a row after which the service counts as down.
-pub(crate) const DOWN_AFTER_REFUSALS: u32 = 3;
+/// An alert created longer ago than this is consumed without posting.
+pub(crate) const STALE_AFTER_MS: u64 = 15 * 60 * 1000;
+/// At most one "not shown" log line per this interval.
+const LOG_EVERY_MS: u64 = 60_000;
 const MAX_LINK_LEN: usize = 2048;
 pub(crate) const OPEN_EVENT: &str = "station://notification-open";
 const CURSOR_FILE: &str = "notification-delivery-cursors.json";
@@ -120,9 +121,17 @@ pub(crate) enum FeedEntry {
         urgency: String,
         #[serde(default)]
         link: Option<String>,
+        /// When the server queued it (ISO 8601, UTC).
+        #[serde(default)]
+        at: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
-    Retract { seq: u64, notification_id: String },
+    Retract {
+        seq: u64,
+        notification_id: String,
+        #[serde(default)]
+        at: Option<String>,
+    },
 }
 
 impl FeedEntry {
@@ -167,11 +176,13 @@ pub(crate) enum OsOutcome {
     /// Shown, or closed.
     Done,
     /// The OS refused the post, or there was nothing held to close.
+    /// Consumed.
     NotDone,
-    /// The call was made and did not answer in time. Treated as done: the
-    /// entry is consumed and not tried again (at-most-once).
+    /// The call was made and did not answer in time. Consumed, and its
+    /// content remembered as shown.
     Unknown,
-    /// No call was made: the gate's breaker is open. Tried again next poll.
+    /// No call was made: the gate's breaker is open or the gate is
+    /// disabled. The only outcome tried again (next poll).
     NotCalled,
 }
 
@@ -350,14 +361,34 @@ impl OsCallGate {
     }
 }
 
-/// Handles kept so a retract can close them, oldest first, at most `cap`.
+/// Handles kept so a retract can close them, oldest first, at most `cap`,
+/// plus a bounded tombstone per retracted id. Each handle carries the
+/// generation of the post that made it (posts are numbered as they start),
+/// so an older post's late answer never replaces a newer post's handle, and
+/// a retract closes a late answer from any post that started before it.
 /// Used on Linux (the only backend with a close); generic so it is tested
 /// everywhere.
 #[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
 pub(crate) struct HeldHandles<H> {
-    map: HashMap<String, std::sync::Arc<H>>,
+    map: HashMap<String, (u64, std::sync::Arc<H>)>,
     order: VecDeque<String>,
+    /// Per id: posts with a generation below this were retracted.
+    retracted: HashMap<String, u64>,
+    retracted_order: VecDeque<String>,
+    /// The generation the next post gets.
+    next_generation: u64,
     cap: usize,
+}
+
+/// What [`HeldHandles::insert`] did with a shown notification.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Kept {
+    /// Held for a retract.
+    Held,
+    /// A newer post's handle is held for this id; this one is not.
+    Superseded,
+    /// Retracted before it answered: close it now.
+    Retracted,
 }
 
 #[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
@@ -366,24 +397,74 @@ impl<H> HeldHandles<H> {
         Self {
             map: HashMap::new(),
             order: VecDeque::new(),
+            retracted: HashMap::new(),
+            retracted_order: VecDeque::new(),
+            next_generation: 0,
             cap,
         }
     }
 
-    pub(crate) fn insert(&mut self, id: String, handle: std::sync::Arc<H>) {
+    /// Number a post as it starts.
+    pub(crate) fn begin_post(&mut self) -> u64 {
+        let generation = self.next_generation;
+        self.next_generation += 1;
+        generation
+    }
+
+    /// Keep the handle a post of `generation` answered with, unless its id
+    /// was retracted after that post started or a newer post's handle is
+    /// already held.
+    pub(crate) fn insert(
+        &mut self,
+        id: String,
+        generation: u64,
+        handle: std::sync::Arc<H>,
+    ) -> Kept {
+        if self
+            .retracted
+            .get(&id)
+            .is_some_and(|before| generation < *before)
+        {
+            return Kept::Retracted;
+        }
+        if self
+            .map
+            .get(&id)
+            .is_some_and(|(held, _)| *held > generation)
+        {
+            return Kept::Superseded;
+        }
         self.order.retain(|held| *held != id);
         self.order.push_back(id.clone());
-        self.map.insert(id, handle);
+        self.map.insert(id, (generation, handle));
         while self.map.len() > self.cap {
             let Some(oldest) = self.order.pop_front() else {
                 break;
             };
             self.map.remove(&oldest);
         }
+        Kept::Held
     }
 
     pub(crate) fn get(&self, id: &str) -> Option<std::sync::Arc<H>> {
-        self.map.get(id).cloned()
+        self.map
+            .get(id)
+            .map(|(_, handle)| std::sync::Arc::clone(handle))
+    }
+
+    /// Record that `id` is retracted: any post of it started so far that
+    /// answers later is closed on arrival.
+    pub(crate) fn tombstone(&mut self, id: &str) {
+        let before = self.next_generation;
+        if self.retracted.insert(id.to_string(), before).is_none() {
+            self.retracted_order.push_back(id.to_string());
+            while self.retracted.len() > self.cap {
+                let Some(oldest) = self.retracted_order.pop_front() else {
+                    break;
+                };
+                self.retracted.remove(&oldest);
+            }
+        }
     }
 
     /// Remove `id` only if it still holds `handle` (a newer post under the
@@ -392,7 +473,7 @@ impl<H> HeldHandles<H> {
         if self
             .map
             .get(id)
-            .is_some_and(|held| std::sync::Arc::ptr_eq(held, handle))
+            .is_some_and(|(_, held)| std::sync::Arc::ptr_eq(held, handle))
         {
             self.map.remove(id);
             self.order.retain(|held| held != id);
@@ -400,9 +481,11 @@ impl<H> HeldHandles<H> {
     }
 }
 
-/// Close a held handle through the gate. The handle stays held unless the
-/// close was actually called: `NotCalled` keeps it for the retried retract;
-/// an answered or timed-out close releases it (the entry is consumed).
+/// Close a held handle through the gate, and tombstone the id so a post of
+/// it still waiting for its answer is closed when the answer arrives. The
+/// handle stays held unless the close was actually called: `NotCalled`
+/// keeps it for the retried retract; an answered or timed-out close
+/// releases it (the entry is consumed).
 #[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
 pub(crate) fn close_held<H: Send + Sync + 'static>(
     held: &Mutex<HeldHandles<H>>,
@@ -410,11 +493,12 @@ pub(crate) fn close_held<H: Send + Sync + 'static>(
     id: &str,
     close: impl FnOnce(std::sync::Arc<H>) + Send + 'static,
 ) -> OsOutcome {
-    let Some(handle) = held
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(id)
-    else {
+    let handle = {
+        let mut held = held.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        held.tombstone(id);
+        held.get(id)
+    };
+    let Some(handle) = handle else {
         return OsOutcome::NotDone;
     };
     let closing = std::sync::Arc::clone(&handle);
@@ -427,6 +511,32 @@ pub(crate) fn close_held<H: Send + Sync + 'static>(
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove_if(id, &handle);
     outcome
+}
+
+/// A shown notification's handle, on time or late: held for a retract, or
+/// closed at once (through the gate) when its id was retracted meanwhile.
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+pub(crate) fn hold_shown<H: Send + Sync + 'static>(
+    held: &Mutex<HeldHandles<H>>,
+    gate: &OsCallGate,
+    id: String,
+    generation: u64,
+    handle: std::sync::Arc<H>,
+    close: impl FnOnce(std::sync::Arc<H>) + Send + 'static,
+) -> Kept {
+    let kept = held
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(id, generation, std::sync::Arc::clone(&handle));
+    if kept == Kept::Retracted
+        && !matches!(
+            gate.run(move || close(handle), |()| {}),
+            GateAnswer::Answered(())
+        )
+    {
+        log::warn!("could not close a notification retracted before it showed");
+    }
+    kept
 }
 
 pub(crate) trait CursorStore {
@@ -488,17 +598,8 @@ pub(crate) struct Applied {
 /// (OS calls) after it is released. Each carries its entry's `seq`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Action {
-    Post {
-        seq: u64,
-        alert: Alert,
-        key: String,
-        /// Polls in a row the OS has refused this entry before.
-        refusals: u32,
-    },
-    Close {
-        seq: u64,
-        notification_id: String,
-    },
+    Post { seq: u64, alert: Alert, key: String },
+    Close { seq: u64, notification_id: String },
 }
 
 #[derive(Debug, Default)]
@@ -506,9 +607,6 @@ pub(crate) struct Plan {
     pub actions: Vec<Action>,
     /// The position to commit once the actions ran; `None` while waiting.
     commit: Option<StoredCursor>,
-    /// The service state when the read was planned (see `FeedConsumer`).
-    down: bool,
-    streak: u32,
 }
 
 impl Plan {
@@ -520,105 +618,129 @@ impl Plan {
 /// What carrying out a plan did.
 #[derive(Debug, Default)]
 pub(crate) struct Executed {
-    /// Dedupe keys of alerts consumed as posted (shown, or timed out).
+    /// Dedupe keys of alerts shown, or called and timed out.
     accepted: Vec<String>,
-    /// The highest cursor the outcome allows committing.
+    /// The cursor stops before a call that was not made.
     limit: Option<u64>,
-    /// Entries refused and kept for a retry.
-    refused: Vec<u64>,
-    down: bool,
-    streak: u32,
+    /// Alerts the OS refused or did not answer in time (consumed).
+    not_shown: usize,
     pub applied: Applied,
 }
 
-/// Carry out a plan's OS calls in order.
-///
-/// - Shown: consumed. Timed out (`Unknown`): consumed as posted — never
-///   shown twice — and the poll stops there, so a slow service costs one
-///   timeout per poll.
-/// - Not called (breaker open): the poll stops before it; retried next poll.
-/// - Refused: kept for a retry (later entries still run; the cursor stops
-///   before it) — unless it was refused on [`MAX_REFUSALS`] polls in a row,
-///   or the service is down, in which case it is consumed. The service is
-///   down after [`DOWN_AFTER_REFUSALS`] distinct entries are refused in a
-///   row, and up again at the next shown alert.
+/// Carry out a plan's OS calls in order, one attempt per entry. Every
+/// outcome consumes the entry except `NotCalled`, which stops the poll
+/// before it (see the module comment).
 pub(crate) fn execute(plan: &mut Plan, sink: &mut dyn AlertSink) -> Executed {
-    let mut executed = Executed {
-        down: plan.down,
-        streak: plan.streak,
-        ..Executed::default()
-    };
-    let limit_to = |executed: &mut Executed, cursor: u64| {
-        executed.limit = Some(executed.limit.map_or(cursor, |limit| limit.min(cursor)));
-    };
+    let mut executed = Executed::default();
     for action in std::mem::take(&mut plan.actions) {
-        match action {
-            Action::Post {
-                seq,
-                alert,
-                key,
-                refusals,
-            } => match sink.post(&alert) {
-                OsOutcome::Done => {
-                    executed.accepted.push(key);
-                    executed.applied.posted += 1;
-                    executed.down = false;
-                    executed.streak = 0;
-                }
-                OsOutcome::Unknown => {
-                    executed.accepted.push(key);
-                    limit_to(&mut executed, seq);
-                    break;
-                }
-                OsOutcome::NotCalled => {
-                    limit_to(&mut executed, seq.saturating_sub(1));
-                    break;
-                }
-                OsOutcome::NotDone => {
-                    // Distinct entries: a retried refusal is not counted again.
-                    if !executed.down && refusals == 0 {
-                        executed.streak += 1;
-                        if executed.streak >= DOWN_AFTER_REFUSALS {
-                            executed.down = true;
-                        }
+        let (seq, outcome) = match action {
+            Action::Post { seq, alert, key } => {
+                let outcome = sink.post(&alert);
+                match outcome {
+                    OsOutcome::Done => {
+                        executed.accepted.push(key);
+                        executed.applied.posted += 1;
                     }
-                    if !executed.down && refusals + 1 < MAX_REFUSALS {
-                        executed.refused.push(seq);
-                        limit_to(&mut executed, seq.saturating_sub(1));
-                    } else {
-                        log::warn!(
-                            "notification {} not shown: the OS refused it",
-                            alert.notification_id
-                        );
+                    OsOutcome::Unknown => {
+                        executed.accepted.push(key);
+                        executed.not_shown += 1;
                     }
+                    OsOutcome::NotDone => executed.not_shown += 1,
+                    OsOutcome::NotCalled => {}
                 }
-            },
+                (seq, outcome)
+            }
             Action::Close {
                 seq,
                 notification_id,
-            } => match sink.close(&notification_id) {
-                OsOutcome::Done => executed.applied.closed += 1,
-                OsOutcome::NotDone => {}
-                OsOutcome::Unknown => {
-                    limit_to(&mut executed, seq);
-                    break;
+            } => {
+                let outcome = sink.close(&notification_id);
+                if outcome == OsOutcome::Done {
+                    executed.applied.closed += 1;
                 }
-                OsOutcome::NotCalled => {
-                    limit_to(&mut executed, seq.saturating_sub(1));
-                    break;
-                }
-            },
+                (seq, outcome)
+            }
+        };
+        if outcome == OsOutcome::NotCalled {
+            executed.limit = Some(seq.saturating_sub(1));
+            break;
         }
     }
     executed
 }
 
-/// Refusal counts for one Station origin and server run, by entry `seq`.
-#[derive(Default)]
-struct Refusals {
-    origin: String,
-    epoch: String,
-    counts: HashMap<u64, u32>,
+/// Milliseconds since the Unix epoch of a UTC ISO 8601 timestamp as the
+/// server writes it (`Date.prototype.toISOString`: `YYYY-MM-DDTHH:MM:SS.sssZ`,
+/// fraction optional). Anything else is `None`.
+pub(crate) fn iso_utc_ms(at: &str) -> Option<u64> {
+    if !at.is_ascii() {
+        return None;
+    }
+    let (main, fraction) = at.strip_suffix('Z')?.split_at_checked(19)?;
+    let number = |range: std::ops::Range<usize>| -> Option<u64> {
+        let part = main.get(range)?;
+        part.bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| part.parse().ok())
+            .flatten()
+    };
+    let separators = [(4, b'-'), (7, b'-'), (10, b'T'), (13, b':'), (16, b':')];
+    if separators
+        .iter()
+        .any(|(at, want)| main.as_bytes()[*at] != *want)
+    {
+        return None;
+    }
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    let millis = match fraction {
+        "" => 0,
+        _ => {
+            let digits = fraction.strip_prefix('.')?;
+            if digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit())
+            {
+                return None;
+            }
+            format!("{digits:0<3}")[..3].parse().ok()?
+        }
+    };
+    if year < 1970
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm), year >= 1970.
+    let (y, m) = if month <= 2 {
+        (year - 1, month + 9)
+    } else {
+        (year, month - 3)
+    };
+    let era = y / 400;
+    let year_of_era = y - era * 400;
+    let day_of_year = (153 * m + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = (era * 146_097 + day_of_era).checked_sub(719_468)?;
+    Some(((days * 24 + hour) * 60 + minute) * 60_000 + second * 1000 + millis)
+}
+
+/// Whether an alert created at `at` is older than [`STALE_AFTER_MS`] at
+/// `wall_ms`. An unreadable time, or one ahead of this clock, is not stale.
+fn is_stale(at: Option<&str>, wall_ms: u64) -> bool {
+    at.and_then(iso_utc_ms)
+        .is_some_and(|created| wall_ms.saturating_sub(created) > STALE_AFTER_MS)
+}
+
+/// The caller's clocks for one read.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Now {
+    /// A MONOTONIC millisecond clock (the adoption grace, log rate limit).
+    pub monotonic_ms: u64,
+    /// Wall-clock milliseconds since the Unix epoch (staleness).
+    pub wall_ms: u64,
 }
 
 /// The consumer's decisions, free of HTTP and OS calls so they can be tested.
@@ -635,11 +757,8 @@ pub(crate) struct FeedConsumer {
     first_read: HashMap<String, (StoredCursor, u64)>,
     posted: VecDeque<String>,
     posted_set: HashSet<String>,
-    refusals: Refusals,
-    /// The notification service refuses everything (see [`execute`]).
-    down: bool,
-    /// Distinct entries refused in a row.
-    streak: u32,
+    /// When "not shown" was last logged, on the monotonic clock.
+    logged_not_shown_at: Option<u64>,
     /// Origins with a planned read whose outcome is not committed yet.
     pending: HashSet<String>,
 }
@@ -656,11 +775,6 @@ impl FeedConsumer {
     #[cfg(test)]
     pub(crate) fn cursor(&self, origin: &str) -> Option<&StoredCursor> {
         self.cursors.get(origin)
-    }
-
-    #[cfg(test)]
-    fn refusal_count(&self, seq: u64) -> u32 {
-        self.refusals.counts.get(&seq).copied().unwrap_or(0)
     }
 
     /// `after` and `epoch` for the next read. Without a cursor the whole
@@ -699,7 +813,7 @@ impl FeedConsumer {
         origin: &str,
         feed: &Feed,
         focused: bool,
-        now_ms: u64,
+        now: Now,
         store: &mut dyn CursorStore,
     ) -> Plan {
         // A cursor stored for another surface (another installation, or the
@@ -715,7 +829,7 @@ impl FeedConsumer {
         }
         let start = match self.cursors.get(origin) {
             Some(stored) => stored.clone(),
-            None => match self.start_without_cursor(origin, feed, now_ms) {
+            None => match self.start_without_cursor(origin, feed, now.monotonic_ms) {
                 Some(start) => start,
                 None => return Plan::default(),
             },
@@ -725,14 +839,6 @@ impl FeedConsumer {
         } else {
             0
         };
-        // Refusal counts belong to one origin's server run.
-        if self.refusals.origin != origin || self.refusals.epoch != feed.epoch {
-            self.refusals = Refusals {
-                origin: origin.to_string(),
-                epoch: feed.epoch.clone(),
-                counts: HashMap::new(),
-            };
-        }
         let mut entries: Vec<&FeedEntry> = feed
             .entries
             .iter()
@@ -752,6 +858,7 @@ impl FeedConsumer {
                 FeedEntry::Retract {
                     seq,
                     notification_id,
+                    ..
                 } => actions.push(Action::Close {
                     seq: *seq,
                     notification_id: notification_id.clone(),
@@ -763,6 +870,7 @@ impl FeedConsumer {
                     body,
                     urgency,
                     link,
+                    at,
                 } => {
                     let retracted_later = retracted_at
                         .get(notification_id.as_str())
@@ -773,6 +881,7 @@ impl FeedConsumer {
                         .unwrap_or_default();
                     if !retracted_later
                         && !focused
+                        && !is_stale(at.as_deref(), now.wall_ms)
                         && !self.posted_set.contains(&key)
                         && planned_keys.insert(key.clone())
                     {
@@ -785,7 +894,6 @@ impl FeedConsumer {
                                 link: in_app_link(link.as_deref()),
                             },
                             key,
-                            refusals: self.refusals.counts.get(seq).copied().unwrap_or(0),
                         });
                     }
                 }
@@ -799,52 +907,41 @@ impl FeedConsumer {
                 cursor: feed.cursor,
                 epoch: feed.epoch.clone(),
             }),
-            down: self.down,
-            streak: self.streak,
         }
     }
 
-    /// Record a plan's outcome: remember the consumed alerts, count the
-    /// refusals kept for a retry, and commit the cursor up to what the
-    /// outcome allows. Committing after the OS calls means a crash between
-    /// posting and this save posts those entries again.
+    /// Record a plan's outcome: remember the alerts shown (or called and
+    /// timed out), log what was not shown, and commit the cursor up to what
+    /// the outcome allows. Committing after the OS calls means a crash
+    /// between posting and this save posts those entries again.
     pub(crate) fn finish(
         &mut self,
         origin: &str,
         plan_commit: Option<StoredCursor>,
         executed: Executed,
+        now: Now,
         store: &mut dyn CursorStore,
     ) {
         self.pending.remove(origin);
         for key in executed.accepted {
             self.remember_posted(key);
         }
-        if executed.down && !self.down {
+        if executed.not_shown > 0
+            && self
+                .logged_not_shown_at
+                .is_none_or(|at| now.monotonic_ms.saturating_sub(at) >= LOG_EVERY_MS)
+        {
+            self.logged_not_shown_at = Some(now.monotonic_ms);
             log::warn!(
-                "the OS refused {DOWN_AFTER_REFUSALS} notifications in a row; refused alerts are dropped until one is shown"
+                "{} notification(s) not confirmed shown: the OS refused them or did not answer in time; they are not retried",
+                executed.not_shown
             );
         }
-        self.down = executed.down;
-        self.streak = executed.streak;
         let Some(mut next) = plan_commit else {
             return;
         };
         if let Some(limit) = executed.limit {
             next.cursor = next.cursor.min(limit);
-        }
-        if self.refusals.origin == origin && self.refusals.epoch == next.epoch {
-            // Consumed entries (at or below the new cursor) and entries not
-            // refused this time start over; refused ones count up.
-            let mut counts = HashMap::new();
-            for seq in executed.refused {
-                if seq > next.cursor {
-                    counts.insert(
-                        seq,
-                        self.refusals.counts.get(&seq).copied().unwrap_or(0) + 1,
-                    );
-                }
-            }
-            self.refusals.counts = counts;
         }
         self.commit(origin, next, store);
     }
@@ -857,16 +954,16 @@ impl FeedConsumer {
         origin: &str,
         feed: &Feed,
         focused: bool,
-        now_ms: u64,
+        now: Now,
         sink: &mut dyn AlertSink,
         store: &mut dyn CursorStore,
     ) -> Applied {
-        let mut plan = self.plan(origin, feed, focused, now_ms, store);
+        let mut plan = self.plan(origin, feed, focused, now, store);
         let waiting = plan.waiting();
         let mut executed = execute(&mut plan, sink);
         sink.end_poll();
         let mut applied = std::mem::take(&mut executed.applied);
-        self.finish(origin, plan.commit, executed, store);
+        self.finish(origin, plan.commit, executed, now, store);
         applied.waiting = waiting;
         applied
     }
@@ -996,11 +1093,11 @@ impl<C: CursorStore> SharedConsumer<C> {
         origin: &str,
         feed: &Feed,
         focused: bool,
-        now_ms: u64,
+        now: Now,
         sink: &mut dyn AlertSink,
     ) -> Option<Applied> {
         let mut plan = self.with(init, |consumer, store| {
-            consumer.plan(origin, feed, focused, now_ms, store)
+            consumer.plan(origin, feed, focused, now, store)
         })?;
         let waiting = plan.waiting();
         // No consumer lock from here until the outcome is committed.
@@ -1009,7 +1106,7 @@ impl<C: CursorStore> SharedConsumer<C> {
         let mut applied = std::mem::take(&mut executed.applied);
         self.with(
             || None,
-            |consumer, store| consumer.finish(origin, plan.commit, executed, store),
+            |consumer, store| consumer.finish(origin, plan.commit, executed, now, store),
         );
         applied.waiting = waiting;
         Some(applied)
@@ -1099,9 +1196,8 @@ mod host {
     /// only its click is not observed.
     const MAX_CLICK_WAITERS: usize = 32;
     /// The longest one OS notification call (show, close) may take. A call
-    /// that times out is treated as done (at-most-once): its entry is
-    /// consumed and remembered as posted, so it is never shown twice. If the
-    /// show answers later, its handle is kept then (retract on Linux, click).
+    /// that times out is consumed (one attempt per entry). If the show
+    /// answers later, its handle is kept then (retract on Linux, click).
     const OS_CALL_TIMEOUT: Duration = Duration::from_secs(5);
     /// OS calls still running (stuck past their timeout) before the breaker
     /// stops making new ones.
@@ -1140,6 +1236,13 @@ mod host {
     fn monotonic_ms() -> u64 {
         static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
         START.get_or_init(Instant::now).elapsed().as_millis() as u64
+    }
+
+    /// Wall-clock milliseconds since the Unix epoch: an entry's age.
+    fn wall_ms() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis() as u64)
     }
 
     fn config_dir(app: &AppHandle) -> Option<PathBuf> {
@@ -1206,7 +1309,10 @@ mod host {
             &origin,
             &feed,
             focused,
-            monotonic_ms(),
+            Now {
+                monotonic_ms: monotonic_ms(),
+                wall_ms: wall_ms(),
+            },
             sink,
         );
     }
@@ -1280,6 +1386,7 @@ mod host {
     /// late, on the gate's helper thread.
     struct SinkShared {
         app: AppHandle,
+        gate: OsCallGate,
         waiters: std::sync::atomic::AtomicUsize,
         #[cfg(all(unix, not(target_os = "macos")))]
         handles: Mutex<HeldHandles<notify_rust::NotificationHandle>>,
@@ -1295,22 +1402,43 @@ mod host {
                 .is_ok()
         }
 
+        /// Number a post as it starts (Linux: orders late answers and
+        /// retracts; see [`HeldHandles`]).
+        fn begin_post(&self) -> u64 {
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                self.handles
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .begin_post()
+            }
+            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            {
+                0
+            }
+        }
+
         /// Keep a shown notification: its handle for a retract (Linux) and a
-        /// waiter for its click.
+        /// waiter for its click. One retracted before it answered is closed.
         fn present(
             self: &Arc<Self>,
             id: String,
+            generation: u64,
             link: Option<String>,
             shown: notify_rust::NotificationHandle,
         ) {
             #[cfg(all(unix, not(target_os = "macos")))]
             {
                 let shown = Arc::new(shown);
-                self.handles
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(id.clone(), Arc::clone(&shown));
-                if self.claim_waiter() {
+                let kept = hold_shown(
+                    &self.handles,
+                    &self.gate,
+                    id.clone(),
+                    generation,
+                    Arc::clone(&shown),
+                    |handle| tauri::async_runtime::block_on(handle.close_async()),
+                );
+                if kept != Kept::Retracted && self.claim_waiter() {
                     let shared = Arc::clone(self);
                     std::thread::spawn(move || {
                         tauri::async_runtime::block_on(shown.wait_for_action_async(
@@ -1336,7 +1464,7 @@ mod host {
             }
             #[cfg(not(all(unix, not(target_os = "macos"))))]
             {
-                let _ = id;
+                let _ = (id, generation);
                 if self.claim_waiter() {
                     let shared = Arc::clone(self);
                     std::thread::spawn(move || {
@@ -1367,7 +1495,6 @@ mod host {
     /// clicks open nothing.
     pub(crate) struct OsAlertSink {
         shared: Arc<SinkShared>,
-        gate: OsCallGate,
     }
 
     impl OsAlertSink {
@@ -1375,16 +1502,16 @@ mod host {
             Self {
                 shared: Arc::new(SinkShared {
                     app,
+                    gate: OsCallGate::new(
+                        MAX_PARKED_OS_CALLS,
+                        OS_CALL_TIMEOUT,
+                        GATE_RESET_AFTER_POLLS,
+                        GATE_LEAK_CAP,
+                    ),
                     waiters: Default::default(),
                     #[cfg(all(unix, not(target_os = "macos")))]
                     handles: Mutex::new(HeldHandles::new(MAX_HELD_HANDLES)),
                 }),
-                gate: OsCallGate::new(
-                    MAX_PARKED_OS_CALLS,
-                    OS_CALL_TIMEOUT,
-                    GATE_RESET_AFTER_POLLS,
-                    GATE_LEAK_CAP,
-                ),
             }
         }
     }
@@ -1405,27 +1532,29 @@ mod host {
             let _ = notify_rust::set_application(&self.shared.app.config().identifier);
             #[cfg(target_os = "windows")]
             notification.app_id(&self.shared.app.config().identifier);
+            let generation = self.shared.begin_post();
             let late = {
                 let shared = Arc::clone(&self.shared);
                 let id = alert.notification_id.clone();
                 let link = alert.link.clone();
                 move |shown: notify_rust::error::Result<notify_rust::NotificationHandle>| {
                     if let Ok(shown) = shown {
-                        shared.present(id, link, shown);
+                        shared.present(id, generation, link, shown);
                     }
                 }
             };
             // Gated: on Linux `show` is a D-Bus round trip with no timeout.
-            match self.gate.run(move || notification.show(), late) {
+            match self.shared.gate.run(move || notification.show(), late) {
                 GateAnswer::NotCalled => OsOutcome::NotCalled,
-                GateAnswer::TimedOut => {
-                    log::warn!("a notification did not show within {OS_CALL_TIMEOUT:?}; treating it as shown");
-                    OsOutcome::Unknown
-                }
+                GateAnswer::TimedOut => OsOutcome::Unknown,
                 GateAnswer::Answered(Err(_)) => OsOutcome::NotDone,
                 GateAnswer::Answered(Ok(shown)) => {
-                    self.shared
-                        .present(alert.notification_id.clone(), alert.link.clone(), shown);
+                    self.shared.present(
+                        alert.notification_id.clone(),
+                        generation,
+                        alert.link.clone(),
+                        shown,
+                    );
                     OsOutcome::Done
                 }
             }
@@ -1437,7 +1566,7 @@ mod host {
                 // Gated D-Bus `CloseNotification`.
                 close_held(
                     &self.shared.handles,
-                    &self.gate,
+                    &self.shared.gate,
                     notification_id,
                     |handle| tauri::async_runtime::block_on(handle.close_async()),
                 )
@@ -1452,7 +1581,7 @@ mod host {
         }
 
         fn end_poll(&mut self) {
-            self.gate.end_poll();
+            self.shared.gate.end_poll();
         }
     }
 
@@ -1554,12 +1683,24 @@ mod tests {
             body: Some(format!("Body {id}")),
             urgency: "done".into(),
             link: Some("/?surface=activity".into()),
+            at: Some(T0_ISO.into()),
         }
     }
     fn retract(seq: u64, id: &str) -> FeedEntry {
         FeedEntry::Retract {
             seq,
             notification_id: id.into(),
+            at: Some(T0_ISO.into()),
+        }
+    }
+    /// When the fixtures' entries were queued, as the server writes it.
+    const T0_ISO: &str = "2026-09-25T12:00:00.000Z";
+    const T0_MS: u64 = 1_790_337_600_000;
+    /// A read at `monotonic_ms`, right when the fixtures were queued.
+    fn mono(monotonic_ms: u64) -> Now {
+        Now {
+            monotonic_ms,
+            wall_ms: T0_MS,
         }
     }
     fn feed(cursor: u64, entries: Vec<FeedEntry>, epoch: &str) -> Feed {
@@ -1600,7 +1741,7 @@ mod tests {
                 "run-1",
             ),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1620,7 +1761,7 @@ mod tests {
             ORIGIN,
             &feed(3, vec![alert(2, "a"), alert(3, "b")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut file,
         );
@@ -1646,7 +1787,7 @@ mod tests {
             ORIGIN,
             &feed(2, vec![alert(1, "a"), alert(2, "b")], "run-2"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1669,7 +1810,7 @@ mod tests {
             ORIGIN,
             &feed(5, vec![alert(5, "a")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1687,7 +1828,7 @@ mod tests {
             ORIGIN,
             &feed(3, vec![alert(3, "backlog")], "run-1"),
             false,
-            1_000,
+            mono(1_000),
             &mut sink,
             &mut store,
         );
@@ -1700,7 +1841,7 @@ mod tests {
                     ORIGIN,
                     &inside,
                     false,
-                    1_000 + ADOPTION_GRACE_MS - 1,
+                    mono(1_000 + ADOPTION_GRACE_MS - 1),
                     &mut sink,
                     &mut store
                 )
@@ -1711,7 +1852,7 @@ mod tests {
             ORIGIN,
             &inside,
             false,
-            1_000 + ADOPTION_GRACE_MS,
+            mono(1_000 + ADOPTION_GRACE_MS),
             &mut sink,
             &mut store,
         );
@@ -1732,11 +1873,11 @@ mod tests {
         );
         assert!(
             consumer
-                .apply(ORIGIN, &backlog, false, 0, &mut sink, &mut store)
+                .apply(ORIGIN, &backlog, false, mono(0), &mut sink, &mut store)
                 .waiting
         );
         assert!(consumer.hand_over(ORIGIN, stored(2, "run-1")));
-        consumer.apply(ORIGIN, &backlog, false, 1, &mut sink, &mut store);
+        consumer.apply(ORIGIN, &backlog, false, mono(1), &mut sink, &mut store);
         assert_eq!(ids(&sink), ["c", "d"]);
         assert_eq!(consumer.cursor(ORIGIN), Some(&stored(4, "run-1")));
     }
@@ -1757,7 +1898,7 @@ mod tests {
                 "run-1",
             ),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1775,7 +1916,7 @@ mod tests {
             ORIGIN,
             &feed(1, vec![alert(1, "n-1")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1783,7 +1924,7 @@ mod tests {
             ORIGIN,
             &feed(2, vec![retract(2, "n-1")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1799,7 +1940,7 @@ mod tests {
             ORIGIN,
             &feed(2, vec![alert(1, "n-1"), retract(2, "n-1")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1814,7 +1955,7 @@ mod tests {
             ORIGIN,
             &feed(1, vec![alert(1, "n-1")], "run-1"),
             true,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1830,7 +1971,7 @@ mod tests {
             ORIGIN,
             &feed(1, vec![alert(1, "n-1")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1839,7 +1980,7 @@ mod tests {
             ORIGIN,
             &feed(1, vec![alert(1, "n-1")], "run-2"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1852,7 +1993,7 @@ mod tests {
             ORIGIN,
             &feed(2, vec![changed], "run-2"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1909,7 +2050,7 @@ mod tests {
             ORIGIN,
             &feed(2, vec![hostile, alert(2, "n-2")], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -1921,8 +2062,8 @@ mod tests {
     fn the_route_answer_is_parsed_and_malformed_answers_apply_nothing() {
         let body = format!(
             r#"{{"success":true,"data":{{"surface":"{SURFACE}","cursor":2,"epoch":"run-1","leaseMs":90000,"entries":[
-                {{"seq":1,"kind":"alert","notificationId":"n-1","title":"Station","urgency":"done","link":"/","at":"x"}},
-                {{"seq":2,"kind":"retract","notificationId":"n-1","at":"x"}}]}}}}"#
+                {{"seq":1,"kind":"alert","notificationId":"n-1","title":"Station","urgency":"done","link":"/","at":"{T0_ISO}"}},
+                {{"seq":2,"kind":"retract","notificationId":"n-1","at":"{T0_ISO}"}}]}}}}"#
         );
         let parsed = parse_feed_response(&body).unwrap();
         assert_eq!(parsed.entries.len(), 2);
@@ -1966,199 +2107,93 @@ mod tests {
             ..Scripted::default()
         }
     }
-    fn count(attempts: &[String], id: &str) -> usize {
-        attempts.iter().filter(|attempt| *attempt == id).count()
-    }
 
     #[test]
-    fn a_refused_post_is_retried_and_does_not_block_what_follows() {
+    fn a_refused_entry_is_consumed_and_later_entries_show_in_the_same_poll() {
         let mut consumer = started(0, "run-1");
         let mut store = MemoryStore::default();
-        let mut sink = scripted("b", &[OsOutcome::NotDone]);
+        let mut sink = scripted("b", &[OsOutcome::NotDone; 5]);
         let batch = feed(
             3,
             vec![alert(1, "a"), alert(2, "b"), alert(3, "c")],
             "run-1",
         );
-        let applied = consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(applied.posted, 2, "a refused post is not counted");
+        let applied = consumer.apply(ORIGIN, &batch, false, mono(0), &mut sink, &mut store);
+        assert_eq!(applied.posted, 2, "a refused post is not counted as shown");
         assert_eq!(sink.attempts, ["a", "b", "c"]);
-        // The cursor stops before the refused entry.
-        assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
-        assert_eq!(consumer.refusal_count(2), 1);
-        consumer.apply(
-            ORIGIN,
-            &feed(3, vec![alert(2, "b"), alert(3, "c")], "run-1"),
-            false,
-            0,
-            &mut sink,
-            &mut store,
-        );
-        // b is retried and shown; c, already shown, is not shown again.
-        assert_eq!(sink.attempts, ["a", "b", "c", "b"]);
         assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
-        assert_eq!(
-            consumer.refusal_count(2),
-            0,
-            "an accepted entry's count starts over"
-        );
+        // The server answers from the cursor on: b is never tried again.
+        consumer.apply(ORIGIN, &batch, false, mono(1), &mut sink, &mut store);
+        assert_eq!(sink.attempts, ["a", "b", "c"]);
     }
 
     #[test]
-    fn an_entry_the_os_keeps_refusing_is_dropped_on_its_last_try() {
+    fn a_timed_out_entry_is_consumed_and_never_shown_again_even_after_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = CursorFile::in_dir(dir.path());
         let mut consumer = started(0, "run-1");
-        let mut store = MemoryStore::default();
-        let mut sink = scripted("b", &[OsOutcome::NotDone; 10]);
-        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
-        for _ in 0..MAX_REFUSALS {
-            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        }
-        assert_eq!(count(&sink.attempts, "b"), MAX_REFUSALS as usize);
-        assert_eq!(count(&sink.attempts, "c"), 1);
-        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
-        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(count(&sink.attempts, "b"), MAX_REFUSALS as usize);
-    }
-
-    #[test]
-    fn a_service_refusing_everything_is_drained_not_retried_one_by_one() {
-        let mut consumer = started(0, "run-1");
-        let mut store = MemoryStore::default();
-        let ids = ["a", "b", "c", "d", "e"];
-        let mut sink = Scripted::default();
-        for id in ids {
-            sink.answers
-                .insert(id.into(), vec![OsOutcome::NotDone; 10].into());
-        }
+        let mut sink = scripted("b", &[OsOutcome::Unknown]);
         let batch = feed(
-            5,
-            ids.iter()
-                .enumerate()
-                .map(|(i, id)| alert(i as u64 + 1, id))
-                .collect(),
+            3,
+            vec![alert(1, "a"), alert(2, "b"), alert(3, "c")],
             "run-1",
         );
-        let mut polls = 0;
-        while consumer.request(ORIGIN).0 < 5 {
-            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-            polls += 1;
-            assert!(polls <= 10, "the backlog never drained");
-        }
-        // One entry at a time would take 5 × MAX_REFUSALS polls.
-        assert_eq!(polls, 2);
-        // An accepted post ends the outage: refusals are retried again.
-        let mut up = scripted("f", &[OsOutcome::NotDone]);
-        consumer.apply(
-            ORIGIN,
-            &feed(7, vec![alert(6, "ok"), alert(7, "f")], "run-1"),
-            false,
-            0,
-            &mut up,
-            &mut store,
+        consumer.apply(ORIGIN, &batch, false, mono(0), &mut sink, &mut file);
+        assert_eq!(
+            sink.attempts,
+            ["a", "b", "c"],
+            "a timeout does not stop the poll"
         );
-        assert_eq!(consumer.request(ORIGIN), (6, Some("run-1".into())));
-    }
-
-    #[test]
-    fn refusal_counts_start_over_in_a_new_server_run() {
-        let mut consumer = started(0, "run-1");
-        let mut store = MemoryStore::default();
-        let mut sink = scripted("b", &[OsOutcome::NotDone; 10]);
-        for _ in 0..MAX_REFUSALS - 1 {
-            consumer.apply(
-                ORIGIN,
-                &feed(1, vec![alert(1, "b")], "run-1"),
-                false,
-                0,
-                &mut sink,
-                &mut store,
-            );
-        }
-        assert_eq!(consumer.refusal_count(1), MAX_REFUSALS - 1);
-        // The server restarted: seq 1 is a different delivery with its own count.
+        assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
+        // Simulated app restart: a fresh consumer from the persisted cursor
+        // reads the same server run and shows nothing again.
+        let mut restarted = FeedConsumer::with_cursors(CursorFile::in_dir(dir.path()).load());
+        let mut after = Scripted::default();
+        let applied = restarted.apply(ORIGIN, &batch, false, mono(0), &mut after, &mut file);
+        assert!(!applied.waiting);
+        assert!(
+            after.attempts.is_empty(),
+            "re-shown after a restart: {:?}",
+            after.attempts
+        );
+        // Same process, restarted server re-sending the same content: the
+        // timed-out alert's content is remembered as shown.
         consumer.apply(
             ORIGIN,
             &feed(1, vec![alert(1, "b")], "run-2"),
             false,
-            0,
+            mono(1),
             &mut sink,
-            &mut store,
+            &mut MemoryStore::default(),
         );
-        assert_eq!(
-            count(&sink.attempts, "b"),
-            MAX_REFUSALS as usize,
-            "it was called, not skipped"
-        );
-        assert_eq!(consumer.refusal_count(1), 1);
-        assert_eq!(consumer.request(ORIGIN), (0, Some("run-2".into())));
+        assert_eq!(sink.attempts, ["a", "b", "c"]);
     }
 
     #[test]
-    fn a_call_not_made_is_retried_and_never_dropped() {
+    fn a_call_not_made_holds_the_cursor_and_nothing_after_it_is_posted() {
         let mut consumer = started(0, "run-1");
         let mut store = MemoryStore::default();
-        let mut sink = scripted("b", &[OsOutcome::NotCalled; 5]);
-        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
-        for _ in 0..5 {
-            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        let mut sink = scripted("b", &[OsOutcome::NotCalled; 3]);
+        let batch = feed(
+            4,
+            vec![alert(1, "a"), alert(2, "b"), retract(3, "x"), alert(4, "c")],
+            "run-1",
+        );
+        for poll in 0..3 {
+            consumer.apply(ORIGIN, &batch, false, mono(poll), &mut sink, &mut store);
+            // a is consumed; b holds the cursor; nothing after b runs.
+            assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
         }
-        // Breaker open: one attempt per poll, nothing after it, nothing committed.
-        assert_eq!(sink.attempts, vec!["b"; 5]);
-        assert_eq!(consumer.request(ORIGIN), (0, Some("run-1".into())));
-        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(&sink.attempts[5..], ["b", "c"]);
-    }
-
-    #[test]
-    fn a_slow_service_shows_each_alert_once_and_reaches_the_next() {
-        use std::sync::Arc;
-        use std::time::Duration;
-
-        // The reviewer's probe: 80 ms calls against a 50 ms bound.
-        struct Slow {
-            gate: OsCallGate,
-            displayed: Arc<Mutex<Vec<String>>>,
-        }
-        impl AlertSink for Slow {
-            fn post(&mut self, alert: &Alert) -> OsOutcome {
-                let displayed = Arc::clone(&self.displayed);
-                let id = alert.notification_id.clone();
-                let show = move || {
-                    std::thread::sleep(Duration::from_millis(80));
-                    displayed.lock().unwrap().push(id);
-                };
-                match self.gate.run(show, |()| {}) {
-                    GateAnswer::Answered(()) => OsOutcome::Done,
-                    GateAnswer::TimedOut => OsOutcome::Unknown,
-                    GateAnswer::NotCalled => OsOutcome::NotCalled,
-                }
-            }
-            fn close(&mut self, _notification_id: &str) -> OsOutcome {
-                OsOutcome::NotDone
-            }
-            fn end_poll(&mut self) {
-                self.gate.end_poll();
-            }
-        }
-        let displayed = Arc::new(Mutex::new(Vec::new()));
-        let mut sink = Slow {
-            gate: OsCallGate::new(4, Duration::from_millis(50), 15, 16),
-            displayed: Arc::clone(&displayed),
-        };
-        let mut consumer = started(0, "run-1");
-        let mut store = MemoryStore::default();
-        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
-        for _ in 0..6 {
-            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        }
-        std::thread::sleep(Duration::from_millis(300));
-        assert_eq!(*displayed.lock().unwrap(), ["b", "c"]);
-        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
+        assert_eq!(sink.attempts, ["a", "b", "b", "b"]);
+        // The gate calls again: b and everything after it runs, once.
+        consumer.apply(ORIGIN, &batch, false, mono(3), &mut sink, &mut store);
+        assert_eq!(sink.attempts[4..], ["b", "close:x", "c"]);
+        assert_eq!(consumer.request(ORIGIN), (4, Some("run-1".into())));
     }
 
     #[test]
     fn a_close_not_made_is_retried_and_a_timed_out_close_is_consumed() {
-        let mut consumer = started(0, "run-1");
+        let mut consumer = started(1, "run-1");
         let mut store = MemoryStore::default();
         let mut sink = Scripted::default();
         sink.closes.insert(
@@ -2166,22 +2201,79 @@ mod tests {
             VecDeque::from([OsOutcome::NotCalled, OsOutcome::Unknown]),
         );
         let batch = feed(3, vec![retract(2, "n-1"), alert(3, "after")], "run-1");
-        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        consumer.apply(ORIGIN, &batch, false, mono(0), &mut sink, &mut store);
         assert_eq!(sink.attempts, ["close:n-1"]);
         assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
-        // Timed out: consumed, and the poll stops after it.
-        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(sink.attempts, ["close:n-1", "close:n-1"]);
-        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
-        consumer.apply(
+        consumer.apply(ORIGIN, &batch, false, mono(1), &mut sink, &mut store);
+        assert_eq!(sink.attempts, ["close:n-1", "close:n-1", "after"]);
+        assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
+    }
+
+    #[test]
+    fn stale_entries_are_consumed_without_posting() {
+        // Pinned beside the constant: 15 minutes.
+        assert_eq!(STALE_AFTER_MS, 900_000);
+        let mut consumer = started(0, "run-1");
+        let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
+        let queued = |seq: u64, id: &str, at: &str| {
+            let mut entry = alert(seq, id);
+            if let FeedEntry::Alert { at: when, .. } = &mut entry {
+                *when = Some(at.into());
+            }
+            entry
+        };
+        // Read at 12:20:00.000Z.
+        let now = Now {
+            monotonic_ms: 0,
+            wall_ms: T0_MS + 20 * 60 * 1000,
+        };
+        let applied = consumer.apply(
             ORIGIN,
-            &feed(3, vec![alert(3, "after")], "run-1"),
+            &feed(
+                4,
+                vec![
+                    queued(1, "old", "2026-09-25T12:00:00.000Z"),
+                    queued(2, "edge-stale", "2026-09-25T12:04:59.999Z"),
+                    queued(3, "edge-fresh", "2026-09-25T12:05:00.000Z"),
+                    queued(4, "new", "2026-09-25T12:19:00.000Z"),
+                ],
+                "run-1",
+            ),
             false,
-            0,
+            now,
             &mut sink,
             &mut store,
         );
-        assert_eq!(sink.attempts.last().map(String::as_str), Some("after"));
+        assert_eq!(ids(&sink), ["edge-fresh", "new"]);
+        assert_eq!(applied.posted, 2);
+        assert_eq!(consumer.request(ORIGIN), (4, Some("run-1".into())));
+    }
+
+    #[test]
+    fn server_timestamps_parse_exactly_and_anything_else_is_not_stale() {
+        assert_eq!(iso_utc_ms(T0_ISO), Some(T0_MS));
+        assert_eq!(iso_utc_ms("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(iso_utc_ms("2000-03-01T00:00:00Z"), Some(951_868_800_000));
+        assert_eq!(
+            iso_utc_ms("2024-02-29T23:59:59.5Z"),
+            Some(1_709_251_199_500)
+        );
+        for bad in [
+            "",
+            "Z",
+            "2026-09-25 12:00:00.000Z",
+            "2026-09-25T12:00:00.000",
+            "2026-09-25T12:00:00.000+00:00",
+            "2026-13-25T12:00:00.000Z",
+            "2026-09-25T12:00:00.Z",
+            "２026-09-25T12:00:00.000Z",
+        ] {
+            assert_eq!(iso_utc_ms(bad), None, "{bad:?}");
+        }
+        // Unreadable, missing, or ahead of this clock: posted, not dropped.
+        assert!(!is_stale(Some("garbage"), T0_MS + STALE_AFTER_MS * 10));
+        assert!(!is_stale(None, T0_MS + STALE_AFTER_MS * 10));
+        assert!(!is_stale(Some(T0_ISO), T0_MS - 1));
     }
 
     /// Wait until `done` holds, or fail after a deadline (hosts here run at
@@ -2197,41 +2289,58 @@ mod tests {
         }
     }
 
-    type Release = std::sync::Arc<Mutex<std::sync::mpsc::Receiver<()>>>;
-    fn stuck_call(
-        started_calls: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
-        released: &Release,
-    ) -> impl FnOnce() + Send + 'static {
-        let started_calls = std::sync::Arc::clone(started_calls);
-        let released = std::sync::Arc::clone(released);
-        move || {
-            started_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let _ = released.lock().unwrap().recv();
+    /// A call that blocks until released, counting starts and finishes.
+    #[derive(Clone)]
+    struct Stuck {
+        started: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        finished: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        released: std::sync::Arc<Mutex<std::sync::mpsc::Receiver<()>>>,
+    }
+    fn stuck() -> (Stuck, std::sync::mpsc::Sender<()>) {
+        let (release, released) = std::sync::mpsc::channel();
+        (
+            Stuck {
+                started: Default::default(),
+                finished: Default::default(),
+                released: std::sync::Arc::new(Mutex::new(released)),
+            },
+            release,
+        )
+    }
+    impl Stuck {
+        fn call<T: Send + 'static>(&self, answer: T) -> impl FnOnce() -> T + Send + 'static {
+            let this = self.clone();
+            move || {
+                use std::sync::atomic::Ordering;
+                this.started.fetch_add(1, Ordering::SeqCst);
+                let _ = this.released.lock().unwrap().recv();
+                this.finished.fetch_add(1, Ordering::SeqCst);
+                answer
+            }
+        }
+        fn started(&self) -> usize {
+            self.started.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        fn finished(&self) -> usize {
+            self.finished.load(std::sync::atomic::Ordering::SeqCst)
         }
     }
 
     #[test]
     fn the_gate_stops_calling_while_earlier_calls_are_stuck() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
         use std::time::Duration;
 
-        let gate = OsCallGate::new(2, Duration::from_millis(50), 100, 100);
-        let started_calls = Arc::new(AtomicUsize::new(0));
-        let (release, released) = std::sync::mpsc::channel::<()>();
-        let released: Release = Arc::new(Mutex::new(released));
-        let stuck = || stuck_call(&started_calls, &released);
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
-        eventually("both calls to start", || {
-            started_calls.load(Ordering::SeqCst) == 2
-        });
+        let gate = OsCallGate::new(2, Duration::from_millis(20), 100, 100);
+        let (calls, release) = stuck();
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::TimedOut);
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::TimedOut);
+        eventually("both calls to start", || calls.started() == 2);
         // Two calls are stuck: the breaker makes no third call at all.
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::NotCalled);
-        std::thread::sleep(Duration::from_millis(20));
-        assert_eq!(started_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::NotCalled);
         release.send(()).unwrap();
         release.send(()).unwrap();
+        eventually("both calls to finish", || calls.finished() == 2);
+        assert_eq!(calls.started(), 2, "the refused call never ran");
         eventually("the gate to reopen", || {
             gate.run(|| 7, |_| {}) == GateAnswer::Answered(7)
         });
@@ -2243,65 +2352,62 @@ mod tests {
         use std::time::Duration;
 
         let gate = OsCallGate::new(4, Duration::from_millis(20), 15, 16);
+        let (calls, release) = stuck();
         let late = Arc::new(Mutex::new(None));
         let sink = Arc::clone(&late);
-        let answer = gate.run(
-            || {
-                std::thread::sleep(Duration::from_millis(80));
-                "handle"
-            },
-            move |handle| *sink.lock().unwrap() = Some(handle),
-        );
+        // Blocked until after the timeout has been reported, however the
+        // threads are scheduled.
+        let answer = gate.run(calls.call("handle"), move |handle| {
+            *sink.lock().unwrap() = Some(handle)
+        });
         assert_eq!(answer, GateAnswer::TimedOut);
+        release.send(()).unwrap();
         eventually("the late answer", || late.lock().unwrap().is_some());
         assert_eq!(*late.lock().unwrap(), Some("handle"));
     }
 
     #[test]
     fn a_saturated_gate_recovers_then_stops_for_good_at_the_leak_cap() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
         use std::time::Duration;
 
         // One call at a time; write off after 2 saturated polls; stop after 2 written off.
         let gate = OsCallGate::new(1, Duration::from_millis(20), 2, 2);
-        let started_calls = Arc::new(AtomicUsize::new(0));
-        let (release, released) = std::sync::mpsc::channel::<()>();
-        let released: Release = Arc::new(Mutex::new(released));
-        let stuck = || stuck_call(&started_calls, &released);
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
+        let (calls, release) = stuck();
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::TimedOut);
         gate.end_poll();
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::NotCalled);
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::NotCalled);
         gate.end_poll();
         // Two saturated polls: the stuck call is written off and calls resume.
         assert_eq!(gate.leaked(), 1);
-        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
-        eventually("the second call to start", || {
-            started_calls.load(Ordering::SeqCst) == 2
-        });
+        assert_eq!(gate.run(calls.call(()), |()| {}), GateAnswer::TimedOut);
+        eventually("the second call to start", || calls.started() == 2);
         gate.end_poll();
         gate.end_poll();
         assert_eq!(gate.leaked(), 2);
         // Leak cap reached: no OS call again, even once the stuck calls return.
         release.send(()).unwrap();
         release.send(()).unwrap();
-        std::thread::sleep(Duration::from_millis(50));
+        eventually("the stuck calls to return", || calls.finished() == 2);
         gate.end_poll();
         assert_eq!(gate.run(|| 7, |_| {}), GateAnswer::NotCalled);
-        assert_eq!(started_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(calls.started(), 2);
     }
 
     #[test]
     fn held_handles_drop_the_oldest_first() {
         use std::sync::Arc;
         let mut held = HeldHandles::new(2);
-        held.insert("a".into(), Arc::new(1));
-        held.insert("b".into(), Arc::new(2));
-        held.insert("c".into(), Arc::new(3));
+        let post = |held: &mut HeldHandles<i32>, id: &str, value| {
+            let generation = held.begin_post();
+            held.insert(id.into(), generation, Arc::new(value))
+        };
+        post(&mut held, "a", 1);
+        post(&mut held, "b", 2);
+        post(&mut held, "c", 3);
         assert!(held.get("a").is_none());
         // Re-posting b makes it the newest, so c is the oldest now.
-        held.insert("b".into(), Arc::new(4));
-        held.insert("d".into(), Arc::new(5));
+        post(&mut held, "b", 4);
+        post(&mut held, "d", 5);
         assert!(held.get("c").is_none());
         assert_eq!(held.get("b").as_deref(), Some(&4));
         // A handle replaced under the same id is not removed by the old one.
@@ -2311,22 +2417,94 @@ mod tests {
     }
 
     #[test]
+    fn an_older_late_answer_does_not_displace_a_newer_handle() {
+        use std::sync::Arc;
+        let mut held = HeldHandles::new(8);
+        let older = held.begin_post();
+        let newer = held.begin_post();
+        // The newer post answers on time; the older one answers late.
+        assert_eq!(
+            held.insert("n-1".into(), newer, Arc::new("newer")),
+            Kept::Held
+        );
+        assert_eq!(
+            held.insert("n-1".into(), older, Arc::new("older")),
+            Kept::Superseded
+        );
+        assert_eq!(held.get("n-1").as_deref(), Some(&"newer"));
+    }
+
+    #[test]
+    fn a_retract_before_the_late_answer_closes_the_late_notification() {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let held: Arc<Mutex<HeldHandles<&'static str>>> = Arc::new(Mutex::new(HeldHandles::new(8)));
+        let gate = Arc::new(OsCallGate::new(4, Duration::from_millis(20), 100, 100));
+        let closed = Arc::new(Mutex::new(Vec::new()));
+        let close = |closed: &Arc<Mutex<Vec<&'static str>>>| {
+            let closed = Arc::clone(closed);
+            move |handle: Arc<&'static str>| closed.lock().unwrap().push(*handle)
+        };
+        // The show is made and does not answer in time.
+        let (calls, release) = stuck();
+        let generation = held.lock().unwrap().begin_post();
+        let late = {
+            let (held, gate, close) = (Arc::clone(&held), Arc::clone(&gate), close(&closed));
+            move |handle: &'static str| {
+                hold_shown(
+                    &held,
+                    &gate,
+                    "n-1".into(),
+                    generation,
+                    Arc::new(handle),
+                    close,
+                );
+            }
+        };
+        assert_eq!(gate.run(calls.call("late"), late), GateAnswer::TimedOut);
+        // The retract arrives first: nothing is held yet.
+        assert_eq!(
+            close_held(&held, &gate, "n-1", close(&closed)),
+            OsOutcome::NotDone
+        );
+        // A post of the same id started after the retract is not affected.
+        let after = held.lock().unwrap().begin_post();
+        assert_eq!(
+            hold_shown(
+                &held,
+                &gate,
+                "n-1".into(),
+                after,
+                Arc::new("after"),
+                close(&closed)
+            ),
+            Kept::Held
+        );
+        release.send(()).unwrap();
+        eventually("the late notification to be closed", || {
+            !closed.lock().unwrap().is_empty()
+        });
+        assert_eq!(*closed.lock().unwrap(), ["late"]);
+        assert_eq!(held.lock().unwrap().get("n-1").as_deref(), Some(&"after"));
+    }
+
+    #[test]
     fn a_close_keeps_its_handle_unless_it_was_called() {
-        use std::sync::atomic::AtomicUsize;
         use std::sync::Arc;
         use std::time::Duration;
 
         let held = Mutex::new(HeldHandles::new(8));
-        held.lock().unwrap().insert("n-1".into(), Arc::new(1));
+        let hold = |id: &str, value| {
+            let mut held = held.lock().unwrap();
+            let generation = held.begin_post();
+            held.insert(id.into(), generation, Arc::new(value));
+        };
+        hold("n-1", 1);
         // Breaker open (its one slot is stuck): not called, still held.
         let blocked = OsCallGate::new(1, Duration::from_millis(20), 100, 100);
-        let started_calls = Arc::new(AtomicUsize::new(0));
-        let (release, released) = std::sync::mpsc::channel::<()>();
-        let released: Release = Arc::new(Mutex::new(released));
-        assert_eq!(
-            blocked.run(stuck_call(&started_calls, &released), |()| {}),
-            GateAnswer::TimedOut
-        );
+        let (calls, release) = stuck();
+        assert_eq!(blocked.run(calls.call(()), |()| {}), GateAnswer::TimedOut);
         assert_eq!(
             close_held(&held, &blocked, "n-1", |_| {}),
             OsOutcome::NotCalled
@@ -2335,17 +2513,17 @@ mod tests {
             held.lock().unwrap().get("n-1").is_some(),
             "kept for the retried retract"
         );
-        // Called and timed out: consumed, released.
+        // Called and timed out (blocked until released): consumed, released.
         let slow = OsCallGate::new(4, Duration::from_millis(20), 100, 100);
+        let (close_calls, close_release) = stuck();
+        let closing = close_calls.call(());
         assert_eq!(
-            close_held(&held, &slow, "n-1", |_| std::thread::sleep(
-                Duration::from_millis(80)
-            )),
+            close_held(&held, &slow, "n-1", move |_| closing()),
             OsOutcome::Unknown
         );
         assert!(held.lock().unwrap().get("n-1").is_none());
         // Answered: closed.
-        held.lock().unwrap().insert("n-2".into(), Arc::new(2));
+        hold("n-2", 2);
         assert_eq!(close_held(&held, &slow, "n-2", |_| {}), OsOutcome::Done);
         assert!(held.lock().unwrap().get("n-2").is_none());
         assert_eq!(
@@ -2353,6 +2531,7 @@ mod tests {
             OsOutcome::NotDone
         );
         release.send(()).unwrap();
+        close_release.send(()).unwrap();
     }
 
     #[test]
@@ -2394,7 +2573,14 @@ mod tests {
         let batch = feed(2, vec![alert(2, "n-1")], "run-1");
         let mut idle = FakeSink::default();
         // First read: no cursor, inside the grace.
-        let first = shared.apply(init, ORIGIN, &feed(1, vec![], "run-1"), false, 0, &mut idle);
+        let first = shared.apply(
+            init,
+            ORIGIN,
+            &feed(1, vec![], "run-1"),
+            false,
+            mono(0),
+            &mut idle,
+        );
         assert!(first.unwrap().waiting);
         let (entered_tx, entered_rx) = channel();
         let (release_tx, release_rx) = channel();
@@ -2406,7 +2592,14 @@ mod tests {
                     release: release_rx,
                 };
                 // Past the grace: this read starts from its first read and posts.
-                shared.apply(|| None, ORIGIN, &batch, false, ADOPTION_GRACE_MS, &mut sink)
+                shared.apply(
+                    || None,
+                    ORIGIN,
+                    &batch,
+                    false,
+                    mono(ADOPTION_GRACE_MS),
+                    &mut sink,
+                )
             })
         };
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -2435,7 +2628,7 @@ mod tests {
                 &origin(index),
                 &feed(1, vec![], "run-1"),
                 false,
-                0,
+                mono(0),
                 &mut sink,
                 &mut store,
             );
@@ -2445,7 +2638,7 @@ mod tests {
             &origin(0),
             &feed(2, vec![], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -2454,7 +2647,7 @@ mod tests {
             &origin(99),
             &feed(1, vec![], "run-1"),
             false,
-            0,
+            mono(0),
             &mut sink,
             &mut store,
         );
@@ -2500,7 +2693,7 @@ mod tests {
                     ORIGIN,
                     &feed(1, vec![alert(1, "n-1")], "run-1"),
                     false,
-                    0,
+                    mono(0),
                     &mut sink,
                 )
             })
