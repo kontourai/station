@@ -1154,14 +1154,10 @@ describe('orchestration-session-state', () => {
       status: 'running',
       controlMode: 'station-owned',
       // archive#1778: the whole-shape assertion, so the decoration must be
-      // stated here too — a `completed` session that this process does not
-      // hold cannot answer anything, which is the `past_resume` arm.
-      answerability: {
-        answerable: false,
-        qualification: 'past_resume',
-        observedBy: OBSERVATION.observedBy,
-        observedAt: OBSERVATION.observedAt,
-      },
+      // stated here too. #2540: a finished turn leaves this session `idle`,
+      // which CAN resume (its next message continues it), so it is not the
+      // `past_resume` arm a terminal `completed` session was.
+      answerability: { answerable: true },
       model: 'claude-sonnet',
       createdAt: '2026-04-11T00:00:00.000Z',
       updatedAt: '2026-04-11T00:00:03.000Z',
@@ -1174,7 +1170,7 @@ describe('orchestration-session-state', () => {
       // #2310: the thread's own turn settles "not a Draft" without the
       // lineage read this caller does not supply.
       draft: false,
-      lifecycleState: 'completed',
+      lifecycleState: 'idle',
       previousLifecycleState: 'running',
       transitionReason: 'turn_completed',
       transitionSource: 'runtime',
@@ -1211,6 +1207,128 @@ describe('orchestration-session-state', () => {
         },
       },
     });
+  });
+
+  // #2459 (live): after a Station restart every finished delegate read the
+  // restart as its end, because `endedAt` was the session's LAST EVENT. The
+  // end is the terminal turn fact's own time; a later event does not move it.
+  test('a delegate’s end is its terminal turn, not a later restart or state event', () => {
+    const delegateEvents = (extra: Record<string, unknown>[]) =>
+      [
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r1',
+          createdAt: '2026-04-11T00:00:02.000Z',
+          method: 'session.configured',
+          sessionId: 'thread-restart',
+          metadata: { taskId: 'task-r', parentTaskId: 'parent-task' },
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r2',
+          createdAt: '2026-04-11T00:00:03.000Z',
+          method: 'turn.started',
+          turnId: 'turn-1',
+        },
+        ...extra,
+      ] as any[];
+    const asChild = (events: any[]) =>
+      buildOrchestrationSessionSummary({
+        answerability: OBSERVATION,
+        persisted: {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          status: 'running',
+          createdAt: '2026-04-11T00:00:00.000Z',
+          updatedAt: '2026-04-11T00:07:00.000Z',
+        },
+        events,
+      } as any).childWork?.asChild;
+
+    const completedThenRestarted = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r3',
+          createdAt: '2026-04-11T00:01:03.000Z',
+          method: 'turn.completed',
+          turnId: 'turn-1',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r4',
+          createdAt: '2026-04-11T00:07:47.000Z',
+          method: 'session.started',
+          sessionId: 'thread-restart',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r5',
+          createdAt: '2026-04-11T00:07:48.000Z',
+          method: 'session.state-changed',
+          sessionId: 'thread-restart',
+          from: 'running',
+          to: 'ready',
+        },
+      ]),
+    );
+    expect(completedThenRestarted?.endedAt).toBe('2026-04-11T00:01:03.000Z');
+
+    // No terminal turn fact at all: no end is claimed.
+    const exitedWithoutTerminal = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r6',
+          createdAt: '2026-04-11T00:07:47.000Z',
+          method: 'session.exited',
+          sessionId: 'thread-restart',
+        },
+      ]),
+    );
+    expect(exitedWithoutTerminal).toBeDefined();
+    expect(exitedWithoutTerminal?.status).not.toBe('running');
+    expect(exitedWithoutTerminal).not.toHaveProperty('endedAt');
+
+    // A reopened delegate: turn 2 starts, a DELAYED completion of turn 1
+    // arrives, then the session exits with no terminal fact for turn 2.
+    // Turn 1's completion is not turn 2's end.
+    const reopenedWithStaleCompletion = asChild(
+      delegateEvents([
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r7',
+          createdAt: '2026-04-11T00:02:00.000Z',
+          method: 'turn.started',
+          turnId: 'turn-2',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r8',
+          createdAt: '2026-04-11T00:02:01.000Z',
+          method: 'turn.completed',
+          turnId: 'turn-1',
+        },
+        {
+          provider: 'claude',
+          threadId: 'thread-restart',
+          eventId: 'evt-r9',
+          createdAt: '2026-04-11T00:03:00.000Z',
+          method: 'session.exited',
+          sessionId: 'thread-restart',
+        },
+      ]),
+    );
+    expect(reopenedWithStaleCompletion?.status).not.toBe('running');
+    expect(reopenedWithStaleCompletion).not.toHaveProperty('endedAt');
   });
 
   // archive#3408: both delegated-task launch writers persist
@@ -3985,7 +4103,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted,
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   test('a completed turn stays completed when the process is stopped with no exitCode', () => {
@@ -4024,7 +4142,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted: { ...persisted, status: 'dead' },
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   // Discriminating negatives — a turn with no recorded outcome DOES take the
@@ -4090,7 +4208,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted: { ...persisted, status: 'error' },
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   test("a turn's own late failure, naming that turn, still fails the run", () => {

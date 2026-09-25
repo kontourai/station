@@ -31,8 +31,12 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
@@ -279,9 +283,7 @@ function foldFirstSendOutcome<
 >(folded: L, outcome: FirstSendOutcome | undefined): L {
   if (
     !outcome ||
-    folded.lifecycleState === 'failed' ||
-    folded.lifecycleState === 'completed' ||
-    folded.lifecycleState === 'canceled'
+    sessionLifecycleOutcome(folded.lifecycleState) !== undefined
   ) {
     return folded;
   }
@@ -648,6 +650,7 @@ export function buildOrchestrationSessionSummary(options: {
   // disagree with the members it is computed from.
   const asChild = projectDelegateChildWork(summary, {
     depth: extractDelegationDepth(events),
+    endedAt: extractTerminalTurnAt(events),
   });
   const children = options.readChildWork?.(base.threadId, base.provider);
   return children || asChild
@@ -1130,6 +1133,41 @@ function stringMeta(
 ): string | undefined {
   const value = metadata?.[key];
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+/**
+ * #2459: when the session's latest turn actually ended — the time of that
+ * turn's own terminal fact. Undefined when none was observed. A terminal fact
+ * that names a different turn (a delayed completion of an earlier turn,
+ * arriving after a reopened delegate's next `turn.started`) is not this
+ * turn's end. Deliberately not `lastEventAt`: after a Station restart the
+ * last event is the restart's, and a finished delegate would read as having
+ * run until then.
+ */
+function extractTerminalTurnAt(
+  events: CanonicalRuntimeEvent[],
+): string | undefined {
+  let latestStart = -1;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index]?.method === 'turn.started') {
+      latestStart = index;
+      break;
+    }
+  }
+  if (latestStart < 0) return undefined;
+  const turnId = events[latestStart]?.turnId;
+  for (let index = events.length - 1; index > latestStart; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    if (turnId && event.turnId && event.turnId !== turnId) continue;
+    if (
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event))
+    )
+      return event.createdAt;
+  }
+  return undefined;
 }
 
 /**
@@ -1951,9 +1989,10 @@ function deriveAgentRunStatus(options: {
         //
         // `isTerminalAgentRunStatus` is the SAME predicate
         // `deriveLifecycleTransition` expresses as
-        // `isSessionLifecycleStateStopped(from)`; the two folds must answer
-        // this event identically or they diverge exactly as archive#3451/#3581
-        // catalogue.
+        // `isSessionLifecycleStateAtRest(from)` (#2540: an `idle` session's
+        // finished turn is a completed run, via `sessionLifecycleOutcome`);
+        // the two folds must answer this event identically or they diverge
+        // exactly as archive#3451/#3581 catalogue.
         if (status && isTerminalAgentRunStatus(status)) break;
         const impliedFailed =
           !status &&
@@ -1998,10 +2037,7 @@ function deriveAgentRunStatus(options: {
 function agentRunStatusFromSessionState(
   state: SessionLifecycleState | undefined,
 ): AgentRunStatus | null {
-  if (state === 'canceled') return 'cancelled';
-  if (state === 'completed') return 'completed';
-  if (state === 'failed') return 'failed';
-  return null;
+  return state ? (sessionLifecycleOutcome(state) ?? null) : null;
 }
 
 function isTerminalAgentRunStatus(status: AgentRunStatus): boolean {

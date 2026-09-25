@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -377,6 +378,7 @@ import type { DeviceSessionService } from '../../services/devices/device-session
 import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -697,6 +699,7 @@ export class StationRuntime {
   private deviceToolchainService?: DeviceToolchainService;
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
+  private agentActivityPublisher?: AgentActivityPublisher;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -940,11 +943,15 @@ export class StationRuntime {
         ),
     },
   });
-  // Muse Code spawns one `muse exec` per TURN rather than holding a
-  // per-session process, so there is no app-home/credential-profile closure to
-  // wire here (nothing is spawned at session start). The logger closure reads
-  // `this.logger` lazily for the same reason the Codex one above does.
+  // Muse Code runs one `muse serve` host per session (#2452), so approvals
+  // reach Station and workflow subagents appear as child work; a session
+  // whose host cannot be used falls back to one `muse exec` per turn. Muse's
+  // config (credential, settings, model) and data home (memory, plugins,
+  // session log) are the user's own either way — no `dataHome` override here
+  // — so there is no app-home/credential-profile closure to wire. The logger closure reads `this.logger` lazily for the same
+  // reason the Codex one above does.
   private museAdapter = new MuseAdapter({
+    serve: {},
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
@@ -1471,12 +1478,10 @@ export class StationRuntime {
                 session: detail.session,
                 events: detail.events,
               });
+              // An exit while work was still in progress was cut off.
               const outcome =
-                lifecycle.lifecycleState === 'completed'
-                  ? 'completed'
-                  : lifecycle.lifecycleState === 'failed'
-                    ? 'failed'
-                    : 'cancelled';
+                sessionLifecycleOutcome(lifecycle.lifecycleState) ??
+                'cancelled';
               await this.projectTaskRoomRuntime?.publishAgentFinished({
                 taskId: task.id,
                 sessionId,
@@ -4025,6 +4030,7 @@ export class StationRuntime {
       liveSurfaceRegistry,
       pluginDraftService,
       deviceHosts,
+      agentActivityPublisher,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4135,6 +4141,7 @@ export class StationRuntime {
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
+    this.agentActivityPublisher = agentActivityPublisher;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4628,6 +4635,8 @@ export class StationRuntime {
       // Sessions first: their producers read the hub the toolchain stops.
       await this.deviceSessions?.dispose();
       this.deviceSessions = undefined;
+      await this.agentActivityPublisher?.stop();
+      this.agentActivityPublisher = undefined;
     } catch (error) {
       failures.push(error);
     }

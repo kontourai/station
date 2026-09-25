@@ -1,16 +1,29 @@
 import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { chmodSync, linkSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  linkSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Worker } from 'node:worker_threads';
 import type {
+  SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeRequestProofClaimsV1,
   SelfHostedBrokerNativeRouteInvitationV2,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
-import { CompactSign, calculateJwkThumbprint } from 'jose';
+import {
+  CompactSign,
+  calculateJwkThumbprint,
+  compactVerify,
+  importJWK,
+} from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import {
@@ -160,6 +173,122 @@ describe.runIf(process.platform !== 'win32')(
         '{"aud":"station-self-hosted-broker","purpose":"redeem-native-route-invitation","version":"station-broker-native-route-invitation/v2","brokerOrigin":"https://broker.example","scope":{"stationId":"station-12345678","enrollmentId":"enroll-12345678","routingGeneration":9},"stationSigningKeyId":"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK","stationSigningGeneration":4,"surface":{"kind":"station-native","appIdentifier":"io.kontourai.station","channel":"nightly","clientInstanceId":"7c6f49aa-6925-4bb2-b7c4-22bb6e264105","keyThumbprint":"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"},"invitationId":"invite-12345678","invitationSecretDigest":"cwNHKhO8UqbEmG63NB3wWnIRQaHNpk7z6r78WuCtcPs","expiresAt":1700000000123,"nonce":"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN"}',
       );
       expect(encoded).not.toContain(invitation.invitationSecret);
+    });
+    test('native client request proof matches the shared Rust golden bytes', async () => {
+      const fixture = JSON.parse(
+        readFileSync(
+          new URL(
+            '../../../../packages/contracts/fixtures/native-request-proof-v1.json',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      ) as {
+        brokerOrigin: string;
+        grantId: string;
+        scope: SelfHostedBrokerNativeRequestProofClaimsV1['scope'];
+        surface: SelfHostedBrokerNativeClientSurfaceV2;
+        stationSigningKeyId: string;
+        stationSigningGeneration: number;
+        bodyJson: string;
+        bodySha256: string;
+        ath: string;
+        jti: string;
+        iat: number;
+        exp: number;
+        claimsJson: string;
+      };
+      const clientKeys = await createNativeClient();
+      const surface: SelfHostedBrokerNativeClientSurfaceV2 = {
+        ...fixture.surface,
+        keyThumbprint: await calculateJwkThumbprint(clientKeys.publicKey),
+      };
+      const signingClient = { ...clientKeys, surface };
+      const grant: SelfHostedBrokerNativeClientGrantV2 = {
+        version: 'station-broker-native-client-grant/v2',
+        brokerOrigin: fixture.brokerOrigin,
+        scope: fixture.scope,
+        stationSigningKeyId: fixture.stationSigningKeyId,
+        stationSigningGeneration: fixture.stationSigningGeneration,
+        surface,
+        proofPublicKey: clientKeys.publicKey,
+        credential: { id: fixture.grantId, secret: 'S'.repeat(43) },
+        expiresAt: fixture.iat * 1000 + 60_000,
+      };
+      const now = fixture.iat * 1000;
+      let claims: SelfHostedBrokerNativeRequestProofClaimsV1 | undefined;
+      let body = '';
+      let compact = '';
+      const request: typeof fetch = async (input, init) => {
+        expect(String(input)).toBe(
+          'https://broker.example/broker/v1/native/connections/open',
+        );
+        const headers = new Headers(init?.headers);
+        expect(headers.get('authorization')).toBe(`Bearer ${'S'.repeat(43)}`);
+        expect(headers.get('x-broker-credential-id')).toBe(fixture.grantId);
+        expect(headers.get('origin')).toBeNull();
+        expect(headers.get('cookie')).toBeNull();
+        compact = headers.get('x-station-native-proof') ?? '';
+        body = Buffer.from(init?.body as Uint8Array).toString('utf8');
+        return new Response(
+          JSON.stringify({
+            version: 'station-broker-native-connection-opened/v2',
+            expiresAt: now + 60_000,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      };
+      const client = new SelfHostedBrokerNativeClient(
+        grant,
+        async (value) => {
+          claims = value;
+          return signNativeRequest(value, signingClient);
+        },
+        request,
+        () => now,
+      );
+      const fixtureBody = JSON.parse(fixture.bodyJson) as {
+        connection: { nonce: string; offerSdp: string };
+      };
+      await client.open(fixtureBody.connection, new AbortController().signal);
+
+      const expectedBody = fixture.bodyJson.replace(
+        fixture.surface.keyThumbprint,
+        surface.keyThumbprint,
+      );
+      const expectedBodySha256 = createHash('sha256')
+        .update(expectedBody, 'utf8')
+        .digest('base64url');
+      expect(body).toBe(expectedBody);
+      expect(claims?.bodySha256).toBe(expectedBodySha256);
+      expect(claims?.ath).toBe(fixture.ath);
+      expect(claims?.iat).toBe(fixture.iat);
+      expect(claims?.exp).toBe(fixture.exp);
+      expect(Buffer.from(claims?.jti ?? '', 'base64url')).toHaveLength(32);
+      const normalizedClaims = {
+        ...claims,
+        surface: {
+          ...claims!.surface,
+          keyThumbprint: fixture.surface.keyThumbprint,
+        },
+        jti: fixture.jti,
+        bodySha256: fixture.bodySha256,
+      };
+      expect(JSON.stringify(normalizedClaims)).toBe(fixture.claimsJson);
+
+      const parts = compact.split('.');
+      expect(parts).toHaveLength(3);
+      expect(Buffer.from(parts[0]!, 'base64url').toString('utf8')).toBe(
+        '{"alg":"ES256","typ":"station-broker-native-request+jws"}',
+      );
+      const verified = await compactVerify(
+        compact,
+        await importJWK(clientKeys.publicKey, 'ES256'),
+        { algorithms: ['ES256'] },
+      );
+      expect(Buffer.from(verified.payload).toString('utf8')).toBe(
+        JSON.stringify(claims),
+      );
     });
     test('persists exact routing, refuses replay and invalidates pending work on withdrawal', async () => {
       const path = join(
@@ -847,7 +976,7 @@ describe.runIf(process.platform !== 'win32')(
       );
       const path = join(root, 'broker.sqlite');
       let service: SelfHostedBrokerService | undefined;
-      let now = 1_000;
+      const now = 1_000;
       try {
         service = new SelfHostedBrokerService(path, () => now);
         const issued = service.provision(scope, 15 * 24 * 60 * 60_000);
@@ -2533,6 +2662,23 @@ describe.runIf(process.platform !== 'win32')(
         );
         const app = new Hono();
         app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+        const bearerOnlyRetire = await app.request(
+          '/broker/v1/native/grants/retire',
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${grant.credential.secret}`,
+              'x-broker-credential-id': grant.credential.id,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              version: 'station-broker-native-grant-retire/v2',
+              scope: grant.scope,
+              surface: grant.surface,
+            }),
+          },
+        );
+        expect(bearerOnlyRetire.status).toBe(401);
         const renewalRequests: {
           input: Request | string | URL;
           init?: RequestInit;

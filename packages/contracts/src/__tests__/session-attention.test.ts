@@ -56,6 +56,8 @@ describe('sessionAttentionDisposition ordering (station#3227 B1)', () => {
       if (subject.lifecycleState === 'failed') continue;
       const finished =
         subject.status === 'closed' ||
+        // #2540: a finished turn at rest is finished to attention.
+        subject.lifecycleState === 'idle' ||
         subject.lifecycleState === 'completed' ||
         subject.lifecycleState === 'canceled';
       if (!finished) continue;
@@ -112,6 +114,7 @@ describe('sessionAttentionDisposition ordering (station#3227 B1)', () => {
     for (const subject of allSubjects()) {
       const claimed =
         subject.lifecycleState === 'failed' ||
+        subject.lifecycleState === 'idle' ||
         subject.lifecycleState === 'completed' ||
         subject.lifecycleState === 'canceled' ||
         subject.status === 'closed' ||
@@ -135,7 +138,7 @@ describe('sessionAttentionDisposition ordering (station#3227 B1)', () => {
       );
       count += 1;
     }
-    // 9 lifecycle shapes (8 states + undefined) × 6 statuses × 3 flags.
-    expect(count).toBe(9 * 6 * 3);
+    // 10 lifecycle shapes (9 states + undefined) × 6 statuses × 3 flags.
+    expect(count).toBe(10 * 6 * 3);
   });
 });

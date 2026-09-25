@@ -51,7 +51,13 @@ interface DelegatedTaskRecord {
     totalLimitMs?: number;
     lastProgressEventAt?: string;
   };
-  reason?: { code: string; detail?: string };
+  reason?: {
+    code: string;
+    detail?: string;
+    quotaWindow?: string;
+    resetReported?: string;
+    retryAfterMs?: number;
+  };
   transitionReason?: string;
 }
 
@@ -96,6 +102,8 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // #2459: the client-origin header each delegation POST carried.
+  const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
   // attaches them to the create/status responses so tests can pin the
   // DEFAULT human output's disclosure lines without a real engine.
@@ -110,6 +118,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
     sessionReads.length = 0;
@@ -134,6 +143,13 @@ describe('station delegate over HTTP', () => {
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
+      }
+      if (
+        method === 'POST' &&
+        url.pathname === '/api/orchestration/delegations'
+      ) {
+        const origin = req.headers['x-station-client-origin'];
+        delegationOrigins.push(Array.isArray(origin) ? origin[0] : origin);
       }
 
       const sendJson = (status: number, payload: unknown) => {
@@ -214,7 +230,11 @@ describe('station delegate over HTTP', () => {
                 ? 'review_pending'
                 : body.prompt === 'trigger queued task'
                   ? 'queued'
-                  : 'running',
+                  : body.prompt === 'trigger quota-limited task'
+                    ? 'failed'
+                    : body.prompt === 'trigger zero-window quota task'
+                      ? 'failed'
+                      : 'running',
           environment,
           target,
           ...(selectedModel ? { model: selectedModel } : {}),
@@ -256,6 +276,31 @@ describe('station delegate over HTTP', () => {
                     'The turn ended after a full window with no verified protocol activity.',
                 },
                 transitionReason: 'runtime_error',
+              }
+            : {}),
+          // #2265: a failed task whose serving Station classified a
+          // provider-plan quota exhaustion, with the bounded facts the
+          // status renderer prints beneath the reason line.
+          ...(body.prompt === 'trigger quota-limited task'
+            ? {
+                reason: {
+                  code: 'provider-plan-quota-exhausted',
+                  detail:
+                    'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
+                  quotaWindow: '5 hour',
+                  resetReported: '2026-09-21 18:55:29',
+                },
+              }
+            : {}),
+          // #2265 bounds: a zero window is not a limit window — the
+          // renderer prints no window line for it, even when served.
+          ...(body.prompt === 'trigger zero-window quota task'
+            ? {
+                reason: {
+                  code: 'provider-plan-quota-exhausted',
+                  quotaWindow: '0 hour',
+                  resetReported: '2026-09-21 18:55:29',
+                },
               }
             : {}),
           // #2269: an idle window declared, no total budget.
@@ -673,6 +718,38 @@ describe('station delegate over HTTP', () => {
   });
 
   /**
+   * #2459: Station can only say a delegation was "Started from the CLI" if
+   * the CLI says so. It declares its surface through the SDK's client-origin
+   * resolver, which attaches the header to authenticated same-Station
+   * requests — so a credential is configured here, as every real Station
+   * request has one.
+   */
+  test('create declares its client surface as the CLI', async () => {
+    vi.stubEnv('STATION_API_CREDENTIAL', 'test-credential');
+    try {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'delegate',
+        '--agent=default',
+        '--json',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const { parseClientReportedOrigin } = await import(
+      '@kontourai/station-contracts/client-origin'
+    );
+    expect(delegationOrigins).toHaveLength(1);
+    expect(parseClientReportedOrigin(delegationOrigins[0])).toEqual({
+      version: 1,
+      surface: 'cli',
+      build: null,
+    });
+  });
+
+  /**
    * station#3409, and the human-readable surface specifically. Every other
    * assertion in this file passes `--json`, so the sentences an operator
    * actually reads were unreviewed — which is how `dispatched (resumable)`
@@ -971,6 +1048,103 @@ describe('station delegate over HTTP', () => {
     );
     expect(printed).not.toContain('undefined');
     expect(printed).not.toContain('deadline');
+  });
+
+  /**
+   * #2265: `delegate status` renders a classified provider-plan quota
+   * reason with its bounded facts — window, provider-reported reset
+   * labelled timezone-less, and fixed wait/check guidance. The reset is
+   * repeated verbatim, never a countdown; raw provider text never prints.
+   */
+  test('status renders a provider-plan quota reason with bounded facts (#2265)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger quota-limited task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain('Task task:1: failed');
+    expect(printed).toContain(
+      'Reason: provider-plan-quota-exhausted — The provider plan quota was exhausted (5 hour window).',
+    );
+    expect(printed).toContain('Provider limit window: 5 hour');
+    expect(printed).toContain(
+      'Provider-reported reset: 2026-09-21 18:55:29 (no timezone given; wait before continuing)',
+    );
+    expect(printed).toContain(
+      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
+    );
+    expect(printed).not.toContain('Usage limit');
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    const jsonOutput = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(jsonOutput.data.reason).toEqual({
+      code: 'provider-plan-quota-exhausted',
+      detail:
+        'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
+      quotaWindow: '5 hour',
+      resetReported: '2026-09-21 18:55:29',
+    });
+  });
+
+  /**
+   * #2265 bounds: a served zero window renders no window line — it is not
+   * a limit window anyone reported. The reset line still renders.
+   */
+  test('status omits the window line for a zero quota window (#2265)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger zero-window quota task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain('Task task:1: failed');
+    expect(printed).not.toContain('Provider limit window:');
+    expect(printed).toContain(
+      'Provider-reported reset: 2026-09-21 18:55:29 (no timezone given; wait before continuing)',
+    );
+    consoleLog.mockClear();
   });
 
   test('rejects the retired direct connection selector before any request', async () => {

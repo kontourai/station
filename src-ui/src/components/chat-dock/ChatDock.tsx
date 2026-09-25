@@ -50,6 +50,7 @@ import {
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
@@ -368,6 +369,12 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   const isFullscreenPlacement = placement === 'fullscreen';
+  // A full-screen Chat shows its active chat without opening the dock; end-of-
+  // turn toasts must treat that chat as on screen (`isChatInForeground`).
+  useEffect(
+    () => (isFullscreenPlacement ? registerFullscreenChatSurface() : undefined),
+    [isFullscreenPlacement],
+  );
   // A full-screen placement never mounts inside the ambient `DockShell`, so
   // it owns an independent chrome instance (cmd+D / cmd+M keep working
   // there, and it never reserves ambient route space). A docked placement
@@ -2007,17 +2014,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectId: conversationProjectId,
       dockProjectSlug,
       bottomOnly: dockBottomOnly,
-      // Where an absolute path in this conversation can point: the project's
-      // checkout only. A session in an isolated worktree writes paths under
-      // THAT directory, but the preview and the existence check read the
-      // project checkout, so linking them would open the checkout's copy of
-      // a file the model edited elsewhere.
+      // The project checkout, and the directory the session runs in with the
+      // thread the server reads it through (#2476).
       projectRoots: conversationProjectDirectory
         ? [conversationProjectDirectory]
         : [],
-      // The same holds for RELATIVE paths in an isolated worktree; the anchor
-      // compares this with the checkout.
       sessionDirectory: sessionDisplayCwd,
+      threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
@@ -2040,6 +2043,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       dockBottomOnly,
       dockProjectSlug,
       sessionDisplayCwd,
+      activeOrchestrationSession?.threadId,
       setLayout,
     ],
   );

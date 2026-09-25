@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
+  'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
   // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
@@ -346,6 +348,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // #2421: same shape again — the test temp-dir ratchet is driven as a real
+  // child process against throwaway git repositories so its `FAIL:` sentence
+  // and its EXIT STATUS are proven, not just its pure decision functions.
+  // Bounded single-shot children per case.
+  'scripts/__tests__/test-temp-dir-ratchet.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -385,6 +392,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // station#2543: proves the instruction-topology gate's build-output skip
+  // holds when the gate module runs as a real child process, not just
+  // in-process — one bounded single-shot node child per fixture root.
+  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
@@ -436,6 +447,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. Fix-forward: landed via #1478 without this classification; the
   // verification-policy gate caught it on the pull request.
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  // #2476: the session-directory check trusts only what `git worktree list`
+  // reports for the project checkout, so its test builds a real repository
+  // with a real registered worktree — a fixture would pin whatever the parser
+  // assumed rather than what git prints.
+  'src-server/services/projects/__tests__/session-workspace-directory.test.ts',
   // #2144 slice 5: the `settingsRow` literal reverse guard enumerates its
   // scan scope through one single-shot `git ls-files`, same shape and same
   // reason as the placement ratchet above — a glob pathspec silently drops

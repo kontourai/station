@@ -18,6 +18,11 @@
  * nothing is running".
  */
 
+import {
+  isSessionLifecycleState,
+  sessionLifecycleOutcome,
+} from './session-lifecycle.js';
+
 export const CHILD_WORK_STATUSES = [
   'running',
   'completed',
@@ -51,7 +56,7 @@ export const CHILD_WORK_SUMMARY_MAX_CHARS = 4_000;
  * settled ones it retains. A reporter listing more than this is not a shape
  * any engine produces; the bound exists so a misbehaving one cannot grow a
  * server-side registry without limit. Settled children beyond the bound are
- * evicted oldest-first, the same trade-off station#1892's retention map makes.
+ * evicted oldest-first.
  */
 export const CHILD_WORK_ITEMS_MAX_PER_REPORTER = 64;
 
@@ -534,7 +539,6 @@ export interface DelegateChildWorkSource {
   /** The durable conversation this delegated session belongs to. */
   conversationId?: string;
   createdAt?: string;
-  lastEventAt?: string;
   hasActiveTurn?: boolean;
   lifecycleState?: string;
   delegation?: {
@@ -549,18 +553,14 @@ export interface DelegateChildWorkSource {
 function delegateTerminalStatus(
   lifecycleState: string | undefined,
 ): ChildWorkTerminalStatus {
-  switch (lifecycleState) {
-    case 'completed':
-      return 'completed';
-    case 'failed':
-      return 'failed';
-    case 'canceled':
-      return 'cancelled';
-    default:
-      // No open turn and no terminal lifecycle: nothing observed says how
-      // the child ended.
-      return 'unresolved';
-  }
+  // The one outcome mapping (#2540): a delegate whose turn finished rests
+  // `idle`, as completed as the terminal `completed`. No open turn and no
+  // recorded outcome: nothing observed says how the child ended.
+  return (
+    (isSessionLifecycleState(lifecycleState) &&
+      sessionLifecycleOutcome(lifecycleState)) ||
+    'unresolved'
+  );
 }
 
 /**
@@ -581,6 +581,14 @@ export function projectDelegateChildWork(
      * the launch carried no delegation context — never defaulted to 1.
      */
     depth?: number;
+    /**
+     * When the delegate's last turn actually ENDED: its terminal turn fact's
+     * own time (`turn.completed`/`turn.aborted`/a non-retriable
+     * `runtime.error`). Absent when no terminal fact was observed. Never the
+     * session's last event time — a restart's `session.started` or a state
+     * change after completion is a later event, not a later end (#2459).
+     */
+    endedAt?: string;
   } = {},
 ): ChildWorkItem | undefined {
   const delegation = summary.delegation;
@@ -617,9 +625,7 @@ export function projectDelegateChildWork(
           },
         }),
     ...(summary.createdAt ? { startedAt: summary.createdAt } : {}),
-    ...(!running && summary.lastEventAt
-      ? { endedAt: summary.lastEventAt }
-      : {}),
+    ...(!running && facts.endedAt ? { endedAt: facts.endedAt } : {}),
     // A peer record is read-only on this Station: the orchestration command
     // gate rejects every command for it (including interruptTurn), and the
     // delegate interrupt route refuses its binding. So no stop is offered.
@@ -629,7 +635,9 @@ export function projectDelegateChildWork(
 
 /**
  * Namespace of the pre-contract Claude Code task tuples
- * (`extension.notification` `task/registry` / `task/settled`).
+ * (`extension.notification` `task/registry` / `task/settled`). Since #2457
+ * the adapter emits `child-work.updated` instead; these survive only in
+ * persisted history.
  */
 export const LEGACY_CLAUDE_TASK_NAMESPACE = 'claude-code';
 
@@ -663,9 +671,9 @@ function legacyClaudeTaskStatus(
 /**
  * #2456: the ONE translation from the Claude adapter's legacy task tuples to
  * child work, shared by the server projection and the client so both fold
- * the same deltas. Until #2457 moves the adapter onto `child-work.updated`,
- * this is the LIVE Claude path, and it is also how persisted history and
- * cursor replay of those tuples reach the registry.
+ * the same deltas. REPLAY ONLY since #2457 moved the adapter onto
+ * `child-work.updated`: this is how persisted pre-#2457 history, and cursor
+ * replay of it, still reaches the registry. Nothing live emits these tuples.
  *
  * - `task/registry` → an authoritative `snapshot` of the running set.
  * - `task/settled` → a `settle`, carrying whatever identity, result and usage

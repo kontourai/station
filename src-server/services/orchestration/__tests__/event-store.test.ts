@@ -2539,7 +2539,7 @@ describe('EventStore', () => {
       events: payloads,
     });
     expect(summary.hasActiveTurn).toBe(false);
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
   });
 
   // archive#3557/#3558 fix-round review BLOCK 1 (independent review's exact
@@ -2778,7 +2778,7 @@ describe('EventStore', () => {
       persisted,
       events: payloads,
     });
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
 
     const run = buildAgentRunSummary({
       answerability,
@@ -2991,7 +2991,7 @@ describe('EventStore', () => {
       .listEvents(threadId)
       .find((event) => event.payload.eventId === 'stamp-turn-2-completed');
     expect(persisted?.payload.method).toBe('turn.completed');
-    expect(persisted?.payload.sessionState).toBe('completed');
+    expect(persisted?.payload.sessionState).toBe('idle');
   });
 
   // archive#3524 fix-round: re-pins archive#3451 B1/D1's fail-closed identity
@@ -7689,9 +7689,14 @@ describe('EventStore', () => {
       expect(attachment?.blobRef).toMatch(/^sha256-[0-9a-f]{64}$/);
 
       store.appendEvent(projected);
-      expect(
-        persistedRow('thread-live-large').attachments[0].dataUrl,
-      ).toBeUndefined();
+      const [persisted] = persistedRow('thread-live-large').attachments;
+      expect(persisted.dataUrl).toBeUndefined();
+      // #2483: the live path appends the reference-only form, and the
+      // reference this store wrote while projecting it stays bound.
+      expect(persisted.blobRef).toBe(attachment?.blobRef);
+      expect(store.listAttachmentThreads(attachment!.blobRef!)).toEqual([
+        'thread-live-large',
+      ]);
     });
 
     test('refuses attachment count, per-file, and combined-byte overages before blob writes', () => {

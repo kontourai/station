@@ -2678,9 +2678,11 @@ export function createOrchestrationRoutes(
   );
 
   /**
-   * station#1877: stop ONE provider-reported subagent without ending the
-   * turn. Task-scoped by construction — there is deliberately no fallback to
-   * a turn interrupt, because that would stop every sibling subagent too.
+   * station#1877: stop ONE provider-reported subagent. Task-scoped by
+   * construction — there is deliberately no fallback to a turn interrupt,
+   * because that would stop every sibling subagent too. #2486: some engines
+   * (Codex) have no softer path and end their own active turn as part of
+   * this call regardless — never any OTHER sibling.
    */
   app.post('/sessions/:threadId/provider-tasks/:taskId/stop', async (c) => {
     try {

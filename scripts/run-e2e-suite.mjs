@@ -840,25 +840,52 @@ export async function discoverE2EDaemon({
   };
 }
 
-export function daemonIsLive(daemon, processIdentityFn = processIdentity) {
-  if (process.platform === 'win32' || !daemon?.server || !daemon?.ui)
-    return true;
+/**
+ * `platform` is injectable (like `processIdentity`'s own `platform` option)
+ * so tests can exercise the Linux migration branch below from any host.
+ */
+export function daemonIsLive(
+  daemon,
+  processIdentityFn = processIdentity,
+  { platform = process.platform } = {},
+) {
+  if (platform === 'win32' || !daemon?.server || !daemon?.ui) return true;
   return [daemon.server, daemon.ui].some((expected) => {
     const actual = processIdentityFn(expected.pid);
-    return Boolean(
-      actual &&
-        actual.processStart === expected.processStart &&
-        actual.pgid === expected.pgid,
-    );
+    if (sameProcessIdentity(expected, actual)) return true;
+    // A lease written by a pre-#2325 runner recorded an lstart-shaped
+    // processStart. On Linux, `processIdentityFn` now always reports the
+    // /proc birth token for a live pid, which can never equal that legacy
+    // string — reading the mismatch as "dead" let the output sweep remove a
+    // live daemon's dist-*-e2e-* outputs during an upgrade window (#2332
+    // item 3). Re-probe once through the lstart-only lens the legacy lease
+    // was written with (forcing a non-linux platform skips the birth read
+    // entirely in `processIdentity`); never persisted, only used to confirm
+    // liveness.
+    if (
+      platform === 'linux' &&
+      typeof expected?.processStart === 'string' &&
+      !expected.processStart.startsWith('linux:')
+    ) {
+      const legacy = processIdentityFn(expected.pid, undefined, {
+        platform: 'darwin',
+      });
+      if (sameProcessIdentity(expected, legacy)) return true;
+    }
+    return false;
   });
 }
 
-export function canReclaimE2ELease(lease, processIdentityFn = processIdentity) {
+export function canReclaimE2ELease(
+  lease,
+  processIdentityFn = processIdentity,
+  options,
+) {
   return Boolean(
     process.platform !== 'win32' &&
       Array.isArray(lease.outputDirs) &&
       lease?.daemon &&
-      !daemonIsLive(lease.daemon, processIdentityFn),
+      !daemonIsLive(lease.daemon, processIdentityFn, options),
   );
 }
 

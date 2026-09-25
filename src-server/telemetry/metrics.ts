@@ -1249,7 +1249,7 @@ export const sessionBackgroundTasks = meter.createCounter(
   'station.session.background_tasks',
   {
     description:
-      'Provider background task/subagent settles surfaced to the chat (attrs: provider, status)',
+      'Engine subagent/background children settling, once per child on its running → terminal fold, #2457 (attrs: provider, status = child-work terminal status)',
   },
 );
 

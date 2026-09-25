@@ -157,6 +157,39 @@ fn native_app_channel(identifier: &str, dev_build: bool) -> &'static str {
     }
 }
 
+/// The Android plugin's Gradle build reads the same four `STATION_FIREBASE_*`
+/// values from the environment the Rust build sees, fails on a partial set,
+/// and without them `push_token` answers `unconfigured`. `option_env!` makes
+/// cargo rebuild when any of them changes.
+fn android_build_carries_firebase_identity(values: [Option<&str>; 4]) -> bool {
+    values
+        .iter()
+        .all(|value| value.is_some_and(|value| !value.trim().is_empty()))
+}
+
+/// Closed-app push is the Android agent-activity plugin (FCM through the
+/// Kontour push gateway). Enabled means this build CAN register; whether a
+/// Station sends anything depends on the person turning it on.
+fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapabilityStatus {
+    match (android, firebase_identity) {
+        (true, true) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "enabled",
+            reason: "This Android build carries a push configuration; agent activity on this phone can be turned on in Settings.",
+        },
+        (true, false) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "unsupported",
+            reason: "This build has no push configuration.",
+        },
+        (false, _) => NativeCapabilityStatus {
+            id: "remote-push",
+            state: "unsupported",
+            reason: "Closed-app push is available only in the Android app; iOS Live Activities and APNs are not built yet.",
+        },
+    }
+}
+
 fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport {
     let mut capabilities = vec![
         NativeCapabilityStatus {
@@ -250,11 +283,15 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
         reason: "Haptic feedback is a mobile-only host capability.",
     });
 
-    capabilities.push(NativeCapabilityStatus {
-        id: "remote-push",
-        state: "unsupported",
-        reason: "Station has no provisioned FCM/APNs application or server delivery credentials; the local notification watch cannot wake a backgrounded or closed mobile app (station#917/#1225).",
-    });
+    capabilities.push(remote_push_capability(
+        cfg!(target_os = "android"),
+        android_build_carries_firebase_identity([
+            option_env!("STATION_FIREBASE_APP_ID"),
+            option_env!("STATION_FIREBASE_API_KEY"),
+            option_env!("STATION_FIREBASE_PROJECT_ID"),
+            option_env!("STATION_FIREBASE_SENDER_ID"),
+        ]),
+    ));
 
     NativeCapabilityReport {
         platform: compile_target_platform(),
@@ -418,7 +455,7 @@ struct CredentialProfileStore {
     project_profiles: std::collections::HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct CredentialProfile {
@@ -990,15 +1027,44 @@ fn profile_bindings_are_authorized(
     Ok(())
 }
 
+/// Whether `profile` appears unchanged (whole-profile equality, same name)
+/// in `current`, the store the host read under the write lock. The one test
+/// deciding whether a write may carry a credential reference the host never
+/// observed (#2565 renderer writes, #2570 pairing writes).
+fn profile_carried_unchanged(
+    current: &CredentialProfileStore,
+    profile: &CredentialProfile,
+) -> bool {
+    current
+        .profiles
+        .iter()
+        .any(|existing| existing.name == profile.name && existing == profile)
+}
+
+/// `current` is the store the host read under the write lock for this
+/// revision CAS; `store` is the renderer's proposed next store.
+///
+/// The renderer may never introduce a credential reference the host has not
+/// observed. It may, however, carry one forward untouched (#2565): a saved
+/// Station awaiting sign-in (`requires-auth`, never observed) must not block
+/// edits to every other Station. "Untouched" is whole-profile equality with
+/// the same-named profile in `current`, so the reference cannot move to
+/// another profile, and its endpoint, environment, development origin, relay
+/// route and configuration state cannot change while it is carried (flipping
+/// `requires-auth` to `configured` would make the next host start observe
+/// it as trusted).
 fn renderer_store_references_are_authorized(
     authority: &NativeProfileAuthorityState,
+    current: &CredentialProfileStore,
     store: &CredentialProfileStore,
 ) -> Result<(), String> {
     profile_bindings_are_authorized(authority, store)?;
     for profile in &store.profiles {
         if let Some(reference) = &profile.credential_ref {
             let key = credential_reference_key(reference)?;
-            if !authority.bindings.contains_key(&key) {
+            if !authority.bindings.contains_key(&key)
+                && !profile_carried_unchanged(current, profile)
+            {
                 return Err(
                     "Station renderer writes cannot add an unobserved credential reference"
                         .to_string(),
@@ -1197,12 +1263,41 @@ fn is_missing_credential(error: &keyring_core::Error) -> bool {
     matches!(error, keyring_core::Error::NoEntry)
 }
 
+/// Every command in this family can wait on `profiles.json.lock` (desktop
+/// writes and genesis; every mobile read, since the mobile path resolver takes
+/// the lock) and may also block in the OS keyring or a loopback HTTP exchange.
+/// A plain `fn` command is `ExecutionContext::Blocking`, which Tauri runs on
+/// the main thread, so a CLI holding the lock froze the UI for the whole
+/// bounded wait, and on Android the 5s mobile wait reaches the ANR threshold
+/// (#2469). `spawn_blocking` rather than `#[tauri::command(async)]`: the
+/// latter runs the body on an async-runtime worker, where a 10s lock wait or a
+/// blocking `ureq` request would stall the async commands sharing it.
+async fn run_saved_station_command<T, E>(
+    operation: impl FnOnce() -> Result<T, E> + Send + 'static,
+) -> Result<T, E>
+where
+    T: Send + 'static,
+    E: From<String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(operation)
+        .await
+        .map_err(|error| E::from(format!("saved Station command task failed: {error}")))?
+}
+
 #[tauri::command]
-fn credential_vault_delete(
+async fn credential_vault_delete(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
 ) -> Result<(), String> {
-    let reference = authorized_credential_reference(&app, &authority)?;
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || credential_vault_delete_blocking(&app, &authority)).await
+}
+
+fn credential_vault_delete_blocking(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+) -> Result<(), String> {
+    let reference = authorized_credential_reference(app, authority)?;
     match credential_entry(&reference)?.delete_credential() {
         Ok(()) => {
             let mut state = authority
@@ -1228,12 +1323,20 @@ fn credential_vault_delete(
 /// still owns it. This supports key rotation without reopening arbitrary
 /// read/write/delete access to every keyring account.
 #[tauri::command]
-fn credential_vault_delete_unreferenced(
+async fn credential_vault_delete_unreferenced(
     app: AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
+    run_saved_station_command(move || credential_vault_delete_unreferenced_blocking(&app, reference))
+        .await
+}
+
+fn credential_vault_delete_unreferenced_blocking(
+    app: &AppHandle,
+    reference: NativeCredentialReference,
+) -> Result<(), String> {
     credential_reference_key(&reference)?;
-    let contents = read_station_profile_contents(&app)?;
+    let contents = read_station_profile_contents(app)?;
     let store = parse_station_profile_store(&contents)?;
     if store.profiles.iter().any(|profile| {
         profile
@@ -1314,12 +1417,16 @@ fn authorize_active_profile_in_state(
 }
 
 #[tauri::command]
-fn station_profile_authorize_active(
+async fn station_profile_authorize_active(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     profile_name: String,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    station_profile_authorize_active_internal(&app, &authority, &profile_name)
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || {
+        station_profile_authorize_active_internal(&app, &authority, &profile_name)
+    })
+    .await
 }
 
 /// Same-user local self-authorization (station#1715): reads the per-boot
@@ -2028,6 +2135,12 @@ fn authorized_credential_reference(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
+    // read takes `profiles.json.lock`, and the writer holds that lock while it
+    // takes this mutex; taking them in the other order here would let a
+    // concurrent write and this read stall each other until the lock wait
+    // expires (the commands run off the main thread since #2469).
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2038,7 +2151,6 @@ fn authorized_credential_reference(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2183,6 +2295,8 @@ fn authorized_profile_for_origin(
     authority: &NativeProfileAuthority,
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let state = authority
         .0
         .lock()
@@ -2193,7 +2307,6 @@ fn authorized_profile_for_origin(
             "Station has no host-authorized active Station",
         )
     })?;
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
@@ -2262,12 +2375,13 @@ fn scoped_profile_for_origin(
     if uuid::Uuid::parse_str(expected_binding_id).is_err() {
         return Err(native_request_binding_stale());
     }
+    // Store read before the authority mutex; see `authorized_credential_reference`.
+    let store = read_station_profile_contents(app)
+        .and_then(|contents| parse_station_profile_store(&contents))
+        .map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
-        .map_err(|_| native_request_binding_stale())?;
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
         .map_err(|_| native_request_binding_stale())?;
     scoped_profile_for_origin_in_store(&state, &store, expected_binding_id, origin)
 }
@@ -4128,8 +4242,12 @@ fn validate_pairing_default_transition(
     Err("Station pairing cannot replace an explicit active Station".to_string())
 }
 
+/// Non-target references must be host-observed with an unchanged binding, or
+/// (#2570) an unobserved reference carried unchanged from `current`, the store
+/// the host read under the write lock, per `profile_carried_unchanged`.
 fn pairing_store_references_are_authorized(
     authority: &NativeProfileAuthorityState,
+    current: &CredentialProfileStore,
     store: &CredentialProfileStore,
     entry: &PendingPairingCredential,
 ) -> Result<(), String> {
@@ -4140,14 +4258,23 @@ fn pairing_store_references_are_authorized(
             if key == target_key {
                 continue;
             }
-            let binding = authority.bindings.get(&key).ok_or_else(|| {
-                "Station renderer writes cannot add an unobserved credential reference".to_string()
-            })?;
-            if profile_credential_binding(profile)? != *binding {
-                return Err(
-                    "Station credential origin and environment bindings are host-authorized and cannot be changed through webview metadata"
-                        .to_string(),
-                );
+            match authority.bindings.get(&key) {
+                Some(binding) => {
+                    if profile_credential_binding(profile)? != *binding {
+                        return Err(
+                            "Station credential origin and environment bindings are host-authorized and cannot be changed through webview metadata"
+                                .to_string(),
+                        );
+                    }
+                }
+                None => {
+                    if !profile_carried_unchanged(current, profile) {
+                        return Err(
+                            "Station renderer writes cannot add an unobserved credential reference"
+                                .to_string(),
+                        );
+                    }
+                }
             }
             if authority.transitioning.contains(&key) {
                 return Err(
@@ -4169,6 +4296,10 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
+    // The saved-Station read comes before the pending mutex for the same
+    // lock-order reason as `authorized_credential_reference`: the writer holds
+    // `profiles.json.lock` (mobile) while it takes this mutex.
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     let mut pending = pending
         .0
         .lock()
@@ -4181,7 +4312,6 @@ fn credential_vault_commit_pairing_internal(
         NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
         _ => return Err("Station pairing handle is not awaiting keyring commitment".to_string()),
     };
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
     pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
     let reference_key = credential_reference_key(&entry.reference)?;
     let state = authority
@@ -4207,13 +4337,18 @@ fn credential_vault_commit_pairing_internal(
 }
 
 #[tauri::command]
-fn credential_vault_commit_pairing(
+async fn credential_vault_commit_pairing(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
     handle: String,
 ) -> Result<(), String> {
-    credential_vault_commit_pairing_internal(&app, &authority, &pending, &handle)
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        credential_vault_commit_pairing_internal(&app, &authority, &pending, &handle)
+    })
+    .await
 }
 
 /// A short owner-only lock shared with the CLI's `profiles.json.lock` protocol.
@@ -4264,11 +4399,13 @@ const PROFILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
 // The CLI uses the same bound for the same locks (packages/cli
 // profile-store.ts).
 const PROFILE_LOCK_WAIT: Duration = Duration::from_secs(10);
-// Mobile takes the profile lock on every saved Station READ, from Tauri sync
-// commands on the main thread, where Android reports an ANR after 5s. Keep
-// its wait at the old nominal budget (500 naps of 10ms), never the desktop
-// bound: a crashed v1 lock stays unreclaimable for five minutes, and each
-// read in that window waits this long before reporting busy.
+// Mobile takes the profile lock on every saved Station READ. Those commands
+// run on the blocking pool (`run_saved_station_command`, #2469), not the main
+// thread where Android reports an ANR after 5s, but a waiting read still
+// stalls the UI flow awaiting it. Keep the wait at the old nominal budget
+// (500 naps of 10ms), never the desktop bound: a crashed v1 lock stays
+// unreclaimable for five minutes, and each read in that window waits this
+// long before reporting busy.
 #[cfg(any(mobile, test))]
 const PROFILE_LOCK_MOBILE_WAIT: Duration = Duration::from_secs(5);
 // The stale-lock probe creates and fsyncs a guard lock and resolves the
@@ -4912,11 +5049,19 @@ fn profile_lock_owner_alive(pid: u32) -> bool {
 /// ordinary first-run state; malformed content is returned to the TypeScript
 /// contract validator so the UI can fail closed with its diagnostic.
 #[tauri::command]
-fn station_profile_store_read(
+async fn station_profile_store_read(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
 ) -> Result<String, String> {
-    let path = station_profiles_path(&app)?;
+    let authority = authority.inner().clone();
+    run_saved_station_command(move || station_profile_store_read_blocking(&app, &authority)).await
+}
+
+fn station_profile_store_read_blocking(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+) -> Result<String, String> {
+    let path = station_profiles_path(app)?;
     validate_station_profile_store(&path)?;
     match read_station_profile_store(&path) {
         Ok(contents) => {
@@ -5113,7 +5258,7 @@ fn station_profile_store_write_with_host(
                     "native pairing credential handle is missing or expired".to_string()
                 })?;
             let reference_key = credential_reference_key(&entry.reference)?;
-            pairing_store_references_are_authorized(&state, &next_store, entry)?;
+            pairing_store_references_are_authorized(&state, &current_store, &next_store, entry)?;
             match &entry.phase {
                 NativePairingPhase::AwaitingRequiresAuth => {
                     validate_pairing_default_transition(&current_store, &next_store, None)?;
@@ -5163,7 +5308,7 @@ fn station_profile_store_write_with_host(
                 }
             }
         } else {
-            renderer_store_references_are_authorized(&state, &next_store)?;
+            renderer_store_references_are_authorized(&state, &current_store, &next_store)?;
         }
     }
     let mut temporary = None;
@@ -5262,7 +5407,7 @@ fn station_profile_store_write_with_host(
 }
 
 #[tauri::command]
-fn station_profile_store_write(
+async fn station_profile_store_write(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
@@ -5270,14 +5415,19 @@ fn station_profile_store_write(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_internal(
-        &app,
-        &authority,
-        &pending,
-        contents,
-        expected_revision,
-        pairing_handle,
-    )
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_profile_store_write_internal(
+            &app,
+            &authority,
+            &pending,
+            contents,
+            expected_revision,
+            pairing_handle,
+        )
+    })
+    .await
 }
 
 #[cfg(not(mobile))]
@@ -5499,10 +5649,24 @@ fn reconcile_bundled_local_profile_with_retry(
 /// granting a compromised webview authority to invent a local service.
 #[cfg(not(mobile))]
 #[tauri::command]
-fn station_ensure_bundled_local_profile(
+async fn station_ensure_bundled_local_profile(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
+) -> Result<Option<String>, String> {
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_ensure_bundled_local_profile_blocking(app, authority, pending)
+    })
+    .await
+}
+
+#[cfg(not(mobile))]
+fn station_ensure_bundled_local_profile_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    pending: NativePendingPairingCredentials,
 ) -> Result<Option<String>, String> {
     let state = app
         .try_state::<DesktopServerState>()
@@ -6157,10 +6321,25 @@ fn validate_local_self_provision_owner(
 
 #[cfg(not(mobile))]
 #[tauri::command]
-fn station_local_self_provision(
+async fn station_local_self_provision(
     app: AppHandle,
     authority: State<'_, NativeProfileAuthority>,
     pending: State<'_, NativePendingPairingCredentials>,
+    profile_name: String,
+) -> Result<(), NativeCommandError> {
+    let authority = authority.inner().clone();
+    let pending = pending.inner().clone();
+    run_saved_station_command(move || {
+        station_local_self_provision_blocking(app, authority, pending, profile_name)
+    })
+    .await
+}
+
+#[cfg(not(mobile))]
+fn station_local_self_provision_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    pending: NativePendingPairingCredentials,
     profile_name: String,
 ) -> Result<(), NativeCommandError> {
     let store = parse_station_profile_store(&read_station_profile_contents(&app)?)?;
@@ -7021,37 +7200,86 @@ fn open_local_browser_preview(app: AppHandle, url: String) -> Result<(), String>
     })
 }
 
-/// Opens only the closed GitHub work-item locator admitted by the MCP host.
-/// The WebView never receives generic opener authority.
-#[tauri::command]
-fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
-    let parsed = url::Url::parse(&url).map_err(|_| "invalid external URL".to_string())?;
-    let segments: Vec<_> = parsed
-        .path_segments()
-        .map(|segments| segments.collect())
-        .unwrap_or_default();
+/// Longest link the app will hand to the operating system. A real web link is
+/// far shorter; the bound keeps a pathological string out of the OS handler.
+const EXTERNAL_LINK_MAX_LENGTH: usize = 8 * 1024;
+
+/// The web links Station hands to the operating system (#2480, owner decision
+/// 2026-09-24): any `https:` link with a host and no credentials — IP and
+/// loopback hosts included, as "any https link" says. Plain `http:`, custom
+/// schemes (`file:`, `javascript:`, app deep links) and links carrying a
+/// username or password are refused with an error; showing that refusal is the
+/// caller's job.
+///
+/// This command does not check for a user gesture. Only Station's own local
+/// origin can invoke it (Tauri ACL-checks app commands from any other origin,
+/// and none has a capability), and its UI callers run on link clicks. The MCP
+/// app frame's `onopenlink` also reaches it, but MCP frames are not rendered on
+/// native (`nativeIframeBlocked`), and that path keeps its own narrow allowlist.
+fn admitted_external_link(url: &str) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(url).map_err(|_| "invalid external URL".to_string())?;
+    // Measured after parsing: normalisation percent-encodes, and the string
+    // the OS receives is the serialised one.
+    if parsed.as_str().len() > EXTERNAL_LINK_MAX_LENGTH {
+        return Err("Station refused an overlong external link".to_string());
+    }
     if parsed.scheme() != "https"
-        || parsed.host_str() != Some("github.com")
-        || parsed.port().is_some()
+        || parsed.host_str().is_none_or(str::is_empty)
         || !parsed.username().is_empty()
         || parsed.password().is_some()
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-        || segments.len() != 4
-        || segments[0].is_empty()
-        || segments[1].is_empty()
-        || segments[2] != "issues"
-        || segments[3]
-            .parse::<u64>()
-            .ok()
-            .filter(|number| *number > 0)
-            .is_none()
     {
-        return Err("Station refused an unrecognized external work-item URL".to_string());
+        return Err("Station opens only https links without credentials".to_string());
     }
+    Ok(parsed)
+}
+
+/// Opens a user-clicked `https:` link in the operating system's handler — the
+/// default browser, or the app that claims the link (on a phone, a GitHub link
+/// opens the GitHub app). The WebView still holds no opener authority of its
+/// own: every URL passes `admitted_external_link` here, in Rust.
+#[tauri::command]
+fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
+    let admitted = admitted_external_link(&url)?;
     app.opener()
-        .open_url(url, None::<&str>)
+        .open_url(admitted.as_str(), None::<&str>)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod external_link_tests {
+    use super::admitted_external_link;
+
+    #[test]
+    fn admits_https_links_of_any_host_and_shape() {
+        for url in [
+            "https://github.com/kontourai/station/pull/2531",
+            "https://github.com/kontourai/station/issues/2480",
+            "https://gitlab.com/group/sub/project/-/merge_requests/7?view=1#note",
+            "https://docs.example.test/guide?x=1#section",
+        ] {
+            assert!(admitted_external_link(url).is_ok(), "{url}");
+        }
+    }
+
+    #[test]
+    fn refuses_other_schemes_credentials_and_overlong_links() {
+        let overlong = format!("https://example.test/{}", "a".repeat(9000));
+        // Under the bound as typed, over it once each byte is percent-encoded.
+        let encodes_long = format!("https://example.test/{}x", "<".repeat(3000));
+        for url in [
+            "http://example.test/",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "station://pair?code=1",
+            "https://user:secret@example.test/",
+            "https://token@github.com/o/r",
+            "not a url",
+            overlong.as_str(),
+            encodes_long.as_str(),
+        ] {
+            assert!(admitted_external_link(url).is_err(), "{url}");
+        }
+    }
 }
 
 /// Discover and select exactly one reachable local preview target. The native
@@ -10553,6 +10781,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_haptics::init());
+    // Android-only: its capability file is scoped to android, and the iOS
+    // counterpart (a Live Activity widget extension) does not exist yet.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
@@ -10947,6 +11179,334 @@ mod tests {
         let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
         let host = WriterTestHost { path: path.clone(), staged_path: None, fail_invalidation: false, fail_postpublication_trust: false };
         (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
+    }
+
+    /// #2565 through the real writer: the host reads `current` from disk under
+    /// the lock, so the carry rule is judged against the stored profile, never
+    /// against the renderer's own proposal.
+    #[cfg(not(mobile))]
+    fn writer_with_stored_pending_profile() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        WriterTestHost,
+        CredentialProfileStore,
+    ) {
+        let (directory, path, authority, pending, _handle, _contents, host) =
+            writer_pairing_fixture();
+        let stored = r#"{"schemaVersion":1,"revision":3,"defaultProfile":"one","projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#;
+        std::fs::write(&path, stored).unwrap();
+        let current = parse_station_profile_store(stored).unwrap();
+        // A restarted host observes only the configured Stations.
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &current).unwrap();
+        (directory, path, authority, pending, host, current)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_forgets_another_station_beside_a_pending_one() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let mut next = current.clone();
+        next.revision = 4;
+        next.profiles.retain(|profile| profile.name != "two");
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&next).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        let written =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(written.revision, 4);
+        assert_eq!(
+            written
+                .profiles
+                .iter()
+                .map(|profile| profile.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one", "pending"]
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn renderer_write_through_the_writer_cannot_add_or_promote_an_unobserved_reference() {
+        let (_directory, path, authority, pending, host, current) =
+            writer_with_stored_pending_profile();
+        let refused = |next: &CredentialProfileStore| {
+            station_profile_store_write_with_host(
+                &host,
+                &authority,
+                &pending,
+                serde_json::to_string(next).unwrap(),
+                3,
+                None,
+            )
+            .unwrap_err()
+        };
+
+        let mut added = current.clone();
+        added.revision = 4;
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        let mut promoted = current.clone();
+        promoted.revision = 4;
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        let stored =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(stored.revision, 3, "a refused write must not publish");
+    }
+
+    /// #2570: the on-disk store carries a Station stuck at `requires-auth`
+    /// (never observed after restart) beside an observed one. Returns the
+    /// writer fixture, the stored store, and the pairing target's
+    /// `requires-auth` profile from the fixture's handle.
+    #[cfg(not(mobile))]
+    fn pairing_writer_beside_stuck_station() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        String,
+        WriterTestHost,
+        CredentialProfileStore,
+        CredentialProfile,
+    ) {
+        let (directory, path, authority, pending, handle, contents, host) =
+            writer_pairing_fixture();
+        let target = parse_station_profile_store(&contents).unwrap().profiles[0].clone();
+        let stored = r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"remote","endpoint":"https://remote.example","credentialRef":{"kind":"station-bearer","id":"remote-token"},"environmentId":"environment-remote","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},{"schemaVersion":1,"name":"stuck","endpoint":"https://stuck.example","credentialRef":{"kind":"station-bearer","id":"stuck-token"},"environmentId":"environment-stuck","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#;
+        std::fs::write(&path, stored).unwrap();
+        let current = parse_station_profile_store(stored).unwrap();
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &current).unwrap();
+        (
+            directory, path, authority, pending, handle, host, current, target,
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn stored_revision(path: &std::path::Path) -> u64 {
+        parse_station_profile_store(&read_station_profile_store(path).unwrap())
+            .unwrap()
+            .revision
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn pairing_write_completes_beside_an_unchanged_pending_station() {
+        let (_directory, path, authority, pending, handle, host, current, target) =
+            pairing_writer_beside_stuck_station();
+        let mut requires_auth = current.clone();
+        requires_auth.revision = 1;
+        requires_auth.profiles.push(target.clone());
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&requires_auth).unwrap(),
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        assert_eq!(stored_revision(&path), 1);
+
+        // Stand in for the keyring commit so the configured write runs too.
+        pending.0.lock().unwrap().get_mut(&handle).unwrap().phase =
+            NativePairingPhase::KeyringWritten {
+                profile_name: target.name.clone(),
+            };
+        let mut configured = requires_auth.clone();
+        configured.revision = 2;
+        configured.profiles[2].configuration_state = "configured".to_string();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&configured).unwrap(),
+            1,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        let written =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(written.revision, 2);
+        assert_eq!(
+            written.profiles[1], current.profiles[1],
+            "stuck Station carried unchanged"
+        );
+        let state = authority.0.lock().unwrap();
+        assert!(state
+            .bindings
+            .contains_key("station-bearer:test-host-allocated"));
+        assert!(!state.bindings.contains_key("station-bearer:stuck-token"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn pairing_write_cannot_add_move_or_promote_a_non_target_unobserved_reference() {
+        let (_directory, path, authority, pending, handle, host, current, target) =
+            pairing_writer_beside_stuck_station();
+        let write = |next: &CredentialProfileStore, expected_revision: u64| {
+            station_profile_store_write_with_host(
+                &host,
+                &authority,
+                &pending,
+                serde_json::to_string(next).unwrap(),
+                expected_revision,
+                Some(handle.clone()),
+            )
+        };
+        let mut base = current.clone();
+        base.revision = 1;
+        base.profiles.push(target.clone());
+
+        let mut added = base.clone();
+        let mut extra = current.profiles[1].clone();
+        extra.name = "extra".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "extra-token".to_string(),
+        });
+        added.profiles.push(extra);
+        let mut moved = base.clone();
+        moved.profiles[1].name = "impostor".to_string();
+        let mut rebound = base.clone();
+        rebound.profiles[1].endpoint = "https://attacker.example".to_string();
+        let mut promoted = base.clone();
+        promoted.profiles[1].configuration_state = "configured".to_string();
+        for (label, next) in [
+            ("added", &added),
+            ("moved", &moved),
+            ("rebound", &rebound),
+            ("promoted", &promoted),
+        ] {
+            assert!(
+                write(next, 0)
+                    .unwrap_err()
+                    .contains("cannot add an unobserved credential reference"),
+                "{label}"
+            );
+            assert_eq!(stored_revision(&path), 0, "{label} must not publish");
+            assert!(matches!(
+                pending.0.lock().unwrap().get(&handle).unwrap().phase,
+                NativePairingPhase::AwaitingRequiresAuth
+            ));
+        }
+
+        // The configured write may not promote the stuck Station either.
+        write(&base, 0).unwrap();
+        pending.0.lock().unwrap().get_mut(&handle).unwrap().phase =
+            NativePairingPhase::KeyringWritten {
+                profile_name: target.name.clone(),
+            };
+        let mut configured_and_promoted = base.clone();
+        configured_and_promoted.revision = 2;
+        configured_and_promoted.profiles[2].configuration_state = "configured".to_string();
+        configured_and_promoted.profiles[1].configuration_state = "configured".to_string();
+        assert!(write(&configured_and_promoted, 1)
+            .unwrap_err()
+            .contains("cannot add an unobserved credential reference"));
+        assert_eq!(stored_revision(&path), 1);
+    }
+
+    /// #2570: local self-provision writes through a pairing handle with
+    /// stores built by `local_self_provision_next_store`; drive both of its
+    /// writes through the real writer beside a stuck Station.
+    #[cfg(not(mobile))]
+    #[test]
+    fn local_self_provision_writes_complete_beside_an_unchanged_pending_station() {
+        let (_directory, path, _authority, pending, _handle, host, _current, _target) =
+            pairing_writer_beside_stuck_station();
+        // A restarted host that observes only this store.
+        let authority = NativeProfileAuthority::default();
+        let mut store = local_self_provision_fixture_store();
+        store.revision = 0;
+        store.profiles.push(
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap())
+                .unwrap()
+                .profiles[1]
+                .clone(),
+        );
+        std::fs::write(&path, serde_json::to_string(&store).unwrap()).unwrap();
+        observe_configured_profile_bindings(&mut authority.0.lock().unwrap(), &store).unwrap();
+        let reference = NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "local-grant:test".to_string(),
+        };
+        let client_instance_id = "22222222-2222-4222-8222-222222222222";
+        pending.0.lock().unwrap().insert(
+            "local-handle".to_string(),
+            PendingPairingCredential {
+                credential: "local-secret".into(),
+                reference: reference.clone(),
+                exact_origin: exact_origin("http://127.0.0.1:3141").unwrap(),
+                environment_id: "environment-local".into(),
+                client_instance_id: client_instance_id.into(),
+                expires_at: SystemTime::now() + Duration::from_secs(120),
+                phase: NativePairingPhase::AwaitingRequiresAuth,
+            },
+        );
+        let next = |revision: u64, state: &str| {
+            local_self_provision_next_store(
+                &store,
+                revision,
+                "local",
+                &reference,
+                "environment-local",
+                state,
+                2.0,
+                client_instance_id,
+            )
+            .unwrap()
+        };
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            next(1, "requires-auth"),
+            0,
+            Some("local-handle".to_string()),
+        )
+        .unwrap();
+        pending
+            .0
+            .lock()
+            .unwrap()
+            .get_mut("local-handle")
+            .unwrap()
+            .phase = NativePairingPhase::KeyringWritten {
+            profile_name: "local".to_string(),
+        };
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            next(2, "configured"),
+            1,
+            Some("local-handle".to_string()),
+        )
+        .unwrap();
+        assert_eq!(stored_revision(&path), 2);
+        assert!(authority
+            .0
+            .lock()
+            .unwrap()
+            .bindings
+            .contains_key("station-bearer:local-grant:test"));
     }
 
     #[cfg(not(mobile))]
@@ -14907,7 +15467,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &endpoint_mutation)
+            renderer_store_references_are_authorized(&authority, &trusted, &endpoint_mutation)
                 .unwrap_err()
                 .contains("origin and environment")
         );
@@ -14919,9 +15479,12 @@ mod tests {
             }"#,
         )
         .unwrap();
-        assert!(
-            renderer_store_references_are_authorized(&authority, &environment_mutation).is_err()
-        );
+        assert!(renderer_store_references_are_authorized(
+            &authority,
+            &trusted,
+            &environment_mutation
+        )
+        .is_err());
 
         let unknown_reference = parse_station_profile_store(
             r#"{
@@ -14931,7 +15494,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            renderer_store_references_are_authorized(&authority, &unknown_reference)
+            renderer_store_references_are_authorized(&authority, &trusted, &unknown_reference)
                 .unwrap_err()
                 .contains("cannot add")
         );
@@ -15147,10 +15710,141 @@ mod tests {
         let mut restarted_authority = NativeProfileAuthorityState::default();
         observe_configured_profile_bindings(&mut restarted_authority, &requires_auth).unwrap();
         assert!(restarted_authority.bindings.is_empty());
+        let mut before_pending = requires_auth.clone();
+        before_pending.revision = 0;
+        before_pending.profiles.clear();
+        assert!(renderer_store_references_are_authorized(
+            &restarted_authority,
+            &before_pending,
+            &requires_auth
+        )
+        .unwrap_err()
+        .contains("cannot add"));
+        assert!(authorize_active_profile_in_state(
+            &mut restarted_authority,
+            &requires_auth,
+            "pending"
+        )
+        .unwrap_err()
+        .contains("not a configured host-observed credential"));
+        assert!(restarted_authority.active.is_none());
+    }
+
+    /// #2565: a saved Station awaiting sign-in is never observed, so its
+    /// reference is only acceptable in a renderer write when the host's
+    /// current store already carries the identical profile.
+    fn unobserved_pending_fixture() -> (NativeProfileAuthorityState, CredentialProfileStore) {
+        let current = parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":4,"defaultProfile":"one","projectProfiles":{},
+              "profiles":[
+                {"schemaVersion":1,"name":"one","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"token-one"},"environmentId":"environment-one","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"two","endpoint":"https://two.example","credentialRef":{"kind":"station-bearer","id":"token-two"},"environmentId":"environment-two","setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"pending","endpoint":"https://pending.example","credentialRef":{"kind":"station-bearer","id":"pending-token"},"environmentId":"environment-pending","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let mut authority = NativeProfileAuthorityState::default();
+        observe_configured_profile_bindings(&mut authority, &current).unwrap();
+        assert!(!authority.bindings.contains_key(
+            &credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap())
+                .unwrap()
+        ));
+        (authority, current)
+    }
+
+    fn next_revision_of(current: &CredentialProfileStore) -> CredentialProfileStore {
+        let mut next = current.clone();
+        next.revision = current.revision + 1;
+        next
+    }
+
+    #[test]
+    fn renderer_write_may_carry_an_unchanged_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+
+        // (a) forget a different Station while the pending one is untouched.
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
+        renderer_store_references_are_authorized(&authority, &current, &forget_other).unwrap();
+
+        // (b) rename a different Station and make it default.
+        let mut rename_other = next_revision_of(&current);
+        rename_other.profiles[1].name = "two-renamed".to_string();
+        rename_other.default_profile = Some("two-renamed".to_string());
+        renderer_store_references_are_authorized(&authority, &current, &rename_other).unwrap();
+
+        // Forgetting the pending Station itself removes the reference.
+        let mut forget_pending = next_revision_of(&current);
+        forget_pending
+            .profiles
+            .retain(|profile| profile.name != "pending");
+        renderer_store_references_are_authorized(&authority, &current, &forget_pending).unwrap();
+    }
+
+    #[test]
+    fn renderer_write_cannot_add_or_move_or_rebind_an_unobserved_reference() {
+        let (authority, current) = unobserved_pending_fixture();
+        let refused = |next: &CredentialProfileStore| {
+            renderer_store_references_are_authorized(&authority, &current, next).unwrap_err()
+        };
+
+        // (c) a new unobserved reference is still refused.
+        let mut added = next_revision_of(&current);
+        let mut extra = current.profiles[2].clone();
+        extra.name = "three".to_string();
+        extra.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "token-three".to_string(),
+        });
+        added.profiles.push(extra);
+        assert!(refused(&added).contains("cannot add an unobserved credential reference"));
+
+        // (d) moving the unobserved reference onto another profile name.
+        let mut moved = next_revision_of(&current);
+        moved.profiles[2].name = "impostor".to_string();
+        assert!(refused(&moved).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but repointing the endpoint.
+        let mut repointed = next_revision_of(&current);
+        repointed.profiles[2].endpoint = "https://attacker.example".to_string();
+        assert!(refused(&repointed).contains("cannot add an unobserved credential reference"));
+
+        // (d) keeping the reference but changing the environment binding.
+        let mut rebound = next_revision_of(&current);
+        rebound.profiles[2]._environment_id = Some("environment-other".to_string());
+        assert!(refused(&rebound).contains("cannot add an unobserved credential reference"));
+
+        // Promoting it to configured would make the next host start trust it.
+        let mut promoted = next_revision_of(&current);
+        promoted.profiles[2].configuration_state = "configured".to_string();
+        assert!(refused(&promoted).contains("cannot add an unobserved credential reference"));
+
+        // Moving the pending reference onto a different existing profile.
+        let mut swapped = next_revision_of(&current);
+        let pending_ref = swapped.profiles[2].credential_ref.take();
+        swapped.profiles.remove(2);
+        swapped.profiles[1].credential_ref = pending_ref;
+        assert!(refused(&swapped).contains("cannot add an unobserved credential reference"));
+    }
+
+    #[test]
+    fn renderer_write_still_refuses_an_unchanged_transitioning_reference() {
+        let (mut authority, current) = unobserved_pending_fixture();
+        authority.transitioning.insert(
+            credential_reference_key(current.profiles[2].credential_ref.as_ref().unwrap()).unwrap(),
+        );
+        let mut forget_other = next_revision_of(&current);
+        forget_other
+            .profiles
+            .retain(|profile| profile.name != "two");
         assert!(
-            renderer_store_references_are_authorized(&restarted_authority, &requires_auth)
+            renderer_store_references_are_authorized(&authority, &current, &forget_other)
                 .unwrap_err()
-                .contains("cannot add")
+                .contains("transitioning")
         );
     }
 
@@ -16909,7 +17603,31 @@ mod tests {
         assert!(states.contains(&("haptics", "enabled")));
         #[cfg(not(mobile))]
         assert!(states.contains(&("haptics", "unsupported")));
+        #[cfg(not(target_os = "android"))]
         assert!(states.contains(&("remote-push", "unsupported")));
+    }
+
+    #[test]
+    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity() {
+        let state = |android, identity| remote_push_capability(android, identity).state;
+        assert_eq!(state(true, true), "enabled");
+        assert_eq!(state(true, false), "unsupported");
+        assert_eq!(state(false, true), "unsupported");
+        assert_eq!(state(false, false), "unsupported");
+        assert_eq!(
+            remote_push_capability(true, false).reason,
+            "This build has no push configuration."
+        );
+
+        let all = [Some("1:2:android:ab"), Some("A"), Some("p"), Some("3")];
+        assert!(android_build_carries_firebase_identity(all));
+        let mut missing = all;
+        missing[3] = None;
+        assert!(!android_build_carries_firebase_identity(missing));
+        let mut blank = all;
+        blank[0] = Some("  ");
+        assert!(!android_build_carries_firebase_identity(blank));
+        assert!(!android_build_carries_firebase_identity([None; 4]));
     }
 
     #[cfg(not(mobile))]
@@ -17490,7 +18208,7 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
-    /// station#2461 review: mobile locks on every read from the main thread.
+    /// station#2461 review: mobile locks on every saved Station read.
     /// A crashed v1 owner younger than five minutes is not reclaimable, so a
     /// read waits the full bound; it must stay at the mobile budget, not the
     /// desktop one.
@@ -17766,6 +18484,80 @@ mod tests {
                 "the detail must not merely restate the code — they are different contracts, one for machines and one for people"
             );
         }
+    }
+
+    /// #2469: these commands can wait on `profiles.json.lock` (10s on desktop;
+    /// 5s on every mobile read), the OS keyring, or a loopback HTTP exchange.
+    /// Tauri picks a command's execution context from its signature: a plain
+    /// `fn` is `ExecutionContext::Blocking` and runs on the thread that
+    /// dispatched the IPC message, which in the app is the main thread, so the
+    /// UI froze for the whole wait; an `async fn` is spawned on the async
+    /// runtime. The commands take `AppHandle<Wry>`, which the mock runtime
+    /// cannot dispatch, so this pins the signature Tauri reads instead: each
+    /// must return a future. Reverting any of them to a plain `fn` fails to
+    /// compile here with "`Result<..>` is not a future".
+    #[cfg(not(mobile))]
+    #[test]
+    fn saved_station_commands_are_async_so_tauri_never_runs_them_on_the_main_thread() {
+        macro_rules! assert_async_command {
+            ($command:path, $($argument:ty),+) => {{
+                fn returns_future<Command, Output>(_: Command)
+                where
+                    Command: Fn($($argument),+) -> Output,
+                    Output: std::future::Future,
+                {
+                }
+                returns_future($command);
+            }};
+        }
+        type Authority = State<'static, NativeProfileAuthority>;
+        type Pending = State<'static, NativePendingPairingCredentials>;
+        assert_async_command!(credential_vault_delete, AppHandle, Authority);
+        assert_async_command!(
+            credential_vault_delete_unreferenced,
+            AppHandle,
+            NativeCredentialReference
+        );
+        assert_async_command!(credential_vault_commit_pairing, AppHandle, Authority, Pending, String);
+        assert_async_command!(station_profile_authorize_active, AppHandle, Authority, String);
+        assert_async_command!(station_profile_store_read, AppHandle, Authority);
+        assert_async_command!(
+            station_profile_store_write,
+            AppHandle,
+            Authority,
+            Pending,
+            String,
+            u64,
+            Option<String>
+        );
+        assert_async_command!(station_ensure_bundled_local_profile, AppHandle, Authority, Pending);
+        assert_async_command!(station_local_self_provision, AppHandle, Authority, Pending, String);
+    }
+
+    /// The async signature alone only moves the body to an async-runtime
+    /// worker, where a 10s lock wait would stall every async command sharing
+    /// it. The shared runner must hand the body to another (blocking-pool)
+    /// thread, and a panicking body must answer with an error, not hang the
+    /// renderer's awaited invoke.
+    #[test]
+    fn saved_station_command_runner_moves_the_body_off_the_awaiting_thread() {
+        let (awaiting, ran_on) = tauri::async_runtime::block_on(async {
+            let awaiting = std::thread::current().id();
+            let ran_on = run_saved_station_command(|| Ok::<_, String>(std::thread::current().id()))
+                .await
+                .expect("the body answers");
+            (awaiting, ran_on)
+        });
+        assert_ne!(ran_on, awaiting, "the body ran on the thread awaiting it");
+
+        let panicked = tauri::async_runtime::block_on(run_saved_station_command(
+            || -> Result<(), String> { panic!("saved Station body panicked") },
+        ))
+        .expect_err("a panicking body answers with an error");
+        assert!(
+            panicked.starts_with("saved Station command task failed"),
+            "unexpected error: {panicked}"
+        );
     }
 }
 

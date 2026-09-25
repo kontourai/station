@@ -93,6 +93,8 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
     observedAgainst: ['claude-adapter'],
     evidence: 'station#1815-runtime-observation',
   },
+  // Replay only since #2457: the Claude adapter emits `child-work.updated`;
+  // these two bind the tuples persisted pre-#2457 history still carries.
   {
     namespace: 'claude-code',
     type: 'task/registry',
@@ -280,6 +282,7 @@ export const EXTENSION_NOTIFICATION_PROMOTIONS = Object.freeze([
     status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
+  // Replay only since #2457 (persisted pre-#2457 Claude history).
   Object.freeze({
     namespace: 'claude-code',
     type: 'task/registry',

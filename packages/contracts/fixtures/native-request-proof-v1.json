@@ -1,0 +1,28 @@
+{
+  "brokerOrigin": "https://broker.example",
+  "grantId": "GGGGGGGGGGGGGGGGGGGGGG",
+  "scope": {
+    "stationId": "11111111-1111-4111-8111-111111111111",
+    "enrollmentId": "22222222-2222-4222-8222-222222222222",
+    "routingGeneration": 9
+  },
+  "surface": {
+    "kind": "station-native",
+    "appIdentifier": "io.kontourai.station",
+    "channel": "stable",
+    "clientInstanceId": "33333333-3333-4333-8333-333333333333",
+    "keyThumbprint": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+  },
+  "stationSigningKeyId": "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+  "stationSigningGeneration": 4,
+  "purpose": "station-native-connection-open-v2",
+  "method": "POST",
+  "path": "/broker/v1/native/connections/open",
+  "bodyJson": "{\"scope\":{\"stationId\":\"11111111-1111-4111-8111-111111111111\",\"enrollmentId\":\"22222222-2222-4222-8222-222222222222\",\"routingGeneration\":9},\"surface\":{\"kind\":\"station-native\",\"appIdentifier\":\"io.kontourai.station\",\"channel\":\"stable\",\"clientInstanceId\":\"33333333-3333-4333-8333-333333333333\",\"keyThumbprint\":\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\"},\"connection\":{\"version\":\"station-broker-native-connection-open/v2\",\"nonce\":\"nonce-request-proof-01\",\"offerSdp\":\"offer-fixture\"}}",
+  "bodySha256": "khxauwvRyYEKjSEEON_MG-Qr7gGQzQs93CjVJYaq_lI",
+  "ath": "sGeTJCKMNZMazfqKSH-UhzwFCUE4pHeZSlvbptbCSlY",
+  "jti": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "iat": 1700000000,
+  "exp": 1700000030,
+  "claimsJson": "{\"version\":\"station-broker-native-request-proof/v1\",\"aud\":\"https://broker.example\",\"purpose\":\"station-native-connection-open-v2\",\"brokerOrigin\":\"https://broker.example\",\"method\":\"POST\",\"path\":\"/broker/v1/native/connections/open\",\"grantId\":\"GGGGGGGGGGGGGGGGGGGGGG\",\"scope\":{\"stationId\":\"11111111-1111-4111-8111-111111111111\",\"enrollmentId\":\"22222222-2222-4222-8222-222222222222\",\"routingGeneration\":9},\"surface\":{\"kind\":\"station-native\",\"appIdentifier\":\"io.kontourai.station\",\"channel\":\"stable\",\"clientInstanceId\":\"33333333-3333-4333-8333-333333333333\",\"keyThumbprint\":\"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT\"},\"stationSigningKeyId\":\"KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK\",\"stationSigningGeneration\":4,\"ath\":\"sGeTJCKMNZMazfqKSH-UhzwFCUE4pHeZSlvbptbCSlY\",\"jti\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"iat\":1700000000,\"exp\":1700000030,\"bodySha256\":\"khxauwvRyYEKjSEEON_MG-Qr7gGQzQs93CjVJYaq_lI\"}"
+}

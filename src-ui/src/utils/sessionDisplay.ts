@@ -2,7 +2,7 @@ import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   foldedSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { isSessionUnanswerable } from './answerability';
@@ -406,7 +406,7 @@ export function displayEnvironment(
 export function isTerminalSession(
   session: OrchestrationSessionSummary,
 ): boolean {
-  return isSessionLifecycleStateStopped(
+  return isSessionLifecycleStateAtRest(
     foldedSessionLifecycleState(session.lifecycleState),
   );
 }

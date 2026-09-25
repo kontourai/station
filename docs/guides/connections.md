@@ -65,6 +65,23 @@ origin-local trust store. Rotation requires a higher key generation for the
 same enrollment; revoked trust stays revoked until a higher-generation key is
 independently approved. A different enrollment cannot be reset from this form.
 
+For a shorter independent comparison, the Station operator can also run
+`npm run --silent connection:key -- fingerprint --home=<absolute-home-path>`.
+It prints the full key ID and an 80-bit, 16-character confirmation code derived
+from the Station ID, enrollment, key generation, and public key. Compare both
+values through a separate channel. The current browser form still uses its
+full-thumbprint approval step and does not display the short code yet. A future
+relay candidate will carry a Station-signed, short-lived statement bound to
+the selected broker and one client-generated challenge; its signature proves
+possession of the included key only. It does not approve the Station. The recipient must verify the
+signature and challenge, compare the confirmation code and full key ID with
+the Station operator, and then explicitly record trust in its own trust owner.
+The candidate issuer/verifier foundation is being added, but the broker does
+not yet courier candidates; native host-owned approval and browser short-code
+presentation are future work. No runtime approval endpoint or automatic trust
+write is enabled. This does not enroll a Device or grant account, Project, or
+compute permissions.
+
 After that separate approval, the browser can accept a one-time invitation
 link or the operator's private JSON invitation. Enter the Station application
 origin separately. For a route that must cross networks, enter the operator's
