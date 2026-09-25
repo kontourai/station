@@ -464,14 +464,15 @@ Per `local-merge-readiness.md`, extended by measured practice:
   not assume the states are exclusive.)
 - **Never hand a directory to a formatter.** `biome check --write docs`
   reformatted 32 checked-in evidence files in one command.
-- **Resolving a measured ceiling: attribution, not direction.** Files like
-  `scripts/ui-bundle-budget.json` and `scripts/mobile-css-baseline.json` carry a
+- **Resolving a measured ceiling: attribution, not direction.** (The UI
+  entry-bundle ceiling is now a round number with headroom, #1703: resolve a
+  conflict on `scripts/ui-bundle-budget.json` by keeping the higher of each
+  field, and raise it only to the next round number, never to a measurement.
+  The rest of this item applies to the exact ceilings that remain.) Files like
+  `scripts/mobile-css-baseline.json` carry a
   number that several lanes edit, and a merge conflict there cannot be resolved
-  by taking a side — neither side describes the merged tree. The
-  `ui-bundle-budget.json` merge driver writes a *provisional* value (the
-  higher of each field; a driver runs before the merged tree exists, so it
-  cannot measure it — station#1107). Rebuild, measure, and then decide by
-  **what you can attribute to your own diff**:
+  by taking a side — neither side describes the merged tree. Rebuild, measure,
+  and then decide by **what you can attribute to your own diff**:
 
   - **Your measurement exceeds main's ceiling** → raise to your measurement.
     Forced; your change costs those bytes.
