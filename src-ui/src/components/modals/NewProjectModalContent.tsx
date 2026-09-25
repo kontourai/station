@@ -4,6 +4,7 @@ import type { useNewProjectModalState } from '../../hooks/useNewProjectModalStat
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
+import { useDialogHistoryHost } from '../DialogHistoryHost';
 import { registerDialogHistory } from '../dialog-history';
 import {
   ResponsiveDialogCloseButton,
@@ -222,6 +223,7 @@ export function NewProjectModalContent({
   const returnToForm = () => starter.setShowLayoutBrowser(false);
 
   const browseHistoryId = useId();
+  const browseHistoryHost = useDialogHistoryHost();
   // Hardware/browser Back while browsing must return to the draft form, not
   // exit the whole New Project flow (archive#1825 2).
   // The outer `ResponsiveDialogSurface` below intentionally does NOT push a
@@ -235,10 +237,17 @@ export function NewProjectModalContent({
   // browsing sub-state, using the same primitive.
   useEffect(() => {
     if (!browsingLayouts) return;
-    return registerDialogHistory(browseHistoryId, () =>
-      starter.setShowLayoutBrowser(false),
+    return registerDialogHistory(
+      browseHistoryId,
+      () => starter.setShowLayoutBrowser(false),
+      browseHistoryHost,
     );
-  }, [browseHistoryId, browsingLayouts, starter.setShowLayoutBrowser]);
+  }, [
+    browseHistoryHost,
+    browseHistoryId,
+    browsingLayouts,
+    starter.setShowLayoutBrowser,
+  ]);
 
   // Escape, a backdrop tap, and the header's own close button all funnel
   // through `ResponsiveDialogSurface`'s single `onClose` prop. While

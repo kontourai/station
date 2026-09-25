@@ -1,8 +1,23 @@
 export const DIALOG_HISTORY_KEY = '__stationDialog';
 
+/**
+ * The view a dialog was opened in, as far as its history layer cares: whether
+ * that view has been taken down. `DialogHistoryHostBoundary` provides one per
+ * routed view and flips `removed` in its own unmount.
+ *
+ * It is the only fact that tells a dialog its owner CLOSED it apart from its
+ * surroundings being REMOVED. Both reach the layer as the same effect cleanup,
+ * because a consumer closes a dialog by no longer rendering it; what differs is
+ * whether the view that rendered it is still there afterwards.
+ */
+export interface DialogHistoryHost {
+  readonly removed: boolean;
+}
+
 interface DialogHistoryEntry {
   id: string;
   close: () => void;
+  host: DialogHistoryHost | null;
   cleanupToken?: object;
   /**
    * The URL this dialog's layer was pushed at, which is also the URL the entry
@@ -56,6 +71,13 @@ const orphanedMarkers = new Set<string>();
 const MAX_ORPHANED_MARKERS = 64;
 let listening = false;
 let suppressNextPop = false;
+/**
+ * The layer a removed host left live, still the current entry and still at the
+ * URL the entry beneath carries — see the cleanup's removed-host branch. Only
+ * ever read through `adoptStrandedLayer`, which re-checks both facts, so a
+ * stale value is inert.
+ */
+let strandedLayer: { id: string; url: string } | null = null;
 
 function markOrphaned(id: string) {
   orphanedMarkers.add(id);
@@ -109,6 +131,37 @@ function collapseDialogLayer() {
   adoption?.commit();
 }
 
+/**
+ * Lets a dialog opening on top of a stranded layer take that entry over
+ * instead of pushing a second same-URL layer on it.
+ *
+ * The usual shape is the same view coming back — a host that was replaced for
+ * a moment re-renders and re-opens the dialog it was showing — but any dialog
+ * qualifies: the live entry is a layer nobody owns, at the URL of the entry
+ * beneath, which is exactly the entry a fresh push would have created.
+ */
+function adoptStrandedLayer(id: string) {
+  const stranded = strandedLayer;
+  strandedLayer = null;
+  if (
+    !stranded ||
+    markerFromState(window.history.state) !== stranded.id ||
+    window.location.href !== stranded.url
+  ) {
+    return false;
+  }
+  orphanedMarkers.delete(stranded.id);
+  window.history.replaceState(
+    {
+      ...(window.history.state as Record<string, unknown>),
+      [DIALOG_HISTORY_KEY]: id,
+    },
+    '',
+    window.location.href,
+  );
+  return true;
+}
+
 function skipOrphanedMarker() {
   const marker = markerFromState(window.history.state);
   if (!marker || !orphanedMarkers.delete(marker)) return false;
@@ -151,6 +204,16 @@ function ensureListener() {
  * still matches the one the layer was pushed at; a URL the dialog changed
  * before closing must survive the close.
  *
+ * Cleanup never travels when `host` reports the dialog's view was removed
+ * (#2414). A traversal is asynchronous, and it cancels whatever navigation is
+ * in flight when it lands — a route swap that takes a dialog down with it
+ * happens on data arrival, not on a user action, so nothing bounds what the
+ * user started in that window. The layer stays the live entry, marked
+ * orphaned: a Back from anything pushed later skips it, and the next dialog to
+ * open adopts it rather than stacking another. The residue is a Back pressed
+ * while that entry is still current, which lands on the identical URL beneath —
+ * one wasted press, traded for never cancelling a navigation.
+ *
  * That leaves a deliberate asymmetry in the back stack, and it is the contract
  * rather than a side effect: a param change made THROUGH a dialog leaves one
  * entry behind, so Back undoes the switch and returns the user where they
@@ -158,16 +221,26 @@ function ensureListener() {
  * case is the one reached by a thumb on a phone's Back gesture, and returning
  * to the previous selection is what that gesture is asking for.
  */
-export function registerDialogHistory(id: string, close: () => void) {
+export function registerDialogHistory(
+  id: string,
+  close: () => void,
+  host: DialogHistoryHost | null = null,
+) {
   ensureListener();
   const existing = entries.find((entry) => entry.id === id);
-  const entry = existing ?? { id, close, pushedUrl: window.location.href };
+  const entry = existing ?? {
+    id,
+    close,
+    host,
+    pushedUrl: window.location.href,
+  };
   entry.close = close;
+  entry.host = host;
   entry.cleanupToken = undefined;
 
   if (!existing) {
     entries.push(entry);
-    pushDialogEntry(id);
+    if (!adoptStrandedLayer(id)) pushDialogEntry(id);
   }
 
   return () => {
@@ -186,6 +259,10 @@ export function registerDialogHistory(id: string, close: () => void) {
 
       if (window.location.href === entry.pushedUrl) {
         markOrphaned(id);
+        if (entry.host?.removed) {
+          strandedLayer = { id, url: entry.pushedUrl };
+          return;
+        }
         suppressNextPop = true;
         window.history.back();
         return;
