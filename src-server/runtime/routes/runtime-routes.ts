@@ -16,6 +16,7 @@ import { createLocalAccountAdministrationRoutes } from '../../routes/system/loca
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
@@ -1493,6 +1494,44 @@ export function configureRuntimeRoutes(
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
   });
+  // Station #90 lane D (station #122): a station-control tool's verified caller
+  // names a session; the principal it acts for, its project and its
+  // conversation come from these records, never from the request.
+  const resolveStationControlCallerRecord =
+    createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            context.orchestrationService.resolveSessionActingPrincipal(
+              threadId,
+            ),
+          firstStartedMetadataOfThread: (threadId) =>
+            context.orchestrationService.firstStartedMetadataOfThread(threadId),
+        },
+        eventStore: context.orchestrationEventStore,
+        getProject: (slug) => context.storageAdapter.getProject(slug),
+      }),
+    );
+  // #2377 slice A: every request the boundary above stamped `kind:'internal'`
+  // (every station-control tool call, and Station's own server code) is
+  // decided here from the station-control authority table, before any route
+  // is mounted. The operator's UI and paired devices are never internal.
+  context.app.use(
+    '*',
+    createStationControlAuthorityGuard({
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      isOperatorPrincipal: (principalId) =>
+        principalId === LOCAL_OPERATOR_PRINCIPAL_ID,
+      onRefusal: (refusal, method, path) =>
+        context.logger.warn(
+          `station-control authority refused ${method} ${path}: ${refusal.code}`,
+        ),
+    }),
+  );
   // #2561: every route family below decides a session or conversation read
   // (or records an owner that a later session read compares against), so it
   // must use the request's principal, exactly like the chat routes bound
@@ -1870,24 +1909,6 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
-  // Station #90 lane D (station #122): a station-control tool's verified caller
-  // names a session; the principal it acts for, its project and its
-  // conversation come from these records, never from the request.
-  const resolveStationControlCallerRecord =
-    createStationControlCallerRecordResolver(
-      stationControlCallerRecordSources({
-        orchestrationService: {
-          resolveSessionActingPrincipal: (threadId) =>
-            context.orchestrationService.resolveSessionActingPrincipal(
-              threadId,
-            ),
-          firstStartedMetadataOfThread: (threadId) =>
-            context.orchestrationService.firstStartedMetadataOfThread(threadId),
-        },
-        eventStore: context.orchestrationEventStore,
-        getProject: (slug) => context.storageAdapter.getProject(slug),
-      }),
-    );
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );

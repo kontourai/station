@@ -7,6 +7,8 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  INTERNAL_SERVER_SELF_HEADER,
+  stationServerSelfAttestation,
 } from '../utils/internal-api-token.js';
 
 let runtimeControlApiBase: string | undefined;
@@ -197,6 +199,10 @@ const callerContexts = new AsyncLocalStorage<StationControlCallerContext>();
 // so an in-process tool call outside an HTTP MCP request has no caller rather
 // than inheriting whatever the server's environment happens to hold.
 let stdioCallerToken: string | undefined;
+// Set by the stdio entry point. A stdio child is a station-control tool
+// process by definition, so nothing it sends is Station's own server code
+// (`serverSelfHeaders`), whatever else this process happens to hold.
+let stdioEntryInstalled = false;
 
 /** Verified MCP transport identity only; never sourced from public tool input. */
 export function withStationControlCallerContext<T>(
@@ -216,6 +222,7 @@ export function installStationControlStdioCallerCredential(
 ): void {
   const value = env[STATION_CONTROL_CALLER_TOKEN_ENV];
   delete env[STATION_CONTROL_CALLER_TOKEN_ENV];
+  stdioEntryInstalled = true;
   stdioCallerToken =
     typeof value === 'string' && value.length > 0 ? value : undefined;
 }
@@ -223,6 +230,20 @@ export function installStationControlStdioCallerCredential(
 /** Test-only reset for the stdio credential. */
 export function __resetStationControlStdioCallerCredentialForTests(): void {
   stdioCallerToken = undefined;
+  stdioEntryInstalled = false;
+}
+
+/**
+ * #2377 slice A: the server-self attestation, only for a request that is not
+ * a station-control tool call — no verified-caller context (the HTTP MCP route
+ * and in-process delivery always install one) and not a stdio child. In any
+ * process that never minted the attestation this is empty, so a child never
+ * sends one. See `INTERNAL_SERVER_SELF_HEADER`.
+ */
+function serverSelfHeaders(): Record<string, string> {
+  if (callerContexts.getStore() || stdioEntryInstalled) return {};
+  const attestation = stationServerSelfAttestation();
+  return attestation ? { [INTERNAL_SERVER_SELF_HEADER]: attestation } : {};
 }
 
 function callerCredential(): string | undefined {
@@ -329,6 +350,7 @@ function executionContextHeaders(): Record<string, string> {
   const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
+    ...serverSelfHeaders(),
     [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
     ...(callerToken
       ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: callerToken }

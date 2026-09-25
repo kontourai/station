@@ -336,12 +336,25 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     const person = pair('Phone', 'device', 'standard');
     const delegation = pair('Peer: box-b', 'delegation', 'delegation');
     // Station's own agent caller resolves as the operator (home possession),
-    // and still reads nothing (#2323 S5 delta review).
+    // and still reads nothing (#2323 S5 delta review). Since #2377 slice A the
+    // station-control authority guard refuses it first: no station-control
+    // tool reads proposals or the attention inbox, so those routes are not in
+    // the table and the internal token gets `station_control_route_unmapped`.
     const nonOperators = [
       ['person', person],
       ['delegation', delegation],
-      ['internal', INTERNAL_CALLER],
     ] as const;
+    for (const path of [
+      '/api/plugin-proposals',
+      `/api/plugin-proposals/${proposal.id}`,
+      '/api/attention',
+    ]) {
+      const refused = await request(INTERNAL_CALLER, path);
+      expect({ path, status: refused.status }).toEqual({ path, status: 403 });
+      expect(await readJson(refused)).toMatchObject({
+        code: 'station_control_route_unmapped',
+      });
+    }
 
     for (const [caller, credential] of nonOperators) {
       for (const path of [
@@ -400,7 +413,9 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
 
     // Station's own agent caller, as station-control sends it: the per-boot
     // internal token from a direct loopback socket, no credential. The real
-    // auth boundary binds it as `internal`, and the handler refuses it.
+    // auth boundary binds it as `internal`; since #2377 slice A the
+    // station-control authority guard refuses it before the handler (no tool
+    // reads plugin sources).
     const internal = await app.request(
       `${ORIGIN}/api/plugin-sources`,
       {
@@ -411,7 +426,10 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
     );
-    expect(internal.status).toBe(404);
+    expect(internal.status).toBe(403);
+    expect(await readJson(internal)).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
 
     const operator = await request(operatorCredential, '/api/plugin-sources');
     expect(operator.status).toBe(200);

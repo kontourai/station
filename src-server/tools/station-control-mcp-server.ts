@@ -16,7 +16,63 @@ import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
+import {
+  evaluateStationControlPolicy,
+  personOnlyApplies,
+  type StationControlRefusal,
+  stationControlRefusal,
+  stationControlRefusalBody,
+  stationControlToolPolicy,
+} from './station-control-policy.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
+import {
+  getStationControlCaller,
+  jsonToolResult,
+} from './station-control-shared.js';
+
+/**
+ * #2377 slice A: the tool-side half of the station-control authority table.
+ * Refuses with the SAME typed code the server guard would answer, before the
+ * tool makes its call, so an agent learns what to do without a round trip
+ * (the shape `browserAgentCallerRefusal` set). The server guard remains the
+ * enforcement point; this can only refuse earlier, never allow more.
+ *
+ * Skipped where it has nothing to add: tools not in the table (the browser
+ * tools, whose own refusal is unchanged), route-enforced tools (`notify_user`
+ * answers `caller-required` itself), read-only tools (any caller, or none,
+ * may read in slice A), and tools that call no route (`install_plugin`
+ * only explains).
+ */
+function withToolSideRefusal<Callback>(
+  name: string,
+  callback: Callback,
+): Callback {
+  const policy = stationControlToolPolicy(name);
+  if (
+    !policy ||
+    policy.enforcedBy === 'route' ||
+    policy.toolClass === 'read-only' ||
+    policy.routes.length === 0
+  )
+    return callback;
+  const run = callback as unknown as (...args: unknown[]) => unknown;
+  return (async (...args: unknown[]) => {
+    const input = args[0];
+    // A person-only request is refused before any caller lookup: no caller
+    // could take it.
+    const refusal: StationControlRefusal | undefined = personOnlyApplies(
+      policy,
+      input,
+    )
+      ? stationControlRefusal('station_control_person_only')
+      : evaluateStationControlPolicy(policy, {
+          caller: await getStationControlCaller(),
+          body: input,
+        });
+    if (refusal) return jsonToolResult(stationControlRefusalBody(refusal));
+    return run(...args);
+  }) as unknown as Callback;
+}
 
 /**
  * The small registration surface shared by Station's built-in control tools.
@@ -38,7 +94,7 @@ export class StationControlToolRegistry {
         description,
         inputSchema: z.object(shape),
       },
-      callback,
+      withToolSideRefusal(name, callback),
     );
   }
 
@@ -51,7 +107,7 @@ export class StationControlToolRegistry {
     return this.server.registerTool(
       name,
       { description, inputSchema },
-      callback,
+      withToolSideRefusal(name, callback),
     );
   }
 
@@ -83,7 +139,9 @@ export class StationControlToolRegistry {
         inputSchema,
         ...config,
       } as unknown as Parameters<typeof registerAppTool>[2],
-      callback as unknown as Parameters<typeof registerAppTool>[3],
+      withToolSideRefusal(name, callback) as unknown as Parameters<
+        typeof registerAppTool
+      >[3],
     );
   }
 
