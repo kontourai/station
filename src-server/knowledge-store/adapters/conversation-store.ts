@@ -138,20 +138,20 @@ interface ConversationStoreAdapterDeps {
    * getter, not a resolved value, so every read call sees the current caller. */
   getUserId: () => string | undefined;
   /** Request-scoped authority getter. Do not resolve this during adapter
-   * construction: adapter descriptors are process singletons. */
-  getReadAuthority?: () => SessionReadAuthority;
+   * construction: adapter descriptors are process singletons. When wired,
+   * it is the ONLY session authority: `undefined` (no request in scope)
+   * reads no session at all. */
+  getReadAuthority?: () => SessionReadAuthority | undefined;
 }
 
 function readAuthority(
   deps: ConversationStoreAdapterDeps,
-): SessionReadAuthority {
-  return (
-    deps.getReadAuthority?.() ??
-    sessionReadAuthorityFromRequest(
-      deps.getUserId() ?? '',
-      undefined,
-      undefined,
-    )
+): SessionReadAuthority | undefined {
+  if (deps.getReadAuthority) return deps.getReadAuthority();
+  return sessionReadAuthorityFromRequest(
+    deps.getUserId() ?? '',
+    undefined,
+    undefined,
   );
 }
 
@@ -309,12 +309,16 @@ async function allConversationRecords(
   // File-memory conversations do not carry a trusted tenant binding. They
   // remain local-first data, but are never an implicit hosted authorization.
   const fileRecords =
-    authority.mode === 'hosted' ? [] : await fileLegRecords(deps.fileStores);
-  const sessionRecords = await sessionLegRecords(deps.sessionReader, authority);
-  if (authority.mode !== 'hosted') {
+    authority?.mode === 'hosted' ? [] : await fileLegRecords(deps.fileStores);
+  // No request authority: no session is anyone's to read here.
+  const sessionRecords = authority
+    ? await sessionLegRecords(deps.sessionReader, authority)
+    : [];
+  if (authority?.mode !== 'hosted') {
     conversationStoreReadOps.add(1, { op: 'list', leg: 'file' });
   }
-  conversationStoreReadOps.add(1, { op: 'list', leg: 'session' });
+  if (authority)
+    conversationStoreReadOps.add(1, { op: 'list', leg: 'session' });
   const byId = new Map<string, KitRecord>();
   for (const record of fileRecords) byId.set(record.id, record);
   for (const record of sessionRecords) byId.set(record.id, record);
@@ -332,10 +336,12 @@ async function getConversationRecord(
 ): Promise<KitRecord | null> {
   const authority = readAuthority(deps);
 
-  const outcome = await deps.sessionReader.sessionQueries.read(
-    { type: 'conversation', threadId: id },
-    authority,
-  );
+  const outcome = authority
+    ? await deps.sessionReader.sessionQueries.read(
+        { type: 'conversation', threadId: id },
+        authority,
+      )
+    : ({ status: 'not-found' } as const);
   if (outcome.status === 'unavailable') {
     throw new Error('Conversation session query is unavailable.');
   }
@@ -354,7 +360,7 @@ async function getConversationRecord(
 
   // A direct id must not probe an unbound file-memory conversation in hosted
   // mode. The session leg above already returns null non-enumeratingly.
-  if (authority.mode === 'hosted') {
+  if (authority?.mode === 'hosted') {
     conversationStoreReadOps.add(1, { op: 'get', leg: 'none' });
     return null;
   }

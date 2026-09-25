@@ -1,5 +1,6 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { currentKnowledgeReadAuthority } from '../../knowledge-store/knowledge-request-authority.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -58,10 +59,7 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import {
-  INTERNAL_SESSION_READ_SCOPE,
-  sessionReadAuthorityFromRequest,
-} from '@kontourai/station-contracts/tenancy';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -3619,15 +3617,10 @@ export class StationRuntime {
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
               getUserId: () => getCachedUser().alias,
-              // Sessions are owned by principals: this personal Station's own
-              // conversation index reads them as its local operator (hosted
-              // Stations never register this adapter).
-              getReadAuthority: () =>
-                sessionReadAuthorityFromRequest(
-                  LOCAL_OPERATOR_PRINCIPAL_ID,
-                  undefined,
-                  undefined,
-                ),
+              // Sessions are owned by principals: the adapter reads them as
+              // the principal of the `/api/knowledge` request it runs inside
+              // (bound by the runtime routes), and reads none outside one.
+              getReadAuthority: currentKnowledgeReadAuthority,
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });

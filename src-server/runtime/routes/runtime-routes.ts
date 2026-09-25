@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { runWithKnowledgeReadAuthority } from '../../knowledge-store/knowledge-request-authority.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -4940,6 +4941,20 @@ export function configureRuntimeRoutes(
           .map((wd) => join(expandTilde(wd), '.station', 'diff-comments.json')),
     }),
   );
+  // H1: knowledge adapters are process singletons with no request, and the
+  // conversation adapter reads sessions. Bind this request's principal
+  // authority around every `/api/knowledge` request so a read sees exactly
+  // what that principal may read elsewhere; an unresolvable principal binds
+  // nothing and reads no session.
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    let authority: ReturnType<typeof conversationReadAuthorityForContext>;
+    try {
+      authority = conversationReadAuthorityForContext(c);
+    } catch {
+      return next();
+    }
+    return runWithKnowledgeReadAuthority(authority, () => next());
+  });
   context.app.route(
     '/api/knowledge',
     createCrossProjectKnowledgeRoutes(

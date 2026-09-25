@@ -78,6 +78,9 @@ import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-r
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { ensureConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
+import { currentKnowledgeReadAuthority } from '../../../knowledge-store/knowledge-request-authority.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
@@ -367,6 +370,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * through the production usage ref, behind `/api/analytics`.
        */
       usageRollup?: boolean;
+      /**
+       * H1: the production conversation knowledge adapter over the real
+       * orchestration service, behind `/api/knowledge`.
+       */
+      knowledge?: boolean;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -588,6 +596,25 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           }
         : {}),
       ...(runtimeSearch ? { runtimeSearch } : {}),
+      ...(orchestrationExtras.knowledge
+        ? {
+            knowledgeStoreProvider: await (async () => {
+              const persistence = new FileStorageAdapter(roomHomeDir);
+              const provider = new KnowledgeStoreProvider(persistence);
+              await ensureConversationKnowledgeRoot({
+                provider,
+                persistence,
+                sessionReader: orchestration!,
+                fileStores: new Map(),
+                getUserId: () => getCachedUser().alias,
+                getReadAuthority: currentKnowledgeReadAuthority,
+                projectHomeDir: roomHomeDir,
+                knowledgeStoresEnabled: true,
+              });
+              return provider;
+            })(),
+          }
+        : {}),
       ...(orchestrationExtras.usageRollup
         ? {
             usageAggregator: new UsageAggregator(
@@ -2598,6 +2625,95 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(unscoped.status).toBe(403);
+    });
+
+    // H1: the conversation knowledge adapter reads sessions as the principal
+    // of the `/api/knowledge` request, never as a fixed operator authority.
+    test('knowledge conversation records are the request principal’s: the operator reads the account’s, a delegation peer reads none of them', async () => {
+      const agentSession = (threadId: string, userId: string) => [
+        {
+          eventId: `${threadId}:started`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-04T00:00:00Z',
+          metadata: { userId, agentSlug: 'claude' },
+        },
+        {
+          eventId: `${threadId}:prompt`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-04T00:00:01Z',
+          prompt: `knowledge note for ${threadId}`,
+        },
+      ];
+      const { app, pairing } = await principalSetup({
+        knowledge: true,
+        seed: (seedStore) => {
+          for (const threadId of ['operator-note', 'stranger-note'])
+            seedStore.upsertSession({
+              threadId,
+              provider: 'claude',
+              status: 'closed',
+              createdAt: '2026-09-04T00:00:00Z',
+              updatedAt: '2026-09-04T00:00:00Z',
+            });
+          for (const event of [
+            ...agentSession('operator-note', LOCAL_OPERATOR_PRINCIPAL_ID),
+            ...agentSession(
+              'stranger-note',
+              'human:tailscale-serve:stranger@example',
+            ),
+          ])
+            seedStore.appendEvent(event as never);
+        },
+      });
+      const recordIds = async (credential: string) => {
+        const response = await app.request(
+          '/api/knowledge/roots/root:conversations/records?type=raw',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: Array<{ id: string }>;
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data ?? []).map((record) => record.id).sort();
+      };
+      await expect(recordIds(OPERATOR_SECRET)).resolves.toEqual([
+        'operator-note',
+      ]);
+      // A delegation peer holds orchestration read access but is not a
+      // member of the personal conversation account.
+      const peerOffer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: pairingScopePresetString('delegation'),
+        kind: 'delegation',
+      });
+      const peerRequest = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        deviceName: 'Delegation peer',
+      });
+      pairing.confirmRequest(peerRequest.requestId, {
+        kind: 'presented-credential',
+      });
+      const peer = pairing.exchange({
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        requestId: peerRequest.requestId,
+      });
+      await expect(recordIds(peer.credential)).resolves.toEqual([]);
+      const direct = await app.request(
+        '/api/knowledge/roots/root:conversations/records/operator-note',
+        { headers: { Authorization: `Bearer ${peer.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(direct.status).toBe(404);
     });
 
     test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {

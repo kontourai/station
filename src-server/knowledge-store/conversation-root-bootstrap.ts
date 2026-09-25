@@ -58,7 +58,7 @@ interface EnsureConversationKnowledgeRootDeps {
    * because a session is readable only by its recorded principal owner (or
    * that owner's personal conversation account).
    */
-  getReadAuthority?: () => SessionReadAuthority;
+  getReadAuthority?: () => SessionReadAuthority | undefined;
   /** `projectHomeDir` — used only to derive the documentary `storeRoot` path
    * (`{projectHomeDir}/data/orchestration.sqlite`) recorded on the root for
    * Settings/CLI listings; the adapter itself never reads this path (see
