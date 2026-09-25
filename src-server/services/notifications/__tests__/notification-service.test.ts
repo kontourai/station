@@ -12,6 +12,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -23,6 +24,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const {
+  NotificationDedupeSourceConflictError,
   NotificationDispatchClosedError,
   NotificationService,
   NotificationShutdownTimeoutError,
@@ -1545,5 +1547,100 @@ describe('metadata normalization (upstream regression #2247)', () => {
     expect(notification.metadata?.approvalId).toBe('a-1');
     // The store still validates, so the notification is actually readable.
     expect((await svc2.list()).map((n) => n.id)).toContain(notification.id);
+  });
+});
+
+describe('NotificationService cross-source dedupe (#2597)', () => {
+  const makeTempDir = trackTempDirs();
+  let dir: string;
+  let svc: InstanceType<typeof NotificationService>;
+
+  beforeEach(() => {
+    dir = makeTempDir('notif-cross-source-');
+    svc = new NotificationService(new EventBus(), dir, 999_999);
+  });
+
+  afterEach(async () => {
+    await svc.shutdown();
+  });
+
+  function pairingItem(title: string) {
+    return {
+      title,
+      category: 'pairing-request',
+      dedupeTag: 'device-pairing:r1',
+      actions: [
+        { id: 'approve', label: 'Approve', variant: 'primary' as const },
+      ],
+    };
+  }
+
+  test('a rogue provider poll cannot rewrite the device-pairing record, and the rest of its poll still lands', async () => {
+    svc.addProvider({
+      id: 'device-pairing',
+      displayName: 'Pairing',
+      categories: ['pairing-request'],
+      poll: async () => [pairingItem('Approve new device?')],
+    });
+    await svc.poll();
+    svc.addProvider({
+      id: 'rogue',
+      displayName: 'Rogue',
+      categories: ['pairing-request'],
+      poll: async () => [
+        {
+          ...pairingItem('Click me'),
+          actions: [{ id: 'approve', label: 'Click me' }],
+        },
+        { title: 'Own item', category: 'test', dedupeTag: 'rogue:1' },
+      ],
+    });
+    const captured = captureLoggerLines('warn');
+    await svc.poll();
+
+    const byTag = Object.fromEntries(
+      (await svc.list()).map((n) => [n.metadata?.dedupeTag, n]),
+    );
+    expect(byTag['device-pairing:r1']).toMatchObject({
+      source: 'device-pairing',
+      title: 'Approve new device?',
+      actions: [{ id: 'approve', label: 'Approve', variant: 'primary' }],
+    });
+    expect(byTag['rogue:1']).toMatchObject({
+      source: 'rogue',
+      title: 'Own item',
+    });
+    expect(captured.at('warn')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          msg: 'Notification provider item refused',
+          provider: 'rogue',
+        }),
+      ]),
+    );
+    captured.stop();
+  });
+
+  test.each(['delivered', 'dismissed'])(
+    'a cross-source write to a %s record is refused, never a shadowing duplicate',
+    async (status) => {
+      const original = await svc.schedule(
+        'device-pairing',
+        pairingItem('Original'),
+      );
+      if (status === 'dismissed') await svc.dismiss(original.id);
+      await expect(
+        svc.schedule('api', pairingItem('Click me')),
+      ).rejects.toBeInstanceOf(NotificationDedupeSourceConflictError);
+      const all = await svc.list();
+      expect(all).toHaveLength(1);
+      expect(all[0]).toMatchObject({ title: 'Original', status });
+    },
+  );
+
+  test('same-source dedupe still updates', async () => {
+    const first = await svc.schedule('device-pairing', pairingItem('v1'));
+    const second = await svc.schedule('device-pairing', pairingItem('v2'));
+    expect(second).toMatchObject({ id: first.id, title: 'v2' });
   });
 });

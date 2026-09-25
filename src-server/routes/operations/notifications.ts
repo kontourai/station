@@ -7,9 +7,10 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
+  NotificationDedupeSourceConflictError,
   NotificationReservedFieldError,
   type NotificationService,
 } from '../../services/notifications/notification-service.js';
@@ -90,27 +91,29 @@ export function createNotificationRoutes(
   });
 
   // Schedule a new notification
+  // #2584: before body validation and the reserved-field refusals, so an
+  // agent is pointed at the tool whatever it sent. The declaration may only
+  // restrict: its absence proves nothing (see `isAgentOriginatedRequest`), so
+  // this closes the documented path, not every path an agent with a shell
+  // could take.
+  const refuseAgentOriginated: MiddlewareHandler = async (c, next) => {
+    if (options.isAgentOriginatedRequest?.(c.req.raw)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Agents cannot create notifications here. Use the station-control notify_user tool.',
+          code: 'agent_notification_requires_tool',
+        },
+        403,
+      );
+    }
+    await next();
+  };
+
   app.post(
     '/',
-    async (c, next) => {
-      // Before body validation and the reserved-field refusal, so an agent
-      // is pointed at the tool whatever it sent. The declaration may only
-      // restrict: its absence proves nothing (see `isAgentOriginatedRequest`),
-      // so this closes the documented path, not every path an agent with a
-      // shell could take.
-      if (options.isAgentOriginatedRequest?.(c.req.raw)) {
-        return c.json(
-          {
-            success: false,
-            error:
-              'Agents cannot create notifications here. Use the station-control notify_user tool.',
-            code: 'agent_notification_requires_tool',
-          },
-          403,
-        );
-      }
-      await next();
-    },
+    refuseAgentOriginated,
     validate(notificationCreateSchema),
     async (c) => {
       const body = getBody(c);
@@ -122,6 +125,22 @@ export function createNotificationRoutes(
       if (!canReadNotification(provisional, c.req.raw)) {
         return c.json({ success: false, error: 'Notification not found' }, 404);
       }
+      // A registered provider's source routes actions and dismissals to that
+      // provider; a request body must not write under it (#2597).
+      if (
+        body.source !== undefined &&
+        notificationService
+          .listProviders()
+          .some((provider) => provider.id === body.source)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'Notification source is reserved to its provider',
+          },
+          400,
+        );
+      }
       let notification: Notification;
       try {
         notification = await notificationService.schedule(
@@ -131,6 +150,15 @@ export function createNotificationRoutes(
       } catch (error) {
         // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
         // the trusted enveloped path (#2583); a request body cannot claim them.
+        if (error instanceof NotificationDedupeSourceConflictError) {
+          return c.json(
+            {
+              success: false,
+              error: 'Notification dedupe tag belongs to another source',
+            },
+            409,
+          );
+        }
         if (error instanceof NotificationReservedFieldError) {
           return c.json(
             {
