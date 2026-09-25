@@ -120,6 +120,12 @@ interface Harness {
     | undefined;
   withdrawShouldFail: boolean;
   answerShouldFail: boolean;
+  /**
+   * Settles when the runtime publishes its answer to the broker. The runtime
+   * publishes only after the peer entry exists, so a channel accepted after
+   * this is served; one accepted before it is refused and closed.
+   */
+  admitted: Promise<void>;
 }
 
 async function harness(
@@ -145,7 +151,11 @@ async function harness(
       pair.publicKey,
     )) as StationConnectionSigningKey,
   };
+  let markAdmitted!: () => void;
   const h: Harness = {
+    admitted: new Promise<void>((resolve) => {
+      markAdmitted = resolve;
+    }),
     trust,
     privateKey: wrong ? wrong.privateKey : pair.privateKey,
     current: trust,
@@ -291,6 +301,7 @@ async function harness(
         h.capturedProof = (
           JSON.parse(init.body) as { connection: { stationProof: string } }
         ).connection.stationProof;
+        markAdmitted();
       } catch {
         // Ignore parse failure; endpoint stub below reports it.
       }
@@ -512,7 +523,9 @@ describe('self-hosted broker pion factory', () => {
     const { h, runtime } = await harness();
     await runtime.start();
     try {
-      await waitFor(() => h.acceptCallback !== undefined);
+      // Admission completes in the background after start(): a channel
+      // accepted before the peer entry exists is refused, not queued (#2557).
+      await h.admitted;
       const received: unknown[] = [];
       let rawInbound: ((value: unknown) => void) | undefined;
       const raw = {
@@ -534,7 +547,9 @@ describe('self-hosted broker pion factory', () => {
       };
       const base = mod.__captured.length;
       h.acceptCallback!(raw as never);
-      await waitFor(() => mod.__captured.length > base);
+      // accept serves the channel synchronously.
+      expect(raw.close).not.toHaveBeenCalled();
+      expect(mod.__captured.length).toBe(base + 1);
       const entry = mod.__captured[base]!;
       const gated = entry.channel;
       // Outgoing before retirement passes through to the raw channel.
