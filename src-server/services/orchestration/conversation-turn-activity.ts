@@ -397,9 +397,10 @@ export class ConversationTurnActivityProjection {
     method?: string;
     namespace?: string;
     type?: string;
+    force?: boolean;
   }): OrchestrationConversationStreamBinding | undefined {
     if (!event.method) return undefined;
-    if (!immediateActivityFrame(event)) {
+    if (!event.force && !immediateActivityFrame(event)) {
       // Decided before any lookup: the per-token path costs two map reads.
       const chosen = this.coalescedFrame.get(event.threadId);
       if (

@@ -2,9 +2,16 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { act, StrictMode, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { DialogHistoryHostBoundary } from '../components/DialogHistoryHost';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -37,9 +44,39 @@ function setMobileViewport(matches: boolean, viewport = new FakeViewport()) {
   return viewport;
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  // A test that ends with a dialog open unmounts it here, and that unmount
+  // folds its layer by travelling back. Let the traversal land now: the next
+  // test's `replaceState` would otherwise cancel it in jsdom, stranding the
+  // dialog-history module's one-shot popstate suppression, which then
+  // swallows that test's first real Back.
+  cleanup();
+  await flushHistoryTraversals();
 });
+
+/**
+ * Lets every history traversal already queued land. jsdom runs `history.back()`
+ * as two chained 0ms tasks (the delta is resolved in the first, the entry
+ * applied in the second), so each yield below is a task turn, not a wait for
+ * time to pass; four covers a traversal started by the traversal's own
+ * popstate handler as well.
+ */
+async function flushHistoryTraversals() {
+  for (let turn = 0; turn < 4; turn += 1) {
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  }
+}
+
+function recordPopStates() {
+  const landed: string[] = [];
+  const onPopState = () => landed.push(window.location.pathname);
+  window.addEventListener('popstate', onPopState);
+  return {
+    landed,
+    stop: () => window.removeEventListener('popstate', onPopState),
+  };
+}
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/dialog-test');
@@ -822,6 +859,134 @@ describe('ResponsiveDialogSurface', () => {
 
     await Promise.resolve();
     expect(pushState).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2414. A route outlet swaps its view for another state of the same URL on
+   * data arrival — Home for its pending skeleton — and an open dialog goes
+   * down with it. Travelling back from that cleanup is asynchronous, and in a
+   * browser the traversal cancels whatever navigation the user started before
+   * it lands (the page stayed on `/`). jsdom cannot show that cancellation (its
+   * pushState clears queued traversals instead), so this pins the cause: the
+   * removal must start no traversal at all, which is observable as the
+   * popstate the app would receive.
+   */
+  test('a dialog removed with its view starts no history traversal, and the dialog that reopens adopts its layer', async () => {
+    setMobileViewport(false);
+    let setViewShown!: (shown: boolean) => void;
+
+    function ChapterLike() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="First run"
+          onClose={() => setOpen(false)}
+        >
+          <p>Chapter</p>
+        </ResponsiveDialogSurface>
+      ) : (
+        <p>Chapter closed</p>
+      );
+    }
+
+    function Outlet() {
+      const [shown, setShown] = useState(true);
+      setViewShown = setShown;
+      return shown ? (
+        <DialogHistoryHostBoundary>
+          <ChapterLike />
+        </DialogHistoryHostBoundary>
+      ) : (
+        <p>Loading your workspace</p>
+      );
+    }
+
+    window.history.replaceState({}, '', '/earlier');
+    window.history.pushState({}, '', '/dialog-test');
+    render(<Outlet />);
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeTruthy(),
+    );
+    const lengthWithLayer = window.history.length;
+    const pops = recordPopStates();
+
+    try {
+      await act(async () => setViewShown(false));
+      await flushHistoryTraversals();
+
+      expect(screen.queryByRole('dialog', { name: 'First run' })).toBeNull();
+      expect(pops.landed).toEqual([]);
+      expect(window.location.pathname).toBe('/dialog-test');
+
+      // The view comes back and re-opens its dialog, which takes over the
+      // layer left behind instead of stacking a second one on it.
+      await act(async () => setViewShown(true));
+      await flushHistoryTraversals();
+      expect(screen.getByRole('dialog', { name: 'First run' })).toBeTruthy();
+      expect(window.history.length).toBe(lengthWithLayer);
+      expect(pops.landed).toEqual([]);
+
+      // One Back closes it without leaving the page, and the next one leaves:
+      // nothing stale is left between the dialog and the page before it.
+      window.history.back();
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'First run' })).toBeNull(),
+      );
+      expect(window.location.pathname).toBe('/dialog-test');
+      window.history.back();
+      await waitFor(() => expect(window.location.pathname).toBe('/earlier'));
+    } finally {
+      pops.stop();
+    }
+  });
+
+  test('a dialog its surviving view closes still folds its layer, under StrictMode', async () => {
+    setMobileViewport(false);
+
+    function ChapterLike() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="First run"
+          onClose={() => setOpen(false)}
+        >
+          <button type="button" onClick={() => setOpen(false)}>
+            Not now
+          </button>
+        </ResponsiveDialogSurface>
+      ) : (
+        <p>Chapter closed</p>
+      );
+    }
+
+    render(
+      <StrictMode>
+        <DialogHistoryHostBoundary>
+          <ChapterLike />
+        </DialogHistoryHostBoundary>
+      </StrictMode>,
+    );
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeTruthy(),
+    );
+    const pops = recordPopStates();
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      await flushHistoryTraversals();
+
+      // The same flush the removal test relies on does see a traversal when
+      // one is started: the view survived, so this close is the user's, and
+      // it pops the dialog's layer rather than leaving it behind — including
+      // after StrictMode replayed the boundary's own unmount.
+      expect(screen.getByText('Chapter closed')).toBeTruthy();
+      expect(pops.landed).toEqual(['/dialog-test']);
+      expect(window.history.state.__stationDialog).toBeUndefined();
+    } finally {
+      pops.stop();
+    }
   });
 
   test('desktop anchoring exposes trigger geometry as overlay vars', () => {

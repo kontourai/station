@@ -5915,6 +5915,40 @@ describe('Orchestration Routes', () => {
       );
     });
 
+    test('replayed events omit a present-tense conversation binding and refresh side effects at caught-up', async () => {
+      persistEvent('binding-old', 'thread-1', 1);
+      persistEvent('binding-missed', 'thread-1', 2);
+      const service = makeResumeTestService(eventStore, {
+        conversationStreamBinding: () => ({
+          conversationId: 'root',
+          currentSessionId: 'newer-child',
+          activity: { conversationId: 'root', asOfSequence: 99 },
+        }),
+        listSessionReadModel: vi
+          .fn()
+          .mockResolvedValue([{ threadId: 'thread-1' }]),
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+      });
+      const response = await app.request('/events', {
+        headers: { 'Last-Event-ID': '1' },
+      });
+      const wire = await readStreamUntil(response.body!, (text) =>
+        text.includes('event: orchestration:caughtUp'),
+      );
+      const replayData = wire
+        .split('\n')
+        .find(
+          (line) =>
+            line.startsWith('data: ') && line.includes('binding-missed'),
+        );
+      expect(JSON.parse(replayData!.slice(6)).conversation).toBeUndefined();
+      expect(wire).toContain('"sessions":[{"threadId":"thread-1"}]');
+    });
+
     test('AC2/R2: a cursor further behind than the gap threshold falls back to a fresh snapshot with a new resume cursor', async () => {
       for (
         let index = 0;
@@ -6084,6 +6118,29 @@ describe('Orchestration Routes', () => {
         text.includes('event: orchestration:snapshot'),
       );
       expect(payload).toContain('event: orchestration:snapshot');
+    });
+
+    test('a cursor from a different store epoch snapshots even when its number is valid', async () => {
+      persistEvent('epoch-event', 'epoch-thread', 1);
+      const service = makeResumeTestService(eventStore, {
+        readEventStreamEpoch: () => 'current-epoch',
+      });
+      const app = createOrchestrationRoutes(service as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+      });
+      const response = await app.request('/events', {
+        headers: {
+          'Last-Event-ID': '1',
+          'X-Station-Stream-Epoch': 'previous-epoch',
+        },
+      });
+      const payload = await readStreamUntil(response.body!, (text) =>
+        text.includes('event: orchestration:caughtUp'),
+      );
+      expect(payload).toContain('event: orchestration:snapshot');
+      expect(payload).toContain('"epoch":"current-epoch"');
     });
 
     /**

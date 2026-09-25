@@ -107,7 +107,7 @@ function managedSession(overrides: Partial<ChatSession>): ChatSession {
   };
 }
 
-function renderList(session: ChatSession) {
+function renderList(session: ChatSession, suppressStreamingRow = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -115,6 +115,7 @@ function renderList(session: ChatSession) {
     <QueryClientProvider client={queryClient}>
       <ChatMessageList
         activeSession={session}
+        suppressStreamingRow={suppressStreamingRow}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -182,6 +183,19 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
+  });
+
+  test('a projected open turn hides the separate streaming row', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'sending',
+      }),
+      true,
+    );
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
   });
 
   test("#2304: the streaming row counts from the open turn's server start", () => {

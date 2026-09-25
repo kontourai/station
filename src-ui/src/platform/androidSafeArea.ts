@@ -29,7 +29,8 @@ function readAndroidInsets(
   }
 }
 
-/** Visible bottom in CSS coordinates, measured against the actual native view.
+/** Visible height in CSS pixels, measured down from the WebView's top edge on
+ * screen — where the visual viewport begins, whatever its page `offsetTop`.
  * An already resized WebView reports its smaller bounds, so callers take the
  * intersection with VisualViewport rather than subtracting IME height twice. */
 export function readAndroidVisibleHeight(

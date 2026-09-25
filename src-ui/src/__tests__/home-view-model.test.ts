@@ -9,6 +9,7 @@ import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   buildActiveChatTaskItems,
+  buildHomeTaskItems,
   buildHomeWorkItems,
   buildOrchestrationItems,
   chatTaskSessionId,
@@ -2250,5 +2251,62 @@ describe('#2309 Home running state reads the conversation activity record', () =
       sessions: [{ ...base, conversationActivity: closed }],
     });
     expect(row?.lifecycleLabel).toBe('Recent');
+  });
+});
+
+describe('a continuation child whose start failed', () => {
+  // Observed live: a Codex follow-up's child session failed to start and
+  // became its own inbox row — "No project · Model not reported · Stopped" —
+  // beside the conversation's real row.
+  const conversationId = 'codex:1790237022539';
+  const root: OrchestrationSessionSummary = {
+    threadId: conversationId,
+    conversationId,
+    provider: 'codex',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'completed',
+    model: 'gpt-6-sol',
+    projectSlug: 'kontour-ai',
+    createdAt: '2026-09-24T08:04:39Z',
+    updatedAt: '2026-09-24T08:27:49Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 12,
+    hasActiveTurn: false,
+  };
+  // What the server now reports for the failed child: the lineage names its
+  // conversation; nothing else was ever reported.
+  const failedChild: OrchestrationSessionSummary = {
+    threadId: `${conversationId}:session:18f25bda`,
+    conversationId,
+    provider: 'codex',
+    status: 'closed',
+    controlMode: 'station-owned',
+    lifecycleState: 'canceled',
+    createdAt: '2026-09-24T12:58:29Z',
+    updatedAt: '2026-09-24T12:58:30Z',
+    isLoaded: false,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 1,
+    hasActiveTurn: false,
+  };
+
+  test('folds into its conversation and keeps the identity the conversation already reported', () => {
+    const items = buildHomeTaskItems({
+      chats: {},
+      sessions: [root, failedChild],
+      agents: [],
+      resolveModelLabel: (model) => model ?? 'Model not reported',
+    });
+    expect(items).toHaveLength(1);
+    const [row] = items;
+    // The latest execution's outcome is still the conversation's status.
+    expect(row?.lifecycleLabel).toBe('Stopped');
+    expect(row?.projectSlug).toBe('kontour-ai');
+    expect(row?.model).toBe('gpt-6-sol');
+    expect(row?.modelLabel).toBe('gpt-6-sol');
   });
 });

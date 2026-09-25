@@ -38,6 +38,35 @@ const announcements = () =>
   (chat()?.ephemeralMessages ?? []).map((message) => message.content);
 
 describe('child-work client path (legacy Claude tuples → contract reducer)', () => {
+  test('a reported snapshot restores a child that settled during the gap once', () => {
+    const view = {
+      observability: 'reported' as const,
+      running: [],
+      observedAt: '2026-09-24T00:00:00.000Z',
+      settled: [
+        {
+          producer: 'engine-subagent' as const,
+          reporterThreadId: threadId,
+          childId: 'settled-during-gap',
+          status: 'completed' as const,
+          title: 'Explore',
+          backgrounded: true,
+          result: { summary: 'Done.' },
+        },
+      ],
+    };
+    handlers.applySnapshotChildWork(threadId, view);
+    handlers.applySnapshotChildWork(threadId, view);
+    expect(handlers.childWorkRegistrySnapshot().items).toMatchObject({
+      [JSON.stringify(['engine-subagent', threadId, 'settled-during-gap'])]: {
+        status: 'completed',
+        result: { summary: 'Done.' },
+      },
+    });
+    expect(announcements()).toEqual([
+      'Background task finished — Explore\n\nDone.',
+    ]);
+  });
   beforeEach(async () => {
     seq = 0;
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });

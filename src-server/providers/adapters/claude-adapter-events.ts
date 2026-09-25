@@ -51,6 +51,10 @@ import {
   resolveClaudeResultTarget,
   settleClaudeResultTarget,
 } from './claude-sdk-turns.js';
+import {
+  type ParagraphBoundaryState,
+  withParagraphBreak,
+} from './paragraph-boundary.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
@@ -333,6 +337,8 @@ export interface ClaudeMessageState {
    * must never let a later turn's index 0 reuse an earlier turn's value.
    */
   contentMessageKey?: string;
+  /** Paragraph breaks between this turn's assistant messages. */
+  textBoundary?: ParagraphBoundaryState;
 }
 
 /**
@@ -672,6 +678,10 @@ export function mapClaudeSdkMessage({
       streamEvent.delta?.type === 'text_delta' &&
       typeof streamEvent.delta.text === 'string'
     ) {
+      // A second assistant message in one turn (a stop-hook continuation,
+      // merged sends) opens a new paragraph; the text blocks of ONE message
+      // stay joined verbatim — they split at citation boundaries mid-prose.
+      record.textBoundary ??= {};
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -680,7 +690,17 @@ export function mapClaudeSdkMessage({
         turnId: record.activeTurnId,
         itemId,
         method: 'content.text-delta',
-        delta: streamEvent.delta.text,
+        // Only the top-level reply's messages: a subagent's `message_start`
+        // also moves `contentMessageKey`, and is no paragraph of this reply.
+        delta:
+          message.parent_tool_use_id == null
+            ? withParagraphBreak(
+                record.textBoundary,
+                record.activeTurnId ?? 'no-turn',
+                record.contentMessageKey ?? 'no-message',
+                streamEvent.delta.text,
+              )
+            : streamEvent.delta.text,
       });
     }
     if (

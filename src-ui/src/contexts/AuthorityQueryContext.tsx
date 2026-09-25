@@ -357,6 +357,11 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearConversationActivity();
+      window.dispatchEvent(
+        new CustomEvent('station:orchestration-authority-change', {
+          detail: apiBase,
+        }),
+      );
     }
     lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
@@ -368,7 +373,7 @@ export function AuthorityQueryProvider({
     activeRef.current = next;
     setActive(next);
     if (previous) retireAuthorityClient(previous.queryClient);
-  }, [verifiedNamespace]);
+  }, [verifiedNamespace, apiBase]);
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
   // EXACT captured origin — never a module-global resolved after a switch —

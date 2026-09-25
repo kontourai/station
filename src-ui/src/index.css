@@ -4409,6 +4409,15 @@ button.background-tasks-banner:focus-visible {
     transform var(--motion-slow) var(--ease-out);
 }
 
+/* A notice the user reads and acts on (Retry, Dismiss), not a transcript
+ * annotation: `.message.system`'s italic monospace made multi-sentence
+ * error prose hard to read. */
+.message.system.ephemeral-message {
+  color: var(--text-primary);
+  font-family: inherit;
+  font-style: normal;
+}
+
 .ephemeral-message.removing {
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
