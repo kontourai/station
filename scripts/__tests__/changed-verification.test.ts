@@ -28,6 +28,7 @@ import {
 } from '../run-changed-verification.mjs';
 import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
+  buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
   SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
@@ -1140,65 +1141,93 @@ describe('changed verification selection', () => {
       return { ...ok, stdout: '' };
     });
   }
-  test.each([
-    // The src-ui vocabulary ratchet is supplemental on every UI file.
-    [
-      'src-ui/src/views/settings/utils.ts',
-      'src-ui/src/__tests__/station-vocabulary.test.ts',
-    ],
-    // A server path carrying a supplemental edge (#2176's own).
-    [
-      'src-server/generated/settings-registry.json',
-      'scripts/__tests__/gen-settings-registry.test.ts',
-    ],
-  ])(
-    'a supplemental test does not satisfy an empty related discovery for %s (#2176)',
-    async (path, supplemental) => {
-      // Precondition, so this cannot pass vacuously: the path IS related and
-      // DOES carry a supplemental test that would make the plan non-empty.
-      const selection = selectChangedVerification([path]);
-      expect(selection.relatedPaths).toEqual([path]);
-      expect(selection.ownedRelatedPaths).toEqual([]);
-      expect(selection.tests.map((entry) => entry.path)).toContain(
-        supplemental,
-      );
-      const run = emptyDiscoveryRun();
-      const result = await runChangedVerification(['--base=origin/main'], {
-        root: process.cwd(),
-        run,
-        changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
-        collectProvenance: provenance,
-        writeReceipt: vi.fn(),
-      });
-      // The supplemental suite still runs...
-      expect(
-        result.executed.flatMap((execution) => execution.command),
-      ).toContain(`./${supplemental}`);
-      // ...but the file itself is an open obligation, exactly as it is with
-      // no supplemental edge: exit 3, test-full, provisional. Before the fix
-      // this was exit 0 and a `completed` receipt.
-      expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
-      expect(result.receipt.terminal.status).toBe('provisional');
-      expect(result.selection.lanes).toEqual([
-        {
-          id: 'test-full',
-          reasons: [
-            `no related suites for ${path}; declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file`,
-          ],
-        },
-      ]);
-      expect(result.emptyRelatedSelection?.relatedPaths).toEqual([path]);
-    },
-  );
-  test('an empty related discovery still escalates a path with no supplemental test', async () => {
-    const path = 'src-server/routes/chat/chat.ts';
-    const result = await runChangedVerification(['--base=origin/main'], {
+  function runWithEmptyDiscovery(paths: string[]) {
+    return runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: emptyDiscoveryRun(),
-      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths }),
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
     });
+  }
+  const EMPTY_RELATED_REMEDY =
+    'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file';
+  // Covered only by a GLOB edge: the src-ui copy ratchet scans every UI file.
+  const GLOB_ONLY = 'src-ui/src/views/settings/utils.ts';
+  // Named EXACTLY by a derived path-read pin (#1807): the ratchet test reads
+  // this baseline file's text. Real discovery finds no importer of it.
+  const EXACT_PIN = 'scripts/claim-fixture-baseline.json';
+  test('preconditions: one path is covered only by a glob edge, the other by an exact pin', () => {
+    const manifest = buildTestImpactManifest({ root: process.cwd() });
+    const glob = selectChangedVerification([GLOB_ONLY], manifest);
+    expect(glob.relatedPaths).toEqual([GLOB_ONLY]);
+    expect(glob.ownedRelatedPaths).toEqual([]);
+    expect(glob.tests.map((entry) => entry.path)).toContain(
+      'src-ui/src/__tests__/station-vocabulary.test.ts',
+    );
+    const pin = selectChangedVerification([EXACT_PIN], manifest);
+    expect(pin.relatedPaths).toEqual([EXACT_PIN]);
+    expect(pin.ownedRelatedPaths).toEqual([EXACT_PIN]);
+    expect(pin.tests.map((entry) => entry.path)).toContain(
+      'scripts/__tests__/claim-fixture-ratchet.test.ts',
+    );
+  });
+  test('a glob-only test does not satisfy an empty related discovery (#2176)', async () => {
+    const result = await runWithEmptyDiscovery([GLOB_ONLY]);
+    // The ratchet still runs...
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      './src-ui/src/__tests__/station-vocabulary.test.ts',
+    );
+    // ...but the file is an open obligation, exactly as with no glob edge.
+    // Before #2176 this was exit 0 and a `completed` receipt.
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.receipt.terminal.status).toBe('provisional');
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${GLOB_ONLY}; ${EMPTY_RELATED_REMEDY}`,
+        ],
+      },
+    ]);
+    expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+  });
+  test('an exact path-read pin covers its file when discovery is empty (#2176)', async () => {
+    // A ratchet-baseline bump has no importer by construction; the pin test
+    // IS its coverage, so it must not go provisional.
+    const result = await runWithEmptyDiscovery([EXACT_PIN]);
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      './scripts/__tests__/claim-fixture-ratchet.test.ts',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.emptyRelatedSelection).toBeUndefined();
+  });
+  test('an empty discovery for a mixed set escalates only the uncovered path (#2176)', async () => {
+    // Discovery is one call for the whole set; when it returns nothing, each
+    // path is judged by whether an edge names it exactly.
+    const result = await runWithEmptyDiscovery([EXACT_PIN, GLOB_ONLY]);
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${GLOB_ONLY}; ${EMPTY_RELATED_REMEDY}`,
+        ],
+      },
+    ]);
+    expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+    expect(result.executed.flatMap((execution) => execution.command)).toEqual(
+      expect.arrayContaining([
+        './scripts/__tests__/claim-fixture-ratchet.test.ts',
+        './src-ui/src/__tests__/station-vocabulary.test.ts',
+      ]),
+    );
+  });
+  test('an empty related discovery still escalates a path with no supplemental test', async () => {
+    const path = 'src-server/routes/chat/chat.ts';
+    const result = await runWithEmptyDiscovery([path]);
     expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
     expect(result.selection.lanes.map(({ id }) => id)).toEqual(['test-full']);
   });

@@ -410,10 +410,14 @@ export function selectChangedVerification(
   const tests = new Map();
   const lanes = new Map();
   const relatedPaths = new Set();
-  // Related paths whose OWN boundary edge also names tests (the
-  // tests-plus-graph supplement form). An empty related discovery for one of
-  // these is covered by those tests; for any other related path it is an
-  // obligation, whatever supplemental tests happen to be selected (#2176).
+  // Related paths some test-naming edge names by EXACT path — ordinary or
+  // supplemental: a spawned-script edge, a derived path-read pin (#1807), a
+  // generator-input edge. Each of those tests asserts about precisely this
+  // file, so an empty related discovery leaves it covered. A glob edge never
+  // owns a path: a blanket scan (the `src-ui/src/**` copy ratchet, the
+  // `packages/sdk/src/client/**` portability scan) says nothing about one
+  // file's behaviour, so it must not turn "no suite covers this file" into a
+  // completed green (#2176).
   const ownedRelatedPaths = new Set();
   let escalated = false;
   const changed = new Set(paths);
@@ -476,7 +480,7 @@ export function selectChangedVerification(
     }
     if (
       relatedPaths.has(path) &&
-      boundaryEdges.some((edge) => edge.tests?.length)
+      edges.some((edge) => edge.pattern === path && edge.tests?.length)
     )
       ownedRelatedPaths.add(path);
   }
@@ -1426,11 +1430,17 @@ export async function runChangedVerification(
     // than a silent zero-execution run.
     //
     // #2176: an empty discovery escalates even when the plan still holds
-    // explicit tests. A supplemental test (a copy ratchet, a path-read pin)
-    // is additive and says nothing about the changed file's behaviour, so
+    // explicit tests. A test selected only through a glob edge (a copy
+    // ratchet over a whole tree) says nothing about the changed file, so
     // letting it make the plan non-empty turned "no suite covers this file"
-    // into a completed green. Only a path whose own boundary edge names tests
+    // into a completed green. Only a path an edge names exactly
     // (`ownedRelatedPaths`) is covered without its graph.
+    //
+    // Granularity: discovery is ONE call over every related path, and it
+    // returns the union of suites, not a per-input answer. So this fires only
+    // when discovery returns nothing for the whole set; a diff where one path
+    // has importers and another has none is not detected. A per-path answer
+    // would cost one Vitest graph build per changed file.
     const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
     const uncovered =
       vitestOutcome.emptySelection === true
