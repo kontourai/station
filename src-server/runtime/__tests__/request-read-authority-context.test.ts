@@ -7,6 +7,7 @@ import {
   currentKnowledgeReadScope,
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
+  runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
 
@@ -35,4 +36,17 @@ test('a request nested inside a Station build reads as that request, never with 
 test('outside any request or build nothing is readable', () => {
   expect(currentKnowledgeReadScope()).toBeUndefined();
   expect(currentRequestReadAuthority()).toBeUndefined();
+});
+
+test('a request with no resolvable principal nested inside a Station build reads nothing', async () => {
+  await runWithRequestReadAuthority(peer, () =>
+    runAsStationKnowledgeIndexer(async () => {
+      await runWithoutRequestReadAuthority(async () => {
+        await Promise.resolve();
+        expect(currentKnowledgeReadScope()).toBeUndefined();
+        expect(currentRequestReadAuthority()).toBeUndefined();
+      });
+      expect(currentKnowledgeReadScope()).toBe(INTERNAL_SESSION_READ_SCOPE);
+    }),
+  );
 });

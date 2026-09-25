@@ -62,7 +62,7 @@ import { syncRootToNeo4j } from '../../knowledge-store/neo4j-graph-sync.js';
 import {
   KNOWLEDGE_ROOT_NOT_FOUND_ERROR,
   knowledgeRootReadKind,
-  SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
+  UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -225,7 +225,7 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         (await knowledgeRootReadKind(deps.store, rootId)) !== 'shared'
       ) {
         return c.json(
-          { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+          { success: false, error: UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR },
           403,
         );
       }

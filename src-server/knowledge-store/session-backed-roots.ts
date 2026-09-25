@@ -23,10 +23,14 @@ export async function knowledgeRootReadKind(
 ): Promise<KnowledgeRootReadKind> {
   const root = await store.getRoot(rootId);
   if (!root) return 'unavailable';
-  if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return 'session-backed';
-  return store.listAdapters().some((adapter) => adapter.id === root.adapterId)
-    ? 'shared'
-    : 'unavailable';
+  // Adapter registration first: a stored conversation-store root whose
+  // adapter was never registered (a hosted tenant's boot skips it) cannot
+  // re-read anything as the caller either.
+  if (!store.listAdapters().some((adapter) => adapter.id === root.adapterId))
+    return 'unavailable';
+  return root.adapterId === CONVERSATION_STORE_ADAPTER_ID
+    ? 'session-backed'
+    : 'shared';
 }
 
 export const KNOWLEDGE_ROOT_NOT_FOUND_ERROR = 'Knowledge root not found';
@@ -36,3 +40,7 @@ export const RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR =
 
 export const SESSION_BACKED_BUILD_FORBIDDEN_ERROR =
   "Only this Station's operator may build a conversation-backed knowledge root's index or graph";
+
+/** A non-operator's graph sync of any root that is not `shared`. */
+export const UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR =
+  "Only this Station's operator may sync the graph of a knowledge root that is conversation-backed or unavailable";

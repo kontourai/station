@@ -29,6 +29,14 @@ export function runWithRequestReadAuthority<T>(
   return stationIndexing.exit(() => requestAuthorities.run(authority, run));
 }
 
+/**
+ * A request whose principal could not be resolved: it reads no session, so
+ * it leaves both any enclosing indexer context and any outer request scope.
+ */
+export function runWithoutRequestReadAuthority<T>(run: () => T): T {
+  return stationIndexing.exit(() => requestAuthorities.exit(run));
+}
+
 export function currentRequestReadAuthority():
   | SessionReadAuthority
   | undefined {

@@ -90,6 +90,7 @@ import type { ProjectSharedTaskStore } from '../../services/projects/project-sha
 import {
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
+  runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
 
@@ -1434,7 +1435,7 @@ export function configureRuntimeRoutes(
     try {
       authority = conversationReadAuthorityForContext(c);
     } catch {
-      return next();
+      return runWithoutRequestReadAuthority(() => next());
     }
     return runWithRequestReadAuthority(authority, () => next());
   };
