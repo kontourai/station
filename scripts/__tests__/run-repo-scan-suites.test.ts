@@ -4,7 +4,7 @@ import { REPO_SCAN_SUITES } from '../test-impact-manifest.mjs';
 
 describe('repo-scans runner (#2176)', () => {
   it('hands the focused runner exactly REPO_SCAN_SUITES, once', async () => {
-    const run = vi.fn(async () => 0);
+    const run = vi.fn(async (_args: string[]) => 0);
     await runRepoScans({ run });
     expect(run).toHaveBeenCalledTimes(1);
     expect(run.mock.calls[0]?.[0]).toEqual([...REPO_SCAN_SUITES]);

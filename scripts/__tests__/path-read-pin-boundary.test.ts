@@ -472,17 +472,15 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     // Directional controls on literal sources, so the repository-wide
     // assertions below are not the only thing holding the heuristic up.
     const read = ['read', 'dirSync'].join('');
+    // Assembled, so this file does not trip the raw temp-dir ratchet (#2421).
+    const mk = ['mk', 'dtempSync'].join('');
     expect(
-      realTreeWalks(
-        `const dir = mkdtempSync(join(tmpdir(), 'x'));\n${read}(dir);`,
-      ),
+      realTreeWalks(`const dir = ${mk}(join(tmpdir(), 'x'));\n${read}(dir);`),
     ).toEqual([]);
     expect(realTreeWalks(`${read}(join(ROOT, 'docs'));`)).toHaveLength(1);
     // One real walk in a suite that also makes temp directories still counts.
     expect(
-      realTreeWalks(
-        `const t = mkdtempSync('x');\n${read}(t);\n${read}('examples');`,
-      ),
+      realTreeWalks(`const t = ${mk}('x');\n${read}(t);\n${read}('examples');`),
     ).toEqual(["'examples'"]);
     // A helper walking its own parameter follows its call sites.
     const helper = `function walk(dir) { return ${read}(dir); }\n`;
