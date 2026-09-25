@@ -3846,7 +3846,7 @@ export function createOrchestrationRoutes(
       // adopted child), so the request's grant is carried for it alone.
       // Starter Work's `continue-session` launch is the second adoption
       // ingress and carries its request's grant the same way
-      // (`starter-work.ts`, `runtime-routes.ts`).
+      // (`starter-work.ts`, `services/starter-work/starter-session-owner.ts`).
       const {
         principal,
         userId: actorUserId,
