@@ -171,6 +171,16 @@ export const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
   'agent',
 ]);
 
+export class NotificationProviderIdError extends Error {
+  constructor(
+    readonly providerId: string,
+    readonly reason: 'reserved' | 'internal' | 'duplicate',
+  ) {
+    super(`Notification provider id "${providerId}" refused: ${reason}`);
+    this.name = 'NotificationProviderIdError';
+  }
+}
+
 export class NotificationDedupeSourceConflictError extends Error {
   constructor() {
     super('Notification dedupe tag belongs to another source');
@@ -248,15 +258,37 @@ export class NotificationService {
       options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   }
 
+  /**
+   * Registers a built-in provider. Action, dismiss and status-sync dispatch
+   * is keyed by a record's `source`, so a provider id is an authority over
+   * every record under that source. Refused (NotificationProviderIdError):
+   * - `reserved` — `api`/`sdk`/`agent`, the REST and agent write sources;
+   * - `duplicate` — an id already registered (a Map would silently REPLACE
+   *   the earlier provider, e.g. a plugin shadowing `device-pairing`).
+   * Built-ins may use an INTERNAL_NOTIFICATION_SOURCES id (that is their
+   * own source); plugins go through `addPluginProvider`, which may not.
+   */
   addProvider(provider: INotificationProvider): void {
-    // A provider named `api`/`sdk`/`agent` would receive the actions and
-    // dismissals of REST or agent records (dispatch is keyed by source).
-    if (RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id)) {
-      throw new RangeError(
-        `Notification provider id "${provider.id}" is reserved`,
-      );
-    }
+    if (RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'reserved');
+    if (this.providers.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'duplicate');
     this.providers.set(provider.id, provider);
+  }
+
+  /**
+   * Registers a plugin's provider: as `addProvider`, and additionally
+   * refuses (`internal`) any INTERNAL_NOTIFICATION_SOURCES id — a plugin
+   * named `scheduler` would receive the actions and dismissals of scheduler
+   * records.
+   */
+  addPluginProvider(provider: INotificationProvider): void {
+    if (
+      INTERNAL_NOTIFICATION_SOURCES.has(provider.id) &&
+      !RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id)
+    )
+      throw new NotificationProviderIdError(provider.id, 'internal');
+    this.addProvider(provider);
   }
 
   private ownsDedupeTags(source: string): boolean {
@@ -326,10 +358,19 @@ export class NotificationService {
    * dedupe tag is stored as `api:<tag>` (dedupe matches the prefixed form),
    * so a request can never collide with — or squat — an internal, provider
    * or agent tag. A tag smuggled in `metadata.dedupeTag` is refused.
+   * In hosted mode the route passes the caller's tenant, and the tag is
+   * `api:<tenantId>:<tag>` so two tenants' requests never share a record.
+   * (Tenant ids cannot contain `:`, so the forms never alias.)
    */
   async scheduleFromRequest(
     opts: ScheduleNotificationOpts,
+    scope: { tenantId?: string } = {},
   ): Promise<Notification> {
+    if (scope.tenantId !== undefined && !/^[^:\s]+$/.test(scope.tenantId))
+      throw new TypeError('scheduleFromRequest tenant id is invalid');
+    const namespace = `${REST_NOTIFICATION_DEDUPE_PREFIX}${
+      scope.tenantId === undefined ? '' : `${scope.tenantId}:`
+    }`;
     if (Object.hasOwn(jsonSafeMetadata(opts.metadata), 'dedupeTag'))
       throw new NotificationReservedFieldError('dedupeTag');
     return this.scheduleUntrusted(
@@ -339,7 +380,7 @@ export class NotificationService {
         ...(opts.dedupeTag === undefined
           ? {}
           : {
-              dedupeTag: `${REST_NOTIFICATION_DEDUPE_PREFIX}${opts.dedupeTag}`,
+              dedupeTag: `${namespace}${opts.dedupeTag}`,
             }),
       },
       true,
@@ -454,6 +495,11 @@ export class NotificationService {
           // plugin string). That tag was never its to hold, so the writer
           // takes it over (whatever its status) rather than being blocked
           // forever. An internal/provider record still owns its tag.
+          // Ownership is evaluated now: a provider's records lose it while
+          // that provider is not registered (a removed or failed plugin) and
+          // may then be taken over by a colliding writer. Conversely a
+          // pre-#2597 request squat labelled with an internal or provider
+          // source name keeps ownership and is not reclaimable.
           if (!this.ownsDedupeTags(existing.source)) {
             all.splice(all.indexOf(existing), 1);
             displaced = existing.id;

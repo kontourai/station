@@ -1730,6 +1730,16 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
     },
   );
 
+  test('a second provider under an existing id is refused, not a silent replacement', () => {
+    svc.addProvider({ id: 'p', displayName: 'First', categories: ['test'] });
+    expect(() =>
+      svc.addProvider({ id: 'p', displayName: 'Second', categories: ['test'] }),
+    ).toThrow(/duplicate/);
+    expect(svc.listProviders()).toEqual([
+      { id: 'p', displayName: 'First', categories: ['test'] },
+    ]);
+  });
+
   test('INTERNAL_NOTIFICATION_SOURCES covers every in-process schedule() caller', () => {
     const root = join(process.cwd(), 'src-server');
     const found = new Set<string>();
