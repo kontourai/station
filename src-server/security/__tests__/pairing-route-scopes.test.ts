@@ -180,6 +180,30 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   });
 
+  test('focus reports sit at the read tier while the rest of /api/presence keeps the family default', () => {
+    expect(requiredPairingScope('POST', '/api/presence/focus')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('GET', '/api/presence')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('GET', '/api/presence/focus')).toBe(
+      'orchestration:read',
+    );
+    for (const method of ['PUT', 'PATCH', 'DELETE']) {
+      expect(requiredPairingScope(method, '/api/presence/focus')).toBe(
+        'orchestration:operate',
+      );
+    }
+    // The read-tier rule is exact: a sibling or nested leaf does not inherit it.
+    expect(requiredPairingScope('POST', '/api/presence/other')).toBe(
+      'orchestration:operate',
+    );
+    expect(requiredPairingScope('POST', '/api/presence/focus/x')).toBe(
+      'orchestration:operate',
+    );
+  });
+
   test('declares the protected Task tool-result projection leaf at the read tier', () => {
     const path = '/api/tasks/:taskId/tool-result-references';
     expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({

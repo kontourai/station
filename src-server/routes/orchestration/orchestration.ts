@@ -69,6 +69,7 @@ import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
   AnswerAssessmentConflictError,
@@ -139,6 +140,7 @@ import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import {
+  fullAccessGrantForRequest,
   refuseUngrantedFullAccess,
   requestedApprovalMode,
 } from './approval-authority.js';
@@ -737,6 +739,8 @@ interface DelegateTaskRequest {
    * see `resolveDispatchActor`.
    */
   ownerAttribution: StartOwnerAttribution | undefined;
+  /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
+  fullAccessGrant: FullAccessGrant | null;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -805,6 +809,8 @@ interface ForegroundMessageRequest {
    * see `resolveDispatchActor`.
    */
   ownerAttribution: StartOwnerAttribution | undefined;
+  /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
+  fullAccessGrant: FullAccessGrant | null;
   clientOrigin?: ClientOrigin;
 }
 
@@ -829,6 +835,8 @@ interface ContinueForegroundMessageRequest {
    * see `resolveDispatchActor`.
    */
   ownerAttribution: StartOwnerAttribution | undefined;
+  /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
+  fullAccessGrant: FullAccessGrant | null;
   clientOrigin?: ClientOrigin;
 }
 
@@ -850,6 +858,8 @@ interface ConversationHandoffRequest
    * see `resolveDispatchActor`.
    */
   ownerAttribution: StartOwnerAttribution | undefined;
+  /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
+  fullAccessGrant: FullAccessGrant | null;
   clientOrigin?: ClientOrigin;
 }
 
@@ -888,6 +898,8 @@ type ContinueDelegatedTaskRequest = z.infer<
   principal?: PrincipalRef;
   /** Station #90 lane D (B2/D2): REQUIRED; see `resolveDispatchActor`. */
   ownerAttribution: StartOwnerAttribution | undefined;
+  /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
+  fullAccessGrant: FullAccessGrant | null;
   clientOrigin?: ClientOrigin;
 };
 
@@ -1151,10 +1163,24 @@ function resolveDispatchActor(
   principal: PrincipalRef | undefined;
   userId: string;
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: this request's proof that the session it starts may reach beyond
+   * its workspace (`host` confinement): `fullAccessGrantForRequest`, which
+   * holds for the operator in person or a device holding
+   * `approval:full-access`. `null` for every request Station's internal
+   * principal carries (`resolveAgentDispatchActor` answers for all of them,
+   * and `mayGrantFullAccess` refuses them too): any holder of the per-boot
+   * token may be an agent, whatever headers it sends, so it starts confined.
+   */
+  fullAccessGrant: FullAccessGrant | null;
 } {
   const actor = resolveActorPrincipal(deps, c);
   const agent = deps.resolveAgentDispatchActor?.(c.req.raw);
-  if (!agent) return actor;
+  if (!agent)
+    return {
+      ...actor,
+      fullAccessGrant: fullAccessGrantForRequest(c as unknown as Context),
+    };
   if (agent.kind === 'verified')
     return {
       principal:
@@ -1165,8 +1191,13 @@ function resolveDispatchActor(
       // S1: the service fails an internal-origin start closed unless the
       // seam vouches for it explicitly.
       ownerAttribution: 'verified-bound',
+      fullAccessGrant: null,
     };
-  return { ...actor, ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION };
+  return {
+    ...actor,
+    ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+    fullAccessGrant: null,
+  };
 }
 
 export function createOrchestrationRoutes(
@@ -1625,10 +1656,8 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
-      const { principal, userId, ownerAttribution } = resolveDispatchActor(
-        deps,
-        c,
-      );
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,
@@ -1708,6 +1737,7 @@ export function createOrchestrationRoutes(
         // `turn.started` carries the dispatching principal at emit time.
         principal,
         ownerAttribution,
+        fullAccessGrant,
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       const data = await deps.executeForegroundMessage(foregroundRequest);
@@ -1832,10 +1862,8 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
-        const { principal, userId, ownerAttribution } = resolveDispatchActor(
-          deps,
-          c,
-        );
+        const { principal, userId, ownerAttribution, fullAccessGrant } =
+          resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
           ...body,
           target: normalizeExecutionTarget(body.target),
@@ -1851,6 +1879,7 @@ export function createOrchestrationRoutes(
           // turn.started is attributed at emit time too.
           principal,
           ownerAttribution,
+          fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -2021,10 +2050,8 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
-        const { principal, userId, ownerAttribution } = resolveDispatchActor(
-          deps,
-          c,
-        );
+        const { principal, userId, ownerAttribution, fullAccessGrant } =
+          resolveDispatchActor(deps, c);
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -2051,6 +2078,7 @@ export function createOrchestrationRoutes(
           principal,
           // A continuation may start a new child session of the conversation.
           ownerAttribution,
+          fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -2131,10 +2159,8 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
-      const { principal, userId, ownerAttribution } = resolveDispatchActor(
-        deps,
-        c,
-      );
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
       // #484 controller/receiver split: this route NEVER mints the
       // receiver admission itself — minting here, before `delegateTask`
@@ -2182,6 +2208,7 @@ export function createOrchestrationRoutes(
         userId,
         principal,
         ownerAttribution,
+        fullAccessGrant,
         clientOrigin,
         ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
         // The tool keys claims by `deviceId`: project the verified grant's
@@ -2503,10 +2530,8 @@ export function createOrchestrationRoutes(
           ),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
-        const { principal, userId, ownerAttribution } = resolveDispatchActor(
-          deps,
-          c,
-        );
+        const { principal, userId, ownerAttribution, fullAccessGrant } =
+          resolveDispatchActor(deps, c);
         // #484 continuation: the trusted route-bound mint factory for a
         // portable follow-up — captured before any await, bound to the
         // CURRENT request credential. The tool mints through it ONLY when
@@ -2531,6 +2556,7 @@ export function createOrchestrationRoutes(
           userId,
           principal,
           ownerAttribution,
+          fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
           // No-onward-hop + sender authority, from the verified
@@ -3818,10 +3844,16 @@ export function createOrchestrationRoutes(
       // single fail-closed resolution point (archive#4075 stage 2).
       // Station #90 lane D (R1): a start or adoption this request causes
       // carries the same agent owner attribution as the dispatch routes.
+      // #2493: of these commands only `adoptSession` starts a session (the
+      // adopted child), so the request's grant is carried for it alone.
+      // Starter Work's `continue-session` launch is the second adoption
+      // ingress and carries its request's grant the same way
+      // (`starter-work.ts`, `services/starter-work/starter-session-owner.ts`).
       const {
         principal,
         userId: actorUserId,
         ownerAttribution,
+        fullAccessGrant,
       } = resolveDispatchActor(deps, c);
       const readAuthority = sessionReadAuthorityFromRequest(
         actorUserId,
@@ -3880,6 +3912,9 @@ export function createOrchestrationRoutes(
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
           ...(ownerAttribution ? { ownerAttribution } : {}),
+          ...(command.type === 'adoptSession' && fullAccessGrant
+            ? { fullAccessGrant }
+            : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {

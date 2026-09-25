@@ -68,6 +68,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
   type SessionReattachConflictReason,
+  STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
@@ -147,6 +148,10 @@ import {
   createNativeOutputRelayCompanion,
   runWithNativeOutputRelayCompanion,
 } from '../../runtime/native-output-turn-grant.js';
+import {
+  type FullAccessGrant,
+  isFullAccessGrant,
+} from '../../security/coding-authority.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -2404,6 +2409,11 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      replayConfinement: (threadId) =>
+        this.approvalPosture.standingConfinement(
+          threadId,
+          this.readStartConfinementStamp(threadId),
+        ),
       onTurnDispatched: (input) =>
         this.monitoringBridge.onTurnDispatched(input),
       forgetCoalescedThread: (threadId) =>
@@ -5111,6 +5121,13 @@ export class OrchestrationService {
           // carried, recorded before this start), else in the defaults
           // (Agent, then Station). Claude's full-access grant exists only at
           // spawn, so this is where it has to be right.
+          // #2493: confinement is the caller's own authority (a grant the
+          // route minted from the request, never JSON) or a recorded
+          // concrete `never`; everything else is `workspace`.
+          const confinement = this.approvalPosture.startConfinement(
+            postureInput.threadId,
+            context.fullAccessGrant,
+          );
           const startModelOptions = await this.approvalPosture.resolve({
             threadId: postureInput.threadId,
             provider: adapter.provider,
@@ -5128,6 +5145,7 @@ export class OrchestrationService {
                 }
               : {}),
             modelOptions: postureInput.modelOptions,
+            confinement,
           });
           const { modelOptions: _startOptions, ...startWithoutOptions } =
             postureInput;
@@ -5174,6 +5192,7 @@ export class OrchestrationService {
               : undefined;
           const {
             reviewIsolation: _untrustedReviewIsolation,
+            confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
           let startInput = await resolveStartSessionCwd(
@@ -5222,6 +5241,23 @@ export class OrchestrationService {
               reviewIsolation: internal.reviewIsolation,
             };
           }
+          // #2493: after the reserved-key strip removed any caller-supplied
+          // stamp. The stamp records the CALLER's grant only; a recorded
+          // `never` is re-read at every later turn and respawn instead, so a
+          // decision that later moves off `never` does not leave a stamp
+          // behind it.
+          startInput = {
+            ...startInput,
+            confinement,
+            metadata: {
+              ...startInput.metadata,
+              [STATION_CONFINEMENT_METADATA_KEY]: isFullAccessGrant(
+                context.fullAccessGrant,
+              )
+                ? 'host'
+                : 'workspace',
+            },
+          };
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -5567,6 +5603,8 @@ export class OrchestrationService {
       requestCurrent?: () => boolean;
       /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
       ownerAttribution?: StartOwnerAttribution;
+      /** #2493: see `SessionCommandContext.fullAccessGrant`. */
+      fullAccessGrant?: FullAccessGrant | null;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5630,6 +5668,8 @@ export class OrchestrationService {
       requestCurrent?: () => boolean;
       /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
       ownerAttribution?: StartOwnerAttribution;
+      /** #2493: see `SessionCommandContext.fullAccessGrant`. */
+      fullAccessGrant?: FullAccessGrant | null;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5786,6 +5826,9 @@ export class OrchestrationService {
             context?.tenantExecutionContext,
             command.idempotencyKey,
             effectiveOwnerAttribution(context ?? {}),
+            // #2493: the adopted child's stamp records the adopting
+            // request's grant, like every other start.
+            isFullAccessGrant(context?.fullAccessGrant) ? 'host' : 'workspace',
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -5822,6 +5865,7 @@ export class OrchestrationService {
           });
           const {
             reviewIsolation: _untrustedReviewIsolation,
+            confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
@@ -5906,10 +5950,17 @@ export class OrchestrationService {
             const agentSlug = this.readLatestSessionStartMetadata(
               turnInput.threadId,
             )?.agentSlug;
+            // #2493: the session's start stamp or a recorded `never`; never
+            // what the turn carries.
+            const confinement = this.approvalPosture.standingConfinement(
+              turnInput.threadId,
+              this.readStartConfinementStamp(turnInput.threadId),
+            );
             const modelOptions = await this.approvalPosture.resolve({
               threadId: turnInput.threadId,
               provider: adapter.provider,
               phase: 'turn',
+              confinement,
               ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
               ...(internal?.foregroundInvocationAdmission
                 ? {
@@ -5924,8 +5975,8 @@ export class OrchestrationService {
             });
             const { modelOptions: _previous, ...withoutOptions } = turnInput;
             turnInput = modelOptions
-              ? { ...withoutOptions, modelOptions }
-              : withoutOptions;
+              ? { ...withoutOptions, modelOptions, confinement }
+              : { ...withoutOptions, confinement };
           }
           const unsupportedTurnOptions = unsupportedModelOptionKeys(
             adapter.provider,
@@ -8376,6 +8427,15 @@ export class OrchestrationService {
     provider: EngineId,
     input: ProviderSessionStartInput,
   ): Promise<ProviderSessionStartInput> {
+    // #2493: a respawn is not a new grant. It keeps the confinement its
+    // original start was stamped with (or a recorded `never`), read from the
+    // stored start event before this respawn writes a new one; the approval
+    // mode it replays never decides it.
+    const stamp = this.readStartConfinementStamp(input.threadId);
+    const confinement = this.approvalPosture.standingConfinement(
+      input.threadId,
+      stamp,
+    );
     const modelOptions = await this.approvalPosture.resolve({
       threadId: input.threadId,
       provider,
@@ -8384,9 +8444,41 @@ export class OrchestrationService {
         ? { agentSlug: input.metadata.agentSlug }
         : {}),
       modelOptions: input.modelOptions,
+      confinement,
     });
-    const { modelOptions: _previous, ...withoutOptions } = input;
-    return modelOptions ? { ...withoutOptions, modelOptions } : withoutOptions;
+    const {
+      modelOptions: _previous,
+      confinement: _previousConfinement,
+      ...withoutOptions
+    } = input;
+    // Carry the stamp forward (the stored-metadata read strips reserved
+    // keys), so the respawn's own start event still answers for the next
+    // one. A missing stamp is written as the `workspace` it already meant.
+    const restamped: ProviderSessionStartInput = {
+      ...withoutOptions,
+      confinement,
+      metadata: {
+        ...withoutOptions.metadata,
+        [STATION_CONFINEMENT_METADATA_KEY]:
+          stamp === 'host' ? 'host' : 'workspace',
+      },
+    };
+    return modelOptions ? { ...restamped, modelOptions } : restamped;
+  }
+
+  /**
+   * #2493: the raw `STATION_CONFINEMENT_METADATA_KEY` of the thread's latest
+   * `session.started`. Read from the stored event directly because
+   * `readLatestSessionStartMetadata` strips reserved keys. Only
+   * `prepareStart` and a respawn (`withApprovalPostureForStart`) write it,
+   * each after the reserved-key strip.
+   */
+  private readStartConfinementStamp(threadId: string): unknown {
+    const metadata = (
+      this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined
+    )?.metadata;
+    return metadata?.[STATION_CONFINEMENT_METADATA_KEY];
   }
 
   /**
@@ -8407,6 +8499,12 @@ export class OrchestrationService {
       phase: 'turn',
       ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
       modelOptions,
+      // #2493: the replay's carried mode is the source turn's; confinement
+      // comes from the session's stamp, never from it.
+      confinement: this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ),
     });
   }
 

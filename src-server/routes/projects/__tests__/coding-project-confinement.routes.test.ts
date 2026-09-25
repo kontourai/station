@@ -26,6 +26,10 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
 
@@ -40,6 +44,14 @@ const OPERATOR: RuntimeAuthenticatedRequestPrincipal = {
   credential: 'operator',
   authority: 'operator-credential',
   source: 'bearer',
+};
+/** Station's own internal principal: the per-boot token, home-possession. */
+const INTERNAL: RuntimeAuthenticatedRequestPrincipal = {
+  kind: 'internal',
+  credential: 'internal-token',
+  authority: undefined,
+  source: 'bearer',
+  locality: 'home-possession',
 };
 const PAIRED_PHONE: RuntimeAuthenticatedRequestPrincipal = {
   kind: 'credential',
@@ -233,6 +245,31 @@ describe('what the confinement admits', () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as any).data.workspaceIsRepo).toBe(true);
   });
+
+  test.each([
+    [
+      "Station's internal principal (any holder of the per-boot token)",
+      INTERNAL,
+      {},
+    ],
+    [
+      "an agent's station-control call on the operator's credential",
+      OPERATOR,
+      { [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL },
+    ],
+  ] as const)(
+    '#2493: %s gets no answer about a folder outside every Project',
+    async (_label, principal, headers) => {
+      const res = await appAs(principal).request(
+        `/repos?${query(outside, undefined)}`,
+        { headers },
+      );
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { code?: string }).code).toBe(
+        'project-required',
+      );
+    },
+  );
 
   test('but a paired device gets no answer about a folder outside every Project', async () => {
     const res = await appAs(PAIRED_PHONE).request(

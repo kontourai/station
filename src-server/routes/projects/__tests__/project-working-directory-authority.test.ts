@@ -45,9 +45,11 @@ afterEach(() => {
 
 /**
  * Station's own internal principal: the per-boot token, the `local` caller
- * marker and a direct loopback socket. The UI's requests and an agent's
- * station-control tool calls both arrive this way; only the tool's origin
- * marker tells them apart (#2436 review).
+ * marker and a direct loopback socket. An agent's station-control tool calls
+ * arrive this way, with the tool's origin marker; any holder of the token can
+ * omit that marker, so it only ever restricts (#2436 review, #2493 review F1).
+ * The operator's UI does not: its proxy hop is marked `remote` and carries
+ * the browser's own credential.
  */
 function internalRequestInit(agent: boolean, init: RequestInit) {
   return [
@@ -277,7 +279,7 @@ test('a device holding coding:exec chooses a folder on create and update', async
   expect(f.stored('acme').workingDirectory).toBe(f.folderB);
 });
 
-test("an agent's station-control call cannot choose a Project's folder; the UI's own call can", async () => {
+test("an agent's station-control call, marked or not, cannot choose a Project's folder", async () => {
   const f = await fixture();
   const refused = await f.sendInternally(true, 'POST', '', {
     name: 'Planted',
@@ -287,10 +289,13 @@ test("an agent's station-control call cannot choose a Project's folder; the UI's
   expect(refused).toEqual({ status: 403, body: REFUSAL });
   expect(() => f.stored('planted')).toThrow();
 
-  const created = await f.sendInternally(false, 'POST', '', {
+  // #2493 review F1: without the marker it is still the internal
+  // principal any holder of the per-boot token can present.
+  const unmarked = await f.sendInternally(false, 'POST', '', {
     name: 'Acme',
     slug: 'acme',
     workingDirectory: f.folderA,
   });
-  expect(created.status).toBe(201);
+  expect(unmarked).toEqual({ status: 403, body: REFUSAL });
+  expect(() => f.stored('acme')).toThrow();
 });
