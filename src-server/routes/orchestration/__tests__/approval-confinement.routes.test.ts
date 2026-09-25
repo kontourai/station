@@ -15,8 +15,6 @@
  * `OrchestrationService` derives confinement and hands the engine its input.
  * The recording engines read exactly what an adapter would receive.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -33,6 +31,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -201,7 +200,9 @@ class RecordingEngine implements ProviderAdapterShape {
   }
 }
 
-const roots: string[] = [];
+// Registered before this file's own afterEach, so (after-hooks run last
+// registered first) the services below are disposed before their home goes.
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void> | void> = [];
 
 beforeEach(() => {
@@ -214,8 +215,6 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   for (const cleanup of cleanups.splice(0)) await cleanup();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 async function fixture(
@@ -225,8 +224,7 @@ async function fixture(
   } = { station: 'never' },
 ) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
-  const root = mkdtempSync(join(tmpdir(), 'station-confinement-'));
-  roots.push(root);
+  const root = makeTempDir('station-confinement-');
   const security = new EnvironmentSecurityService({
     homeDir: join(root, 'home'),
   });
