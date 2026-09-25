@@ -404,6 +404,8 @@ describe("GET /api/notifications/deliveries (the caller's own feed)", () => {
       INSTALLATION,
     );
     expect(result.status).toBe(403);
+    // Refused by the person-only guard, not by the feed's own eligibility.
+    expect(result.json.error).toBe('person_required');
   });
 
   test.each(['after=-1', 'after=abc', 'after=0&epoch=not%20an%20id'])(
