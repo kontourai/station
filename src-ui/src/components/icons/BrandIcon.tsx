@@ -118,8 +118,8 @@ function Mark({ brand }: { brand: BrandKey }) {
       );
     case 'pi':
       return (
-        <svg viewBox="-100 -100 760 760" aria-hidden="true">
-          <rect x="-100" y="-100" width="760" height="760" rx="152" />
+        <svg viewBox="-195 -195 950 950" aria-hidden="true">
+          <rect x="-195" y="-195" width="950" height="950" rx="190" />
           <path
             className="brand-icon__inverse"
             d="M420 280H280V140H0V0H420V280Z"
