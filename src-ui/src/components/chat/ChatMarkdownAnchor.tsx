@@ -108,16 +108,21 @@ function activate(
   // project cannot have its links placed there — the region would refuse
   // the occurrence, and rebinding it to the dock's project would name a
   // file or a repository in a checkout the conversation never mentioned.
+  // A bottom-only fold (a phone) is NOT a reason: the model opens the pane
+  // over Chat there (the phone layer), and Back returns to the conversation.
   const dockCanHold =
     model !== null &&
-    !link.bottomOnly &&
     link.projectId !== null &&
     link.projectSlug !== null &&
     link.projectSlug === link.dockProjectSlug;
   if (target.kind === 'pull-request') {
-    if (dockCanHold) {
+    // A refused open falls through to the browser below rather than being a
+    // click that does nothing.
+    if (
+      dockCanHold &&
+      openPullRequestInRegion(model, target.key, link.projectId).ok
+    ) {
       event.preventDefault();
-      openPullRequestInRegion(model, target.key, link.projectId);
       return;
     }
     // No pane for it here. A review still has a home — the host's browser —
@@ -144,8 +149,8 @@ function activate(
     if (!thread) link.openPathInMain?.(target.path, target.lineRange);
     return;
   }
-  // No dock that may hold it: a bottom-only fold, or a dock bound to a
-  // different project than the conversation. The layout route below is
+  // No dock that may hold it: a dock bound to a different project than the
+  // conversation, or no region model at all. The layout route below is
   // still taken when this session has one — that is the pre-#2049
   // behaviour, preserved. What changes is the case where it does not:
   // the click is now refused on BOTH hosts rather than followed, because
