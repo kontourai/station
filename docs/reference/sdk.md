@@ -2830,7 +2830,8 @@ provenance resolver minted), `technicalDetail` (the provenance detail or
 caught comparison diagnostic — filesystem paths live here, not in
 `message`), `selfUpdateUnavailableReason` (why the server refuses to apply an
 update to itself, as text: a desktop bundle's self-update eligibility, or a
-source checkout running under the installed service), and
+source checkout running under a supervisor — the installed service or another
+supervising process), and
 `selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
 for the installed launchd/systemd service, `'supervised'` when only a
 supervisor PID is present). The parser rejects a non-boolean `updateAvailable`

@@ -223,7 +223,8 @@ function describeFinding(service: SupervisingService): string[] {
       ? [
           `    inspect it with "${status}"; if that unit no longer exists,`,
           // Same targeting flags as the status command, so both name one unit.
-          `    "${status.replace(/^station service status/u, 'station service uninstall')}" or removing the manifest above clears it.`,
+          `    "${status.replace(/^station service status/u, 'station service uninstall')}" clears it when the service backend answers;`,
+          '    if the backend itself is failing, remove the manifest above or rerun with --ignore-service-state.',
         ]
       : [
           '    if that unit no longer exists, removing the manifest above clears it.',
