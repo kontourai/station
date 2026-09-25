@@ -1872,7 +1872,6 @@ const SCREENS: Screen[] = [
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'motion-gallery',
             category: 'test',
             title: 'Reduced motion is active',
             body: 'Notification state remains visible without entrance motion.',
@@ -2329,13 +2328,14 @@ const SCREENS: Screen[] = [
       // Same driving mechanism as `motion-reduced-notification`, without the
       // reduced-motion emulation — nothing about producing the toast itself
       // is motion-preference-specific. `hideVolatileChrome` already hides
-      // `.toast-card__time`'s live relative timestamp.
+      // `.toast-card__time`'s live relative timestamp. No `source` is sent:
+      // #2597's contract sets the server-side source for REST records, and a
+      // caller-chosen one is refused.
       await page.evaluate(async () => {
         await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Overlay gallery toast',
             body: 'A toast captured at normal (non-reduced) motion.',
@@ -2369,7 +2369,6 @@ const SCREENS: Screen[] = [
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Toast with an action',
             body: 'This toast carries a View action button.',
