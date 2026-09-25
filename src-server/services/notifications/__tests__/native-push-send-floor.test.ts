@@ -32,4 +32,18 @@ describe('native push send floor', () => {
     expect(floor.lastSendAt('b')).toBeUndefined();
     expect(floor.reserve('b', NOW)).toBe(NOW);
   });
+
+  test('the card earns the next slot after CARD_YIELD_AFTER holds, once, and its own send clears the count', () => {
+    const floor = createNativePushSendFloor();
+    floor.deferCard('a');
+    expect(floor.takeCardYield('a')).toBe(false);
+    floor.deferCard('a');
+    expect(floor.takeCardYield('a')).toBe(true);
+    expect(floor.takeCardYield('a')).toBe(false);
+    floor.deferCard('a');
+    floor.recordCard('a', NOW);
+    floor.deferCard('a');
+    expect(floor.takeCardYield('a')).toBe(false);
+    expect(floor.lastSendAt('a')).toBe(NOW);
+  });
 });

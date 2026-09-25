@@ -1443,7 +1443,7 @@ export function wireAgentActivityPublisher(
       }),
     };
     state.lastAttemptAt = at;
-    sendFloor.record(deviceId, at);
+    sendFloor.recordCard(deviceId, at);
     const outcome = await send(
       JSON.stringify({
         token: registration.token,
@@ -1798,6 +1798,13 @@ export function wireAgentActivityPublisher(
         lastAttemptAt !== undefined &&
         at - lastAttemptAt < MIN_SEND_INTERVAL_MS
       ) {
+        // Held back by a Station notification's slot, not by its own last
+        // card: counted, so a burst of notifications yields it a slot.
+        if (
+          registration.platform === 'android' &&
+          lastAttemptAt !== state.lastAttemptAt
+        )
+          sendFloor.deferCard(deviceId);
         // Coalesced into a send once the interval has passed.
         state.retryAt = lastAttemptAt + MIN_SEND_INTERVAL_MS;
         continue;

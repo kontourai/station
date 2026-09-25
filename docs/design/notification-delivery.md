@@ -313,8 +313,17 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   gives a notification an hour to live instead of the card's five minutes.
   A read or dismiss elsewhere sends a retract. The channel
   (`delivery/fcm-alert-channel.ts`) shares the per-phone three-second send
-  floor with the card (`native-push-send-floor.ts`): a notification inside
-  it waits for its slot and holds it, and the card waits for the slot after.
+  floor with the card (`native-push-send-floor.ts`): each phone has one
+  queue of waiting notification sends, drained a slot at a time, and the
+  card waits for the slot after the one a notification holds. A message is
+  composed (`created_at` and `expires_at` stamped) only when its slot comes;
+  a newer send for the same id replaces the waiting one in place, so a read
+  or dismiss while an alert waits sends the retract instead of the stale
+  alert. At most eight sends wait per phone: past that the oldest waiting
+  `info` alert is dropped and logged, and attention, failed and done alerts
+  and retracts are never dropped. Each time a notification's slot holds the
+  card back the card counts it, and after two the queue leaves the next slot
+  free for the card, so a burst cannot starve it.
   It does not retry a failed send (like Web Push); a 410 clears the
   registration. It does not carry `approval-request`, `turn-completed`,
   `turn-stopped` or `turn-failed`, which the card already alerts for. On the

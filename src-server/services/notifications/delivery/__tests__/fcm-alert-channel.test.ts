@@ -83,6 +83,8 @@ async function harness(
     answer?: number;
     canRead?: (sessionId: string) => boolean;
     hideContentOn?: 'first-phone';
+    /** Floor waits stay pending until `releaseSleep`, as real time would. */
+    manualSleep?: boolean;
   } = {},
 ) {
   const homeDir = makeTempDir('station-fcm-alert-');
@@ -98,6 +100,7 @@ async function harness(
   const refused: string[] = [];
   const registrations = new Map<string, NativePushRegistration>();
   const sleeps: number[] = [];
+  const heldSleeps: Array<{ ms: number; resolve: () => void }> = [];
   /** Every gateway request, so `settle` waits for the real work, not ticks. */
   const inFlight: Promise<unknown>[] = [];
   const answer = async (url: string, init: RequestInit) => {
@@ -201,9 +204,13 @@ async function harness(
       sendFloor,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       now: () => clock.now,
-      sleep: async (ms) => {
+      sleep: (ms) => {
         sleeps.push(ms);
-        clock.now += ms;
+        if (!options.manualSleep) {
+          clock.now += ms;
+          return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => heldSleeps.push({ ms, resolve }));
       },
     },
   });
@@ -215,6 +222,15 @@ async function harness(
     refused,
     warn,
     sleeps,
+    heldSleeps,
+    /** Lets the oldest held floor wait end, the clock moving by its length. */
+    async releaseSleep() {
+      const held = heldSleeps.shift();
+      if (!held) throw new Error('no floor wait is held');
+      clock.now += held.ms;
+      held.resolve();
+      await this.settle();
+    },
     sendFloor,
     phone,
     tablet,
@@ -458,5 +474,158 @@ describe('FcmAlertChannel through the delivery router', () => {
     );
     await h.settle();
     expect(h.pairing.listNativePushRegistrations()).toEqual([]);
+  });
+
+  describe('the per-phone queue behind the floor', () => {
+    const attention = (id: string, title = 'Attention') =>
+      notification({ id, title, body: undefined });
+    const info = (id: string) =>
+      notification({
+        id,
+        title: `Info ${id}`,
+        body: undefined,
+        category: 'agent-info',
+        metadata: { envelope: envelope({ urgency: 'info' }) },
+      });
+    test('an alert read while it waits for its slot is never sent; the retract goes instead', async () => {
+      const h = await harness({ manualSleep: true });
+      // The card just went to both phones.
+      h.sendFloor.record(h.phone, h.clock.now);
+      h.sendFloor.record(h.tablet, h.clock.now);
+      const record = notification();
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      expect(h.sent).toEqual([]);
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, {
+        ...record,
+        metadata: {
+          ...record.metadata,
+          envelope: {
+            ...envelope(),
+            readAt: new Date(h.clock.now).toISOString(),
+            readBy: 'local:desk-tab',
+          },
+        },
+      } as never);
+      await h.settle();
+      await h.releaseSleep();
+      await h.releaseSleep();
+      expect(h.sent.map((s) => [s.deviceId, s.plaintext.kind]).sort()).toEqual(
+        [
+          [h.phone, 'retract'],
+          [h.tablet, 'retract'],
+        ].sort(),
+      );
+    });
+
+    test('created_at and expires_at are stamped when the slot comes, not when it was queued', async () => {
+      const h = await harness({ manualSleep: true });
+      h.sendFloor.record(h.phone, h.clock.now - 1_000);
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification() as never,
+      );
+      await h.settle();
+      const queuedAt = h.clock.now;
+      await h.releaseSleep();
+      const toPhone = h.sent.find((s) => s.deviceId === h.phone)!;
+      expect(Number(toPhone.plaintext.created_at)).toBe(queuedAt + 2_000);
+      expect(Number(toPhone.plaintext.expires_at)).toBe(
+        queuedAt + 2_000 + FCM_ALERT_LIFETIME_MS,
+      );
+    });
+
+    test('a newer send for the same id replaces the waiting one', async () => {
+      const h = await harness({ manualSleep: true });
+      h.sendFloor.record(h.phone, h.clock.now);
+      h.sendFloor.record(h.tablet, h.clock.now);
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        attention('n-1', 'First') as never,
+      );
+      await h.settle();
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        attention('n-1', 'Edited') as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      const toPhone = h.sent.filter((s) => s.deviceId === h.phone);
+      expect(toPhone.map((s) => s.plaintext.title)).toEqual(['Edited']);
+    });
+
+    test('a burst keeps at most the cap waiting by dropping the oldest info, never attention', async () => {
+      const h = await harness({ manualSleep: true });
+      h.sendFloor.record(h.phone, h.clock.now);
+      h.sendFloor.record(h.tablet, h.clock.now);
+      const ids: string[] = [];
+      for (let i = 0; i < 4; i += 1) ids.push(`a-${i}`);
+      for (let i = 0; i < 8; i += 1) ids.push(`i-${i}`);
+      for (const id of ids)
+        h.eventBus.emit(
+          SERVER_EVENTS.NOTIFICATION_DELIVERED,
+          (id.startsWith('a-') ? attention(id) : info(id)) as never,
+        );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      const toPhone = h.sent
+        .filter((s) => s.deviceId === h.phone)
+        .map((s) => s.plaintext.id);
+      // 12 queued, cap 8: the four oldest info alerts are dropped.
+      expect(toPhone).toEqual([
+        'a-0',
+        'a-1',
+        'a-2',
+        'a-3',
+        'i-4',
+        'i-5',
+        'i-6',
+        'i-7',
+      ]);
+      expect(
+        h.warn.mock.calls.filter(([message]) =>
+          String(message).includes('dropped a waiting info notification'),
+        ),
+      ).toHaveLength(8);
+      // Attention alone is never dropped, whatever the queue holds.
+      const all = await harness({ manualSleep: true });
+      all.sendFloor.record(all.phone, all.clock.now);
+      for (let i = 0; i < 12; i += 1)
+        all.eventBus.emit(
+          SERVER_EVENTS.NOTIFICATION_DELIVERED,
+          attention(`a-${i}`) as never,
+        );
+      await all.settle();
+      while (all.heldSleeps.length > 0) await all.releaseSleep();
+      expect(all.sent.filter((s) => s.deviceId === all.phone)).toHaveLength(12);
+    });
+
+    test('once the card has been held back twice, the queue leaves it the next slot', async () => {
+      const h = await harness({ manualSleep: true });
+      const start = h.clock.now;
+      h.sendFloor.record(h.phone, start);
+      h.sendFloor.deferCard(h.phone);
+      h.sendFloor.deferCard(h.phone);
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification() as never,
+      );
+      await h.settle();
+      // It waits two intervals without reserving: the slot at +3 s is free.
+      expect(h.heldSleeps.find(() => true)?.ms).toBe(
+        2 * NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+      );
+      expect(h.sendFloor.lastSendAt(h.phone)).toBe(start);
+      // The card takes it meanwhile.
+      h.sendFloor.recordCard(h.phone, start + NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
+      await h.releaseSleep();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      const toPhone = h.sent.find((s) => s.deviceId === h.phone)!;
+      expect(Number(toPhone.plaintext.created_at)).toBe(
+        start + 2 * NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+      );
+      // It yields once per deferral count, not on every send after.
+      expect(h.sendFloor.takeCardYield(h.phone)).toBe(false);
+    });
   });
 });

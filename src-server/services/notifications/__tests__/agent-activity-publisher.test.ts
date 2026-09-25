@@ -821,6 +821,31 @@ describe('agent-activity publisher', () => {
     await h.publisher.stop();
   });
 
+  test('each time a notification slot holds the card back it counts, so the queue yields it a slot (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification queue keeps taking the phone's slots.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    // Held back once (by a notification's slot, not its own card).
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
+    // The queue takes the slot the card was waiting for, too.
+    expect(sendFloor.reserve(deviceId, START + 2500)).toBe(START + 5500);
+    while (h.now() < START + 5500) await h.fireNextTimer();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Held back twice: the next slot is the card's.
+    expect(sendFloor.takeCardYield(deviceId)).toBe(true);
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 8500);
+    await h.publisher.stop();
+  });
+
   test('a change that reverts inside the send interval leaves no retry timer spinning', async () => {
     const h = await harness();
     await h.pairAndRegister();

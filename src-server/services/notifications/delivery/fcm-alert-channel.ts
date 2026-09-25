@@ -22,8 +22,20 @@
  *   which cancels the phone's notification. If FCM delivers the alert after
  *   its retract, the phone drops it (`created_at` history).
  * - Paced: shares the per-phone send floor with the agent-activity card
- *   (`native-push-send-floor.ts`); a send inside the floor waits for its
- *   slot rather than being dropped.
+ *   (`native-push-send-floor.ts`). Each phone has one queue of waiting
+ *   sends, drained one floor slot at a time:
+ *   - the message is composed (and `created_at` / `expires_at` stamped)
+ *     only when its slot comes, from the newest pending send for its id: a
+ *     newer send for an id replaces the pending one in its place in the
+ *     queue, so a read or dismiss while an alert waits (the router's
+ *     retract) sends the retract instead of the stale alert;
+ *   - at most {@link MAX_PENDING_PER_PHONE} sends wait; past that the
+ *     oldest waiting `info` alert is dropped and logged. Attention, failed
+ *     and done alerts and retracts are never dropped (the router only
+ *     sends those as people's own notifications arrive, so they stay
+ *     bounded by what happened);
+ *   - once the card has been held back by these slots
+ *     `CARD_YIELD_AFTER` times, the queue leaves the next slot free for it.
  * - No retry: a retryable gateway answer is reported as `retry` and logged,
  *   like Web Push. A 410 clears the registration, as the publisher does.
  * - Session lifecycle categories the card already alerts for (an approval,
@@ -48,7 +60,10 @@ import type {
   NativePushAndroidRegistration,
   NativePushRegistration,
 } from '../native-push-registration-store.js';
-import type { NativePushSendFloor } from '../native-push-send-floor.js';
+import {
+  NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+  type NativePushSendFloor,
+} from '../native-push-send-floor.js';
 import { notificationSessionIdentity } from '../notification-session.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
 import {
@@ -59,6 +74,8 @@ import {
   type SurfaceId,
 } from './channel.js';
 
+/** Waiting sends per phone before `info` alerts are dropped. */
+export const MAX_PENDING_PER_PHONE = 8;
 /** How long a sent alert may still be shown; the gateway's FCM TTL matches. */
 export const FCM_ALERT_LIFETIME_MS = 60 * 60_000;
 /**
@@ -110,6 +127,20 @@ export interface FcmAlertChannelOptions {
 
 type SendResult = DeliveryOutcome['result'];
 
+type Content = Omit<
+  NativePushNotificationPlaintext,
+  'v' | 'user_id' | 'id' | 'created_at' | 'expires_at'
+>;
+
+/** A send waiting for its phone's next floor slot. */
+interface PendingSend {
+  id: string;
+  content: Content;
+  /** Attention and failed alerts go at high priority. */
+  urgent: boolean;
+  resolve(result: SendResult): void;
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms).unref?.();
@@ -127,6 +158,8 @@ export class FcmAlertChannel implements DeliveryChannel {
   readonly #now: () => number;
   readonly #fetch: typeof fetch;
   readonly #sleep: (ms: number) => Promise<void>;
+  /** Waiting sends per phone; present while that phone's queue drains. */
+  readonly #queues = new Map<string, PendingSend[]>();
 
   constructor(options: FcmAlertChannelOptions) {
     this.#options = options;
@@ -173,17 +206,93 @@ export class FcmAlertChannel implements DeliveryChannel {
     await this.#sendAll(notificationId, to, false, () => ({ kind: 'retract' }));
   }
 
-  async #sendAll(
+  #sendAll(
     notificationId: string,
     to: ChannelTarget[],
     urgent: boolean,
-    content: (
-      hideContent: boolean,
-    ) => Omit<
-      NativePushNotificationPlaintext,
-      'v' | 'user_id' | 'id' | 'created_at' | 'expires_at'
-    >,
+    content: (hideContent: boolean) => Content,
   ): Promise<DeliveryOutcome[]> {
+    return Promise.all(
+      to.map(
+        ({ ref: deviceId, hideContent }) =>
+          new Promise<DeliveryOutcome>((resolve) =>
+            this.#enqueue(deviceId, {
+              id: notificationId,
+              content: content(hideContent),
+              urgent,
+              resolve: (result) => resolve({ ref: deviceId, result }),
+            }),
+          ),
+      ),
+    );
+  }
+
+  #enqueue(deviceId: string, send: PendingSend): void {
+    let queue = this.#queues.get(deviceId);
+    const draining = queue !== undefined;
+    if (!queue) {
+      queue = [];
+      this.#queues.set(deviceId, queue);
+    }
+    const index = queue.findIndex((pending) => pending.id === send.id);
+    if (index >= 0) {
+      // The newer send for this id takes the older one's place.
+      queue[index]?.resolve('suppressed');
+      queue[index] = send;
+    } else queue.push(send);
+    while (queue.length > MAX_PENDING_PER_PHONE) {
+      const oldestInfo = queue.findIndex(
+        (pending) =>
+          pending.content.kind === 'alert' &&
+          pending.content.urgency === 'info',
+      );
+      if (oldestInfo < 0) break;
+      const [dropped] = queue.splice(oldestInfo, 1);
+      dropped?.resolve('suppressed');
+      this.#options.logger.warn(
+        'fcm-alert: dropped a waiting info notification (too many queued for one phone)',
+        { pending: queue.length },
+      );
+    }
+    if (!draining) void this.#drain(deviceId, queue);
+  }
+
+  /** Sends a phone's queue one floor slot at a time; never throws. */
+  async #drain(deviceId: string, queue: PendingSend[]): Promise<void> {
+    try {
+      while (queue.length > 0) {
+        const floor = this.#options.sendFloor;
+        if (floor.takeCardYield(deviceId)) {
+          // Leave the next slot to the card: wait one interval past it.
+          const last = floor.lastSendAt(deviceId) ?? this.#now();
+          const skip =
+            last + 2 * NATIVE_PUSH_MIN_SEND_INTERVAL_MS - this.#now();
+          if (skip > 0) await this.#sleep(skip);
+        }
+        const slot = floor.reserve(deviceId, this.#now());
+        const wait = slot - this.#now();
+        if (wait > 0) await this.#sleep(wait);
+        // Taken only now: a newer send for the same id may have replaced it.
+        const next = queue.shift();
+        if (!next) break;
+        let result: SendResult;
+        try {
+          result = await this.#sendNow(deviceId, next);
+        } catch (error) {
+          this.#options.logger.warn('fcm-alert: send failed unexpectedly', {
+            error: errorMessage(error),
+          });
+          result = 'retry';
+        }
+        next.resolve(result);
+      }
+    } finally {
+      this.#queues.delete(deviceId);
+      for (const left of queue.splice(0)) left.resolve('suppressed');
+    }
+  }
+
+  async #sendNow(deviceId: string, send: PendingSend): Promise<SendResult> {
     let key: PushSigningKey | null;
     let stationId: string;
     try {
@@ -192,55 +301,27 @@ export class FcmAlertChannel implements DeliveryChannel {
     } catch (error) {
       this.#options.logger.warn(
         'fcm-alert: push key unavailable; not sending',
-        {
-          error: errorMessage(error),
-        },
+        { error: errorMessage(error) },
       );
-      return to.map(({ ref }) => ({ ref, result: 'retry' }));
+      return 'retry';
     }
-    if (!key) return to.map(({ ref }) => ({ ref, result: 'suppressed' }));
-    const signingKey = key;
-    const registrations = new Map(
-      this.#android().map(({ deviceId, registration }) => [
-        deviceId,
-        registration,
-      ]),
-    );
-    return Promise.all(
-      to.map(async ({ ref: deviceId, hideContent }) => {
-        const registration = registrations.get(deviceId);
-        // Gone, or pinned to a key this Station no longer holds (the phone
-        // would drop it; the publisher forgets that registration).
-        if (!registration || registration.stationKey !== signingKey.thumbprint)
-          return { ref: deviceId, result: 'suppressed' as const };
-        const at = this.#now();
-        const plaintext: NativePushNotificationPlaintext = {
-          v: '1',
-          user_id: stationId,
-          id: notificationId,
-          ...content(hideContent),
-          created_at: String(at),
-          expires_at: String(at + FCM_ALERT_LIFETIME_MS),
-        };
-        const result = await this.#send(
-          deviceId,
-          registration,
-          plaintext,
-          urgent,
-          signingKey,
-        );
-        return { ref: deviceId, result };
-      }),
-    );
-  }
-
-  async #send(
-    deviceId: string,
-    registration: NativePushAndroidRegistration,
-    plaintext: NativePushNotificationPlaintext,
-    urgent: boolean,
-    key: PushSigningKey,
-  ): Promise<SendResult> {
+    const registration = this.#android().find(
+      (candidate) => candidate.deviceId === deviceId,
+    )?.registration;
+    // No key, gone, or pinned to a key this Station no longer holds (the
+    // phone would drop it; the publisher forgets that registration).
+    if (!key || !registration || registration.stationKey !== key.thumbprint)
+      return 'suppressed';
+    // Stamped at the send, after any wait for the floor.
+    const at = this.#now();
+    const plaintext: NativePushNotificationPlaintext = {
+      v: '1',
+      user_id: stationId,
+      id: send.id,
+      ...send.content,
+      created_at: String(at),
+      expires_at: String(at + FCM_ALERT_LIFETIME_MS),
+    };
     let bytes: Buffer;
     try {
       const data: NativePushNotificationData = {
@@ -257,7 +338,7 @@ export class FcmAlertChannel implements DeliveryChannel {
           token: registration.token,
           packageName: registration.packageName,
           data,
-          ...(urgent ? {} : { priority: 'normal' }),
+          ...(send.urgent ? {} : { priority: 'normal' }),
         }),
         'utf8',
       );
@@ -267,9 +348,6 @@ export class FcmAlertChannel implements DeliveryChannel {
       });
       return 'rejected';
     }
-    const slot = this.#options.sendFloor.reserve(deviceId, this.#now());
-    const wait = slot - this.#now();
-    if (wait > 0) await this.#sleep(wait);
     let status: number;
     try {
       const response = await this.#fetch(this.#options.gateway.sendUrl, {
