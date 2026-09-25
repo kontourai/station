@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isActionOperationAccountId } from '@kontourai/station-contracts/action-operation';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type {
   PluginForegroundRun,
@@ -355,7 +356,7 @@ function validOwner(owner: PluginForegroundWorkOwner): boolean {
     HOST_ID.test(owner.installationKey) &&
     Number.isSafeInteger(owner.installationGeneration) &&
     owner.installationGeneration > 0 &&
-    HOST_ID.test(owner.accountId) &&
+    isActionOperationAccountId(owner.accountId) &&
     (owner.machineId === undefined || HOST_ID.test(owner.machineId))
   );
 }

@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   formatChatErrorDisplay,
+  SESSION_START_INDETERMINATE_CODE,
   translateChatError,
   translateProjectedRuntimeError,
 } from '../chatErrorTranslation';
@@ -16,6 +17,20 @@ import {
 // planning, so these are representative, pattern-matched fixtures —
 // (archive#196) is where the live text gets confirmed against these patterns.
 describe('translateChatError', () => {
+  it('an unconfirmed start with no engine cause says what is known, not "unknown"', () => {
+    const translation = translateChatError({
+      status: 400,
+      code: SESSION_START_INDETERMINATE_CODE,
+      message:
+        'Provider session creation may have completed. Inspect the session before retrying.',
+    });
+    expect(translation.title).toBe("The chat's start wasn't confirmed");
+    expect(translation.body).not.toMatch(/unknown/i);
+    expect(translation.hint).toBe(
+      'Station may already have started this session. Check it before sending again.',
+    );
+  });
+
   // #2269: a Station-owned deadline is not a transient engine failure, so
   // the fallback's retry hint must not appear, and the headline names the
   // deadline rather than a generic "Error". The codes come from the same

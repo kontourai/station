@@ -193,7 +193,7 @@ activity as high-priority messages.
 
 ### Station contract
 
-The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
+The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
 
 - **Push key.** `security/push-signing-key.json` (0600) holds a P-256 key used
   only for gateway requests: domain-separated from the connection signing key,

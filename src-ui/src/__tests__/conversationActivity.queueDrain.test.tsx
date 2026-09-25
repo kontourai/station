@@ -283,6 +283,64 @@ afterEach(() => {
 });
 
 describe('#2309 the queue drains on the turn END event, routed by the frame binding', () => {
+  test('a fallback snapshot drains a follow-up when completion was missed', async () => {
+    chatWithQueue(['after the gap']);
+    resumeWithoutSnapshot(API, open(100));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(101),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'turn.completed',
+          conversationActivity: closed(101),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      apiBase: API,
+      message: 'after the gap',
+    });
+  });
+
+  test('a fallback snapshot after Stop keeps the queued follow-up held', async () => {
+    chatWithQueue(['held after stop']);
+    resumeWithoutSnapshot(API, open(102));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(103),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'turn.aborted',
+          conversationActivity: closed(103),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held after stop']);
+  });
   test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
     chatWithQueue(['and then summarize it']);
     resumeWithoutSnapshot(API, open(10));
@@ -651,10 +709,10 @@ describe('#2309 explicit sends are never held back silently', () => {
 
   test('an explicit send that cannot go says why in the chat', () => {
     chatWithQueue(['being edited'], CHILD);
-    connect(API, closed(80));
     act(() =>
       activeChatsStore.updateChat(CONVERSATION, { isEditingQueue: true }),
     );
+    connect(API, closed(80));
     drainQueuedMessageOnTurnCompleted(API, CONVERSATION, true, true);
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
     expect(

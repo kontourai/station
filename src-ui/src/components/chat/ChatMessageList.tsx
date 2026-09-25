@@ -53,6 +53,8 @@ import {
 
 interface ChatMessageListProps {
   activeSession: ChatSession;
+  /** The canonical window plus sequenced live events already renders this turn. */
+  suppressStreamingRow?: boolean;
   fontSize: number;
   /** Discrete dock/viewport height used to re-anchor before the resized frame paints. */
   layoutHeight?: number;
@@ -138,6 +140,7 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
+  suppressStreamingRow,
   fontSize,
   layoutHeight,
   showReasoning,
@@ -172,9 +175,18 @@ function ChatMessageListComponent({
             approvalEvents
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
+            activeSession.orchestrationTurnOpen
+              ? activeSession.openTurnId
+              : undefined,
           )
         : NO_PENDING_APPROVALS,
-    [activeSession.messages, activeSession.replay, approvalEvents],
+    [
+      activeSession.messages,
+      activeSession.replay,
+      activeSession.orchestrationTurnOpen,
+      activeSession.openTurnId,
+      approvalEvents,
+    ],
   );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
@@ -259,7 +271,16 @@ function ChatMessageListComponent({
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
-  const isStreaming = isTurnStreamLive(activeSession);
+  const isStreaming = isTurnStreamLive(activeSession) && !suppressStreamingRow;
+  const localBackgroundTasks = activeSession.backgroundTasks ?? [];
+  const serverBackgroundCount =
+    activeSession.conversationActivity?.runningChildWork?.count ?? 0;
+  const backgroundBannerLabel =
+    localBackgroundTasks.length > 0
+      ? backgroundTasksLabel(localBackgroundTasks)
+      : serverBackgroundCount === 1
+        ? 'Background agent working'
+        : `${serverBackgroundCount} background agents working`;
 
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a
@@ -800,8 +821,8 @@ function ChatMessageListComponent({
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
             {!isStreaming &&
-              (activeSession.backgroundTasks?.length ?? 0) > 0 &&
-              (onOpenBackgroundTasks ? (
+              (localBackgroundTasks.length > 0 || serverBackgroundCount > 0) &&
+              (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
                 // archive#1301: a `<button>` cannot
                 // also carry `role="status"` (an interactive element and a
                 // live region are mutually exclusive ARIA roles) — a visually
@@ -814,28 +835,28 @@ function ChatMessageListComponent({
                     type="button"
                     className="background-tasks-banner"
                     onClick={onOpenBackgroundTasks}
-                    aria-label={`${backgroundTasksLabel(activeSession.backgroundTasks!)} — open background tasks`}
+                    aria-label={`${backgroundBannerLabel} — open background tasks`}
                   >
                     <LoadingDots />
                     <span
                       className="background-tasks-banner__label"
                       aria-hidden="true"
                     >
-                      {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                      {backgroundBannerLabel}
                     </span>
                   </button>
                   <span
                     className="background-tasks-banner__sr-status"
                     role="status"
                   >
-                    {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                    {backgroundBannerLabel}
                   </span>
                 </>
               ) : (
                 <div className="background-tasks-banner" role="status">
                   <LoadingDots />
                   <span className="background-tasks-banner__label">
-                    {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                    {backgroundBannerLabel}
                   </span>
                 </div>
               ))}

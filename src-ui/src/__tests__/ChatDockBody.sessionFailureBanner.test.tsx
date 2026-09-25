@@ -38,6 +38,7 @@ const chatInputPropsMock = vi.hoisted(() => ({
 const queuedMessagesPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
+const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -150,19 +151,37 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
  * what it is DISABLED for, which no amount of asserting on rendered text can
  * reach.
  */
-vi.mock('../components/chat/ChatInputArea', () => ({
-  ChatInputArea: (props: Record<string, any>) => {
-    chatInputPropsMock.current = props;
-    return <div data-testid="chat-input-area" />;
-  },
-}));
+vi.mock('../components/chat/ChatInputArea', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/ChatInputArea')>();
+  return {
+    ChatInputArea: (props: Record<string, any>) => {
+      chatInputPropsMock.current = props;
+      const Actual = actual.ChatInputArea;
+      return realControlsMock.enabled ? (
+        <Actual {...(props as React.ComponentProps<typeof Actual>)} />
+      ) : (
+        <div data-testid="chat-input-area" />
+      );
+    },
+  };
+});
 
-vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: (props: Record<string, any>) => {
-    queuedMessagesPropsMock.current = props;
-    return <div data-testid="queued-messages" />;
-  },
-}));
+vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/QueuedMessages')>();
+  return {
+    QueuedMessages: (props: Record<string, any>) => {
+      queuedMessagesPropsMock.current = props;
+      const Actual = actual.QueuedMessages;
+      return realControlsMock.enabled ? (
+        <Actual {...(props as React.ComponentProps<typeof Actual>)} />
+      ) : (
+        <div data-testid="queued-messages" />
+      );
+    },
+  };
+});
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import { describeStopTurnOutcome } from '../hooks/useActiveChatSessionMessaging';
@@ -293,6 +312,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     transcriptMock.messages = [];
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
+    realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
     steerOrchestrationTurnMock.mockResolvedValue({ outcome: 'steered' });
   });
@@ -354,6 +374,37 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       turnId: 'turn-child-3',
       apiBase: 'http://localhost:3242',
     });
+  });
+
+  test('background-only work offers neither queued Steer nor turn Stop', async () => {
+    realControlsMock.enabled = true;
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'running',
+        lifecycleState: 'completed',
+      }),
+      session: buildSession({
+        status: 'idle',
+        queuedMessages: ['next question'],
+        orchestrationProvider: 'claude',
+        orchestrationStatus: 'running',
+        currentSessionId: 'thread-alpha',
+        conversationActivity: {
+          conversationId: 'thread-alpha',
+          asOfSequence: 10,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      }),
+    });
+    await waitFor(() => {
+      expect(queuedMessagesPropsMock.current).not.toBeNull();
+      expect(chatInputPropsMock.current).not.toBeNull();
+    });
+    expect(queuedMessagesPropsMock.current?.canSteer).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Stop the current turn' }),
+    ).toBeNull();
   });
 
   test('a failed session with nothing recorded says so, rather than showing an empty banner', () => {

@@ -24,7 +24,7 @@ describe('gate-for report', () => {
       veritasGuidanceForPaths(['docs/plans/issue-class-prevention.md']),
     ).toContain('no matching rules');
   });
-  it('marks every scoped gate RUNS for a surface that feeds all five', () => {
+  it('marks every scoped gate RUNS for a surface that feeds all four', () => {
     const report = gateReport({
       changedPaths: [
         'src-ui/src/App.tsx',
@@ -35,7 +35,6 @@ describe('gate-for report', () => {
       baseSha,
     });
     expect(report).not.toContain('skipped');
-    expect(report).toContain('node scripts/check-prepush-ui-bundle.mjs');
     expect(report).toContain('node scripts/check-prepush-sdk-barrel.mjs');
     expect(report).toContain('node scripts/check-prepush-static-gates.mjs');
     expect(report).toContain(

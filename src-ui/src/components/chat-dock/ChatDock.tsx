@@ -56,6 +56,7 @@ import { useConversationActivityFeed } from '../../hooks/orchestration/useConver
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
   useChatDockActions,
@@ -79,7 +80,7 @@ import {
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
-  isSessionExecutionActive,
+  isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import {
@@ -556,7 +557,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [orchestrationSessions],
   );
-  const openChatItems = useOpenChats(agents, orchestrationSessions);
+  // archive#3391: the inboxes name models through the catalog, as Home does.
+  const { resolveModelLabel } = useCatalogModelLabel();
+  const openChatItems = useOpenChats(
+    agents,
+    orchestrationSessions,
+    resolveModelLabel,
+  );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
     sessions: orchestrationSessions,
@@ -594,6 +601,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       agents,
       chatItems: openChatItems,
       currentSessionIdByConversation,
+      resolveModelLabel,
     }).map((item) => {
       const conversation = inventoryById.get(item.id);
       if (!conversation) return item;
@@ -612,6 +620,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryById,
     openChatItems,
     orchestrationSessions,
+    resolveModelLabel,
   ]);
   const acknowledgeTaskConversation = useCallback(
     (item: { id: string; conversationUpdatedAt?: string }) => {
@@ -623,7 +632,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [acknowledgeConversation],
   );
-  const activeSessionCount = sessions.filter(isSessionExecutionActive).length;
+  const activeSessionCount = sessions.filter(isSessionWorkActive).length;
 
   // Dock CHROME (snap/geometry/dragging) lives in `chrome` now — owned by
   // the persistent DockShell (or, for a full-screen placement, this
