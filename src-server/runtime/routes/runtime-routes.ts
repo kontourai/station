@@ -243,6 +243,7 @@ import {
 } from '../../routes/mcp/station-control-mcp-route.js';
 import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js';
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
+import { createAgentNotificationRoutes } from '../../routes/operations/agent-notifications.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
@@ -429,6 +430,11 @@ import { StationKitObservabilityRegistry } from '../../services/kits/kit-observa
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import {
+  AgentNotificationGate,
+  agentNotificationSessionContext,
+  scheduleAgentNotificationVia,
+} from '../../services/notifications/agent-notification-gate.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -596,6 +602,7 @@ import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invo
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
+  isAgentOriginatedRequest,
   resolveStationControlCallerForRequest,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
@@ -5512,6 +5519,36 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
+      // #2584: agents use `notify_user`, never this caller-chosen source.
+      isAgentOriginatedRequest,
+    }),
+  );
+  // #2584 `notify_user`'s REST side. The caller is re-derived from the
+  // forwarded credential on every request. Preferences are the owner default
+  // (`all`) until the stored preferences land with the delivery router
+  // (#2586), which passes them to the gate here.
+  context.app.route(
+    '/api/notifications/agent',
+    createAgentNotificationRoutes({
+      isInternalRequest: isStationInternalRequest,
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      gate: new AgentNotificationGate({
+        schedule: scheduleAgentNotificationVia(notificationService),
+        isHosted: () =>
+          hostedTenantRegistry !== undefined ||
+          isHostedTenantExecutionRequired(),
+        sessionContext: (sessionId) =>
+          agentNotificationSessionContext(
+            context.orchestrationService.firstStartedMetadataOfThread(
+              sessionId,
+            ),
+          ),
+        logger: context.logger,
+      }),
     }),
   );
   context.app.route(

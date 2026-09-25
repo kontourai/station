@@ -70,6 +70,14 @@ const SC_READ_ONLY_TOOL_NAMES = [
   // archive#4079: a pure board-face read (BoardStore#read); the
   // pin/unpin/move verbs that write to it are classified mutating below.
   'board_read',
+  // #2584: NOT a pure read — it writes one inbox record — but it belongs in
+  // the auto-approved set, like `navigate_to`'s UI side effect. It exists for
+  // the moment the user is away; an approval prompt would wait for exactly
+  // the person it is trying to reach. What bounds it instead is the route:
+  // the record is addressed only to the calling session's own readers,
+  // capped, redacted, rate-limited per root session and per Station, and
+  // muted by the user's preferences. It changes no Station configuration.
+  'notify_user',
 ];
 
 /**

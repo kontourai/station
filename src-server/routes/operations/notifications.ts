@@ -29,6 +29,13 @@ export function createNotificationRoutes(
       sessionId: string,
       authority: SessionReadAuthority,
     ) => boolean;
+    /**
+     * #2584: whether the request declares itself a station-control agent
+     * tool call (`isAgentOriginatedRequest`). Such a request may not create
+     * a notification here, where it could choose its own `source`, category
+     * and metadata; agents use `notify_user`.
+     */
+    isAgentOriginatedRequest?: (request: Request) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -80,23 +87,45 @@ export function createNotificationRoutes(
   });
 
   // Schedule a new notification
-  app.post('/', validate(notificationCreateSchema), async (c) => {
-    const body = getBody(c);
-    const provisional = {
-      ...body,
-      id: '',
-      source: body.source ?? 'api',
-    } as Notification;
-    if (!canReadNotification(provisional, c.req.raw)) {
-      return c.json({ success: false, error: 'Notification not found' }, 404);
-    }
-    const notification = await notificationService.schedule(
-      body.source ?? 'api',
-      body,
-    );
-    notificationOps.add(1, { op: 'schedule' });
-    return c.json({ success: true, data: notification }, 201);
-  });
+  app.post(
+    '/',
+    async (c, next) => {
+      // Before body validation, so an agent is pointed at the tool whatever
+      // it sent. The declaration may only restrict: its absence proves
+      // nothing (see `isAgentOriginatedRequest`), so this closes the
+      // documented path, not every path an agent with a shell could take.
+      if (options.isAgentOriginatedRequest?.(c.req.raw)) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Agents cannot create notifications here. Use the station-control notify_user tool.',
+            code: 'agent_notification_requires_tool',
+          },
+          403,
+        );
+      }
+      await next();
+    },
+    validate(notificationCreateSchema),
+    async (c) => {
+      const body = getBody(c);
+      const provisional = {
+        ...body,
+        id: '',
+        source: body.source ?? 'api',
+      } as Notification;
+      if (!canReadNotification(provisional, c.req.raw)) {
+        return c.json({ success: false, error: 'Notification not found' }, 404);
+      }
+      const notification = await notificationService.schedule(
+        body.source ?? 'api',
+        body,
+      );
+      notificationOps.add(1, { op: 'schedule' });
+      return c.json({ success: true, data: notification }, 201);
+    },
+  );
 
   // Clear ordinary/resolved activity while preserving active approvals.
   app.delete('/activity', async (c) => {

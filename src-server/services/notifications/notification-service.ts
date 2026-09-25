@@ -86,6 +86,8 @@ export type NotificationMarkReadOutcome =
   | 'no-envelope'
   | 'not-found';
 
+export type NotificationScheduleOutcome = 'created' | 'updated' | 'unchanged';
+
 export interface NotificationServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
   acquireMutationLock?: FileMutationLock;
@@ -219,6 +221,23 @@ export class NotificationService {
     source: string,
     opts: ScheduleNotificationOpts,
   ): Promise<Notification> {
+    return (await this.scheduleWithOutcome(source, opts)).notification;
+  }
+
+  /**
+   * {@link schedule}, plus what the call did to the store (#2584): `created`
+   * a new record, `updated` an existing one in place through its dedupe tag
+   * (silently: no event), or left it `unchanged` because that record was
+   * dismissed or is action-leased. Callers that report an outcome to someone
+   * read it from here rather than guessing from the returned record.
+   */
+  async scheduleWithOutcome(
+    source: string,
+    opts: ScheduleNotificationOpts,
+  ): Promise<{
+    notification: Notification;
+    outcome: NotificationScheduleOutcome;
+  }> {
     const now = new Date().toISOString();
     const metadata = scheduleMetadata(opts.metadata);
     const { notification, created, updated } = await this.mutate((all) => {
@@ -350,7 +369,10 @@ export class NotificationService {
         this.scheduleExpiryTimer(notification);
     }
 
-    return toPublicNotification(notification);
+    return {
+      notification: toPublicNotification(notification),
+      outcome: created ? 'created' : updated ? 'updated' : 'unchanged',
+    };
   }
 
   async dismiss(

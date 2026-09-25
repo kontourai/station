@@ -112,6 +112,39 @@ describe('wireWebPushDelivery', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  test('#2584: agent-* notifications classify but never reach the legacy fan-out (the delivery router owns them, #2586)', async () => {
+    const eventBus = new EventBus();
+    const send = vi
+      .fn<WebPushService['send']>()
+      .mockResolvedValue('sent' as WebPushSendResult);
+    const devicePairing = fakeDevicePairing([
+      { deviceId: 'device-1', subscription: subscription('a') },
+    ]);
+    wireWebPushDelivery(eventBus, devicePairing, { send }, quietLogger());
+
+    for (const category of [
+      'agent-info',
+      'agent-attention',
+      'agent-done',
+      'agent-failed',
+    ]) {
+      eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+        ...APPROVAL_NOTIFICATION,
+        id: category,
+        source: 'agent',
+        category,
+      });
+    }
+    // The same listener still pushes a classified system category.
+    eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, APPROVAL_NOTIFICATION);
+    await flushMicrotasks();
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][1]).toMatchObject({
+      category: 'approval-request',
+    });
+  });
+
   test('fan-out: sends to every subscribed device for one approval-request delivery', async () => {
     const eventBus = new EventBus();
     const send = vi

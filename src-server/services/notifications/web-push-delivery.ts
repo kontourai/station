@@ -31,6 +31,7 @@ import type {
   ServerEventName,
   WebPushSubscription,
 } from '@kontourai/station-contracts';
+import { AGENT_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
@@ -47,6 +48,10 @@ export interface WebPushDeliveryDevicePairing {
   }>;
   clearPushSubscription(deviceId: string): unknown;
 }
+
+const AGENT_NOTIFICATION_CATEGORY_SET: ReadonlySet<string> = new Set(
+  Object.values(AGENT_NOTIFICATION_CATEGORIES),
+);
 
 interface WebPushDeliveryLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
@@ -133,7 +138,13 @@ export function wireWebPushDelivery(
       const notification = message.data as unknown as Notification | undefined;
       if (
         !notification ||
-        !classifyNotificationCategory(notification.category)
+        !classifyNotificationCategory(notification.category) ||
+        // #2584: agent notifications (`notify_user`) classify, but must not
+        // reach this legacy fan-out, which pushes to every subscribed device
+        // with no audience, preference, quiet-hours or focus policy. They
+        // are delivered in-app (SSE) until the delivery router applies that
+        // policy and replaces this listener (#2586).
+        AGENT_NOTIFICATION_CATEGORY_SET.has(notification.category)
       ) {
         return;
       }

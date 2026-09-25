@@ -20,6 +20,7 @@ import { registerAgentTools } from '../station-control-agent-tools.js';
 import { registerBoardTools } from '../station-control-board-tools.js';
 import { registerCatalogTools } from '../station-control-catalog-tools.js';
 import { StationControlToolRegistry } from '../station-control-mcp-server.js';
+import { registerNotifyTools } from '../station-control-notify-tools.js';
 import { registerOperationsTools } from '../station-control-operations-tools.js';
 import { registerPlatformTools } from '../station-control-platform-tools.js';
 
@@ -31,6 +32,7 @@ function registeredToolNames(): string[] {
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerPlatformTools(registry);
+  registerNotifyTools(registry);
   const registeredTools = (server as unknown as Record<string, unknown>)
     ._registeredTools as Record<string, unknown> | undefined;
   expect(registeredTools).toBeDefined();
@@ -104,6 +106,9 @@ describe('station-control tool classification', () => {
         // returns nothing an install can consume, so it needs no
         // platform-mutation approval.
         'validate_plugin',
+        // #2584: writes one rate-limited inbox record; an approval prompt
+        // would wait for the away user it is trying to reach.
+        'notify_user',
       ]),
     );
   });
