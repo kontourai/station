@@ -62,8 +62,12 @@ const PAYLOAD_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const THUMBPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 /** An ActivityKit push-to-start token: whole bytes, lowercase hex. */
 const IOS_TOKEN_PATTERN = /^(?:[0-9a-f]{2}){32,100}$/;
-/** An APNs broadcast channel id (base64 as Apple issues it). */
-export const APNS_CHANNEL_ID_PATTERN = /^[A-Za-z0-9+/_=-]{8,128}$/;
+/**
+ * An APNs broadcast channel id: standard base64 as Apple issues it, and
+ * exactly the gateway's pattern (deploy/push-gateway/src/apns-request.ts),
+ * so the Station stores every id the gateway hands out and none it refuses.
+ */
+export const APNS_CHANNEL_ID_PATTERN = /^[A-Za-z0-9+/]{4,128}={0,2}$/;
 /**
  * The gateway's proof that a channel was created for this Station's key
  * (`v1.` + base64url HMAC today); opaque to the Station.

@@ -2,14 +2,14 @@
  * The publisher's iOS (Live Activity) path end to end: a real pairing
  * registry, push key and both registration files on a temp home, and a fake
  * gateway that verifies the Station signature with the REAL gateway
- * verifier, holds every body to the documented shape
+ * verifier, holds every body to the gateway's own request parsers
  * (docs/design/notification-delivery.md, "iOS"), keeps its own channels and
  * opens the sealed card the way the widget does.
  *
- * The body shape is asserted here rather than by importing the gateway's
- * iOS parser, which lands separately (#2513 slice A); when both are on
- * main, `expectLiveActivityShape`/`expectChannelShape` should give way to
- * that parser, as the FCM tests use `parseSendRequest`.
+ * Every body goes through the gateway's own APNs request parsers
+ * (`parseLiveActivityRequest`, `parseChannelRequest`); any refusal fails the
+ * test. push-gateway-apns-contract.test.ts runs the publisher against the
+ * whole gateway, answers included.
  */
 import { createDecipheriv } from 'node:crypto';
 import {
@@ -28,6 +28,10 @@ import {
 } from '@kontourai/station-contracts/native-push';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  parseChannelRequest,
+  parseLiveActivityRequest,
+} from '../../../../deploy/push-gateway/src/apns-request.js';
 import { verifyStationRequest } from '../../../../deploy/push-gateway/src/station-auth.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
@@ -66,70 +70,11 @@ interface GatewayCall {
   card?: Record<string, string>;
 }
 
-const COMMON_KEYS = [
-  'alert',
-  'bundleId',
-  'environment',
-  'event',
-  'registrationId',
-  'sealed',
-  'timestamp',
-];
-const CHANNEL_AUTH = /^v1\.[A-Za-z0-9_-]{43}$/;
-
-/**
- * The documented `/v1/apns/live-activity` body (design REVISION 1), checked
- * at gateway time `nowS`: a start carries no channel; update and end carry
- * the channel and its `channelAuth`.
- */
-function expectLiveActivityShape(body: Record<string, unknown>, nowS: number) {
-  const extra =
-    body.event === 'start'
-      ? ['pushToStartToken', 'staleAt']
-      : body.event === 'update'
-        ? ['channelAuth', 'channelId', 'staleAt']
-        : ['channelAuth', 'channelId', 'dismissAt'];
-  expect(Object.keys(body).sort()).toEqual([...COMMON_KEYS, ...extra].sort());
-  expect(['start', 'update', 'end']).toContain(body.event);
-  expect(NATIVE_PUSH_IOS_BUNDLES).toContain(body.bundleId);
-  expect(['production', 'sandbox']).toContain(body.environment);
-  if (body.event !== 'start') {
-    expect(typeof body.channelId).toBe('string');
-    expect(body.channelAuth).toMatch(CHANNEL_AUTH);
-  }
-  expect(body.registrationId).toMatch(/^[A-Za-z0-9_-]{22,64}$/);
-  expect(body.sealed).toMatch(/^[A-Za-z0-9_-]+$/);
-  expect(String(body.sealed).length).toBeLessThanOrEqual(3400);
-  expect(typeof body.alert).toBe('boolean');
-  expect(Number.isSafeInteger(body.timestamp)).toBe(true);
-  expect(Math.abs(Number(body.timestamp) - nowS)).toBeLessThanOrEqual(120);
-  if (body.event === 'start')
-    expect(body.pushToStartToken).toMatch(/^[0-9a-f]{64,200}$/);
-  if (body.event !== 'end') {
-    expect(Number.isSafeInteger(body.staleAt)).toBe(true);
-    expect(Number(body.staleAt)).toBeGreaterThan(nowS);
-    expect(Number(body.staleAt)).toBeLessThanOrEqual(nowS + 8 * 3600);
-  } else {
-    expect(Number.isSafeInteger(body.dismissAt)).toBe(true);
-    expect(Number(body.dismissAt)).toBeGreaterThanOrEqual(nowS);
-    expect(Number(body.dismissAt)).toBeLessThanOrEqual(nowS + 4 * 3600);
-  }
-}
-
-/** The documented `/v1/apns/channels` body: deletion only. */
-function expectChannelShape(body: Record<string, unknown>) {
-  expect(Object.keys(body).sort()).toEqual([
-    'bundleId',
-    'channelAuth',
-    'channelId',
-    'environment',
-    'op',
-  ]);
-  expect(body.op).toBe('delete');
-  expect(NATIVE_PUSH_IOS_BUNDLES).toContain(body.bundleId);
-  expect(['production', 'sandbox']).toContain(body.environment);
-  expect(body.channelAuth).toMatch(CHANNEL_AUTH);
-}
+/** Every harness in a test: none may have sent a body the gateway refuses. */
+const harnesses: Array<{ refused: string[] }> = [];
+afterEach(() => {
+  for (const h of harnesses.splice(0)) expect(h.refused).toEqual([]);
+});
 
 function openCard(sealed: string, registration: NativePushRegistration) {
   const bytes = Buffer.from(sealed, 'base64url');
@@ -228,7 +173,16 @@ function harness(
     const call: GatewayCall = { path, body };
     const nowS = Math.floor(clock / 1000);
     if (path === '/v1/apns/live-activity') {
-      expectLiveActivityShape(body, nowS);
+      // The gateway's own parser: a body it would refuse is a 400 here too.
+      const parsed = parseLiveActivityRequest(
+        bytes,
+        NATIVE_PUSH_IOS_BUNDLES,
+        nowS,
+      );
+      if (!parsed.ok) {
+        refused.push(parsed.reason);
+        return Response.json({ error: parsed.reason }, { status: 400 });
+      }
       const registration = registered.get(String(body.registrationId));
       if (!registration) throw new Error('unknown registrationId');
       call.card = openCard(String(body.sealed), registration);
@@ -237,7 +191,11 @@ function harness(
         orderViolations.push(`${previous} then ${body.timestamp}`);
       lastTimestamp.set(String(body.registrationId), Number(body.timestamp));
     } else if (path === '/v1/apns/channels') {
-      expectChannelShape(body);
+      const parsed = parseChannelRequest(bytes, NATIVE_PUSH_IOS_BUNDLES);
+      if (!parsed.ok) {
+        refused.push(parsed.reason);
+        return Response.json({ error: parsed.reason }, { status: 400 });
+      }
     } else if (path !== '/v1/fcm/send') {
       throw new Error(`unexpected gateway path ${path}`);
     }
@@ -365,6 +323,7 @@ function harness(
         })
       : null;
   };
+  harnesses.push({ refused });
   return {
     homeDir,
     pairing,
@@ -540,7 +499,7 @@ describe('agent-activity publisher: iOS Live Activities', () => {
       bundleId: 'io.kontourai.station',
       environment: 'production',
       channelId,
-      channelAuth: expect.stringMatching(CHANNEL_AUTH),
+      channelAuth: expect.stringMatching(/^v1\.[A-Za-z0-9_-]{43}$/),
     });
     expect(h.channels.size).toBe(0);
     expect(

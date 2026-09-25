@@ -328,19 +328,23 @@ describe('NativePushIosRegistrationStore', () => {
         queueChannelDelete: {
           bundleId: 'io.kontourai.station',
           environment: 'production',
-          channelId: `channel-${String(i).padStart(4, '0')}`,
+          channelId: `channel${String(i).padStart(4, '0')}`,
           channelAuth: CHANNEL_AUTH,
           deleteAt: i,
         },
       });
     const deletes = ios.list().get('device-1')?.channelDeletes ?? [];
     expect(deletes).toHaveLength(16);
-    expect(deletes[0]?.channelId).toBe('channel-0004');
+    expect(deletes[0]?.channelId).toBe('channel0004');
   });
 
   test.each([
     ['an unknown field', { extra: 1 }],
     ['a registration-level channel id', { channelId: CHANNEL }],
+    [
+      'an activity whose channel id is not standard base64',
+      { activity: { ...ACTIVITY, channelId: 'dHN0_c3JjaA==' } },
+    ],
     [
       'an activity without its channel',
       { activity: { startedAt: 1, runId: RUN_ID } },
