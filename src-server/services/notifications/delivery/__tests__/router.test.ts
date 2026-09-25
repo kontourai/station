@@ -1,6 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
@@ -12,7 +10,8 @@ import {
   SERVER_EVENTS,
   type ServerEventName,
 } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import type { EventBus } from '../../../orchestration/event-bus.js';
 import {
   NOTIFICATION_PREFERENCES_FILE,
@@ -31,6 +30,8 @@ import {
   type NotificationDeliveryRouterOptions,
   wireNotificationDeliveryRouter,
 } from '../router.js';
+
+const makeTempDir = trackTempDirs();
 
 const NOW = Date.UTC(2026, 8, 24, 12, 0, 0);
 const PHONE: SurfaceId = 'device:phone';
@@ -350,7 +351,7 @@ describe('NotificationDeliveryRouter', () => {
   });
 
   test("a project muted by the envelope's source.projectId (what the inbox Mute sends) is not pushed", () => {
-    const home = mkdtempSync(join(tmpdir(), 'router-mute-'));
+    const home = makeTempDir('router-mute-');
     try {
       const store = new NotificationPreferencesStore(home);
       const envelope = agentEnvelope({
@@ -394,15 +395,12 @@ describe('NotificationDeliveryRouter', () => {
   describe('unreadable preferences (a corrupted file)', () => {
     let home: string;
     beforeEach(() => {
-      home = mkdtempSync(join(tmpdir(), 'router-prefs-'));
+      home = makeTempDir('router-prefs-');
       writeFileSync(
         join(home, NOTIFICATION_PREFERENCES_FILE),
         '{"schemaVersion":1,"agentNotifications":"off"', // truncated
         { mode: 0o600 },
       );
-    });
-    afterEach(async () => {
-      await rm(home, { recursive: true, force: true });
     });
 
     test('an agent notification is not pushed: its mute cannot be honoured', () => {

@@ -1,13 +1,3 @@
-/**
- * #2586: the production composition of notification delivery. Drives the
- * real `wireNotificationDelivery` (the function `configureRuntimeSupportServices`
- * calls) so dropping or miswiring a dependency — the read authority a device
- * resolves to, the store the escalation re-check reads — fails here.
- */
-import { mkdtempSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import type {
   Notification,
@@ -19,11 +9,14 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { WebPushService } from '../../../services/notifications/web-push-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { pairedDevicePrincipal } from '../../bootstrap/orchestration-request-principal.js';
 import { wireNotificationDelivery } from '../notification-delivery-wiring.js';
+
+const makeTempDir = trackTempDirs();
 
 const device = (overrides: Partial<PairedDevice>): PairedDevice =>
   ({
@@ -79,11 +72,10 @@ function agentNotice(): Notification {
 
 let home: string;
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'delivery-wiring-'));
+  home = makeTempDir('delivery-wiring-');
 });
-afterEach(async () => {
+afterEach(() => {
   vi.useRealTimers();
-  await rm(home, { recursive: true, force: true });
 });
 
 function wire(
