@@ -294,7 +294,9 @@ describe('NotificationService envelope (#2583)', () => {
         { dedupeTag: 'scheduler:nightly', category: 'job-failure' },
       );
       await expect(
-        svc.schedule('api', {
+        // Same source, so this reaches the envelope-rewrite refusal (a different
+        // source is refused earlier, #2597).
+        svc.schedule('agent', {
           category: 'job-failure',
           title: 'Overwrite',
           dedupeTag: 'scheduler:nightly',
