@@ -114,6 +114,8 @@ class BrandMarkBoundary extends Component<
   }
 
   componentDidCatch() {
+    // Later mounts re-request the chunk. A browser that caches the failed
+    // import replays it until reload; this instance stays an empty tile.
     LazyBrandMark = lazy(loadBrandMarks);
   }
 

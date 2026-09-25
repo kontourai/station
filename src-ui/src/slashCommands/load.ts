@@ -9,7 +9,10 @@ export function loadSlashCommands(): Promise<void> {
   pending ??= Promise.all([import('./builtins'), import('./tools')]).then(
     () => undefined,
     (error: unknown) => {
-      // A failed chunk fetch must not poison every later dispatch.
+      // A failed chunk fetch must not poison every later dispatch. This only
+      // re-requests the import; whether the browser fetches it again or
+      // replays its cached failure until reload is the browser's call (the
+      // same assumption LazyBoundary's Retry makes).
       pending = undefined;
       throw error;
     },
