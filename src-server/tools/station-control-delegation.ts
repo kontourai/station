@@ -232,6 +232,8 @@ export interface DelegateTaskInput {
   delegation?: AgentDelegationContext;
   /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
   delegationAttestation?: string;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.stationControlToolCall`. */
+  stationControlToolCall?: true;
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
@@ -323,6 +325,13 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * which verifies it; another Station holds a different key.
    */
   delegationAttestation?: string;
+  /**
+   * #2601: set only by the station-control tools themselves. Their
+   * `delegation` is a model's claim, settled by `delegationToForward` before
+   * any forward; a Station route's own call already carries the context its
+   * `resolveRequestDelegation` settled, and forwards it as it is.
+   */
+  stationControlToolCall?: true;
 };
 
 /**
@@ -4368,11 +4377,11 @@ export async function delegateTask(
     );
     // #2601: settled before the authority recheck below, so no await sits
     // between that recheck and the forward.
-    const forwarded = orchestrationService
-      ? input.delegation
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, false)
+      : input.delegation
         ? { delegation: input.delegation }
-        : {}
-      : await delegationToForward(selectedTarget, input, false);
+        : {};
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -5229,13 +5238,14 @@ export async function executeExecutionTargetMessage(
       fullAccessGrant: _fullAccessGrant,
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
+      stationControlToolCall: _stationControlToolCall,
       ...remoteInput
     } = input;
-    const forwarded = orchestrationService
-      ? input.delegation
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, true)
+      : input.delegation
         ? { delegation: input.delegation }
-        : {}
-      : await delegationToForward(selectedTarget, input, true);
+        : {};
     return postForegroundMessage(
       selectedTarget,
       forwarded.delegation

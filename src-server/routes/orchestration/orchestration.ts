@@ -481,6 +481,19 @@ function normalizeExecutionTarget(
 // the message-shaped fields) and the structural walker (every string field
 // of every exported schema here) in
 // __tests__/orchestration-chat-input-limits.test.ts.
+const agentDelegationContextSchema = z.object({
+  mode: z.literal('isolated-child'),
+  depth: z.number().int().min(1).max(64),
+  maxDepth: z.number().int().min(1).max(64),
+  parentAgentSlug: z.string().min(1).max(64),
+  parentConversationId: z.string().min(1).max(512).optional(),
+  rootAgentSlug: z.string().min(1).max(64),
+  rootConversationId: z.string().min(1).max(512).optional(),
+  allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  denyApprovals: z.boolean().optional(),
+});
+
 export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
@@ -490,7 +503,7 @@ export const delegateTaskSchema = z.object({
    * derives the context from a verified caller, keeps it only when Station's
    * own engine attested it, and passes a peer Station's forward through.
    */
-  delegation: z.lazy(() => agentDelegationContextSchema).optional(),
+  delegation: agentDelegationContextSchema.optional(),
   delegationAttestation: z.string().min(1).max(128).optional(),
   /**
    * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
@@ -571,19 +584,6 @@ export const foregroundMessageObjectSchema = z.object({
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
-});
-
-const agentDelegationContextSchema = z.object({
-  mode: z.literal('isolated-child'),
-  depth: z.number().int().min(1).max(64),
-  maxDepth: z.number().int().min(1).max(64),
-  parentAgentSlug: z.string().min(1).max(64),
-  parentConversationId: z.string().min(1).max(512).optional(),
-  rootAgentSlug: z.string().min(1).max(64),
-  rootConversationId: z.string().min(1).max(512).optional(),
-  allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
-  blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
-  denyApprovals: z.boolean().optional(),
 });
 
 function requireMessageOrAttachment(

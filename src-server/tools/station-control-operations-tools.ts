@@ -756,6 +756,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           ? { delegationAttestation: _delegationAttestation }
           : {}),
         ...(_userId ? { userId: _userId } : {}),
+        stationControlToolCall: true,
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
@@ -975,6 +976,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           ? { delegationAttestation: _delegationAttestation }
           : {}),
         userId: _userId,
+        stationControlToolCall: true,
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: see the matching comment on
