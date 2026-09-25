@@ -69,6 +69,13 @@ export function handleNotificationDeliveredToast(
   if (!title) return;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
+  if (metadata?.envelope) {
+    // #2587: attribution + Open, loaded on first enveloped delivery.
+    void import('../lib/notification-envelope-toast').then((module) =>
+      module.showEnvelopeNotificationToast(data, NOTIFICATION_TOAST_DISPLAY_MS),
+    );
+    return;
+  }
   toastStore.show(
     title + (body ? ` — ${body}` : ''),
     undefined,

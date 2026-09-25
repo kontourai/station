@@ -10,6 +10,7 @@ import {
 import { Hono } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
+import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
   getBody,
@@ -159,6 +160,34 @@ export function createNotificationRoutes(
     return c.json({ success: true });
   });
 
+  // Record that this surface read an enveloped notification (#2587).
+  //
+  // The surface id is derived here, never taken from the body: a paired
+  // device is `device:<id>` from its verified credential, and any other
+  // caller is `local:<client session>` from the per-document
+  // `X-Station-Client-Session` header. A caller with neither cannot name a
+  // surface, so it is refused rather than recorded under an invented one.
+  app.post('/:id/read', async (c) => {
+    if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
+      return c.json({ success: false, error: 'Notification not found' }, 404);
+    }
+    const surfaceId = readerSurfaceId(c.req.raw);
+    if (!surfaceId) {
+      return c.json(
+        { success: false, error: 'A client session is required' },
+        400,
+      );
+    }
+    const outcome = await notificationService.markRead(
+      param(c, 'id'),
+      surfaceId,
+    );
+    if (outcome === 'not-found') {
+      return c.json({ success: false, error: 'Notification not found' }, 404);
+    }
+    return c.json({ success: true, data: { outcome } });
+  });
+
   // Snooze a notification
   app.post('/:id/snooze', validate(notificationSnoozeSchema), async (c) => {
     if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
@@ -189,6 +218,15 @@ export function createNotificationRoutes(
   });
 
   return app;
+}
+
+function readerSurfaceId(request: Request): string | undefined {
+  const origin = resolveClientOriginForRequest(request);
+  if (origin.actor.kind === 'device') return `device:${origin.actor.deviceId}`;
+  const clientSession = request.headers.get('x-station-client-session');
+  return clientSession && CLIENT_SESSION_ID_PATTERN.test(clientSession)
+    ? `local:${clientSession.toLowerCase()}`
+    : undefined;
 }
 
 function notificationSessionId(

@@ -102,7 +102,7 @@ const loadOutboundQueueFlushMount = () =>
     default: module.OutboundQueueFlushMount,
   }));
 
-import { useApprovalOsAlerts } from './hooks/useApprovalOsAlerts';
+import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
@@ -165,7 +165,7 @@ function App() {
 
   // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
-  useApprovalOsAlerts();
+  useNotificationOsAlerts();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
   // archive#1223: invalidate the persisted (cache-first) query whitelist the
