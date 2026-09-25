@@ -320,9 +320,11 @@ const VERBS: Record<string, VerbSpec> = {
   open: {
     group: 'Stations',
     summary: 'Open an authorized browser session for a running local Station',
-    usage: ['station open [--home=<directory>] [--instance=<name>]'],
+    usage: ['station open [--home=<directory>] [--instance=<name>] [--print]'],
     detail: [
       'Uses the selected local Station home and one-time browser authorization. Never starts or stops a backend.',
+      '--print prints the one-time sign-in link instead of launching a browser, for a browser this command cannot open (a simulator, another profile).',
+      'Each link is single use, and a new one replaces any earlier unspent link, including the one `station start` printed.',
     ],
   },
   target: {

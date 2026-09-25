@@ -56,15 +56,15 @@ export async function runOpenCommand(
   } = {},
 ): Promise<void> {
   const parsed = parseCoreArgs(args);
+  const { print, ...pathFlags } = parsed.flags;
   if (
     parsed.positionals.length ||
-    Object.keys(parsed.flags).some(
-      (key) => !['home', 'instance'].includes(key),
-    ) ||
-    Object.values(parsed.flags).some((value) => typeof value !== 'string')
+    (print !== undefined && print !== true) ||
+    Object.keys(pathFlags).some((key) => !['home', 'instance'].includes(key)) ||
+    Object.values(pathFlags).some((value) => typeof value !== 'string')
   ) {
     throw new Error(
-      'Usage: station open [--home=<directory>] [--instance=<name>]',
+      'Usage: station open [--home=<directory>] [--instance=<name>] [--print]',
     );
   }
   const home = admitStationRuntimeHome(
@@ -98,14 +98,21 @@ export async function runOpenCommand(
       'This Station could not authorize the browser. Verify that the selected home belongs to the running instance.',
     );
   const visibleUrl = `http://localhost:${target.uiPort}/`;
-  if (
-    !(await (dependencies.open ?? openBrowser)(
-      `${visibleUrl}#station-ui-bootstrap=${token}`,
-    ))
-  ) {
+  const link = `${visibleUrl}#station-ui-bootstrap=${token}`;
+  const stdout = dependencies.stdout ?? console.log;
+  // #2612: for a browser this command cannot launch (a simulator, another
+  // profile). Minting replaced any unspent link, so say that too.
+  if (print === true) {
+    stdout(
+      `One-time sign-in link for Station ${id} (single use; it replaces any earlier unspent link):`,
+    );
+    stdout(link);
+    return;
+  }
+  if (!(await (dependencies.open ?? openBrowser)(link))) {
     throw new Error(
-      'Could not launch the browser. Open Station from its tray menu.',
+      'Could not launch the browser. Run `station open --print` to get a link to open yourself, or open Station from its tray menu.',
     );
   }
-  (dependencies.stdout ?? console.log)(`Opened Station ${id} at ${visibleUrl}`);
+  stdout(`Opened Station ${id} at ${visibleUrl}`);
 }

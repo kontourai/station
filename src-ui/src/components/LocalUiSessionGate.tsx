@@ -259,12 +259,15 @@ export function LocalUiSessionGate({
     }
     return (
       <section aria-label="Station access required">
-        {'message' in effectiveResolution && effectiveResolution.message && (
-          <p role="alert">{effectiveResolution.message}</p>
-        )}
         <LazyBoundary
           load={loadGuidedConnect}
           componentProps={{
+            // Inside the connect screen: it covers the viewport, so a message
+            // rendered beside it was never visible (#2612).
+            notice:
+              'message' in effectiveResolution
+                ? effectiveResolution.message
+                : undefined,
             onSessionEstablished: handleSessionEstablished,
             onExploreSample: () => setSampleOpen(true),
             onRelayOnboardingChange: setRelayOnboardingOpen,

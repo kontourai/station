@@ -16,10 +16,15 @@ import {
 import { PlatformBootstrap } from '../platform/PlatformProfileContext';
 
 vi.mock('../components/GuidedConnect', () => ({
-  GuidedConnect: () => (
-    <button type="button" onClick={() => {}}>
-      Complete pairing
-    </button>
+  // Renders the notice the gate hands it: the real screen covers the
+  // viewport, so the gate's only visible channel for "why" is this prop.
+  GuidedConnect: ({ notice }: { notice?: string }) => (
+    <>
+      {notice && <p role="alert">{notice}</p>}
+      <button type="button" onClick={() => {}}>
+        Complete pairing
+      </button>
+    </>
   ),
 }));
 
@@ -523,8 +528,9 @@ describe('a refusal and an unreachable host are different answers (#1654)', () =
 
     await screen.findByRole('button', { name: 'Complete pairing' });
     expect(screen.getByRole('alert').textContent).toContain(
-      'Local UI bootstrap was refused (403)',
+      'already used or replaced',
     );
+    expect(screen.getByRole('alert').textContent).toContain('(403)');
     // Never retried, and never followed by an identity read on this resolution:
     // the refusal is terminal. The count is the assertion.
     await settleForLongerThanTheLadder();
