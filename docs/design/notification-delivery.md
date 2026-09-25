@@ -575,7 +575,9 @@ the route answers 503. The gateway is deployed by hand
   ephemeral (inbound webhooks start ephemeral sessions, which
   `listSessionReadModel` leaves out), and a turn terminal leaves the session
   Done or Failed on the card (an aborted or cancelled turn folds to
-  `canceled`, which the card leaves off, so a stopped turn still alerts).
+  `canceled`, which the card leaves off, so a stopped turn still alerts). No
+  other source may set the mark: `schedule()` refuses it from REST
+  `POST /notifications`, providers and every other producer.
   One registry approval is on the card too: a Station-agent
   session relays each turn through `/chat`, so a tool approval there is both
   a registry approval and, republished by the adapter, the thread's
@@ -595,7 +597,16 @@ the route answers 503. The gateway is deployed by hand
   twin is marked when the approval registers, but the card's entry needs
   the adapter to receive the injected approval chunk; a relay stream that
   aborts in between leaves that approval with no phone alert (the inbox
-  still has it). Only this
+  still has it). A second known edge is timing: the mark says the card
+  carries the event, not that the card alerted. This channel decides once,
+  when the record is created, but the card alerts only on the state it
+  reads after its ~1 s coalescing and the 3 s per-phone floor, so a Done or
+  Failed superseded before the card sends (a queued follow-up or Flow step
+  starting the next turn at once, or `runtime.error` followed by
+  `turn.aborted`) is marked yet alerts nowhere. A finish also alerts only
+  within two minutes of happening (`FINISH_ALERT_WINDOW_MS`), while a
+  failed card send backs off for up to five minutes, so a finish whose card
+  lands late raises no alert either. The inbox keeps both. Only this
   alert channel reads the stamp: the two records of a Station-agent
   approval are still two notifications everywhere else. The exclusion
   does not look at the phone: with Live Activities turned off, the

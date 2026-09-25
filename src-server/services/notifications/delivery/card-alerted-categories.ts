@@ -29,7 +29,11 @@
  *   stream-orchestrator.ts stamps `orchestrationThreadId` on exactly those
  *   approvals.
  *
- * The writers set `onActivityCard` from what the card is built from, at the
+ * Only approval-inbox.ts and turn-completion-notifications.ts may set
+ * `onActivityCard`: the untrusted write path (REST `POST /notifications`,
+ * notification providers) refuses it from any other source
+ * (notification-service.ts), where it could only silence its own alert.
+ * The two writers set it from what the card is built from, at the
  * moment they write:
  *
  * - The session must be in the read model. `listSessionReadModel` leaves
@@ -61,6 +65,18 @@
  * silence watchdog, between the inject and the next chunk leaves the marked
  * twin with no card entry behind it, so that approval raises no phone alert.
  * It is still in the inbox.
+ *
+ * Known edge, timing: the mark says the card carries the event, not that it
+ * alerted. The alert channel decides once, when the record is created (only
+ * NOTIFICATION_DELIVERED reaches a device), while the card alerts only on
+ * the state it reads after its ~1 s coalescing (agent-activity-publisher.ts)
+ * and the 3 s per-phone send floor. A Done or Failed superseded before the
+ * card sends (a queued follow-up or Flow step starting the next turn at
+ * once, or a `runtime.error` followed by `turn.aborted`, which folds to
+ * `canceled`) is marked yet alerts nowhere. And a finish alerts only within
+ * `FINISH_ALERT_WINDOW_MS` (2 min, agent-activity-card.ts) of happening,
+ * while a card send that fails waits on backoff of up to 5 min, so a finish
+ * whose card lands late raises no alert either. Both stay in the inbox.
  *
  * The check does not look at whether this phone's card is actually on: on a
  * phone with the card turned off (or Live Activities disabled on iOS), the
