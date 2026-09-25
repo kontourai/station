@@ -1872,7 +1872,6 @@ const SCREENS: Screen[] = [
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'motion-gallery',
             category: 'test',
             title: 'Reduced motion is active',
             body: 'Notification state remains visible without entrance motion.',
@@ -2335,7 +2334,6 @@ const SCREENS: Screen[] = [
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Overlay gallery toast',
             body: 'A toast captured at normal (non-reduced) motion.',
@@ -2369,7 +2367,6 @@ const SCREENS: Screen[] = [
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Toast with an action',
             body: 'This toast carries a View action button.',
