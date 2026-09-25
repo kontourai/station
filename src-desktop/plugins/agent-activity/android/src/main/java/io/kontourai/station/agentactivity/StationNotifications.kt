@@ -95,13 +95,19 @@ internal enum class NotificationAction { POST, CANCEL, DROP }
  *   retraction (FCM does not order messages). A newer alert for the same id
  *   (the Station re-delivered it, or its content changed) replaces it.
  * - An expired alert, or one dated implausibly far ahead, is dropped.
- * - A retract always cancels (cancelling nothing is harmless) and is
- *   remembered, so the alert it retracted cannot come back.
+ * - A retract cancels unless it is older than the newest delivery seen for
+ *   the id (a newer re-show of the notification must not be taken back by a
+ *   retract of an earlier one that FCM delivered late). Cancelling nothing
+ *   is harmless, and the retract is remembered, so the alert it retracted
+ *   cannot come back.
  */
 internal class NotificationHistory(val seen: List<Pair<String, Long>>) {
   fun decide(notification: StationNotification, now: Long): Pair<NotificationAction, NotificationHistory> {
     val previous = seen.lastOrNull { it.first == notification.id }?.second
-    if (notification.retract) return NotificationAction.CANCEL to remember(notification, previous)
+    if (notification.retract) {
+      if (previous != null && notification.createdAt < previous) return NotificationAction.DROP to this
+      return NotificationAction.CANCEL to remember(notification, previous)
+    }
     if (previous != null && notification.createdAt <= previous) return NotificationAction.DROP to this
     if (now >= notification.expiresAt || notification.createdAt - now > MAX_CLOCK_AHEAD_MS) {
       return NotificationAction.DROP to this

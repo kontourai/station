@@ -58,12 +58,29 @@ class StationNotificationsTest {
     )
   }
 
+  /**
+   * NATIVE_PUSH_SEALED_TEST_VECTOR (the card): same payload key and
+   * registration as the notification vector, so only the AAD differs.
+   */
+  private val cardSealed =
+    "AAECAwQFBgcICQoLPCCjaKCXnXLpY62pgNhJXLLntgXdSm5NCUrRtCxYLYowIZ_RnvAjqUWVTty5thkJzHVC-Cqywq" +
+      "5a83V4bMHPzMEE9krj4RZRLGSaXt-tIspZ6b0LAAZxUt-J7Lkd0pWvqpstj9IovGPBbFbTOxADRZgQA8KXrEv9Epk4" +
+      "v92HHn7JPXan2PXncWmCPMhLszi7aZiKW1BOo2i2fakHiqCGmPL7wmGvlrRe0wu42rns59Dk7qZN7MIdnBG6s7Mtsf" +
+      "ucdCXk2kytpusbdLKFziiv7ZUHpxdedNOHFM75qDQm-9h5AeWNygJiRiYuzmHBaCMw3OfcG-lZ5stICAgG5ehguzbg" +
+      "0Ly_uytKHqkbc85yX3Kq3bio89Tg21MVT2AyxIp7MTTseIr1_iewEBg7ZvDSp8ejP3xztv8nqAEtJqcNddn5pU8au1" +
+      "BI2ZPQSxBt4y1SoyrntKwktTh5k0hWvYF4z2kfyem1ZEL7EJ-UE6eFUhi0zS9J3sEi7b2EWLmuIwZGzPesvKU98Z3R" +
+      "AIwQSCF-p4xuCd_6RHD4H3GyIz-S5DR2Hi5J-fMXG9iYqDqa2NbJPAA9MnDsR4yJmZeI9d8_us1a4rLJPtFdqmqQdY" +
+      "yGxMFWrOh4YsInKEEUM74P"
+
   @Test
   fun onlyItsOwnStationKindAndRegistrationOpenIt() {
-    // Under the card's AAD the same bytes do not authenticate, and the reverse.
-    assertNull(unseal(payloadKey, registrationId, stationSealed))
-    val card = "AAECAwQFBgcICQoLPCCjaKCXnXLpY62pgNhJXLLntgXdSm5NCUrRtCxYLYowIZ_RnvAjqUWVTty5thkJzHVC-Cqywq"
-    assertNull(openStationNotification(registration, push + ("sealed" to card)))
+    // Same key, registration and bytes: each opens only under its own AAD.
+    assertNotNull("the card opens as a card", unseal(payloadKey, registrationId, cardSealed))
+    assertNull(
+      "a card never opens as a notification",
+      unseal(payloadKey, registrationId, cardSealed, NOTIFICATION_AAD_PREFIX + registrationId)
+    )
+    assertNull("a notification never opens as a card", unseal(payloadKey, registrationId, stationSealed))
     assertNull("another Station key", openStationNotification(registration, push + ("station_key" to "J".repeat(43))))
     assertNull("another registration", openStationNotification(registration, push + ("device_id" to "reg_0123456789abcdef")))
     assertNull(
@@ -99,6 +116,19 @@ class StationNotificationsTest {
     assertEquals(NotificationAction.DROP, beforeAlert.decide(alert(), sentAt + 3_000).first)
     // Retracting again is harmless.
     assertEquals(NotificationAction.CANCEL, retracted.decide(retract(sentAt + 2_000), sentAt + 4_000).first)
+  }
+
+  @Test
+  fun anOlderRetractCannotCancelANewerReShow() {
+    // Shown, retracted, then shown again (the Station re-delivered it).
+    val (_, shown) = NotificationHistory(emptyList()).decide(alert(), sentAt)
+    val (_, retracted) = shown.decide(retract(sentAt + 2_000), sentAt + 2_000)
+    val (reShown, again) = retracted.decide(alert(sentAt + 5_000), sentAt + 5_000)
+    assertEquals(NotificationAction.POST, reShown)
+    // FCM redelivers the first retract late: the re-shown one stays.
+    assertEquals(NotificationAction.DROP, again.decide(retract(sentAt + 2_000), sentAt + 6_000).first)
+    // A retract newer than the re-show takes it back.
+    assertEquals(NotificationAction.CANCEL, again.decide(retract(sentAt + 7_000), sentAt + 7_000).first)
   }
 
   @Test

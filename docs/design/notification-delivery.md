@@ -321,7 +321,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   phone (`StationNotifications.kt`) each urgency has its own notification
   channel; one Android notification per id per registration; a history of
   the newest `created_at` seen per id (64 ids) drops a duplicate or older
-  delivery and an alert arriving after its own retract; an expired alert is
+  delivery and an alert arriving after its own retract (and a retract older
+  than the newest delivery of its id cancels nothing); an expired alert is
   not shown; and, as for card alerts, nothing is posted while the app is in
   the foreground.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on

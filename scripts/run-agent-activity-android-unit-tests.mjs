@@ -66,6 +66,8 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'opensTheStationsNotificationVector',
     'aDuplicateIdIsDropped',
     'aRetractCancelsAndTheAlertItRetractedCannotComeBack',
+    'anOlderRetractCannotCancelANewerReShow',
+    'onlyItsOwnStationKindAndRegistrationOpenIt',
   ],
 });
 const testResults = join(
