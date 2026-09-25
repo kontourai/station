@@ -14,11 +14,16 @@ type AnyLoad = () => Promise<{ default: ComponentType<any> }>;
 type AnyLazy = LazyExoticComponent<ComponentType<any>>;
 
 /**
- * One lazy component per loader, shared by every boundary that mounts it, so
- * a surface whose chunk has loaded renders without suspending when another
- * instance mounts (a list of icons would otherwise blank each new row for a
- * tick). A loader rebuilt every render gets a new entry every render, exactly
- * as a per-instance lazy did.
+ * One lazy component per loader, for boundaries that opt in with
+ * `shareAcrossMounts`: a surface whose chunk has loaded then renders without
+ * suspending when another instance mounts (a list of icons would otherwise
+ * blank each new row for a tick).
+ *
+ * Opt-in, not the default: sharing moves a later mount's child into the same
+ * commit as its parent, so the child's effects run BEFORE the parent's instead
+ * of after them. Existing callers were written against the deferred mount —
+ * turning it on for all of them broke five tests in four suites, including a
+ * pairing reconciler whose decline no longer withdrew the waiting banner.
  */
 const sharedLazy = new WeakMap<AnyLoad, AnyLazy>();
 
@@ -99,6 +104,13 @@ export interface LazyBoundaryProps<Props extends object> {
   pending: ReactNode;
   /** Rendered when the import rejects, with a retry that re-runs it. */
   unavailable?: (onRetry: () => void) => ReactNode;
+  /**
+   * Share one lazy component with every boundary on the same (module-level)
+   * `load`, so a mount after the chunk has loaded renders in the same commit.
+   * Only for leaf content whose parent does not depend on the child mounting
+   * after its own effects; see `sharedLazy`.
+   */
+  shareAcrossMounts?: boolean;
 }
 
 function LazyAttempt<Props extends object>({
@@ -127,12 +139,16 @@ export function LazyBoundary<Props extends object>({
   componentProps,
   pending,
   unavailable,
+  shareAcrossMounts = false,
 }: LazyBoundaryProps<Props>) {
   const [attempt, setAttempt] = useState(0);
-  // `attempt` is a dependency on purpose: a retry must look the loader up
-  // again, after the failed component has been forgotten.
+  // `attempt` is a dependency on purpose: a retry must build (or, when
+  // shared, look up again after forgetting the failed one) a new component.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
-  const component = useMemo(() => lazyFor(load), [load, attempt]);
+  const component = useMemo(
+    () => (shareAcrossMounts ? lazyFor(load) : lazy(load)),
+    [load, attempt, shareAcrossMounts],
+  );
 
   return (
     <LazyImportErrorBoundary

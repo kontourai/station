@@ -90,7 +90,7 @@ function safeSameOriginImage(value: unknown): string | undefined {
   }
 }
 
-/** Module-level: `LazyBoundary` shares one lazy component per loader. */
+/** Module-level: a shared `LazyBoundary` keys its lazy component on it. */
 const loadBrandMarks = () => import('./BrandMarks');
 
 /**
@@ -117,6 +117,7 @@ function Mark({ brand }: { brand: BrandKey }) {
           componentProps={{ brand }}
           pending={null}
           unavailable={noMark}
+          shareAcrossMounts
         />
       );
   }

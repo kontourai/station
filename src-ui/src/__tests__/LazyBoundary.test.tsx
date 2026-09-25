@@ -92,7 +92,7 @@ describe('LazyBoundary', () => {
     expect(await screen.findByText('Loaded conversation')).toBeTruthy();
   });
 
-  test('a second boundary on the same loader renders at once, without a second import', async () => {
+  test('a boundary that shares its loader renders at once on a later mount, without a second import', async () => {
     const load = vi.fn(async () => ({
       default: ({ label }: { label: string }) => <div>{label}</div>,
     }));
@@ -102,6 +102,7 @@ describe('LazyBoundary', () => {
         load={load}
         componentProps={{ label: 'First mark' }}
         pending={<div>Pending first</div>}
+        shareAcrossMounts
       />,
     );
     expect(await screen.findByText('First mark')).toBeTruthy();
@@ -111,6 +112,7 @@ describe('LazyBoundary', () => {
         load={load}
         componentProps={{ label: 'Second mark' }}
         pending={<div>Pending second</div>}
+        shareAcrossMounts
       />,
     );
     // Synchronously after mount: no pending state, no second import.
@@ -119,7 +121,7 @@ describe('LazyBoundary', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  test('after a rejection, a boundary mounted later imports again', async () => {
+  test('after a shared rejection, a boundary mounted later imports again', async () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
@@ -134,14 +136,48 @@ describe('LazyBoundary', () => {
         componentProps={{}}
         pending={null}
         unavailable={() => <div>Unavailable</div>}
+        shareAcrossMounts
       />,
     );
     expect(await screen.findByText('Unavailable')).toBeTruthy();
     first.unmount();
 
-    render(<LazyBoundary load={load} componentProps={{}} pending={null} />);
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{}}
+        pending={null}
+        shareAcrossMounts
+      />,
+    );
     expect(await screen.findByText('Loaded later')).toBeTruthy();
     expect(load).toHaveBeenCalledTimes(2);
     consoleError.mockRestore();
+  });
+
+  test('without sharing, each mount suspends and imports on its own, as before', async () => {
+    const load = vi.fn(async () => ({
+      default: ({ label }: { label: string }) => <div>{label}</div>,
+    }));
+
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{ label: 'First surface' }}
+        pending={null}
+      />,
+    );
+    expect(await screen.findByText('First surface')).toBeTruthy();
+
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{ label: 'Second surface' }}
+        pending={<div>Pending second</div>}
+      />,
+    );
+    expect(screen.getByText('Pending second')).toBeTruthy();
+    expect(await screen.findByText('Second surface')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
