@@ -40,6 +40,10 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { resolveGitInfo } from '@kontourai/station-shared/git';
 import {
+  OWNED_DEPENDENCY_INSTALL_SCRIPT,
+  ownedDependencyInstallerUnavailable,
+} from '@kontourai/station-shared/owned-dependency-installer';
+import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
   readInstanceRegistry,
@@ -4989,35 +4993,7 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
  * dependency edit. The `station` launcher's cold bootstrap uses `ci` because
  * it installs a freshly cloned checkout nobody has edited yet.
  */
-const UPGRADE_DEPENDENCY_INSTALL_COMMAND = 'npm run dependencies:install';
-
-/**
- * Why the pulled tree cannot run the owned installer, or `null` when it can.
- *
- * `git pull` can leave any tree the upstream branch happens to name, so the
- * two things `npm run dependencies:install` needs are checked before it is
- * spawned: the script binding and the script itself. There is no fallback —
- * a raw `npm install` in a pinned-pnpm workspace is the defect this replaced,
- * not a degraded mode — so the caller refuses and says which file is missing.
- */
-function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
-  const manifestPath = join(gitRoot, 'package.json');
-  let script: unknown;
-  try {
-    script = (
-      JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-        scripts?: Record<string, unknown>;
-      }
-    ).scripts?.['dependencies:install'];
-  } catch (error) {
-    return `${manifestPath} could not be read as JSON (${error instanceof Error ? error.message : String(error)})`;
-  }
-  if (typeof script !== 'string')
-    return `${manifestPath} does not define the "dependencies:install" script`;
-  const lifecyclePath = join(gitRoot, 'scripts', 'dependency-lifecycle.mjs');
-  if (!existsSync(lifecyclePath)) return `${lifecyclePath} is missing`;
-  return null;
-}
+const UPGRADE_DEPENDENCY_INSTALL_COMMAND = `npm run ${OWNED_DEPENDENCY_INSTALL_SCRIPT}`;
 
 export interface UpgradeOptions extends BuildOptions {
   /**

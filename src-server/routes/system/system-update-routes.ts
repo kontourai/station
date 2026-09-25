@@ -22,6 +22,10 @@ import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
 } from '@kontourai/station-shared/ports';
+import {
+  OWNED_DEPENDENCY_INSTALL_SCRIPT,
+  ownedDependencyInstallerUnavailable,
+} from '@kontourai/station-shared/owned-dependency-installer';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
@@ -119,38 +123,10 @@ const SUPERVISION_REMEDY: Record<
 };
 
 /**
- * The repository's owned dependency bootstrap, the same command `station
- * upgrade` runs (packages/cli lifecycle.ts, station#1747): it installs through
- * the pinned pnpm and arms only reviewed lifecycle hooks. A raw `npm install`
- * is not a fallback — that is the defect the owned lifecycle replaced.
+ * The repository's owned dependency bootstrap, the same script `station
+ * upgrade` runs (station#1747); see `@kontourai/station-shared/owned-dependency-installer`.
  */
-const CORE_UPDATE_DEPENDENCY_INSTALL = ['run', 'dependencies:install'];
-
-/**
- * Why the pulled tree cannot run the owned installer, or `null` when it can —
- * the same two facts `station upgrade` checks before spawning it (the script
- * binding and the lifecycle script). Mirrored rather than imported: the server
- * does not reach into the CLI package's internals.
- */
-function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
-  const manifestPath = join(gitRoot, 'package.json');
-  let script: unknown;
-  try {
-    script = (
-      JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-        scripts?: Record<string, unknown>;
-      }
-    ).scripts?.['dependencies:install'];
-  } catch (error) {
-    return `${manifestPath} could not be read as JSON (${errorMessage(error)})`;
-  }
-  if (typeof script !== 'string') {
-    return `${manifestPath} does not define the "dependencies:install" script`;
-  }
-  const lifecyclePath = join(gitRoot, 'scripts', 'dependency-lifecycle.mjs');
-  if (!existsSync(lifecyclePath)) return `${lifecyclePath} is missing`;
-  return null;
-}
+const CORE_UPDATE_DEPENDENCY_INSTALL = ['run', OWNED_DEPENDENCY_INSTALL_SCRIPT];
 
 function restartVerificationDeadlineAt(startedAt: string): string | null {
   const startedAtMs = Date.parse(startedAt);
@@ -1043,7 +1019,10 @@ export function createSystemUpdateRoutes(
       // #2673: the pulled tree may have moved dependencies, so install them
       // through the repository's owned lifecycle exactly as `station upgrade`
       // does — and refuse, as it does, when the pulled tree lacks it.
-      const installerUnavailable = ownedDependencyInstallerUnavailable(gitRoot);
+      const installerUnavailable = ownedDependencyInstallerUnavailable(
+        gitRoot,
+        errorMessage,
+      );
       if (installerUnavailable !== null) {
         return c.json(
           {
