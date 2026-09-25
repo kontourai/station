@@ -7,6 +7,7 @@ import {
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { desktopInstallationId } from './installationId';
 import { notifyNatively } from './notify';
+import { invokeTauri } from './tauriInvoke';
 
 /**
  * Desktop OS alerts for enveloped notifications (#2587), read from the
@@ -53,6 +54,19 @@ import { notifyNatively } from './notify';
  *
  * A feed that cannot be read (older Station: 404; `installation_required`,
  * `device_not_eligible`, `surface_required`; 5xx; network) posts nothing.
+ *
+ * **One consumer (#2608).** A desktop host that consumes the feed natively
+ * (`notification_feed_native_consumer` answers `true`,
+ * `src-desktop/src/notification_feed.rs`) is the ONLY consumer: this module
+ * then never reads the feed and never posts from it, so the two cannot both
+ * alert. The native consumer keeps reading while the window is hidden in the
+ * tray, which this document cannot. The answer is fixed for the process, so
+ * the role never changes hands at runtime. The one handoff is a cursor this
+ * module stored under an older build: it is handed to the host once
+ * (`notification_feed_adopt_cursor`) and deleted here, and the host resumes
+ * from it — nothing between the two is lost, and nothing before it repeats.
+ * A host without the command (an older shell) answers `false`, and this
+ * module stays the consumer as before.
  */
 export interface DeliveryFeedDeps {
   installationId(): Promise<string | undefined>;
@@ -71,6 +85,17 @@ export interface DeliveryFeedDeps {
   postedAlerts?: PostedAlerts;
   loadCursor(key: string): StoredCursor | undefined;
   saveCursor(key: string, value: StoredCursor): void;
+  /**
+   * Whether the native host consumes this feed itself (#2608). Absent means
+   * it does not.
+   */
+  nativeConsumer?(): Promise<boolean>;
+  /** Hand a stored cursor to the native consumer; `true` once it owns it. */
+  handOffCursor?(input: {
+    origin: string;
+    cursor: StoredCursor;
+  }): Promise<boolean>;
+  removeCursor?(key: string): void;
 }
 
 export interface StoredCursor {
@@ -94,6 +119,10 @@ export const FEED_REQUEST_TIMEOUT_MS = 10_000;
 export const FEED_READ_DEADLINE_MS = 15_000;
 
 let inFlight: { scopeKey: string; promise: Promise<number> } | null = null;
+/** The host's answer, asked once per document: it cannot change. */
+let nativeConsumerAnswer: Promise<boolean> | null = null;
+/** Connections whose stored cursor was already offered to the host. */
+const handedOff = new Set<string>();
 /** The connection the latest poll was for; older reads stop applying. */
 let activeScopeKey: string | null = null;
 export interface PostedAlerts {
@@ -120,6 +149,8 @@ export function resetDeliveryFeedState(): void {
   inFlight = null;
   activeScopeKey = null;
   recentlyPosted.clear();
+  nativeConsumerAnswer = null;
+  handedOff.clear();
 }
 
 function defaultDeps(apiBase: string): DeliveryFeedDeps {
@@ -171,6 +202,27 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
         /* Storage full or unavailable: the next reload seeds instead. */
       }
     },
+    nativeConsumer: () => {
+      nativeConsumerAnswer ??= invokeTauri<unknown>(
+        'notification_feed_native_consumer',
+      ).then(
+        (value) => value === true,
+        () => false,
+      );
+      return nativeConsumerAnswer;
+    },
+    handOffCursor: async ({ origin, cursor }) =>
+      (await invokeTauri<unknown>('notification_feed_adopt_cursor', {
+        origin,
+        cursor,
+      })) === true,
+    removeCursor: (key) => {
+      try {
+        localStorage.removeItem(`${CURSOR_STORAGE_PREFIX}${key}`);
+      } catch {
+        /* Unavailable storage: the host ignores a second offer anyway. */
+      }
+    },
   };
 }
 
@@ -196,22 +248,31 @@ export function pollDeliveryFeed(
   });
   const entry = {
     scopeKey,
-    promise: Promise.race([readOnce(scopeKey, deps, live), deadline]).finally(
-      () => {
-        clearTimeout(timer);
-        if (inFlight === entry) inFlight = null;
-      },
-    ),
+    promise: Promise.race([
+      readOnce(apiBase, scopeKey, deps, live),
+      deadline,
+    ]).finally(() => {
+      clearTimeout(timer);
+      if (inFlight === entry) inFlight = null;
+    }),
   };
   inFlight = entry;
   return entry.promise;
 }
 
 async function readOnce(
+  apiBase: string,
   scopeKey: string,
   deps: DeliveryFeedDeps,
   live: () => boolean,
 ): Promise<number> {
+  // Asked before any read, inside the single flight: when the host consumes
+  // the feed, this document never reads it, so it cannot post an entry the
+  // host also posts.
+  if (deps.nativeConsumer && (await deps.nativeConsumer())) {
+    if (live()) await handOffStoredCursor(apiBase, scopeKey, deps);
+    return 0;
+  }
   const installationId = await deps.installationId();
   if (!live()) return 0;
   if (state?.scopeKey !== scopeKey) {
@@ -296,6 +357,31 @@ async function readOnce(
   }
   commit(feed.cursor);
   return count;
+}
+
+async function handOffStoredCursor(
+  apiBase: string,
+  scopeKey: string,
+  deps: DeliveryFeedDeps,
+): Promise<void> {
+  if (handedOff.has(scopeKey)) return;
+  handedOff.add(scopeKey);
+  const stored = deps.loadCursor(scopeKey);
+  if (!stored || !deps.handOffCursor) return;
+  let origin: string;
+  try {
+    origin = new URL(apiBase).origin;
+  } catch {
+    return;
+  }
+  try {
+    if (await deps.handOffCursor({ origin, cursor: stored }))
+      deps.removeCursor?.(scopeKey);
+  } catch {
+    // The command failed: offer it again on the next poll. The host starts
+    // from its first read if no offer lands inside its grace.
+    handedOff.delete(scopeKey);
+  }
 }
 
 function isStoredCursor(value: unknown): value is StoredCursor {
