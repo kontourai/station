@@ -24,6 +24,7 @@ import {
   useEngineConnectionsQuery,
   useImportAppHomeSnapshotMutation,
   useImportCredentialProfileSnapshotMutation,
+  useReconnectACPConnectionMutation,
   useSaveAgentConnectionMutation,
   useSetCredentialProfileEnrollmentMutation,
   useSetCredentialRecoveryAutomaticPolicyMutation,
@@ -48,6 +49,7 @@ import {
 import {
   type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
+  useACPConnections,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -228,6 +230,27 @@ export function AgentConnectionView({
   });
 
   const testMutation = useTestAgentConnectionMutation();
+
+  // The handshake retry the refusal sentence names (enriched-agents.ts). The
+  // bridge's live connection set is the same projection the reconnect route
+  // 404s against, so it is also the gate: a non-ACP engine gets no button
+  // that could only ever answer "Connection not found".
+  const { data: acpBridgeConnections = [] } = useACPConnections();
+  const reconnectMutation = useReconnectACPConnectionMutation({
+    onSuccess: () => {
+      setError(null);
+      // The engine's readiness travels through the engine-connections
+      // projection, not the ACP status query the mutation invalidates.
+      void refetchRuntimes();
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message);
+    },
+  });
+  const selectedAcpConnectionId =
+    form && acpBridgeConnections.some((entry) => entry.id === form.id)
+      ? form.id
+      : null;
 
   // #1054 stopped excluding Station here: the Station engine is a row this
   // view legitimately shows, and its test asserts so. This branch renames the
@@ -436,7 +459,20 @@ export function AgentConnectionView({
                 size={28}
               />
             }
-          />
+          >
+            {selectedAcpConnectionId && (
+              <button
+                type="button"
+                className="editor-btn"
+                disabled={reconnectMutation.isPending}
+                onClick={() =>
+                  reconnectMutation.mutate(selectedAcpConnectionId)
+                }
+              >
+                {reconnectMutation.isPending ? 'Reconnecting…' : 'Reconnect'}
+              </button>
+            )}
+          </DetailHeader>
           <div className="agent-editor__section">
             {/*
              * Three static spans used to sit here with the first hardcoded

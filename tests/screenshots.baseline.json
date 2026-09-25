@@ -233,13 +233,13 @@
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
-      "sha256": "250706b553dc7e4c8e1298bf5b3a29296094c542c42803f54a31b5ea81297abf"
+      "sha256": "a8f197a502923987052edaf7e482d59f1b30a5b4f0a5ef309944bdceb4b55fdb"
     },
     {
       "name": "overlay-new-project-layout-control",
       "width": 1440,
       "height": 900,
-      "sha256": "b04be2fc552d6b244bdac55c02b937616eb87bd681a9b348c1dd85ea68af9e3b"
+      "volatile": true
     },
     {
       "name": "overlay-new-project-modal",
