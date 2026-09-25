@@ -593,6 +593,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // because the scan is `git grep` over TRACKED files and a fixture written
   // to a loose directory would prove nothing about what runs in CI.
   'scripts/__tests__/content-integrity-gate.test.ts',
+  // The excluded-names gate is `git grep` over TRACKED files too, so its test
+  // commits fixtures into throwaway repos and runs the gate as a child
+  // process to assert the real exit status. Single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/excluded-names-gate.test.ts',
   // station#1792: drives the newly fixed ci:fast static entry against real
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
