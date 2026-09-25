@@ -15,6 +15,7 @@ import {
   acquireFileMutationLockAsync,
   type FileMutationLock,
 } from '@kontourai/station-shared/lifecycle-events';
+import { parseNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import {
   classifyNotificationCategory,
   NOTIFICATION_TTL_MS,
@@ -74,6 +75,16 @@ type NotificationClearMutation =
       next?: StoredNotification[];
     };
 type NotificationClearResult = NotificationClearMutation['result'];
+/**
+ * `read` — this call recorded the first reader. `already-read` — an earlier
+ * reader won; nothing changed. `no-envelope` — a legacy (or malformed-envelope)
+ * record, which carries no read marker and is left untouched.
+ */
+export type NotificationMarkReadOutcome =
+  | 'read'
+  | 'already-read'
+  | 'no-envelope'
+  | 'not-found';
 
 export interface NotificationServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
@@ -92,6 +103,13 @@ export class NotificationStoreValidationError extends Error {
   constructor() {
     super('Notification store is invalid');
     this.name = 'NotificationStoreValidationError';
+  }
+}
+
+export class NotificationEnvelopeValidationError extends Error {
+  constructor() {
+    super('Notification envelope is invalid');
+    this.name = 'NotificationEnvelopeValidationError';
   }
 }
 
@@ -202,6 +220,7 @@ export class NotificationService {
     opts: ScheduleNotificationOpts,
   ): Promise<Notification> {
     const now = new Date().toISOString();
+    const metadata = scheduleMetadata(opts.metadata);
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
       // lock, so a stale schedule cannot restore a concurrent dismissal or
@@ -255,7 +274,7 @@ export class NotificationService {
             ...(opts.actions === undefined ? {} : { actions: opts.actions }),
             ...(opts.body === undefined ? {} : { body: opts.body }),
             metadata: {
-              ...jsonSafeMetadata(opts.metadata),
+              ...metadata,
               ...(opts.dedupeTag === undefined
                 ? {}
                 : { dedupeTag: opts.dedupeTag }),
@@ -294,7 +313,7 @@ export class NotificationService {
           : { ttl: opts.ttl ?? defaultTtl }),
         ...(opts.actions === undefined ? {} : { actions: opts.actions }),
         metadata: {
-          ...jsonSafeMetadata(opts.metadata),
+          ...metadata,
           ...(opts.dedupeTag === undefined
             ? {}
             : { dedupeTag: opts.dedupeTag }),
@@ -353,6 +372,61 @@ export class NotificationService {
         >,
       );
     }
+  }
+
+  /**
+   * Records the first surface to read an enveloped notification in
+   * `metadata.envelope.readAt/readBy` and emits NOTIFICATION_UPDATED. First
+   * reader wins: a later read never overwrites the marker and emits nothing.
+   *
+   * `status` is untouched — the store has no read state, and status stays
+   * authoritative for delivery/expiry/dismissal. `revision` is deliberately
+   * NOT bumped: it is the CAS generation for the expiry/delivery timers and
+   * the action lease (whose `revision` must equal the record's), and a read
+   * marker changes neither. Bumping it would silently cancel a pending expiry
+   * and make a leased record fail store validation.
+   *
+   * A record without a valid envelope is left untouched (`no-envelope`):
+   * synthesising one would invent a source/audience/urgency nothing derived.
+   * A dedupe update replaces metadata wholesale, so it also resets the marker
+   * — the content changed, so the record is unread again.
+   */
+  async markRead(
+    id: string,
+    surfaceId: string,
+  ): Promise<NotificationMarkReadOutcome> {
+    if (typeof surfaceId !== 'string' || !isCanonicalText(surfaceId)) {
+      throw new TypeError('markRead requires a surface id');
+    }
+    const readAt = new Date().toISOString();
+    const result = await this.mutate<
+      | { outcome: 'read'; notification: StoredNotification }
+      | { outcome: Exclude<NotificationMarkReadOutcome, 'read'> }
+    >((all) => {
+      const notification = all.find((candidate) => candidate.id === id);
+      if (!notification) return { result: { outcome: 'not-found' } };
+      const envelope = parseNotificationEnvelope(
+        notification.metadata?.envelope,
+      );
+      if (!envelope) return { result: { outcome: 'no-envelope' } };
+      if (envelope.readAt) return { result: { outcome: 'already-read' } };
+      notification.metadata = {
+        ...notification.metadata,
+        envelope: { ...envelope, readAt, readBy: surfaceId },
+      };
+      notification.updatedAt = readAt;
+      return { result: { outcome: 'read', notification }, next: all };
+    });
+    if (result.outcome !== 'read') return result.outcome;
+    notificationOps.add(1, { op: 'read' });
+    this.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_UPDATED,
+      toPublicNotification(result.notification) as unknown as Record<
+        string,
+        unknown
+      >,
+    );
+    return 'read';
   }
 
   private async dismissWithOptions(
@@ -1245,6 +1319,23 @@ function jsonSafeMetadata(
   return Object.fromEntries(
     Object.entries(metadata).filter(([, value]) => value !== undefined),
   );
+}
+
+/**
+ * `metadata.envelope` is a trusted, strictly shaped value (#2583): it is
+ * parsed on the way in and stored in its normalized form, so an in-memory
+ * envelope carrying a nested `undefined` cannot make the whole store document
+ * invalid (the failure `jsonSafeMetadata` exists for, one level down), and a
+ * malformed one is refused rather than persisted for readers to discard.
+ */
+function scheduleMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const safe = jsonSafeMetadata(metadata);
+  if (!Object.hasOwn(safe, 'envelope')) return safe;
+  const envelope = parseNotificationEnvelope(safe.envelope);
+  if (!envelope) throw new NotificationEnvelopeValidationError();
+  return { ...safe, envelope };
 }
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
