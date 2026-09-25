@@ -737,7 +737,7 @@
     "src-server/services/projects/__tests__/workspace-file-preview-service.test.ts": 3,
     "src-server/services/projects/__tests__/worktree-provisioning-service.test.ts": 4,
     "src-server/services/pull-requests/__tests__/conversation-pull-request-link-store.test.ts": 1,
-    "src-server/services/pull-requests/__tests__/pull-request-repository-context-resolver.test.ts": 6,
+    "src-server/services/pull-requests/__tests__/pull-request-repository-context-resolver.test.ts": 3,
     "src-server/services/relay/__tests__/relay-enrollment-journal.test.ts": 1,
     "src-server/services/scheduling/__tests__/external-monitor-ledger.test.ts": 3,
     "src-server/services/scheduling/__tests__/external-monitor-notifications.test.ts": 1,
