@@ -2983,9 +2983,10 @@ describe('the real workflow corpus', () => {
     // `main` went red on this line, not on the change that tripped it. A bare
     // count names whoever gates next rather than whoever moved it; the
     // contributing files are listed below so the next removal says which one.
-    expect(directCapacityJobs).toBe(7);
+    // 7 until #2416 moved CI Extended's coverage onto parallel hosted shards,
+    // which dropped `ci-extended.yml#coverage` from the fleet.
+    expect(directCapacityJobs).toBe(6);
     expect(capacityFiles.sort()).toEqual([
-      '.github/workflows/ci-extended.yml#coverage',
       '.github/workflows/ci-extended.yml#playwright-full',
       '.github/workflows/container-smoke.yml#smoke',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',

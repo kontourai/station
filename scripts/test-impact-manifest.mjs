@@ -54,9 +54,11 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * client fetcher, so each of the three has the SAME import graph: ~771 test
  * files, 9,035 tests, nearly the whole UI. That cannot fit ci:fast's
  * affected-test window on a two-core hosted runner (`run-ci-fast.mjs`: the
- * 720s lane minus its 220s static reserve), so fast-checks died with
- * "ci:fast exceeded its 12-minute feedback budget" and zero failures,
- * deterministically, for any change to these files.
+ * lane budget minus its 220s static reserve; then 720s, 900s since #2577),
+ * so fast-checks died with "ci:fast exceeded its 12-minute feedback budget"
+ * and zero failures, deterministically, for any change to these files.
+ * Whether that graph fits the larger window was not measured; the boundary
+ * stays.
  *
  * So each gets an explicit boundary instead of the related graph: the suites
  * that exercise the transport's OWN behaviour — streams, authentication and

@@ -51,7 +51,7 @@ STATION_TRANSFER_BASELINE_ROOT=../station-worktrees/4294-transfer-baseline-<main
 ```
 
 The capture reports are diagnostic transfer evidence, not completion evidence.
-Nothing slower belongs here. `ci:fast` remains the bounded twelve-minute feedback
+Nothing slower belongs here. `ci:fast` remains the bounded fifteen-minute feedback
 lane and `full:regression` remains the sole completion receipt; the hook holds
 only the subset that is cheap enough to run on every push *and* whose failure
 would otherwise land on `main` and stop every other lane.

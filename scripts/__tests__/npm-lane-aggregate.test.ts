@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   firstLaneDiagnostic,
   mapWithConcurrency,
@@ -343,6 +343,42 @@ describe('runLanesToCompletion (mocked spawn, station#4249 core behaviour)', () 
     expect(text).toContain('FAIL b');
     expect(text).not.toMatch(/FAIL a\b/);
     expect(text).not.toMatch(/FAIL c\b/);
+  });
+
+  test('reports each lane as it finishes, so a hung lane is the one missing (station#2621)', async () => {
+    const lanes = [
+      { id: 'quick', script: 'quick' },
+      { id: 'hung', script: 'hung' },
+    ];
+    const children = new Map<string, ReturnType<typeof mockChild>>();
+    const spawnFn = (_bin: string, args: string[]) => {
+      const script = args[args.indexOf('run') + 2] ?? args[2];
+      const child = mockChild();
+      children.set(script, child);
+      if (script === 'quick') setTimeout(() => child.emit('close', 0), 1);
+      return child;
+    };
+    const log: string[] = [];
+    const run = runLanesToCompletion({
+      lanes,
+      label: 'fixture',
+      spawnFn: spawnFn as never,
+      npmBin: 'npm',
+      log: (line: string) => {
+        log.push(line);
+      },
+      logError: (line: string) => {
+        log.push(line);
+      },
+    });
+    await vi.waitFor(() => expect(log.join('\n')).toContain('done quick'));
+    // The hung lane is still running: it has not reported, and no summary
+    // has printed, yet the finished lane is already visible.
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatch(/^\[fixture\] done quick in \d+\.\ds \(1\/2\)$/);
+    children.get('hung')?.emit('close', 1);
+    expect(await run).toBe(false);
+    expect(log.join('\n')).toContain('[fixture] FAILED hung');
   });
 
   test('returns true when every lane passes', async () => {
