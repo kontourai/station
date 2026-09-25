@@ -59,7 +59,10 @@ export interface NotificationDeliveryWiringDeps {
    * so it is inert until a phone sends one.
    */
   apnsAlert?: Omit<ApnsAlertChannelOptions, 'logger'>;
-  /** #2585 focus presence and its in-app liveness; inert until wired. */
+  /**
+   * #2585 focus presence and #2620 event-stream liveness. Absent: nothing
+   * reads as focused, so every surface is interrupted.
+   */
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
 }

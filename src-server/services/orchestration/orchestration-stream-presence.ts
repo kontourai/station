@@ -25,7 +25,7 @@
  * connected" roster can be read back (`roster()`) without a second identity
  * registry. This is purely additive to the ref-counting above: the
  * `countsBySubject` map and everything the push-on-completion gate reads
- * (`isConnected`/`hasAnyConnection`) are completely unaffected by roster
+ * (`isConnected`) are completely unaffected by roster
  * bounds — a connection that overflows the roster is still counted there,
  * exactly as before. Bounds mirror `ClientConnectionPresence`'s discipline
  * (`services/ssh/client-connection-presence.ts`): a total-tracked-principal
@@ -50,7 +50,7 @@ import type {
  * `ClientConnectionPresence`'s `CLIENT_CONNECTION_CAPACITY` (256) — see
  * `client-connection-presence.ts`. A principal beyond this cap is never
  * added to the roster; its underlying SSE connection(s) are unaffected and
- * still counted by `isConnected`/`hasAnyConnection`.
+ * still counted by `isConnected`.
  */
 const ORCHESTRATION_STREAM_PRESENCE_ROSTER_CAPACITY = 256;
 
@@ -133,11 +133,6 @@ export function orchestrationStreamPresenceSubjectForSession(
   );
 }
 
-/** Personal-mode compatibility for a persisted ownerless session. */
-export function anyPersonalOrchestrationStreamPresenceSubject(): OrchestrationStreamPresenceSubject {
-  return presenceSubject(['personal-any']);
-}
-
 export class OrchestrationStreamPresence {
   private readonly countsBySubject = new Map<string, number>();
   private readonly rosterBySubject = new Map<string, RosterRecord>();
@@ -199,7 +194,7 @@ export class OrchestrationStreamPresence {
     }
     if (this.rosterBySubject.size >= this.rosterCapacity) {
       // Roster capacity exceeded: this connection is still fully counted in
-      // `countsBySubject` above (isConnected/hasAnyConnection are
+      // `countsBySubject` above (isConnected is
       // unaffected) — it is only omitted from `roster()`'s reported list.
       this.onRosterOp?.('capacity');
       return;
@@ -242,21 +237,6 @@ export class OrchestrationStreamPresence {
         orchestrationStreamPresenceSubjectForSession(subject),
       );
     }
-    if (subject[presenceSubjectKey] === JSON.stringify(['personal-any'])) {
-      return this.hasAnyConnection();
-    }
     return (this.countsBySubject.get(subject[presenceSubjectKey]) ?? 0) > 0;
-  }
-
-  /**
-   * `true` when ANY user currently holds a live stream open. Used as the
-   * fallback signal for an ownerless session (`ownerlessSessionAccess:
-   * 'single-user-compat'` — see `SessionAuthorization.canReadSession`):
-   * there is no distinct owner identity to key presence by, so "is the
-   * single operator currently connected at all" is the closest available
-   * proxy for "is anyone watching this session".
-   */
-  hasAnyConnection(): boolean {
-    return this.countsBySubject.size > 0;
   }
 }

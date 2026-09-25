@@ -198,6 +198,66 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(screen.queryByTestId('streaming-message')).toBeNull();
   });
 
+  test('#2654: a projected open turn with running child work does not show the turn-over background banner', () => {
+    const openTurnWithChildWork = managedSession({
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-2',
+      status: 'sending',
+      backgroundTasks: [],
+      conversationActivity: {
+        conversationId: 'stream-honesty-session',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'turn-2',
+          threadId: 'stream-honesty-session',
+          startedAt: '2026-09-25T12:00:00.000Z',
+        },
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    });
+    renderList(openTurnWithChildWork, true);
+    // The live turn renders from the transcript window, not the streaming
+    // row — and it is still live, so the banner that means "the turn ended
+    // while work continues" must not claim otherwise.
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+    expect(screen.queryByText('Background agent working')).toBeNull();
+  });
+
+  test('#2654: local background tasks during a projected open turn also wait for the turn to end', () => {
+    const localTaskMidTurn = managedSession({
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-2',
+      status: 'sending',
+      backgroundTasks: [
+        { taskId: 'task-1', backgrounded: true, description: 'index repo' },
+      ],
+    });
+    renderList(localTaskMidTurn, true);
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+    expect(
+      screen.queryByText('Background agent working — index repo'),
+    ).toBeNull();
+  });
+
+  test('#2654: once the turn settles, local background tasks show the banner', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'idle',
+        orchestrationTurnOpen: false,
+        status: 'idle',
+        backgroundTasks: [
+          { taskId: 'task-1', backgrounded: true, description: 'index repo' },
+        ],
+      }),
+      true,
+    );
+    expect(
+      screen.getByText('Background agent working — index repo'),
+    ).toBeTruthy();
+  });
+
   test("#2304: the streaming row counts from the open turn's server start", () => {
     const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
     renderList(

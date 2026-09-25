@@ -87,12 +87,12 @@ async function fixture() {
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
+  const engine = new GateTestAdapter();
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    adapterRegistry: createGateTestRegistry(engine),
     eventBus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   cleanups.push(async () => {
     await service.shutdown();
@@ -102,6 +102,20 @@ async function fixture() {
     type: 'startSession',
     input: { threadId: THREAD, provider: 'claude' },
   });
+  // Owned by the routes' caller, as an engine records it: a session with no
+  // recorded owner accepts no one's command.
+  engine.events.push({
+    eventId: `${THREAD}-owner`,
+    provider: 'claude',
+    threadId: THREAD,
+    createdAt: new Date().toISOString(),
+    method: 'session.started',
+    sessionId: THREAD,
+    metadata: { userId: 'operator' },
+  } as never);
+  await vi.waitFor(() =>
+    expect(store.findSessionOwnerUserId(THREAD)).toBe('operator'),
+  );
 
   // An Agent store whose `builder` Agent starts at `previousDefault`.
   let previousDefault: string | undefined;
