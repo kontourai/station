@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Excluded-names gate: fails when any tracked file names a product Station
-// must not reference or borrow from (owner directive, 2026-09-25). Station's
-// code, comments, docs, tests and fixtures state their own reasons; a
-// reference to that product in any of them is a regression.
+// Excluded-names gate: fails when any tracked file names, or links to, a
+// product Station does not reference (owner directive, 2026-09-25: no name
+// and no links). Learning from a design is fine; Station's code, comments,
+// docs, tests and fixtures state their own reasons without naming it.
 //
 // The pattern is assembled from pieces below so that this file, and the
 // gate's own test, do not match it. That keeps the scan free of exemptions:
@@ -21,7 +21,8 @@ const ORG = ['ping', 'dotgg'].join('');
  * - the product and company names, however they are joined (`X code`,
  *   `X-code`, `X_code`, `X.code`, `Xcode`, `X  tools`, `XTools`, …);
  * - the product's per-user directory `.X` as a path segment (`~/.X`,
- *   `$HOME/.X`, `'.X'` in a path-join call, `\.X\` on Windows);
+ *   `$HOME/.X`, `'.X'` in a path-join call, `\.X\` on Windows), including
+ *   in prose (`~/.X by default`, `under $HOME/.X.`), but not `.Xx` or `x.X`;
  * - its web domain;
  * - the short possessive and adjective forms (`X's`, `X-style`), kept narrow
  *   so an EC2 instance family or a `T1/T2/T3` test-row label does not match;
@@ -30,7 +31,7 @@ const ORG = ['ping', 'dotgg'].join('');
 const QUOTES_AND_SEPARATORS = `\\\\/'"\``;
 export const EXCLUDED_NAMES_PATTERN = [
   `${NAME}[\\s._-]*(?:code|tools)`,
-  `(?:^|[~${QUOTES_AND_SEPARATORS}])\\.${NAME}(?:[${QUOTES_AND_SEPARATORS}]|$)`,
+  `(?:^|[~\\s(${QUOTES_AND_SEPARATORS}])\\.${NAME}(?![\\w-])`,
   `${NAME}\\.gg`,
   `\\b${NAME}(?:-style|'s)\\b`,
   ORG,

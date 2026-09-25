@@ -13,7 +13,7 @@
  * Version choice: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
  * used. Both were started on loopback with `--port 0` and answered `/readyz`
  * and `/api/devices` with the same device-list shape `LocalMobileDeviceHost`
- * parses; 0.10.1 is the version already proven in a shipping integration.
+ * parses; 0.10.1 is the version another shipping integration pins.
  * agent-device 0.21.12 is the current release and the version that same
  * integration pins.
  *
