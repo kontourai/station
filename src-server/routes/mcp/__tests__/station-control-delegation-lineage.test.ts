@@ -15,9 +15,8 @@
  * with (`execution-target-execution.ts` and `delegateTask` both stamp exactly
  * `input.delegation` into `session.started` metadata).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import type {
@@ -35,6 +34,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   loadOrCreateAgentRegistry,
   registerEngineConnection,
@@ -180,6 +180,9 @@ const peerReceived: Array<{
 let peerServer: ReturnType<typeof serve>;
 let peerBaseUrl: string;
 
+// Created first, so its after-hook removes the home only after the servers
+// that read it have closed (vitest runs after-hooks in reverse order).
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let home: string;
@@ -272,7 +275,7 @@ beforeAll(async () => {
 
   // A REAL home: stored Agents, plus `claude` and `codex` adopted as registry
   // defaults the way native engine adoption registers them.
-  home = mkdtempSync(join(tmpdir(), 'station-2601-lineage-'));
+  home = makeTempDir('station-2601-lineage-');
   const configLoader = new ConfigLoader({ projectHomeDir: home });
   // Seeds the home schema and the registry (`station` as its one default).
   await loadOrCreateAgentRegistry(configLoader);
@@ -343,7 +346,6 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
-  rmSync(home, { recursive: true, force: true });
 });
 
 beforeEach(() => {

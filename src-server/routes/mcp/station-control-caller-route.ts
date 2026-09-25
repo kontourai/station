@@ -19,6 +19,7 @@ import {
   type StationControlCallerRecordResolver,
 } from '../../runtime/mcp/station-control-caller.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { errorMessage } from '../schemas/schemas.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
@@ -61,7 +62,7 @@ export function createStationControlCallerRoutes(options: {
         code === 'delegation_depth_exceeded' ||
         code === 'delegation_lineage_unavailable'
       )
-        return c.json({ error: (error as Error).message, code }, 403, NO_STORE);
+        return c.json({ error: errorMessage(error), code }, 403, NO_STORE);
       throw error;
     }
   });
