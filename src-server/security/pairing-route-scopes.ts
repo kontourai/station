@@ -169,9 +169,10 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // #2585: focus presence. The one leaf is an explicit read-tier rule below.
   '/api/presence',
   '/api/mobile-devices',
-  // #2586: notification delivery preferences. Both leaves are explicit
-  // operate-tier rules below.
-  '/api/notifications',
+  // #2586: `/api/notifications` is deliberately NOT a family here. Its
+  // leaves (preferences, deliveries) are exact operate-tier rules below;
+  // anything else under it stays unmapped and is refused (fail closed)
+  // rather than inheriting a family tier nobody chose for it.
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope

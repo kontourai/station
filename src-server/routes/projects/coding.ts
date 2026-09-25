@@ -8,7 +8,7 @@ import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { type Context, Hono, type Next } from 'hono';
 import {
-  isOperatorInPerson,
+  isOperatorInPersonNotAgent,
   mayRunCommandsOnHost,
 } from '../../security/coding-authority.js';
 import {
@@ -855,10 +855,12 @@ export function createCodingRoutes(
       // #2412: confined like every read. The one exception is the New
       // Project form, which asks whether a folder it is ABOUT to make a
       // Project holds repositories: that question has no Project to name,
-      // and is answered for the operator in person only.
+      // and is answered for the operator in person only, never for a
+      // request that may be an agent's (Station's internal principal reads
+      // as the operator to `isOperatorInPerson` alone).
       const slug = c.req.query('projectSlug');
       let workspace: string;
-      if (!slug && isOperatorInPerson(c.req.raw)) {
+      if (!slug && isOperatorInPersonNotAgent(c.req.raw)) {
         const raw = c.req.query('path');
         if (!raw)
           return c.json({ success: false, error: 'path required' }, 400);

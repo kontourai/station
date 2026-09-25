@@ -585,7 +585,12 @@ export function configureRuntimeSupportServices(
     eventBus: context.eventBus,
     devicePairing: context.environmentSecurityService.devicePairing,
     signingKey: pushSigningKeyStore,
-    gateway: pushGateway ?? { sendUrl: '', audience: '' },
+    gateway: pushGateway ?? {
+      sendUrl: '',
+      liveActivityUrl: '',
+      channelsUrl: '',
+      audience: '',
+    },
     enabled: webPushEnabled && pushGateway !== null,
     logger: context.logger,
     // Each phone reads what its own paired device may read (see

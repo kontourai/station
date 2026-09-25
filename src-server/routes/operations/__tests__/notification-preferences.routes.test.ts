@@ -25,7 +25,10 @@ import {
   NOTIFICATION_PREFERENCES_FILE,
   NotificationPreferencesStore,
 } from '../../../services/notifications/notification-preferences.js';
-import { createNotificationPreferencesRoutes } from '../notification-preferences.js';
+import {
+  createNotificationDeliveryFeedRoutes,
+  createNotificationPreferencesRoutes,
+} from '../notification-preferences.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -44,16 +47,18 @@ beforeEach(() => {
   home = makeTempDir('notification-preferences-routes-');
   desktopHost = new DesktopHostChannel();
   app = new Hono();
+  const store = new NotificationPreferencesStore(home);
   app.route(
-    '/api/notifications',
-    createNotificationPreferencesRoutes(
-      new NotificationPreferencesStore(home),
-      {
-        desktopHost,
-        // Only the family phone may hold a feed.
-        isFeedDevice: (deviceId) => deviceId === 'phone',
-      },
-    ),
+    '/api/notifications/preferences',
+    createNotificationPreferencesRoutes(store),
+  );
+  app.route(
+    '/api/notifications/deliveries',
+    createNotificationDeliveryFeedRoutes({
+      desktopHost,
+      // Only the family phone may hold a feed.
+      isFeedDevice: (deviceId) => deviceId === 'phone',
+    }),
   );
 });
 
@@ -96,6 +101,16 @@ describe('GET/PUT /api/notifications/preferences', () => {
         matchPairingScopeRule(method, NOTIFICATION_PREFERENCES_PATH)?.origin,
       ).toBe('explicit');
     }
+  });
+
+  test('/api/notifications is not a route family: only the two leaves are mapped', () => {
+    for (const method of ['GET', 'POST', 'PUT', 'DELETE'])
+      for (const path of [
+        '/api/notifications',
+        '/api/notifications/other',
+        '/api/notifications/preferences/extra',
+      ])
+        expect(requiredPairingScope(method, path)).toBeUndefined();
   });
 
   test('GET before anything is saved returns the defaults', async () => {
@@ -389,6 +404,8 @@ describe("GET /api/notifications/deliveries (the caller's own feed)", () => {
       INSTALLATION,
     );
     expect(result.status).toBe(403);
+    // Refused by the person-only guard, not by the feed's own eligibility.
+    expect(result.json.error).toBe('person_required');
   });
 
   test.each(['after=-1', 'after=abc', 'after=0&epoch=not%20an%20id'])(

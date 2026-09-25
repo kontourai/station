@@ -718,21 +718,33 @@ export function restorePhonePaneLayer(
 }
 
 /**
- * End a phone layer IN PLACE, for the fold opening under it (a narrow window
- * widened): no Back, so no return to Chat, and the pane stays where the user
- * is looking at it — visible, selected and mounted as an ordinary tab of the
- * layer's region, which a device with every region shows in its strip.
- * Moving it back to its origin here would remount it (dropping an unguarded
- * draft) and hide what the user was reading. Only the maximize the layer
- * added is undone, and the arrangement that results is the one saved: a pane
- * the layer moved out of another region stays in the layer's region (the
- * user can move it).
+ * End a phone layer for the fold opening under it (a narrow window widened):
+ * no Back, so no return to Chat. A pane the layer moved out of another
+ * region goes BACK there when `returnToOrigin` (gap G4) — the caller passes
+ * false while the pane holds unsaved changes, because the move remounts it
+ * — and, if the reader was looking at it, its origin region is shown with
+ * it selected, so the pane stays on screen on a device that now has every
+ * region. Otherwise (no origin, or a dirty pane) it stays where it is as an
+ * ordinary tab of the layer's region. Either way the maximize the layer
+ * added is undone, and the arrangement that results is the one saved.
  */
 export function endPhonePaneLayerInPlace(
   arrangement: RegionArrangement,
   layer: PhonePaneLayer,
+  options: { returnToOrigin: boolean } = { returnToOrigin: false },
 ): RegionArrangement {
-  const next = arrangement;
+  const showing =
+    arrangement[layer.region].visible &&
+    arrangement[layer.region].occupant === layer.surfaceId;
+  let next = arrangement;
+  if (options.returnToOrigin && layer.mintedTab && layer.origin) {
+    next = returnLayerPane(arrangement, layer);
+    if (showing && next[layer.origin.region].panes.includes(layer.surfaceId))
+      next = updateRegion(next, layer.origin.region, {
+        visible: true,
+        occupant: layer.surfaceId,
+      });
+  }
   if (!next[layer.region].visible) return next;
   return updateRegion(next, layer.region, {
     maximized: layer.previous.maximized,

@@ -1289,6 +1289,7 @@ describe('agent-activity publisher', () => {
         },
         clearNativePush: () => {},
         recordNativePushAlerts: () => {},
+        updateNativePushLiveActivity: () => {},
         recordNativePushCardShown: () => {},
         onDeviceAccessChanged: () => () => {},
         environmentId: () => ENVIRONMENT_ID,
@@ -1343,6 +1344,7 @@ describe('agent-activity publisher', () => {
         listNativePushRegistrations: () => [],
         clearNativePush: () => {},
         recordNativePushAlerts: () => {},
+        updateNativePushLiveActivity: () => {},
         recordNativePushCardShown: () => {},
         onDeviceAccessChanged: () => () => {},
         environmentId: () => ENVIRONMENT_ID,
@@ -1594,6 +1596,8 @@ describe('resolvePushGatewayConfig', () => {
   test('defaults to the Kontour gateway', () => {
     expect(resolvePushGatewayConfig({})).toEqual({
       sendUrl: 'https://push.kontourai.io/v1/fcm/send',
+      liveActivityUrl: 'https://push.kontourai.io/v1/apns/live-activity',
+      channelsUrl: 'https://push.kontourai.io/v1/apns/channels',
       audience: 'https://push.kontourai.io',
     });
   });
@@ -1605,6 +1609,8 @@ describe('resolvePushGatewayConfig', () => {
       }),
     ).toEqual({
       sendUrl: 'https://push.example.test/v1/fcm/send',
+      liveActivityUrl: 'https://push.example.test/v1/apns/live-activity',
+      channelsUrl: 'https://push.example.test/v1/apns/channels',
       audience: 'https://push.example.test',
     });
   });

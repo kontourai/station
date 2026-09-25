@@ -378,7 +378,10 @@ describe('Codex native attached-session adoption', () => {
         resolveSourceHome: () => '/source-home',
       });
       const adoption = adapter.adoptSession(
-        adoptInput({ modelOptions: { approvalMode: 'never' } }),
+        adoptInput({
+          modelOptions: { approvalMode: 'never' },
+          confinement: 'host',
+        }),
         {
           onProviderChildCreationStarted: vi.fn(),
           onProviderChildCreated: created,
@@ -400,6 +403,34 @@ describe('Codex native attached-session adoption', () => {
       expect(process.killed).toBe(true);
     },
   );
+
+  test('#2493: a fork outside a host session asks for workspace-write and refuses a full-access child', async () => {
+    const process = new FakeCodexProcess();
+    const created = vi.fn();
+    const adapter = new CodexAdapter({
+      processFactory: () => process,
+      resolveSourceHome: () => '/source-home',
+    });
+    const adoption = adapter.adoptSession(
+      adoptInput({ modelOptions: { approvalMode: 'never' } }),
+      {
+        onProviderChildCreationStarted: vi.fn(),
+        onProviderChildCreated: created,
+      },
+    );
+    await initialize(process);
+    const fork = await waitForCall(process, 'thread/fork');
+    expect(fork.params).toMatchObject({
+      approvalPolicy: 'never',
+      sandbox: 'workspace-write',
+    });
+    // The fixture's default response reports `dangerFullAccess`: a child
+    // that came back unconfined is refused, not adopted.
+    respond(process, fork, forkResult());
+
+    await expect(adoption).rejects.toThrow(/workspace and execution policy/);
+    expect(process.killed).toBe(true);
+  });
 
   test('records a proven child before rejecting a response that lacks the completed cutoff', async () => {
     const process = new FakeCodexProcess();
