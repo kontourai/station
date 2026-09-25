@@ -65,8 +65,9 @@ unformatted parameter list, with two lanes independently applying the identical
 three-second fix because neither could merge without carrying it (#3141); and
 the entry-bundle ceiling needed reconciling on five separate merges, with
 unowned raises consumed within hours (#3033). Run at push time, both become
-correctly attributed by construction: an over-ceiling UI tree cannot leave the
-machine, and a ceiling raise happens in the branch that spent the bytes.
+caught before they reach `main`: an over-ceiling UI tree cannot leave the
+machine. (With headroom ceilings, the lane that crosses the ceiling pays for
+growth since the last raise — see below.)
 
 ### What the entry-bundle ceiling is for
 
@@ -89,12 +90,20 @@ it:
 - Does the first paint need this surface, or can it lazy-load?
 - Is there a dead sibling next to the live one to delete in the same change?
 
-Raising is legitimate and it is the **last** step, after those. Raise by what
-you measured, in the branch that spent it, with the number in the commit
-message — the next reader can only tell a considered raise from a reflexive
-one by what you wrote down, and a reflexive one teaches every later lane that
-the number is paperwork. `scripts/ui-bundle-budget.mjs` prints the same three
+Raising is legitimate and it is the **last** step, after those. Raise to the
+next round number (JS in steps of 10000, CSS 1000) that restores the headroom
+(8 KB JS, 2 KB CSS). The lane that crosses the ceiling pays for growth since
+the last raise, so say in the commit message what grew and what the bytes buy
+— the next reader can only tell a considered raise from a reflexive one by
+what you wrote down, and a reflexive one teaches every later lane that the
+number is paperwork. `scripts/ui-bundle-budget.mjs` prints the same three
 steps when it fails.
+
+The ceilings are round numbers with headroom, not the tree's exact size
+([#1703](https://github.com/kontourai/station/issues/1703)). The merge queue
+builds latest `main` plus each queued pull request, so an exact ceiling failed
+whichever entry built next on bytes a sibling had just merged. Headroom does
+not hide growth: every build prints the measurement against the ceiling.
 
 The bundle check is scoped to the branch delta against `origin/main`, so a
 server-only push does not pay for a UI build. It measures when that delta
