@@ -771,6 +771,10 @@ export class ConfigLoader {
     if (identity.command !== undefined) projected.command = identity.command;
     if (identity.args !== undefined) projected.args = identity.args;
     if (identity.env !== undefined) projected.env = identity.env;
+    // #2614: a built-in is spawned from that identity as a stdio child; a
+    // hand-edited transport or endpoint on disk must not redirect it.
+    projected.transport = 'stdio';
+    delete projected.endpoint;
     return projected;
   }
 

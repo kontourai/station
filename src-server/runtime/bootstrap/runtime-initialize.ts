@@ -131,7 +131,7 @@ import {
   createRuntimeFrameworkModel,
   resolveDefaultManagedModelHint,
 } from '../plugins/runtime-provider-resolution.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import type { IAgentFramework } from '../types.js';
 import {
   createEventStoreWorkItemPrincipalLiveness,
@@ -850,7 +850,7 @@ export async function initializeRuntime(
         logger,
         usageAggregator: nextUsageAggregator,
         defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-        autoApproveTools: SC_READ_ONLY_TOOLS,
+        autoApproveTools: SC_AUTO_APPROVED_TOOLS,
         replaceTemplateVariables,
         resolveDefaultModelHint: () =>
           resolveDefaultManagedModelHint(

@@ -995,7 +995,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       (tool: { name: string }) => tool.name,
     );
     expect(names).toEqual(
-      expect.arrayContaining(['list_agents', 'delegate_task']),
+      expect.arrayContaining(['list_agents', 'delegate_task', 'notify_user']),
     );
     await instance.close();
   });

@@ -413,6 +413,7 @@ async function createMCPTools(
       return identity;
     },
     logger,
+    isNativeStationControl,
   );
 
   // Mark as connected after successful getTools

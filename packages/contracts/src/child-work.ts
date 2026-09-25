@@ -155,7 +155,12 @@ export type ChildWorkDelta =
  * engine reported and nothing is running.
  */
 export type ChildWorkSessionView =
-  | { observability: 'reported'; running: ChildWorkItem[]; observedAt: string }
+  | {
+      observability: 'reported';
+      running: ChildWorkItem[];
+      settled?: ChildWorkItem[];
+      observedAt: string;
+    }
   | { observability: 'not-reported'; reason: string };
 
 /**

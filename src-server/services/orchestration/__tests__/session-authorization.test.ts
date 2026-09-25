@@ -164,6 +164,46 @@ test('personal sharing applies consistently to direct reads and transcript owner
   ).toBeUndefined();
 });
 
+test('personal sharing does not map a legacy OS-alias owner to the operator: no member reads alias-owned sessions', () => {
+  // #2611 documented that sharing judged the alias as the local operator, so
+  // every member of the operator's account read alias-owned rows. With the
+  // alias bridge removed the alias is compared as the literal owner it is:
+  // the production-shaped sharing policy (members read the operator's
+  // sessions) admits nobody to it.
+  const canRead = vi.fn(
+    (requester: string, owner: string) =>
+      ['phone', LOCAL_OPERATOR_PRINCIPAL_ID].includes(requester) &&
+      owner === LOCAL_OPERATOR_PRINCIPAL_ID,
+  );
+  const withSharing = new SessionAuthorization({
+    eventStore: { findSessionOwnerUserId: () => 'released-os-alias' } as never,
+    personalConversationAccess: { canRead, ownerIds: () => undefined },
+  });
+  for (const [userId, options] of [
+    ['phone', undefined],
+    ['stranger', undefined],
+    [LOCAL_OPERATOR_PRINCIPAL_ID, undefined],
+    [LOCAL_OPERATOR_PRINCIPAL_ID, { localHomePossession: true as const }],
+  ] as const) {
+    expect(
+      withSharing.canReadSession(
+        'released',
+        sessionReadAuthorityFromRequest(userId, undefined, undefined, options),
+      ),
+      userId,
+    ).toBe(false);
+    expect(
+      withSharing.canReadSessionForCommand('released', userId, undefined),
+    ).toBe(false);
+  }
+  // The sharing policy was asked about the alias itself, never the operator.
+  expect(canRead).toHaveBeenCalledWith('phone', 'released-os-alias');
+  expect(canRead).not.toHaveBeenCalledWith(
+    expect.anything(),
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+  );
+});
+
 test('hosted reads never consult the personal sharing policy', () => {
   const canRead = vi.fn(() => true);
   const ownerIds = vi.fn(() => ['anyone']);

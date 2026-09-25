@@ -5118,6 +5118,25 @@ export async function executeExecutionTargetMessage(
         'Current-host staged attachments cannot be sent to another Station.',
       );
     }
+    // #480 scope correction: the FOREGROUND path has no portable identity
+    // or receiver-offer admission. A non-portable Project workspace
+    // (`kind: 'project'`, sender-local slug) resolved onto a PEER would
+    // execute an unrelated same-slug Project there — refused BEFORE
+    // `postForegroundMessage`, so there is no remote POST and no provider
+    // effect. This covers both the ProjectSettings thread default (a saved
+    // peer default resolved by `projectDefaultEnvironment`) and explicit
+    // peer+Project callers. Verified SSH Project forwarding keeps its
+    // explicit `pinSshDispatchWorkspace` contract, and peer foreground
+    // WITHOUT a Project workspace keeps its prior contract.
+    if (
+      selectedTarget.kind === 'peer' &&
+      input.target.workspace?.kind === 'project'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
+      );
+    }
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,

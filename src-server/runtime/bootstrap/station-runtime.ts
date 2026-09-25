@@ -430,7 +430,7 @@ import {
   resolveRuntimeVectorDbProvider,
 } from '../plugins/runtime-provider-resolution.js';
 import { configureRuntimeRoutes } from '../routes/runtime-routes.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import { guardRuntimeGenerationTools } from '../tools/runtime-generation-tools.js';
 import type {
   DispatchEvidenceSource,
@@ -3122,7 +3122,7 @@ export class StationRuntime {
       logger: this.logger,
       usageAggregator: this.usageAggregator,
       defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-      autoApproveTools: SC_READ_ONLY_TOOLS,
+      autoApproveTools: SC_AUTO_APPROVED_TOOLS,
       replaceTemplateVariables: (text) =>
         replaceRuntimeTemplateVariables(text, appConfig),
       resolveDefaultModelHint: () =>
@@ -4118,7 +4118,7 @@ export class StationRuntime {
       reloadSkillsAndAgents: async () => this.reloadSkillsAndAgents(),
       initialize: async () => this.initialize(),
       getVoltAgent: () => this.voltAgent,
-      defaultAutoApprovedTools: SC_READ_ONLY_TOOLS,
+      defaultAutoApprovedTools: SC_AUTO_APPROVED_TOOLS,
       createMemoryAdapter: (_slug: string) =>
         new FileMemoryAdapter({
           projectHomeDir: this.configLoader.getProjectHomeDir(),

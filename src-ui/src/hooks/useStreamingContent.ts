@@ -21,23 +21,45 @@ function sameContentParts(
   );
 }
 
+function readStreamingContent(sessionId: string) {
+  const streamingMessage =
+    activeChatsStore.getSnapshot()[sessionId]?.streamingMessage;
+  const content = streamingMessage?.content || '';
+  const contentParts = streamingMessage?.contentParts || [];
+  let textInPartsLength = 0;
+  for (const part of contentParts) {
+    if (part.type === 'text') textInPartsLength += part.content?.length ?? 0;
+  }
+  const tail = contentParts.at(-1);
+  const hasContentSuffix = content.length > textInPartsLength;
+  const hasActiveTailText =
+    !hasContentSuffix && tail?.type === 'text' && Boolean(tail.content);
+  return {
+    hasContent: content.length > 0 || contentParts.length > 0,
+    contentParts: hasActiveTailText ? contentParts.slice(0, -1) : contentParts,
+    streamingText: hasContentSuffix
+      ? content.slice(textInPartsLength)
+      : hasActiveTailText
+        ? tail.content || ''
+        : '',
+  };
+}
+
 /**
  * Hook that subscribes to streaming content.
  * Returns throttled streamingText for markdown rendering
  * and state for completed contentParts.
  */
 export function useStreamingContent(sessionId: string) {
-  const [state, setState] = useState<StreamingState>({
-    hasContent: false,
-    contentParts: [],
-    streamingText: '',
+  const [state, setState] = useState<StreamingState>(() => ({
+    ...readStreamingContent(sessionId),
     contentRevision: 0,
-  });
+  }));
 
   // Throttle: track latest value and flush on interval
-  const latestStreamingTextRef = useRef('');
+  const latestStreamingTextRef = useRef(state.streamingText);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastFlushedRef = useRef('');
+  const lastFlushedRef = useRef(state.streamingText);
 
   const flushStreamingText = useCallback(() => {
     throttleTimerRef.current = null;
@@ -57,36 +79,12 @@ export function useStreamingContent(sessionId: string) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = activeChatsStore.subscribe(() => {
-      const chat = activeChatsStore.getSnapshot()[sessionId];
-      const streamingMessage = chat?.streamingMessage;
-      const content = streamingMessage?.content || '';
-      const contentParts = streamingMessage?.contentParts || [];
-
-      // Calculate text that's already in contentParts
-      let textInPartsLength = 0;
-      for (const part of contentParts) {
-        if (part.type === 'text')
-          textInPartsLength += part.content?.length ?? 0;
-      }
-
-      // Orchestration appends every text delta to BOTH `content` and the tail
-      // text part. Treat that active tail as the throttled tip rather than
-      // publishing its newly allocated part on every token (archive#3351).
-      // Providers that retain completed text parts while growing only
-      // `content` still use the suffix path.
-      const tail = contentParts.at(-1);
-      const hasContentSuffix = content.length > textInPartsLength;
-      const hasActiveTailText =
-        !hasContentSuffix && tail?.type === 'text' && Boolean(tail.content);
-      const completedContentParts = hasActiveTailText
-        ? contentParts.slice(0, -1)
-        : contentParts;
-      const currentStreamingText = hasContentSuffix
-        ? content.slice(textInPartsLength)
-        : hasActiveTailText
-          ? tail.content || ''
-          : '';
+    const sync = () => {
+      const {
+        hasContent,
+        contentParts,
+        streamingText: currentStreamingText,
+      } = readStreamingContent(sessionId);
       latestStreamingTextRef.current = currentStreamingText;
 
       // Schedule throttled flush for streaming text
@@ -101,14 +99,13 @@ export function useStreamingContent(sessionId: string) {
       }
 
       // Update contentParts and hasContent immediately (these change infrequently)
-      const hasContent = content.length > 0 || contentParts.length > 0;
       setState((prev) => {
         const nextContentParts = sameContentParts(
           prev.contentParts,
-          completedContentParts,
+          contentParts,
         )
           ? prev.contentParts
-          : completedContentParts;
+          : contentParts;
         const nextStreamingText = currentStreamingText
           ? prev.streamingText
           : '';
@@ -126,7 +123,9 @@ export function useStreamingContent(sessionId: string) {
         }
         return prev;
       });
-    });
+    };
+    const unsubscribe = activeChatsStore.subscribe(sync);
+    sync();
 
     return () => {
       unsubscribe();

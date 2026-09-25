@@ -240,6 +240,59 @@ describe('codex-adapter-notifications', () => {
     });
   });
 
+  test('separate agent messages in one turn read as separate paragraphs', () => {
+    const record = buildRecord({
+      activeTurnId: 'turn-1',
+      activeTurnStartedAt: Date.now() - 10,
+      turnOutput: new Map([['turn-1', '']]),
+    });
+    const events: any[] = [];
+    const notify = (method: string, params: unknown) =>
+      handleCodexNotification({
+        record,
+        notification: { method, params },
+        nowIso: () => '2026-01-02T00:00:00.000Z',
+        publish: (event) => events.push(event),
+      });
+    const delta = (itemId: string, text: string) =>
+      notify('item/agentMessage/delta', {
+        turnId: 'turn-1',
+        itemId,
+        delta: text,
+      });
+
+    delta('msg-1', 'I opened the ');
+    delta('msg-1', 'PR.');
+    delta('msg-2', 'The focused tests pass.');
+    delta('msg-2', ' Waiting on CI.');
+    notify('turn/completed', { turn: { id: 'turn-1', status: 'completed' } });
+
+    // Deltas of one item stay joined; only the item change adds the break.
+    expect(
+      events
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) => event.delta),
+    ).toEqual([
+      'I opened the ',
+      'PR.',
+      '\n\nThe focused tests pass.',
+      ' Waiting on CI.',
+    ]);
+    const expected =
+      'I opened the PR.\n\nThe focused tests pass. Waiting on CI.';
+    expect(
+      events.find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({ outputText: expected });
+    // The replay fold reconciles `outputText` against the streamed text
+    // verbatim; the two agreeing is what keeps a reload from duplicating it.
+    const text = projectRuntimeEventsToMessages(events)
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('');
+    expect(text).toBe(expected);
+  });
+
   test('tracks tool lifecycle and turn completion output', () => {
     const record = buildRecord({
       activeTurnId: 'turn-1',

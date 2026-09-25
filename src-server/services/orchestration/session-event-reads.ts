@@ -484,6 +484,10 @@ export class SessionEventReads {
     return this.deps.eventStore?.headGlobalSequence() ?? 0;
   }
 
+  readEventStreamEpoch(): string | undefined {
+    return this.deps.eventStore?.streamEpoch();
+  }
+
   /**
    * The global-sequence cursor already assigned to a persisted event, keyed
    * by its canonical `eventId` (archive#1092). Used to set the SSE `id:` on

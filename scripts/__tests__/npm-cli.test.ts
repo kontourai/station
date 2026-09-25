@@ -44,9 +44,10 @@ describe('npmInvocation (#1093)', () => {
 
   it('leaves the POSIX invocation exactly as it was', () => {
     // POSIX resolves `npm` from PATH correctly, and callers depend on that
-    // exact spawn -- prepush-ui-bundle.test.ts stubs `npm` on PATH to prove
-    // the bundle gate delegates to `npm run build:ui`. Rewriting a working
-    // invocation on every platform would break that contract for no gain.
+    // exact spawn -- ui-bundle-delta-report.test.ts stubs `npm` on PATH to
+    // prove the delta report delegates to `npm run build:ui`. Rewriting a
+    // working invocation on every platform would break that contract for no
+    // gain.
     const { root, node } = fixtureNode();
     try {
       expect(

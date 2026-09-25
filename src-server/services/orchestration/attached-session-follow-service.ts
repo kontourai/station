@@ -729,6 +729,7 @@ export class AttachedSessionFollowService {
    * poll loop.
    */
   private appendAndPublish(event: CanonicalRuntimeEvent): void {
+    this.options.eventStore.assertNoOuterTransactionForPublication();
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
     );
