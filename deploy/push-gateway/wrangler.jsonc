@@ -10,11 +10,29 @@
   "vars": {
     // Every origin the gateway is reachable at. A Station token names one.
     "AUDIENCES": "https://push.kontourai.io",
-    "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug"
+    "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug",
+    // iOS bundles for Live Activities. APNs delivery also needs the
+    // APNS_AUTH_KEY and APNS_CHANNEL_AUTH_SECRET secrets; until both are set
+    // the /v1/apns routes answer 503.
+    "ALLOWED_IOS_BUNDLES": "io.kontourai.station,io.kontourai.station.beta,io.kontourai.station.nightly,io.kontourai.station.dev.instance",
+    // The (environment, bundle) scopes the channel sweep manages. The sweep
+    // deletes every channel in a swept scope that THIS deployment's ledger
+    // does not record, so each swept scope must have exactly one ledger:
+    // never create channels in a swept scope from anywhere else (wrangler
+    // dev, a staging deploy, a manual test). Develop and test on the sandbox
+    // environment or on io.kontourai.station.dev.instance, which are unswept.
+    "SWEEP_SCOPES": "production:io.kontourai.station,production:io.kontourai.station.beta,production:io.kontourai.station.nightly",
+    "APNS_TEAM_ID": "U7KHF2QAC4",
+    "APNS_KEY_ID": "AY2F92348K"
   },
   // Per-location and eventually consistent: cost ceilings, not accounting.
   // Order in the handler: per address (unsigned), then global, per key and
-  // per push token (signed only).
+  // per push token (signed only), checked narrowest first so a refused request
+  // never spends a wider budget. A Live Activity start creates a broadcast
+  // channel, which spends Apple's per-app channel quota, so starts use the
+  // CHANNEL_* ceilings instead (per address, per device, per key, global);
+  // channel deletes have their own per-key ceiling. Bindings only offer 10 s
+  // or 60 s periods, so the per-address and per-device ceilings are per minute.
   "ratelimits": [
     {
       "name": "PER_IP_LIMITER",
@@ -35,8 +53,45 @@
       "name": "PER_TOKEN_LIMITER",
       "namespace_id": "4104",
       "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_GLOBAL_LIMITER",
+      "namespace_id": "4105",
+      // 10/min is 7,200 channels per 12 h ledger window, under Apple's
+      // ~10,000 per environment even if nothing is ever deleted.
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_PER_KEY_LIMITER",
+      "namespace_id": "4106",
+      "simple": { "limit": 3, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_PER_IP_LIMITER",
+      "namespace_id": "4107",
+      "simple": { "limit": 3, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_PER_DEVICE_LIMITER",
+      "namespace_id": "4108",
+      "simple": { "limit": 1, "period": 60 }
+    },
+    {
+      "name": "CHANNEL_DELETE_LIMITER",
+      "namespace_id": "4109",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
+  // The channel sweep (src/apns-sweep.ts): reclaims every broadcast channel
+  // Apple holds that the ledger does not record. A no-op while APNs is dark.
+  "triggers": { "crons": ["*/3 * * * *"] },
+  // The channel ledger: one SQLite-backed Durable Object (src/channel-ledger.ts),
+  // which the Workers Free plan includes. Deploying creates it; no namespace
+  // to create by hand.
+  "durable_objects": {
+    "bindings": [{ "name": "CHANNEL_LEDGER", "class_name": "ChannelLedger" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelLedger"] }],
   // Error lines only: invocation logs would record request headers, which
   // include the Station's signed authorization.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }
