@@ -1,7 +1,8 @@
 # Station push gateway
 
 A Cloudflare Worker at `https://push.kontourai.io` that forwards Station-signed
-agent-activity messages to Firebase Cloud Messaging (Android) and to APNs as
+agent-activity messages and sealed Station notifications to Firebase Cloud
+Messaging (Android), and agent activity to APNs as
 iOS Live Activity pushes. Design and threat model:
 [docs/design/notification-delivery.md](../../docs/design/notification-delivery.md).
 
@@ -22,7 +23,7 @@ narrow limit never spends a wider, shared budget.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `/v1/fcm/send` | `{ token, packageName, data, collapseKey? }` | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/fcm/send` | `{ token, packageName, data, collapseKey?, priority? }` — `data.station_kind` is `agent_activity` or `station_notification`; `priority` (`high` default, or `normal`) only for a notification | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 | `/v1/apns/live-activity`, start | `{ bundleId, environment, event: "start", pushToStartToken, registrationId, sealed, alert, timestamp, staleAt }` (no channel) | 200 `{ result: "sent", channelId, channelAuth }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 | `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
 | `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |

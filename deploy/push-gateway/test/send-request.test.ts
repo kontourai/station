@@ -16,6 +16,46 @@ test('accepts an agent-activity message for a Station package', () => {
   assert.equal(result.ok && result.request.collapseKey, 'agent_activity');
 });
 
+test('accepts a sealed Station notification, at high or normal priority', () => {
+  const notification = {
+    data: {
+      station_kind: 'station_notification',
+      device_id: 'reg-1',
+      sealed: 'AAECAwQFBgcICQoL',
+    },
+    collapseKey: `n${'0'.repeat(40)}`,
+  };
+  const high = parse(notification);
+  assert.equal(high.ok, true);
+  assert.equal(
+    high.ok && high.request.data.station_kind,
+    'station_notification',
+  );
+  assert.equal(high.ok && high.request.priority, undefined);
+  const normal = parse({ ...notification, priority: 'normal' });
+  assert.equal(normal.ok && normal.request.priority, 'normal');
+});
+
+test('refuses an unknown station_kind and a priority it does not know', () => {
+  assert.deepEqual(parse({ data: { station_kind: 'station_notifications' } }), {
+    ok: false,
+    reason: 'unsupported station_kind',
+  });
+  assert.deepEqual(parse({ data: { station_kind: 'Station_Notification' } }), {
+    ok: false,
+    reason: 'unsupported station_kind',
+  });
+  assert.deepEqual(parse({ priority: 'urgent' }), {
+    ok: false,
+    reason: 'invalid priority',
+  });
+  // The card must reach a dozing phone inside its freshness window.
+  assert.deepEqual(parse({ priority: 'normal' }), {
+    ok: false,
+    reason: 'invalid priority',
+  });
+});
+
 test('refuses anything that is not a Station agent-activity data message', () => {
   const cases: Array<[Record<string, unknown>, string]> = [
     [{ packageName: 'com.example.other' }, 'package is not a Station app'],
