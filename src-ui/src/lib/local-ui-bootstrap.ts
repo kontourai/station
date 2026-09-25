@@ -141,7 +141,10 @@ export async function bootstrapLocalUiSession(
   }
   if (!response.ok) {
     throw new LocalUiBootstrapRefusedError(
-      `Local UI bootstrap was refused (${response.status}). Open a fresh Station start link.`,
+      // #2612: a sign-in link is single use, and minting a new one (e.g.
+      // `station open`) replaces any unspent link, so a refusal almost always
+      // means one of those. Say what to do, not which endpoint said no.
+      `This sign-in link was already used, or a newer one replaced it. Run \`station open\` on this computer for a fresh one (refused: ${response.status}).`,
     );
   }
   return true;

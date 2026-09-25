@@ -4316,6 +4316,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     console.log(
       `  ✓ UI:     http://${healthHost}:${uiPort}/#station-ui-bootstrap=${uiBootstrapToken}`,
     );
+    // #2612: `station open` mints a replacement and this link then stops
+    // working with no other signal.
+    console.log(
+      '            (single-use sign-in link; `station open --print` makes a new one)',
+    );
     // station#3677 (owner decision 3): the consent listener fails CLOSED but
     // never fails the START. Review MED 4: the report derives from the
     // RUNTIME'S OWN availability state (`/api/system/instance`, served by

@@ -61,7 +61,7 @@ describe('local UI bootstrap capability (station#2093)', () => {
     await expect(
       bootstrapLocalUiSession(window.location.origin),
     ).rejects.toThrow(
-      'Local UI bootstrap was refused (403). Open a fresh Station start link.',
+      'This sign-in link was already used, or a newer one replaced it. Run `station open` on this computer for a fresh one (refused: 403).',
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
