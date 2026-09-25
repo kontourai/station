@@ -2,6 +2,7 @@ import {
   Component,
   type ComponentType,
   createElement,
+  type LazyExoticComponent,
   lazy,
   type ReactNode,
   Suspense,
@@ -9,8 +10,39 @@ import {
   useState,
 } from 'react';
 
+type AnyLoad = () => Promise<{ default: ComponentType<any> }>;
+type AnyLazy = LazyExoticComponent<ComponentType<any>>;
+
+/**
+ * One lazy component per loader, shared by every boundary that mounts it, so
+ * a surface whose chunk has loaded renders without suspending when another
+ * instance mounts (a list of icons would otherwise blank each new row for a
+ * tick). A loader rebuilt every render gets a new entry every render, exactly
+ * as a per-instance lazy did.
+ */
+const sharedLazy = new WeakMap<AnyLoad, AnyLazy>();
+
+function lazyFor(load: AnyLoad): AnyLazy {
+  let component = sharedLazy.get(load);
+  if (!component) {
+    component = lazy(load);
+    sharedLazy.set(load, component);
+  }
+  return component;
+}
+
+/**
+ * React caches a lazy component's rejection for good, so a failed one is
+ * dropped: the next retry or mount, in this boundary or any other, imports
+ * again instead of replaying the cached failure.
+ */
+function forgetLazy(load: AnyLoad, component: AnyLazy) {
+  if (sharedLazy.get(load) === component) sharedLazy.delete(load);
+}
+
 interface LazyImportErrorBoundaryProps {
   children: ReactNode;
+  onError: () => void;
   onRetry: () => void;
   unavailable?: (onRetry: () => void) => ReactNode;
 }
@@ -27,6 +59,10 @@ class LazyImportErrorBoundary extends Component<
 
   static getDerivedStateFromError(error: Error): LazyImportErrorBoundaryState {
     return { error };
+  }
+
+  componentDidCatch() {
+    this.props.onError();
   }
 
   render() {
@@ -66,15 +102,17 @@ export interface LazyBoundaryProps<Props extends object> {
 }
 
 function LazyAttempt<Props extends object>({
-  load,
+  component,
   componentProps,
   pending,
-}: Omit<LazyBoundaryProps<Props>, 'unavailable'>) {
-  const LazyComponent = useMemo(() => lazy(load), [load]);
-
+}: {
+  component: ComponentType<Props>;
+  componentProps: Props;
+  pending: ReactNode;
+}) {
   return (
     <Suspense fallback={pending}>
-      {createElement(LazyComponent, componentProps)}
+      {createElement(component, componentProps)}
     </Suspense>
   );
 }
@@ -91,16 +129,21 @@ export function LazyBoundary<Props extends object>({
   unavailable,
 }: LazyBoundaryProps<Props>) {
   const [attempt, setAttempt] = useState(0);
+  // `attempt` is a dependency on purpose: a retry must look the loader up
+  // again, after the failed component has been forgotten.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
+  const component = useMemo(() => lazyFor(load), [load, attempt]);
 
   return (
     <LazyImportErrorBoundary
       key={attempt}
+      onError={() => forgetLazy(load, component)}
       onRetry={() => setAttempt((currentAttempt) => currentAttempt + 1)}
       unavailable={unavailable}
     >
       <LazyAttempt
         key={attempt}
-        load={load}
+        component={component as ComponentType<Props>}
         componentProps={componentProps}
         pending={pending}
       />

@@ -63,6 +63,11 @@ describe('BrandIcon when the brand-mark chunk fails to load', () => {
       first.container.querySelector('[data-brand-key="codex"]'),
     ).not.toBeNull();
     expect(first.container.querySelector('svg')).toBeNull();
+    // The tile is empty: no mark, and no error card planted inside it.
+    expect(
+      first.container.querySelector('[data-brand-key="codex"]')
+        ?.childElementCount,
+    ).toBe(0);
     first.unmount();
 
     chunk.fail = false;

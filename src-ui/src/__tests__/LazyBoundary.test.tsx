@@ -91,4 +91,57 @@ describe('LazyBoundary', () => {
     resolveImport?.({ default: () => <div>Loaded conversation</div> });
     expect(await screen.findByText('Loaded conversation')).toBeTruthy();
   });
+
+  test('a second boundary on the same loader renders at once, without a second import', async () => {
+    const load = vi.fn(async () => ({
+      default: ({ label }: { label: string }) => <div>{label}</div>,
+    }));
+
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{ label: 'First mark' }}
+        pending={<div>Pending first</div>}
+      />,
+    );
+    expect(await screen.findByText('First mark')).toBeTruthy();
+
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{ label: 'Second mark' }}
+        pending={<div>Pending second</div>}
+      />,
+    );
+    // Synchronously after mount: no pending state, no second import.
+    expect(screen.queryByText('Pending second')).toBeNull();
+    expect(screen.getByText('Second mark')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  test('after a rejection, a boundary mounted later imports again', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chunk unavailable'))
+      .mockResolvedValueOnce({ default: () => <div>Loaded later</div> });
+
+    const first = render(
+      <LazyBoundary
+        load={load}
+        componentProps={{}}
+        pending={null}
+        unavailable={() => <div>Unavailable</div>}
+      />,
+    );
+    expect(await screen.findByText('Unavailable')).toBeTruthy();
+    first.unmount();
+
+    render(<LazyBoundary load={load} componentProps={{}} pending={null} />);
+    expect(await screen.findByText('Loaded later')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
+    consoleError.mockRestore();
+  });
 });
