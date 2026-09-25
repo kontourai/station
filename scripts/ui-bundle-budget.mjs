@@ -18,9 +18,17 @@
  *
  * So raising it is a legitimate outcome and a LAST one. Reach for it after you
  * have asked what a user gets for the bytes, not before — and if you do raise,
- * raise by what you measured and say so, because the next reader can only tell
- * a considered raise from a reflexive one by what you wrote down. A ceiling
- * raised reflexively teaches every later lane that the number is paperwork.
+ * say why, because the next reader can only tell a considered raise from a
+ * reflexive one by what you wrote down. A ceiling raised reflexively teaches
+ * every later lane that the number is paperwork.
+ *
+ * The ceilings are round numbers with headroom, not the tree's exact size
+ * (#1703). The merge queue builds latest main plus each queued pull request,
+ * so an exact ceiling failed whichever entry built next on bytes a sibling had
+ * just merged — three dequeues in one day, none caused by the dequeued change.
+ * Growth stays visible: every build prints the measurement against the
+ * ceiling. When a raise is warranted, move to the next round number that
+ * restores the headroom (8 KB JS, 2 KB CSS), never to your own measurement.
  *
  * ## How the measurement works
  *
@@ -244,11 +252,11 @@ export function shouldEnforceUiBundleBudget(env = process.env) {
 }
 
 /**
- * Ceilings are set-to-actual in the canonical verification environment. A
- * foreign build environment (the container image build: git-less, /app
- * paths) legitimately drifts a few gzip bytes, and a zero-slack ceiling
- * cannot arbitrate two measuring environments — observe mode measures and
- * reports there without failing, leaving enforcement to the canonical lane.
+ * Ceilings are enforced in the canonical verification environment. A foreign
+ * build environment (the container image build: git-less, /app paths)
+ * legitimately drifts a few gzip bytes, and one ceiling cannot arbitrate two
+ * measuring environments — observe mode measures and reports there without
+ * failing, leaving enforcement to the canonical lane.
  */
 export function uiBundleBudgetObserveOnly(env = process.env) {
   return env.STATION_UI_BUNDLE_BUDGET === 'observe';
@@ -285,7 +293,7 @@ if (
       );
     } else if (!result.ok) {
       console.error(result.failures.join('\n'));
-      // The ceilings track ACTUAL size, so a legitimate feature WILL trip this.
+      // A legitimate feature WILL eventually trip this.
       // Say what to do here, because the alternative is that whoever trips it
       // learns the rule from a colleague who happens to be watching — and the
       // failure reaches them wherever they are, which no message can.
@@ -298,9 +306,9 @@ if (
           'to choose, not to be reconciled. Ask what a user gets for these bytes before',
           'you ask whether you may raise the number.',
           '',
-          'These ceilings are set to actual, not to a target — growing them is legitimate',
-          'when a change genuinely adds weight, and it is the LAST of the three steps',
-          'below, not the first. The rule is that the bytes get owned:',
+          'Growing the ceiling is legitimate when a change genuinely adds weight, and it',
+          'is the LAST of the three steps below, not the first. The rule is that the',
+          'bytes get owned:',
           '',
           '  1. Confirm the growth is yours: build this tree and the merge-base in the SAME',
           '     worktree with its OWN node_modules. Never symlink node_modules from another',
@@ -316,11 +324,11 @@ if (
           '     primitives and shell skeletons in AGENTS.md)? Does the first paint need',
           '     this surface at all, or can it lazy-load? Is there a dead sibling next to',
           '     the live one you can delete in the same change?',
-          '  3. If the residual is genuinely the feature, raise the ceiling by YOUR measured',
-          '     cost, in YOUR pull request, with the number in the commit message.',
-          '',
-          'Do not raise it to absorb bytes you have not attributed: an unowned raise gets',
-          'consumed within hours and the next lane inherits the red as if it were theirs.',
+          '  3. If the residual is genuinely the feature, raise the ceiling to the next',
+          '     round number that restores the headroom (8 KB JS, 2 KB CSS), and say in the',
+          '     commit message what the bytes buy. Never set it to your exact measurement:',
+          '     the merge queue builds latest main plus your change, so a zero-headroom',
+          '     ceiling fails the next queued pull request on bytes it did not add (#1703).',
         ].join('\n'),
       );
       process.exitCode = 1;

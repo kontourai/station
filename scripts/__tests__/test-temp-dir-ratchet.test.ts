@@ -127,9 +127,11 @@ describe('test temp-dir ratchet scope honesty', () => {
     const baseline = JSON.parse(
       readFileSync('scripts/test-temp-dir-baseline.json', 'utf8'),
     );
+    // `under` is deliberately not asserted: the gate lets a count fall below
+    // its row (see the script's header), because a sibling that removes a call
+    // must not fail the next queued pull request. Only growth is a failure.
     expect(evaluate(countFiles(files), files, baseline)).toMatchObject({
       over: [],
-      under: [],
       missingSentinels: [],
       ok: true,
     });

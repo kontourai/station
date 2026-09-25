@@ -43,10 +43,16 @@ queue is part of it. What that means in practice:
     mergeQueue { entries(first:20) { nodes {
       position state pullRequest { number } } } } } }'
   ```
-- **The queue serializes.** `max_entries_to_merge: 1` and `ALLGREEN` grouping
-  mean entries land one at a time and a red entry holds the ones behind it.
-  Several PRs waiting is the queue working, not the queue stuck. Its
-  check-response timeout is 120 minutes.
+- **The queue batches.** It builds up to three candidates at once and merges
+  up to three entries together under `ALLGREEN` grouping; a red entry is
+  removed and the entries behind it are rebuilt without it. Several PRs
+  waiting is the queue working, not the queue stuck. Its check-response
+  timeout is 120 minutes.
+- **Arm, confirm once, then stop.** After arming, run the queue query above
+  one time to confirm the entry is there, then end the turn. Do not poll the
+  queue or leave a monitor on it: an armed PR lands without you, and a session
+  that watches it spends tokens waiting. A removed entry is recorded on the
+  PR's timeline and GitHub notifies its author; pick it up from there.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
   `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
   `Merge-queue regression`
