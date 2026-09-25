@@ -2806,6 +2806,51 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       }
     });
 
+    // M2 (round 3): the Neo4j projection is built as the Station too, so a
+    // peer-triggered sync projects the operator's conversations (which every
+    // read then re-checks per caller).
+    test('a delegation peer’s Neo4j sync projects the operator’s conversations, which only the operator then reads', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+            ]),
+        });
+        const peer = pairDelegationPeer(pairing);
+        const synced = await app.request(
+          '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${peer.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const syncedBody = (await synced.json()) as any;
+        expect(synced.status, JSON.stringify(syncedBody)).toBe(200);
+        expect(syncedBody.data.nodesWritten).toBe(1);
+        const nodes = async (credential: string) => {
+          const response = await app.request(
+            '/api/knowledge/roots/root:conversations/graph/neo4j',
+            { headers: { Authorization: `Bearer ${credential}` } },
+            REMOTE_TAILNET_ENV,
+          );
+          return ((await response.json()) as any).data.nodes.map(
+            (node: { id: string }) => node.id,
+          );
+        };
+        expect(await nodes(OPERATOR_SECRET)).toEqual(['operator-note']);
+        expect(await nodes(peer.credential)).toEqual([]);
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
     // M2 (round 3): the index is Station-wide and built as the Station, so a
     // peer-triggered rebuild cannot drop the operator's hits; search still
     // re-reads each hit as the caller.
