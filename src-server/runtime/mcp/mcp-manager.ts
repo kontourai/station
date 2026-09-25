@@ -914,13 +914,11 @@ export function wrapDelegationAwareTools(
               current: execOptions?.delegation,
             });
             nextArgs._delegation = delegation;
-            if (controlName === 'send_message') {
-              // The pooled station-control child carries no per-session
-              // caller, so the route keeps this context only because it is
-              // attested (`delegation-attestation.ts`).
-              nextArgs._delegationAttestation =
-                attestDelegationContext(delegation);
-            }
+            // The pooled station-control child carries no per-session
+            // caller, so the route keeps this context only because it is
+            // attested (`delegation-attestation.ts`).
+            nextArgs._delegationAttestation =
+              attestDelegationContext(delegation);
             if (controlName === 'delegate_task') {
               nextArgs.parentTaskId = parentConversationId;
             }

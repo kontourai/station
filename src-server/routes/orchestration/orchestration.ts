@@ -486,6 +486,13 @@ export const delegateTaskSchema = z.object({
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
   /**
+   * #2601: a CLAIM, like `/chat/delegated`'s. `deps.resolveRequestDelegation`
+   * derives the context from a verified caller, keeps it only when Station's
+   * own engine attested it, and passes a peer Station's forward through.
+   */
+  delegation: z.lazy(() => agentDelegationContextSchema).optional(),
+  delegationAttestation: z.string().min(1).max(128).optional(),
+  /**
    * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
    * portable delegation creates. Opaque caller-minted token — never an
    * authorization by itself; the receiver keys its durable claim by the
@@ -2264,11 +2271,22 @@ export function createOrchestrationRoutes(
       const delegationAttemptCaller = body.attemptId
         ? deps.resolveInboundDelegationDevice?.(c)
         : undefined;
-      // #2601: this body names no context; a verified caller's child gets
-      // the one derived from its own session.
-      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {});
+      // #2601: the body's context is a claim; this is what gets stamped.
+      const {
+        delegation: claimedDelegation,
+        delegationAttestation,
+        ...request
+      } = body;
+      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
+        ...(claimedDelegation
+          ? { delegation: claimedDelegation as AgentDelegationContext }
+          : {}),
+        ...(delegationAttestation
+          ? { attestation: delegationAttestation }
+          : {}),
+      });
       const data = await deps.delegateTask({
-        ...body,
+        ...request,
         ...(delegation ? { delegation } : {}),
         target: normalizeExecutionTarget(body.target),
         userId,

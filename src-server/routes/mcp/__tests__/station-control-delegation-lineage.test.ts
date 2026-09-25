@@ -6,19 +6,25 @@
  * security boundary (`configureRuntimeHttp`), the production station-control
  * MCP route serving the REAL `delegate_task`/`send_message` tools, and the
  * REAL orchestration dispatch routes with the production delegation resolver
- * (`createRequestDelegationResolver`) over real token verification. The only
- * stand-ins are the records the resolver reads (session start metadata and
- * Agent specs) and the two dispatch effects, which record the `delegation`
- * the child session would be started with (`execution-target-execution.ts`
- * and `delegateTask` both stamp exactly `input.delegation` into
- * `session.started` metadata).
+ * (`createRequestDelegationResolver`) over real token verification, and Agent
+ * policy read from a REAL `ConfigLoader` + `AgentService` on a fresh home
+ * (where `station`, `claude` and `codex` are registry defaults with no stored
+ * spec, as in production). The stand-ins are the session records the
+ * resolver reads, a peer Station's two endpoints, and the two dispatch
+ * effects, which record the `delegation` the child session would be started
+ * with (`execution-target-execution.ts` and `delegateTask` both stamp exactly
+ * `input.delegation` into `session.started` metadata).
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import type {
   AgentDelegationContext,
   AgentSpec,
 } from '@kontourai/station-contracts/agent';
+import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import {
   afterAll,
@@ -29,10 +35,20 @@ import {
   test,
   vi,
 } from 'vitest';
+import {
+  loadOrCreateAgentRegistry,
+  registerEngineConnection,
+} from '../../../domain/agent-registry.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { createChildDelegationContext } from '../../../runtime/agents/delegation.js';
 import { attestDelegationContext } from '../../../runtime/agents/delegation-attestation.js';
-import { createRequestDelegationResolver } from '../../../runtime/agents/request-delegation.js';
+import {
+  createCallerDelegationDeriver,
+  createRequestDelegationResolver,
+  type RequestDelegationSources,
+} from '../../../runtime/agents/request-delegation.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { wrapDelegationAwareTools } from '../../../runtime/mcp/mcp-manager.js';
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
@@ -43,9 +59,13 @@ import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
 import { isStationInternalRequest } from '../../../services/browser/browser-request-origin.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { StationControlToolRegistry } from '../../../tools/station-control-mcp-server.js';
+import { registerOperationsTools } from '../../../tools/station-control-operations-tools.js';
+import { __resetStationControlStdioCallerCredentialForTests } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -53,6 +73,7 @@ import {
 } from '../../../utils/internal-api-token.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
+import { createStationControlCallerRoutes } from '../station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
@@ -60,10 +81,14 @@ import {
 
 const ENVIRONMENT_ID = 'env-lineage-test';
 
-// The delegation policy each Agent's spec declares.
+const PEER_ENVIRONMENT_ID = 'env-lineage-peer';
+const PEER_CREDENTIAL = 'test-only-peer-credential-lineage-suite';
+
+// The one stored Agent. Its spec carries no delegation policy: the agent
+// schema has no such field, so a stored Agent's children are bounded by the
+// default policy (maxDepth 2), as in `mcp-manager.ts`.
 const SPECS: Record<string, AgentSpec> = {
-  planner: { name: 'Planner', prompt: 'Plan', delegation: { maxDepth: 2 } },
-  shallow: { name: 'Shallow', prompt: 'One hop', delegation: { maxDepth: 1 } },
+  planner: { name: 'Planner', prompt: 'Plan' },
 };
 
 // What each calling session was started with, as Station recorded it.
@@ -82,23 +107,30 @@ const STARTED: Record<string, Record<string, unknown>> = {
     agentSlug: 'planner',
     delegation: { ...ROOT_CHILD, depth: 2 },
   },
-  // A root whose Agent allows one hop only: its child sits at the limit.
-  'session-shallow': { agentSlug: 'shallow' },
-  // A one-hop Agent's child: at ITS Agent's limit, though a planner child
-  // at the same depth (`session-child`) may still delegate.
-  'session-shallow-child': {
-    agentSlug: 'shallow',
-    delegation: { ...ROOT_CHILD, depth: 1 },
-  },
-  // A session with no recorded Agent: nothing to derive from.
+  // Registry default Agents: no spec is ever stored for them.
+  'session-station': { agentSlug: 'station' },
+  'session-claude': { agentSlug: 'claude' },
+  'session-codex': { agentSlug: 'codex' },
+  // An Agent that is neither stored nor a registry default.
+  'session-ghost': { agentSlug: 'ghost' },
+  // A stored Agent whose spec cannot be read.
+  'session-broken': { agentSlug: 'broken' },
+  // An adopted session (`attached-session-adoption.ts`): no Agent, an engine.
+  'session-adopted': { adoptedFromThreadId: 'thread-attached-1' },
+  // A session with no recorded Agent that is not adopted either.
   'session-agentless': {},
 };
+const ENGINES: Record<string, string> = { 'session-adopted': 'codex' };
 const CONVERSATIONS: Record<string, string> = {
   'session-root': 'conversation-root',
   'session-child': 'conversation-child',
   'session-deep': 'conversation-deep',
-  'session-shallow': 'conversation-shallow',
-  'session-shallow-child': 'conversation-shallow-child',
+  'session-station': 'conversation-station',
+  'session-claude': 'conversation-claude',
+  'session-codex': 'conversation-codex',
+  'session-ghost': 'conversation-ghost',
+  'session-broken': 'conversation-broken',
+  'session-adopted': 'conversation-adopted',
   'session-agentless': 'conversation-agentless',
 };
 
@@ -139,8 +171,18 @@ const executeForegroundMessage = vi.fn(
   }),
 );
 
+// What the peer Station received for each forward.
+const peerReceived: Array<{
+  path: string;
+  authorization: string | null;
+  body: Record<string, unknown>;
+}> = [];
+let peerServer: ReturnType<typeof serve>;
+let peerBaseUrl: string;
+
 let server: ReturnType<typeof serve>;
 let baseUrl: string;
+let home: string;
 
 beforeAll(async () => {
   const logger = {
@@ -183,6 +225,92 @@ beforeAll(async () => {
   app.get('/.well-known/station/v1', (c) =>
     c.json({ environmentId: ENVIRONMENT_ID }),
   );
+  // A saved peer Environment: no SSH profile, one paired peer credential.
+  app.get('/api/environments/ssh', (c) => c.json({ success: true, data: [] }));
+  app.get('/api/environments/peers/:id/credential', (c) =>
+    c.req.param('id') === PEER_ENVIRONMENT_ID
+      ? c.json({
+          success: true,
+          data: {
+            apiBase: peerBaseUrl,
+            credential: PEER_CREDENTIAL,
+            label: 'Peer',
+          },
+        })
+      : c.json({ success: false, error: 'not found' }, 404),
+  );
+  // The peer Station itself: a separate listener recording what arrives.
+  const peerApp = new Hono();
+  peerApp.post('/api/orchestration/*', async (c) => {
+    peerReceived.push({
+      path: c.req.path,
+      authorization: c.req.header('authorization') ?? null,
+      body: await c.req.json(),
+    });
+    return c.json({
+      success: true,
+      data: {
+        taskId: 'task:peer',
+        sessionId: 'task:peer',
+        conversationId: 'conversation-peer-child',
+        status: 'dispatched',
+        resumable: true,
+        providerTurnId: 'turn-peer',
+        target: { kind: 'agent', id: 'writer' },
+      },
+    });
+  });
+  let resolvePeerPort!: (port: number) => void;
+  const peerListening = new Promise<number>((resolve) => {
+    resolvePeerPort = resolve;
+  });
+  peerServer = serve(
+    { fetch: peerApp.fetch, hostname: '127.0.0.1', port: 0 },
+    (info) => resolvePeerPort((info as AddressInfo).port),
+  );
+  peerBaseUrl = `http://127.0.0.1:${await peerListening}`;
+
+  // A REAL home: stored Agents, plus `claude` and `codex` adopted as registry
+  // defaults the way native engine adoption registers them.
+  home = mkdtempSync(join(tmpdir(), 'station-2601-lineage-'));
+  const configLoader = new ConfigLoader({ projectHomeDir: home });
+  // Seeds the home schema and the registry (`station` as its one default).
+  await loadOrCreateAgentRegistry(configLoader);
+  for (const [slug, spec] of Object.entries(SPECS))
+    await configLoader.createAgent({ slug, ...spec } as never);
+  await registerEngineConnection(configLoader, 'claude');
+  await registerEngineConnection(configLoader, 'codex');
+  const brokenDir = join(home, 'agents', 'broken');
+  mkdirSync(brokenDir, { recursive: true });
+  writeFileSync(join(brokenDir, 'agent.json'), '{ not json');
+  const agentService = new AgentService(
+    configLoader,
+    { findLayoutsUsingAgent: () => [] } as never,
+    new Map(),
+    new Map(),
+    new Map(),
+    { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  );
+  // The production sources (`runtime-routes.ts`) over this suite's records.
+  const sources: RequestDelegationSources = {
+    isInternalRequest: isStationInternalRequest,
+    resolveCaller: (request) =>
+      resolveStationControlCallerForRequest(request, resolveRecord),
+    startedMetadata: (threadId) => STARTED[threadId],
+    sessionEngine: (threadId) => ENGINES[threadId],
+    loadAgentSpec: (slug) => agentService.getAgent(slug),
+    isRegistryDefaultAgent: async (slug) =>
+      (await loadOrCreateAgentRegistry(configLoader)).defaultAgents.some(
+        (agent) => String(agent.id) === slug,
+      ),
+  };
+  app.route(
+    '/api/orchestration',
+    createStationControlCallerRoutes({
+      resolveRecord,
+      deriveCallerDelegation: createCallerDelegationDeriver(sources),
+    }),
+  );
   app.route(
     '',
     createStationControlMcpRoutes({ port, resolveCallerRecord: resolveRecord }),
@@ -204,19 +332,7 @@ beforeAll(async () => {
         executeForegroundMessage,
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
-        // The production composition (`runtime-routes.ts`) over this suite's
-        // records.
-        resolveRequestDelegation: createRequestDelegationResolver({
-          isInternalRequest: isStationInternalRequest,
-          resolveCaller: (request) =>
-            resolveStationControlCallerForRequest(request, resolveRecord),
-          startedMetadata: (threadId) => STARTED[threadId],
-          loadAgentSpec: async (slug) => {
-            const spec = SPECS[slug];
-            if (!spec) throw new Error(`no agent ${slug}`);
-            return spec;
-          },
-        }),
+        resolveRequestDelegation: createRequestDelegationResolver(sources),
       } as never,
     ),
   );
@@ -225,11 +341,15 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
+  rmSync(home, { recursive: true, force: true });
 });
 
 beforeEach(() => {
   __resetStationControlMcpTokensForTests();
+  __resetStationControlStdioCallerCredentialForTests();
+  peerReceived.length = 0;
   delegateTask.mockClear();
   executeForegroundMessage.mockClear();
 });
@@ -370,28 +490,6 @@ describe('#2601 delegate_task stamps lineage from the verified caller', () => {
     expect(delegateTask).not.toHaveBeenCalled();
   });
 
-  test("the limit is the calling session's own Agent policy", async () => {
-    const first = await callTool(
-      'session-shallow',
-      'delegate_task',
-      DELEGATE_ARGS,
-    );
-    expect(first.isError).toBe(false);
-    expect(stampedDelegation(delegateTask)).toMatchObject({
-      depth: 1,
-      maxDepth: 1,
-    });
-    delegateTask.mockClear();
-    const refused = await callTool(
-      'session-shallow-child',
-      'delegate_task',
-      DELEGATE_ARGS,
-    );
-    expect(refused.isError).toBe(true);
-    expect(refused.text).toContain('Delegation depth limit reached (1)');
-    expect(delegateTask).not.toHaveBeenCalled();
-  });
-
   test('a verified session with no recorded Agent is refused rather than starting a root', async () => {
     const result = await callTool(
       'session-agentless',
@@ -499,5 +597,200 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
       expect(response.status).toBe(200);
       expect(stampedDelegation(executeForegroundMessage)).toBeUndefined();
     }
+  });
+});
+
+describe('#2601 registry default Agents delegate under the default policy', () => {
+  const defaultPolicyChild = (agentSlug: string, conversationId: string) =>
+    createChildDelegationContext({ agentSlug, conversationId });
+
+  test.each([
+    ['station', 'session-station', 'conversation-station'],
+    ['claude', 'session-claude', 'conversation-claude'],
+    ['codex', 'session-codex', 'conversation-codex'],
+  ])(
+    'a session on the default %s Agent (no stored spec) delegates with the default policy',
+    async (agentSlug, sessionId, conversationId) => {
+      const delegated = await callTool(
+        sessionId,
+        'delegate_task',
+        DELEGATE_ARGS,
+      );
+      expect(delegated.isError).toBe(false);
+      expect(stampedDelegation(delegateTask)).toEqual(
+        defaultPolicyChild(agentSlug, conversationId),
+      );
+      const sent = await callTool(sessionId, 'send_message', SEND_ARGS);
+      expect(sent.isError).toBe(false);
+      expect(stampedDelegation(executeForegroundMessage)).toEqual(
+        defaultPolicyChild(agentSlug, conversationId),
+      );
+    },
+  );
+
+  test('an absent spec for an Agent the registry does not list, and an unreadable stored spec, are refused', async () => {
+    for (const [sessionId, agentSlug] of [
+      ['session-ghost', 'ghost'],
+      ['session-broken', 'broken'],
+    ]) {
+      delegateTask.mockClear();
+      const result = await callTool(sessionId!, 'delegate_task', DELEGATE_ARGS);
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain(
+        `its Agent '${agentSlug}' could not be read`,
+      );
+      expect(delegateTask).not.toHaveBeenCalled();
+    }
+  });
+
+  test('an adopted session (no Agent) is named by its engine and bounded by the default policy', async () => {
+    const result = await callTool(
+      'session-adopted',
+      'delegate_task',
+      DELEGATE_ARGS,
+    );
+    expect(result.isError).toBe(false);
+    expect(stampedDelegation(delegateTask)).toEqual(
+      defaultPolicyChild('codex', 'conversation-adopted'),
+    );
+  });
+});
+
+describe('#2601 send_message continuing a conversation', () => {
+  test('a verified caller continuing an existing conversation still stamps the context derived from ITS session, not the model claim', async () => {
+    const result = await callTool('session-child', 'send_message', {
+      ...SEND_ARGS,
+      conversationId: 'conversation-existing',
+      _delegation: FORGED,
+    });
+    expect(result.isError).toBe(false);
+    expect(executeForegroundMessage.mock.calls[0]![0]).toMatchObject({
+      conversationId: 'conversation-existing',
+    });
+    expect(stampedDelegation(executeForegroundMessage)).toMatchObject({
+      depth: 2,
+      parentConversationId: 'conversation-child',
+      rootConversationId: 'conversation-root',
+    });
+  });
+});
+
+describe('#2601 forwards to a saved Environment carry the derived context', () => {
+  const peerArgs = { environmentId: PEER_ENVIRONMENT_ID };
+
+  test('delegate_task: the peer receives THIS Station’s derivation, not the forged claim, and no attestation', async () => {
+    const result = await callTool('session-child', 'delegate_task', {
+      ...DELEGATE_ARGS,
+      ...peerArgs,
+      _delegation: FORGED,
+      _delegationAttestation: 'forged',
+    });
+    expect(result.isError).toBe(false);
+    expect(delegateTask).not.toHaveBeenCalled();
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
+    expect(peerReceived[0]!.body.delegation).toMatchObject({
+      depth: 2,
+      parentConversationId: 'conversation-child',
+      rootConversationId: 'conversation-root',
+      maxDepth: 2,
+    });
+    expect(peerReceived[0]!.authorization).toBe(`Bearer ${PEER_CREDENTIAL}`);
+    expect(peerReceived[0]!.body).not.toHaveProperty('delegationAttestation');
+  });
+
+  test('send_message: an omitted _delegation still reaches the peer as the derived context', async () => {
+    const result = await callTool('session-root', 'send_message', {
+      ...SEND_ARGS,
+      ...peerArgs,
+    });
+    expect(result.isError).toBe(false);
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/chat/delegated');
+    expect(peerReceived[0]!.body.delegation).toMatchObject({
+      depth: 1,
+      parentConversationId: 'conversation-root',
+      rootConversationId: 'conversation-root',
+    });
+  });
+
+  test('a caller at its depth limit is refused before anything reaches the peer, for both tools', async () => {
+    for (const [name, args] of [
+      ['delegate_task', DELEGATE_ARGS],
+      ['send_message', SEND_ARGS],
+    ] as const) {
+      const result = await callTool('session-deep', name, {
+        ...args,
+        ...peerArgs,
+        _delegation: { ...ROOT_CHILD, depth: 0 },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain('Delegation depth limit reached (2)');
+    }
+    expect(peerReceived).toHaveLength(0);
+  });
+});
+
+describe("#2601 Station's own engine: the attested context survives the real tool forward", () => {
+  type Handler = (args: Record<string, unknown>) => Promise<{
+    isError?: boolean;
+    content: Array<{ text: string }>;
+  }>;
+
+  /**
+   * The REAL tool handlers behind Station's own engine's `mcp-manager.ts`
+   * wrapper, with no per-session caller (the pooled child has none), so the
+   * route's only reason to keep a context is its attestation.
+   */
+  function stationEngineTool(name: 'send_message' | 'delegate_task') {
+    const server = new McpServer({ name: 'lineage-e2e', version: '0.0.0' });
+    registerOperationsTools(new StationControlToolRegistry(server));
+    const handler = (
+      server as unknown as {
+        _registeredTools: Record<string, { handler: Handler }>;
+      }
+    )._registeredTools[name]!.handler;
+    const [wrapped] = wrapDelegationAwareTools(
+      [
+        {
+          name: `station-control_${name}`,
+          description: name,
+          parameters: {},
+          execute: (args: Record<string, unknown>) => handler(args),
+        } as never,
+      ],
+      {
+        agentSlug: 'planner',
+        toolId: 'station-control',
+        spec: SPECS.planner,
+      },
+    );
+    return (args: Record<string, unknown>) =>
+      wrapped!.execute!(args, {
+        conversationId: 'conversation-in-process',
+      } as never) as ReturnType<Handler>;
+  }
+
+  const expected = () =>
+    createChildDelegationContext({
+      agentSlug: 'planner',
+      conversationId: 'conversation-in-process',
+      spec: SPECS.planner,
+    });
+
+  test('send_message: tool → /chat/delegated keeps the attested context', async () => {
+    const result = await stationEngineTool('send_message')(SEND_ARGS);
+    expect(result.isError).not.toBe(true);
+    expect(stampedDelegation(executeForegroundMessage)).toEqual(expected());
+  });
+
+  test('delegate_task: tool → /delegations keeps the attested context (deliberate: its children now carry lineage and the child denials)', async () => {
+    const result = await stationEngineTool('delegate_task')(DELEGATE_ARGS);
+    expect(result.isError).not.toBe(true);
+    expect(stampedDelegation(delegateTask)).toEqual(expected());
+    expect(delegateTask.mock.calls[0]![0]).toMatchObject({
+      parentTaskId: 'conversation-in-process',
+    });
   });
 });

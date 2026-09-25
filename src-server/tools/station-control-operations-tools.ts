@@ -934,9 +934,10 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .describe('Parent task for worker or subagent topology'),
       navigate: z.boolean().optional(),
       _delegation: delegationContextSchema.optional(),
+      _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
     },
-    async ({ _delegation, _userId, ...input }) => {
+    async ({ _delegation, _delegationAttestation, _userId, ...input }) => {
       const target = {
         environment: input.environmentId
           ? ({
@@ -968,7 +969,11 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         target,
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        // #2601: a claim only, like `send_message`'s.
         delegation: _delegation,
+        ...(_delegation && _delegationAttestation
+          ? { delegationAttestation: _delegationAttestation }
+          : {}),
         userId: _userId,
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });

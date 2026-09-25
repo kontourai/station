@@ -588,7 +588,11 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
-import { createRequestDelegationResolver } from '../agents/request-delegation.js';
+import {
+  createCallerDelegationDeriver,
+  createRequestDelegationResolver,
+  type RequestDelegationSources,
+} from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -1892,6 +1896,29 @@ export function configureRuntimeRoutes(
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );
+  // #2601: what a dispatch's delegation context is derived from: the verified
+  // caller's own session records and its Agent's policy (a registry default
+  // Agent with no stored spec takes the default policy).
+  const requestDelegationSources: RequestDelegationSources = {
+    isInternalRequest: isStationInternalRequest,
+    resolveCaller: (request) =>
+      resolveStationControlCallerForRequest(
+        request,
+        resolveStationControlCallerRecord,
+      ),
+    startedMetadata: (threadId) =>
+      context.orchestrationService.firstStartedMetadataOfThread(threadId),
+    sessionEngine: (threadId) =>
+      context.orchestrationEventStore?.firstEventByMethod(
+        threadId,
+        'session.started',
+      )?.provider,
+    loadAgentSpec: (agentSlug) => context.agentService.getAgent(agentSlug),
+    isRegistryDefaultAgent: async (agentSlug) =>
+      (
+        await loadOrCreateAgentRegistry(context.configLoader)
+      ).defaultAgents.some((agent) => String(agent.id) === agentSlug),
+  };
   context.app.route(
     '',
     createStationControlMcpRoutes({
@@ -1904,6 +1931,9 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createStationControlCallerRoutes({
       resolveRecord: resolveStationControlCallerRecord,
+      deriveCallerDelegation: createCallerDelegationDeriver(
+        requestDelegationSources,
+      ),
     }),
   );
   context.app.route(
@@ -3503,17 +3533,9 @@ export function configureRuntimeRoutes(
         ),
       // #2601: a dispatch's delegation context comes from its verified
       // caller's own session, never from the tool arguments in its body.
-      resolveRequestDelegation: createRequestDelegationResolver({
-        isInternalRequest: isStationInternalRequest,
-        resolveCaller: (request) =>
-          resolveStationControlCallerForRequest(
-            request,
-            resolveStationControlCallerRecord,
-          ),
-        startedMetadata: (threadId) =>
-          context.orchestrationService.firstStartedMetadataOfThread(threadId),
-        loadAgentSpec: (agentSlug) => context.agentService.getAgent(agentSlug),
-      }),
+      resolveRequestDelegation: createRequestDelegationResolver(
+        requestDelegationSources,
+      ),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(
           {

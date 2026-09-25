@@ -12,6 +12,7 @@
  * which is `null` unless it presents a live credential; see
  * `resolveStationControlCallerForRequest` for the conditions.
  */
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { Hono } from 'hono';
 import {
   resolveStationControlCallerForRequest,
@@ -23,6 +24,13 @@ const NO_STORE = { 'Cache-Control': 'no-store' };
 
 export function createStationControlCallerRoutes(options: {
   resolveRecord?: StationControlCallerRecordResolver;
+  /**
+   * #2601: the child context this Station derives for the request's verified
+   * caller, or `null` without one (`createCallerDelegationDeriver`).
+   */
+  deriveCallerDelegation?: (
+    request: Request,
+  ) => Promise<AgentDelegationContext | null>;
 }): Hono {
   const app = new Hono();
   app.get('/station-control/caller', (c) => {
@@ -33,6 +41,29 @@ export function createStationControlCallerRoutes(options: {
       options.resolveRecord,
     );
     return c.json({ caller }, 200, NO_STORE);
+  });
+  // #2601: what a station-control tool forwards to a saved Environment,
+  // settled here because that forward bypasses this Station's dispatch
+  // routes. A refusal (depth limit, underivable lineage) is a 403 whose
+  // message the tool reports as-is.
+  app.get('/station-control/caller/delegation', async (c) => {
+    if (
+      getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.kind !== 'internal' ||
+      !options.deriveCallerDelegation
+    )
+      return c.json({ error: { code: 'not_found' } }, 404, NO_STORE);
+    try {
+      const delegation = await options.deriveCallerDelegation(c.req.raw);
+      return c.json({ delegation }, 200, NO_STORE);
+    } catch (error) {
+      const code = (error as { code?: unknown })?.code;
+      if (
+        code === 'delegation_depth_exceeded' ||
+        code === 'delegation_lineage_unavailable'
+      )
+        return c.json({ error: (error as Error).message, code }, 403, NO_STORE);
+      throw error;
+    }
   });
   return app;
 }

@@ -6,7 +6,8 @@
  * argument. That child is pooled per tenant, so its REST call carries no
  * per-session caller credential, and the route cannot tell the runtime's
  * derivation from a context a model wrote into the same argument. The stamp
- * therefore travels with an HMAC keyed by the per-boot internal token:
+ * therefore travels with an HMAC under a key derived from the per-boot
+ * internal token (`HMAC(token, domain)`, so the key serves nothing else):
  * Station's runtime can compute it, a model cannot, because the token never
  * enters a model's context. The route keeps an unverified caller's context
  * only when this attestation verifies.
@@ -25,8 +26,12 @@ import { getInternalApiToken } from '../../utils/internal-api-token.js';
 
 const DOMAIN = 'station.delegation-context.v1';
 
+function attestationKey(): Buffer {
+  return createHmac('sha256', getInternalApiToken()).update(DOMAIN).digest();
+}
+
 function mac(context: AgentDelegationContext): string {
-  return createHmac('sha256', getInternalApiToken())
+  return createHmac('sha256', attestationKey())
     .update(
       JSON.stringify([
         DOMAIN,

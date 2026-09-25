@@ -1,7 +1,8 @@
 /**
- * The delegation context a REST dispatch (`POST /api/orchestration/chat*`,
- * `POST /api/orchestration/delegations`) stamps onto the session it starts
- * (#2601).
+ * The delegation context a dispatch stamps onto the session it starts
+ * (#2601): `POST /api/orchestration/chat*`, `POST /api/orchestration/
+ * delegations`, and the station-control tools' forwards to a saved
+ * Environment (`GET /api/orchestration/station-control/caller/delegation`).
  *
  * `delegate_task` and `send_message` used to forward the model-written
  * `_delegation` tool argument into the child's `session.started` metadata, so
@@ -17,20 +18,28 @@
  *    Agent, its conversation, its Agent's delegation policy and the context
  *    it was started with. The body's context is ignored, including its
  *    absence, and the depth limit is enforced here for every engine.
+ *    Every assurance counts, `bearer-exposed` included: a same-user process
+ *    that copied a Codex session's URL token can act as that session, and
+ *    this derivation then names THAT session's lineage, which is the most a
+ *    copied credential can claim. Treating such callers as unverified would
+ *    let every Codex model omit its lineage again.
  *  - Any other Station-internal request (Station's pooled engine child, or
  *    any holder of the internal token) keeps a body context only when
  *    Station's runtime attested it (`delegation-attestation.ts`). Otherwise
  *    it claims no lineage: the session it starts is a root.
- *  - A request from outside this Station's process (a peer Station
- *    forwarding its own child, an operator or device credential) is not an
- *    agent of this Station, and its context passes through unchanged. It is
- *    what the SENDER asserts; this Station cannot verify another Station's
- *    lineage (see the residual note on #2601).
+ *  - A request from outside this Station's process passes its context
+ *    through unchanged: a peer Station forwarding its own child, or an
+ *    operator, paired-device or hosted-user credential. None of those is
+ *    reachable through `delegate_task`/`send_message` on this Station; a
+ *    peer's context is what the SENDING Station derived (or, for its callers
+ *    that are neither verified nor attested, what they claimed), and this
+ *    Station cannot verify another Station's lineage.
  */
 import type {
   AgentDelegationContext,
   AgentSpec,
 } from '@kontourai/station-contracts/agent';
+import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import { createChildDelegationContext } from './delegation.js';
 import { verifyDelegationContextAttestation } from './delegation-attestation.js';
@@ -58,8 +67,15 @@ export interface RequestDelegationSources {
   resolveCaller(request: Request): StationControlCaller | null;
   /** The metadata a session STARTED with (its first `session.started`). */
   startedMetadata(sessionId: string): Record<string, unknown> | undefined;
-  /** The Agent spec for a slug; throws when there is none. */
+  /** The engine (`provider`) a session was started on, from the same record. */
+  sessionEngine(sessionId: string): string | undefined;
+  /**
+   * The Agent spec for a slug. Throws `AgentConfigNotFoundError` when no spec
+   * is stored, which is the normal state of a registry default Agent.
+   */
   loadAgentSpec(agentSlug: string): Promise<AgentSpec>;
+  /** Whether the Agent registry lists this slug as a built-in default. */
+  isRegistryDefaultAgent(agentSlug: string): Promise<boolean>;
 }
 
 export interface ClaimedRequestDelegation {
@@ -127,45 +143,121 @@ function recordedDelegation(
   };
 }
 
+const CLEAN_AGENT_ID = /^[a-z][a-z0-9-]{0,63}$/;
+
+/**
+ * The Agent policy a calling session's children are bounded by.
+ *
+ * Follows `composeAgentExecutionConfigLoader`: a registry default Agent
+ * (`station`, and `claude`/`codex` once adopted) is deliberately never
+ * written to `agents/`, so ABSENCE of its spec is ordinary and means the
+ * default policy (`createChildDelegationContext` with no spec). A spec that
+ * exists but cannot be read, or an absent spec for a slug the registry does
+ * not list, is refused: its policy may be stricter than the default.
+ */
+async function callerAgentPolicy(
+  agentSlug: string,
+  sources: Pick<
+    RequestDelegationSources,
+    'loadAgentSpec' | 'isRegistryDefaultAgent'
+  >,
+): Promise<AgentSpec | undefined> {
+  try {
+    return await sources.loadAgentSpec(agentSlug);
+  } catch (error) {
+    if (
+      isAgentConfigNotFound(error) &&
+      (await sources.isRegistryDefaultAgent(agentSlug).catch(() => false))
+    )
+      return undefined;
+    throw new DelegationLineageUnavailableError(
+      `its Agent '${agentSlug}' could not be read.`,
+    );
+  }
+}
+
+/**
+ * Who the calling session delegates as. An Agent-started session names its
+ * Agent. The one live session kind with no Agent is an ADOPTED session
+ * (`attached-session-adoption.ts` records `adoptedFromThreadId` and no Agent):
+ * it runs on its engine with no Agent spec, so it is named by that engine and
+ * bounded by the default policy. Read-only followed sessions never hold a
+ * station-control credential, so they never reach here. Anything else with
+ * no recorded Agent is refused.
+ */
+async function callerIdentity(
+  sessionId: string,
+  metadata: Record<string, unknown> | undefined,
+  sources: Pick<
+    RequestDelegationSources,
+    'sessionEngine' | 'loadAgentSpec' | 'isRegistryDefaultAgent'
+  >,
+): Promise<{ agentSlug: string; spec: AgentSpec | undefined }> {
+  const agentSlug =
+    nonEmptyString(metadata?.agentSlug) ?? nonEmptyString(metadata?.agentId);
+  if (agentSlug)
+    return { agentSlug, spec: await callerAgentPolicy(agentSlug, sources) };
+  if (nonEmptyString(metadata?.adoptedFromThreadId)) {
+    const engine = sources.sessionEngine(sessionId);
+    if (engine && CLEAN_AGENT_ID.test(engine))
+      return { agentSlug: engine, spec: undefined };
+  }
+  throw new DelegationLineageUnavailableError(
+    'the session has no recorded Agent.',
+  );
+}
+
 /**
  * The child context of a verified calling session, derived from that
  * session's records alone. Throws `DelegationDepthLimitError` at the limit.
  */
 async function deriveCallerChildDelegation(
   caller: StationControlCaller,
-  sources: Pick<RequestDelegationSources, 'startedMetadata' | 'loadAgentSpec'>,
+  sources: Pick<
+    RequestDelegationSources,
+    | 'startedMetadata'
+    | 'sessionEngine'
+    | 'loadAgentSpec'
+    | 'isRegistryDefaultAgent'
+  >,
 ): Promise<AgentDelegationContext> {
   const metadata = sources.startedMetadata(caller.sessionId);
-  const agentSlug =
-    nonEmptyString(metadata?.agentSlug) ?? nonEmptyString(metadata?.agentId);
-  if (!agentSlug)
-    throw new DelegationLineageUnavailableError(
-      'the session has no recorded Agent.',
-    );
   const current = recordedDelegation(metadata?.delegation);
   if (current === false)
     throw new DelegationLineageUnavailableError(
       'the session recorded a malformed delegation context.',
     );
-  let spec: AgentSpec;
-  try {
-    spec = await sources.loadAgentSpec(agentSlug);
-  } catch {
-    // Its policy (maxDepth, tool denials) is what bounds the child, so a
-    // missing spec is not read as the default policy.
-    throw new DelegationLineageUnavailableError(
-      `its Agent '${agentSlug}' could not be read.`,
-    );
-  }
+  const { agentSlug, spec } = await callerIdentity(
+    caller.sessionId,
+    metadata,
+    sources,
+  );
   return createChildDelegationContext({
     agentSlug,
     // The conversation Station records for the session; a session with none
     // is named by its own id, never left out (an absent parent reads as a
     // root to every consumer).
     conversationId: caller.conversationId ?? caller.sessionId,
-    spec,
+    ...(spec ? { spec } : {}),
     ...(current ? { current } : {}),
   });
+}
+
+/**
+ * For the station-control tools' forwards to ANOTHER Station: the child
+ * context this Station derives for the request's verified caller, or `null`
+ * when the request carries none (the tool then keeps its pre-#2601
+ * behaviour). Throws the same refusals as the local routes, so the depth
+ * limit holds before anything is forwarded.
+ */
+export function createCallerDelegationDeriver(
+  sources: RequestDelegationSources,
+): (request: Request) => Promise<AgentDelegationContext | null> {
+  return async (request) => {
+    if (!sources.isInternalRequest(request)) return null;
+    const caller = sources.resolveCaller(request);
+    return caller ? deriveCallerChildDelegation(caller, sources) : null;
+  };
 }
 
 export function createRequestDelegationResolver(

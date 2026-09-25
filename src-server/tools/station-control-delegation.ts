@@ -68,6 +68,7 @@ import {
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
+import { verifyDelegationContextAttestation } from '../runtime/agents/delegation-attestation.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
@@ -229,6 +230,8 @@ export interface DelegateTaskInput {
   sessionId?: string;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
+  delegationAttestation?: string;
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
@@ -1245,6 +1248,69 @@ export interface DelegatedTaskInventory {
 
 function currentControlApiBase(): string {
   return resolveControlApiBase();
+}
+
+/** #2601: this Station's derivation for the calling tool's verified caller. */
+const CALLER_DELEGATION_PATH =
+  '/api/orchestration/station-control/caller/delegation';
+
+type ForwardedDelegation = {
+  delegation?: AgentDelegationContext;
+  delegationAttestation?: string;
+};
+
+/**
+ * #2601: the delegation context a station-control tool call forwards.
+ *
+ * To THIS Station an attested claim goes with its attestation, and nothing
+ * else: its route derives the context from the verified caller, or keeps an
+ * attested one.
+ * To a saved Environment (peer or SSH Station) that route is bypassed, so
+ * the context is settled here first:
+ *  - a verified caller forwards the context THIS Station derives for it
+ *    (the same derivation), and a caller at its depth limit is refused
+ *    before anything is sent;
+ *  - otherwise a context Station's own engine attested is forwarded (the
+ *    attestation itself is not: another Station holds another key);
+ *  - otherwise the pre-#2601 behaviour stands, and it is a claim: a
+ *    `send_message` forwards whatever context it was given, and a
+ *    `delegate_task` forwards none. Only an unverified, unattested
+ *    station-control connection reaches this branch.
+ */
+async function delegationToForward(
+  target: DelegationTarget,
+  input: ForwardedDelegation,
+  unverifiedForwardsClaim: boolean,
+): Promise<ForwardedDelegation> {
+  if (target.kind === 'current')
+    // Only an attested claim can matter to this Station's route (it derives
+    // or drops every other one), so an unattested one is not sent: a
+    // malformed model claim must not fail the call's validation.
+    return input.delegation && input.delegationAttestation
+      ? {
+          delegation: input.delegation,
+          delegationAttestation: input.delegationAttestation,
+        }
+      : {};
+  const derived = await readJson<{
+    delegation?: AgentDelegationContext | null;
+  }>(
+    `${currentControlApiBase()}${CALLER_DELEGATION_PATH}`,
+    trustedRequest(),
+    'Station could not derive this delegation from the calling session',
+  );
+  if (derived.delegation) return { delegation: derived.delegation };
+  if (
+    input.delegation &&
+    verifyDelegationContextAttestation(
+      input.delegation,
+      input.delegationAttestation,
+    )
+  )
+    return { delegation: input.delegation };
+  return unverifiedForwardsClaim && input.delegation
+    ? { delegation: input.delegation }
+    : {};
 }
 
 /**
@@ -4300,6 +4366,13 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
+    // #2601: settled before the authority recheck below, so no await sits
+    // between that recheck and the forward.
+    const forwarded = orchestrationService
+      ? input.delegation
+        ? { delegation: input.delegation }
+        : {}
+      : await delegationToForward(selectedTarget, input, false);
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -4323,6 +4396,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
             // #485: the opt-in correlation rides the portable forward body
             // ONLY (validated at both seams; the receiver re-derives its
             // claim key from its OWN verified view of the caller grant).
@@ -4339,6 +4413,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
           },
           'The selected Station could not start the delegated task',
         );
@@ -5152,21 +5227,25 @@ export async function executeExecutionTargetMessage(
     const {
       automaticBackground: _automaticBackground,
       fullAccessGrant: _fullAccessGrant,
-      delegationAttestation,
+      delegation: _claimedDelegation,
+      delegationAttestation: _claimedAttestation,
       ...remoteInput
     } = input;
+    const forwarded = orchestrationService
+      ? input.delegation
+        ? { delegation: input.delegation }
+        : {}
+      : await delegationToForward(selectedTarget, input, true);
     return postForegroundMessage(
       selectedTarget,
-      input.delegation
+      forwarded.delegation
         ? '/api/orchestration/chat/delegated'
         : input.automaticBackground
           ? '/api/orchestration/chat/background'
           : '/api/orchestration/chat',
       {
         ...remoteInput,
-        ...(delegationAttestation && selectedTarget.kind === 'current'
-          ? { delegationAttestation }
-          : {}),
+        ...forwarded,
         target: {
           ...pinnedTarget,
           environment: { kind: 'current' },

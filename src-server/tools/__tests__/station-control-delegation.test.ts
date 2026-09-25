@@ -28,6 +28,22 @@ process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
 const CURRENT_API = 'http://control-delegation.test';
 const REMOTE_API = 'http://127.0.0.1:45123';
 const fetchMock = vi.fn<typeof fetch>();
+/**
+ * #2601: a forward to a saved Environment first asks THIS Station for the
+ * calling session's derived delegation. These suites run without a verified
+ * caller, which that route answers with `{ delegation: null }`; the answer is
+ * served here so each suite's own fetch fixture keeps describing only the
+ * Environments it exercises. (Its behaviour with a verified caller is
+ * covered end to end by `station-control-delegation-lineage.test.ts`.)
+ */
+const stationFetch: typeof fetch = async (input, init) =>
+  String(input) ===
+  `${'http://control-delegation.test'}/api/orchestration/station-control/caller/delegation`
+    ? new Response(JSON.stringify({ delegation: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    : fetchMock(input, init);
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -520,7 +536,7 @@ function installRemoteStationFetch(
 
 describe('Station Control canonical Environment + Agent execution', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', stationFetch);
     fetchMock.mockReset();
   });
 
@@ -3537,7 +3553,7 @@ describe('observeDelegatedTask answerability passthrough (station#1783)', () => 
   }
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', stationFetch);
     fetchMock.mockReset();
   });
 
@@ -3740,7 +3756,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
   const authority = hostedAuthority('alpha');
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', stationFetch);
     fetchMock.mockReset();
   });
 
