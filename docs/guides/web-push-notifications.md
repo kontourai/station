@@ -56,9 +56,13 @@ paired phone gets a push, and tapping it lands on the attention inbox
   in as one — so another live tab of the same browser cannot vouch for a
   focused tab whose stream is gone. A focused document whose stream closed,
   or whose keepalive writes stopped succeeding for 90 s, quiets nothing. A
-  half-open socket can keep those writes "succeeding", so the worst-case
-  window in which a dead tab still quiets the phone is bounded by the
-  120 s focus lease (`FOCUS_LEASE_MS`), not by the 90 s stream lease. Stream
+  half-open socket can keep those writes "succeeding". A tab that has
+  actually gone away stops reporting focus, so it stops quieting the phone
+  within the 120 s focus lease (`FOCUS_LEASE_MS`). A tab that is still
+  open and reporting focus while its `/events` socket is half-open is not
+  bounded that way: its keepalive writes can keep "succeeding" until TCP
+  gives up, which can take minutes, and the `/events` client sets no
+  stall timeout to reconnect sooner. Stream
   leases are capped (32 documents per device, 32 operator tabs, 256
   device streams overall); a
   document past the cap is never live, so it never quiets anything. A live
