@@ -727,6 +727,37 @@ describe('StationAgentAdapter', () => {
     expect(body.input).toBe('plain text turn');
   });
 
+  test('names its orchestration thread to /chat as a direct internal caller (#2589)', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        sseResponse([{ type: 'finish', finishReason: 'stop' }, '[DONE]']),
+      );
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      ...approvalDeps(),
+      fetch: fetchMock,
+    });
+    await adapter.startSession({
+      threadId: 'relay-thread',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'relay-thread', input: 'hi' });
+
+    // chat.ts trusts the thread only with the local caller marker and only
+    // when it is the request's own conversation.
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      'x-station-orchestration-thread': 'relay-thread',
+      'x-station-proxy-caller': 'local',
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).options
+        .conversationId,
+    ).toBe('relay-thread');
+  });
+
   test('relays only its server-owned tenant execution context as the internal tenant header', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

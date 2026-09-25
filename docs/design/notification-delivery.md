@@ -569,11 +569,22 @@ missing).
   record whose metadata says it is about an orchestration session
   (`sessionKind: 'runtime'` with a `sessionId`, and `requestKind`, when
   present, `'orchestration'`), because the card is built from orchestration
-  sessions only. A registry approval (a managed-agent tool call, an MCP UI
-  call, an ACP bridge request: `sessionKind: 'managed'`,
-  `requestKind: 'registry'`) never writes the orchestration `request.opened`
+  sessions only. One registry approval is on the card too: a Station-agent
+  session relays each turn through `/chat`, so a tool approval there is both
+  a registry approval and, republished by the adapter, the thread's
+  orchestration `request.opened`. The relay names its thread in the
+  internal `x-station-orchestration-thread` header (accepted only from a
+  direct internal caller, and only for the request's own conversation), and
+  that approval's registry notification carries
+  `metadata.orchestrationThreadId` equal to its `sessionId`; that twin does
+  not alert either. Every other registry approval (a managed chat outside
+  orchestration, an MCP UI call, an ACP bridge request, a Kit action:
+  `sessionKind: 'managed'`, `requestKind: 'registry'`, no
+  `orchestrationThreadId`) never writes the orchestration `request.opened`
   that puts a session on the card as waiting for approval, so it still
-  alerts, as does anything whose record does not identify it. The exclusion
+  alerts, as does anything whose record does not identify it. Only this
+  alert channel reads the stamp: the two records of a Station-agent
+  approval are still two notifications everywhere else. The exclusion
   does not look at the phone: with Live Activities turned off, the
   card-announced notifications raise no alert at all (the inbox keeps them).
   Info-level notifications are not carried either (fixed text for them would

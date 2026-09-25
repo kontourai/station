@@ -441,28 +441,71 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
     },
   );
 
-  test('a registry approval is never on the card, so it still alerts', async () => {
-    const h = await harness();
-    await h.emit(
+  const registryApproval = (metadata: Record<string, unknown> = {}) =>
+    approval({
+      id: 'n-registry',
+      source: 'approval-inbox',
+      category: 'approval-request',
+      metadata: {
+        approvalId: 'a1',
+        conversationId: 'c1',
+        sessionId: 'c1',
+        sessionKind: 'managed',
+        requestKind: 'registry',
+        requestKey: 'approval:a1',
+        ...metadata,
+      },
+    });
+
+  // Each record below differs from a card-alerted one in one clause of
+  // `isCardAlerted`, so dropping that clause silences a real alert here.
+  test.each([
+    ['a plain registry approval (not on the card)', registryApproval()],
+    [
+      'a registry approval stamped runtime (requestKind registry needs the thread stamp)',
+      registryApproval({ sessionKind: 'runtime' }),
+    ],
+    [
+      'a registry approval naming another thread (the stamp must match the session)',
+      registryApproval({ orchestrationThreadId: 'c2' }),
+    ],
+    [
+      'an orchestration-kind approval of a non-runtime session (the sessionKind clause)',
       approval({
-        id: 'n-registry',
+        id: 'n-managed',
         source: 'approval-inbox',
         category: 'approval-request',
         metadata: {
-          approvalId: 'a1',
-          conversationId: 'c1',
-          sessionId: 'c1',
+          requestKind: 'orchestration',
+          sessionId: 's1',
           sessionKind: 'managed',
-          requestKind: 'registry',
-          requestKey: 'approval:a1',
         },
       }),
-      1,
-    );
+    ],
+  ])('%s still alerts', async (_label, notification) => {
+    const h = await harness();
+    await h.emit(notification, 1);
     expect(h.appleCalls).toHaveLength(1);
     expect(JSON.parse(h.appleCalls[0]?.body ?? '{}').aps.alert).toEqual(
       APNS_ALERT_TEXT.attention,
     );
+  });
+
+  test('the registry twin of a Station-agent approval is left to the card (#2589)', async () => {
+    const h = await harness();
+    // What approval-inbox.ts writes for a relayed /chat turn's approval.
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      registryApproval({
+        conversationId: 's1',
+        sessionId: 's1',
+        orchestrationThreadId: 's1',
+      }) as never,
+    );
+    await settle();
+    expect(h.stationFetch).not.toHaveBeenCalled();
+    await h.emit(approval({ id: 'n-other' }), 1);
+    expect(h.appleCalls).toHaveLength(1);
   });
 
   test('a failure notification uses the failed text; a done one is quiet; info is not carried', async () => {

@@ -8,23 +8,34 @@
  * The card is built from orchestration sessions only (the session read
  * model), and it alerts on an entry into approval or input and on a
  * finished, stopped or failed turn. So a notification is card-alerted only
- * when BOTH hold:
+ * when its category is one of those events (`approval-request`,
+ * `turn-completed`, `turn-stopped`, `turn-failed`) AND its record says it
+ * is about an orchestration session, in one of two ways:
  *
- * - its category is one of those events: `approval-request`,
- *   `turn-completed`, `turn-stopped`, `turn-failed`;
- * - its record says it is about an orchestration session: `metadata.sessionKind`
- *   is `'runtime'` (what approval-inbox.ts and
- *   turn-completion-notifications.ts stamp for orchestration sessions) with
- *   a `metadata.sessionId`, and it is not a registry request
- *   (`metadata.requestKind`, when present, is `'orchestration'`).
+ * - it is the orchestration record itself: `metadata.sessionKind` is
+ *   `'runtime'` (what approval-inbox.ts and turn-completion-notifications.ts
+ *   stamp for orchestration sessions) with a `metadata.sessionId`, and it is
+ *   not a registry request (`metadata.requestKind`, when present, is
+ *   `'orchestration'`);
+ * - it is the registry twin of a Station-agent approval: an
+ *   `approval-request` with `metadata.requestKind` `'registry'` whose
+ *   `metadata.orchestrationThreadId` equals its `metadata.sessionId`. The
+ *   Station-agent adapter relays its turns through `/chat`, and each tool
+ *   approval there is registered with the approval registry (the registry
+ *   notification) and republished by the adapter as the thread's
+ *   `request.opened` (the card's approval and the orchestration
+ *   notification). The relay names its thread (chat.ts), and
+ *   stream-orchestrator.ts stamps `orchestrationThreadId` on exactly those
+ *   approvals.
  *
- * A registry approval (approval-registry.ts: a managed-agent tool call, an
- * MCP UI call, an ACP bridge request) is stamped `sessionKind: 'managed'`,
- * `requestKind: 'registry'`. It never writes an orchestration
- * `request.opened`, which is the only thing that puts a session on the card
- * as waiting for approval (session-lifecycle-service.ts), so it is never on
- * the card and must still alert. Anything the record does not identify as
- * orchestration-backed alerts too: a duplicate beats a silenced alert.
+ * Every other registry approval (a managed chat outside orchestration, an
+ * MCP-UI call, an ACP bridge request, a Kit action) is stamped
+ * `sessionKind: 'managed'`, `requestKind: 'registry'` with no
+ * `orchestrationThreadId`. Nothing writes an orchestration `request.opened`
+ * for it, which is the only thing that puts a session on the card as waiting
+ * for approval (session-lifecycle-service.ts), so it is not on the card and
+ * must still alert. Anything the record does not identify as on the card
+ * alerts too: a duplicate beats a silenced alert.
  *
  * The check does not look at whether this phone's card is actually on: on a
  * phone with the card turned off (or Live Activities disabled on iOS), the
@@ -47,14 +58,16 @@ export function isCardAlerted(
 ): boolean {
   if (!CARD_ALERTED_CATEGORIES.has(notification.category)) return false;
   const metadata = notification.metadata ?? {};
-  const { sessionKind, sessionId, requestKind } = metadata as Record<
-    string,
-    unknown
-  >;
+  const { sessionKind, sessionId, requestKind, orchestrationThreadId } =
+    metadata as Record<string, unknown>;
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return false;
+  if (requestKind === 'registry')
+    return (
+      notification.category === 'approval-request' &&
+      orchestrationThreadId === sessionId
+    );
   return (
     sessionKind === ORCHESTRATION_SESSION_KIND &&
-    typeof sessionId === 'string' &&
-    sessionId.length > 0 &&
     (requestKind === undefined || requestKind === 'orchestration')
   );
 }

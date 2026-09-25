@@ -21,12 +21,22 @@ const registryApproval = {
   requestKind: 'registry',
 };
 
+// The registry twin of a Station-agent approval (#2589): the relayed /chat
+// turn's approval, also opened as the orchestration request on the card.
+const stationAgentRegistryApproval = {
+  ...registryApproval,
+  conversationId: 's1',
+  sessionId: 's1',
+  orchestrationThreadId: 's1',
+};
+
 describe('isCardAlerted', () => {
   test.each([
     ['approval-request', orchestrationApproval],
     ['turn-completed', orchestrationTurn],
     ['turn-stopped', orchestrationTurn],
     ['turn-failed', orchestrationTurn],
+    ['approval-request', stationAgentRegistryApproval],
   ])('an orchestration %s is the card’s to announce', (category, metadata) => {
     expect(isCardAlerted({ category, metadata })).toBe(true);
   });
@@ -48,6 +58,16 @@ describe('isCardAlerted', () => {
       'a turn of another session kind',
       'turn-failed',
       { ...orchestrationTurn, sessionKind: 'managed' },
+    ],
+    [
+      'a registry approval naming another thread',
+      'approval-request',
+      { ...stationAgentRegistryApproval, orchestrationThreadId: 's2' },
+    ],
+    [
+      'a registry record of a turn category',
+      'turn-completed',
+      stationAgentRegistryApproval,
     ],
     ['another category', 'pairing-request', orchestrationTurn],
     ['an agent notification', 'agent-attention', orchestrationTurn],

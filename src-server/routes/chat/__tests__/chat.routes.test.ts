@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 
 vi.mock('../chat-request-preparation.js', () => ({
   prepareChatRequest: vi.fn(async () => ({
@@ -760,5 +761,75 @@ describe('Chat Routes: prompt size guard (station#2807)', () => {
     );
     expect(prepareChatRequest).not.toHaveBeenCalled();
     expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
+  });
+});
+
+describe('Chat Routes: the Station-agent relay thread (#2589)', () => {
+  function relayApp() {
+    return createChatRoutes({
+      configLoader: { getLaunchabilityRevision: () => 0 },
+      providerService: {
+        getLaunchabilityRevision: () => 0,
+        listProviderConnections: () => [],
+      },
+      getAgentConfigurationRevision: () => 0,
+      activeAgents: new Map([['default', { id: 'agent' }]]),
+      agentSpecs: new Map([['default', {}]]),
+      agentTools: new Map([['default', []]]),
+      memoryAdapters: new Map(),
+      logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+    } as any);
+  }
+
+  // The adapter's relay headers exactly (station-agent-adapter.ts), then
+  // each way a request can fall short of them.
+  test.each([
+    ['the adapter relay for its own conversation', {}, 'thread-7'],
+    [
+      'a UI-proxied request (token set, caller forced remote)',
+      { 'x-station-proxy-caller': 'remote' },
+      undefined,
+    ],
+    [
+      'a request without the internal token',
+      { 'x-station-internal-token': 'not-the-token' },
+      undefined,
+    ],
+    [
+      'a relay naming another conversation',
+      { 'x-station-orchestration-thread': 'thread-other' },
+      undefined,
+    ],
+  ])('%s', async (_label, override, expected) => {
+    streamPrimaryAgentChat.mockClear();
+    vi.mocked(prepareChatRequest).mockImplementationOnce(
+      async () =>
+        ({
+          options: { conversationId: 'thread-7' },
+          resolvedProviderConn: null,
+          injectContext: null,
+          ragContext: null,
+        }) as any,
+    );
+    const response = await relayApp().request('/station/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-station-internal-token': getInternalApiToken(),
+        'x-station-proxy-caller': 'local',
+        'x-station-orchestration-thread': 'thread-7',
+        ...override,
+      },
+      body: JSON.stringify({
+        input: 'ping',
+        options: { conversationId: 'thread-7' },
+      }),
+    });
+
+    expect(response).toBeTruthy();
+    expect(streamPrimaryAgentChat).toHaveBeenCalledTimes(1);
+    expect(
+      streamPrimaryAgentChat.mock.calls[0]?.[0].orchestrationThreadId,
+    ).toBe(expected);
   });
 });

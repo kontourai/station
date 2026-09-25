@@ -2,6 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createElicitationCallback } from '../../../runtime/conversation/stream-orchestrator.js';
+import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import type { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -402,6 +404,59 @@ describe('approval inbox notifications', () => {
 
     await expect(approvalPromise).resolves.toBe(true);
   });
+
+  // #2589: one tool approval in a Station-agent session is written twice:
+  // the /chat relay registers it (the registry notification) and the adapter
+  // republishes it as the thread's `request.opened` (the orchestration
+  // notification, and the agent-activity card). Both are on the card, so
+  // neither may raise a phone alert; a plain chat's approval must.
+  test.each([
+    ['a Station-agent relay turn', 'thread-7', true],
+    ['a plain managed chat', undefined, false],
+  ])(
+    'a registry approval from %s is card-alerted: %s',
+    async (_label, orchestrationThreadId, cardAlerted) => {
+      const elicit = createElicitationCallback(
+        { name: 'Reviewer', tools: { autoApprove: [] } } as any,
+        new Map(),
+        approvalRegistry,
+        { inject: vi.fn() } as any,
+        logger,
+        () => 'thread-7',
+        orchestrationThreadId,
+      );
+      const approval = elicit({ type: 'tool-approval', toolName: 'fs.write' });
+      await notificationService.drainAsyncDispatch();
+
+      const [registry] = await notificationService.list();
+      expect(registry?.metadata).toMatchObject({
+        requestKind: 'registry',
+        sessionId: 'thread-7',
+      });
+      expect(isCardAlerted(registry!)).toBe(cardAlerted);
+
+      if (orchestrationThreadId) {
+        await emit('orchestration:event', {
+          event: {
+            createdAt: new Date().toISOString(),
+            method: 'request.opened',
+            provider: 'station-agent',
+            requestId: registry?.metadata?.approvalId,
+            requestType: 'approval',
+            threadId: orchestrationThreadId,
+            title: 'fs.write',
+          },
+        });
+        const twin = (await notificationService.list()).find(
+          (n) => n.metadata?.requestKind === 'orchestration',
+        );
+        expect(isCardAlerted(twin!)).toBe(true);
+      }
+
+      await notificationService.action(registry!.id, 'accept');
+      await expect(approval).resolves.toBe(true);
+    },
+  );
 
   test('does not action or forget a registry notification when trusted settlement reports stale', async () => {
     const approvalPromise = approvalRegistry.register('approval-stale', {

@@ -340,6 +340,9 @@ export function wireApprovalInboxNotifications(
               approvalId: message.data?.approvalId,
               conversationId: message.data?.conversationId,
               conversationTitle: message.data?.conversationTitle,
+              // #2589: a Station-agent relay's approval, which the adapter
+              // also opens as an orchestration request (isCardAlerted).
+              orchestrationThreadId: message.data?.orchestrationThreadId,
               sessionId: message.data?.conversationId,
               sessionKind: REGISTRY_SESSION_KIND,
               detail: message.data?.description,

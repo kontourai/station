@@ -21,10 +21,11 @@
  *   what the surface asked to hide. Urgency (sound, priority) is decided by
  *   the notification's urgency alone; hiding content never quiets it.
  * - What the Live Activity card already alerts on (`isCardAlerted`:
- *   orchestration approvals and finished, stopped and failed orchestration
- *   turns) is not carried, unconditionally: with Live Activities off on the
- *   phone those raise no alert (the inbox keeps them). Registry approvals
- *   are never on the card, so they are carried.
+ *   orchestration approvals, the registry twin of a Station-agent approval,
+ *   and finished, stopped and failed orchestration turns) is not carried,
+ *   unconditionally: with Live Activities off on the phone those raise no
+ *   alert (the inbox keeps them). Other registry approvals are not on the
+ *   card, so they are carried.
  * - Retract: not supported (`capabilities.retract: false`). APNs has no call
  *   that removes a delivered notification; only code on the phone can
  *   (`removeDeliveredNotifications`), which needs the app to run: a
