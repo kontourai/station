@@ -116,7 +116,17 @@ export function createNotificationRoutes(
     }
     let notification: Notification;
     try {
-      notification = await notificationService.scheduleFromRequest(body);
+      // Hosted: namespace REST dedupe tags by the caller's tenant, so one
+      // tenant's request can never update another tenant's record.
+      const authority = options.readAuthorityForRequest?.(c.req.raw);
+      const tenantId =
+        authority && isHostedSessionReadAuthority(authority)
+          ? authority.tenantExecutionContext?.tenantId
+          : undefined;
+      notification = await notificationService.scheduleFromRequest(
+        body,
+        tenantId === undefined ? {} : { tenantId },
+      );
     } catch (error) {
       // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
       // the trusted enveloped path (#2583); a request body cannot claim them.
