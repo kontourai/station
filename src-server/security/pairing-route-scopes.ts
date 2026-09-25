@@ -169,6 +169,10 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // #2585: focus presence. The one leaf is an explicit read-tier rule below.
   '/api/presence',
   '/api/mobile-devices',
+  // #2586: `/api/notifications` is deliberately NOT a family here. Its
+  // leaves (preferences, deliveries) are exact operate-tier rules below;
+  // anything else under it stays unmapped and is refused (fail closed)
+  // rather than inheriting a family tier nobody chose for it.
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -378,6 +382,31 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #2586: reading the preferences discloses which projects and agents a
+  // person muted and their devices' ids; writing them decides what may
+  // interrupt every device. Both sit on the operate tier.
+  ...(['GET', 'PUT', 'PATCH'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/notifications/preferences:${method.toLowerCase()}`,
+      method,
+      prefix: '/api/notifications/preferences',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // The caller's own decided-alert feed carries notification content. The
+  // route further derives the surface from the caller: a personal-family
+  // paired device reads only device:<its id>; the local operator reads the
+  // local:desktop-<id> its installation header names. Anyone else is refused.
+  {
+    id: '/api/notifications/deliveries:get',
+    method: 'GET',
+    prefix: '/api/notifications/deliveries',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // #2585: a client reporting its OWN document focus. The route derives the
   // surface from this credential and writes nothing else, so a read-only
   // paired device — which still receives notifications — must reach it.
