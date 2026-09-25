@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
@@ -51,6 +52,14 @@ export type SessionCommandContext = {
    * `ownerAttribution` is `verified-bound` (`effectiveOwnerAttribution`).
    */
   clientOrigin?: ClientOrigin;
+  /**
+   * #2493: the starting caller's proof that it may grant full access, minted
+   * by the HTTP seam from the request (`fullAccessGrantFor`). Only an
+   * instance that module minted counts (`isFullAccessGrant`), so a value
+   * parsed from JSON never does. Absent or `null`: the session starts
+   * confined to its workspace unless the conversation recorded `never`.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
 };
 
 export type SessionCommandOutcome =

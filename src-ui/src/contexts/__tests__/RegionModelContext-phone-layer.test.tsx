@@ -105,6 +105,7 @@ function maximizeParam(): string | null {
 beforeEach(() => {
   model = null;
   localStorage.clear();
+  sessionStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', {
@@ -213,6 +214,122 @@ describe('a pane opened on a phone opens over Chat', () => {
     act(() => current().closePhoneLayer());
     await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
     expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  // Gap G1: the layer's maximize rides Chat's `?maximize`, so a reload with
+  // a layer open came back with Chat maximized and no layer to undo it. A
+  // reload is simulated as a fresh provider mount on the SAME entry — its
+  // URL and history state as the unloaded page left them, and the tab's
+  // session storage.
+  test('a reload with a layer open lands in the pre-layer dock state', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    const href = window.location.href;
+    const state = window.history.state;
+    const record = sessionStorage.getItem('station.phoneLayer.preLayerDock.v1');
+    expect(record).toContain(
+      (state as Record<string, string>)[DIALOG_HISTORY_KEY],
+    );
+
+    // The unload: no React cleanup runs on a real reload, so the entry and
+    // the session record are put back exactly as they were after the test's
+    // unmount (which, as a real unmount, clears the record).
+    cleanup();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(
+      sessionStorage.getItem('station.phoneLayer.preLayerDock.v1'),
+    ).toBeNull();
+    if (record)
+      sessionStorage.setItem('station.phoneLayer.preLayerDock.v1', record);
+    window.history.replaceState(state, '', href);
+    navigationStore.navigate(window.location.pathname, {
+      dock: 'open',
+      maximize: 'true',
+    });
+    window.history.replaceState(state, '', href);
+    model = null;
+
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(current().phoneLayer).toBeNull();
+    expect(current().regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+      maximized: false,
+    });
+    await waitFor(() => expect(maximizeParam()).toBeNull());
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  // G1's record names the layer's live entry exactly: a record found on any
+  // OTHER entry — even another phone-layer entry (the tab unloaded mid-layer
+  // and has navigated since) — must not override the URL.
+  test('a stale pre-layer record on another entry leaves the URL’s dock state alone', async () => {
+    sessionStorage.setItem(
+      'station.phoneLayer.preLayerDock.v1',
+      JSON.stringify({
+        visible: true,
+        maximized: false,
+        dockMemory: false,
+        entry: 'phone-pane-layer:earlier-1',
+      }),
+    );
+    window.history.replaceState({}, '', '/?dock=open&maximize=true');
+    navigationStore.navigate('/', { dock: 'open', maximize: 'true' });
+    // The entry being loaded is a phone-layer entry, but not the record's.
+    window.history.replaceState(
+      {
+        ...window.history.state,
+        [DIALOG_HISTORY_KEY]: 'phone-pane-layer:earlier-2',
+      },
+      '',
+      window.location.href,
+    );
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Probe />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model).not.toBeNull());
+    expect(current().regions.bottom.maximized).toBe(true);
+    expect(maximizeParam()).toBe('true');
+    expect(sessionStorage.getItem('station.phoneLayer.preLayerDock.v1')).toBe(
+      null,
+    );
+  });
+
+  test('the provider unmounting with a layer open removes the pre-layer record', async () => {
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() =>
+      expect(
+        sessionStorage.getItem('station.phoneLayer.preLayerDock.v1'),
+      ).not.toBeNull(),
+    );
+    cleanup();
+    expect(
+      sessionStorage.getItem('station.phoneLayer.preLayerDock.v1'),
+    ).toBeNull();
   });
 
   test('a Chat that was maximized comes back maximized', async () => {
@@ -490,14 +607,12 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(onLayerEntry()).toBe(false));
   });
 
-  // The fold-open ending (decided in rounds 4–5): the layer ends in place.
-  // A pane it moved out of a hidden side region stays where the user is
-  // looking at it — visible, selected, mounted as a tab of Chat's region —
-  // and that live arrangement is exactly what is saved. It is NOT returned
-  // to its origin, live or in the record (round 5 removed that projection:
-  // it disagreed with the live state across later layers, the persist
-  // early-return and cross-tab adoption). The user can move it.
-  test('widening out of the fold keeps a moved pane on screen, and saves exactly that arrangement', async () => {
+  // Gap G4: when the fold opens, a pane the layer moved out of a hidden side
+  // region goes BACK there — shown and selected, since the reader was looking
+  // at it — unless its own unsaved-changes guard is dirty, in which case it
+  // stays a tab of Chat's region (the move would remount it). Either way the
+  // saved record is exactly the live arrangement.
+  async function widenWithMovedPane(dirty: boolean) {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 600,
@@ -529,6 +644,13 @@ describe('a pane opened on a phone opens over Chat', () => {
     act(() => {
       current().openSurfaceInRegion(PR);
     });
+    const unregister = dirty
+      ? navigationStore.registerNavigationGuard(
+          Symbol('pane-draft'),
+          (proceed) => proceed(),
+          PR,
+        )
+      : () => {};
     await waitFor(() => expect(current().phoneLayer).not.toBeNull());
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -536,6 +658,31 @@ describe('a pane opened on a phone opens over Chat', () => {
     });
     act(() => window.dispatchEvent(new Event('resize')));
     await waitFor(() => expect(current().phoneLayer).toBeNull());
+    await settle();
+    unregister();
+    expect(record()).toBe(
+      JSON.stringify(toRegionArrangementRecord(current().regions)),
+    );
+    return before;
+  }
+
+  test('widening out of the fold returns a clean moved pane to its region, on screen', async () => {
+    const before = await widenWithMovedPane(false);
+    expect(current().regions.right).toMatchObject({
+      panes: [PR],
+      occupant: PR,
+      visible: true,
+    });
+    expect(current().regions.bottom).toMatchObject({
+      panes: ['chat'],
+      occupant: 'chat',
+      maximized: false,
+    });
+    expect(before).toContain(PR);
+  });
+
+  test('widening out of the fold leaves a pane with unsaved changes where it is', async () => {
+    await widenWithMovedPane(true);
     expect(current().regions.bottom).toMatchObject({
       panes: ['chat', PR],
       occupant: PR,
@@ -543,11 +690,6 @@ describe('a pane opened on a phone opens over Chat', () => {
       maximized: false,
     });
     expect(current().regions.right.panes).toEqual([]);
-    await settle();
-    expect(record()).not.toBe(before);
-    expect(record()).toBe(
-      JSON.stringify(toRegionArrangementRecord(current().regions)),
-    );
   });
 
   // Round-4 review M1: a guard that never answers (its component unmounted
@@ -570,9 +712,12 @@ describe('a pane opened on a phone opens over Chat', () => {
       dispatchEvent: () => false,
     }));
     await mount();
+    // Owned by the layer's pane, as `RegionPaneHost` scopes it: only such a
+    // guard is asked when the layer is left (gap G2).
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('never-answers'),
       () => {},
+      PR,
     );
     try {
       act(() => {

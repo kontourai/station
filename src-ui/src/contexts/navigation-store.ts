@@ -200,6 +200,13 @@ class NavigationStore {
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
+  private readonly navigationGuardOwners = new Map<symbol, string>();
+  /** Whether any registered guard protects `owner`'s content (it is dirty). */
+  hasNavigationGuard(owner: string): boolean {
+    for (const value of this.navigationGuardOwners.values())
+      if (value === owner) return true;
+    return false;
+  }
   private readonly navigationGuards = new Map<
     symbol,
     (continueNavigation: () => void, cancelNavigation?: () => void) => void
@@ -538,31 +545,54 @@ class NavigationStore {
     };
   }
 
+  /**
+   * `owner` names the surface whose content the guard protects (a dock
+   * pane's surface id, `UnsavedGuardOwnerContext`), so a surface-scoped exit
+   * can ask only that surface's guards (`runNavigationGuards`'s `owner`).
+   * Route navigation ignores it and asks every guard, as before.
+   */
   registerNavigationGuard(
     identity: symbol,
     guard: (
       continueNavigation: () => void,
       cancelNavigation?: () => void,
     ) => void,
+    owner?: string | null,
   ): () => void {
     this.guardGeneration = {};
     this.navigationGuards.set(identity, guard);
+    if (owner) this.navigationGuardOwners.set(identity, owner);
+    else this.navigationGuardOwners.delete(identity);
     return () => {
       if (this.navigationGuards.get(identity) !== guard) return;
       this.navigationGuards.delete(identity);
+      this.navigationGuardOwners.delete(identity);
       // An approved form may become clean while preparation awaits. Removal
       // only loosens the guard set; additions/replacements revoke admission.
     };
   }
 
   /**
-   * Ask every registered unsaved-changes guard before leaving a surface:
+   * Ask the registered unsaved-changes guards before leaving a surface:
    * `continuation` runs once all of them allow it, `cancelled` when one
-   * refuses. Public for the phone layer (`RegionModelContext`), whose Back
-   * and "‹ Chat" unmount a pane without a route change the store would see.
+   * refuses. With `owner`, only the guards registered for that surface are
+   * asked — the phone layer (`RegionModelContext`), whose Back and "‹ Chat"
+   * unmount one pane without a route change, asks that pane's guards and
+   * no one else's. Without it, every guard, as route navigation does.
    */
-  runNavigationGuards(continuation: () => void, cancelled?: () => void): void {
-    const guards = [...this.navigationGuards.values()];
+  runNavigationGuards(
+    continuation: () => void,
+    cancelled?: () => void,
+    options: { owner?: string } = {},
+  ): void {
+    const { owner } = options;
+    const guards = [...this.navigationGuards.entries()]
+      .filter(
+        ([identity]) =>
+          owner === undefined ||
+          this.navigationGuardOwners.get(identity) === owner,
+      )
+      .map(([, guard]) => guard);
     const continueAt = (index: number): void => {
       const guard = guards[index];
       if (guard) {

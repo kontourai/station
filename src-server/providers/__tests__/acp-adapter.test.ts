@@ -121,7 +121,12 @@ class FakeAcpProcess {
   newSessionConfigOptions: unknown[] = [];
   /** station#1945: older ACP `modes` catalog when no mode config option exists. */
   newSessionModes?: {
-    availableModes: Array<{ id: string; name: string; description?: string }>;
+    availableModes: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      _meta?: Record<string, unknown>;
+    }>;
     currentModeId?: string;
   };
   readonly setModeCalls: string[] = [];
@@ -3736,6 +3741,127 @@ describe('station#1182: runtime-reported model', () => {
     processes[0].resolvePrompt('end_turn');
 
     await adapter.stopAll();
+  });
+
+  describe('#2569: a full-access ACP mode is approval never', () => {
+    // claude-code-acp's own catalog shape (src/session-mode.ts).
+    const CLAUDE_CODE_ACP_MODES = {
+      currentModeId: 'default',
+      availableModes: [
+        { id: 'default', name: 'Manual', _meta: { kind: 'standard' } },
+        {
+          id: 'acceptEdits',
+          name: 'Accept edits',
+          _meta: { kind: 'standard' },
+        },
+        {
+          id: 'bypassPermissions',
+          name: 'Bypass permissions',
+          _meta: { kind: 'full_access' },
+        },
+      ],
+    };
+
+    test.each([
+      ['a workspace session', 'workspace'],
+      ['a session naming no confinement', undefined],
+    ] as const)(
+      'is not applied at start in %s, and the connection mode is reported',
+      async (_label, confinement) => {
+        const { adapter, processes } = createAdapter({
+          newSessionModes: CLAUDE_CODE_ACP_MODES,
+        });
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: `thread-bypass-${String(confinement)}`,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          modelOptions: { mode: 'bypassPermissions' },
+          ...(confinement ? { confinement } : {}),
+        });
+        await nextEvent(iterator, 'session.started');
+        const configured = await nextEvent(iterator, 'session.configured');
+        expect(processes[0].setModeCalls).toEqual([]);
+        expect(processes[0].setConfigOptionCalls).toEqual([]);
+        const configuredMetadata = (
+          configured as { metadata?: Record<string, unknown> }
+        ).metadata;
+        // The mode the session really runs in, not the one asked for.
+        expect(configuredMetadata?.acpSessionMode).toBe('default');
+        await adapter.stopAll();
+      },
+    );
+
+    test('is applied in a host session', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: CLAUDE_CODE_ACP_MODES,
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-bypass-host',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'bypassPermissions' },
+        confinement: 'host',
+      });
+      expect(processes[0].setModeCalls).toEqual(['bypassPermissions']);
+      await adapter.stopAll();
+    });
+
+    test('a mode the agent declares full access is withheld whatever its id', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: {
+          currentModeId: 'ask',
+          availableModes: [
+            { id: 'ask', name: 'Ask' },
+            {
+              id: 'unleashed',
+              name: 'Unleashed',
+              _meta: { kind: 'full_access' },
+            },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-declared',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'unleashed' },
+        confinement: 'workspace',
+      });
+      expect(processes[0].setModeCalls).toEqual([]);
+      await adapter.stopAll();
+    });
+
+    test('a later turn asking for a known full-access mode is not applied in a workspace session', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: {
+          currentModeId: 'default',
+          availableModes: [
+            { id: 'default', name: 'Default' },
+            { id: 'yolo', name: 'YOLO' },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-yolo-turn',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        confinement: 'workspace',
+      });
+      await adapter.sendTurn({
+        threadId: 'thread-yolo-turn',
+        input: 'hi',
+        modelOptions: { mode: 'yolo' },
+        confinement: 'workspace',
+      });
+      expect(processes[0].setModeCalls).toEqual([]);
+      processes[0].resolvePrompt('end_turn');
+      await adapter.stopAll();
+    });
   });
 
   test('sendTurn refuses a mode when the live session advertised none', async () => {

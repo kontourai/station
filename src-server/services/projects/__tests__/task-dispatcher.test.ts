@@ -662,6 +662,15 @@ describe('TaskDispatcher Interface', () => {
     expect(reserve).not.toHaveBeenCalled();
     expect(startOrSeed).not.toHaveBeenCalled();
 
+    // #2569: an ACP agent's own full-access mode is the same request.
+    await expect(
+      dispatcher.dispatch('task-1', {
+        fullAccessGrant: null,
+        runtimeConfig: { modelOptions: { mode: 'bypassPermissions' } },
+      }),
+    ).resolves.toMatchObject({ kind: 'forbidden' });
+    expect(reserve).not.toHaveBeenCalled();
+
     // A look-alike is not a grant: only this module's own class passes.
     await expect(
       dispatcher.dispatch('task-1', {

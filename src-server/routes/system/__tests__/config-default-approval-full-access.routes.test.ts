@@ -43,9 +43,11 @@ afterEach(() => {
 
 /**
  * Station's own internal principal: the per-boot token, the `local` caller
- * marker and a direct loopback socket. The UI's requests and an agent's
- * station-control tool calls both arrive this way; only the tool's origin
- * marker tells them apart (#2436 review).
+ * marker and a direct loopback socket. An agent's station-control tool calls
+ * arrive this way, with the tool's origin marker; any holder of the token can
+ * omit that marker, so it only ever restricts (#2436 review, #2493 review F1).
+ * The operator's UI does not: its proxy hop is marked `remote` and carries
+ * the browser's own credential.
  */
 function internalRequestInit(agent: boolean, init: RequestInit) {
   return [
@@ -217,15 +219,19 @@ test('the operator, or a granted device, may; resending a standing never needs n
   expect(await f.stored()).toBe('never');
 });
 
-test("an agent's station-control call cannot raise the Station default to full access; the UI's own call can", async () => {
+test("an agent's station-control call, marked or not, cannot raise the Station default to full access", async () => {
   const f = await fixture();
   const refused = await f.setDefaultInternally(true, 'never');
   expect(refused.status).toBe(403);
   expect(refused.body.code).toBe('approval-full-access-not-granted');
   expect(await f.stored()).toBeUndefined();
 
-  expect((await f.setDefaultInternally(false, 'never')).status).toBe(200);
-  expect(await f.stored()).toBe('never');
+  // #2493 review F1: without the marker it is still the internal
+  // principal any holder of the per-boot token can present.
+  const unmarked = await f.setDefaultInternally(false, 'never');
+  expect(unmarked.status).toBe(403);
+  expect(unmarked.body.code).toBe('approval-full-access-not-granted');
+  expect(await f.stored()).toBeUndefined();
 });
 
 test('a save that read a standing never cannot land it after the operator lowered the default', async () => {
