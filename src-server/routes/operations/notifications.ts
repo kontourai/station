@@ -103,7 +103,14 @@ export function createNotificationRoutes(
       // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
       // the trusted enveloped path (#2583); a request body cannot claim them.
       if (error instanceof NotificationReservedFieldError) {
-        return c.json({ success: false, error: error.message }, 400);
+        return c.json(
+          {
+            success: false,
+            error:
+              'Envelopes, agent: dedupe tags and agent-* categories are reserved to agent notifications',
+          },
+          400,
+        );
       }
       throw error;
     }
