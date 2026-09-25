@@ -9,12 +9,12 @@
  * channelAuth on rotation) comes back to the publisher. A body the gateway
  * would refuse, or an answer the Station misreads, fails here.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NATIVE_PUSH_IOS_BUNDLES } from '@kontourai/station-contracts/native-push';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import {
@@ -51,12 +51,7 @@ const START = Date.parse('2026-09-24T10:00:00.000Z');
 const IOS_TOKEN = 'ab'.repeat(40);
 const SECRET_A = 'channel-auth-secret-A-0123456789abcdef0123';
 const SECRET_B = 'channel-auth-secret-B-0123456789abcdef0123';
-const homes: string[] = [];
-
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const tempDir = trackTempDirs();
 
 type AppleKind = 'create' | 'delete' | 'start' | 'broadcast';
 type AppleReply = (body: string) => Response | undefined;
@@ -94,8 +89,7 @@ function row(state: 'running' | 'approval' | 'completed', at: number) {
 }
 
 async function harness() {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-apns-contract-'));
-  homes.push(homeDir);
+  const homeDir = tempDir('station-apns-contract-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
     homeDir,

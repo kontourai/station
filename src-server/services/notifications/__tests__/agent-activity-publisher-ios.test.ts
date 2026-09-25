@@ -12,15 +12,7 @@
  * whole gateway, answers included.
  */
 import { createDecipheriv } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   NATIVE_PUSH_IOS_BUNDLES,
@@ -33,6 +25,7 @@ import {
   parseLiveActivityRequest,
 } from '../../../../deploy/push-gateway/src/apns-request.js';
 import { verifyStationRequest } from '../../../../deploy/push-gateway/src/station-auth.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import {
@@ -54,12 +47,7 @@ const IOS_TOKEN = 'ab'.repeat(40);
 const FCM_TOKEN = `fcm-token-${'a'.repeat(60)}`;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const homes: string[] = [];
-
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const tempDir = trackTempDirs();
 
 type Answer = { status: number; body?: unknown } | Error;
 
@@ -126,10 +114,8 @@ function harness(
     answer?: (call: GatewayCall) => Answer | undefined;
   } = {},
 ) {
-  const homeDir =
-    options.homeDir ?? mkdtempSync(join(tmpdir(), 'station-live-activity-'));
+  const homeDir = options.homeDir ?? tempDir('station-live-activity-');
   if (!options.homeDir) {
-    homes.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   }
   const pairing = new DevicePairingService({
