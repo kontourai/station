@@ -345,6 +345,16 @@ describe('patch and compare-and-swap', () => {
     expect(stored.quietHours?.start).toBe('22:00');
   });
 
+  test('muting a second agent keeps the first one muted (a map entry merges)', () => {
+    const store = new NotificationPreferencesStore(home);
+    store.patch({ perAgent: { builder: 'off' } });
+    store.patch({ perAgent: { reviewer: 'attention-only' } });
+    expect(new NotificationPreferencesStore(home).current().perAgent).toEqual({
+      builder: 'off',
+      reviewer: 'attention-only',
+    });
+  });
+
   test('a patch is refused while the stored document is unreadable', () => {
     writeFileSync(join(home, NOTIFICATION_PREFERENCES_FILE), '{', {
       mode: 0o600,
