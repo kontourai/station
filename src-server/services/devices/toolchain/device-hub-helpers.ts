@@ -11,10 +11,10 @@
  * Station gives its hub a PRIVATE temp directory
  * (`<STATION_HOME>/devices/run/tmp`), so this state directory, and every
  * helper listed in it, is Station's alone: it never touches another tool's
- * serve-sim state (for example a t3code hub on the same machine, which uses
- * the shared `$TMPDIR/serve-sim/`). A helper is killed only when its command
- * line names a Station-managed hub install — `<tools>/expo-device-hub/<version>/`
- * on a path-segment boundary, any managed version — so an orphaned helper of
+ * serve-sim state (for example another app's serve-sim hub on the same
+ * machine, using the shared `$TMPDIR/serve-sim/`). A helper is killed only
+ * when its command line names a Station-managed hub install —
+ * `<tools>/expo-device-hub/<version>/` on a path-segment boundary, any managed version — so an orphaned helper of
  * an older install is still reaped, and a similarly named directory outside
  * Station's tool root never is.
  *

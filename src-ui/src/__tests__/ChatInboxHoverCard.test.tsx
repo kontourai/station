@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * The inbox row's metadata hover card (modeled on the T3 Code session
- * popover): hover/focus opens a display-only card carrying the row's
+ * The inbox row's metadata hover card: hover/focus opens a display-only card carrying the row's
  * project/machine/engine/status metadata, the local session's git facts,
  * the conversation's linked pull requests, and the session's basis
  * inventory.

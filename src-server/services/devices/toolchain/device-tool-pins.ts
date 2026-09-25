@@ -13,8 +13,8 @@
  * Version choice: expo-device-hub 0.10.1 over the 0.9.0 Station's experiment
  * used. Both were started on loopback with `--port 0` and answered `/readyz`
  * and `/api/devices` with the same device-list shape `LocalMobileDeviceHost`
- * parses; 0.10.1 is what t3code (MIT) pins. agent-device 0.21.12 is the
- * current release and t3code's pin.
+ * parses, and 0.10.1 is the newer of the two. agent-device 0.21.12 is the
+ * current release.
  *
  * Disclosed limitation — WebRTC is unsupported. expo-device-hub depends on
  * node-datachannel, a native addon whose install script would download a

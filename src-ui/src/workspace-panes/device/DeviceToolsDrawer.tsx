@@ -43,9 +43,7 @@ import './DeviceToolsDrawer.css';
  * afterwards and that answer replaces what the drawer shows.
  *
  * Loaded lazily (it rides its own chunk, fetched the first time the drawer
- * or the overlay is opened). Sections follow t3code's DeviceToolsDrawer
- * (apps/web/src/components/device/DeviceToolsDrawer.tsx) and the overlay its
- * DeviceStreamView (MIT License, Copyright (c) 2026 T3 Tools Inc.).
+ * or the overlay is opened).
  */
 
 const UNREADABLE_COPY: Record<DeviceToolsUnreadableReason, string> = {
