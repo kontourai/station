@@ -1,5 +1,6 @@
 /**
- * Native (FCM) agent-activity push registration, mounted at /api/system
+ * Native agent-activity push registration (FCM on Android, Live Activities
+ * on iOS), mounted at /api/system
  * beside the Web Push routes (`push-routes.ts`) and held to the same rule:
  * the caller's credential must identify a paired device, and a device can
  * only create or clear its OWN registration. An operator credential alone is
@@ -101,23 +102,43 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
     } catch {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    // An iOS token is hex: its case carries nothing, so it is stored in the
+    // one form the gateway and the registration file expect.
+    if (
+      body &&
+      typeof body === 'object' &&
+      (body as { platform?: unknown }).platform === 'ios' &&
+      typeof (body as { token?: unknown }).token === 'string'
+    )
+      body = {
+        ...body,
+        token: (body as { token: string }).token.toLowerCase(),
+      };
     if (!isValidNativePushRequest(body))
       return c.json({ error: 'invalid_request' }, 400);
+    // Only the fields the file keeps; anything else in the body is dropped.
+    // No network call here: an iOS registration's broadcast channel is
+    // created by the publisher when it first has a card to start.
+    const request: NativePushRegistrationRequest =
+      body.platform === 'ios'
+        ? {
+            token: body.token,
+            packageName: body.packageName,
+            platform: 'ios',
+            apnsEnvironment: body.apnsEnvironment,
+          }
+        : {
+            token: body.token,
+            packageName: body.packageName,
+            platform: 'android',
+          };
 
     // Key first: a registration must never exist that no key can sign for.
     let stationKey: string;
     let registration: { registrationId: string; payloadKey: string };
     try {
       stationKey = await deps.loadOrCreateStationKey();
-      registration = deps.setNativePush(
-        device.id,
-        {
-          token: body.token,
-          packageName: body.packageName,
-          platform: 'android',
-        },
-        stationKey,
-      );
+      registration = deps.setNativePush(device.id, request, stationKey);
     } catch (error) {
       if (error instanceof DevicePairingError) {
         return error.code === 'device_not_found'

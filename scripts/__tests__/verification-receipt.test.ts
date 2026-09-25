@@ -39,6 +39,7 @@ import {
   verificationRequestKey,
 } from '../lib/verification-receipt.mjs';
 import { executionEquivalenceKey } from '../lib/verification-request-identity.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const schema = JSON.parse(
@@ -1715,7 +1716,7 @@ describe('verification receipt JSON schema (Ajv)', () => {
           status: 'failed',
           exitCode: 1,
           passed: false,
-          infrastructureCause: 'ci:fast exceeded its 12-minute feedback budget',
+          infrastructureCause: CI_FAST_BUDGET_EXCEEDED_CAUSE,
         },
       },
     ],
@@ -1744,7 +1745,7 @@ describe('verification receipt JSON schema (Ajv)', () => {
   });
 
   it('carries a runner-declared stop cause on an infrastructure_error receipt, and only there (station#1827)', () => {
-    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
     const infrastructureCounts = {
       executed: 1,
       passed: 0,

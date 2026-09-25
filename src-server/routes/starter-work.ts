@@ -246,7 +246,12 @@ export function createStarterWorkRoutes(registry: StarterRegistry) {
       }
       const result =
         starterId === 'continue-session'
-          ? await registry.launchContinueSession(body)
+          ? await registry.launchContinueSession(
+              body,
+              // #2493: continuing an attached session adopts it; the child
+              // is `host` only for a request that may grant full access.
+              fullAccessGrantForRequest(c),
+            )
           : starterId === 'start-task'
             ? await registry.launchStartTask(body, fullAccessGrantForRequest(c))
             : starterId === 'run-scheduled-check'

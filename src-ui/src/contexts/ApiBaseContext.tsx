@@ -638,7 +638,21 @@ export function useHostRequestAuthorityScope() {
       (evidence.brokerRoute && !relayAccountScopeReady)
     )
       return undefined;
-    return {
+    const scope: ReturnType<
+      typeof requestAuthorityScopeFromCredentialEvidence
+    > & {
+      isCurrent: () => boolean;
+      /**
+       * Whether requests in this scope must carry the SDK-owned credential:
+       * a native shell's host transport, or a browser's encrypted relay
+       * route. A browser talking to its own Station directly is authenticated
+       * by that Station's session cookie instead, which the server enforces
+       * (#2598). Absent means required.
+       */
+      requiresEnrolledCredential?: boolean;
+    } = {
+      requiresEnrolledCredential:
+        profile.isTauri || Boolean(evidence.brokerRoute),
       ...requestAuthorityScopeFromCredentialEvidence(evidence, {
         ...(nativeBinding
           ? { authorityQualifier: nativeBinding.bindingId }
@@ -658,6 +672,7 @@ export function useHostRequestAuthorityScope() {
             evidence.origin,
           )?.bindingId === nativeBinding?.bindingId),
     };
+    return scope;
   }, [
     activationEpoch,
     authorityApiBase,
