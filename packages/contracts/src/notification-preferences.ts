@@ -100,13 +100,24 @@ export function desktopHostSurfaceId(installationId: string): SurfaceId {
 }
 
 /**
- * The per-surface feed a desktop app reads the router's decided OS alerts
- * from (`?surface=<SurfaceId>&after=<cursor>&epoch=<epoch>`). Always the
- * CALLER'S OWN surface: a paired device (a desktop app on a remote Station)
- * reads `device:<its id>`, derived from its credential; this computer's
- * desktop host reads `local:desktop-<installationId>`.
+ * The feed a desktop app reads the router's decided OS alerts from:
+ * `GET ?after=<cursor>&epoch=<epoch>`, plus the
+ * {@link DESKTOP_INSTALLATION_HEADER} header from the desktop app. The
+ * server derives the caller's OWN surface — a paired device reads
+ * `device:<its id>` from its credential; this computer's desktop app reads
+ * `local:desktop-<installation id>` — and echoes it as `surface`. A client
+ * never names or guesses the surface (an explicit `surface` param is
+ * accepted only if it equals the derived one).
  */
 export const NOTIFICATION_DELIVERIES_PATH = '/api/notifications/deliveries';
+
+/**
+ * Sent by this computer's desktop app on every feed read: its persisted
+ * installation id (UUID). The server derives `local:desktop-<id>` from it
+ * for the local operator; a paired device's surface comes from its
+ * credential and the header is ignored.
+ */
+export const DESKTOP_INSTALLATION_HEADER = 'X-Station-Desktop-Installation';
 
 /**
  * One decided delivery. Already policy-applied (focus, quiet hours,
@@ -129,6 +140,8 @@ export type SurfaceDeliveryEntry =
   | { seq: number; kind: 'retract'; notificationId: string; at: string };
 
 export interface SurfaceDeliveryFeed {
+  /** The surface the server derived for this caller; key storage by it. */
+  surface: SurfaceId;
   entries: SurfaceDeliveryEntry[];
   /** Pass back as `after` on the next read. */
   cursor: number;

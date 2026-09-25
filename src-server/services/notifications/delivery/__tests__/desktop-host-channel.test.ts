@@ -89,6 +89,7 @@ describe('DesktopHostChannel', () => {
     const { channel, bus } = wired();
     const first = channel.read(DESKTOP, 0);
     expect(first).toEqual({
+      surface: DESKTOP,
       entries: [],
       cursor: 0,
       epoch: expect.any(String),

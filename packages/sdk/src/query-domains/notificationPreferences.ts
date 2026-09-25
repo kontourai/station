@@ -63,17 +63,29 @@ async function request(
   const etag = response.headers.get('etag');
   if (etag) lastRevision.set(base, etag);
   else if (response.status === 412) lastRevision.delete(base);
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: NotificationPreferencesV1;
-    error?: string;
-    message?: string;
-  };
-  if (!response.ok || !result.success || !result.data) {
+  // Status first: an older Station answers this path with a plain-text
+  // 404, which must surface as a typed error, not a JSON parse failure.
+  let result:
+    | {
+        success?: boolean;
+        data?: NotificationPreferencesV1;
+        error?: string;
+        message?: string;
+      }
+    | undefined;
+  try {
+    result = (await response.json()) as typeof result;
+  } catch {
+    result = undefined;
+  }
+  if (!response.ok || !result?.success || !result.data) {
     throw new NotificationPreferencesRequestError(
-      result.message ?? apiErrorMessage(result, `HTTP ${response.status}`),
+      result?.message ??
+        (result
+          ? apiErrorMessage(result, `HTTP ${response.status}`)
+          : `HTTP ${response.status}`),
       response.status,
-      result.error,
+      result?.error,
     );
   }
   return result.data;

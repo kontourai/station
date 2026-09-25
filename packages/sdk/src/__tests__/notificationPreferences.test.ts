@@ -92,4 +92,20 @@ describe('notification preferences writes are compare-and-swap', () => {
     await updateNotificationPreferences(DOC as never);
     expect(ifMatchOf(1)).toBe('"unreadable"');
   });
+
+  test("an older Station's plain-text 404 is a typed error with the status", async () => {
+    authenticatedFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: new Headers(),
+      json: async () => {
+        throw new SyntaxError('Unexpected token N in JSON');
+      },
+    });
+    const error = await fetchNotificationPreferences().catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(NotificationPreferencesRequestError);
+    expect(error).toMatchObject({ status: 404, code: undefined });
+  });
 });

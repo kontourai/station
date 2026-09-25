@@ -17,6 +17,10 @@
  * delegated Stations are refused everywhere here: an agent that could write
  * the preferences could unmute itself.
  */
+import {
+  DESKTOP_INSTALLATION_HEADER,
+  desktopHostSurfaceId,
+} from '@kontourai/station-contracts/notification-preferences';
 import { type Context, Hono } from 'hono';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -166,11 +170,17 @@ export function createNotificationPreferencesRoutes(
   });
 
   /**
-   * The CALLER'S OWN feed. A paired device (remote desktop app) reads
-   * `device:<its id>`, derived from its credential; a `surface` naming
-   * anything else is refused. The local operator reads the
-   * `local:desktop-<installationId>` surface it names. No caller can read
-   * another surface's feed.
+   * The CALLER'S OWN feed; the server derives which, the client never
+   * guesses:
+   * - a paired device (a desktop app on a remote Station) → `device:<its
+   *   id>` from its credential (the installation header is ignored);
+   * - the local operator (this computer's desktop app) →
+   *   `local:desktop-<X-Station-Desktop-Installation>`; 400
+   *   `installation_required` when the header is missing or malformed;
+   * - anyone else → 403.
+   * An explicit `surface` query param is accepted only when it equals the
+   * derived surface (older clients); anything else is 403. The response
+   * echoes `surface` so the client keys its cursor by the real id.
    */
   app.get('/deliveries', (c) => {
     if (!options.desktopHost)
@@ -199,19 +209,22 @@ export function createNotificationPreferencesRoutes(
           403,
         );
       surface = deviceSurfaceId(deviceId);
-      if (requested !== undefined && requested !== surface)
+    } else if (isBoundRuntimeLocalOperator(c.req.raw)) {
+      const installation = c.req.header(DESKTOP_INSTALLATION_HEADER);
+      const derived =
+        installation === undefined
+          ? undefined
+          : desktopHostSurfaceId(installation);
+      if (!isDesktopHostSurface(derived))
         return c.json(
           {
             success: false,
-            error: 'surface_not_yours',
-            message: 'A device reads only its own delivery feed.',
+            error: 'installation_required',
+            message: `This computer's desktop app names its installation in ${DESKTOP_INSTALLATION_HEADER}.`,
           },
-          403,
+          400,
         );
-    } else if (isBoundRuntimeLocalOperator(c.req.raw)) {
-      if (!isDesktopHostSurface(requested))
-        return c.json({ success: false, error: 'invalid_request' }, 400);
-      surface = requested;
+      surface = derived;
     } else {
       return c.json(
         {
@@ -223,6 +236,15 @@ export function createNotificationPreferencesRoutes(
         403,
       );
     }
+    if (requested !== undefined && requested !== surface)
+      return c.json(
+        {
+          success: false,
+          error: 'surface_not_yours',
+          message: 'A caller reads only its own delivery feed.',
+        },
+        403,
+      );
     return c.json({
       success: true,
       data: options.desktopHost.read(surface, Number(afterText), epoch),
