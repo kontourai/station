@@ -507,10 +507,14 @@ describe('VoltAgent lifecycle hooks', () => {
     const store = new UnattendedGrantStore(grantHome);
     const jobA = { kind: 'scheduled-job' as const, jobId: 'server-job-a' };
     await store.grantTool(principalKey(jobA), 'lookup', 'operator');
+    const resolve = makeUnattendedGrantResolver(store, {
+      logger: { debug: vi.fn(), error: vi.fn() },
+    });
+    // Only literal `true` authorizes; the resolver also reports
+    // 'store-unavailable', which the hook contract has no slot for.
     const hooks = createVoltAgentLifecycleHooks('assistant', {
-      beforeToolCall: makeUnattendedGrantResolver(store, {
-        logger: { debug: vi.fn(), error: vi.fn() },
-      }),
+      beforeToolCall: async (tool, invocation) =>
+        (await resolve(tool, invocation)) === true,
     });
     const call = (jobId: string, runId: string) =>
       runWithScheduledPrincipal(
@@ -537,10 +541,14 @@ describe('VoltAgent lifecycle hooks', () => {
 
   it('carries the discovered scheduler principal and receipt trace through the production scheduler Adapter into Volt hooks', async () => {
     const store = new UnattendedGrantStore(grantHome);
+    const resolve = makeUnattendedGrantResolver(store, {
+      logger: { debug: vi.fn(), error: vi.fn() },
+    });
     const beforeToolCall = vi.fn(
-      makeUnattendedGrantResolver(store, {
-        logger: { debug: vi.fn(), error: vi.fn() },
-      }),
+      async (
+        tool: Parameters<typeof resolve>[0],
+        invocation: Parameters<typeof resolve>[1],
+      ) => (await resolve(tool, invocation)) === true,
     );
     const hooks = createVoltAgentLifecycleHooks('assistant', {
       beforeToolCall,
