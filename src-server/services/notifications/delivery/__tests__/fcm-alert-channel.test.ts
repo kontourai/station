@@ -435,96 +435,122 @@ describe('FcmAlertChannel through the delivery router', () => {
     expect(h.fetchImpl).not.toHaveBeenCalled();
   });
 
-  test("an orchestration session's approval and turn endings are the card's; a registry approval and other alerts are carried", async () => {
+  // #2588/#2589: Android leaves to the card exactly what the shared
+  // `isCardAlerted` does, which reads the `onActivityCard` mark. The records
+  // below are shaped as approval-inbox.ts and turn-completion-notifications.ts
+  // write them; each carried one differs from a skipped one only in what the
+  // writer decided (the mark), so a rule keyed on category or session kind
+  // alone fails here.
+  const orchestrationApproval = (id: string, onActivityCard: boolean) =>
+    notification({
+      id,
+      category: 'approval-request',
+      source: 'approval-inbox',
+      metadata: {
+        requestId: 'r1',
+        requestKey: 'orchestration:session-1:r1',
+        requestKind: 'orchestration',
+        requestType: 'approval',
+        ...(onActivityCard ? { onActivityCard: true } : {}),
+        sessionId: 'session-1',
+        sessionKind: 'runtime',
+        threadId: 'session-1',
+      },
+    });
+  const registryApproval = (
+    id: string,
+    relay: { orchestrationThreadId: string; onActivityCard: boolean } | null,
+  ) =>
+    notification({
+      id,
+      category: 'approval-request',
+      source: 'approval-inbox',
+      metadata: {
+        approvalId: `approval-${id}`,
+        conversationId: 'session-1',
+        ...(relay
+          ? {
+              orchestrationThreadId: relay.orchestrationThreadId,
+              ...(relay.onActivityCard ? { onActivityCard: true } : {}),
+            }
+          : {}),
+        sessionId: 'session-1',
+        sessionKind: 'managed',
+        requestKind: 'registry',
+        requestKey: `approval:approval-${id}`,
+      },
+    });
+  const turnTerminal = (
+    id: string,
+    category: 'turn-completed' | 'turn-stopped' | 'turn-failed',
+    onActivityCard: boolean,
+  ) =>
+    notification({
+      id,
+      category,
+      source: 'turn-completion',
+      metadata: {
+        sessionId: 'session-1',
+        sessionKind: 'runtime',
+        threadId: 'session-1',
+        turnId: `turn-${id}`,
+        ...(onActivityCard ? { onActivityCard: true } : {}),
+      },
+    });
+
+  test.each([
+    {
+      label: 'a marked orchestration approval (the card shows it)',
+      alerts: false,
+      record: orchestrationApproval('n-approval', true),
+    },
+    {
+      label:
+        'an unmarked orchestration approval (an ephemeral session, off the card)',
+      alerts: true,
+      record: orchestrationApproval('n-approval-ephemeral', false),
+    },
+    {
+      label: 'a plain registry approval (a managed chat, never on the card)',
+      alerts: true,
+      record: registryApproval('n-registry', null),
+    },
+    {
+      label: 'the marked registry twin of a Station-agent approval',
+      alerts: false,
+      record: registryApproval('n-twin', {
+        orchestrationThreadId: 'session-1',
+        onActivityCard: true,
+      }),
+    },
+    {
+      label:
+        'the unmarked registry twin of an ephemeral Station-agent approval',
+      alerts: true,
+      record: registryApproval('n-twin-ephemeral', {
+        orchestrationThreadId: 'session-1',
+        onActivityCard: false,
+      }),
+    },
+    {
+      label: 'a marked finished turn',
+      alerts: false,
+      record: turnTerminal('n-done', 'turn-completed', true),
+    },
+    {
+      label: 'a marked failed turn',
+      alerts: false,
+      record: turnTerminal('n-failed', 'turn-failed', true),
+    },
+    {
+      label: 'a stopped turn (folds to canceled, which the card leaves off)',
+      alerts: true,
+      record: turnTerminal('n-stopped', 'turn-stopped', false),
+    },
+  ])('$label: alerts on Android: $alerts', async ({ record, alerts }) => {
     const h = await harness();
-    // As approval-inbox.ts and turn-completion-notifications.ts stamp them.
-    const orchestration = (id: string, category: string) =>
-      notification({
-        id,
-        category,
-        source: 'approval-inbox',
-        metadata: {
-          sessionId: 'session-1',
-          sessionKind: 'runtime',
-          threadId: 'session-1',
-          ...(category === 'approval-request'
-            ? { requestKind: 'orchestration' }
-            : {}),
-        },
-      });
-    for (const category of [
-      'approval-request',
-      'turn-completed',
-      'turn-stopped',
-      'turn-failed',
-    ])
-      h.eventBus.emit(
-        SERVER_EVENTS.NOTIFICATION_DELIVERED,
-        orchestration(`n-${category}`, category) as never,
-      );
-    await h.settle();
-    expect(h.fetchImpl).not.toHaveBeenCalled();
-    // A registry approval (a managed-agent tool call) is never on the card.
-    h.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      notification({
-        id: 'n-registry',
-        category: 'approval-request',
-        source: 'approval-inbox',
-        metadata: {
-          approvalId: 'approval-1',
-          conversationId: 'session-1',
-          sessionId: 'session-1',
-          sessionKind: 'managed',
-          requestKind: 'registry',
-        },
-      }) as never,
-    );
-    // No writer produces this today, but a registry request is carried
-    // whatever session kind it names: requestKind decides on its own.
-    h.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      notification({
-        id: 'n-registry-runtime',
-        category: 'approval-request',
-        source: 'approval-inbox',
-        metadata: {
-          sessionId: 'session-1',
-          sessionKind: 'runtime',
-          requestKind: 'registry',
-        },
-      }) as never,
-    );
-    // Nor is a record that does not say it is orchestration-backed.
-    h.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      notification({
-        id: 'n-unmarked',
-        category: 'approval-request',
-        source: 'approval-inbox',
-        metadata: { sessionId: 'session-1' },
-      }) as never,
-    );
-    // Nor is a runtime orchestration record that names no session: the card
-    // is keyed by session, so nothing ties it to a card entry (a duplicate
-    // beats a silenced alert). No writer produces one today.
-    for (const [id, sessionId] of [
-      ['n-runtime-no-session', undefined],
-      ['n-runtime-empty-session', ''],
-    ] as const)
-      h.eventBus.emit(
-        SERVER_EVENTS.NOTIFICATION_DELIVERED,
-        notification({
-          id,
-          category: 'approval-request',
-          source: 'approval-inbox',
-          metadata: {
-            ...(sessionId === undefined ? {} : { sessionId }),
-            sessionKind: 'runtime',
-            requestKind: 'orchestration',
-          },
-        }) as never,
-      );
+    h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+    // A control the card never carries, so a silent channel cannot pass.
     h.eventBus.emit(
       SERVER_EVENTS.NOTIFICATION_DELIVERED,
       notification({
@@ -535,20 +561,11 @@ describe('FcmAlertChannel through the delivery router', () => {
       }) as never,
     );
     await h.settle();
-    expect(
-      new Set(
-        h.sent.filter((s) => s.deviceId === h.phone).map((s) => s.plaintext.id),
-      ),
-    ).toEqual(
-      new Set([
-        'n-registry',
-        'n-registry-runtime',
-        'n-unmarked',
-        'n-runtime-no-session',
-        'n-runtime-empty-session',
-        'n-pairing',
-      ]),
-    );
+    const phoneIds = h.sent
+      .filter((s) => s.deviceId === h.phone)
+      .map((s) => s.plaintext.id);
+    expect(phoneIds).toContain('n-pairing');
+    expect(phoneIds.includes(record.id)).toBe(alerts);
   });
 
   test('a send inside the per-phone floor waits for its slot instead of being dropped', async () => {
