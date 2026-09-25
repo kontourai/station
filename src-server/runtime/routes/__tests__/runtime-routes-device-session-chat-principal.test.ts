@@ -42,6 +42,7 @@
  * mocked-away) to assert the exact resolved `principalId` reached the
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -75,7 +76,16 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { FakeNeo4jDriver } from '../../../knowledge-store/__tests__/fake-neo4j-driver.js';
+import { registerRuntimeConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import {
+  clearNeo4jGraphViewConnection,
+  registerNeo4jGraphViewConnection,
+} from '../../../knowledge-store/neo4j-connection.js';
+import { NEO4J_SYNC_QUERIES } from '../../../knowledge-store/neo4j-graph-sync.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
@@ -104,13 +114,31 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
 // suite's entire point is exercising the REAL credential pipeline
 // (`configureRuntimeHttp`'s bearer parsing, `verifyCredential`,
 // `resolveGrantedScope`, `resolveCredentialLocality`) end to end.
+// The production Neo4j route wiring loads a real driver; route it to an
+// in-memory fake shared with the test.
+const neo4jFake = vi.hoisted(() => ({ driver: undefined as unknown }));
+vi.mock(
+  '../../../knowledge-store/neo4j-graph-provider.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../knowledge-store/neo4j-graph-provider.js')
+    >()),
+    createNeo4jDriver: async () =>
+      neo4jFake.driver
+        ? { ok: true, driver: neo4jFake.driver }
+        : { ok: false, reason: 'no fake driver' },
+  }),
+);
+
 vi.mock('../runtime-route-support.js', () => {
   const runtimeSupportStub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -359,9 +387,28 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       personalSharing?: boolean;
       // Extra sessions (thread id, owner) seeded like the fixed ones above.
       extraSessions?: ReadonlyArray<readonly [string, string]>;
+      /**
+       * #2568: a real UsageAggregator over the real orchestration service,
+       * through the production usage ref, behind `/api/analytics`.
+       */
+      usageRollup?: boolean;
+      /**
+       * H1: the production conversation knowledge adapter over the real
+       * orchestration service, behind `/api/knowledge`.
+       */
+      knowledge?: boolean;
+      /**
+       * M1: the real session read model and Flow-run read behind the spatial
+       * board and MCP-UI evidence attach; each Flow-run read records whether
+       * the authority it was asked with can read the thread.
+       */
+      flowReads?: Array<{ threadId: string; readable: boolean }>;
+      /** LOW-1: the Task dispatcher behind the production task routes. */
+      taskDispatcher?: unknown;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
+    let knowledgeProvider: KnowledgeStoreProvider | undefined;
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),
     );
@@ -373,7 +420,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       for (const [threadId, userId] of [
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
-        ['legacy-owned', getCachedUser().alias],
+        // A row whose recorded owner is this Station's OS display alias:
+        // it names no principal, so no caller may read it.
+        ['alias-owned', getCachedUser().alias],
         ...(orchestrationExtras.extraOwners ?? []),
         ...(orchestrationExtras.extraSessions ?? []),
       ]) {
@@ -439,7 +488,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           list: () => [],
         },
         logger: { debug() {}, warn() {} },
-        legacyPersonalOwner: getCachedUser().alias,
       });
       orchestration.initialize();
       // Registered BEFORE the barrier is awaited. The barrier resolves only
@@ -579,6 +627,41 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           }
         : {}),
       ...(runtimeSearch ? { runtimeSearch } : {}),
+      ...(orchestrationExtras.knowledge
+        ? {
+            resolveEmbeddingProvider: () => ({
+              id: 'stub-embedder',
+              displayName: 'Stub embedder',
+              dimensions: () => 4,
+              embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
+            }),
+            knowledgeStoreProvider: await (async () => {
+              const persistence = new FileStorageAdapter(roomHomeDir);
+              const provider = new KnowledgeStoreProvider(persistence);
+              knowledgeProvider = provider;
+              // The Station runtime's own registration (station-runtime.ts),
+              // so these routes read through production's authority wiring.
+              await registerRuntimeConversationKnowledgeRoot({
+                provider,
+                persistence,
+                sessions: orchestration!,
+                fileStores: new Map(),
+                fileMemoryUserId: () => getCachedUser().alias,
+                projectHomeDir: roomHomeDir,
+                knowledgeStoresEnabled: true,
+              });
+              return provider;
+            })(),
+          }
+        : {}),
+      ...(orchestrationExtras.usageRollup
+        ? {
+            usageAggregator: new UsageAggregator(
+              roomHomeDir,
+              orchestrationUsageRefFor(() => orchestration),
+            ),
+          }
+        : {}),
       ...(taskReferences
         ? {
             orchestrationService: deepStub({
@@ -598,6 +681,25 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
+              ...(orchestrationExtras.flowReads
+                ? {
+                    listSessionReadModel:
+                      orchestration!.listSessionReadModel.bind(orchestration),
+                    readSessionFlowRun: async (
+                      threadId: string,
+                      authority: never,
+                    ) => {
+                      orchestrationExtras.flowReads!.push({
+                        threadId,
+                        readable: orchestration!.canUserReadSession(
+                          threadId,
+                          authority,
+                        ),
+                      });
+                      return null;
+                    },
+                  }
+                : {}),
             }),
           }
         : {}),
@@ -611,6 +713,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ...(taskReferences ? { getProject: () => project } : {}),
       },
       environmentSecurityService: environmentSecurityServiceFor(pairing),
+      ...(orchestrationExtras.taskDispatcher
+        ? { taskDispatcher: orchestrationExtras.taskDispatcher }
+        : {}),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = await configureRuntimeRoutes(
@@ -634,6 +739,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       paired,
       referenceTask,
       taskGraph,
+      knowledgeProvider,
     };
   }
 
@@ -651,7 +757,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     };
     for (const [sessionId, expected] of [
       ['device-owned', 201],
-      ['legacy-owned', 404],
+      ['alias-owned', 404],
       ['whois-owned', 404],
     ] as const) {
       const answer = await app.request(
@@ -684,7 +790,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   test.each(['device', 'whois', 'home', 'operator'] as const)(
     'search and exact open use actual %s ingress ownership, not the OS alias',
     async (mode) => {
-      const { app, roomRuntime, paired } = await setup(mode);
+      const { app, roomRuntime, paired } = await setup(
+        mode,
+        false,
+        undefined,
+        false,
+        false,
+        { extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]] },
+      );
       searchCleanup.unshift(async () => {
         await roomRuntime.close();
       });
@@ -716,9 +829,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       );
       const body = (await response.json()) as any;
       expect(response.status, JSON.stringify(body)).toBe(200);
+      // The operator's principal owns `operator-owned` whether or not the
+      // request also holds the Station home; nobody reads `alias-owned`.
       const expected =
         mode === 'home' || mode === 'operator'
-          ? 'legacy-owned'
+          ? 'operator-owned'
           : `${mode}-owned`;
       // The source states ride in the failure message: a provider that timed
       // out or a read the attachment gate refused answers 200 with an empty
@@ -726,7 +841,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         body.data.results.map((row: any) => row.scope.sessionId),
         JSON.stringify(body.data.sources),
-      ).toEqual(mode === 'operator' ? [] : [expected]);
+      ).toEqual([expected]);
       const opened = await app.request(
         '/api/search/resolve-open',
         {
@@ -740,19 +855,33 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
         environment,
       );
-      expect(await opened.json()).toMatchObject(
-        mode === 'operator'
-          ? { data: { state: 'not-found' } }
-          : {
-              data: {
-                state: 'resolved',
-                target: {
-                  sessionId: expected,
-                  matchedEventId: `${expected}:exact`,
-                },
-              },
-            },
+      expect(await opened.json()).toMatchObject({
+        data: {
+          state: 'resolved',
+          target: {
+            sessionId: expected,
+            matchedEventId: `${expected}:exact`,
+          },
+        },
+      });
+      // The alias-owned row is invisible to every caller, including the
+      // home-possession operator that the removed OS-alias bridge admitted.
+      const aliasOpen = await app.request(
+        '/api/search/resolve-open',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            kind: 'session-message',
+            sessionId: 'alias-owned',
+            matchedEventId: 'alias-owned:exact',
+          }),
+        },
+        environment,
       );
+      expect(await aliasOpen.json()).toMatchObject({
+        data: { state: 'not-found' },
+      });
     },
   );
 
@@ -2094,9 +2223,78 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * A chat created in the UI is owned by the local-operator principal, while
    * the conversation-scoped routes decided with the cached OS alias — so a
    * conversation's linked pull requests answered "Conversation unavailable"
-   * for every real chat. (Ownerless ids stay readable in production's
-   * single-user compat mode; that is policy, not this route's decision.)
+   * for every real chat.
    */
+  // #2567: an id no one owns (a made-up one, or a session recorded without
+  // an owner) used to be readable by every personal caller under the
+  // single-user ownerless compatibility mode, on every conversation-scoped
+  // route. Now it is readable by no caller, however local.
+  test.each(['operator', 'home', 'device', 'whois'] as const)(
+    'a made-up or ownerless conversation id is refused for the %s caller (#2567)',
+    async (mode) => {
+      const { app, store, roomRuntime, paired } = await setup(
+        mode,
+        true,
+        undefined,
+        false,
+        false,
+        {
+          extraSessions: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+          seed: (seedStore) =>
+            seedStore.appendEvent({
+              eventId: 'ownerless-session:start',
+              threadId: 'ownerless-session',
+              sessionId: 'ownerless-session',
+              provider: 'claude',
+              method: 'session.started',
+              createdAt: '2026-09-04T00:00:00Z',
+            }),
+        },
+      );
+      const headers = {
+        Authorization: `Bearer ${mode === 'operator' ? OPERATOR_SECRET : paired.credential}`,
+        ...(mode === 'whois'
+          ? {
+              [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+                JSON.stringify({
+                  provider: 'tailscale-serve',
+                  login: 'owner@github',
+                }),
+              ).toString('base64url'),
+              [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            }
+          : {}),
+      };
+      const environment =
+        mode === 'whois' ? LOOPBACK_SERVE_PROXY_ENV : REMOTE_TAILNET_ENV;
+      const read = (conversationId: string) =>
+        app.request(
+          `/api/conversation-pull-requests/${encodeURIComponent(conversationId)}`,
+          { headers },
+          environment,
+        );
+      for (const conversationId of [
+        'made-up-conversation',
+        'ownerless-session',
+      ]) {
+        const refused = await read(conversationId);
+        expect(
+          refused.status,
+          `${conversationId}: ${await refused.text()}`,
+        ).toBe(404);
+      }
+      // The same caller still reaches a conversation it owns (the operator,
+      // with or without home possession) — the refusal is ownership, not the
+      // route being unreachable.
+      if (mode === 'operator' || mode === 'home') {
+        const owned = await read('operator-owned');
+        expect(owned.status, await owned.text()).toBe(200);
+      }
+      await roomRuntime.close();
+      store.close();
+    },
+  );
+
   test('an operator reads the linked pull requests of the chat it owns', async () => {
     const { app, store, roomRuntime } = await setup(
       'operator',
@@ -2413,6 +2611,767 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       'Content-Type': 'application/json',
     };
 
+    // #2568: the usage rollup reads receipts through the production usage
+    // ref, with the request's own principal and the same personal-account
+    // owner set transcript reads use. A peer Station calls with its device
+    // credential, so it is exactly the paired-device case below.
+    test('the usage rollup reports the account’s token usage to the operator and an approved paired peer, never a stranger’s', async () => {
+      const usage = (threadId: string) => ({
+        eventId: `${threadId}:usage`,
+        threadId,
+        turnId: `${threadId}:turn`,
+        provider: 'claude' as const,
+        method: 'token-usage.updated' as const,
+        createdAt: new Date().toISOString(),
+        promptTokens: 11,
+        completionTokens: 7,
+      });
+      const { app, paired, pairing } = await principalSetup({
+        usageRollup: true,
+        seed: (seedStore) => {
+          for (const threadId of [
+            'operator-owned',
+            'device-owned',
+            'stranger-owned',
+            'alias-owned',
+          ])
+            seedStore.appendEvent(usage(threadId) as never);
+        },
+      });
+      const rollupThreads = async (credential: string) => {
+        const response = await app.request(
+          '/api/analytics/usage-rollup?days=7&localOnly=1&pageSize=100',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: {
+            receipts?: Array<{ threadId: string; inputTokens?: number }>;
+          };
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data?.receipts ?? [])
+          .map((receipt) => `${receipt.threadId}:${receipt.inputTokens}`)
+          .sort();
+      };
+      // The route discloses paired-Station relationships, so it needs
+      // `access:manage` (pairing-route-scopes.ts), which only the default
+      // grant carries: a paired peer Station's credential is exactly that.
+      const peerOffer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const peerRequest = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        deviceName: 'Peer Station',
+      });
+      pairing.confirmRequest(peerRequest.requestId, {
+        kind: 'presented-credential',
+      });
+      const peer = pairing.exchange({
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        requestId: peerRequest.requestId,
+      });
+      // One personal account: the operator's chat and the paired device's
+      // own session. Never the stranger's, and never the OS-alias row: a
+      // rollup read as the alias would have reported exactly that one.
+      const account = ['device-owned:11', 'operator-owned:11'];
+      await expect(rollupThreads(OPERATOR_SECRET)).resolves.toEqual(account);
+      await expect(rollupThreads(peer.credential)).resolves.toEqual(account);
+      // A device without the route's scope is refused outright.
+      const unscoped = await app.request(
+        '/api/analytics/usage-rollup?days=7&localOnly=1',
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(unscoped.status).toBe(403);
+    });
+
+    /** Agent conversations (thread id, owner) the knowledge adapter lists. */
+    function seedConversations(
+      seedStore: EventStore,
+      conversations: ReadonlyArray<readonly [string, string]>,
+    ) {
+      for (const [threadId, userId] of conversations) {
+        seedStore.upsertSession({
+          threadId,
+          provider: 'claude',
+          status: 'closed',
+          createdAt: '2026-09-04T00:00:00Z',
+          updatedAt: '2026-09-04T00:00:00Z',
+        });
+        seedStore.appendEvent({
+          eventId: `${threadId}:started`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-04T00:00:00Z',
+          metadata: { userId, agentSlug: 'claude' },
+        } as never);
+        seedStore.appendEvent({
+          eventId: `${threadId}:prompt`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-04T00:00:01Z',
+          prompt: `knowledge note for ${threadId}`,
+        } as never);
+      }
+    }
+    const STRANGER = 'human:tailscale-serve:stranger@example';
+
+    // M1 (round 3): the Neo4j projection is Station-wide; every read re-checks
+    // each conversation node as the caller, and a path never crosses one the
+    // caller cannot read.
+    test('the Neo4j graph and shortest path show a caller only the conversation nodes it may read', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['op-a', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['op-b', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['op-c', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['str', STRANGER],
+            ]),
+        });
+        // The projection as the Station indexer's sync leaves it: built from
+        // ALL sessions (the stranger's included), with op-a and op-b linked
+        // only through the stranger's node. Every read re-checks the caller.
+        const session = driver.session();
+        for (const id of ['op-a', 'op-b', 'op-c', 'str'])
+          await session.run(NEO4J_SYNC_QUERIES.mergeNode, {
+            rootId: 'root:conversations',
+            id,
+            type: 'raw',
+            title: `title of ${id}`,
+            category: 'conversation',
+            contentHash: id,
+            syncedAt: '2026-09-04T00:00:00Z',
+          });
+        for (const [sourceId, targetId] of [
+          ['op-a', 'str'],
+          ['str', 'op-b'],
+          ['op-b', 'op-c'],
+        ])
+          await session.run(NEO4J_SYNC_QUERIES.mergeEdge, {
+            rootId: 'root:conversations',
+            sourceId,
+            targetId,
+            kind: 'related',
+            label: null,
+            contentHash: `${sourceId}-${targetId}`,
+          });
+        const get = async (credential: string, path: string) => {
+          const response = await app.request(
+            `/api/knowledge/roots/root:conversations/graph/neo4j${path}`,
+            { headers: { Authorization: `Bearer ${credential}` } },
+            REMOTE_TAILNET_ENV,
+          );
+          const body = (await response.json()) as any;
+          expect(response.status, JSON.stringify(body)).toBe(200);
+          return body.data;
+        };
+        const operatorGraph = await get(OPERATOR_SECRET, '');
+        expect(
+          operatorGraph.nodes.map((node: { id: string }) => node.id).sort(),
+        ).toEqual(['op-a', 'op-b', 'op-c']);
+        expect(operatorGraph.edges).toEqual([
+          expect.objectContaining({ source: 'op-b', target: 'op-c' }),
+        ]);
+        expect(JSON.stringify(operatorGraph)).not.toContain('title of str');
+        // The only op-a..op-b route crosses the stranger's node: no path.
+        expect(
+          await get(OPERATOR_SECRET, '/shortest-path?fromId=op-a&toId=op-b'),
+        ).toBeNull();
+        expect(
+          await get(OPERATOR_SECRET, '/shortest-path?fromId=op-b&toId=op-c'),
+        ).toEqual({ nodeIds: ['op-b', 'op-c'], length: 1 });
+
+        const peer = pairDelegationPeer(pairing);
+        expect(await get(peer.credential, '')).toEqual({
+          nodes: [],
+          edges: [],
+        });
+        expect(
+          await get(peer.credential, '/shortest-path?fromId=op-b&toId=op-c'),
+        ).toBeNull();
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // Building a conversation-backed root's graph is the operator's alone
+    // (a peer's sync would disclose counts); the Station indexer builds it
+    // from all sessions and every read re-checks the caller.
+    test('only the operator may sync the conversation graph, and each caller then reads only its own nodes', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['stranger-note', STRANGER],
+            ]),
+        });
+        const peer = pairDelegationPeer(pairing);
+        const sync = (credential: string) =>
+          app.request(
+            '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${credential}` },
+            },
+            REMOTE_TAILNET_ENV,
+          );
+        const refused = await sync(peer.credential);
+        expect(refused.status).toBe(403);
+        expect(await refused.text()).not.toMatch(/nodesWritten|records/);
+        const synced = await sync(OPERATOR_SECRET);
+        const syncedBody = (await synced.json()) as any;
+        expect(synced.status, JSON.stringify(syncedBody)).toBe(200);
+        // All sessions, not only the operator's account.
+        expect(syncedBody.data.nodesWritten).toBe(2);
+        const nodes = async (credential: string) => {
+          const response = await app.request(
+            '/api/knowledge/roots/root:conversations/graph/neo4j',
+            { headers: { Authorization: `Bearer ${credential}` } },
+            REMOTE_TAILNET_ENV,
+          );
+          return ((await response.json()) as any).data.nodes.map(
+            (node: { id: string }) => node.id,
+          );
+        };
+        expect(await nodes(OPERATOR_SECRET)).toEqual(['operator-note']);
+        expect(await nodes(peer.credential)).toEqual([]);
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // (a)+(b): a caller cannot create another conversation-backed root, and
+    // a conversation-backed root under ANY id is filtered and build-gated by
+    // its adapter, not by its id.
+    test('conversation-store roots are neither creatable nor exploitable under another id', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing, knowledgeProvider } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+            ]),
+        });
+        const peer = pairDelegationPeer(pairing);
+        const peerHeaders = {
+          Authorization: `Bearer ${peer.credential}`,
+          'Content-Type': 'application/json',
+        };
+        const adapters = await app.request(
+          '/api/knowledge/adapters',
+          { headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(
+          ((await adapters.json()) as any).data.map(
+            (a: { id: string }) => a.id,
+          ),
+        ).not.toContain('conversation-store');
+        const created = await app.request(
+          '/api/knowledge/roots',
+          {
+            method: 'POST',
+            headers: peerHeaders,
+            body: JSON.stringify({
+              scope: { kind: 'personal' },
+              adapterId: 'conversation-store',
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(created.status, await created.clone().text()).toBe(403);
+
+        // Such a root existing anyway (not through the API).
+        const other = await knowledgeProvider!.createRoot({
+          scope: { kind: 'personal' },
+          adapterId: 'conversation-store',
+          storeRoot: '/unused',
+          displayName: 'Other',
+        });
+        const session = driver.session();
+        await session.run(NEO4J_SYNC_QUERIES.mergeNode, {
+          rootId: other.id,
+          id: 'operator-note',
+          type: 'raw',
+          title: 'operator secret title',
+          category: 'conversation',
+          contentHash: 'x',
+          syncedAt: '2026-09-04T00:00:00Z',
+        });
+        const read = await app.request(
+          `/api/knowledge/roots/${encodeURIComponent(other.id)}/graph/neo4j`,
+          { headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(await read.text()).not.toContain('operator secret title');
+        const sync = await app.request(
+          `/api/knowledge/roots/${encodeURIComponent(other.id)}/graph/neo4j-sync`,
+          { method: 'POST', headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(sync.status).toBe(403);
+        const rebuild = await app.request(
+          '/api/knowledge/index/rebuild',
+          {
+            method: 'POST',
+            headers: peerHeaders,
+            body: JSON.stringify({ rootId: other.id }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(rebuild.status).toBe(403);
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // Round 5: the reviewer's scenario. A deregistered root's projection
+    // survives in Neo4j; nothing could then check it per caller, so its
+    // reads fail closed, and the built-in root cannot be deregistered.
+    test('the conversation root cannot be removed, and a deregistered root’s projection is never returned', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing, knowledgeProvider } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['stranger-note', STRANGER],
+            ]),
+        });
+        const synced = await app.request(
+          '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
+          { method: 'POST', headers: operatorHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(synced.status, await synced.clone().text()).toBe(200);
+        const peer = pairDelegationPeer(pairing);
+        const peerHeaders = { Authorization: `Bearer ${peer.credential}` };
+        const removed = await app.request(
+          '/api/knowledge/roots/root:conversations',
+          { method: 'DELETE', headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(removed.status, await removed.clone().text()).toBe(403);
+        expect(await knowledgeProvider!.getRoot('root:conversations')).not.toBe(
+          null,
+        );
+
+        // Deregistered some other way: the projection is still in Neo4j.
+        await knowledgeProvider!.removeRoot('root:conversations');
+        for (const path of [
+          '',
+          '/shortest-path?fromId=operator-note&toId=stranger-note',
+        ]) {
+          const response = await app.request(
+            `/api/knowledge/roots/root:conversations/graph/neo4j${path}`,
+            { headers: peerHeaders },
+            REMOTE_TAILNET_ENV,
+          );
+          const text = await response.text();
+          expect(response.status, text).toBe(404);
+          expect(text).not.toContain('note');
+        }
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // Only the operator rebuilds the conversation index; the Station indexer
+    // builds it from ALL sessions, so after the operator's rebuild each caller
+    // (a non-account WhoIs principal included) finds exactly its own set.
+    test('only the operator rebuilds the conversation index, and each caller then finds exactly what it may read', async () => {
+      const { app, pairing, paired } = await principalSetup({
+        knowledge: true,
+        seed: (seedStore) =>
+          seedConversations(seedStore, [
+            ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+            ['stranger-note', STRANGER],
+          ]),
+      });
+      const peer = pairDelegationPeer(pairing);
+      const post = (
+        headers: Record<string, string>,
+        path: string,
+        body: unknown,
+        env = REMOTE_TAILNET_ENV,
+      ) =>
+        app.request(
+          `/api/knowledge${path}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify(body),
+          },
+          env,
+        );
+      const bearer = (credential: string) => ({
+        Authorization: `Bearer ${credential}`,
+      });
+      const refused = await post(bearer(peer.credential), '/index/rebuild', {
+        rootId: 'root:conversations',
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.text()).not.toMatch(/records|chunks/);
+      const rebuilt = await post(bearer(OPERATOR_SECRET), '/index/rebuild', {
+        rootId: 'root:conversations',
+      });
+      const rebuiltBody = (await rebuilt.json()) as any;
+      expect(rebuilt.status, JSON.stringify(rebuiltBody)).toBe(200);
+      // All sessions, the stranger's included.
+      expect(rebuiltBody.data.roots[0]).toMatchObject({
+        status: 'ok',
+        records: 2,
+      });
+      const hits = async (
+        headers: Record<string, string>,
+        env = REMOTE_TAILNET_ENV,
+      ) => {
+        const response = await post(
+          headers,
+          '/index/search',
+          { query: 'knowledge note', rootIds: ['root:conversations'] },
+          env,
+        );
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return body.data
+          .map((hit: { recordId: string }) => hit.recordId)
+          .sort();
+      };
+      expect(await hits(bearer(OPERATOR_SECRET))).toEqual(['operator-note']);
+      expect(await hits(bearer(peer.credential))).toEqual([]);
+      // A Tailscale identity outside the personal account finds its own.
+      const strangerHeaders = {
+        ...bearer(paired.credential),
+        [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+          JSON.stringify({
+            provider: 'tailscale-serve',
+            login: 'stranger@example',
+          }),
+        ).toString('base64url'),
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      };
+      expect(await hits(strangerHeaders, LOOPBACK_SERVE_PROXY_ENV)).toEqual([
+        'stranger-note',
+      ]);
+    });
+
+    // LOW-3: the evidence attach is best-effort; a caller whose principal
+    // cannot be resolved still gets its tool result, and no attach happens.
+    test('an MCP-UI call whose principal cannot be resolved succeeds and attaches nothing', async () => {
+      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
+      const { app, pairing, paired } = await principalSetup({ flowReads });
+      // The device is bound to one person while the request's ingress names
+      // another: the credential authenticates, but principal resolution
+      // refuses the conflict.
+      const identify = pairing.identifyDevice.bind(pairing);
+      vi.spyOn(pairing, 'identifyDevice').mockImplementation((credential) => {
+        const device = identify(credential);
+        return device
+          ? ({
+              ...device,
+              principalBinding: {
+                provider: 'tailscale-serve',
+                subject: 'someone-else@github',
+              },
+            } as never)
+          : device;
+      });
+      const response = await app.request(
+        '/integrations/example-server/ui/call',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${paired.credential}`,
+            'Content-Type': 'application/json',
+            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+              JSON.stringify({
+                provider: 'tailscale-serve',
+                login: 'owner@github',
+              }),
+            ).toString('base64url'),
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          },
+          body: JSON.stringify({
+            tool: 'example-tool',
+            arguments: {},
+            threadId: 'operator-owned',
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      expect(response.status, await response.text()).toBe(200);
+      expect(flowReads).toEqual([]);
+    });
+
+    // LOW-1: through the production runtime-routes composition, Station's
+    // internal token (which any agent holding a stdio child's env can
+    // present) starts a session that is the operator's to read but acts for
+    // no one; the operator's own credential starts an ordinary one.
+    test('the production task and board-intent routes mark an internal-token dispatch unattributed', async () => {
+      const dispatch = vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'test stops at the dispatcher',
+      }));
+      const { app } = await principalSetup({
+        taskDispatcher: { dispatch },
+      });
+      const internalHeaders = {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+      };
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: internalHeaders, body: '{}' },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: operatorHeaders, body: '{}' },
+        REMOTE_TAILNET_ENV,
+      );
+      const intent = await app.request(
+        '/api/projects/project/operating-state/intent',
+        {
+          method: 'POST',
+          headers: internalHeaders,
+          body: JSON.stringify({
+            consent: true,
+            intent: {
+              id: 'dispatch-1',
+              kind: 'task dispatch',
+              authority: { product: 'station', command: 'task dispatch' },
+              subjectRefs: [{ product: 'station', kind: 'task', id: 'task-1' }],
+            },
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      const owners = dispatch.mock.calls.map((call) => {
+        const intentArg = (call as unknown[])[1] as {
+          ownerUserId: string;
+          ownerAttribution?: string;
+        };
+        return {
+          ownerUserId: intentArg.ownerUserId,
+          ownerAttribution: intentArg.ownerAttribution,
+        };
+      });
+      expect(owners, await intent.text()).toEqual([
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: undefined,
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+      ]);
+    });
+
+    function pairDelegationPeer(pairing: DevicePairingService) {
+      const offer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: pairingScopePresetString('delegation'),
+        kind: 'delegation',
+      });
+      const request = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Delegation peer',
+      });
+      pairing.confirmRequest(request.requestId, {
+        kind: 'presented-credential',
+      });
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+    }
+
+    // M1: the spatial board resolves pinned sessions as the requesting
+    // principal, never as a fixed operator authority.
+    test('the spatial board resolves an operator session for the operator and as missing for a non-member', async () => {
+      const { app, pairing } = await principalSetup({ flowReads: [] });
+      const pin = await app.request(
+        '/api/spatial-board/pins',
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            expectedRevision: 0,
+            pin: {
+              id: 'pin-operator',
+              reference: { kind: 'session', id: 'operator-owned' },
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              order: 0,
+            },
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(pin.status, await pin.clone().text()).toBe(200);
+      const stateFor = async (credential: string) => {
+        const response = await app.request(
+          '/api/spatial-board/resolved',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return JSON.stringify(body.data);
+      };
+      expect(await stateFor(OPERATOR_SECRET)).toContain('"state":"current"');
+      const peer = pairDelegationPeer(pairing);
+      const peerView = await stateFor(peer.credential);
+      expect(peerView).toContain('"state":"missing"');
+      expect(peerView).not.toContain('"state":"current"');
+    });
+
+    // M1: an MCP-UI call names its thread; the Flow-run read that decides
+    // whether evidence attaches must be the caller's.
+    test('MCP-UI evidence attach reads the named thread as the calling principal', async () => {
+      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
+      const { app, pairing } = await principalSetup({ flowReads });
+      const call = (credential: string) =>
+        app.request(
+          '/integrations/example-server/ui/call',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tool: 'example-tool',
+              arguments: {},
+              threadId: 'operator-owned',
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+      const operatorCall = await call(OPERATOR_SECRET);
+      const peer = pairDelegationPeer(pairing);
+      const peerCall = await call(peer.credential);
+      expect(
+        flowReads,
+        `${operatorCall.status} ${await operatorCall.text()} / ${peerCall.status} ${await peerCall.text()}`,
+      ).toEqual([
+        { threadId: 'operator-owned', readable: true },
+        { threadId: 'operator-owned', readable: false },
+      ]);
+    });
+
+    // H1: the conversation knowledge adapter reads sessions as the principal
+    // of the `/api/knowledge` request, never as a fixed operator authority.
+    test('knowledge conversation records are the request principal’s: the operator reads the account’s, a delegation peer reads none of them', async () => {
+      const agentSession = (threadId: string, userId: string) => [
+        {
+          eventId: `${threadId}:started`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-04T00:00:00Z',
+          metadata: { userId, agentSlug: 'claude' },
+        },
+        {
+          eventId: `${threadId}:prompt`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-04T00:00:01Z',
+          prompt: `knowledge note for ${threadId}`,
+        },
+      ];
+      const { app, pairing } = await principalSetup({
+        knowledge: true,
+        seed: (seedStore) => {
+          for (const threadId of ['operator-note', 'stranger-note'])
+            seedStore.upsertSession({
+              threadId,
+              provider: 'claude',
+              status: 'closed',
+              createdAt: '2026-09-04T00:00:00Z',
+              updatedAt: '2026-09-04T00:00:00Z',
+            });
+          for (const event of [
+            ...agentSession('operator-note', LOCAL_OPERATOR_PRINCIPAL_ID),
+            ...agentSession(
+              'stranger-note',
+              'human:tailscale-serve:stranger@example',
+            ),
+          ])
+            seedStore.appendEvent(event as never);
+        },
+      });
+      const recordIds = async (credential: string) => {
+        const response = await app.request(
+          '/api/knowledge/roots/root:conversations/records?type=raw',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: Array<{ id: string }>;
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data ?? []).map((record) => record.id).sort();
+      };
+      await expect(recordIds(OPERATOR_SECRET)).resolves.toEqual([
+        'operator-note',
+      ]);
+      // A delegation peer holds orchestration read access but is not a
+      // member of the personal conversation account.
+      const peer = pairDelegationPeer(pairing);
+      await expect(recordIds(peer.credential)).resolves.toEqual([]);
+      const direct = await app.request(
+        '/api/knowledge/roots/root:conversations/records/operator-note',
+        { headers: { Authorization: `Bearer ${peer.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(direct.status).toBe(404);
+    });
+
     test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {
       const { app, paired } = await operatorSetup();
       const runsFor = async (credential: string) => {
@@ -2433,14 +3392,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         return (body.data ?? []).map((run) => run.sourceId).sort();
       };
       // One personal account: the operator, the approved device and the
-      // person who requested it read each other's sessions, and the
-      // pre-principal (OS alias) session maps to the operator.
-      const account = [
-        'device-owned',
-        'legacy-owned',
-        'operator-owned',
-        'whois-owned',
-      ];
+      // person who requested it read each other's sessions. An OS-alias
+      // owned row belongs to no one in it.
+      const account = ['device-owned', 'operator-owned', 'whois-owned'];
       await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual(account);
       await expect(runsFor(paired.credential)).resolves.toEqual(account);
     });
@@ -2790,8 +3744,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   // alias (`getCachedUser().alias`) while Sessions are owned by the resolved
   // principal (`human:local:operator` here), so every stored attachment
   // answered 404 on every device; then it narrowed to the caller's own id,
-  // which dropped threads the read policy admits through personal sharing or
-  // the legacy OS-alias bridge. The factory test
+  // which dropped threads the read policy admits through personal sharing.
+  // The factory test
   // (`routes/orchestration/__tests__/attachments.routes.test.ts`) injects its
   // own deps and could not see either; these go through the production
   // `configureRuntimeRoutes` wiring and the real credential pipeline.
@@ -2849,8 +3803,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const ownerlessBytes = Buffer.from(
       'attachment bytes on an ownerless thread',
     );
-    const legacyBytes = Buffer.from(
-      'attachment bytes on a pre-principal alias thread',
+    const aliasBytes = Buffer.from(
+      'attachment bytes on a thread whose owner is the OS alias',
     );
 
     test('the chat principal that owns the thread reads its bytes; a device the policy does not admit gets 404', async () => {
@@ -2906,8 +3860,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // The owner narrowing alone refuses the device above, so that 404
       // cannot tell whether the session-read predicate still runs. The
       // ownerless thread passes the narrowing (`owner_user_id IS NULL`) and is
-      // refused ONLY by the predicate: this Station does not grant
-      // single-user-compat ownerless access.
+      // refused ONLY by the predicate: no caller may read an ownerless
+      // session.
       expect(
         store.listAttachmentCandidateThreads(
           ownerlessRef,
@@ -2923,8 +3877,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(refused.body.byteLength).toBe(0);
     });
 
-    test('a pre-principal thread owned by the OS alias stays readable by the home-possession local operator, and only by it', async () => {
-      let legacyRef = '';
+    test('a thread owned by the OS alias is readable by no caller, not even the home-possession local operator', async () => {
+      let aliasRef = '';
       const { app, roomRuntime, paired } = await setup(
         'home',
         true,
@@ -2933,11 +3887,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         false,
         {
           seed: (seedStore) => {
-            legacyRef = attachmentTurn(
+            aliasRef = attachmentTurn(
               seedStore,
               'alias-attachment-owned',
               getCachedUser().alias,
-              legacyBytes,
+              aliasBytes,
             );
           },
         },
@@ -2946,17 +3900,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         await roomRuntime.close();
       });
       // `setup('home')` mints a home-possession device credential, which
-      // resolves to the local operator WITH the home-possession fact — the
-      // only authority the legacy bridge admits.
-      const home = await fetchAttachment(app, legacyRef, paired.credential);
-      expect(home.status, home.body.toString()).toBe(200);
-      expect(home.body).toEqual(legacyBytes);
-
-      // The operator secret over a remote peer is the same principal with no
-      // home-possession fact: the bridge must not admit it.
+      // resolves to the local operator WITH the home-possession fact: the
+      // exact authority the removed OS-alias bridge used to admit.
+      const home = await fetchAttachment(app, aliasRef, paired.credential);
+      expect(home.status, home.body.toString()).toBe(404);
+      expect(home.body.byteLength).toBe(0);
       const remoteOperator = await fetchAttachment(
         app,
-        legacyRef,
+        aliasRef,
         OPERATOR_SECRET,
       );
       expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);
