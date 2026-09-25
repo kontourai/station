@@ -46,3 +46,37 @@ test('an unexpected request fails teardown without exposing its query credential
 test('a declared fixture with no unexpected reads completes normally', async () => {
   await expect(runAudit({ page: {} }, async () => {})).resolves.toBeUndefined();
 });
+
+test('the ambient focus report is modeled as its real 204, not recorded as unexpected', async () => {
+  const page = {};
+  const fulfill = vi.fn().mockResolvedValue(undefined);
+  const route = {
+    request: () => ({
+      method: () => 'POST',
+      url: () => 'https://fixture.test/api/presence/focus',
+      frame: () => ({ page: () => page }),
+    }),
+    fulfill,
+  } as unknown as Route;
+  await expect(
+    runAudit({ page }, async () => {
+      await rejectUnexpectedFixtureRequest(route);
+    }),
+  ).resolves.toBeUndefined();
+  expect(fulfill).toHaveBeenCalledWith({ status: 204 });
+
+  // Only the exact POST is ambient: a read of the same path is still a gap.
+  const read = {
+    request: () => ({
+      method: () => 'GET',
+      url: () => 'https://fixture.test/api/presence/focus',
+      frame: () => ({ page: () => page }),
+    }),
+    fulfill: vi.fn().mockResolvedValue(undefined),
+  } as unknown as Route;
+  await expect(
+    runAudit({ page }, async () => {
+      await rejectUnexpectedFixtureRequest(read);
+    }),
+  ).rejects.toThrow('GET /api/presence/focus');
+});

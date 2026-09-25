@@ -54,7 +54,6 @@ const CONVERSATION: MarkdownLinkContextValue = {
   projectSlug: 'alpha',
   projectId: 'alpha-id',
   dockProjectSlug: 'alpha',
-  bottomOnly: false,
   openPathInMain,
 };
 
@@ -145,15 +144,20 @@ describe('a link in a chat message (#2049)', () => {
     expect(openPathInMain).toHaveBeenCalledWith('src/app.ts', undefined);
   });
 
-  test('a bottom-only device keeps the main route, and sends a review to the host', () => {
-    const bottomOnly = { ...CONVERSATION, bottomOnly: true };
-    click(mount('src/app.ts', bottomOnly));
-    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
-    expect(openPathInMain).toHaveBeenCalledWith('src/app.ts', undefined);
-    cleanup();
+  // Superseded #2049 B5 ("bottom-only: paths keep the main route, PR links
+  // open externally"): the link context no longer carries the device fold at
+  // all, so the anchor cannot branch on it — a phone hands both links to the
+  // model, which opens them OVER Chat (the phone layer). That half is proven
+  // through the real provider in `RegionModelContext-phone-layer.test.tsx`;
+  // this file pins what the anchor does with the model's answer.
+  test('a refused pull-request pane falls through to the browser rather than doing nothing', () => {
+    openPullRequestInRegion.mockReturnValueOnce({
+      ok: false,
+      reason: 'refused',
+    } as never);
     tauri = true;
-    click(mount('https://github.com/o/r/pull/3', bottomOnly));
-    expect(openPullRequestInRegion).not.toHaveBeenCalled();
+    expect(click(mount('https://github.com/o/r/pull/3'))).toBe(false);
+    expect(openPullRequestInRegion).toHaveBeenCalledTimes(1);
     expect(openNativeExternalLink).toHaveBeenCalledWith(
       'https://github.com/o/r/pull/3',
     );

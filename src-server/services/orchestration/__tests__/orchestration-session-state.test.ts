@@ -1154,14 +1154,10 @@ describe('orchestration-session-state', () => {
       status: 'running',
       controlMode: 'station-owned',
       // archive#1778: the whole-shape assertion, so the decoration must be
-      // stated here too — a `completed` session that this process does not
-      // hold cannot answer anything, which is the `past_resume` arm.
-      answerability: {
-        answerable: false,
-        qualification: 'past_resume',
-        observedBy: OBSERVATION.observedBy,
-        observedAt: OBSERVATION.observedAt,
-      },
+      // stated here too. #2540: a finished turn leaves this session `idle`,
+      // which CAN resume (its next message continues it), so it is not the
+      // `past_resume` arm a terminal `completed` session was.
+      answerability: { answerable: true },
       model: 'claude-sonnet',
       createdAt: '2026-04-11T00:00:00.000Z',
       updatedAt: '2026-04-11T00:00:03.000Z',
@@ -1174,7 +1170,7 @@ describe('orchestration-session-state', () => {
       // #2310: the thread's own turn settles "not a Draft" without the
       // lineage read this caller does not supply.
       draft: false,
-      lifecycleState: 'completed',
+      lifecycleState: 'idle',
       previousLifecycleState: 'running',
       transitionReason: 'turn_completed',
       transitionSource: 'runtime',
@@ -4107,7 +4103,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted,
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   test('a completed turn stays completed when the process is stopped with no exitCode', () => {
@@ -4146,7 +4142,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted: { ...persisted, status: 'dead' },
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   // Discriminating negatives — a turn with no recorded outcome DOES take the
@@ -4212,7 +4208,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
         persisted: { ...persisted, status: 'error' },
         events,
       }).lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
   test("a turn's own late failure, naming that turn, still fails the run", () => {

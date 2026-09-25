@@ -118,6 +118,16 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
+// The linked-pull-request panel is lazy; this stub echoes the conversation id
+// the detail pane hands it, so a test can see WHICH id reaches it.
+vi.mock('../components/pull-requests/ConversationPullRequestLinks', () => ({
+  ConversationPullRequestLinks: ({
+    conversationId,
+  }: {
+    conversationId: string;
+  }) => <div data-testid="pull-request-links-for">{conversationId}</div>,
+}));
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -839,6 +849,34 @@ describe('SessionsView', () => {
     expect(
       container.querySelector('.split-pane__section-header')?.textContent,
     ).toMatch(/ · 1$/);
+  });
+
+  test('a successor Session shows its conversation’s linked pull requests, not its own thread’s', async () => {
+    // A context reset or handoff child is not a conversation id: the server
+    // refuses it ("Conversation unavailable"), so the panel must be handed
+    // the durable conversation id; a Session with none falls back to its
+    // own thread (a one-Session conversation).
+    sessions = [
+      {
+        ...sessions[0],
+        threadId: 'conv-1:session:2',
+        conversationId: 'conv-1',
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+    expect(
+      (await screen.findByTestId('pull-request-links-for')).textContent,
+    ).toBe('conv-1');
+  });
+
+  test('a Session with no conversation id shows its own thread’s linked pull requests', async () => {
+    sessions = [{ ...sessions[0], conversationId: undefined }];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+    expect(
+      (await screen.findByTestId('pull-request-links-for')).textContent,
+    ).toBe(String(sessions[0]!.threadId));
   });
 
   test('exposes bounded-history controls and an upgrade-required state', async () => {
