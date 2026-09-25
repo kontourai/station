@@ -304,6 +304,31 @@ describe('AgentNotificationGate', () => {
     ).toBe('sent');
   });
 
+  test('sessions that sent only attention still need a distinct slot for their first ordinary send', async () => {
+    const subject = gate();
+    const session = (index: number) =>
+      ({ sessionId: `session-${index}`, assurance: 'bound' }) as const;
+    // 10 sessions each ask for input once (no ordinary slot claimed)…
+    for (let index = 0; index < 10; index += 1)
+      expect(
+        (
+          await subject.notify(
+            session(index),
+            notice('Need input', { urgency: 'attention' }),
+          )
+        ).status,
+      ).toBe('sent');
+    // …then 10 other sessions claim all the ordinary slots…
+    for (let index = 10; index < 20; index += 1)
+      expect(
+        (await subject.notify(session(index), notice('Done'))).status,
+      ).toBe('sent');
+    // …so an attention-only session's first ordinary send is refused.
+    expect((await subject.notify(session(0), notice('Done'))).status).toBe(
+      'rate_limited',
+    );
+  });
+
   test('attention is capped at 10 per hour per Station, across sessions, while other urgencies continue', async () => {
     const subject = gate();
     const session = (index: number) =>

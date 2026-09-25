@@ -137,6 +137,8 @@ interface SessionState {
   tokens: number;
   refilledAt: number;
   sent: number[];
+  /** Non-attention sends only: what claims a distinct-session slot. */
+  ordinarySent: number[];
 }
 
 type RateDecision =
@@ -166,7 +168,12 @@ export class AgentNotificationRateLimiter {
     const existing = this.sessions.get(sessionId);
     const state: SessionState = existing
       ? { ...existing, sent: existing.sent }
-      : { tokens: this.limits.sessionBurst, refilledAt: now, sent: [] };
+      : {
+          tokens: this.limits.sessionBurst,
+          refilledAt: now,
+          sent: [],
+          ordinarySent: [],
+        };
     const elapsed = Math.max(0, now - state.refilledAt);
     const tokens = Math.min(
       this.limits.sessionBurst,
@@ -179,19 +186,21 @@ export class AgentNotificationRateLimiter {
       waits.push((1 - tokens) * this.limits.sessionRefillMs);
     const hourWait = windowWait(state.sent, this.limits.sessionPerHour, now);
     if (hourWait > 0) waits.push(hourWait);
-    if (state.sent.length === 0 && urgency !== 'attention') {
-      // A session new to this hour takes a distinct-session slot. Attention
-      // is exempt: after an ordinary fan-out the user's own session must
-      // still be able to ask for input, and attention has its own Station
-      // ceiling (attentionPerHour).
+    if (urgency !== 'attention' && state.ordinarySent.length === 0) {
+      // An ordinary send from a session with none this hour claims a
+      // distinct-session slot. Attention sends never claim or need one
+      // (bounded by attentionPerHour instead), so after a fan-out the user's
+      // own session can still ask for input — and a session that has sent
+      // only attention still needs a slot for its first ordinary send.
       const active = [...this.sessions.values()].filter(
-        (candidate) => candidate.sent.length > 0,
+        (candidate) => candidate.ordinarySent.length > 0,
       );
       if (active.length >= this.limits.distinctSessionsPerHour)
         waits.push(
           Math.min(
             ...active.map(
-              (candidate) => candidate.sent[candidate.sent.length - 1],
+              (candidate) =>
+                candidate.ordinarySent[candidate.ordinarySent.length - 1],
             ),
           ) +
             HOUR_MS -
@@ -216,6 +225,7 @@ export class AgentNotificationRateLimiter {
         state.tokens = tokens - 1;
         state.refilledAt = now;
         state.sent.push(now);
+        if (urgency !== 'attention') state.ordinarySent.push(now);
         // Re-insert so Map order tracks recency for eviction.
         this.sessions.delete(sessionId);
         this.sessions.set(sessionId, state);
@@ -230,6 +240,7 @@ export class AgentNotificationRateLimiter {
     dropOlderThan(this.global, now - HOUR_MS);
     for (const [sessionId, state] of this.sessions) {
       dropOlderThan(state.sent, now - HOUR_MS);
+      dropOlderThan(state.ordinarySent, now - HOUR_MS);
       // Idle for an hour: its bucket is full and its window empty, so
       // forgetting it changes no decision.
       if (state.sent.length === 0 && now - state.refilledAt >= HOUR_MS)
