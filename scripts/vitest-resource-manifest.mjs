@@ -486,8 +486,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pnpm-lifecycle.test.ts',
   // Real child process proves the fixed installer guard excludes a second owner.
   'scripts/__tests__/dependency-install-retirement.test.ts',
-  // Drives the merge driver's executable entry point as a child process so
-  // the provisional resolution and decline-without-writing are real exits.
+  // Imports the budget gate in a child process to prove the import stays
+  // inert (the delta report imports it for its measurement).
   'scripts/__tests__/ui-bundle-budget.test.ts',
   // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
   // its refusal path exits non-zero and names the remedy.
