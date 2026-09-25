@@ -177,20 +177,66 @@ test('a stable identifier cannot receive development simulator preparation', () 
   expect(() => simulatorEntitlements('io.kontourai.station')).toThrow();
 });
 
-function archivedFixture() {
+type Entitlements = ReturnType<typeof simulatorEntitlements>;
+
+const entitlementsPlist = (entitlements: Entitlements) =>
+  Buffer.from(
+    `<plist><dict><key>application-identifier</key><string>${entitlements['application-identifier']}</string><key>keychain-access-groups</key><array>${entitlements['keychain-access-groups'].map((group) => `<string>${group}</string>`).join('')}</array></dict></plist>`,
+  );
+
+/** An executable holding one simulator entitlement section, and its otool view. */
+function sectionedExecutable(path: string, entitlements: Entitlements) {
+  const xml = entitlementsPlist(entitlements);
+  writeFileSync(path, Buffer.concat([Buffer.alloc(32), xml, Buffer.alloc(8)]));
+  const commands = `sectname __entitlements\nsegname __TEXT\naddr 0x1000\nsize 0x${xml.length.toString(16)}\noffset 32\n`;
+  return { xml, commands, entitlements };
+}
+
+/**
+ * A simulator archive; `widget` adds PlugIns/StationAgentActivity.appex with
+ * the given Info.plist and section, and makes the app's section carry the
+ * shared group unless `appEntitlements` says otherwise.
+ */
+function archivedFixture({
+  widget,
+  appEntitlements,
+}: {
+  widget?: {
+    info?: Record<string, unknown>;
+    entitlements?: Entitlements;
+  };
+  appEntitlements?: Entitlements;
+} = {}) {
   const { root } = fixture();
   const archive = join(root, 'archive');
   const app = join(archive, 'Products/Applications/Station Dev.app');
   mkdirSync(app, { recursive: true });
   const executable = join(app, 'Station Dev');
-  const xml = Buffer.from(
-    `<plist><dict><key>application-identifier</key><string>${id}</string><key>keychain-access-groups</key><array><string>${id}</string></array></dict></plist>`,
-  );
-  writeFileSync(
+  const sections = new Map<string, ReturnType<typeof sectionedExecutable>>();
+  const appSection = sectionedExecutable(
     executable,
-    Buffer.concat([Buffer.alloc(32), xml, Buffer.alloc(8)]),
+    appEntitlements ??
+      simulatorEntitlements(id, { agentActivity: widget !== undefined }),
   );
-  const commands = `sectname __entitlements\nsegname __TEXT\naddr 0x1000\nsize 0x${xml.length.toString(16)}\noffset 32\n`;
+  sections.set(executable, appSection);
+  const appex = join(app, 'PlugIns/StationAgentActivity.appex');
+  const widgetExpected = simulatorAgentActivityEntitlements(id);
+  const widgetInfo = {
+    CFBundleIdentifier: widgetExpected['application-identifier'],
+    CFBundleExecutable: 'StationAgentActivity',
+    ...widget?.info,
+  };
+  if (widget) {
+    mkdirSync(appex, { recursive: true });
+    const widgetExecutable = join(appex, 'StationAgentActivity');
+    sections.set(
+      widgetExecutable,
+      sectionedExecutable(
+        widgetExecutable,
+        widget.entitlements ?? widgetExpected,
+      ),
+    );
+  }
   const info = {
     CFBundleIdentifier: id,
     CFBundleExecutable: 'Station Dev',
@@ -206,26 +252,99 @@ function archivedFixture() {
       });
     if (command === 'plutil' && args.at(-1) === join(app, 'Info.plist'))
       return JSON.stringify(info);
+    if (command === 'plutil' && args.at(-1) === join(appex, 'Info.plist'))
+      return JSON.stringify(widgetInfo);
     if (command === 'plutil') {
-      expect(readFileSync(args.at(-1)!)).toEqual(xml);
-      return JSON.stringify(simulatorEntitlements(id));
+      // The verifier copied one section out; answer with what it encodes.
+      const bytes = readFileSync(args.at(-1)!);
+      const section = [...sections.values()].find(({ xml }) =>
+        xml.equals(bytes),
+      );
+      expect(section).toBeDefined();
+      return JSON.stringify(section!.entitlements);
     }
-    if (command === 'xcrun') return args[0] === 'vtool' ? platform : commands;
+    if (command === 'xcrun' && args[0] === 'vtool') return platform;
+    if (command === 'xcrun') {
+      const section = sections.get(args.at(-1)!);
+      expect(section).toBeDefined();
+      return section!.commands;
+    }
     return '';
   });
   return {
     root,
     archive,
     app,
+    appex,
     executable,
-    xml,
-    commands,
+    xml: appSection.xml,
+    commands: appSection.commands,
     run,
     setPlatform: (value: string) => {
       platform = value;
     },
   };
 }
+
+const codesignCalls = (run: ReturnType<typeof archivedFixture>['run']) =>
+  run.mock.calls.filter(([command]) => command === 'codesign');
+
+test('verification checks an embedded Live Activity extension and seals it before the app', () => {
+  const f = archivedFixture({ widget: {} });
+  expect(verifyIosSimulator(f.archive, { root: f.root, run: f.run })).toBe(
+    f.app,
+  );
+  // Both sections were read: the app's (with the shared group) and the widget's.
+  expect(f.run).toHaveBeenCalledWith('xcrun', [
+    'otool',
+    '-l',
+    join(f.appex, 'StationAgentActivity'),
+  ]);
+  expect(codesignCalls(f.run).map(([, args]) => args)).toEqual([
+    ['--force', '--sign', '-', '--identifier', `${id}.AgentActivity`, f.appex],
+    ['--force', '--sign', '-', '--identifier', id, f.app],
+    ['--verify', '--strict', f.app],
+  ]);
+});
+
+test.each([
+  [
+    'a bundle id outside the development identity',
+    { CFBundleIdentifier: 'io.kontourai.station.AgentActivity' },
+  ],
+  ['another executable', { CFBundleExecutable: 'Other' }],
+])('verification refuses an extension with %s', (_name, info) => {
+  const f = archivedFixture({ widget: { info } });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('does not extend the development identity');
+  expect(codesignCalls(f.run)).toEqual([]);
+});
+
+test('verification refuses an extension whose section is not the shared group alone', () => {
+  const f = archivedFixture({
+    widget: {
+      entitlements: {
+        'application-identifier': `${id}.AgentActivity`,
+        'keychain-access-groups': [id, `${id}.agentactivity`],
+      },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('missing its shared keychain group');
+  expect(codesignCalls(f.run)).toEqual([]);
+});
+
+test('an embedded extension requires the app section to carry the shared group', () => {
+  const f = archivedFixture({
+    widget: {},
+    appEntitlements: simulatorEntitlements(id),
+  });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('private keychain identity');
+});
 
 test('verification reads the actual section and seals resources without macOS iOS entitlements', () => {
   const f = archivedFixture();
