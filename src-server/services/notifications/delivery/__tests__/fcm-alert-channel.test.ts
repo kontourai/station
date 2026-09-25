@@ -37,6 +37,7 @@ import { PushSigningKeyStore } from '../../push-signing-key-store.js';
 import {
   FCM_ALERT_LIFETIME_MS,
   FcmAlertChannel,
+  type FcmAlertDevicePairing,
 } from '../fcm-alert-channel.js';
 
 const makeTempDir = trackTempDirs();
@@ -504,6 +505,26 @@ describe('FcmAlertChannel through the delivery router', () => {
         metadata: { sessionId: 'session-1' },
       }) as never,
     );
+    // Nor is a runtime orchestration record that names no session: the card
+    // is keyed by session, so nothing ties it to a card entry (a duplicate
+    // beats a silenced alert). No writer produces one today.
+    for (const [id, sessionId] of [
+      ['n-runtime-no-session', undefined],
+      ['n-runtime-empty-session', ''],
+    ] as const)
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification({
+          id,
+          category: 'approval-request',
+          source: 'approval-inbox',
+          metadata: {
+            ...(sessionId === undefined ? {} : { sessionId }),
+            sessionKind: 'runtime',
+            requestKind: 'orchestration',
+          },
+        }) as never,
+      );
     h.eventBus.emit(
       SERVER_EVENTS.NOTIFICATION_DELIVERED,
       notification({
@@ -519,7 +540,14 @@ describe('FcmAlertChannel through the delivery router', () => {
         h.sent.filter((s) => s.deviceId === h.phone).map((s) => s.plaintext.id),
       ),
     ).toEqual(
-      new Set(['n-registry', 'n-registry-runtime', 'n-unmarked', 'n-pairing']),
+      new Set([
+        'n-registry',
+        'n-registry-runtime',
+        'n-unmarked',
+        'n-runtime-no-session',
+        'n-runtime-empty-session',
+        'n-pairing',
+      ]),
     );
   });
 
@@ -701,10 +729,13 @@ describe('FcmAlertChannel through the delivery router', () => {
     /** A channel over the harness's phones, as a restarted Station builds it. */
     const freshChannel = (
       h: Awaited<ReturnType<typeof harness>>,
-      options: { sleep?: (ms: number) => Promise<void> } = {},
+      options: {
+        sleep?: (ms: number) => Promise<void>;
+        devicePairing?: FcmAlertDevicePairing;
+      } = {},
     ) =>
       new FcmAlertChannel({
-        devicePairing: h.pairing,
+        devicePairing: options.devicePairing ?? h.pairing,
         signingKey: h.keys,
         gateway: GATEWAY,
         sendFloor: h.sendFloor,
@@ -813,10 +844,115 @@ describe('FcmAlertChannel through the delivery router', () => {
         readOf(record) as never,
       );
       await h.settle();
-      // The card is no longer held back by a send that will not happen.
+      // The reserved slot is released, so a card sent from now on is not
+      // held back by a send that will not happen. (A card update already
+      // deferred for that slot keeps its retry timer.)
       expect(h.sendFloor.lastSendAt(h.phone)).toBe(start);
       while (h.heldSleeps.length > 0) await h.releaseSleep();
       expect(h.sent).toEqual([]);
+    });
+
+    test('a re-show of a sent alert dropped at the cap is still retracted by a read', async () => {
+      const h = await harness({ manualSleep: true });
+      const record = info('i-x');
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      expect(
+        h.sent.some((s) => s.deviceId === h.phone && s.plaintext.id === 'i-x'),
+      ).toBe(true);
+      // Edited while unread: the re-show waits for the next slot...
+      const edited = { ...record, title: 'Edited' };
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, edited as never);
+      await h.settle();
+      // ...and eight more info alerts push it out at the cap.
+      for (let i = 0; i < 8; i += 1)
+        h.eventBus.emit(
+          SERVER_EVENTS.NOTIFICATION_DELIVERED,
+          info(`i-${i}`) as never,
+        );
+      await h.settle();
+      expect(
+        h.warn.mock.calls.filter(([message]) =>
+          String(message).includes('dropped a waiting info notification'),
+        ).length,
+      ).toBeGreaterThan(0);
+      // The first version is on the phone: the read must take it back.
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        readOf(edited) as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(
+        h.sent
+          .filter((s) => s.deviceId === h.phone && s.plaintext.id === 'i-x')
+          .map((s) => [s.plaintext.kind, s.plaintext.title]),
+      ).toEqual([
+        ['alert', 'Info i-x'],
+        ['retract', undefined],
+      ]);
+    });
+
+    test('a failed registrations read forgets nothing: a sent alert is still retracted after its re-show is dropped', async () => {
+      for (const failure of ['throws', 'android-unreadable'] as const) {
+        const h = await harness();
+        let failing = false;
+        const devicePairing: FcmAlertDevicePairing = {
+          listNativePushRegistrationsByPlatform: () => {
+            if (!failing)
+              return h.pairing.listNativePushRegistrationsByPlatform();
+            const error = new Error('registrations are unreadable');
+            if (failure === 'throws') throw error;
+            return {
+              registrations: [],
+              unreadable: [{ platform: 'android', error }],
+            };
+          },
+          clearNativePush: (...args) => h.pairing.clearNativePush(...args),
+          environmentId: () => h.pairing.environmentId(),
+        };
+        const held: Array<() => void> = [];
+        let holding = false;
+        const channel = freshChannel(h, {
+          devicePairing,
+          sleep: () =>
+            holding
+              ? new Promise<void>((resolve) => held.push(resolve))
+              : Promise.resolve(),
+        });
+        const send = (id: string, title: string) =>
+          channel.deliver(
+            { ...info(id), title },
+            envelope({ urgency: 'info' }),
+            [onPhone(h)],
+          );
+        expect((await send('i-x', 'First'))[0]?.result, failure).toBe('sent');
+        // A routed notification lists registrations while the read fails.
+        failing = true;
+        expect(channel.registrations(), failure).toEqual([]);
+        failing = false;
+        // The edited re-show waits, then is dropped at the cap.
+        holding = true;
+        const waiting = [
+          send('i-x', 'Edited'),
+          ...Array.from({ length: 8 }, (_, i) => send(`i-${i}`, 'Other')),
+        ];
+        expect((await waiting[0])?.[0]?.result, failure).toBe('suppressed');
+        const retract = channel.retract('i-x', [onPhone(h)]);
+        holding = false;
+        for (const resolve of held.splice(0)) resolve();
+        await Promise.all([...waiting, retract]);
+        await h.settle();
+        expect(
+          h.sent
+            .filter((s) => s.plaintext.id === 'i-x')
+            .map((s) => [s.plaintext.kind, s.plaintext.title]),
+          failure,
+        ).toEqual([
+          ['alert', 'First'],
+          ['retract', undefined],
+        ]);
+      }
     });
 
     test('a phone that unregistered forgets what was dropped for it', async () => {

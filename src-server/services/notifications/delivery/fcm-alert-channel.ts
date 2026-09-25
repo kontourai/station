@@ -32,7 +32,9 @@
  *   sending. Per phone, at most {@link TRACKED_IDS_PER_PHONE} dropped ids
  *   and as many ids taken for sending are kept (oldest forgotten first); a
  *   phone's sets are forgotten the next time registrations are listed (on
- *   every routed notification) after it has no Android registration. A
+ *   every routed notification) after it has no Android registration; a
+ *   listing that could not read the Android registrations forgets nothing,
+ *   so a transient read failure does not turn sent alerts unretractable. A
  *   retract for an alert still waiting removes that alert; it is still sent
  *   when an earlier version of the id was taken for sending. A retract that
  *   empties the queue gives the floor slot its drain was waiting for back.
@@ -235,6 +237,8 @@ export class FcmAlertChannel implements DeliveryChannel {
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
     const android = this.#android();
+    // Unreadable: no surfaces now, and nothing is known to be unregistered.
+    if (!android) return [];
     // A phone no longer registered keeps no bookkeeping (unpaired, cleared).
     const live = new Set(android.map(({ deviceId }) => deviceId));
     for (const sets of [this.#dropped, this.#taken])
@@ -461,7 +465,7 @@ export class FcmAlertChannel implements DeliveryChannel {
       );
       return 'retry';
     }
-    const registration = this.#android().find(
+    const registration = this.#android()?.find(
       (candidate) => candidate.deviceId === deviceId,
     )?.registration;
     return key && registration && registration.stationKey === key.thumbprint
@@ -482,7 +486,7 @@ export class FcmAlertChannel implements DeliveryChannel {
       );
       return 'retry';
     }
-    const registration = this.#android().find(
+    const registration = this.#android()?.find(
       (candidate) => candidate.deviceId === deviceId,
     )?.registration;
     // No key, gone, or pinned to a key this Station no longer holds (the
@@ -576,13 +580,22 @@ export class FcmAlertChannel implements DeliveryChannel {
       : 'rejected';
   }
 
-  #android(): Array<{
-    deviceId: string;
-    registration: NativePushAndroidRegistration;
-  }> {
+  /**
+   * The Android registrations, or undefined when they could not be read
+   * (the listing threw, or reported the Android file unreadable): unknown,
+   * not "none".
+   */
+  #android():
+    | Array<{
+        deviceId: string;
+        registration: NativePushAndroidRegistration;
+      }>
+    | undefined {
     try {
-      const { registrations } =
+      const { registrations, unreadable } =
         this.#options.devicePairing.listNativePushRegistrationsByPlatform();
+      const failed = unreadable.find(({ platform }) => platform === 'android');
+      if (failed) throw failed.error;
       return registrations.flatMap(({ deviceId, registration }) =>
         registration.platform === 'android' ? [{ deviceId, registration }] : [],
       );
@@ -590,7 +603,7 @@ export class FcmAlertChannel implements DeliveryChannel {
       this.#options.logger.warn('fcm-alert: registrations are unreadable', {
         error: errorMessage(error),
       });
-      return [];
+      return undefined;
     }
   }
 }
