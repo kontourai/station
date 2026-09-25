@@ -86,8 +86,43 @@ test('forwards a signed request to FCM as a high-priority, data-only, package-re
     'no display notification bypasses the app',
   );
   assert.equal(message.android.priority, 'HIGH');
+  assert.equal(message.android.ttl, '300s');
   assert.equal(message.android.restricted_package_name, PACKAGE);
   assert.equal(message.data.station_kind, 'agent_activity');
+});
+
+test('forwards a notification with its collapse key, asked priority and an hour to live', async () => {
+  const { calls, fetchImpl } = upstream(() => Response.json({}));
+  const cfg = await config({ fetchImpl });
+  const collapseKey = `n${'a'.repeat(40)}`;
+  const message = async (priority?: 'normal') => {
+    calls.length = 0;
+    const response = await send(
+      cfg,
+      sendBody({
+        data: {
+          station_kind: 'station_notification',
+          device_id: 'reg-1',
+          sealed: 'AAECAwQFBgcICQoL',
+        },
+        collapseKey,
+        ...(priority ? { priority } : {}),
+      }),
+    );
+    assert.equal(response.status, 200);
+    const fcm = calls.find((call) => call.url.includes('fcm.googleapis.com'));
+    assert.ok(fcm, 'FCM was called');
+    return JSON.parse(fcm.body).message;
+  };
+  const high = await message();
+  assert.equal(high.notification, undefined);
+  assert.equal(high.android.priority, 'HIGH');
+  assert.equal(high.android.ttl, '3600s');
+  assert.equal(high.android.collapse_key, collapseKey);
+  assert.equal(high.data.station_kind, 'station_notification');
+  assert.equal(typeof high.data.station_key, 'string');
+  const normal = await message('normal');
+  assert.equal(normal.android.priority, 'NORMAL');
 });
 
 test('signs the Google assertion with the service account key', async () => {

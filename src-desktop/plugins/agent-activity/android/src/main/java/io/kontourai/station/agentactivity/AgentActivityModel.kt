@@ -79,8 +79,15 @@ internal fun sealAad(registrationId: String) = "station-agent-activity:v1:$regis
  * Only the Station and this phone hold the key, so the gateway, Cloudflare
  * and Google carry the card without being able to read or forge it. Returns
  * null for anything that does not authenticate or is not a flat string map.
+ * [aad] defaults to the card's; a Station notification is sealed under its
+ * own (see StationNotifications.kt), so neither opens as the other.
  */
-fun unseal(payloadKey: String, registrationId: String, sealed: String): Map<String, String>? {
+fun unseal(
+  payloadKey: String,
+  registrationId: String,
+  sealed: String,
+  aad: String = sealAad(registrationId)
+): Map<String, String>? {
   val key = decodeBase64Url(payloadKey)?.takeIf { it.size == 32 } ?: return null
   val bytes = decodeBase64Url(sealed)?.takeIf { it.size > SEAL_NONCE_BYTES + SEAL_TAG_BITS / 8 } ?: return null
   val plaintext = try {
@@ -90,7 +97,7 @@ fun unseal(payloadKey: String, registrationId: String, sealed: String): Map<Stri
       SecretKeySpec(key, "AES"),
       GCMParameterSpec(SEAL_TAG_BITS, bytes, 0, SEAL_NONCE_BYTES)
     )
-    cipher.updateAAD(sealAad(registrationId).toByteArray(Charsets.UTF_8))
+    cipher.updateAAD(aad.toByteArray(Charsets.UTF_8))
     cipher.doFinal(bytes, SEAL_NONCE_BYTES, bytes.size - SEAL_NONCE_BYTES)
   } catch (_: AEADBadTagException) {
     return null
@@ -140,9 +147,13 @@ internal fun decodeBase64Url(value: String): ByteArray? {
  * only from outside the seal (the gateway stamps station_key there), and the
  * card cannot override them.
  */
-internal fun openPush(registration: Registration, data: Map<String, String>): Map<String, String>? {
+internal fun openPush(
+  registration: Registration,
+  data: Map<String, String>,
+  aad: String = sealAad(registration.id)
+): Map<String, String>? {
   val sealed = data["sealed"] ?: return null
-  val card = unseal(registration.payloadKey, registration.id, sealed) ?: return null
+  val card = unseal(registration.payloadKey, registration.id, sealed, aad) ?: return null
   val routing = listOf("station_kind", "device_id", "station_key")
   return card - routing.toSet() + routing.mapNotNull { key -> data[key]?.let { key to it } }
 }
@@ -294,7 +305,13 @@ internal val TAP_NONCE = Regex("^[0-9a-f]{32}$")
 /** Card taps are valid at most as long as a card can live. */
 internal const val TAP_LIFETIME_MS = 24 * 60 * 60 * 1000L
 
-/** One live nonce per card/alert identity, so this bounds cards plus recent alerts. */
+/**
+ * One live nonce per card/alert identity, so this bounds cards plus recent
+ * alerts. The ledger is shared with Station notifications
+ * (StationNotifications.kt): each one naming a session holds a slot too, so a
+ * burst of them can evict an older card's or alert's nonce (whose tap then
+ * opens the app where it was).
+ */
 internal const val MAX_TAPS = 20
 
 /** A nonce a posted card or alert carries, and what a tap on it opens. */

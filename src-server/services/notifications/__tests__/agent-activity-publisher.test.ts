@@ -29,6 +29,10 @@ import {
   wireAgentActivityPublisher,
 } from '../agent-activity-publisher.js';
 import type { NativePushRegistration } from '../native-push-registration-store.js';
+import {
+  createNativePushSendFloor,
+  type NativePushSendFloor,
+} from '../native-push-send-floor.js';
 import { PushSigningKeyStore } from '../push-signing-key-store.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -213,6 +217,8 @@ async function harness(
      * device's stored scope decides whether it may read, as in production.
      */
     readerFromPairing?: boolean;
+    /** The floor shared with the Station notification channel (#2588). */
+    sendFloor?: NativePushSendFloor;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
@@ -297,6 +303,7 @@ async function harness(
     },
     gateway: GATEWAY,
     logger: { warn },
+    ...(options.sendFloor ? { sendFloor: options.sendFloor } : {}),
     fetchImpl: fetchImpl as unknown as typeof fetch,
     now: () => clock,
     windowMs: 1,
@@ -468,6 +475,12 @@ describe('agent-activity publisher', () => {
     expect(() => openCard(a?.data.sealed ?? '', second.registration)).toThrow();
     // Redirects are refused, never followed with the token.
     expect(h.fetchInits.every((init) => init.redirect === 'error')).toBe(true);
+    // The card is not collapsible either (#2588): it sends no collapse key,
+    // so it never competes for FCM's four per device.
+    for (const init of h.fetchInits)
+      expect(
+        JSON.parse(Buffer.from(init.body as Buffer).toString('utf8')),
+      ).not.toHaveProperty('collapseKey');
     await h.publisher.stop();
   });
 
@@ -783,6 +796,96 @@ describe('agent-activity publisher', () => {
         String(message).includes('push signing key file is unreadable'),
       ),
     ).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
+  test('a slot a Station notification reserved on the shared floor holds the card back (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification to this phone went out half a second ago and another
+    // holds the slot two and a half seconds from now.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Paced to the slot after the reserved one, not dropped.
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 5500);
+    // And the card's own send is on the floor for the next notification.
+    expect(sendFloor.lastSendAt(deviceId)).toBe(START + 5500);
+    await h.publisher.stop();
+  });
+
+  test('each time a notification slot holds the card back it counts, so the queue yields it a slot (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification queue keeps taking the phone's slots.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    // Held back once (by a notification's slot, not its own card).
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
+    // The queue takes the slot the card was waiting for, too.
+    expect(sendFloor.reserve(deviceId, START + 2500)).toBe(START + 5500);
+    while (h.now() < START + 5500) await h.fireNextTimer();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Held back twice: the next slot is the card's.
+    expect(sendFloor.takeCardYield(deviceId)).toBe(true);
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 8500);
+    await h.publisher.stop();
+  });
+
+  test('held back only by its own last card, the card does not count against notifications (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const deferCard = vi.spyOn(sendFloor, 'deferCard');
+    const h = await harness({ sendFloor });
+    await h.pairAndRegister();
+    const events = sessionEvents('s1', 'running', START);
+    h.sessions.set('s1', events);
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // A change inside the card's own interval: held back, not by a notification.
+    h.advance(1000);
+    events.push(openRequest('s1', 'req-A', 'approval', START + 1000));
+    h.emit('request.opened');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(2);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.publisher.stop();
+  });
+
+  test('a card with nothing left to send clears its hold-backs, so an idle phone is never skipped (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // Hold-backs counted earlier, for an update that is no longer waiting.
+    sendFloor.deferCard(deviceId);
+    sendFloor.deferCard(deviceId);
+    h.advance(10_000);
+    h.emit('turn.started');
+    await h.settle();
+    // Nothing changed: no card is pending, and the count is gone.
+    expect(h.delivered).toHaveLength(1);
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
     await h.publisher.stop();
   });
 
