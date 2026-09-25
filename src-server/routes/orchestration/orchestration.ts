@@ -3844,6 +3844,9 @@ export function createOrchestrationRoutes(
       // carries the same agent owner attribution as the dispatch routes.
       // #2493: of these commands only `adoptSession` starts a session (the
       // adopted child), so the request's grant is carried for it alone.
+      // Starter Work's `continue-session` launch is the second adoption
+      // ingress and carries its request's grant the same way
+      // (`starter-work.ts`, `runtime-routes.ts`).
       const {
         principal,
         userId: actorUserId,

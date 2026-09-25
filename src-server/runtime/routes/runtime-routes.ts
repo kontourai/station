@@ -131,7 +131,6 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
@@ -526,6 +525,7 @@ import {
   StarterRegistry,
   type StarterScheduledCheckOwner,
 } from '../../services/starter-work/starter-registry.js';
+import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -2911,65 +2911,7 @@ export function configureRuntimeRoutes(
               ),
             checkScheduled: () => checkStarterAgentReadiness('station'),
           },
-          {
-            read: async (sessionId) => {
-              const detail = await context.orchestrationService.readSession(
-                sessionId,
-                INTERNAL_SESSION_READ_SCOPE,
-              );
-              return detail
-                ? {
-                    threadId: detail.session.threadId,
-                    controlMode: detail.session.controlMode,
-                  }
-                : null;
-            },
-            continue: async ({ sourceSessionId, operationId }) => {
-              try {
-                const outcome =
-                  await context.orchestrationService.dispatchWithReceipt({
-                    type: 'adoptSession',
-                    sourceThreadId: sourceSessionId,
-                    idempotencyKey: operationId,
-                  });
-                const session = outcome.result as
-                  | AdoptedSessionResult
-                  | undefined;
-                if (!session?.threadId)
-                  return {
-                    state: 'unavailable' as const,
-                    reason:
-                      'Station accepted continuation without an exact child Session.',
-                    retrySafe: true,
-                    receiptId: outcome.receipt.commandId,
-                  };
-                return {
-                  state: 'continued' as const,
-                  session,
-                  receiptId: outcome.receipt.commandId,
-                };
-              } catch (error) {
-                const observed = error as {
-                  message?: string;
-                  receipt?: { commandId?: string };
-                  receiptStatus?: 'persisted' | 'unavailable';
-                };
-                return {
-                  state:
-                    observed.receiptStatus === 'persisted'
-                      ? ('failed' as const)
-                      : ('indeterminate' as const),
-                  reason:
-                    observed.message ??
-                    'The Session continuation outcome is unavailable.',
-                  retrySafe: true,
-                  ...(observed.receipt?.commandId
-                    ? { receiptId: observed.receipt.commandId }
-                    : {}),
-                };
-              }
-            },
-          },
+          createStarterSessionOwner(context.orchestrationService),
           context.getLiveAppConfig,
           owners,
           scheduledChecks,

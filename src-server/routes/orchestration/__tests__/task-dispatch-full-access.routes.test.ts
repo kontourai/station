@@ -22,6 +22,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { isFullAccessGrant } from '../../../security/coding-authority.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   createTaskDispatcher,
@@ -31,6 +32,11 @@ import {
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { StarterRegistry } from '../../../services/starter-work/starter-registry.js';
 import { StarterWorkModule } from '../../../services/starter-work/starter-work-module.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createStarterWorkRoutes } from '../../starter-work.js';
 import { createTaskRoutes } from '../tasks.js';
@@ -133,6 +139,13 @@ async function fixture() {
     { succeeded: () => {}, failed: () => {} },
   );
 
+  // #2493: the continue-session owner records the grant it is handed.
+  const continueSession = vi.fn(
+    async (_input: { fullAccessGrant: unknown }) => ({
+      state: 'continued' as const,
+      session: { threadId: 'adopted-child', controlMode: 'station-owned' },
+    }),
+  );
   const createTaskIdempotent = vi.fn(
     async () =>
       ({ id: 'task-1', projectId: 'project-1', agentId: 'station' }) as never,
@@ -150,7 +163,13 @@ async function fixture() {
       check: async () => ({ state: 'ready' as const }),
       checkScheduled: async () => ({ state: 'ready' as const }),
     },
-    { read: async () => null, continue: vi.fn() } as never,
+    {
+      read: async (sessionId: string) => ({
+        threadId: sessionId,
+        controlMode: 'read-only-attached' as const,
+      }),
+      continue: continueSession,
+    } as never,
     () => ({ firstRun: { status: 'completed' } }) as never,
     {
       candidate: async () => ({ state: 'missing' as const }),
@@ -202,6 +221,23 @@ async function fixture() {
     });
     return { status: res.status, body: (await res.json()) as any };
   };
+  /** Station's internal principal: per-boot token, `local`, loopback. */
+  const postInternally = async (path: string, body: unknown) => {
+    const res = await app.request(
+      path,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        },
+        body: JSON.stringify(body),
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+    );
+    return { status: res.status, body: (await res.json()) as any };
+  };
   const dispatchTask = (credential: string, approvalMode: string) =>
     post(credential, '/api/tasks/task-1/dispatch', {
       runtimeConfig: { provider: 'claude', modelOptions: { approvalMode } },
@@ -222,6 +258,8 @@ async function fixture() {
     pair,
     grant,
     post,
+    postInternally,
+    continueSession,
     dispatchTask,
     launchStarter,
     started,
@@ -303,3 +341,37 @@ test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's
   expect(f.reserve).not.toHaveBeenCalled();
   expect(f.started).toEqual([]);
 });
+
+test.each([
+  ['the operator in person', 'operator', true],
+  ['a device without approval:full-access', 'device', false],
+  ['a granted device', 'granted', true],
+  ["Station's internal principal (an agent's tool)", 'internal', false],
+] as const)(
+  "#2493: Starter Work's continue-session hands the adoption %s's grant",
+  async (_label, caller, granted) => {
+    const f = await fixture();
+    const body = {
+      starterId: 'continue-session',
+      operationId: `continue-${caller}`,
+      sourceSessionId: 'attached-source',
+    };
+    let response: { status: number; body: any };
+    if (caller === 'internal') {
+      response = await f.postInternally('/api/starter-work/launch', body);
+    } else {
+      let credential = f.operator.credential;
+      if (caller !== 'operator') {
+        const phone = f.pair('Phone');
+        if (caller === 'granted') f.grant(phone.device.id);
+        credential = phone.credential;
+      }
+      response = await f.post(credential, '/api/starter-work/launch', body);
+    }
+    expect(response.status).toBeLessThan(300);
+    expect(f.continueSession).toHaveBeenCalledTimes(1);
+    expect(
+      isFullAccessGrant(f.continueSession.mock.calls[0]![0].fullAccessGrant),
+    ).toBe(granted);
+  },
+);
