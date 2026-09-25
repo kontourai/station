@@ -49,6 +49,9 @@ const MAX_BODY_BYTES = 256 * 1024;
  * that could write the preferences could unmute itself. Each factory is
  * mounted at its exact leaf path — `/api/notifications` is not a route
  * family (pairing-route-scopes.ts), so nothing else under it is reachable.
+ * The guard is attached per handler, not with `use('*')`: a wildcard
+ * middleware would register `<leaf>/*` for every method, which the runtime
+ * route-coverage check rightly reports as unclassified reachable routes.
  */
 async function personOnly(c: Context, next: () => Promise<void>) {
   if (isNonPersonCaller(c.req.raw)) {
@@ -72,9 +75,7 @@ export function createNotificationPreferencesRoutes(
   >,
 ) {
   const app = new Hono();
-  app.use('*', personOnly);
-
-  app.get('/', (c) => {
+  app.get('/', personOnly, (c) => {
     const result = store.read();
     if (!result.ok) {
       // A reset may send this back as If-Match: it then succeeds only if the
@@ -139,7 +140,7 @@ export function createNotificationPreferencesRoutes(
     }
   };
 
-  app.put('/', async (c) => {
+  app.put('/', personOnly, async (c) => {
     const body = await readBody(c.req.raw, (name) => c.req.header(name));
     if (!body.ok)
       return c.json(
@@ -152,7 +153,7 @@ export function createNotificationPreferencesRoutes(
     );
   });
 
-  app.patch('/', async (c) => {
+  app.patch('/', personOnly, async (c) => {
     const body = await readBody(c.req.raw, (name) => c.req.header(name));
     if (!body.ok)
       return c.json(
@@ -180,8 +181,6 @@ export function createNotificationDeliveryFeedRoutes(options: {
   isFeedDevice?: (deviceId: string) => boolean;
 }) {
   const app = new Hono();
-  app.use('*', personOnly);
-
   /**
    * The CALLER'S OWN feed; the server derives which, the client never
    * guesses:
@@ -195,7 +194,7 @@ export function createNotificationDeliveryFeedRoutes(options: {
    * derived surface (older clients); anything else is 403. The response
    * echoes `surface` so the client keys its cursor by the real id.
    */
-  app.get('/', (c) => {
+  app.get('/', personOnly, (c) => {
     if (!options.desktopHost)
       return c.json({ success: false, error: 'unavailable' }, 404);
     const requested = c.req.query('surface');
