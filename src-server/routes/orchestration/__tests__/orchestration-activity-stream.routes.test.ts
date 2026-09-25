@@ -374,6 +374,41 @@ describe('conversation activity through GET /events (#2309)', () => {
     });
   });
 
+  test('#2654: a claude-code child-work notification carries its conversation binding on its own frame', async () => {
+    // `extension.notification` is not an activity method by name; only its
+    // namespace and type make it an immediate activity frame. The route has
+    // to hand both to the binding, or this frame goes out bare and the
+    // activity arrives only on the trailing idless flush.
+    const response = await app(service).request('/events');
+    const reader = new StreamReader(response.body!);
+    await reader.until((wire) => wire.includes('orchestration:caughtUp'));
+    publish({
+      eventId: 'child-work-registry',
+      provider: 'claude',
+      threadId: child,
+      createdAt: '2026-09-25T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: { active: [{ taskId: 'task-1' }] },
+    } as CanonicalRuntimeEvent);
+    await reader.until((wire) => wire.includes('child-work-registry'));
+    const registryFrame = reader.frames().find(
+      (frame) =>
+        frame.event === 'orchestration:event' &&
+        frame.data.includes('child-work-registry'),
+    );
+    await reader.close();
+    expect(registryFrame).toBeDefined();
+    expect(
+      (
+        JSON.parse(registryFrame!.data) as {
+          conversation?: { conversationId: string };
+        }
+      ).conversation?.conversationId,
+    ).toBe(root);
+  });
+
   test('a live coalesced burst ends with an idless current activity frame', async () => {
     const response = await app(service).request('/events');
     const reader = new StreamReader(response.body!);
