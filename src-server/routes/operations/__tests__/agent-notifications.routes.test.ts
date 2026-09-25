@@ -459,7 +459,6 @@ describe('POST /notifications refuses agents and still serves people', () => {
   const body = JSON.stringify({
     category: 'job-failure',
     title: 'Nightly failed',
-    source: 'scheduler',
   });
 
   test('an agent-originated request (origin marker or caller credential) gets 403 pointing at notify_user', async () => {
