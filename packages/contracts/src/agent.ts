@@ -92,9 +92,10 @@ export interface AgentTools {
    * scheduled jobs, `/invoke`, the CLI, and delegated children that cannot
    * grant approvals — on Station's own engine. Same pattern syntax and name
    * forms as `autoApprove`. Delegation allow/block lists and config
-   * protection still apply; the approval guardian is consulted first, and an
-   * enforce-mode deny still blocks (a defer, or review mode, does not).
-   * Absent means no unattended opt-in.
+   * protection still apply, and the approval guardian is consulted before the
+   * opt-in: in enforce mode only a guardian allow lets the call run (a deny or
+   * a defer, including its error fallback, blocks it); in review mode it never
+   * blocks. Absent means no unattended opt-in.
    */
   unattendedAutoApprove?: string[];
   /**

@@ -134,7 +134,8 @@ match the runtime name, including `*`, keep working unattended as before.
 
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for
-that job alone.
+that job alone through `/api/agents/unattended-grants`, keyed by the exact
+runtime tool name (the name a denial quotes).
 
 Example:
 
@@ -148,12 +149,20 @@ Example:
 ```
 
 `unattendedAutoApprove` uses the same pattern syntax and name forms as
-attended `autoApprove`. It is honoured only after the other pre-tool checks:
-a delegated child's allow and block lists and config protection still apply,
-and the approval guardian is consulted first. A guardian deny in enforce mode
-still blocks an opted-in tool; a defer, or any verdict in review mode, does
-not. The guardian's modes are `review` and `enforce`. Attended chat ignores it and asks as before. External engines
-(Claude Code, ACP) do not deliver Station's unattended checks
+attended `autoApprove`. It is honoured only after the other pre-tool checks: a
+delegated child's allow and block lists and config protection still apply, and
+the approval guardian is consulted before the opt-in. The guardian has two
+modes, `review` and `enforce`:
+
+- In `enforce` mode, only a guardian allow lets an unattended call run. A deny
+  blocks it, and so does a defer — including the guardian's own fallback when
+  its review fails or returns no usable verdict — because nobody is present to
+  decide. This applies to `unattendedAutoApprove` and to a per-job grant alike.
+- In `review` mode, the guardian never blocks the opt-in.
+
+Attended chat ignores `unattendedAutoApprove` and asks as before; there a
+guardian defer still means asking the person. External engines (Claude Code,
+ACP) do not deliver Station's unattended checks
 ([delivery boundary](../conformance/tool-policy-delivery.md)), so the opt-in
 has no effect on them.
 

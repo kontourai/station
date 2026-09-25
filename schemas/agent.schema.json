@@ -145,7 +145,7 @@
         },
         "unattendedAutoApprove": {
           "type": "array",
-          "description": "Explicit opt-in: tools this agent may run with nobody present (scheduled jobs, /invoke, CLI, delegated children) on Station's engine. Same pattern syntax and name forms as autoApprove. The approval guardian is consulted first: a deny in enforce mode still blocks the call, while a defer, or any verdict in review mode, lets the opt-in allow it.",
+          "description": "Explicit opt-in: tools this agent may run with nobody present (scheduled jobs, /invoke, CLI, delegated children) on Station's engine. Same pattern syntax and name forms as autoApprove. The approval guardian is consulted before the opt-in: in enforce mode only a guardian allow lets the call run, and a deny or a defer (including its error fallback) blocks it; in review mode the guardian never blocks the opt-in.",
           "items": {
             "type": "string"
           }
