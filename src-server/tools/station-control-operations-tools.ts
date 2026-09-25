@@ -710,6 +710,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .optional()
         .describe('Navigate the UI to show this conversation'),
       _delegation: delegationContextSchema.optional(),
+      _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
     },
     async ({
@@ -722,6 +723,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       conversationId,
       navigate: shouldNavigate,
       _delegation,
+      _delegationAttestation,
       _userId,
     }) => {
       const target = {
@@ -746,7 +748,13 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         target,
         message,
         ...(conversationId ? { conversationId } : {}),
+        // #2601: a claim only. Station's route derives the child context
+        // from the verified caller, or keeps this one only when Station's own
+        // runtime attested it.
         ...(_delegation ? { delegation: _delegation } : {}),
+        ...(_delegation && _delegationAttestation
+          ? { delegationAttestation: _delegationAttestation }
+          : {}),
         ...(_userId ? { userId: _userId } : {}),
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });

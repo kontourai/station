@@ -588,6 +588,7 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import { createRequestDelegationResolver } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -3500,6 +3501,19 @@ export function configureRuntimeRoutes(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      // #2601: a dispatch's delegation context comes from its verified
+      // caller's own session, never from the tool arguments in its body.
+      resolveRequestDelegation: createRequestDelegationResolver({
+        isInternalRequest: isStationInternalRequest,
+        resolveCaller: (request) =>
+          resolveStationControlCallerForRequest(
+            request,
+            resolveStationControlCallerRecord,
+          ),
+        startedMetadata: (threadId) =>
+          context.orchestrationService.firstStartedMetadataOfThread(threadId),
+        loadAgentSpec: (agentSlug) => context.agentService.getAgent(agentSlug),
+      }),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(
           {

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
@@ -66,6 +67,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
@@ -278,6 +280,18 @@ function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
   return typeof code === 'string' ? code : undefined;
+}
+
+/** #2601: the typed refusals of `deps.resolveRequestDelegation`. */
+const DELEGATION_REFUSAL_CODES = new Set([
+  'delegation_depth_exceeded',
+  'delegation_lineage_unavailable',
+]);
+
+function delegationRefusal(c: Context, error: unknown): Response | undefined {
+  const code = errorCode(error);
+  if (!code || !DELEGATION_REFUSAL_CODES.has(code)) return undefined;
+  return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
 
 function isForegroundIndeterminateShape(error: unknown): boolean {
@@ -631,7 +645,12 @@ const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
   requireForegroundBody,
 );
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
-  .extend({ delegation: agentDelegationContextSchema })
+  .extend({
+    delegation: agentDelegationContextSchema,
+    // #2601: Station's own engine's attestation for `delegation`; verified,
+    // never trusted, by `deps.resolveRequestDelegation`.
+    delegationAttestation: z.string().min(1).max(128).optional(),
+  })
   .superRefine(requireForegroundBody);
 
 // Exported (archive#2831) for the structural derivation pin in
@@ -731,6 +750,8 @@ interface DelegateTaskRequest {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
+  delegation?: AgentDelegationContext;
   userId: string;
   principal?: PrincipalRef;
   /**
@@ -1302,6 +1323,12 @@ export function createOrchestrationRoutes(
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
+    /**
+     * #2601: the delegation context a dispatch stamps on the session it
+     * starts, derived from the verified caller (`request-delegation.ts`).
+     * Without it, no request's claimed context is stamped.
+     */
+    resolveRequestDelegation?: RequestDelegationResolver;
     /** Current-host only; resolves byte-free stage references immediately before dispatch. */
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
@@ -1651,10 +1678,13 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c) as z.infer<
-        typeof foregroundMessageObjectSchema
-      > & {
+      const {
+        delegation: claimedDelegation,
+        delegationAttestation,
+        ...body
+      } = getBody(c) as z.infer<typeof foregroundMessageObjectSchema> & {
         delegation?: z.infer<typeof agentDelegationContextSchema>;
+        delegationAttestation?: string;
         automaticBackground?: true;
       };
       // #2436: full access needs the operator in person or a granted device,
@@ -1714,9 +1744,19 @@ export function createOrchestrationRoutes(
         body.target.workspace?.kind === 'project'
           ? body.target.workspace.projectSlug
           : undefined;
+      // #2601: the body's context is a claim; this is what gets stamped.
+      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
+        ...(claimedDelegation
+          ? { delegation: claimedDelegation as AgentDelegationContext }
+          : {}),
+        ...(delegationAttestation
+          ? { attestation: delegationAttestation }
+          : {}),
+      });
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
+        ...(delegation ? { delegation } : {}),
         ...(stagedAttachments?.length
           ? {
               resolveAttachments: (binding) =>
@@ -1790,6 +1830,8 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      const refused = delegationRefusal(c, error);
+      if (refused) return refused;
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
@@ -2222,8 +2264,12 @@ export function createOrchestrationRoutes(
       const delegationAttemptCaller = body.attemptId
         ? deps.resolveInboundDelegationDevice?.(c)
         : undefined;
+      // #2601: this body names no context; a verified caller's child gets
+      // the one derived from its own session.
+      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {});
       const data = await deps.delegateTask({
         ...body,
+        ...(delegation ? { delegation } : {}),
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
@@ -2256,6 +2302,8 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
+      const refused = delegationRefusal(c, error);
+      if (refused) return refused;
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a
       // manufactured completed handle and never a resend authorization.

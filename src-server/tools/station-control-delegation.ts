@@ -314,6 +314,12 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * Server-only; scoped to the executing thread in the closures below.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #2601: Station's own engine's attestation for `delegation`
+   * (`delegation-attestation.ts`). Forwarded only to THIS Station's route,
+   * which verifies it; another Station holds a different key.
+   */
+  delegationAttestation?: string;
 };
 
 /**
@@ -5146,6 +5152,7 @@ export async function executeExecutionTargetMessage(
     const {
       automaticBackground: _automaticBackground,
       fullAccessGrant: _fullAccessGrant,
+      delegationAttestation,
       ...remoteInput
     } = input;
     return postForegroundMessage(
@@ -5157,6 +5164,9 @@ export async function executeExecutionTargetMessage(
           : '/api/orchestration/chat',
       {
         ...remoteInput,
+        ...(delegationAttestation && selectedTarget.kind === 'current'
+          ? { delegationAttestation }
+          : {}),
         target: {
           ...pinnedTarget,
           environment: { kind: 'current' },
