@@ -33,7 +33,6 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { currentRequestReadAuthority } from '../request-read-authority-context.js';
 import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
@@ -88,7 +87,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
-import { ensureConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
+import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
@@ -3606,7 +3605,9 @@ export class StationRuntime {
             // (module doc's onCoreConfigReady/onRouteServicesReady ordering
             // note; `this.appConfig` is set synchronously by
             // `onCoreConfigReady` above, which always runs first).
-            await ensureConversationKnowledgeRoot({
+            // Sessions are read as the request's principal, never a fixed
+            // reader: see `registerRuntimeConversationKnowledgeRoot`.
+            await registerRuntimeConversationKnowledgeRoot({
               provider: this.knowledgeStoreProvider,
               persistence: this.storageAdapter,
               sessionReader: {
@@ -3616,11 +3617,7 @@ export class StationRuntime {
               },
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
-              getUserId: () => getCachedUser().alias,
-              // Sessions are owned by principals: the adapter reads them as
-              // the principal of the `/api/knowledge` request it runs inside
-              // (bound by the runtime routes), and reads none outside one.
-              getReadAuthority: currentRequestReadAuthority,
+              fileMemoryUserId: () => getCachedUser().alias,
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });

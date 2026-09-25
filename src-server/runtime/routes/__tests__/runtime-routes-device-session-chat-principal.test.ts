@@ -79,7 +79,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { FakeNeo4jDriver } from '../../../knowledge-store/__tests__/fake-neo4j-driver.js';
-import { ensureConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
+import { registerRuntimeConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import {
   clearNeo4jGraphViewConnection,
@@ -114,9 +114,9 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
-import { currentRequestReadAuthority } from '../../request-read-authority-context.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
@@ -403,6 +403,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * the authority it was asked with can read the thread.
        */
       flowReads?: Array<{ threadId: string; readable: boolean }>;
+      /** LOW-1: the Task dispatcher behind the production task routes. */
+      taskDispatcher?: unknown;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -635,13 +637,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             knowledgeStoreProvider: await (async () => {
               const persistence = new FileStorageAdapter(roomHomeDir);
               const provider = new KnowledgeStoreProvider(persistence);
-              await ensureConversationKnowledgeRoot({
+              // The Station runtime's own registration (station-runtime.ts),
+              // so these routes read through production's authority wiring.
+              await registerRuntimeConversationKnowledgeRoot({
                 provider,
                 persistence,
                 sessionReader: orchestration!,
                 fileStores: new Map(),
-                getUserId: () => getCachedUser().alias,
-                getReadAuthority: currentRequestReadAuthority,
+                fileMemoryUserId: () => getCachedUser().alias,
                 projectHomeDir: roomHomeDir,
                 knowledgeStoresEnabled: true,
               });
@@ -708,6 +711,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ...(taskReferences ? { getProject: () => project } : {}),
       },
       environmentSecurityService: environmentSecurityServiceFor(pairing),
+      ...(orchestrationExtras.taskDispatcher
+        ? { taskDispatcher: orchestrationExtras.taskDispatcher }
+        : {}),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = await configureRuntimeRoutes(
@@ -2843,6 +2849,76 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       };
       expect(await hits(OPERATOR_SECRET)).toContain('operator-note');
       expect(await hits(peer.credential)).toEqual([]);
+    });
+
+    // LOW-1: through the production runtime-routes composition, Station's
+    // internal token (which any agent holding a stdio child's env can
+    // present) starts a session that is the operator's to read but acts for
+    // no one; the operator's own credential starts an ordinary one.
+    test('the production task and board-intent routes mark an internal-token dispatch unattributed', async () => {
+      const dispatch = vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'test stops at the dispatcher',
+      }));
+      const { app } = await principalSetup({
+        taskDispatcher: { dispatch },
+      });
+      const internalHeaders = {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+      };
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: internalHeaders, body: '{}' },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: operatorHeaders, body: '{}' },
+        REMOTE_TAILNET_ENV,
+      );
+      const intent = await app.request(
+        '/api/projects/project/operating-state/intent',
+        {
+          method: 'POST',
+          headers: internalHeaders,
+          body: JSON.stringify({
+            consent: true,
+            intent: {
+              id: 'dispatch-1',
+              kind: 'task dispatch',
+              authority: { product: 'station', command: 'task dispatch' },
+              subjectRefs: [{ product: 'station', kind: 'task', id: 'task-1' }],
+            },
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      const owners = dispatch.mock.calls.map((call) => {
+        const intentArg = (call as unknown[])[1] as {
+          ownerUserId: string;
+          ownerAttribution?: string;
+        };
+        return {
+          ownerUserId: intentArg.ownerUserId,
+          ownerAttribution: intentArg.ownerAttribution,
+        };
+      });
+      expect(owners, await intent.text()).toEqual([
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: undefined,
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+      ]);
     });
 
     function pairDelegationPeer(pairing: DevicePairingService) {
