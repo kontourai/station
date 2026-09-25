@@ -3,7 +3,7 @@ import type { InlineBrandKey } from './BrandIcon';
 // The inline brand marks, split from `BrandIcon` so their path data loads
 // with the first rendered mark instead of in the UI entry chunk (epic #61).
 // Inline SVG (not <img>) so a mark can take `currentColor` and theme tokens.
-export default function BrandMark({ brand }: { brand: InlineBrandKey }) {
+export function BrandMark({ brand }: { brand: InlineBrandKey }) {
   switch (brand) {
     case 'station':
       return (

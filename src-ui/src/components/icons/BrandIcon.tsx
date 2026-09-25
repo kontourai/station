@@ -91,7 +91,8 @@ function safeSameOriginImage(value: unknown): string | undefined {
 }
 
 /** Module-level: a shared `LazyBoundary` keys its lazy component on it. */
-const loadBrandMarks = () => import('./BrandMarks');
+const loadBrandMarks = () =>
+  import('./BrandMarks').then(({ BrandMark }) => ({ default: BrandMark }));
 
 /**
  * The mark is decorative, so a failed chunk (a stale tab after an upgrade)
