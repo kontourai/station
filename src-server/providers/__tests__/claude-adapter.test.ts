@@ -5664,6 +5664,88 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('connection env reaches the claude-auth readiness check', () => {
+    let home: string;
+
+    // An isolated home with no ambient credentials: nothing on this host can
+    // make the negative control pass or the positive case pass by accident.
+    beforeEach(() => {
+      home = mkdtempSync(join(tmpdir(), 'station-claude-readiness-auth-'));
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+      vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    // Drives the adapter's own readiness derivation and evaluates the auth
+    // detector it handed the shared prerequisite builder.
+    async function readinessAuthState(
+      connectionEnv: Record<string, string> | undefined,
+    ) {
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([]);
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => connectionEnv,
+        readBundledVersion: () => '2.1.224',
+      });
+      await adapter.getPrerequisites?.();
+      const detectAuthState =
+        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0]
+          .detectAuthState;
+      return detectAuthState();
+    }
+
+    test('a proxy token in the connection env counts as authenticated', async () => {
+      await expect(
+        readinessAuthState({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+          ANTHROPIC_API_KEY: '',
+        }),
+      ).resolves.toBe('authenticated');
+    });
+
+    test('without a connection env the same host is unauthenticated', async () => {
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'unauthenticated',
+      );
+    });
+
+    test('an empty-string key in the connection env masks the inherited one', async () => {
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ambient');
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'authenticated',
+      );
+      await expect(
+        readinessAuthState({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_API_KEY: '',
+        }),
+      ).resolves.toBe('unauthenticated');
+    });
+
+    test('configHome is where readiness looks for the credentials file', async () => {
+      const configHome = join(home, 'claude-proxy');
+      mkdirSync(configHome, { recursive: true });
+      writeFileSync(
+        join(configHome, '.credentials.json'),
+        JSON.stringify({ claudeAiOauth: { accessToken: 'oauth-token' } }),
+      );
+      await expect(
+        readinessAuthState({ CLAUDE_CONFIG_DIR: configHome }),
+      ).resolves.toBe('authenticated');
+      // The same credentials outside the configured home are not found.
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'unauthenticated',
+      );
+    });
+  });
+
   describe('station#2072: per-connection env layering', () => {
     test('startSession carries the connection routing keys into the SDK env, over the ambient layer', async () => {
       mockAugmentedSpawnEnv.mockResolvedValue({

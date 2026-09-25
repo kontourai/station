@@ -2233,7 +2233,22 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // `claude` is on PATH" exactly as before; the sentence below reports
       // separately whether Station can hand THAT entry to the SDK.
       findBinary: () => executable.resolved,
-      detectAuthState: detectClaudeAuthState,
+      // Readiness judges the credentials a fresh session would launch with:
+      // the ambient env overlaid by the connection env exactly as
+      // `startSession` layers it (configHome → CLAUDE_CONFIG_DIR included).
+      // A proxy-routed connection authenticates through its env
+      // (`ANTHROPIC_AUTH_TOKEN`), and an empty-string value masks an
+      // inherited key here just as it does in the spawn. The app-home /
+      // credential-profile layer is not modelled: resolving it can create
+      // profile directories, which a readiness read must not do.
+      detectAuthState: async () =>
+        detectClaudeAuthState({
+          ...process.env,
+          ...claudeConnectionEnvForSpawn(
+            await this.resolveConnectionEnv(),
+            true,
+          ),
+        }),
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
