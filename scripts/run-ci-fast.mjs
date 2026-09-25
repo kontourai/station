@@ -119,12 +119,14 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
+  // This remains a blocking ci:fast invariant. Readiness also runs it as an
+  // optional diagnostic, which cannot replace this gate without weakening CI.
+  Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
   // ~35s (15s on an idle host, 75s on this one at load 48). Repository
   // governance readiness: required artifacts, the AI instruction-file sync,
   // the protected-standards attestation, and its configured evidence checks.
-  // Readiness owns the repo-governance, verification-policy, and
-  // style-standard checks, so keeping them out of the standalone list avoids
-  // running each command twice in the same ci:fast lane.
+  // Readiness owns the repo-governance and style-standard checks, so keeping
+  // their standalone commands out of this list avoids running them twice.
   // `--working-tree` does NOT narrow this to the diff, which matters because
   // a CI checkout has no diff. Measured both ways: a forbidden shared-root
   // import reds the run whether it is uncommitted or committed with a clean

@@ -142,9 +142,9 @@ describe('bounded ci:fast runner', () => {
       // generator succeed on this tree", and the typecheck aggregate below
       // resolves its output.
       [process.execPath, ['scripts/generate-basis-mcp-apps.mjs']],
-      // Readiness owns the repo-governance, verification-policy, and
-      // style-standard evidence checks, so these commands run once through
-      // its configured evidence plan instead of being repeated here.
+      // Readiness owns repo-governance and style-standard checks. The policy
+      // gate remains direct because readiness classifies it as optional.
+      ['npm', ['run', 'verification:policy:gate']],
       ['npm', ['run', 'veritas:readiness']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
@@ -209,7 +209,7 @@ describe('bounded ci:fast runner', () => {
       runCiFast({
         env: { STATION_CI_FAST_BASE: 'base-sha' },
         execute(_command, args) {
-          return args[1] === 'veritas:readiness'
+          return args[1] === 'verification:policy:gate'
             ? CI_FAST_INFRASTRUCTURE_EXIT_CODE
             : 0;
         },
