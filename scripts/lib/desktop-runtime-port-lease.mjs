@@ -86,8 +86,8 @@ function releaseLease(path, lease) {
     // onto an EMPTY directory succeeds: a waiter would claim the lease
     // inside that window and the owner's final rmdir would then fail with
     // ENOTEMPTY (#2648). While it still holds our lease.json, `path`
-    // cannot be claimed (non-empty) or reclaimed (we are alive), so the
-    // rename moves our own directory and nothing else.
+    // cannot be claimed (non-empty) and is normally not reclaimed (we are
+    // alive); the check after the rename covers a misjudged reclaim.
     const retired = `${path}.retired-${lease.owner.nonce}`;
     try {
       renameSync(path, retired);

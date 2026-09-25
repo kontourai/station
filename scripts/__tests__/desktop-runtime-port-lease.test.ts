@@ -109,6 +109,8 @@ describe('desktop runtime listener lease', () => {
         { path },
       ),
     ).resolves.toBe('done');
+    // The hook fired, so the release really reached that window.
+    expect(beforeRetire).toBeNull();
     expect(fs.existsSync(path)).toBe(false);
   });
 
@@ -129,6 +131,8 @@ describe('desktop runtime listener lease', () => {
         { path },
       ),
     ).resolves.toBe('done');
+    // The hook fired, so the release really reached that window.
+    expect(beforeRetire).toBeNull();
     expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(other);
   });
 });
