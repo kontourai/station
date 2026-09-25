@@ -66,6 +66,14 @@ jobs:
         run: npm run lint:check
       - run: npm run build:connect
       - name: Typecheck
+        env:
+          # station#2621: this fleet reports 4 vCPUs / ~15.6 GiB, which the
+          # RAM-only default rounds to 2 typecheck slots -- see the matching
+          # comment on ci.yml's "Run fast CI lane" step for the measured
+          # evidence. Nightly is a single job per ephemeral VM, so the
+          # shared-dev-host guard the default sizing protects against does
+          # not apply here either.
+          STATION_TYPECHECK_SLOTS: '4'
         run: node scripts/typecheck-aggregate.mjs
       - name: Install Chromium
         timeout-minutes: 20
