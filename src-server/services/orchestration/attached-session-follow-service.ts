@@ -461,15 +461,24 @@ export class AttachedSessionFollowService {
         }
       }
       state.storedAttribution = fingerprint;
-      // Every envelope event carries the owner.
-      state.ownerRecorded = true;
     }
     if (!state.ownerRecorded) {
-      this.appendIngestibleEvent(
-        state,
-        attachedSessionOwnerRecord(descriptor, state.latestEventAt),
-      );
-      state.ownerRecorded = true;
+      // Every envelope event carries the owner, so a fresh envelope usually
+      // recorded it already; otherwise append the owner record.
+      if (
+        this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) ===
+        undefined
+      ) {
+        this.appendIngestibleEvent(
+          state,
+          attachedSessionOwnerRecord(descriptor, state.latestEventAt),
+        );
+      }
+      // Marked only once the log actually holds an owner: a write the store
+      // refused (a skipped ingress error) is retried on the next poll.
+      state.ownerRecorded =
+        this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) !==
+        undefined;
     }
 
     const priorCursor = state.cursors.get(sourceCursorKey(source));

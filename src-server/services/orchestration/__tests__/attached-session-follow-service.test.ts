@@ -21,7 +21,7 @@ import {
   resolveAttachedSessionPollInterval,
 } from '../attached-session-follow-service.js';
 import { EventBus } from '../event-bus.js';
-import { EventStore } from '../event-store.js';
+import { EventStore, EventStoreIngressError } from '../event-store.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 import { SessionAuthorization } from '../session-authorization.js';
@@ -596,6 +596,13 @@ describe('AttachedSessionFollowService', () => {
     const legacyAppend = vi
       .spyOn(store, 'appendEventIfAbsent')
       .mockImplementation((stored) => {
+        // The pre-upgrade follower never wrote an owner record at all.
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
         const metadata = (stored as { metadata?: Record<string, unknown> })
           .metadata;
         if (!metadata) return append(stored);
@@ -645,6 +652,77 @@ describe('AttachedSessionFollowService', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  // A refused owner write (a deterministic ingress error, skipped so the tail
+  // stays alive) must not mark the owner recorded: the next poll retries.
+  test('retries the owner record on the next poll when the store refused it', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    // Pre-owner envelope, as the pre-upgrade follower wrote it.
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacy = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        // The pre-upgrade follower never wrote an owner record at all.
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacy.mockRestore();
+
+    let refusals = 0;
+    const refusing = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          ) &&
+          refusals++ === 0
+        ) {
+          throw new EventStoreIngressError('simulated refusal');
+        }
+        return append(stored);
+      });
+    const upgraded = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn: vi.fn() },
+      listProjects,
+    });
+    await upgraded.pollNow();
+    expect(store.findSessionOwnerUserId(session.threadId)).toBeUndefined();
+    await upgraded.pollNow();
+    refusing.mockRestore();
+    expect(refusals).toBe(2);
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
   });
 
   test('matches the longest canonical project root and publishes each canonical event once', async () => {
