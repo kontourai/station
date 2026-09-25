@@ -49,11 +49,21 @@ paired phone gets a push, and tapping it lands on the attention inbox
   personal-family devices, or the devices that can read the session for an
   agent notification), applies the delivery policy (focus, quiet hours,
   per-device minimum urgency, mutes) and hands the channel its targets.
-  Focus quiets the person's other surfaces only while the focused surface
-  holds a live event stream (`src-server/runtime/routes/client-stream-presence.ts`,
-  #2620), so a focused tab whose stream closed, or whose keepalive writes
-  stopped succeeding for 90 s, quiets nothing. A live focused surface skips `info`/`done` elsewhere and
-  only delays `attention`/`failed`, which still reach the phone if unread. The
+  Focus quiets the person's other surfaces only while the focused document
+  itself holds a live event stream
+  (`src-server/runtime/routes/client-stream-presence.ts`, #2620). That is
+  checked per document for a paired device too — the local browser UI signs
+  in as one — so another live tab of the same browser cannot vouch for a
+  focused tab whose stream is gone. A focused document whose stream closed,
+  or whose keepalive writes stopped succeeding for 90 s, quiets nothing. A
+  half-open socket can keep those writes "succeeding", so the worst-case
+  window in which a dead tab still quiets the phone is bounded by the
+  120 s focus lease (`FOCUS_LEASE_MS`), not by the 90 s stream lease. Stream
+  leases are capped (32 documents per device, 32 operator tabs, 256
+  device streams overall); a
+  document past the cap is never live, so it never quiets anything. A live
+  focused document skips `info`/`done` elsewhere and only delays
+  `attention`/`failed`, which still reach the phone if unread. The
   channel carries only categories the attention-ranked outcome model
   classifies (`classifyNotificationCategory`,
   `@kontourai/station-shared/notification-priority`), sends a generic title

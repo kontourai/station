@@ -1106,6 +1106,7 @@ export function configureRuntimeRoutes(
     devices: connectedClientPresence,
     identifyDevice: (credential) =>
       context.environmentSecurityService.identifyDevice(credential),
+    focus: focusPresence,
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let pluginDraftService: PluginDraftService | undefined;

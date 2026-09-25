@@ -3,6 +3,7 @@ import {
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { FocusPresence } from '../../../services/presence/focus-presence.js';
 import { ClientConnectionPresence } from '../../../services/ssh/client-connection-presence.js';
 import { createClientStreamPresence } from '../client-stream-presence.js';
 
@@ -36,13 +37,34 @@ function streamRequest(
 
 function harness(local?: ClientConnectionPresence) {
   const devices = new ClientConnectionPresence();
+  const focus = new FocusPresence();
   const presence = createClientStreamPresence({
     devices,
     identifyDevice: (credential) =>
       credential === 'phone-credential' ? { id: 'phone' } : null,
+    focus,
     ...(local ? { local } : {}),
   });
-  return { devices, presence, isLive: presence.inAppLiveness.isLive };
+  let seq = 0;
+  /** One document of the phone reports, as the focus route records it. */
+  const phoneDocument = (
+    session: string,
+    state: 'focused' | 'visible' | 'hidden',
+  ) => {
+    seq += 1;
+    focus.report(
+      { kind: 'device', deviceId: 'phone', principalId: 'person' },
+      session.toLowerCase(),
+      state,
+      seq,
+    );
+  };
+  return {
+    devices,
+    presence,
+    phoneDocument,
+    isLive: presence.inAppLiveness.isLive,
+  };
 }
 
 describe('client stream presence (#2620)', () => {
@@ -65,8 +87,10 @@ describe('client stream presence (#2620)', () => {
     expect(isLive(`local:${TAB}`)).toBe(true);
   });
 
-  test("a paired device's stream makes the device surface live, not a local one", () => {
-    const { presence, devices, isLive } = harness();
+  test("a paired device's focused document with its own stream makes the device live, not a local surface", () => {
+    const { presence, devices, isLive, phoneDocument } = harness();
+    phoneDocument(TAB, 'focused');
+    expect(isLive('device:phone')).toBe(false);
     const lease = presence.connect(streamRequest(phone));
     expect(lease).toBeDefined();
     expect(isLive('device:phone')).toBe(true);
@@ -74,6 +98,33 @@ describe('client stream presence (#2620)', () => {
     // The connected-clients view reads the same presence it always did.
     expect(devices.snapshot(['phone']).get('phone')?.sessionCount).toBe(1);
     lease!.release();
+    expect(isLive('device:phone')).toBe(false);
+  });
+
+  test("a device's focused document whose stream is dead is not vouched for by another live document", () => {
+    const { presence, isLive, phoneDocument } = harness();
+    phoneDocument(TAB, 'focused');
+    phoneDocument(OTHER_TAB, 'hidden');
+    const background = presence.connect(streamRequest(phone, OTHER_TAB));
+    expect(background).toBeDefined();
+    expect(isLive('device:phone')).toBe(false);
+    // Focus moves to the document that holds a stream: now it can toast.
+    phoneDocument(TAB, 'hidden');
+    phoneDocument(OTHER_TAB, 'focused');
+    expect(isLive('device:phone')).toBe(true);
+  });
+
+  test('a device lease is keyed lowercase, the way the focus route records the document', () => {
+    const { presence, isLive, phoneDocument } = harness();
+    phoneDocument(TAB, 'focused');
+    presence.connect(streamRequest(phone, TAB.toUpperCase()));
+    expect(isLive('device:phone')).toBe(true);
+  });
+
+  test('a device with a live stream but no focused document is not live', () => {
+    const { presence, isLive, phoneDocument } = harness();
+    phoneDocument(TAB, 'visible');
+    presence.connect(streamRequest(phone));
     expect(isLive('device:phone')).toBe(false);
   });
 

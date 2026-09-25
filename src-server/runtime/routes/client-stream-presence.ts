@@ -8,20 +8,27 @@
  * alone is not enough: a tab whose event stream silently dropped still
  * heartbeats its focus, and would silence the phone while showing nothing.
  *
- * - `device:<id>`: any live stream the paired device holds (the existing
- *   connected-clients presence). Focus reconciles a device's documents into
- *   one surface, so liveness is read at the same grain.
+ * - `device:<id>`: live only while a document whose focus report is
+ *   `focused` holds its own stream on that device (the connected-clients
+ *   presence, keyed by device and `X-Station-Client-Session`). Focus
+ *   reconciles a device's documents into one surface, so a device-wide check
+ *   would let one live background tab vouch for a focused tab whose stream
+ *   is dead. The local browser UI signs in with a device credential, so this
+ *   is the operator's own tabs' path too.
  * - `local:<clientSessionId>`: the operator tab's own stream, keyed by the
  *   `X-Station-Client-Session` header the same document sends on its focus
  *   reports. Only the operator credential gets a local lease — the same
  *   callers the focus route accepts as `local:` reporters.
  *
- * Every unknown reads as not live, and a capacity refusal leaves a stream
+ * Session ids are lowercased on both leases, as the focus route records
+ * them, or the per-document match would silently miss. Every unknown reads
+ * as not live, and a capacity refusal leaves a stream
  * untracked, so every gap errs toward interrupting.
  */
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { SurfaceId } from '../../services/notifications/delivery/channel.js';
 import type { InAppLiveness } from '../../services/notifications/delivery/router.js';
+import type { FocusPresence } from '../../services/presence/focus-presence.js';
 import {
   CLIENT_SESSION_ID_PATTERN,
   type ClientConnectionLease,
@@ -35,6 +42,8 @@ export interface ClientStreamPresenceDeps {
   /** Paired-device streams; also read by the connected-clients routes. */
   devices: ClientConnectionPresence;
   identifyDevice(credential: string): { readonly id: string } | null;
+  /** Which documents a device surface's focus belongs to. */
+  focus: Pick<FocusPresence, 'focusedSessions'>;
   /** Operator-tab streams. Defaults to a fresh instance. */
   local?: ClientConnectionPresence;
 }
@@ -63,12 +72,18 @@ export function createClientStreamPresence(
         return local.connect(LOCAL_OPERATOR_STREAMS, header.toLowerCase());
       if (principal?.authority !== 'device-credential') return undefined;
       const device = deps.identifyDevice(principal.credential);
-      return device ? deps.devices.connect(device.id, header) : undefined;
+      return device
+        ? deps.devices.connect(device.id, header.toLowerCase())
+        : undefined;
     },
     inAppLiveness: {
       isLive(surface: SurfaceId) {
-        if (surface.startsWith('device:'))
-          return deps.devices.isConnected(surface.slice('device:'.length));
+        if (surface.startsWith('device:')) {
+          const deviceId = surface.slice('device:'.length);
+          return deps.focus
+            .focusedSessions(surface)
+            .some((session) => deps.devices.isConnected(deviceId, session));
+        }
         if (surface.startsWith('local:'))
           return local.isConnected(
             LOCAL_OPERATOR_STREAMS,

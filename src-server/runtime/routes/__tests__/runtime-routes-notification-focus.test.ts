@@ -5,6 +5,8 @@
  * stream leases feed — keyed by the same `X-Station-Client-Session`. Only
  * the support services are replaced, to capture what delivery is given.
  */
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { FOCUS_PRESENCE_REPORT_PATH } from '@kontourai/station-contracts/presence';
 import { Hono } from 'hono';
@@ -16,6 +18,7 @@ import type {
   InAppLiveness,
 } from '../../../services/notifications/delivery/router.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const captured = vi.hoisted(() => ({
@@ -60,6 +63,7 @@ function deepStub<T extends object>(overrides: T): T {
 
 const OPERATOR_SECRET = 'operator-secret-notification-focus-fixture';
 const TAB = '0f0e0d0c-0b0a-4908-8706-050403020100';
+const OTHER_TAB = '11111111-1111-4111-8111-111111111111';
 const LOOPBACK = {
   incoming: { socket: { remoteAddress: '127.0.0.1' } },
 } as never;
@@ -74,6 +78,31 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
 
   async function setup() {
     const homeDir = makeTempDir('station-notification-focus-');
+    mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
+    const pairing = new DevicePairingService({
+      homeDir,
+      environmentId: '33333333-3333-4333-8333-333333333333',
+    });
+    // A paired browser device, the way the local UI holds its credential.
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: DEFAULT_GRANT_PAIRING_SCOPE,
+      kind: 'device',
+    });
+    const pairingRequest = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'browser fixture',
+    });
+    pairing.confirmRequest(pairingRequest.requestId, {
+      kind: 'presented-credential',
+    });
+    const browser = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pairingRequest.requestId,
+    });
     const app = new Hono();
     const context = deepStub({
       projectMembership: undefined,
@@ -111,19 +140,24 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_SECRET,
+          credential === OPERATOR_SECRET ||
+          pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_SECRET,
+          credential === OPERATOR_SECRET ||
+          pairing.verifyCredential(credential),
         verifyOperatorCredential: (credential: string) =>
           credential === OPERATOR_SECRET,
         resolveGrantedScope: (credential: string) =>
           credential === OPERATOR_SECRET
             ? DEFAULT_GRANT_PAIRING_SCOPE
-            : undefined,
-        identifyDevice: () => null,
-        credentialLocality: () => undefined,
-        credentialMintKind: () => undefined,
-        devicePairing: deepStub({}),
+            : pairing.identifyDevice(credential)?.scope,
+        identifyDevice: (credential: string) =>
+          pairing.identifyDevice(credential),
+        credentialLocality: (credential: string) =>
+          pairing.credentialLocality(credential),
+        credentialMintKind: (credential: string) =>
+          pairing.credentialMintKind(credential),
+        devicePairing: pairing,
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -134,7 +168,13 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     const delivery = captured.options;
     expect(delivery?.focus).toBeDefined();
     expect(delivery?.inAppLiveness).toBeDefined();
-    return { app, focus: delivery!.focus!, liveness: delivery!.inAppLiveness! };
+    return {
+      app,
+      browser,
+      browserDeviceId: pairing.identifyDevice(browser.credential)!.id,
+      focus: delivery!.focus!,
+      liveness: delivery!.inAppLiveness!,
+    };
   }
 
   const operatorHeaders = {
@@ -184,5 +224,54 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     expect(
       focus.snapshotForPrincipals([LOCAL_OPERATOR_PRINCIPAL_ID]).has(surface),
     ).toBe(true);
+  });
+
+  test("a browser device: only the FOCUSED document's own stream makes it live", async () => {
+    const { app, browser, browserDeviceId, liveness } = await setup();
+    const surface = `device:${browserDeviceId}` as const;
+    const headers = (document: string) => ({
+      Authorization: `Bearer ${browser.credential}`,
+      'X-Station-Client-Session': document,
+    });
+    const open = async (document: string) => {
+      const controller = new AbortController();
+      streams.push(controller);
+      const response = await app.request(
+        '/events',
+        { headers: headers(document), signal: controller.signal },
+        LOOPBACK,
+      );
+      expect(response.status).toBe(200);
+      return controller;
+    };
+    let seq = 0;
+    const report = async (document: string, state: string) => {
+      seq += 1;
+      const response = await app.request(
+        FOCUS_PRESENCE_REPORT_PATH,
+        {
+          method: 'POST',
+          headers: { ...headers(document), 'content-type': 'application/json' },
+          body: JSON.stringify({ clientSessionId: document, state, seq }),
+        },
+        LOOPBACK,
+      );
+      expect(response.status).toBe(204);
+    };
+
+    // A background document of the browser holds a stream; the focused one
+    // does not.
+    await report(OTHER_TAB, 'hidden');
+    await open(OTHER_TAB);
+    await report(TAB, 'focused');
+    // The stream's lease is taken before its headers are sent, so it is
+    // already held here.
+    expect(liveness.isLive(surface)).toBe(false);
+
+    // The focused document opens its own stream (uppercase on the wire).
+    const focused = await open(TAB.toUpperCase());
+    await vi.waitFor(() => expect(liveness.isLive(surface)).toBe(true));
+    focused.abort();
+    await vi.waitFor(() => expect(liveness.isLive(surface)).toBe(false));
   });
 });
