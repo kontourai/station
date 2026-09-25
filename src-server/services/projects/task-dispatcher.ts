@@ -58,6 +58,14 @@ export type DispatchIntent = TaskDispatchInput & {
    * it, so an Agent or Station default of `never` stays confined otherwise.
    */
   readonly fullAccessGrant: FullAccessGrant | null;
+  /**
+   * The principal the dispatched session belongs to, recorded as its owner.
+   * Required so every caller states it: a request passes its own principal,
+   * and a caller acting without a request (a monitor, the acceptance
+   * harness) passes the local operator. A session with no recorded owner is
+   * readable by no caller.
+   */
+  readonly ownerUserId: string;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;

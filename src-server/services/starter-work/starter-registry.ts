@@ -134,6 +134,12 @@ export type StarterSessionOwner = {
      * `/commands adoptSession`.
      */
     fullAccessGrant: FullAccessGrant | null;
+    /**
+     * The launching request's principal. The source must be readable by it,
+     * and the adopted child records it as owner, exactly as a
+     * `/commands adoptSession` from the same caller would.
+     */
+    ownerUserId: string;
   }): Promise<
     | {
         state: 'continued';
@@ -503,6 +509,8 @@ export class StarterRegistry {
     input: StartTaskStarterLaunchInput,
     /** #2436: the launching request's full-access grant; see TaskDispatcher. */
     fullAccessGrant: FullAccessGrant | null,
+    /** The launching request's principal; it owns the dispatched session. */
+    ownerUserId: string,
   ): Promise<StartTaskStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -606,6 +614,7 @@ export class StarterRegistry {
       skillName: input.dispatch?.skillName ?? task.skillName,
       sourceSurface: 'starter-work',
       fullAccessGrant,
+      ownerUserId,
     });
     let dispatch: Extract<
       StartTaskStarterLaunchResult,
@@ -654,6 +663,8 @@ export class StarterRegistry {
     input: ContinueSessionStarterLaunchInput,
     /** #2493: the launching request's grant; see `StarterSessionOwner.continue`. */
     fullAccessGrant: FullAccessGrant | null,
+    /** The launching request's principal; see `StarterSessionOwner.continue`. */
+    ownerUserId: string,
   ): Promise<ContinueSessionStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -676,6 +687,7 @@ export class StarterRegistry {
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
         fullAccessGrant,
+        ownerUserId,
       });
     } catch (error) {
       return {

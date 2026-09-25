@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
   StarterRegistry,
@@ -169,7 +169,17 @@ const starterWorkRouteError = (error: unknown): StarterWorkRouteError => {
   };
 };
 
-export function createStarterWorkRoutes(registry: StarterRegistry) {
+export function createStarterWorkRoutes(
+  registry: StarterRegistry,
+  options: {
+    /**
+     * The launching request's principal. A launch that starts or adopts a
+     * session records it as that session's owner; a request whose principal
+     * cannot be resolved throws here and never launches.
+     */
+    ownerUserIdForRequest: (c: Context) => string;
+  },
+) {
   const app = new Hono();
   app.get('/', async (c) =>
     c.json({ success: true, data: await registry.list() }),
@@ -251,9 +261,14 @@ export function createStarterWorkRoutes(registry: StarterRegistry) {
               // #2493: continuing an attached session adopts it; the child
               // is `host` only for a request that may grant full access.
               fullAccessGrantForRequest(c),
+              options.ownerUserIdForRequest(c),
             )
           : starterId === 'start-task'
-            ? await registry.launchStartTask(body, fullAccessGrantForRequest(c))
+            ? await registry.launchStartTask(
+                body,
+                fullAccessGrantForRequest(c),
+                options.ownerUserIdForRequest(c),
+              )
             : starterId === 'run-scheduled-check'
               ? await registry.launchScheduledCheck(body)
               : await registry.launchInspection(body);

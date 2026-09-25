@@ -105,6 +105,9 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
           agentSlug: input.reviewer.executorAgentSlug,
           reviewEvidenceRequestId: input.requestId,
           reviewEvidenceReviewerId: input.reviewer.reviewerId,
+          // The requesting principal owns the reviewer session; its turn is
+          // then authorized against that owner like any other session's.
+          ...(input.context.userId ? { userId: input.context.userId } : {}),
         },
         signal: input.signal,
       };

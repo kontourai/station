@@ -12,6 +12,7 @@ import {
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
@@ -446,6 +447,9 @@ export function configureRuntimeSupportServices(
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
+              // An external monitor acts for no request; this Station's
+              // operator configured it and owns the session it dispatches.
+              ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,

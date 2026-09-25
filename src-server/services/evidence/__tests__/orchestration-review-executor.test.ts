@@ -104,6 +104,9 @@ describe('OrchestrationReviewExecutor', () => {
         provider: 'codex',
         cwd: '/review/snapshot',
         persistSession: false,
+        // The requester owns the reviewer session, so its own turn below is
+        // authorized against a recorded owner rather than an ownerless row.
+        metadata: { userId: 'operator' },
       },
     });
     expect(turn).toMatchObject({

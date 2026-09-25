@@ -315,6 +315,41 @@ describe('operating-state routes', () => {
     );
   });
 
+  test("POST /intent executes its bindings with the request's own authority", async () => {
+    vi.mocked(createStationHostIntentBindings).mockReturnValue([] as any);
+    vi.mocked(resolveAndExecuteStationBoardIntent).mockResolvedValue({
+      bound: true,
+      executed: true,
+    });
+    const requestAuthority = sessionReadAuthorityFromRequest(
+      'human:device:phone',
+      undefined,
+      undefined,
+    );
+    const { app } = createApp(createMockService(), requestAuthority as never);
+    const response = await app.request(
+      '/api/projects/demo/operating-state/intent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intent: {
+            id: 'i1',
+            kind: 'task dispatch',
+            authority: { product: 'station', command: 'task dispatch' },
+          },
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    // A resumed session is read, and a dispatched task is owned, by the
+    // caller: never by a process-wide default authority.
+    const deps = vi
+      .mocked(createStationHostIntentBindings)
+      .mock.calls.at(-1)![0];
+    expect(deps.getSessionReadAuthority?.()).toBe(requestAuthority);
+  });
+
   test('POST /intent never forwards a truthy-but-not-true consent as true', async () => {
     vi.mocked(createStationHostIntentBindings).mockReturnValue([] as any);
     vi.mocked(resolveAndExecuteStationBoardIntent).mockResolvedValue({

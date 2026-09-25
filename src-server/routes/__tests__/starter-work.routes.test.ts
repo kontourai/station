@@ -10,6 +10,9 @@ import {
 } from '../../services/starter-work/starter-work-module.js';
 import { createStarterWorkRoutes } from '../starter-work.js';
 
+/** The launching request's principal; these tests launch as one caller. */
+const STARTER_ROUTE_OPTIONS = { ownerUserIdForRequest: () => 'owner-1' };
+
 function registry() {
   return {
     list: async () => [
@@ -98,7 +101,10 @@ function registry() {
 
 describe('starter work routes', () => {
   it('lists the server catalog and refuses unknown starters and arbitrary target kinds', async () => {
-    const app = createStarterWorkRoutes(registry() as never);
+    const app = createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    );
     expect((await app.request('/')).status).toBe(200);
     expect((await app.request('/not-a-starter')).status).toBe(404);
     const arbitraryKind = await app.request('/bind', {
@@ -122,18 +128,18 @@ describe('starter work routes', () => {
         retrySafe: true,
       }),
     };
-    const response = await createStarterWorkRoutes(deferred as never).request(
-      '/launch',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          starterId: 'start-task',
-          operationId: 'launch-1',
-          task: { projectId: 'project-1', title: 'First task' },
-        }),
-      },
-    );
+    const response = await createStarterWorkRoutes(
+      deferred as never,
+      STARTER_ROUTE_OPTIONS,
+    ).request('/launch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        starterId: 'start-task',
+        operationId: 'launch-1',
+        task: { projectId: 'project-1', title: 'First task' },
+      }),
+    });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
@@ -142,7 +148,10 @@ describe('starter work routes', () => {
   });
 
   it('selects and launches only exact typed inspection targets', async () => {
-    const app = createStarterWorkRoutes(registry() as never);
+    const app = createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    );
     const candidate = await app.request('/inspect-approval/candidate');
     expect(candidate.status).toBe(200);
     await expect(candidate.json()).resolves.toMatchObject({
@@ -190,7 +199,10 @@ describe('starter work routes', () => {
   });
 
   it('launches the scheduled check without caller-authored job configuration', async () => {
-    const app = createStarterWorkRoutes(registry() as never);
+    const app = createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    );
     const response = await app.request('/launch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -221,7 +233,10 @@ describe('starter work routes', () => {
   });
 
   it('maps a rejected exact target to the stable conflict response', async () => {
-    const app = createStarterWorkRoutes(registry() as never);
+    const app = createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    );
     const response = await app.request('/bind', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -239,18 +254,18 @@ describe('starter work routes', () => {
     rejected.bind = (async () => {
       throw new StarterWorkTargetError('Session');
     }) as never;
-    const response = await createStarterWorkRoutes(rejected as never).request(
-      '/bind',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          starterId: 'continue-session',
-          operationId: 'continue-1',
-          targetRef: { kind: 'session', id: 'continued-session' },
-        }),
-      },
-    );
+    const response = await createStarterWorkRoutes(
+      rejected as never,
+      STARTER_ROUTE_OPTIONS,
+    ).request('/bind', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        starterId: 'continue-session',
+        operationId: 'continue-1',
+        targetRef: { kind: 'session', id: 'continued-session' },
+      }),
+    });
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
       success: false,
@@ -259,7 +274,10 @@ describe('starter work routes', () => {
   });
 
   it('returns a total launch result rather than hiding an indeterminate dispatch', async () => {
-    const app = createStarterWorkRoutes(registry() as never);
+    const app = createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    );
     const response = await app.request('/launch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -281,15 +299,18 @@ describe('starter work routes', () => {
       throw new StarterWorkTargetError();
     };
     const launch = (source: ReturnType<typeof registry>) =>
-      createStarterWorkRoutes(source as never).request('/launch', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          starterId: 'start-task',
-          operationId: 'launch-1',
-          task: { projectId: 'project-1', title: 'First task' },
-        }),
-      });
+      createStarterWorkRoutes(source as never, STARTER_ROUTE_OPTIONS).request(
+        '/launch',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            starterId: 'start-task',
+            operationId: 'launch-1',
+            task: { projectId: 'project-1', title: 'First task' },
+          }),
+        },
+      );
     const knownResponse = await launch(known);
     expect(knownResponse.status).toBe(409);
     await expect(knownResponse.json()).resolves.toEqual({
@@ -312,18 +333,18 @@ describe('starter work routes', () => {
   });
 
   it('routes the bounded Session continuation intent separately', async () => {
-    const response = await createStarterWorkRoutes(registry() as never).request(
-      '/launch',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          starterId: 'continue-session',
-          operationId: 'continue-1',
-          sourceSessionId: 'external-session',
-        }),
-      },
-    );
+    const response = await createStarterWorkRoutes(
+      registry() as never,
+      STARTER_ROUTE_OPTIONS,
+    ).request('/launch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        starterId: 'continue-session',
+        operationId: 'continue-1',
+        sourceSessionId: 'external-session',
+      }),
+    });
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
@@ -405,18 +426,18 @@ describe('starter work routes', () => {
       failing.launchStartTask = async () => {
         throw thrown;
       };
-      const response = await createStarterWorkRoutes(failing as never).request(
-        '/launch',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            starterId: 'start-task',
-            operationId: 'launch-1',
-            task: { projectId: 'project-1', title: 'First task' },
-          }),
-        },
-      );
+      const response = await createStarterWorkRoutes(
+        failing as never,
+        STARTER_ROUTE_OPTIONS,
+      ).request('/launch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          starterId: 'start-task',
+          operationId: 'launch-1',
+          task: { projectId: 'project-1', title: 'First task' },
+        }),
+      });
       const body = (await response.json()) as {
         success: boolean;
         code: string;

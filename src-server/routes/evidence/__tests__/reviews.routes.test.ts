@@ -29,7 +29,9 @@ function app(service: Record<string, unknown>) {
   root.route(
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(service as never, {
-      getUserId: () => 'user:authenticated',
+      // The request's own principal, resolved from its Hono context.
+      getUserId: (context) =>
+        context.req.header('x-test-principal') ?? 'user:authenticated',
       getTenantExecutionContext: () => undefined,
       reportError: vi.fn(),
     }),
@@ -71,6 +73,45 @@ describe('review evidence routes', () => {
         userId: 'user:authenticated',
       }),
     );
+  });
+
+  it("runs as each request's own principal and never runs for an unresolved one", async () => {
+    const run = vi.fn(async () => ({ state: 'running' }));
+    const phone = await app({ run }).request('/api/projects/station/reviews', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-test-principal': 'human:device:phone',
+      },
+      body: JSON.stringify(request),
+    });
+    expect(phone.status).toBe(202);
+    expect(run).toHaveBeenLastCalledWith(
+      request,
+      expect.objectContaining({
+        requestedBy: { actorId: 'human:device:phone' },
+        userId: 'human:device:phone',
+      }),
+    );
+    run.mockClear();
+    const unresolved = new Hono();
+    unresolved.route(
+      '/api/projects/:slug/reviews',
+      createReviewEvidenceRoutes({ run } as never, {
+        getUserId: () => {
+          throw new Error('principal unresolved');
+        },
+        getTenantExecutionContext: () => undefined,
+        reportError: vi.fn(),
+      }),
+    );
+    const refused = await unresolved.request('/api/projects/station/reviews', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    expect(refused.status).toBe(500);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('rejects a route/body project mismatch before execution', async () => {

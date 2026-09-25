@@ -32,6 +32,7 @@ describe('createStarterSessionOwner (#2493)', () => {
         sourceSessionId: 'attached',
         operationId: 'op-1',
         fullAccessGrant: grant,
+        ownerUserId: 'human:device:phone',
       }),
     ).resolves.toMatchObject({ state: 'continued' });
     expect(dispatchWithReceipt).toHaveBeenCalledWith(
@@ -40,21 +41,24 @@ describe('createStarterSessionOwner (#2493)', () => {
         sourceThreadId: 'attached',
         idempotencyKey: 'op-1',
       },
-      { fullAccessGrant: grant },
+      { userId: 'human:device:phone', fullAccessGrant: grant },
     );
   });
 
-  test('no grant dispatches with no context, so the child is workspace', async () => {
+  test('no grant carries only the caller, so the child is workspace and owned by it', async () => {
     const { dispatchWithReceipt, owner } = orchestration();
     await owner.continue({
       sourceSessionId: 'attached',
       operationId: 'op-2',
       fullAccessGrant: null,
+      ownerUserId: 'human:device:phone',
     });
-    // Exactly the call it always was: the command alone, no context argument.
+    // The caller authorizes the source and owns the child; without it the
+    // child would record no owner and be readable by no caller.
     expect(dispatchWithReceipt).toHaveBeenCalledTimes(1);
     expect(dispatchWithReceipt.mock.calls[0]).toEqual([
       expect.objectContaining({ type: 'adoptSession' }),
+      { userId: 'human:device:phone' },
     ]);
   });
 });

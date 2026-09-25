@@ -9,8 +9,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import {
   type AttachedProjectRoot,
   AttachedSessionFollowService,
@@ -22,6 +24,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
+import { SessionAuthorization } from '../session-authorization.js';
 
 /**
  * The process-local half of the answerability decoration
@@ -56,6 +59,7 @@ const metrics = vi.hoisted(() => ({
   attachedSessionScanDuration: { record: vi.fn() },
   attachedSessionEventsImported: { add: vi.fn() },
   attachedSessionProjectAttribution: { add: vi.fn() },
+  sessionOwnerCacheOps: { add: vi.fn() },
 }));
 
 vi.mock('../../../telemetry/metrics.js', () => metrics);
@@ -496,6 +500,75 @@ describe('AttachedSessionFollowService', () => {
         workingDirectory: realpathSync(nested),
       });
     });
+  });
+
+  // An attached transcript comes from this host's own engine homes: its
+  // session belongs to the local operator. With no recorded owner it would be
+  // readable by no caller, so it could never be opened or continued.
+  test("records the local operator as the attached session's owner and drops a cached owner before publishing", async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('event-1')],
+        cursor: 20,
+      }),
+    };
+    const order: string[] = [];
+    eventBus.subscribe(({ data }) => {
+      const published = data?.event as { method?: string } | undefined;
+      order.push(`emit:${published?.method}`);
+    });
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      invalidateSessionOwner: (threadId) =>
+        order.push(`invalidate:${threadId}`),
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    // The owner cache is dropped for each ownership-shaped event BEFORE a
+    // subscriber can re-derive ownership from it.
+    expect(order).toEqual([
+      `invalidate:${session.threadId}`,
+      'emit:session.started',
+      `invalidate:${session.threadId}`,
+      'emit:session.configured',
+      'emit:content.text-delta',
+    ]);
+
+    // Readable through the ordinary owner policy: the operator, and a
+    // member of the operator's personal account; never anyone else.
+    const authz = new SessionAuthorization({
+      eventStore: store,
+      personalConversationAccess: {
+        canRead: (requester, owner) =>
+          requester === 'human:device:phone' &&
+          owner === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerIds: () => undefined,
+      },
+    });
+    const as = (userId: string) =>
+      sessionReadAuthorityFromRequest(userId, undefined, undefined);
+    expect(
+      authz.canReadSession(session.threadId, as(LOCAL_OPERATOR_PRINCIPAL_ID)),
+    ).toBe(true);
+    expect(
+      authz.canReadSession(session.threadId, as('human:device:phone')),
+    ).toBe(true);
+    expect(authz.canReadSession(session.threadId, as('stranger'))).toBe(false);
   });
 
   test('matches the longest canonical project root and publishes each canonical event once', async () => {

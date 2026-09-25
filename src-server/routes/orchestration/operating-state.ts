@@ -169,7 +169,7 @@ export function createOperatingStateRoutes(
     }
     // Hosted project/task state remains unavailable. Let only the exact
     // session-resume authority and subject shape reach the established binder,
-    // which reconstructs fresh authority again at execution.
+    // which executes with this same request authority.
     if (hosted) {
       const threadId = sessionResumeSubjectId(intent);
       if (!threadId) return hostedNotFound(c);
@@ -188,7 +188,12 @@ export function createOperatingStateRoutes(
     const consent = body.consent === true ? true : undefined;
 
     try {
-      const bindings = createStationHostIntentBindings(deps.intentBindingDeps);
+      // The intent executes for THIS request's principal: a session it
+      // resumes is read, and a task it dispatches is owned, by that caller.
+      const bindings = createStationHostIntentBindings({
+        ...deps.intentBindingDeps,
+        getSessionReadAuthority: () => requestAuthority,
+      });
       const data = await resolveAndExecuteStationBoardIntent(
         intent,
         consent,

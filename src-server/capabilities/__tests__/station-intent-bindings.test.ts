@@ -188,6 +188,7 @@ describe('createStationHostIntentBindings', () => {
         dispatch: orchestrationDispatch,
         readSession: vi.fn(async () => null),
       },
+      getSessionReadAuthority: intentAuthority,
     });
 
     const task = await taskGraphService.createTask({
@@ -212,11 +213,39 @@ describe('createStationHostIntentBindings', () => {
     await resolution.execute(stationIntent('task dispatch', task.id));
 
     // #2436: a board intent carries no request that may grant full access.
+    // The board request's principal owns the session it dispatches.
     expect(taskDispatcher.dispatch).toHaveBeenCalledWith(task.id, {
       sourceSurface: 'console-board',
       fullAccessGrant: null,
+      ownerUserId: 'intent-test-user',
     });
     expect(orchestrationDispatch).not.toHaveBeenCalled();
+  });
+
+  test('a board "dispatch" intent with no request principal dispatches nothing', async () => {
+    const taskGraphService = createTempTaskGraphService();
+    const bindings = createStationHostIntentBindings({
+      taskGraphService,
+      taskDispatcher,
+      orchestrationService: {
+        dispatch: vi.fn(async () => undefined),
+        readSession: vi.fn(async () => null),
+      },
+    });
+    const task = await taskGraphService.createTask({
+      projectId: 'project-alpha',
+      title: 'Ownerless board dispatch',
+    });
+    const resolution = resolveIntentBinding(
+      stationIntent('task dispatch', task.id),
+      bindings,
+    );
+    if (!resolution.bound) throw new Error('unreachable');
+    taskDispatcher.dispatch.mockClear();
+    await expect(
+      resolution.execute(stationIntent('task dispatch', task.id)),
+    ).rejects.toThrow('Task dispatch requires a request principal');
+    expect(taskDispatcher.dispatch).not.toHaveBeenCalled();
   });
 
   test('a board "block"/"unblock" intent resolves to the REAL TaskGraphService.updateTaskStatus handler', async () => {

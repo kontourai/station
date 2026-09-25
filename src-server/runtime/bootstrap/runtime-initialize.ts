@@ -676,6 +676,8 @@ export async function initializeRuntime(
     adoptionLedger,
     eventBus,
     logger,
+    invalidateSessionOwner: (threadId) =>
+      orchestrationService.invalidateSessionOwner(threadId),
     listProjects: () => storageAdapter.listProjects(),
     resolveProjectRoots: () =>
       resolveAttachedProjectRoots(storageAdapter.listProjects(), (slug) =>

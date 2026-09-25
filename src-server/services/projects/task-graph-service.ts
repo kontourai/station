@@ -2812,7 +2812,10 @@ export class TaskGraphService {
                 cwd: input.runtimeConfig?.cwd,
                 modelId: reservation.modelId,
                 modelOptions: input.runtimeConfig?.modelOptions,
-                ...(taskSlug ? { metadata: { taskSlug } } : {}),
+                metadata: {
+                  userId: input.ownerUserId,
+                  ...(taskSlug ? { taskSlug } : {}),
+                },
               },
             },
             // #2493: the dispatching request's grant, or none (a monitor, the
@@ -2837,6 +2840,7 @@ export class TaskGraphService {
           session: this.seedSession(
             reservation.sessionId,
             reservation.provider,
+            input.ownerUserId,
             reservation.modelId,
             orchestrationService,
           ),
@@ -3763,6 +3767,7 @@ export class TaskGraphService {
   private seedSession(
     sessionId: string,
     provider: EngineId,
+    ownerUserId: string,
     model?: string,
     orchestrationService = this.orchestrationService,
   ): ProviderSession {
@@ -3772,6 +3777,7 @@ export class TaskGraphService {
         provider,
         model,
         status: 'ready',
+        ownerUserId,
       });
     }
     const now = new Date().toISOString();

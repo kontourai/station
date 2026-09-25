@@ -19,10 +19,13 @@ import {
   type PairingScopePreset,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { isFullAccessGrant } from '../../../security/coding-authority.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   createTaskDispatcher,
@@ -100,9 +103,12 @@ async function fixture() {
 
   // The engine start: records the modelOptions each session starts with.
   const started: Array<Record<string, unknown> | undefined> = [];
+  // And the principal each session is recorded as belonging to.
+  const owners: string[] = [];
   const startOrSeed = vi.fn<TaskDispatchRemoteSessions['startOrSeed']>(
     async (_reservation, intent) => {
       started.push(intent.runtimeConfig?.modelOptions);
+      owners.push(intent.ownerUserId);
       return {
         session: { threadId: 'session-1', provider: 'claude' } as never,
         outcome: 'started',
@@ -141,7 +147,7 @@ async function fixture() {
 
   // #2493: the continue-session owner records the grant it is handed.
   const continueSession = vi.fn(
-    async (_input: { fullAccessGrant: unknown }) => ({
+    async (_input: { fullAccessGrant: unknown; ownerUserId: string }) => ({
       state: 'continued' as const,
       session: { threadId: 'adopted-child', controlMode: 'station-owned' },
     }),
@@ -204,11 +210,37 @@ async function fixture() {
       allowedOrigins: [],
     },
   });
+  // Production's request principal: the same resolver the runtime routes
+  // compose, over the runtime auth boundary's verified credential facts.
+  const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
+    environmentSecurityService: security,
+  });
+  const principals = new WeakMap<Request, string>();
+  app.use('/api/tasks/*', async (c, next) => {
+    principals.set(c.req.raw, resolvePrincipal(c as never).id);
+    await next();
+  });
   app.route(
     '/api/tasks',
-    createTaskRoutes({} as never, { taskDispatcher: dispatcher } as never),
+    createTaskRoutes(
+      {} as never,
+      {
+        taskDispatcher: dispatcher,
+        readAuthorityForRequest: (request: Request) =>
+          sessionReadAuthorityFromRequest(
+            principals.get(request)!,
+            undefined,
+            undefined,
+          ),
+      } as never,
+    ),
   );
-  app.route('/api/starter-work', createStarterWorkRoutes(registry));
+  app.route(
+    '/api/starter-work',
+    createStarterWorkRoutes(registry, {
+      ownerUserIdForRequest: (c) => resolvePrincipal(c as never).id,
+    }),
+  );
 
   const post = async (credential: string, path: string, body: unknown) => {
     const res = await app.request(path, {
@@ -263,6 +295,7 @@ async function fixture() {
     dispatchTask,
     launchStarter,
     started,
+    owners,
     reserve,
     createTaskIdempotent,
   };
@@ -328,6 +361,22 @@ test.each([
   },
 );
 
+test('each route records the requesting principal as the dispatched session owner', async () => {
+  const f = await fixture();
+  const phone = f.pair('Phone');
+  expect((await f.dispatchTask(phone.credential, 'ask')).status).toBe(200);
+  expect((await f.launchStarter(phone.credential, 'ask')).status).toBe(201);
+  expect((await f.dispatchTask(f.operator.credential, 'ask')).status).toBe(200);
+  const devicePrincipal = f.owners[0]!;
+  // The device's own principal, never the operator's or an OS alias.
+  expect(devicePrincipal).toBe(`human:device:${phone.device.id}`);
+  expect(f.owners).toEqual([
+    devicePrincipal,
+    devicePrincipal,
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+  ]);
+});
+
 test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's full-access mode", async () => {
   const f = await fixture();
   const phone = f.pair('Phone');
@@ -357,6 +406,9 @@ test.each([
       sourceSessionId: 'attached-source',
     };
     let response: { status: number; body: any };
+    // Station's internal principal and the operator both act as the
+    // operator; a device acts as itself.
+    let owner = LOCAL_OPERATOR_PRINCIPAL_ID;
     if (caller === 'internal') {
       response = await f.postInternally('/api/starter-work/launch', body);
     } else {
@@ -365,6 +417,7 @@ test.each([
         const phone = f.pair('Phone');
         if (caller === 'granted') f.grant(phone.device.id);
         credential = phone.credential;
+        owner = `human:device:${phone.device.id}`;
       }
       response = await f.post(credential, '/api/starter-work/launch', body);
     }
@@ -373,5 +426,7 @@ test.each([
     expect(
       isFullAccessGrant(f.continueSession.mock.calls[0]![0].fullAccessGrant),
     ).toBe(granted);
+    // The adopted child belongs to the launching principal.
+    expect(f.continueSession.mock.calls[0]![0].ownerUserId).toBe(owner);
   },
 );

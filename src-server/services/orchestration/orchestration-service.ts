@@ -7687,6 +7687,16 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * Owner-cache invalidation for an ownership-shaped event published outside
+   * `projectAndPublishEvent` (the attached-session envelope).
+   */
+  invalidateSessionOwner(threadId: string): void {
+    if (this.sessionAuthz.invalidateSessionOwner(threadId)) {
+      sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
+    }
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -7694,9 +7704,28 @@ export class OrchestrationService {
     status?: ProviderSession['status'];
     controlMode?: ProviderSession['controlMode'];
     attachedSource?: ProviderSession['attachedSource'];
+    /**
+     * The principal the seeded session belongs to. A session with no
+     * recorded owner is readable by no caller, so a seeded row that a person
+     * should open records its owner in an ownership-shaped event, exactly as
+     * a started session does.
+     */
+    ownerUserId?: string;
   }): ProviderSession {
     this.initialize();
     const now = new Date().toISOString();
+    if (input.ownerUserId !== undefined) {
+      this.projectAndPublishEvent({
+        eventId: `session-seeded:${input.threadId}`,
+        provider: input.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: { userId: input.ownerUserId },
+      } as CanonicalRuntimeEvent);
+    }
     const session: ProviderSession = {
       provider: input.provider,
       threadId: input.threadId,
@@ -8941,20 +8970,11 @@ export class OrchestrationService {
     // in practice every adapter-sourced event (consumeAdapterEvents ->
     // projectAndPublishEvent) plus this service's other same-path internal
     // publishes. It is NOT the only place a `session.started`/
-    // `session.configured` event can reach the event bus: two other paths
-    // publish independently of this function and are NOT covered by this
-    // invalidation —
-    //   - AttachedSessionFollowService.appendAndPublish (used for the
-    //     read-only-attached envelope built by attachedSessionEnvelope())
-    // The attached-session path is safe TODAY only because it never sets
-    // `metadata.userId`
-    // on a `session.started`/`session.configured` event, so
-    // sessionOwnerUserId() never resolves (and therefore never caches) an
-    // owner from them in the first place — see the cross-reference comments
-    // at each site. This is a structural gap, not a proof: if either path
-    // is ever changed to stamp `metadata.userId`, it must also route
-    // through (or replicate) this invalidation, or a cached owner could go
-    // stale silently.
+    // `session.configured` event can reach the event bus:
+    // AttachedSessionFollowService.appendAndPublish publishes the
+    // read-only-attached envelope (which records the local operator as
+    // owner) independently of this function, and replicates this
+    // invalidation through `invalidateSessionOwner()` below.
     if (
       (projectedEvent.method === 'session.started' ||
         projectedEvent.method === 'session.configured') &&

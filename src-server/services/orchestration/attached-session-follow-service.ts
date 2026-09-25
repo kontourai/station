@@ -30,6 +30,7 @@ import {
   attachedSessionScanDuration,
 } from '../../telemetry/metrics.js';
 import { expandTilde } from '../../utils/paths.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
@@ -233,6 +234,14 @@ interface AttachedSessionFollowServiceOptions {
    * lost.
    */
   logger?: { warn: (message: string, meta?: Record<string, unknown>) => void };
+  /**
+   * The session-owner cache's invalidation. The envelope below records the
+   * local operator as owner, and it is published here rather than through
+   * `OrchestrationService.projectAndPublishEvent`, so this path must drop a
+   * cached owner itself whenever it writes or deletes an ownership-shaped
+   * event. Optional only so isolated tests can construct the service.
+   */
+  invalidateSessionOwner?: (threadId: string) => void;
 }
 
 /**
@@ -421,7 +430,7 @@ export class AttachedSessionFollowService {
         (session) => session.threadId === descriptor.threadId,
       );
       if (alias?.controlMode === 'read-only-attached') {
-        this.options.eventStore.deleteThread(descriptor.threadId);
+        this.deleteAttachedAlias(descriptor.threadId);
       }
       state.ownership = 'collision';
     }
@@ -541,7 +550,7 @@ export class AttachedSessionFollowService {
           (session) => session.threadId === descriptor.threadId,
         );
         if (alias?.controlMode === 'read-only-attached') {
-          this.options.eventStore.deleteThread(descriptor.threadId);
+          this.deleteAttachedAlias(descriptor.threadId);
         }
         cached.ownership = 'collision';
       }
@@ -561,7 +570,7 @@ export class AttachedSessionFollowService {
       isStationOwnedProviderCursor &&
       persisted?.controlMode === 'read-only-attached'
     ) {
-      this.options.eventStore.deleteThread(descriptor.threadId);
+      this.deleteAttachedAlias(descriptor.threadId);
     }
     // archive#1867 class: never materialize the full thread via listEvents on
     // the cold path — large Claude-import threads (10k–20k events) held the
@@ -694,12 +703,24 @@ export class AttachedSessionFollowService {
    * sanitizer exception here can never drop an imported event or crash the
    * poll loop.
    */
+  /** Deleting the alias removes its recorded owner, so the cached one goes too. */
+  private deleteAttachedAlias(threadId: string): void {
+    this.options.eventStore.deleteThread(threadId);
+    this.options.invalidateSessionOwner?.(threadId);
+  }
+
   private appendAndPublish(event: CanonicalRuntimeEvent): void {
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
     );
     const sequence = this.options.eventStore.appendEventIfAbsent(event);
     if (sequence === undefined) return;
+    if (
+      event.method === 'session.started' ||
+      event.method === 'session.configured'
+    ) {
+      this.options.invalidateSessionOwner?.(event.threadId);
+    }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
   }
 
@@ -1020,17 +1041,18 @@ export function resolveAttachedProjectRoot(
   };
 }
 
-// archive#1120 cross-reference: this envelope's `session.started`/
-// `session.configured` pair is published via `appendAndPublish()` below,
-// NOT via OrchestrationService.projectAndPublishEvent — it bypasses the
-// `sessionOwnerCache` invalidation (SessionAuthorization since epic archive#4024
-// slice 6) entirely. That's safe only
-// because neither event below ever sets `metadata.userId`, so
-// SessionAuthorization.sessionOwnerUserId() never resolves (and therefore
-// never caches) an owner from a read-only-attached thread. If this
-// envelope is ever changed to carry `metadata.userId`, the owner cache's
-// invalidation must be extended to cover this path too, or a cached owner
-// for an attached thread could go stale.
+// An attached transcript is read from this host's own engine homes, so its
+// session belongs to the local operator: both events record that principal as
+// `metadata.userId`. A session with no recorded owner is readable by no
+// caller, so without this owner an attached session could never be opened or
+// continued. Members of the operator's personal conversation account read it
+// through `personalConversationAccess`, exactly like any operator-owned chat.
+//
+// archive#1120 cross-reference: this envelope is published via
+// `appendAndPublish()`, NOT via OrchestrationService.projectAndPublishEvent,
+// so it does not pass that function's `sessionOwnerCache` invalidation.
+// `appendAndPublish()` therefore invalidates the cached owner itself (the
+// `invalidateSessionOwner` option), before the event reaches the bus.
 function attachedSessionEnvelope(
   session: AttachedSessionDescriptor,
   attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
@@ -1077,6 +1099,7 @@ function attachedSessionEnvelope(
         controlMode: 'read-only-attached',
         ...projectMetadata,
         attachedProvider: session.provider,
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       },
     },
     {
@@ -1094,6 +1117,7 @@ function attachedSessionEnvelope(
         controlMode: 'read-only-attached',
         ...projectMetadata,
         attachedProvider: session.provider,
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       },
     },
   ] as CanonicalRuntimeEvent[];

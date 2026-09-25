@@ -1526,6 +1526,75 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
+  // A dispatched Task's session belongs to the principal that dispatched it,
+  // on both the engine-start path and the default seeded (`task-dispatch`)
+  // path. This suite's service denies ownerless reads, so a session with no
+  // recorded owner would be invisible to the dispatcher itself.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'a Task session started by %s records its dispatcher as owner',
+    async (_label, provider) => {
+      const root = join(tmp, `owned-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'owned-project',
+        title: 'Owned dispatch',
+        agentId: 'codex',
+      });
+      const dispatcher = composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      });
+      const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'human:device:phone',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // An engine records the owner from its start metadata in the
+        // `session.started` it publishes (this suite's fake engine publishes
+        // nothing), so the start must carry it.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({ userId: 'human:device:phone' }),
+          }),
+        );
+        return;
+      }
+      expect(eventStore.findSessionOwnerUserId(sessionId)).toBe(
+        'human:device:phone',
+      );
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:device:phone'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('stranger'),
+        ),
+      ).toBe(false);
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {
@@ -1563,6 +1632,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
@@ -1762,6 +1832,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });

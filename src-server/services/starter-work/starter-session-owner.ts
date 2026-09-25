@@ -6,9 +6,10 @@ import type { StarterSessionOwner } from './starter-registry.js';
 /**
  * Starter Work's `continue-session` owner: reads an attached Session and
  * continues it by adopting it, through the same `adoptSession` command
- * `/commands` dispatches. #2493: the launching request's full-access grant
- * rides the dispatch context, so the adopted child is stamped `host` exactly
- * when a `/commands adoptSession` from the same caller would be.
+ * `/commands` dispatches. The launching request's principal authorizes the
+ * source and owns the adopted child, and (#2493) its full-access grant rides
+ * the dispatch context, so the child is stamped `host` exactly when a
+ * `/commands adoptSession` from the same caller would be.
  */
 export function createStarterSessionOwner(
   orchestration: Pick<
@@ -29,19 +30,23 @@ export function createStarterSessionOwner(
           }
         : null;
     },
-    continue: async ({ sourceSessionId, operationId, fullAccessGrant }) => {
+    continue: async ({
+      sourceSessionId,
+      operationId,
+      fullAccessGrant,
+      ownerUserId,
+    }) => {
       try {
         const command = {
           type: 'adoptSession' as const,
           sourceThreadId: sourceSessionId,
           idempotencyKey: operationId,
         };
-        // Without a grant this is exactly the call it always was.
-        const outcome = fullAccessGrant
-          ? await orchestration.dispatchWithReceipt(command, {
-              fullAccessGrant,
-            })
-          : await orchestration.dispatchWithReceipt(command);
+        // The caller's principal authorizes the source and owns the child.
+        const outcome = await orchestration.dispatchWithReceipt(command, {
+          userId: ownerUserId,
+          ...(fullAccessGrant ? { fullAccessGrant } : {}),
+        });
         const session = outcome.result as AdoptedSessionResult | undefined;
         if (!session?.threadId)
           return {

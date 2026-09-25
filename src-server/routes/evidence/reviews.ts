@@ -7,7 +7,12 @@ import { type Context, Hono } from 'hono';
 import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 
 interface ReviewEvidenceRouteDeps {
-  getUserId(): string;
+  /**
+   * The requesting principal. It is recorded as the reviewer session's owner
+   * and authorizes that session's turn; a request whose principal cannot be
+   * resolved throws and runs no review.
+   */
+  getUserId(context: Context): string;
   getTenantExecutionContext(): TenantExecutionContext | undefined;
   reportError(operation: string, error: unknown): void;
 }
@@ -118,8 +123,8 @@ export function createReviewEvidenceRoutes(
       return rejected(context);
     }
     if (request.target.projectSlug !== projectSlug) return rejected(context);
-    const userId = deps.getUserId();
     try {
+      const userId = deps.getUserId(context);
       const status = await reviews.run(request, {
         requestedBy: { actorId: userId },
         userId,

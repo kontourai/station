@@ -1927,10 +1927,18 @@ export function createTaskRoutes(
     try {
       const dispatcher = dispatcherForRequest(c.req.raw);
       if (!dispatcher) return hostedNotFound(c);
+      // The dispatched session belongs to the requesting principal. Without
+      // a resolved request authority there is no one to own it, and an
+      // ownerless session is readable by no caller.
+      const owner = options.readAuthorityForRequest?.(c.req.raw);
+      if (!owner) {
+        throw new Error('Task dispatch requires a resolved request principal');
+      }
       const outcome = await dispatcher.dispatch(param(c, 'taskId'), {
         ...getBody(c),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
         fullAccessGrant: fullAccessGrantForRequest(c),
+        ownerUserId: owner.userId,
       });
       if (outcome.kind === 'forbidden')
         return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);

@@ -14,6 +14,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
@@ -3864,6 +3865,7 @@ export class StationRuntime {
           provider: 'task-dispatch',
           sourceSurface: 'e2e-task-room-control',
           fullAccessGrant: null,
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
         });
         if (dispatched.kind !== 'dispatched')
           throw new Error(`Task dispatch was ${dispatched.kind}`);

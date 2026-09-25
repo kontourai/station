@@ -147,10 +147,18 @@ function taskDispatchExecute(deps: StationIntentBindingDeps) {
     if (hostedExecution(deps)) return;
     const taskId = validatedSubjectId(intent, TASK_SUBJECT);
     if (!taskId) return;
+    // The board request's principal owns the session it dispatches. With no
+    // request authority there is no owner, and an ownerless session is
+    // readable by no caller, so the dispatch is refused.
+    const authority = deps.getSessionReadAuthority?.();
+    if (!authority) {
+      throw new Error('Task dispatch requires a request principal');
+    }
     const input: TaskDispatchInput = { sourceSurface: 'console-board' };
     const outcome = await deps.taskDispatcher.dispatch(taskId, {
       ...input,
       fullAccessGrant: null,
+      ownerUserId: authority.userId,
     });
     if (outcome.kind !== 'dispatched') throw new Error(outcome.reason);
   };

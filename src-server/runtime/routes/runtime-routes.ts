@@ -323,6 +323,7 @@ import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
+import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
@@ -1163,20 +1164,22 @@ export function configureRuntimeRoutes(
   // alias principal — a caller locked out of the very session they just
   // created.
   //
-  // station#4075 stage 2 review round 1 (F4): the 5 remaining no-arg
-  // callers of this function are deliberately unconverted, in two classes
-  // — read-only surfaces that never stamp `metadata.userId` (MCP-UI
-  // evidence attach's `readSessionFlowRun` at :1242, the personal-mode
-  // spatial-board/starter-work resolvers at :2657/:2694, and the
-  // background approval-registry resolution above) keep today's OS-alias
-  // behavior with no divergence risk; the one write path left
-  // unconverted, `/api/webhooks`' `startTurn` (:1620, a webhook-triggered
-  // turn dispatch with no HTTP caller to resolve a principal from), is
-  // filed as station#4184.
+  // A caller with no request principal (MCP-UI evidence attach's
+  // `readSessionFlowRun`, the personal-mode spatial-board and starter-work
+  // resolvers, and the hosted-only approval-registry resolution above) acts
+  // for this Station's local operator on a personal Station. The cached OS
+  // alias used to fill this default; it owns no session, so every such read
+  // came back empty or reached only ownerless sessions, which no caller may
+  // read any more. A hosted Station keeps the alias: it names no hosted
+  // user, so a hosted default authority still reads nothing, rather than
+  // silently reading as an operator a hosted tenant never authenticated.
   const readAuthorityForExecution = (resolvedUserId?: string) => {
     const execution = currentTenantExecutionContext();
     return sessionReadAuthorityFromRequest(
-      resolvedUserId ?? getCachedUser().alias,
+      resolvedUserId ??
+        (hostedTenantRegistry === undefined
+          ? LOCAL_OPERATOR_PRINCIPAL_ID
+          : getCachedUser().alias),
       execution ? { tenantId: execution.tenantId } : undefined,
       hostedTenantRegistry,
     );
@@ -3272,11 +3275,10 @@ export function configureRuntimeRoutes(
     createInboundWebhookRoutes({
       homeDir: context.configLoader.getProjectHomeDir(),
       logger: context.logger,
-      startTurn: (input) =>
-        executeExecutionTargetMessage(
-          { ...input, readAuthority: readAuthorityForExecution() },
-          context.orchestrationService,
-        ),
+      startTurn: createWebhookTurnStarter({
+        readAuthorityFor: readAuthorityForExecution,
+        orchestrationService: context.orchestrationService,
+      }),
     }),
   );
   // Current-host composer staging is intentionally process-local: unfinished
@@ -4717,7 +4719,10 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/projects/:slug/reviews',
     createReviewEvidenceRoutes(reviewEvidence, {
-      getUserId: () => getCachedUser().alias,
+      getUserId: (c) =>
+        resolveOrchestrationRequestPrincipal(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+        ).id,
       getTenantExecutionContext: currentTenantExecutionContext,
       reportError: (operation, error) =>
         reviewObserver.diagnostic({ operation, error }),
@@ -5354,6 +5359,12 @@ export function configureRuntimeRoutes(
           prepare: (operationId) =>
             schedulerService.prepareStarterManualIntent(operationId),
         }),
+        {
+          ownerUserIdForRequest: (c) =>
+            resolveOrchestrationRequestPrincipal(
+              c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+            ).id,
+        },
       ),
     );
   }
