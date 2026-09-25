@@ -412,6 +412,16 @@ export class SessionAuthorization {
     // A personal Station's approved devices belong to one conversation
     // account. Device principals remain unchanged for action attribution.
     // Hosted authority returned above and never reaches this policy.
+    //
+    // Pre-principal rows owned by the released OS alias are the local
+    // operator's history, so the alias is judged as the operator here: any
+    // member of the personal conversation account reads them like the
+    // operator's other sessions (#2611). Members are the local operator
+    // principal itself, with or without a home-possession fact (so the
+    // operator credential presented from another machine reads them), and
+    // approved devices holding orchestration-read. The bridge below is for
+    // callers this policy does not admit, and is the whole rule only when no
+    // sharing policy is configured.
     if (
       this.deps.personalConversationAccess?.canRead(
         userId,
@@ -422,9 +432,9 @@ export class SessionAuthorization {
     )
       return true;
     // The released OS alias must never pass the ordinary equality path: any
-    // caller can guess a display alias. It is readable only through the
-    // narrowly provenance-bound migration bridge below. All other principal
-    // owners retain exact-id equality.
+    // caller can guess a display alias. Outside personal sharing (above) it
+    // is readable only through the narrowly provenance-bound migration bridge
+    // below. All other principal owners retain exact-id equality.
     if (ownerUserId === this.deps.legacyPersonalOwner) {
       return this.canReadLegacyPersonalOwner(ownerUserId, authority);
     }
@@ -432,11 +442,19 @@ export class SessionAuthorization {
   }
 
   /**
-   * The released pre-principal rows contain the OS alias as owner.  Only a
-   * request that has both the contract-defined local-operator identity and a
-   * home-possession fact may read that exact alias.  In particular this never
-   * admits paired devices, WhoIs identities, hosted callers, operator-secret
-   * callers without home possession, or an arbitrary same-name principal.
+   * The released pre-principal rows contain the OS alias as owner. This bridge
+   * admits a request that has both the contract-defined local-operator
+   * identity and a home-possession fact. By itself it never admits paired
+   * devices, WhoIs identities, hosted callers, operator-secret callers without
+   * home possession, or an arbitrary same-name principal.
+   *
+   * It is not the only way to those rows: personal conversation sharing, which
+   * runs first in `canReadWithOwner`, judges the alias as the local operator,
+   * so every member of the operator's conversation account reads them too
+   * (#2611): the operator principal without home possession (e.g. the
+   * operator credential from another machine) and approved devices with
+   * orchestration-read. The production runtime always configures sharing;
+   * this bridge is the whole rule only where it is not configured.
    */
   private canReadLegacyPersonalOwner(
     ownerUserId: string,
@@ -515,6 +533,9 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
+    // Same sharing judgement as `canReadWithOwner`, alias read as the local
+    // operator (#2611). Unlike that path this one has no provenance bridge and
+    // accepts exact owner equality, including for the legacy alias.
     return (
       ownerUserId === userId ||
       this.deps.personalConversationAccess?.canRead(

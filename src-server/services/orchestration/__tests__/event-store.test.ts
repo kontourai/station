@@ -413,6 +413,118 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('seeded replay cursors remain monotonic across physical Draft discard', () => {
+    // The connected client has seen every append. The reconnecting client
+    // must see every surviving event whose append happened after its cursor.
+    // Tail deletes are deliberate: they used to let MAX(global_sequence)+1
+    // recycle an id that both clients had already admitted.
+    for (let seed = 0; seed < 200; seed++) {
+      let state = seed + 1;
+      const random = () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 0x100000000;
+      };
+      const prefix = `cursor-seed-${seed}`;
+      let liveCursor = store.headGlobalSequence();
+      for (let step = 0; step < 8; step++) {
+        const discarded = `${prefix}-draft-${step}`;
+        store.appendEvent({
+          eventId: `${discarded}-event`,
+          provider: 'claude',
+          threadId: discarded,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          method: 'content.text-delta',
+          itemId: 'text',
+          delta: 'draft',
+        });
+        liveCursor = store.headGlobalSequence();
+        store.deleteThread(discarded);
+        const surviving = `${prefix}-surviving-${step}`;
+        store.appendEvent({
+          eventId: surviving,
+          provider: 'claude',
+          threadId: surviving,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          method: 'content.text-delta',
+          itemId: 'text',
+          delta: String(random()),
+        });
+        expect(
+          store
+            .listEventsAfterGlobalSequence(liveCursor, { limit: 2 })
+            .map((event) => event.payload.eventId),
+          `seed=${seed} step=${step} cursor=${liveCursor}`,
+        ).toContain(surviving);
+      }
+    }
+  });
+
+  test('the stream high-water mark survives deleting the last event and reopening the store', () => {
+    const path = join(dir, 'orchestration.sqlite');
+    const event = (eventId: string) => ({
+      eventId,
+      provider: 'claude' as const,
+      threadId: eventId,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'content.text-delta' as const,
+      itemId: 'text',
+      delta: eventId,
+    });
+    store.appendEvent(event('first'));
+    const cursor = store.headGlobalSequence();
+    store.deleteThread('first');
+    expect(store.headGlobalSequence()).toBe(cursor);
+    store.close();
+    store = new EventStore(path);
+    expect(store.headGlobalSequence()).toBe(cursor);
+    store.appendEventIfAbsent(event('second'));
+    expect(
+      store.listEventsAfterGlobalSequence(cursor, { limit: 2 }),
+    ).toMatchObject([{ payload: { eventId: 'second' } }]);
+  });
+
+  test('a store epoch survives restart and differs for a new database', () => {
+    const path = join(dir, 'orchestration.sqlite');
+    const epoch = store.streamEpoch();
+    store.close();
+    store = new EventStore(path);
+    expect(store.streamEpoch()).toBe(epoch);
+    const other = new EventStore(join(dir, 'other.sqlite'));
+    try {
+      expect(other.streamEpoch()).not.toBe(epoch);
+    } finally {
+      other.close();
+    }
+  });
+
+  test('batches the current open request ids for snapshot session rows', () => {
+    const request = (
+      eventId: string,
+      threadId: string,
+      method: 'request.opened' | 'request.resolved',
+    ) =>
+      ({
+        eventId,
+        provider: 'claude' as const,
+        threadId,
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method,
+        requestId: 'request-1',
+        ...(method === 'request.opened'
+          ? { requestType: 'approval', title: 'Allow Read' }
+          : { status: 'approved' }),
+      }) as CanonicalRuntimeEvent;
+    store.appendEvent(request('opened-a', 'thread-a', 'request.opened'));
+    store.appendEvent(request('opened-b', 'thread-b', 'request.opened'));
+    store.appendEvent(request('resolved-b', 'thread-b', 'request.resolved'));
+    expect(store.listOpenRequestIdsByThreads(['thread-a', 'thread-b'])).toEqual(
+      new Map([
+        ['thread-a', ['request-1']],
+        ['thread-b', []],
+      ]),
+    );
+  });
+
   test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
     const threadId = 'noisy-cold-chat';
     const turnId = 'first-turn';

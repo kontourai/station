@@ -15,7 +15,7 @@ import { openHeaderSettings } from './helpers/orchestration';
  * subscribe request carries the caller's device credential; unsubscribing
  * stops any further subscribe attempt) without asserting on `web-push`'s
  * actual outbound network delivery, which is unit-tested server-side in
- * `src-server/services/notifications/__tests__/web-push-delivery.test.ts`.
+ * `src-server/services/notifications/__tests__/web-push-channel.test.ts`.
  *
  * A device credential is simulated with a `station-device` session cookie
  * (the loopback delivery cookie name from `runtime-http.ts`, mirroring the

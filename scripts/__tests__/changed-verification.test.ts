@@ -589,6 +589,48 @@ describe('changed verification selection', () => {
       expect(selection.lanes).toEqual([]);
     },
   );
+  test.each([
+    [
+      'src-server/services/orchestration/event-store.ts',
+      [
+        'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
+        'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-turn-attachments.test.ts',
+        'src-server/services/orchestration/__tests__/event-store.test.ts',
+        'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+        'src-server/services/orchestration/__tests__/session-event-reads.test.ts',
+        'src-server/services/orchestration/__tests__/session-work-item-event-store.test.ts',
+        'src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts',
+        'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+        'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
+      ],
+    ],
+    [
+      'src-server/services/orchestration/transcript-search-queries.ts',
+      [
+        'src-server/services/orchestration/__tests__/event-store.test.ts',
+        'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+        'src-server/services/orchestration/__tests__/session-transcript-reads-usage.test.ts',
+      ],
+    ],
+  ])(
+    'the orchestration store module (%s) selects exactly its own suites, not its import graph (#2610)',
+    (path, suites) => {
+      // ~160 related test files overran the fast lane with zero failures;
+      // consumers run in the merge-queue full regression. Pinned in full so
+      // trimming a suite is a visible change, and no lane: a lane would
+      // defer the whole diff.
+      const selection = selectChangedVerification([path]);
+      expect(selection.relatedPaths).not.toContain(path);
+      expect(selection.tests.map((entry) => entry.path).sort()).toEqual(
+        [...suites].sort(),
+      );
+      expect(selection.lanes).toEqual([]);
+    },
+  );
   test('the SDK transport edge names exactly its own-behaviour suites', () => {
     // Pinned in full: trimming a suite from the list is a coverage loss that
     // a sampled arrayContaining would not notice.
@@ -1122,12 +1164,12 @@ describe('changed verification selection', () => {
     //
     // What this does NOT prove is that the reference is an execution or a
     // source read rather than a command-text pin. A call-argument scan cannot
-    // decide it: nine of these eleven tests build the path through a const or
+    // decide it: most of these eleven tests build the path through a const or
     // a join() before spawning it, and one splits it across join arguments,
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);

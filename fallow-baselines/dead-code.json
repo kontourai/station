@@ -116,7 +116,6 @@
     "scripts/check-prepush-sdk-barrel.mjs:isSdkBarrelInput",
     "scripts/check-prepush-sdk-barrel.mjs:sdkBarrelInputs",
     "scripts/check-prepush-sdk-barrel.mjs:BARREL_FAILURE_NOTE",
-    "scripts/check-prepush-ui-bundle.mjs:UI_BUILD_INPUT_FILES",
     "scripts/interactive-workspace-playwright-adapter.mjs:referencePeerAuthContext",
     "scripts/interactive-workspace-playwright-adapter.mjs:unavailable",
     "scripts/interactive-workspace-playwright-adapter.mjs:bridgeEvidence",

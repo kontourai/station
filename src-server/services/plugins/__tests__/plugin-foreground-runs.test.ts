@@ -256,6 +256,15 @@ describe('plugin foreground run authority', () => {
     expect(JSON.stringify(duplicate)).not.toContain('inputDigest');
   });
 
+  test('a Tailscale Serve principal account can start a run (#2578)', async () => {
+    const { runs } = createHarness();
+    const started = await runs.start(
+      { ...owner, accountId: 'human:tailscale-serve:someone@example.test' },
+      request,
+    );
+    expect(started.kind).toBe('admitted');
+  });
+
   test('qualifies run identity by account and machine', async () => {
     const { runs } = createHarness();
     const accountRun = await runs.start(owner, request);

@@ -61,6 +61,11 @@ const { createBuiltinVendedToolDef } = await import(
   '../../tools/vended-tool-compat.js'
 );
 const { resolveMCPToolUIRef } = await import('../mcp-ui-resolver.js');
+const { isIntrinsicStationEngineGrant } = await import(
+  '../../tools/tool-approval.js'
+);
+type MCPToolNameMappingEntry =
+  import('../../tools/mcp-tool-names.js').MCPToolNameMappingEntry;
 const { LOADER_FAILURE_CLASS_LIMIT, LOADER_WITHHELD_STATUS_REASON } =
   await import('../tool-load-failure.js');
 
@@ -520,6 +525,74 @@ describe('Station-owned MCP manager', () => {
         ],
       ]),
     );
+  });
+
+  test('#2584: the loader stamps builtinStationControl from isBuiltinStationControl, and only that stamp grants notify_user', async () => {
+    const catalog = (serverPath: string) => ({
+      client: { callTool: vi.fn() },
+      serverId: 'station-control',
+      tools: [
+        {
+          name: 'station-control_notify_user',
+          originalName: 'notify_user',
+          serverId: 'station-control',
+          description: 'Notify the user.',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      ],
+      negotiation: {
+        era: 'modern',
+        protocolVersion: '2026-07-28',
+        serverInfo: { name: serverPath, version: '1.0.0' },
+        serverCapabilities: { tools: {}, extensions: {} },
+        extensionIds: [],
+        fellBackToLegacy: false,
+      },
+      disconnect: vi.fn(),
+    });
+    const load = async (args: string[]) => {
+      connectMCP.mockResolvedValueOnce(catalog(args[0]!));
+      const toolNameMapping = new Map<string, MCPToolNameMappingEntry>();
+      await loadAgentTools(
+        'agent-one',
+        { tools: { mcpServers: ['station-control'], available: ['*'] } } as any,
+        {
+          loadIntegration: vi.fn().mockResolvedValue({
+            id: 'station-control',
+            kind: 'mcp',
+            transport: 'stdio',
+            command: 'node',
+            args,
+          }),
+        } as any,
+        new Map(),
+        new Map(),
+        new Map(),
+        toolNameMapping,
+        new Map(),
+        { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
+      );
+      return toolNameMapping;
+    };
+
+    const genuine = await load([builtinStationControlServerPath()]);
+    expect(genuine.get('stationControl_notifyUser')).toMatchObject({
+      builtinStationControl: true,
+    });
+    expect(
+      isIntrinsicStationEngineGrant('stationControl_notifyUser', genuine),
+    ).toBe(true);
+
+    await releaseAllNativeStationControlConnections();
+    // An authored integration reusing the id with another command target.
+    const impostor = await load(['/tmp/impostor-station-control.js']);
+    expect(impostor.get('stationControl_notifyUser')).toBeDefined();
+    expect(impostor.get('stationControl_notifyUser')).not.toHaveProperty(
+      'builtinStationControl',
+    );
+    expect(
+      isIntrinsicStationEngineGrant('stationControl_notifyUser', impostor),
+    ).toBe(false);
   });
 
   test('single-flights concurrent first calls for the same tenant', async () => {

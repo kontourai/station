@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ChildWorkProjection } from '../child-work-projection.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
 import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
@@ -50,6 +51,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     const created = new ConversationTurnActivityProjection({
       eventStore: store,
       readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
       logger,
     });
     extraProjections.push(created);
@@ -307,6 +309,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     const fallback = new ConversationTurnActivityProjection({
       eventStore: withoutStartRead,
       readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
       logger,
     });
     extraProjections.push(fallback);
@@ -393,6 +396,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     }
     // Warm before the child starts, so the lineage change must invalidate.
     expect(projection.readConversation(ROOT).openTurn).toBeUndefined();
+    expect(projection.readForThread(ROOT)?.currentThreadId).toBe(CHILD_2);
     const started = append(CHILD_2, {
       method: 'turn.started',
       turnId: 'child-turn',
@@ -497,6 +501,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     store.deleteThread(ROOT);
     expect(projection.readConversation(ROOT)).toEqual({
       conversationId: ROOT,
+      currentThreadId: ROOT,
       asOfSequence: 0,
     });
   });
@@ -524,11 +529,170 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     expect(live?.asOfSequence).toBe(store.headGlobalSequence());
   });
 
+  test('running children across lineage survive snapshot reads, clear on settle, omitted snapshot and exit, and bypass frame coalescing', () => {
+    const childWork = new ChildWorkProjection();
+    const work = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      readRunningChildWork: (threadId) => {
+        const view = childWork.read(threadId, 'claude');
+        return view?.observability === 'reported' ? view.running : [];
+      },
+      logger,
+      now: () => 1_000,
+    });
+    extraProjections.push(work);
+    const child = CHILD_1;
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: child,
+      createdAt: at(),
+    });
+    session(child);
+    work.readConversation(ROOT);
+    const publish = (threadId: string, fields: Parameters<typeof event>[1]) => {
+      const built = event(threadId, fields);
+      childWork.observe(built);
+      store.appendEvent(built);
+      return built;
+    };
+    const item = {
+      producer: 'engine-subagent',
+      reporterThreadId: ROOT,
+      childId: 'task-1',
+      status: 'running',
+      startedAt: at(),
+    } as const;
+    const upsert = publish(ROOT, {
+      method: 'child-work.updated',
+      delta: { kind: 'upsert', item },
+    });
+    expect(work.readForThread(child)?.runningChildWork).toMatchObject({
+      count: 1,
+      producers: ['engine-subagent'],
+      oldestStartedAt: item.startedAt,
+    });
+    expect(work.streamBinding(upsert)?.activity?.runningChildWork?.count).toBe(
+      1,
+    );
+    const noMatrix = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      readRunningChildWork: (threadId) => {
+        const view = childWork.read(threadId, 'station');
+        return view?.observability === 'reported' ? view.running : [];
+      },
+      logger,
+    });
+    extraProjections.push(noMatrix);
+    expect(noMatrix.readConversation(ROOT).runningChildWork).toBeUndefined();
+    const primed = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      readRunningChildWork: (threadId) => {
+        const view = childWork.read(threadId, 'claude');
+        return view?.observability === 'reported' ? view.running : [];
+      },
+      logger,
+    });
+    extraProjections.push(primed);
+    primed.primeThreads(
+      store.listSessionProjectionEventsForThreads([ROOT, child]),
+    );
+    expect(primed.readConversation(ROOT).runningChildWork?.count).toBe(1);
+    const settle = publish(ROOT, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        producer: 'engine-subagent',
+        reporterThreadId: ROOT,
+        childId: 'task-1',
+        status: 'completed',
+      },
+    });
+    expect(
+      work.streamBinding(settle)?.activity?.runningChildWork,
+    ).toBeUndefined();
+    const snapshot = publish(ROOT, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        reporterThreadId: ROOT,
+        producer: 'engine-subagent',
+        running: [{ ...item, childId: 'task-2' }],
+      },
+    });
+    expect(
+      work.streamBinding(snapshot)?.activity?.runningChildWork?.count,
+    ).toBe(1);
+    publish(ROOT, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        reporterThreadId: ROOT,
+        producer: 'engine-subagent',
+        running: [],
+      },
+    });
+    expect(work.readConversation(ROOT).runningChildWork).toBeUndefined();
+    const legacy = publish(ROOT, {
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: { active: [{ taskId: 'legacy-1' }] },
+    });
+    expect(work.streamBinding(legacy)).toBeDefined();
+    publish(ROOT, {
+      method: 'child-work.updated',
+      delta: { kind: 'upsert', item: { ...item, childId: 'task-3' } },
+    });
+    publish(ROOT, { method: 'session.exited', sessionId: ROOT });
+    expect(work.readConversation(ROOT).runningChildWork).toBeUndefined();
+    const none = childWork.read(child, 'station');
+    expect(none?.observability).toBe('not-reported');
+  });
+
+  test('a pending Claude follow-up carries activity immediately and expires after five seconds', () => {
+    vi.useFakeTimers();
+    try {
+      const publishProjectionChange = vi.fn();
+      const pending = new ConversationTurnActivityProjection({
+        eventStore: store,
+        readTurnProgress: () => undefined,
+        readRunningChildWork: () => [],
+        publishProjectionChange,
+        logger,
+        now: () => Date.now(),
+      });
+      extraProjections.push(pending);
+      pending.readConversation(ROOT);
+      const fact = append(ROOT, {
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { pending: true },
+      });
+      expect(
+        pending.streamBinding(fact)?.activity?.runningChildWork,
+      ).toMatchObject({
+        count: 0,
+        followUpPending: true,
+      });
+      vi.advanceTimersByTime(5_000);
+      expect(pending.readConversation(ROOT).runningChildWork).toBeUndefined();
+      expect(publishProjectionChange).toHaveBeenCalledWith(ROOT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('stream frames: activity frames always carry it; coalesced frames at most once a second per child, the same answer for every subscriber', () => {
     let now = 1_000_000;
     const timed = new ConversationTurnActivityProjection({
       eventStore: store,
       readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
       logger,
       now: () => now,
     });
@@ -615,6 +779,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       eventStore: store,
       readTurnProgress: () =>
         ({ turnId: progressTurn, progressSilence: silence }) as never,
+      readRunningChildWork: () => [],
       logger,
     });
     extraProjections.push(withProgress);
@@ -633,6 +798,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       readTurnProgress: () => undefined,
       logger,
       now: () => 5_000_000,
+      readRunningChildWork: () => [],
     });
     extraProjections.push(timed);
     timed.readForThread(ROOT);

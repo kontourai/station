@@ -1,7 +1,14 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { serverTurnLive } from '../../utils/conversation-activity';
@@ -11,6 +18,11 @@ import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
+import {
+  readSequencedLiveEvents,
+  readSequencedLiveTruncation,
+  subscribeSequencedLiveEvents,
+} from './sequencedLiveEvents';
 import { parseTurnStartedAt } from './turnHandlers';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
@@ -109,6 +121,35 @@ function openTurnStartFromWindow(
   return parseTurnStartedAt(open.createdAt);
 }
 
+/**
+ * station#2530 review 4: whether a local echo/optimistic user row
+ * (`chat.messages` — `handleTurnStartedEvent` writes one "event-input" row
+ * per turn, forever; nothing ever prunes it) that could NOT be matched
+ * against the bounded server window still deserves to render, once its own
+ * turn's row has aged out of that window entirely.
+ *
+ * Unconditionally keeping every unmatched row resurrected a turn's prompt as
+ * a phantom duplicate on a long-lived connection that never disconnected —
+ * exactly where a freshly reconnected client (whose local echo never existed
+ * beyond what the window told it) would correctly show nothing. Only a row
+ * that could still legitimately be catching up survives unmatched: the
+ * current pending send, one with no turnId at all (the documented
+ * reconnect-gap case), or one whose turn the window itself still shows open.
+ */
+export function isUnmatchedPendingRowStillPending(
+  message: ChatMessage,
+  currentPending: ChatMessage | undefined,
+  windowOpenTurnId: string | undefined,
+  sessionOpenTurnId: string | undefined,
+): boolean {
+  return (
+    message === currentPending ||
+    !message.turnId ||
+    message.turnId === windowOpenTurnId ||
+    message.turnId === sessionOpenTurnId
+  );
+}
+
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
   const seenIds = new Set<string>();
   return groups
@@ -170,6 +211,84 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           }
         : serverWindow,
     [replayHistory, serverWindow, session.id],
+  );
+  const subscribeLive = useCallback(
+    (listener: () => void) => subscribeSequencedLiveEvents(apiBase, listener),
+    [apiBase],
+  );
+  const readLive = useCallback(
+    () => readSequencedLiveEvents(apiBase),
+    [apiBase],
+  );
+  const liveEvents = useSyncExternalStore(subscribeLive, readLive, readLive);
+  const windowWatermark = replay
+    ? Number.MAX_SAFE_INTEGER
+    : serverWindow.watermark;
+  const liveGap =
+    !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+  const gapReloadKey = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      !liveGap ||
+      !serverWindow.settled ||
+      serverWindow.loading ||
+      serverWindow.error
+    )
+      return;
+    const key = `${apiBase}\0${session.id}\0${windowWatermark}`;
+    if (gapReloadKey.current === key) return;
+    gapReloadKey.current = key;
+    void serverWindow.reload();
+  }, [
+    apiBase,
+    session.id,
+    windowWatermark,
+    liveGap,
+    serverWindow.settled,
+    serverWindow.loading,
+    serverWindow.error,
+    serverWindow.reload,
+  ]);
+  const stitchedEvents = useMemo(() => {
+    if (replay) return window.events;
+    const watermark =
+      windowWatermark ??
+      Math.max(0, ...window.events.map((item) => item.sequence));
+    const threadIds = new Set([
+      session.id,
+      session.currentSessionId,
+      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+    ]);
+    const events = [...window.events];
+    const persistedIds = new Set(
+      window.events.map((item) => item.event.eventId).filter(Boolean),
+    );
+    for (const item of liveEvents) {
+      if (item.sequence <= watermark || !threadIds.has(item.event.threadId))
+        continue;
+      if (persistedIds.has(item.event.eventId)) continue;
+      events.push(item);
+    }
+    return events.sort((left, right) => left.sequence - right.sequence);
+  }, [
+    replay,
+    window.events,
+    windowWatermark,
+    window.sessionLineage,
+    liveEvents,
+    session.id,
+    session.currentSessionId,
+  ]);
+  const projectedOpenThread =
+    session.conversationActivity?.openTurn?.threadId ??
+    session.currentSessionId ??
+    session.id;
+  const openTurnProjected = Boolean(
+    enabled &&
+      !replay &&
+      (session.conversationActivity?.openTurn ||
+        session.orchestrationTurnOpen) &&
+      openTurnInWindow(stitchedEvents, projectedOpenThread),
   );
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
@@ -333,7 +452,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
     const projected = projectRuntimeEventsToMessages(
-      window.events
+      stitchedEvents
         .map((item) => item.event)
         .filter((event): event is CanonicalRuntimeEvent =>
           Boolean(event.eventId),
@@ -356,6 +475,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         (message) =>
           !(
             session.orchestrationTurnOpen &&
+            !openTurnProjected &&
             !session.openTurnShellSuperseded &&
             message.role === 'assistant' &&
             message.metadata?.turnId === session.openTurnId
@@ -466,7 +586,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // that row IS its canonical copy. (`openTurnId` is not the key: across a
     // gap it still names the last turn this connection saw start.)
     const windowOpenTurnId = active
-      ? openTurnInWindow(window.events, executionSessionId)?.turnId
+      ? openTurnInWindow(stitchedEvents, executionSessionId)?.turnId
       : undefined;
     const unclaimedUser = (candidate: ChatMessage, index: number) =>
       !claimedProjectedUsers.has(index) && candidate.role === 'user';
@@ -516,7 +636,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             candidate.content === message.content,
         );
       }
-      if (match < 0) return true;
+      if (match < 0) {
+        return isUnmatchedPendingRowStillPending(
+          message,
+          currentPending,
+          windowOpenTurnId,
+          session.openTurnId,
+        );
+      }
       claimedProjectedUsers.add(match);
       // The local row owns the prompt's stable identity until the turn has
       // settled. If the bounded newest page already contains turn.started,
@@ -680,12 +807,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.openTurnShellSuperseded,
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
+    openTurnProjected,
     session.status,
     session.conversationActivity,
     session.sendAwaitingTurnStart,
     session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
+    stitchedEvents,
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,
@@ -693,11 +822,17 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
 
   return {
     ...window,
+    events: stitchedEvents,
     enabled,
-    messages: enabled
-      ? messages
-      : EMPTY_MESSAGES === session.messages
+    catchingUp: !replay && (serverWindow.catchingUp || liveGap),
+    openTurnProjected,
+    messages:
+      enabled && !replay && (serverWindow.catchingUp || liveGap)
         ? EMPTY_MESSAGES
-        : messages,
+        : enabled
+          ? messages
+          : EMPTY_MESSAGES === session.messages
+            ? EMPTY_MESSAGES
+            : messages,
   };
 }
