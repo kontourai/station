@@ -20,15 +20,24 @@
 //! handed-over cursor or its own cursor exists, it reads without applying for
 //! up to [`ADOPTION_GRACE_MS`], then starts from the cursor it saw on its
 //! FIRST read — so nothing that arrives after the first read is lost, and a
-//! backlog an earlier consumer already alerted is not replayed. An offer that
-//! arrives after the grace is refused: entries queued between the webview's
-//! cursor and this consumer's first read (while the app was closed for the
-//! upgrade) are then not alerted.
+//! backlog an earlier consumer already alerted is not replayed. An offer is
+//! refused once this consumer has chosen its own start — it has a committed
+//! cursor, or a read that chose one is still being committed. Entries queued
+//! between the webview's cursor and this consumer's first read (while the
+//! app was closed for the upgrade) are then not alerted.
 //!
-//! **Delivery is at-least-once.** A read is decided under the consumer lock,
-//! the alerts are posted with the lock released, and the cursor is committed
-//! afterwards. A crash between posting and that commit posts those entries
-//! again on the next run; the in-memory dedupe does not survive a restart.
+//! **Retry and at-least-once.** A read is decided under the consumer lock,
+//! its OS calls are made with the lock released, in order, and the cursor is
+//! then committed up to the entry BEFORE the first post the OS refused or the
+//! first call that did not answer (timed out, or not made because earlier
+//! calls are still stuck — [`OsCallGate`]). That entry and everything after it
+//! are read and tried again next poll. The same alert refused on
+//! [`MAX_REFUSALS`] polls in a row is skipped (logged once), so one entry
+//! cannot hold the feed; a call that does not answer is never counted
+//! towards that and never skipped. A crash between posting and the commit
+//! posts those entries again on the next run (the in-memory dedupe does not
+//! survive a restart), and a show that times out but appears later is shown
+//! again by the retry.
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -73,6 +82,8 @@ pub(crate) const ADOPTION_GRACE_MS: u64 = 30_000;
 const POSTED_MAX: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_STORED_ORIGINS: usize = 16;
+/// Polls in a row the OS may refuse the same alert before it is skipped.
+pub(crate) const MAX_REFUSALS: u32 = 3;
 const MAX_LINK_LEN: usize = 2048;
 pub(crate) const OPEN_EVENT: &str = "station://notification-open";
 const CURSOR_FILE: &str = "notification-delivery-cursors.json";
@@ -139,12 +150,75 @@ pub(crate) struct Alert {
     pub link: Option<String>,
 }
 
+/// What one OS call did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OsOutcome {
+    /// Shown, or closed.
+    Done,
+    /// The OS refused the post, or there was nothing held to close.
+    NotDone,
+    /// Not known to have happened: the call timed out, or it was not made
+    /// because earlier calls are still stuck (see [`OsCallGate`]).
+    Deferred,
+}
+
 pub(crate) trait AlertSink {
-    /// Show one alert. Returns whether the OS accepted it.
-    fn post(&mut self, alert: &Alert) -> bool;
+    /// Show one alert.
+    fn post(&mut self, alert: &Alert) -> OsOutcome;
     /// Take down the alert this process posted for `notification_id`.
-    /// Returns whether one was closed.
-    fn close(&mut self, notification_id: &str) -> bool;
+    fn close(&mut self, notification_id: &str) -> OsOutcome;
+}
+
+/// Runs OS notification calls on helper threads, each bounded by a timeout,
+/// with a breaker: while `cap` earlier calls are still running (parked on a
+/// notification service that does not answer — zbus has no default method
+/// timeout), no new call is made at all. A stuck service therefore costs at
+/// most `cap` parked threads, never one per alert.
+pub(crate) struct OsCallGate {
+    in_flight: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    cap: usize,
+    timeout: std::time::Duration,
+}
+
+impl OsCallGate {
+    pub(crate) fn new(cap: usize, timeout: std::time::Duration) -> Self {
+        Self {
+            in_flight: Default::default(),
+            cap,
+            timeout,
+        }
+    }
+
+    /// `None` when the call timed out or was not made (breaker open).
+    pub(crate) fn run<T: Send + 'static>(
+        &self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Option<T> {
+        use std::sync::atomic::Ordering;
+        if self
+            .in_flight
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+                (count < self.cap).then_some(count + 1)
+            })
+            .is_err()
+        {
+            return None;
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let in_flight = std::sync::Arc::clone(&self.in_flight);
+        let spawned = std::thread::Builder::new()
+            .name("station-notification-os-call".into())
+            .spawn(move || {
+                let answer = work();
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+                let _ = sender.send(answer);
+            });
+        if spawned.is_err() {
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        receiver.recv_timeout(self.timeout).ok()
+    }
 }
 
 pub(crate) trait CursorStore {
@@ -203,11 +277,11 @@ pub(crate) struct Applied {
 }
 
 /// What one read decided, made under the consumer lock and carried out
-/// (OS calls) after it is released.
+/// (OS calls) after it is released. Each carries its entry's `seq`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Action {
-    Post { alert: Alert, key: String },
-    Close(String),
+    Post { seq: u64, alert: Alert, key: String },
+    Close { seq: u64, notification_id: String },
 }
 
 #[derive(Debug, Default)]
@@ -223,27 +297,55 @@ impl Plan {
     }
 }
 
-/// Carry out a plan's OS calls. Returns the dedupe keys of alerts the OS
-/// accepted (a refused post is not remembered or counted) and the counts.
-pub(crate) fn execute(actions: Vec<Action>, sink: &mut dyn AlertSink) -> (Vec<String>, Applied) {
-    let mut accepted = Vec::new();
-    let mut applied = Applied::default();
+/// What carrying out a plan did.
+#[derive(Debug, Default)]
+pub(crate) struct Executed {
+    /// Dedupe keys of alerts the OS accepted.
+    accepted: Vec<String>,
+    /// The entry the run stopped at (not handled); nothing after it ran.
+    stopped_at: Option<u64>,
+    /// The key of a post the OS refused, when that is why it stopped.
+    refused: Option<String>,
+    pub applied: Applied,
+}
+
+/// Carry out a plan's OS calls, in order, stopping at the first post the OS
+/// refuses and at the first call that is deferred (timed out, or breaker
+/// open). The stopping entry and everything after it stay uncommitted, so a
+/// later poll retries them.
+pub(crate) fn execute(actions: Vec<Action>, sink: &mut dyn AlertSink) -> Executed {
+    let mut executed = Executed::default();
     for action in actions {
         match action {
-            Action::Post { alert, key } => {
-                if sink.post(&alert) {
-                    accepted.push(key);
-                    applied.posted += 1;
+            Action::Post { seq, alert, key } => match sink.post(&alert) {
+                OsOutcome::Done => {
+                    executed.accepted.push(key);
+                    executed.applied.posted += 1;
                 }
-            }
-            Action::Close(notification_id) => {
-                if sink.close(&notification_id) {
-                    applied.closed += 1;
+                OsOutcome::NotDone => {
+                    executed.stopped_at = Some(seq);
+                    executed.refused = Some(key);
+                    break;
                 }
-            }
+                OsOutcome::Deferred => {
+                    executed.stopped_at = Some(seq);
+                    break;
+                }
+            },
+            Action::Close {
+                seq,
+                notification_id,
+            } => match sink.close(&notification_id) {
+                OsOutcome::Done => executed.applied.closed += 1,
+                OsOutcome::NotDone => {}
+                OsOutcome::Deferred => {
+                    executed.stopped_at = Some(seq);
+                    break;
+                }
+            },
         }
     }
-    (accepted, applied)
+    executed
 }
 
 /// The consumer's decisions, free of HTTP and OS calls so they can be tested.
@@ -260,6 +362,10 @@ pub(crate) struct FeedConsumer {
     first_read: HashMap<String, (StoredCursor, u64)>,
     posted: VecDeque<String>,
     posted_set: HashSet<String>,
+    /// The post the OS last refused, and how many polls in a row it did.
+    refused: Option<(String, u32)>,
+    /// Origins with a planned read whose outcome is not committed yet.
+    pending: HashSet<String>,
 }
 
 impl FeedConsumer {
@@ -288,9 +394,16 @@ impl FeedConsumer {
 
     /// The webview's cursor from an older build (see the module comment).
     /// Returns whether it was taken: only when this consumer has no cursor of
-    /// its own for that origin. A `false` leaves the webview's copy in place.
+    /// its own for that origin and no read of that origin is being committed
+    /// (that read already chose where to start). A `false` leaves the
+    /// webview's copy in place.
     pub(crate) fn hand_over(&mut self, origin: &str, cursor: StoredCursor) -> bool {
-        if cursor.surface.is_empty() || cursor.epoch.is_empty() || self.cursors.contains_key(origin)
+        if cursor.surface.is_empty()
+            || cursor.epoch.is_empty()
+            || self.cursors.contains_key(origin)
+            || self.pending.contains(origin)
+            || (self.handed_over.len() >= MAX_STORED_ORIGINS
+                && !self.handed_over.contains_key(origin))
         {
             return false;
         }
@@ -348,8 +461,12 @@ impl FeedConsumer {
         for entry in entries {
             match entry {
                 FeedEntry::Retract {
-                    notification_id, ..
-                } => actions.push(Action::Close(notification_id.clone())),
+                    seq,
+                    notification_id,
+                } => actions.push(Action::Close {
+                    seq: *seq,
+                    notification_id: notification_id.clone(),
+                }),
                 FeedEntry::Alert {
                     seq,
                     notification_id,
@@ -365,12 +482,26 @@ impl FeedConsumer {
                     // under the same id with new content alerts again.
                     let key = serde_json::to_string(&(notification_id, title, body, urgency))
                         .unwrap_or_default();
+                    if self
+                        .refused
+                        .as_ref()
+                        .is_some_and(|(refused, count)| *refused == key && *count >= MAX_REFUSALS)
+                    {
+                        // Refused on every one of the last MAX_REFUSALS polls:
+                        // skipped, so one entry cannot hold the feed forever.
+                        log::warn!(
+                            "skipping notification {notification_id}: the OS refused it {MAX_REFUSALS} times"
+                        );
+                        self.refused = None;
+                        continue;
+                    }
                     if !retracted_later
                         && !focused
                         && !self.posted_set.contains(&key)
                         && planned_keys.insert(key.clone())
                     {
                         actions.push(Action::Post {
+                            seq: *seq,
                             alert: Alert {
                                 notification_id: notification_id.clone(),
                                 title: title.clone(),
@@ -383,6 +514,7 @@ impl FeedConsumer {
                 }
             }
         }
+        self.pending.insert(origin.to_string());
         Plan {
             actions,
             commit: Some(StoredCursor {
@@ -394,19 +526,39 @@ impl FeedConsumer {
     }
 
     /// Record a plan's outcome: remember the accepted alerts and commit the
-    /// cursor. Committing AFTER the OS calls makes delivery at-least-once: a
-    /// crash between posting and this save posts those entries again.
+    /// cursor — up to the entry BEFORE the one the run stopped at, so a
+    /// refused or deferred post and everything after it are read again next
+    /// poll. Committing after the OS calls also means a crash between
+    /// posting and this save posts those entries again.
     pub(crate) fn finish(
         &mut self,
         origin: &str,
         plan_commit: Option<StoredCursor>,
-        accepted: Vec<String>,
+        executed: Executed,
         store: &mut dyn CursorStore,
     ) {
-        for key in accepted {
+        self.pending.remove(origin);
+        for key in executed.accepted {
+            if self
+                .refused
+                .as_ref()
+                .is_some_and(|(refused, _)| *refused == key)
+            {
+                self.refused = None;
+            }
             self.remember_posted(key);
         }
-        if let Some(next) = plan_commit {
+        if let Some(key) = executed.refused {
+            let count = match &self.refused {
+                Some((refused, count)) if *refused == key => count + 1,
+                _ => 1,
+            };
+            self.refused = Some((key, count));
+        }
+        if let Some(mut next) = plan_commit {
+            if let Some(stopped) = executed.stopped_at {
+                next.cursor = next.cursor.min(stopped.saturating_sub(1));
+            }
             self.commit(origin, next, store);
         }
     }
@@ -425,8 +577,9 @@ impl FeedConsumer {
     ) -> Applied {
         let plan = self.plan(origin, feed, focused, now_ms, store);
         let waiting = plan.waiting();
-        let (accepted, mut applied) = execute(plan.actions, sink);
-        self.finish(origin, plan.commit, accepted, store);
+        let mut executed = execute(plan.actions, sink);
+        let mut applied = std::mem::take(&mut executed.applied);
+        self.finish(origin, plan.commit, executed, store);
         applied.waiting = waiting;
         applied
     }
@@ -564,10 +717,11 @@ impl<C: CursorStore> SharedConsumer<C> {
         })?;
         let waiting = plan.waiting();
         // No consumer lock from here until the outcome is committed.
-        let (accepted, mut applied) = execute(plan.actions, sink);
+        let mut executed = execute(plan.actions, sink);
+        let mut applied = std::mem::take(&mut executed.applied);
         self.with(
             || None,
-            |consumer, store| consumer.finish(origin, plan.commit, accepted, store),
+            |consumer, store| consumer.finish(origin, plan.commit, executed, store),
         );
         applied.waiting = waiting;
         Some(applied)
@@ -656,9 +810,17 @@ mod host {
     /// Threads waiting on a click, at most. Past this an alert still shows;
     /// only its click is not observed.
     const MAX_CLICK_WAITERS: usize = 32;
-    /// The longest one OS notification call (show, close) may take.
+    /// The longest one OS notification call (show, close) may take. A show
+    /// that times out may still appear later: that notification is orphaned
+    /// (no handle kept, so no retract; no click waiter; not remembered as
+    /// posted), and because a timed-out post leaves its entry uncommitted the
+    /// next poll posts it again — it can then show twice.
     const OS_CALL_TIMEOUT: Duration = Duration::from_secs(5);
-    /// Posted alerts whose handle is kept for a retract (Linux), at most.
+    /// OS calls still running (parked past their timeout) before the breaker
+    /// stops making new ones.
+    const MAX_PARKED_OS_CALLS: usize = 4;
+    /// Posted alerts whose handle is kept for a retract (Linux), at most;
+    /// the oldest is dropped first.
     #[cfg(all(unix, not(target_os = "macos")))]
     const MAX_HELD_HANDLES: usize = 64;
 
@@ -696,24 +858,6 @@ mod host {
             let file = CursorFile::in_dir(&config_dir(app)?);
             Some((FeedConsumer::with_cursors(file.load()), file))
         }
-    }
-
-    /// Run one OS notification call off the calling thread and wait at most
-    /// [`OS_CALL_TIMEOUT`]. A D-Bus server that never answers then costs a
-    /// parked helper thread, not a stalled poll.
-    fn bounded<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        std::thread::Builder::new()
-            .name("station-notification-os-call".into())
-            .spawn(move || {
-                let _ = sender.send(work());
-            })
-            .ok()?;
-        let answer = receiver.recv_timeout(OS_CALL_TIMEOUT).ok();
-        if answer.is_none() {
-            log::warn!("a notification call did not answer within {OS_CALL_TIMEOUT:?}");
-        }
-        answer
     }
 
     /// Start the consumer thread. Called once from setup, after the tray.
@@ -839,6 +983,34 @@ mod host {
         }
     }
 
+    /// Linux: handles kept for a retract, oldest first.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[derive(Default)]
+    struct HeldHandles {
+        map: HashMap<String, Arc<notify_rust::NotificationHandle>>,
+        order: VecDeque<String>,
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    impl HeldHandles {
+        fn insert(&mut self, id: String, handle: Arc<notify_rust::NotificationHandle>) {
+            self.order.retain(|held| *held != id);
+            self.order.push_back(id.clone());
+            self.map.insert(id, handle);
+            while self.map.len() > MAX_HELD_HANDLES {
+                let Some(oldest) = self.order.pop_front() else {
+                    break;
+                };
+                self.map.remove(&oldest);
+            }
+        }
+
+        fn remove(&mut self, id: &str) -> Option<Arc<notify_rust::NotificationHandle>> {
+            self.order.retain(|held| held != id);
+            self.map.remove(id)
+        }
+    }
+
     /// Closes what the platform backend can close; see the module comment.
     ///
     /// Clicks are observed by one waiting thread per alert, at most
@@ -850,8 +1022,9 @@ mod host {
     pub(crate) struct OsAlertSink {
         app: AppHandle,
         waiters: Arc<std::sync::atomic::AtomicUsize>,
+        gate: OsCallGate,
         #[cfg(all(unix, not(target_os = "macos")))]
-        handles: Arc<Mutex<HashMap<String, Arc<notify_rust::NotificationHandle>>>>,
+        handles: Arc<Mutex<HeldHandles>>,
     }
 
     impl OsAlertSink {
@@ -859,6 +1032,7 @@ mod host {
             Self {
                 app,
                 waiters: Arc::default(),
+                gate: OsCallGate::new(MAX_PARKED_OS_CALLS, OS_CALL_TIMEOUT),
                 #[cfg(all(unix, not(target_os = "macos")))]
                 handles: Arc::default(),
             }
@@ -880,7 +1054,7 @@ mod host {
     }
 
     impl AlertSink for OsAlertSink {
-        fn post(&mut self, alert: &Alert) -> bool {
+        fn post(&mut self, alert: &Alert) -> OsOutcome {
             let mut notification = notify_rust::Notification::new();
             notification
                 .summary(&alert.title)
@@ -890,32 +1064,24 @@ mod host {
             let _ = notify_rust::set_application(&self.app.config().identifier);
             #[cfg(target_os = "windows")]
             notification.app_id(&self.app.config().identifier);
-            // Bounded: on Linux `show` is a D-Bus round trip.
-            let Some(Ok(shown)) = bounded(move || notification.show()) else {
-                return false;
+            // Gated: on Linux `show` is a D-Bus round trip with no timeout.
+            let shown = match self.gate.run(move || notification.show()) {
+                None => {
+                    log::warn!("a notification did not show within {OS_CALL_TIMEOUT:?}, or the notification service is stuck; retrying next poll");
+                    return OsOutcome::Deferred;
+                }
+                Some(Err(_)) => return OsOutcome::NotDone,
+                Some(Ok(shown)) => shown,
             };
             let app = self.app.clone();
             let link = alert.link.clone();
             #[cfg(all(unix, not(target_os = "macos")))]
             {
                 let shown = Arc::new(shown);
-                let mut handles = self
-                    .handles
+                self.handles
                     .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                handles.insert(alert.notification_id.clone(), Arc::clone(&shown));
-                // Bounded: an alert past the cap can no longer be retracted.
-                while handles.len() > MAX_HELD_HANDLES {
-                    let Some(other) = handles
-                        .keys()
-                        .find(|key| **key != alert.notification_id)
-                        .cloned()
-                    else {
-                        break;
-                    };
-                    handles.remove(&other);
-                }
-                drop(handles);
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(alert.notification_id.clone(), Arc::clone(&shown));
                 if self.claim_waiter() {
                     let waiters = Arc::clone(&self.waiters);
                     let handles = Arc::clone(&self.handles);
@@ -935,6 +1101,7 @@ mod host {
                             .lock()
                             .unwrap_or_else(|poisoned| poisoned.into_inner());
                         if handles
+                            .map
                             .get(&id)
                             .is_some_and(|held| Arc::ptr_eq(held, &shown))
                         {
@@ -961,10 +1128,10 @@ mod host {
                     drop(shown);
                 }
             }
-            true
+            OsOutcome::Done
         }
 
-        fn close(&mut self, notification_id: &str) -> bool {
+        fn close(&mut self, notification_id: &str) -> OsOutcome {
             #[cfg(all(unix, not(target_os = "macos")))]
             {
                 let held = self
@@ -972,19 +1139,31 @@ mod host {
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .remove(notification_id);
-                if let Some(handle) = held {
-                    // Bounded D-Bus `CloseNotification`.
-                    return bounded(move || tauri::async_runtime::block_on(handle.close_async()))
-                        .is_some();
+                let Some(handle) = held else {
+                    return OsOutcome::NotDone;
+                };
+                let closing = Arc::clone(&handle);
+                // Gated D-Bus `CloseNotification`.
+                if self
+                    .gate
+                    .run(move || tauri::async_runtime::block_on(closing.close_async()))
+                    .is_some()
+                {
+                    return OsOutcome::Done;
                 }
-                false
+                // Kept, so the retried retract can close it.
+                self.handles
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(notification_id.to_string(), handle);
+                OsOutcome::Deferred
             }
             #[cfg(not(all(unix, not(target_os = "macos"))))]
             {
                 // notify-rust 4.18's NSUserNotificationCenter and Windows
                 // handles expose no close.
                 let _ = notification_id;
-                false
+                OsOutcome::NotDone
             }
         }
     }
@@ -1054,17 +1233,17 @@ mod tests {
         closed: Vec<String>,
     }
     impl AlertSink for FakeSink {
-        fn post(&mut self, alert: &Alert) -> bool {
+        fn post(&mut self, alert: &Alert) -> OsOutcome {
             self.open.insert(alert.notification_id.clone());
             self.posted.push(alert.clone());
-            true
+            OsOutcome::Done
         }
-        fn close(&mut self, notification_id: &str) -> bool {
+        fn close(&mut self, notification_id: &str) -> OsOutcome {
             if self.open.remove(notification_id) {
                 self.closed.push(notification_id.to_string());
-                true
+                OsOutcome::Done
             } else {
-                false
+                OsOutcome::NotDone
             }
         }
     }
@@ -1469,39 +1648,185 @@ mod tests {
         assert!(parse_feed_response("not json").is_none());
     }
 
-    #[test]
-    fn a_post_the_os_refuses_is_not_counted_or_remembered() {
-        struct Refusing(usize);
-        impl AlertSink for Refusing {
-            fn post(&mut self, _alert: &Alert) -> bool {
-                self.0 += 1;
-                false
-            }
-            fn close(&mut self, _notification_id: &str) -> bool {
-                false
-            }
+    /// Answers each post from a script per notification id (default Done),
+    /// and records every attempt.
+    #[derive(Default)]
+    struct Scripted {
+        answers: HashMap<String, VecDeque<OsOutcome>>,
+        attempts: Vec<String>,
+    }
+    impl AlertSink for Scripted {
+        fn post(&mut self, alert: &Alert) -> OsOutcome {
+            self.attempts.push(alert.notification_id.clone());
+            self.answers
+                .get_mut(&alert.notification_id)
+                .and_then(VecDeque::pop_front)
+                .unwrap_or(OsOutcome::Done)
         }
+        fn close(&mut self, _notification_id: &str) -> OsOutcome {
+            OsOutcome::NotDone
+        }
+    }
+    fn scripted(id: &str, answers: &[OsOutcome]) -> Scripted {
+        Scripted {
+            answers: HashMap::from([(id.to_string(), answers.iter().copied().collect())]),
+            attempts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_refused_post_is_retried_from_there_next_poll() {
         let mut consumer = started(0, "run-1");
-        let (mut sink, mut store) = (Refusing(0), MemoryStore::default());
-        let applied = consumer.apply(
-            ORIGIN,
-            &feed(1, vec![alert(1, "n-1")], "run-1"),
-            false,
-            0,
-            &mut sink,
-            &mut store,
+        let mut store = MemoryStore::default();
+        let mut sink = scripted("b", &[OsOutcome::NotDone]);
+        let batch = feed(
+            3,
+            vec![alert(1, "a"), alert(2, "b"), alert(3, "c")],
+            "run-1",
         );
-        assert_eq!(applied.posted, 0);
-        // Not remembered: the same content re-delivered after a restart is tried again.
+        let applied = consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(applied.posted, 1, "a refused post is not counted");
+        // Nothing after the refusal ran, and the cursor stops before it.
+        assert_eq!(sink.attempts, ["a", "b"]);
+        assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
         consumer.apply(
             ORIGIN,
-            &feed(1, vec![alert(1, "n-1")], "run-2"),
+            &feed(3, vec![alert(2, "b"), alert(3, "c")], "run-1"),
             false,
             0,
             &mut sink,
             &mut store,
         );
-        assert_eq!(sink.0, 2);
+        assert_eq!(sink.attempts, ["a", "b", "b", "c"]);
+        assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
+    }
+
+    #[test]
+    fn an_entry_the_os_keeps_refusing_is_skipped_after_the_limit() {
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let mut sink = scripted("b", &[OsOutcome::NotDone; 10]);
+        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
+        for _ in 0..MAX_REFUSALS {
+            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        }
+        assert_eq!(sink.attempts, vec!["b"; MAX_REFUSALS as usize]);
+        assert_eq!(consumer.request(ORIGIN), (0, Some("run-1".into())));
+        // The next poll skips it instead of holding the feed forever.
+        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(sink.attempts.last().map(String::as_str), Some("c"));
+        assert_eq!(
+            sink.attempts.iter().filter(|id| *id == "b").count(),
+            MAX_REFUSALS as usize
+        );
+        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
+    }
+
+    #[test]
+    fn a_deferred_post_stops_the_poll_and_is_never_skipped() {
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let mut sink = scripted("b", &[OsOutcome::Deferred; 5]);
+        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
+        for _ in 0..5 {
+            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        }
+        // A stuck service: one attempt per poll, nothing after it, nothing committed.
+        assert_eq!(sink.attempts, vec!["b"; 5]);
+        assert_eq!(consumer.request(ORIGIN), (0, Some("run-1".into())));
+        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(&sink.attempts[5..], ["b", "c"]);
+    }
+
+    #[test]
+    fn the_gate_stops_calling_while_earlier_calls_are_stuck() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::mpsc::channel;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let gate = OsCallGate::new(2, Duration::from_millis(50));
+        let started_calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = channel::<()>();
+        let released = Arc::new(Mutex::new(released));
+        let stuck = || {
+            let started_calls = Arc::clone(&started_calls);
+            let released = Arc::clone(&released);
+            move || {
+                started_calls.fetch_add(1, Ordering::SeqCst);
+                let _ = released.lock().unwrap().recv();
+            }
+        };
+        assert_eq!(gate.run(stuck()), None, "a stuck call times out");
+        assert_eq!(gate.run(stuck()), None);
+        // Two calls are parked: the breaker makes no third call at all.
+        assert_eq!(gate.run(stuck()), None);
+        assert_eq!(started_calls.load(Ordering::SeqCst), 2);
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while gate.run(|| 7) != Some(7) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the gate never reopened"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_handover_during_an_uncommitted_read_is_refused_not_lost() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        struct Blocking {
+            entered: Sender<()>,
+            release: Receiver<()>,
+        }
+        impl AlertSink for Blocking {
+            fn post(&mut self, _alert: &Alert) -> OsOutcome {
+                let _ = self.entered.send(());
+                let _ = self.release.recv();
+                OsOutcome::Done
+            }
+            fn close(&mut self, _notification_id: &str) -> OsOutcome {
+                OsOutcome::NotDone
+            }
+        }
+        let shared: Arc<SharedConsumer<MemoryStore>> = Arc::new(SharedConsumer::new());
+        let init = || Some((FeedConsumer::default(), MemoryStore::default()));
+        let batch = feed(2, vec![alert(2, "n-1")], "run-1");
+        let mut idle = FakeSink::default();
+        // First read: no cursor, inside the grace.
+        let first = shared.apply(init, ORIGIN, &feed(1, vec![], "run-1"), false, 0, &mut idle);
+        assert!(first.unwrap().waiting);
+        let (entered_tx, entered_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let applying = {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                let mut sink = Blocking {
+                    entered: entered_tx,
+                    release: release_rx,
+                };
+                // Past the grace: this read starts from its first read and posts.
+                shared.apply(|| None, ORIGIN, &batch, false, ADOPTION_GRACE_MS, &mut sink)
+            })
+        };
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        // The webview's offer lands while that read is posting.
+        let taken = shared.hand_over(|| None, ORIGIN, stored(0, "run-1"));
+        release_tx.send(()).unwrap();
+        applying.join().unwrap();
+        assert!(
+            !taken,
+            "an offer the pending commit will discard must not be reported as taken"
+        );
+        assert_eq!(
+            shared.request(|| None, ORIGIN),
+            Some((2, Some("run-1".into())))
+        );
     }
 
     #[test]
@@ -1554,13 +1879,13 @@ mod tests {
             release: Receiver<()>,
         }
         impl AlertSink for Blocking {
-            fn post(&mut self, _alert: &Alert) -> bool {
+            fn post(&mut self, _alert: &Alert) -> OsOutcome {
                 let _ = self.entered.send(());
                 let _ = self.release.recv();
-                true
+                OsOutcome::Done
             }
-            fn close(&mut self, _notification_id: &str) -> bool {
-                false
+            fn close(&mut self, _notification_id: &str) -> OsOutcome {
+                OsOutcome::NotDone
             }
         }
         let shared: Arc<SharedConsumer<MemoryStore>> = Arc::new(SharedConsumer::new());
