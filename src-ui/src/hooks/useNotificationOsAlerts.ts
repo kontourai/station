@@ -35,7 +35,14 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * - **Desktop native hosts only.** On Android the webview is frozen when
  *   backgrounded, so a foreground post is silence exactly when it matters;
  * that case needs the host-side watch (archive#917), which stays dormant.
- * - **Blocking categories only** — the ones that expire and hold up a person.
+ * - **Blocking categories and enveloped records only** — the channels above;
+ *   other legacy categories stay in-app.
+ * - **Not while hidden in the tray.** The poll below does not run then: React
+ *   Query pauses `refetchInterval` while `document.visibilityState` is
+ *   `hidden` (no `refetchIntervalInBackground`), and WKWebView's default
+ *   inactive scheduling policy suspends a hidden window's page (Station sets
+ *   no `backgroundThrottling`). Covering that needs a host-side watch; the
+ *   dormant `notification_watch.rs` is not it — it posts raw titles.
  * - **Additive.** The in-app surfaces are unchanged and remain where
  *   decisions are made; a refused or unavailable notifier changes nothing.
  *
