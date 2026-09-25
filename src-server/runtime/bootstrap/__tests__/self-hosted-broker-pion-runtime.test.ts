@@ -123,7 +123,8 @@ interface Harness {
   /**
    * Settles when the runtime publishes its answer to the broker. The runtime
    * publishes only after the peer entry exists, so a channel accepted after
-   * this is served; one accepted before it is refused and closed.
+   * this is served; one accepted before it is refused and closed. Rejects if
+   * the adapter is closed first, which is how a failed admission ends.
    */
   admitted: Promise<void>;
 }
@@ -152,10 +153,15 @@ async function harness(
     )) as StationConnectionSigningKey,
   };
   let markAdmitted!: () => void;
+  let failAdmission!: (error: Error) => void;
+  const admitted = new Promise<void>((resolve, reject) => {
+    markAdmitted = resolve;
+    failAdmission = reject;
+  });
+  // Tests that expect admission to fail never await this.
+  admitted.catch(() => undefined);
   const h: Harness = {
-    admitted: new Promise<void>((resolve) => {
-      markAdmitted = resolve;
-    }),
+    admitted,
     trust,
     privateKey: wrong ? wrong.privateKey : pair.privateKey,
     current: trust,
@@ -230,6 +236,7 @@ async function harness(
         answer: { type: 'answer' as const, sdp: ANSWER_SDP },
         close: vi.fn(async () => {
           h.closeCalls += 1;
+          failAdmission(new Error('test_adapter_closed_before_admission'));
           resolveCleanup();
         }),
         cleanupComplete,
