@@ -485,6 +485,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Imports the budget gate in a child process to prove the import stays
   // inert (the delta report imports it for its measurement).
   'scripts/__tests__/ui-bundle-budget.test.ts',
+  // #1703: runs the bundle delta report as a real child against an
+  // unresolvable base to prove its could-not-measure path still exits zero.
+  'scripts/__tests__/ui-bundle-delta-report.test.ts',
   // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
   // its refusal path exits non-zero and names the remedy.
   'scripts/__tests__/starved-pr-report.test.ts',

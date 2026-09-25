@@ -1954,6 +1954,12 @@ function primaryCiRouterFindings(file, document) {
           name: 'Enforce candidate UI bundle budget',
           run: 'npm run build:ui',
         },
+        {
+          // #1703: the same candidate runner and tree as the budget step; it
+          // adds a merge-base build, but no new credentials or host authority.
+          name: 'Report candidate UI bundle delta',
+          run: 'node scripts/ui-bundle-delta-report.mjs',
+        },
       ]),
     );
   }

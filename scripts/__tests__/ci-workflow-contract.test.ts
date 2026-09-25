@@ -1378,6 +1378,34 @@ describe('CI verification workflow contracts', () => {
     ).toBeLessThan(
       fastChecks.indexOf('name: Upload bounded fast-feedback diagnostics'),
     );
+    // #1703: the delta report reads the build the budget step just produced,
+    // and measures against the same base ci:fast selects from.
+    const fastSteps = (
+      load(ci) as {
+        jobs: Record<
+          string,
+          {
+            steps: Array<{
+              name?: string;
+              run?: string;
+              env?: Record<string, string>;
+              'continue-on-error'?: unknown;
+            }>;
+          }
+        >;
+      }
+    ).jobs['fast-checks'].steps;
+    const stepIndex = (name: string) =>
+      fastSteps.findIndex((step) => step.name === name);
+    const delta = fastSteps[stepIndex('Report candidate UI bundle delta')];
+    expect(delta?.run).toBe('node scripts/ui-bundle-delta-report.mjs');
+    expect(delta?.['continue-on-error']).toBeUndefined();
+    expect(delta?.env?.STATION_UI_BUNDLE_DELTA_BASE).toBe(
+      fastSteps[stepIndex('Run fast CI lane')]?.env?.STATION_CI_FAST_BASE,
+    );
+    expect(stepIndex('Report candidate UI bundle delta')).toBe(
+      stepIndex('Enforce candidate UI bundle budget') + 1,
+    );
     expect(fastChecks).not.toContain('run: npm run full:regression');
     expect(fastChecks).not.toContain('test:connected-agents');
 

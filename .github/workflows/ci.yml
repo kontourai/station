@@ -181,6 +181,16 @@ jobs:
       - name: Enforce candidate UI bundle budget
         run: npm run build:ui
 
+      # #1703: attribute bytes to the change that added them. Ceilings carry
+      # headroom, so the budget step above cannot say who grew the entry
+      # bundle; this builds the merge base in its own worktree and reports the
+      # difference as a notice. Reporting only: the script exits zero on every
+      # path and names the reason when it cannot measure.
+      - name: Report candidate UI bundle delta
+        env:
+          STATION_UI_BUNDLE_DELTA_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+        run: node scripts/ui-bundle-delta-report.mjs
+
       # Keep critical browser journeys inside the existing required check.
       # The separate manual diagnostic below depends on full-regression and
       # cannot supply pre-merge evidence when that manual job is skipped.
