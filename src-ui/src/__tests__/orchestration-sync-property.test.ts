@@ -46,17 +46,18 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 vi.stubGlobal('document', dom.window.document);
 vi.stubGlobal('navigator', dom.window.navigator);
 vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
-// station#2530 review 5 (LOW): restored in `afterEach` below — this file
-// sets a bare global directly (not through `vi.stubGlobal`, which
-// `unstubAllGlobals` already restores), so leaving it set after the last
-// test here would leak into a sibling test file sharing this worker's realm.
+// This test drives two real clients through real async I/O and waits for
+// convergence with waitFor; its updates are deliberately outside act(). React
+// warns on every such update while IS_REACT_ACT_ENVIRONMENT is true, which a
+// sibling file in the shared corpus worker can leave set: that flood exceeded
+// the corpus runner's 2 MB output limit and cancelled the whole shard in the
+// merge queue. Pin it false for this file and restore whatever was there,
+// since it is a bare global that unstubAllGlobals does not restore.
+const actEnvironmentBeforeThisFile = (globalThis as Record<string, unknown>)
+  .IS_REACT_ACT_ENVIRONMENT;
 const hadActEnvironmentBeforeThisFile =
-  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT !==
-  undefined;
-if (!hadActEnvironmentBeforeThisFile) {
-  // Test-only global React reads to silence act() warnings.
-  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-}
+  'IS_REACT_ACT_ENVIRONMENT' in globalThis;
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
 
 const apiBase = 'http://sync-property.test';
 const userId = 'sync-property-user';
@@ -105,7 +106,10 @@ function publicHandshakeResponse() {
 
 afterEach(async () => {
   vi.unstubAllGlobals();
-  if (!hadActEnvironmentBeforeThisFile) {
+  if (hadActEnvironmentBeforeThisFile) {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT =
+      actEnvironmentBeforeThisFile;
+  } else {
     delete (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
   }
   for (const service of services.splice(0)) await service.shutdown();
