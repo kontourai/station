@@ -70,7 +70,10 @@ function preferencesRoute(present: boolean) {
       return {
         ok: true,
         status: 200,
-        json: async () => (init?.method === 'PUT' ? {} : { perAgent: {} }),
+        json: async () =>
+          init?.method === 'PATCH'
+            ? { success: true }
+            : { success: true, data: { schemaVersion: 1 }, stored: false },
       };
     },
   );
@@ -111,11 +114,13 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
       await screen.findByRole('button', { name: 'Mute this agent' }),
     );
     await screen.findByText('Muted');
-    const put = authenticatedFetch.mock.calls.find(
-      ([, init]) => init?.method === 'PUT',
+    const patch = authenticatedFetch.mock.calls.find(
+      ([, init]) => init?.method === 'PATCH',
     );
-    expect(put?.[0]).toBe('http://station.test/api/notifications/preferences');
-    expect(JSON.parse(put?.[1].body)).toMatchObject({
+    expect(patch?.[0]).toBe(
+      'http://station.test/api/notifications/preferences',
+    );
+    expect(JSON.parse(patch?.[1].body)).toEqual({
       perAgent: { builder: 'off' },
     });
     expect(

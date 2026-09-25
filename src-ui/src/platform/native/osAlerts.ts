@@ -1,12 +1,13 @@
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { BLOCKING_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import { reconcileBlockingAlerts } from './blockingAlert';
-import { reconcileNotificationAlerts } from './notificationAlert';
 
 /**
- * Hands one observed notification list to both OS-alert channels
- * (`useNotificationOsAlerts`). Lives in this lazily loaded chunk so the
- * entry bundle carries only the query and the platform gate.
+ * Hands one observed notification list to the blocking OS-alert channel
+ * (`useNotificationOsAlerts`). Enveloped notifications do not come through
+ * here: their OS alerts are decided by the server's delivery router and read
+ * from the desktop host feed (`deliveryFeed.ts`). Lives in this lazily loaded
+ * chunk so the entry bundle carries only the query and the platform gate.
  */
 
 /**
@@ -58,9 +59,5 @@ export function reconcileOsAlerts(input: {
           item.category !== BLOCKING_NOTIFICATION_CATEGORIES.devicePairing,
       )
     : notifications;
-  void reconcileBlockingAlerts(alerts, apiBase);
-  // Always handed over, envelope or not: the channel seeds on its first
-  // observation, so skipping lists without an envelope would seed — and so
-  // silently swallow — the first agent notification of the session.
-  void reconcileNotificationAlerts(notifications, apiBase, undefined, scopeKey);
+  void reconcileBlockingAlerts(alerts, scopeKey);
 }

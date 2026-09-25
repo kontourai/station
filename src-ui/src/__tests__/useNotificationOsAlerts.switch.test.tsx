@@ -7,8 +7,9 @@ import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * A Station switch, driven through the REAL channels (blockingAlert and
- * notificationAlert) with only the OS notifier and the query mocked. The
+ * A Station switch, driven through the REAL blocking channel (osAlerts +
+ * blockingAlert) with only the OS notifier, the query and the delivery feed
+ * mocked. The
  * notifications cache key carries no connection and a switch invalidates
  * rather than clears it, so the first render on B still holds A's list —
  * the shape this reproduces.
@@ -20,6 +21,9 @@ vi.mock('../platform/native/notify', () => ({
 const query = {
   current: { data: undefined as Notification[] | undefined, dataUpdatedAt: 0 },
 };
+vi.mock('../platform/native/deliveryFeed', () => ({
+  pollDeliveryFeed: async () => 0,
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => query.current,
@@ -45,33 +49,20 @@ vi.mock('../platform/PlatformProfileContext', () => ({
 
 import { useNotificationOsAlerts } from '../hooks/useNotificationOsAlerts';
 import { resetBlockingAlertState } from '../platform/native/blockingAlert';
-import { resetNotificationAlertState } from '../platform/native/notificationAlert';
 import { resetOsAlertScope } from '../platform/native/osAlerts';
 
-function agent(id: string): Notification {
+/** `ApprovalInbox`'s category; blocking, so announced whatever the focus. */
+function approval(id: string): Notification {
   return {
     id,
-    source: 'agent',
-    category: 'agent-done',
+    source: 'approval-inbox',
+    category: 'approval-request',
     status: 'delivered',
-    priority: 'normal',
-    title: `Agent ${id}`,
+    priority: 'high',
+    title: `Approval ${id}`,
     createdAt: '2026-09-24T00:00:00.000Z',
     updatedAt: '2026-09-24T00:00:00.000Z',
-    metadata: {
-      envelope: {
-        v: 1,
-        source: { kind: 'agent', sessionId: 's-1', assurance: 'bound' },
-        audience: { kind: 'owner' },
-        urgency: 'done',
-        interrupt: 'default',
-      },
-    },
   } as Notification;
-}
-
-function approval(id: string): Notification {
-  return { ...agent(id), category: 'approval-request', metadata: {} };
 }
 
 async function settle() {
@@ -82,7 +73,6 @@ describe('useNotificationOsAlerts across a Station switch (#2587 review L-M3)', 
   beforeEach(() => {
     notifyNatively.mockClear();
     resetBlockingAlertState();
-    resetNotificationAlertState();
     resetOsAlertScope();
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
     query.current = { data: undefined, dataUpdatedAt: 0 };
@@ -98,7 +88,7 @@ describe('useNotificationOsAlerts across a Station switch (#2587 review L-M3)', 
     backlog: Notification[],
   ) {
     const { rerender } = renderHook(() => useNotificationOsAlerts());
-    query.current = { data: [agent('a-1')], dataUpdatedAt: 1 };
+    query.current = { data: [approval('a-1')], dataUpdatedAt: 1 };
     rerender();
     await settle();
 
@@ -115,7 +105,7 @@ describe('useNotificationOsAlerts across a Station switch (#2587 review L-M3)', 
 
     // Positive control: something genuinely new on B still announces.
     query.current = {
-      data: [...backlog, agent('b-4')],
+      data: [...backlog, approval('b-4')],
       dataUpdatedAt: Date.now() + 2_000,
     };
     rerender();
@@ -125,20 +115,17 @@ describe('useNotificationOsAlerts across a Station switch (#2587 review L-M3)', 
 
   test('a switch to another endpoint seeds B from B’s list, not A’s', async () => {
     await switchTo({ apiBase: 'http://station.two', connectionId: 'conn-b' }, [
-      agent('b-1'),
-      agent('b-2'),
+      approval('b-1'),
+      approval('b-2'),
       approval('b-3'),
     ]);
   });
 
   test('a switch between two saved Stations sharing one endpoint reseeds too', async () => {
-    // Envelope channel only: the blocking channel is still keyed by endpoint
-    // alone (its call shape is pinned by useApprovalOsAlerts.test), so a
-    // same-endpoint switch can still announce B's waiting blocking requests.
     await switchTo({ apiBase: 'http://station.one', connectionId: 'conn-b' }, [
-      agent('b-1'),
-      agent('b-2'),
-      agent('b-3'),
+      approval('b-1'),
+      approval('b-2'),
+      approval('b-3'),
     ]);
   });
 });

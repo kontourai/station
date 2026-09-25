@@ -3,10 +3,10 @@
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const reconcileBlocking = vi.fn(async () => 0);
-const reconcileEnveloped = vi.fn(async () => 0);
+const pollFeed = vi.fn(async () => 0);
 const notifications = { current: undefined as unknown };
 const platform = {
   current: { isTauri: true, isDesktop: true, isMobile: false },
@@ -16,56 +16,73 @@ vi.mock('../platform/native/blockingAlert', () => ({
   reconcileBlockingAlerts: (...args: unknown[]) =>
     reconcileBlocking(...(args as [])),
 }));
-vi.mock('../platform/native/notificationAlert', () => ({
-  reconcileNotificationAlerts: (...args: unknown[]) =>
-    reconcileEnveloped(...(args as [])),
+vi.mock('../platform/native/deliveryFeed', () => ({
+  pollDeliveryFeed: (...args: unknown[]) => pollFeed(...(args as [])),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: notifications.current }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://localhost:4100' }),
+  useApiBase: () => ({
+    apiBase: 'http://localhost:4100',
+    connectionId: 'conn-a',
+  }),
 }));
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platform.current,
 }));
 
-import { useNotificationOsAlerts } from '../hooks/useNotificationOsAlerts';
+import {
+  DELIVERY_FEED_POLL_MS,
+  useNotificationOsAlerts,
+} from '../hooks/useNotificationOsAlerts';
 
 describe('useNotificationOsAlerts (#2587)', () => {
   beforeEach(() => {
     reconcileBlocking.mockClear();
-    reconcileEnveloped.mockClear();
+    pollFeed.mockClear();
     platform.current = { isTauri: true, isDesktop: true, isMobile: false };
+    notifications.current = undefined;
   });
+  afterEach(() => vi.useRealTimers());
 
-  test('hands every observed list to the envelope channel, envelope or not', async () => {
-    // A list with no envelope must still reach the channel: it seeds on its
-    // first observation, so skipping this one would seed — and swallow — the
-    // session's first agent notification when it arrives.
-    const pairing = { id: 'pair-1', category: 'pairing-request' };
-    notifications.current = [pairing];
+  test('keys the blocking channel by endpoint and connection id', async () => {
+    notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
     renderHook(() => useNotificationOsAlerts());
-
     await waitFor(() =>
-      expect(reconcileEnveloped).toHaveBeenCalledWith(
-        [pairing],
-        'http://localhost:4100',
-        undefined,
-        'http://localhost:4100\n',
+      expect(reconcileBlocking).toHaveBeenCalledWith(
+        [{ id: 'appr-1', category: 'approval-request' }],
+        'http://localhost:4100\nconn-a',
       ),
     );
-    // The blocking channel keeps its local-pairing filter; the envelope
-    // channel sees the unfiltered list and ignores blocking categories itself.
-    expect(reconcileBlocking).toHaveBeenCalledWith([], 'http://localhost:4100');
   });
 
-  test('never reaches the envelope channel off a desktop native host', async () => {
-    platform.current = { isTauri: true, isDesktop: false, isMobile: true };
-    notifications.current = [{ id: 'n-1' }];
-    renderHook(() => useNotificationOsAlerts());
+  test('polls the delivery feed on mount and then inside the host lease', async () => {
+    vi.useFakeTimers();
+    const { unmount } = renderHook(() => useNotificationOsAlerts());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollFeed).toHaveBeenCalledWith(
+      'http://localhost:4100',
+      'http://localhost:4100\nconn-a',
+    );
+    await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS);
+    expect(pollFeed).toHaveBeenCalledTimes(2);
+    expect(DELIVERY_FEED_POLL_MS).toBeLessThan(90_000);
+    unmount();
+    await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS);
+    expect(pollFeed).toHaveBeenCalledTimes(2);
+  });
+
+  test('never polls the feed off a desktop native host (browser tabs keep toasts only)', async () => {
+    for (const host of [
+      { isTauri: true, isDesktop: false, isMobile: true },
+      { isTauri: false, isDesktop: true, isMobile: false },
+    ]) {
+      platform.current = host;
+      renderHook(() => useNotificationOsAlerts());
+    }
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(reconcileEnveloped).not.toHaveBeenCalled();
+    expect(pollFeed).not.toHaveBeenCalled();
   });
 });

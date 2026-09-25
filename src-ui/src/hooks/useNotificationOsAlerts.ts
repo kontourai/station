@@ -14,10 +14,13 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * - **Blocking categories** (`blockingAlert.ts`) — unchanged: fixed copy,
  *   announced whatever the window's focus, minus local pairing requests the
  *   tray already owns.
- * - **Enveloped notifications** (`notificationAlert.ts`) — agent and other
- *   producers' records with `metadata.envelope`: only while this window is not
- *   in use, honouring quiet hours and mutes (per-surface `hideContent`
- *   waits for #2586's stable desktop surface id).
+ * - **Enveloped notifications** (`deliveryFeed.ts`) — agent and other
+ *   producers' records with `metadata.envelope`, read from the server's
+ *   per-surface delivery feed for `local:desktop-<installationId>`. The
+ *   server's router decides them (focus, quiet hours, mutes, minUrgency,
+ *   hideContent); the client only skips posting while its window is focused.
+ *   Polled every {@link DELIVERY_FEED_POLL_MS}, inside the server's 90 s
+ *   host lease.
  *
  * The original account of the blocking alert follows.
  *
@@ -49,6 +52,9 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * Only the query and this platform gate live in the entry chunk: category
  * matching, copy, dedupe, and the notifier load on first alert.
  */
+/** Well inside the desktop host channel's 90 s lease. */
+export const DELIVERY_FEED_POLL_MS = 20_000;
+
 export function useNotificationOsAlerts(): void {
   const { apiBase, connectionId } = useApiBase();
   const profile = usePlatformProfile();
@@ -59,7 +65,7 @@ export function useNotificationOsAlerts(): void {
   );
   useEffect(() => {
     if (!enabled || !data) return;
-    // Connection scoping, the local-pairing filter and both channels live in
+    // Connection scoping, the local-pairing filter and the blocking channel live in
     // the lazily loaded `osAlerts` chunk (entry-bundle budget).
     void import('../platform/native/osAlerts').then((module) =>
       module.reconcileOsAlerts({
@@ -70,4 +76,16 @@ export function useNotificationOsAlerts(): void {
       }),
     );
   }, [apiBase, connectionId, data, dataUpdatedAt, enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const scopeKey = `${apiBase}\n${connectionId ?? ''}`;
+    const poll = () =>
+      void import('../platform/native/deliveryFeed').then((module) =>
+        module.pollDeliveryFeed(apiBase, scopeKey),
+      );
+    poll();
+    const timer = setInterval(poll, DELIVERY_FEED_POLL_MS);
+    return () => clearInterval(timer);
+  }, [apiBase, connectionId, enabled]);
 }
