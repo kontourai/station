@@ -1,7 +1,9 @@
 import Foundation
 import UserNotifications
 
-#if canImport(StationAgentActivityShared)
+// See SealedAlert.swift: SwiftPM builds define SWIFT_PACKAGE; the
+// extension target compiles the shared sources into this module instead.
+#if SWIFT_PACKAGE
   import StationAgentActivityShared
 #endif
 
@@ -16,6 +18,7 @@ import UserNotifications
 public final class SealedAlertDelivery: @unchecked Sendable {
   private let lookup: (String) -> AgentActivityRegistration?
   private let queue: DispatchQueue
+  private let clock: () -> Date
   // `original` and `handler` are read and written under `lock`, hence the
   // unchecked Sendable.
   private let lock = NSLock()
@@ -24,10 +27,12 @@ public final class SealedAlertDelivery: @unchecked Sendable {
 
   public init(
     registration lookup: @escaping (String) -> AgentActivityRegistration?,
-    queue: DispatchQueue = DispatchQueue.global(qos: .userInitiated)
+    queue: DispatchQueue = DispatchQueue.global(qos: .userInitiated),
+    clock: @escaping () -> Date = Date.init
   ) {
     self.lookup = lookup
     self.queue = queue
+    self.clock = clock
   }
 
   public func receive(
@@ -39,7 +44,7 @@ public final class SealedAlertDelivery: @unchecked Sendable {
     handler = contentHandler
     lock.unlock()
     queue.async { [self] in
-      deliver(Self.rewritten(content, registration: lookup))
+      deliver(Self.rewritten(content, now: clock(), registration: lookup))
     }
   }
 
@@ -63,11 +68,13 @@ public final class SealedAlertDelivery: @unchecked Sendable {
   /// or `content` itself, untouched, when that does not open and verify.
   public static func rewritten(
     _ content: UNNotificationContent,
+    now: Date,
     registration lookup: (String) -> AgentActivityRegistration?
   ) -> UNNotificationContent {
     guard
       let text = SealedAlertResolver.resolve(
-        userInfo: content.userInfo, fixedTitle: content.title, registration: lookup),
+        userInfo: content.userInfo, fixedTitle: content.title, fixedBody: content.body, now: now,
+        registration: lookup),
       let mutable = content.mutableCopy() as? UNMutableNotificationContent
     else { return content }
     mutable.title = text.title
