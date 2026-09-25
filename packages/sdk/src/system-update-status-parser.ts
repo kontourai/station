@@ -33,6 +33,7 @@ const PROVENANCE_ISSUES: readonly UpdateProvenanceIssue[] = [
 
 const SELF_UPDATE_UNAVAILABLE_CODES: readonly SelfUpdateUnavailableCode[] = [
   'service-managed',
+  'supervised',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

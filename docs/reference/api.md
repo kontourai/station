@@ -3706,16 +3706,18 @@ watchdog. A pulled tree without the owned dependency lifecycle fails closed
 { "success": true, "restarting": true, "hash": "def5678", "restart": { "expectedHash": "def5678", "expectedInstanceId": "default", "deadlineAt": "..." } }
 ```
 
-A server running under the installed Station service (`station service run`)
-refuses with `409` before any git or build work, because the service would
-restart it mid-update:
+A supervised server refuses with `409` before any git or build work, because
+its supervisor would restart it mid-update. The code is `service-managed` under
+the installed launchd/systemd service, and `supervised` when only a supervisor
+PID is present (the Windows service, the desktop, a development harness), whose
+remedy does not presume the service:
 
 ```json
 { "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with \"station service stop\", run \"station upgrade\", then start it again with \"station service start\" ..." }
 ```
 
 `GET /system/core-update` reports the same refusal up front as
-`selfUpdateUnavailableCode: "service-managed"` with the remedy in
+`selfUpdateUnavailableCode` with the remedy in
 `selfUpdateUnavailableReason`, so clients do not offer an apply the server
 will refuse.
 

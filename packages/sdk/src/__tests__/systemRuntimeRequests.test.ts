@@ -432,6 +432,20 @@ describe('systemRuntimeRequests', () => {
       );
     });
 
+    it('keeps the supervised refusal code', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          updateAvailable: true,
+          selfUpdateUnavailableCode: 'supervised',
+          selfUpdateUnavailableReason: 'a supervising process runs this server',
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.selfUpdateUnavailableCode).toBe('supervised');
+    });
+
     it('reads an unknown self-update refusal code as unknown, keeping its reason', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,

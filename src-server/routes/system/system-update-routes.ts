@@ -70,16 +70,21 @@ const DEFAULT_INSTANCE_ID = 'default';
  *   `performGitPullRestart` strips of the PID but still lives in the unit's
  *   process group (systemd `KillMode=mixed`) and is still restarted by it.
  *
- * The desktop app also sets `STATION_SUPERVISOR_PID` for its sidecar, but that
- * sidecar runs from its bundle (`desktop-bundle` provenance, its own
- * installer-driven self-update), so this predicate only gates the source
- * checkout's git-pull path.
+ * The two signals prove different things, so they map to different codes:
+ * the unit's marker proves the installed service (`service-managed`); the PID
+ * alone proves only that SOME supervisor exists (`supervised`) — the Windows
+ * service, the desktop, or a dev harness — and its remedy says so rather than
+ * claiming the service.
+ *
+ * The desktop app's sidecar runs from its bundle (`desktop-bundle`
+ * provenance, its own installer-driven self-update), so in practice this
+ * predicate only gates the source checkout's git-pull path.
  */
 export function coreUpdateSupervision(
   env: NodeJS.ProcessEnv = process.env,
 ): SelfUpdateUnavailableCode | null {
-  if (env.STATION_SUPERVISOR_PID?.trim()) return 'service-managed';
   if (env.STATION_SERVICE_MANAGED === '1') return 'service-managed';
+  if (env.STATION_SUPERVISOR_PID?.trim()) return 'supervised';
   return null;
 }
 
@@ -94,6 +99,24 @@ const SERVICE_MANAGED_REASON =
 /** … and as the POST refusal sentence. */
 const SERVICE_MANAGED_REFUSAL =
   'This Station server cannot update itself in place: it runs under the installed Station service, which restarts it on exit and would race the rebuild. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with).';
+
+/** The remedy for `supervised`: a supervisor, not necessarily the service. */
+const SUPERVISED_REASON =
+  'a supervising process runs this server and restarts or stops it with its own lifecycle. Stop that supervisor, then run "station upgrade" from this checkout (for the installed Station service on Windows: "station service stop", "station upgrade", then "station service start")';
+
+const SUPERVISED_REFUSAL =
+  'This Station server cannot update itself in place: a supervising process runs it and would restart or stop it mid-rebuild. Stop that supervisor, then run "station upgrade" from this checkout (for the installed Station service on Windows: "station service stop", "station upgrade", then "station service start").';
+
+const SUPERVISION_REMEDY: Record<
+  SelfUpdateUnavailableCode,
+  { reason: string; refusal: string }
+> = {
+  'service-managed': {
+    reason: SERVICE_MANAGED_REASON,
+    refusal: SERVICE_MANAGED_REFUSAL,
+  },
+  supervised: { reason: SUPERVISED_REASON, refusal: SUPERVISED_REFUSAL },
+};
 
 /**
  * The repository's owned dependency bootstrap, the same command `station
@@ -748,9 +771,9 @@ export function createSystemUpdateRoutes(
     // says so up front so a client never offers an apply the POST refuses.
     const selfUpdateUnavailableCode = coreUpdateSupervision();
     const selfUpdateUnavailableReason =
-      selfUpdateUnavailableCode === 'service-managed'
-        ? SERVICE_MANAGED_REASON
-        : null;
+      selfUpdateUnavailableCode === null
+        ? null
+        : SUPERVISION_REMEDY[selfUpdateUnavailableCode].reason;
 
     try {
       const { gitRoot, branch, sha: currentHash } = provenance;
@@ -937,12 +960,13 @@ export function createSystemUpdateRoutes(
     }
     // Before any git or build work (#2674): under a supervisor the restart
     // below would exit into a respawn racing this very rebuild.
-    if (coreUpdateSupervision() !== null) {
+    const supervision = coreUpdateSupervision();
+    if (supervision !== null) {
       return c.json(
         {
           success: false,
-          error: SERVICE_MANAGED_REFUSAL,
-          selfUpdateUnavailableCode: 'service-managed',
+          error: SUPERVISION_REMEDY[supervision].refusal,
+          selfUpdateUnavailableCode: supervision,
         },
         409,
       );

@@ -82,12 +82,15 @@ export type UpdateProvenanceIssue = 'missing' | 'invalid-stamp';
 
 /**
  * Why this server refuses to apply an update to itself, as a code a client can
- * gate on. `service-managed`: the process runs under an OS service supervisor
- * (`station service run`), which restarts it on exit, so an in-place
- * pull-rebuild-restart would fight that supervisor. The human remedy travels
- * beside it in `selfUpdateUnavailableReason`.
+ * gate on, each naming what the server actually observed:
+ * - `service-managed`: the launchd/systemd unit's marker is set — the
+ *   installed Station service restarts this process on exit.
+ * - `supervised`: only a supervisor PID is set — some supervisor (the Windows
+ *   service, the desktop, a dev harness) owns this process's lifecycle.
+ * Either way an in-place pull-rebuild-restart would fight that supervisor.
+ * The human remedy travels beside it in `selfUpdateUnavailableReason`.
  */
-export type SelfUpdateUnavailableCode = 'service-managed';
+export type SelfUpdateUnavailableCode = 'service-managed' | 'supervised';
 
 /** Disclosure from this home, not a certificate of transferred execution authority. */
 export type HomeRecoveryDisclosure =

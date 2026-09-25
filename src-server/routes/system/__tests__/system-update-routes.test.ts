@@ -825,12 +825,22 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     spawnMock.mockReturnValue({ pid: 7777, unref: vi.fn() });
   }
 
-  test.each([
-    ['STATION_SUPERVISOR_PID', '4242'],
-    ['STATION_SERVICE_MANAGED', '1'],
-  ])(
-    'under the installed service (%s=%s) POST refuses 409 with the stop/upgrade/start remedy before any git or build work (#2674)',
-    async (key, value) => {
+  // The unit's marker names the installed service; a bare supervisor PID
+  // (Windows service, desktop, dev harness) names only "a supervisor", and
+  // its remedy must not claim the service (review L3).
+  const SUPERVISION_CASES = [
+    ['STATION_SUPERVISOR_PID', '4242', 'supervised', 'a supervising process'],
+    [
+      'STATION_SERVICE_MANAGED',
+      '1',
+      'service-managed',
+      'runs under the installed Station service',
+    ],
+  ] as const;
+
+  test.each(SUPERVISION_CASES)(
+    'under a supervisor (%s=%s) POST refuses 409 as %s with its remedy before any git or build work (#2674)',
+    async (key, value, code, phrase) => {
       const gitRoot = tmpGitRoot();
       armBehindSourceCheckout(gitRoot);
       vi.stubEnv(key, value);
@@ -842,9 +852,10 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
       expect(res.status).toBe(409);
       const body = await json(res);
       expect(body.success).toBe(false);
-      expect(body.selfUpdateUnavailableCode).toBe('service-managed');
-      expect(body.error).toContain('"station service stop"');
+      expect(body.selfUpdateUnavailableCode).toBe(code);
+      expect(body.error).toContain(phrase);
       expect(body.error).toContain('"station upgrade"');
+      expect(body.error).toContain('"station service stop"');
       expect(body.error).toContain('"station service start"');
       // Rendered as plain text in the settings card: no literal backticks.
       expect(body.error).not.toContain('`');
@@ -931,12 +942,9 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     expect(execFileMock).not.toHaveBeenCalled();
   });
 
-  test.each([
-    ['STATION_SUPERVISOR_PID', '4242'],
-    ['STATION_SERVICE_MANAGED', '1'],
-  ])(
-    'GET under the installed service (%s=%s) keeps the comparison facts and states the refusal code and remedy',
-    async (key, value) => {
+  test.each(SUPERVISION_CASES)(
+    'GET under a supervisor (%s=%s) keeps the comparison facts and states %s with its remedy',
+    async (key, value, code, phrase) => {
       armBehindSourceCheckout(tmpGitRoot());
       vi.stubEnv(key, value);
 
@@ -947,8 +955,9 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
         applyMethod: 'git-pull',
         behind: 3,
         updateAvailable: true,
-        selfUpdateUnavailableCode: 'service-managed',
+        selfUpdateUnavailableCode: code,
       });
+      expect(body.selfUpdateUnavailableReason).toContain(phrase);
       expect(body.selfUpdateUnavailableReason).toContain(
         '"station service stop"',
       );
@@ -975,7 +984,11 @@ describe('coreUpdateSupervision', () => {
     [{ STATION_SUPERVISOR_PID: '  ' }, null],
     [{ STATION_SERVICE_MANAGED: '0' }, null],
     [{ STATION_SERVICE_MANAGED: 'true' }, null],
-    [{ STATION_SUPERVISOR_PID: '123' }, 'service-managed'],
+    [{ STATION_SUPERVISOR_PID: '123' }, 'supervised'],
+    [
+      { STATION_SUPERVISOR_PID: '123', STATION_SERVICE_MANAGED: '1' },
+      'service-managed',
+    ],
     [{ STATION_SERVICE_MANAGED: '1' }, 'service-managed'],
   ] as const)('%o -> %s', (env, expected) => {
     expect(coreUpdateSupervision(env as NodeJS.ProcessEnv)).toBe(expected);

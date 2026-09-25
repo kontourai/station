@@ -2831,8 +2831,9 @@ caught comparison diagnostic — filesystem paths live here, not in
 `message`), `selfUpdateUnavailableReason` (why the server refuses to apply an
 update to itself, as text: a desktop bundle's self-update eligibility, or a
 source checkout running under the installed service), and
-`selfUpdateUnavailableCode` (the same refusal as a code, currently only
-`'service-managed'`). The parser rejects a non-boolean `updateAvailable`
+`selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
+for the installed launchd/systemd service, `'supervised'` when only a
+supervisor PID is present). The parser rejects a non-boolean `updateAvailable`
 and malformed supplied counts, normalizes a malformed identity or an unknown
 provenance or refusal code to unavailable (`null` — an unknown code never
 reads as a specific one; the refusal text still accompanies it), accepts responses from older servers that omit the new fields
