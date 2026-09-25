@@ -1,5 +1,53 @@
 [
   {
+    "timestampUtc": "2026-09-25T05:50:30Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2459",
+    "sha": "bdc00df5187d5cdd96e662cc087b16cd8c991425",
+    "artifactBuiltAt": "2026-09-25T04:47:12.166Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36095097383",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36095097383)"
+    ],
+    "changelog": {
+      "previousSha": "f18562c4fc01edf17abdeaec88ff150ae80edf3e",
+      "groups": {
+        "feat": [
+          "[#2581](https://github.com/kontourai/station/pull/2581) feat(sessions): a turn outcome never ends its session; park idle engines (#2540 slice 4)",
+          "[#2549](https://github.com/kontourai/station/pull/2549) feat(regions): on a phone, panes open over Chat and Back returns to it",
+          "[#2545](https://github.com/kontourai/station/pull/2545) feat(muse): drive sessions through muse serve so approvals and subagents reach Station (#2452)",
+          "[#2571](https://github.com/kontourai/station/pull/2571) feat(sessions): keep one live engine session per conversation (#2540 slices 2-3)",
+          "[#2560](https://github.com/kontourai/station/pull/2560) feat(bench): measure conversation continuation per engine (#2540 slice 1)",
+          "[#2558](https://github.com/kontourai/station/pull/2558) feat(codex): stop a Codex subagent, ending the parent turn that started it (#2486)"
+        ],
+        "fix": [
+          "[#2564](https://github.com/kontourai/station/pull/2564) fix(chat): link host badges, slash-branch forge links, session-scoped path links and worktree preview titles",
+          "[#2580](https://github.com/kontourai/station/pull/2580) fix(scripts): give each fallow audit a private temp directory so base checkouts stop filling the disk (#2529)",
+          "[#2563](https://github.com/kontourai/station/pull/2563) fix(pull-requests): decide conversation and session reads with the request's principal, across the whole lineage",
+          "[#2575](https://github.com/kontourai/station/pull/2575) fix(desktop): let saved-Station and pairing writes carry an unchanged unobserved credential",
+          "[#2574](https://github.com/kontourai/station/pull/2574) fix(notifications): send the final empty card when a device loses read access",
+          "[#2562](https://github.com/kontourai/station/pull/2562) fix(ui): preview Download as a toolbar icon; text previews fit their content",
+          "[#2552](https://github.com/kontourai/station/pull/2552) fix(desktop,scripts): mobile relay grants stop re-locking profiles.json; gate skips build-output symlinks",
+          "[#2505](https://github.com/kontourai/station/pull/2505) fix(ui): toast turn ends in background chats, and tool calls only on failure",
+          "[#2544](https://github.com/kontourai/station/pull/2544) fix(desktop,cli): run saved-Station commands off the main thread; lock birth via the shared resolver"
+        ],
+        "ci": [
+          "[#2573](https://github.com/kontourai/station/pull/2573) ci(android): run the agent-activity plugin's Kotlin tests"
+        ],
+        "docs": [],
+        "other": [
+          "[#2595](https://github.com/kontourai/station/pull/2595) test(devices): order session A's exit after session B's record write in L-b"
+        ]
+      },
+      "note": null,
+      "commitCount": 17
+    }
+  },
+  {
     "timestampUtc": "2026-09-25T05:50:26Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2459",
