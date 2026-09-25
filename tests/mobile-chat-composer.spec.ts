@@ -669,25 +669,30 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   expect(liveOrder).toEqual([...liveOrder].sort((a, b) => a - b));
   // archive#2652 redesign: settled work renders inline as quiet rows in
   // reading order — there is no "Show N work activities" gate. The
-  // awaiting-approval call surfaces its approval buttons without any
-  // expansion step, and a failed call discloses "Failed" collapsed.
+  // historical approval call shows its outcome without any expansion step,
+  // and a failed call discloses "Failed" collapsed.
   await expect(
     page.getByRole('button', { name: 'Show 1 work activities' }),
   ).toHaveCount(0);
-  // The Allow/Deny controls belong to the LIVE turn: `MessageContent.tsx:56-59`
-  // supplies `onApprove` only when the row is the streaming message, and
-  // `ToolCallDisplay.tsx:244-248` renders the buttons only when it has one. This
-  // fixture plants the approval on turn 9997, three turns back, so what a
-  // historical unresolved call surfaces — and what this line asserts — is the
-  // awaiting marker itself, inline and without an expansion step. The buttons
-  // are covered on the shape that actually wires them by
-  // `tests/orchestration-chat-flow.spec.ts:196-199`.
-  await expect(
-    transcript.getByRole('button', { name: 'Edit approved.txt' }),
-  ).toBeVisible();
+  // This fixture opens an approval request on turn 9997 and that turn then
+  // completes unanswered (`buildLongSessionTurns` ends every turn with
+  // `turn.completed`). Since #2316 (PR #2375) the projection retires such a
+  // card: the call it gated can no longer run, so it reads "Cancelled"
+  // rather than offering an answer nobody can act on
+  // (`approvalRetiredBy` / `retireApprovalCard` in
+  // `packages/shared/src/runtime-event-projection.ts`). What this asserts is
+  // that the historical approval row renders inline, three turns back in a
+  // virtualized transcript, with that honest outcome and no stale awaiting
+  // marker. Live Allow/Deny controls are covered on the shape that wires
+  // them by `tests/orchestration-chat-flow.spec.ts`.
+  const approvalWork = transcript.getByRole('button', {
+    name: 'Edit approved.txt',
+  });
+  await expect(approvalWork).toBeVisible();
+  await expect(approvalWork).toContainText('Cancelled');
   await expect(
     transcript.getByRole('img', { name: 'Awaiting approval' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   // `callLabel` speaks the bare infinitive for an unresolved call
   // (`utils/tool-call-labels.ts:181-199`): "Used" is the resolved past tense.
   const failedWork = transcript.getByRole('button', {
