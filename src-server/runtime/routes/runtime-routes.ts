@@ -519,10 +519,7 @@ import {
 import { AnswerShareStore } from '../../services/share/answer-share-store.js';
 import { createSpatialBoardOwnerResolver } from '../../services/spatial-board/spatial-board-owner-resolver.js';
 import { SpatialBoardStore } from '../../services/spatial-board/spatial-board-store.js';
-import {
-  CLIENT_SESSION_ID_PATTERN,
-  ClientConnectionPresence,
-} from '../../services/ssh/client-connection-presence.js';
+import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import {
   DevicePairingError,
   type DevicePairingService,
@@ -630,6 +627,7 @@ import {
   renderApiDocsLaunchPage,
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
+import { createClientStreamPresence } from './client-stream-presence.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -1100,6 +1098,15 @@ export function configureRuntimeRoutes(
 ): ConfigureRuntimeRoutesResult {
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
+  });
+  // #2620: the focus the route below records is the focus delivery reads,
+  // and a focused surface quiets others only while its event stream is live.
+  const focusPresence = context.focusPresence ?? new FocusPresence();
+  const clientStreamPresence = createClientStreamPresence({
+    devices: connectedClientPresence,
+    identifyDevice: (credential) =>
+      context.environmentSecurityService.identifyDevice(credential),
+    focus: focusPresence,
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let pluginDraftService: PluginDraftService | undefined;
@@ -5298,6 +5305,8 @@ export function configureRuntimeRoutes(
     pushGatewayAvailable,
     agentActivityPublisher,
   } = configureRuntimeSupportServices(context, flowRunService, {
+    focus: focusPresence,
+    inAppLiveness: clientStreamPresence.inAppLiveness,
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
     // by the bell is the same row the Review page lists.
@@ -5513,19 +5522,7 @@ export function configureRuntimeRoutes(
           context.orchestrationService.canUserReadSession(sessionId, authority)
         );
       },
-      connectPairedDevice: (request) => {
-        const sessionId = request.headers.get('x-station-client-session');
-        if (!sessionId || !CLIENT_SESSION_ID_PATTERN.test(sessionId))
-          return undefined;
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        if (principal?.authority !== 'device-credential') return undefined;
-        const device = context.environmentSecurityService.identifyDevice(
-          principal.credential,
-        );
-        return device
-          ? connectedClientPresence.connect(device.id, sessionId)
-          : undefined;
-      },
+      connectClientSession: (request) => clientStreamPresence.connect(request),
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         return (
@@ -5540,7 +5537,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({
-      presence: context.focusPresence ?? new FocusPresence(),
+      presence: focusPresence,
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
       resolvePrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,

@@ -51,7 +51,7 @@ const mockLogger = {
 
 describe('paired-device event-stream lifecycle', () => {
   test('does not acquire a lease or subscribe for an already-aborted request', () => {
-    const connectPairedDevice = vi.fn();
+    const connectClientSession = vi.fn();
     const subscribe = vi.fn();
     const controller = new AbortController();
     controller.abort();
@@ -59,17 +59,17 @@ describe('paired-device event-stream lifecycle', () => {
       eventBus: { subscribe } as unknown as InstanceType<typeof EventBus>,
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice,
+      connectClientSession,
     });
     app.request(
       new Request('http://station.test/', { signal: controller.signal }),
     );
-    expect(connectPairedDevice).not.toHaveBeenCalled();
+    expect(connectClientSession).not.toHaveBeenCalled();
     expect(subscribe).not.toHaveBeenCalled();
   });
   test('releases a registered paired-device lease when subscription setup throws', async () => {
     const release = vi.fn();
-    const connectPairedDevice = vi.fn(() => ({ touch: vi.fn(), release }));
+    const connectClientSession = vi.fn(() => ({ touch: vi.fn(), release }));
     const app = createEventRoutes({
       eventBus: {
         subscribe: () => {
@@ -78,12 +78,12 @@ describe('paired-device event-stream lifecycle', () => {
       } as unknown as InstanceType<typeof EventBus>,
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice,
+      connectClientSession,
     });
 
     app.request('/');
     await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1));
-    expect(connectPairedDevice).toHaveBeenCalledTimes(1);
+    expect(connectClientSession).toHaveBeenCalledTimes(1);
   });
 
   test('releases after the initial SSE write fails before a keepalive can touch', async () => {
@@ -93,7 +93,7 @@ describe('paired-device event-stream lifecycle', () => {
       eventBus: new EventBus(),
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice: () => ({ touch, release }),
+      connectClientSession: () => ({ touch, release }),
       writeSse: () =>
         Promise.reject(new Error('injected initial write failure')),
     });
@@ -113,7 +113,7 @@ describe('paired-device event-stream lifecycle', () => {
         eventBus: new EventBus(),
         getACPStatus: () => ({ connected: false, connections: [] }),
         logger: mockLogger,
-        connectPairedDevice: () => ({ touch, release }),
+        connectClientSession: () => ({ touch, release }),
         isPairedDeviceConnectionCurrent: () => authorized,
       });
       app.request('/');
@@ -136,7 +136,7 @@ describe('paired-device event-stream lifecycle', () => {
         eventBus: new EventBus(),
         getACPStatus: () => ({ connected: false, connections: [] }),
         logger: mockLogger,
-        connectPairedDevice: () => ({ touch, release }),
+        connectClientSession: () => ({ touch, release }),
         writeSse: async (stream, frame) => {
           if (frame.event === 'ping')
             (stream as { closed?: boolean }).closed = true;
