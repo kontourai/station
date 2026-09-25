@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rehydrateChatSession = vi.fn().mockResolvedValue(undefined);
+const dismissToast = vi.fn((_id: string) => {});
+const showToast = vi.fn(
+  (_message: string, _sessionId?: string, _duration?: number) => 'new-toast',
+);
+vi.mock('../../../contexts/ToastContext', () => ({
+  toastStore: {
+    dismiss: (id: string) => dismissToast(id),
+    show: (message: string, sessionId?: string, duration?: number) =>
+      showToast(message, sessionId, duration),
+  },
+}));
 vi.mock('../rehydrateChatSession', () => ({
   rehydrateChatSession: (...args: unknown[]) => rehydrateChatSession(...args),
 }));
@@ -34,6 +45,8 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
   beforeEach(() => {
     rehydrateChatSession.mockClear();
     updateChat.mockClear();
+    dismissToast.mockClear();
+    showToast.mockClear();
     chats = {
       'thread-1': {
         provider: 'claude',
@@ -42,6 +55,227 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
         orchestrationSessionStarted: true,
       },
     };
+  });
+
+  test('replaces open approvals and stale toasts from an authoritative snapshot', () => {
+    chats['thread-1'].pendingApprovals = ['stale-request'];
+    chats['thread-1'].approvalToasts = new Map([
+      ['stale-request', 'stale-toast'],
+    ]);
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['new-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['new-request']);
+    expect(chats['thread-1'].orchestrationStatus).toBe('idle');
+    expect(dismissToast).toHaveBeenCalledWith('stale-toast');
+    expect(showToast).toHaveBeenCalledOnce();
+  });
+
+  test('a terminal runtime error replaces a stale idle status', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            lastEventMethod: 'runtime.error',
+            openRequestIds: [],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].orchestrationStatus).toBe('errored');
+    expect(chats['thread-1'].status).toBe('error');
+  });
+
+  test('an idle lineage snapshot replaces a stale current execution child', () => {
+    chats['thread-1'].currentSessionId = 'thread-1';
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            conversationId: 'thread-1',
+            currentSessionId: 'thread-1:session:new',
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].currentSessionId).toBe('thread-1:session:new');
+    expect(chats['thread-1'].conversationOpenPending).toBe(true);
+  });
+
+  // station#2530 review 2 round 2: a brand-new client's very first snapshot
+  // has no prior `currentSessionId` to resolve a lineage child by — `chats`
+  // still carries whatever `initChat` seeded (the chat's own root key), and
+  // this payload's rows carry no `conversationId` at all (the exact shape a
+  // real server sends when the child's own binding event never carried
+  // `conversationId` metadata, and what the sync property test's seed 64
+  // reproduced). The root row's OWN `currentSessionId` naming the child is
+  // the only thing that can resolve the child's row to this chat.
+  test('a lineage child approval reaches pendingApprovals on a reload with no prior currentSessionId or conversationId', () => {
+    chats['thread-1'].currentSessionId = 'thread-1';
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'thread-1:session:child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'thread-1:session:child',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'thread-1:session:child',
+            openRequestIds: ['child-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['child-request']);
+  });
+
+  // station#2530 review 3: the identity a root row advertises must never
+  // bind ANOTHER conversation's lineage child to this chat.
+  // Chat Y's own root row is deliberately absent, so no competing claim
+  // masks the rule under test: the child's own conversationId must win.
+  test("a root row naming another chat's lineage child cannot pull that child's approvals into its own chat", () => {
+    chats = {
+      'chat-x': {
+        provider: 'claude',
+        conversationId: 'chat-x',
+        currentSessionId: 'chat-x',
+      },
+      'chat-y': {
+        provider: 'claude',
+        conversationId: 'chat-y',
+        currentSessionId: 'chat-y',
+      },
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'chat-x',
+            conversationId: 'chat-x',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'chat-y:session:child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'chat-y:session:child',
+            conversationId: 'chat-y',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'chat-y:session:child',
+            openRequestIds: ['chat-y-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['chat-x'].pendingApprovals ?? []).toEqual([]);
+    expect(chats['chat-y'].pendingApprovals).toEqual(['chat-y-request']);
+  });
+
+  test('two root rows claiming the same child with no conversation to decide between them bind it to neither', () => {
+    chats = {
+      'chat-x': { provider: 'claude', currentSessionId: 'chat-x' },
+      'chat-y': { provider: 'claude', currentSessionId: 'chat-y' },
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'chat-x',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'shared-child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'chat-y',
+            status: 'ready',
+            hasActiveTurn: false,
+            currentSessionId: 'shared-child',
+            openRequestIds: [],
+          },
+          {
+            provider: 'claude',
+            threadId: 'shared-child',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'shared-child',
+            openRequestIds: ['shared-request'],
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['chat-x'].pendingApprovals ?? []).toEqual([]);
+    expect(chats['chat-y'].pendingApprovals ?? []).toEqual([]);
+  });
+
+  test('an open activity record restores the exact turn even when the process status is ready', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: true,
+            currentSessionId: 'thread-1',
+            conversationActivity: {
+              conversationId: 'thread-1',
+              asOfSequence: 9,
+              openTurn: {
+                threadId: 'thread-1',
+                turnId: 'turn-9',
+                startedAt: '2026-09-24T00:00:09.000Z',
+              },
+            },
+          },
+        ],
+      },
+      { apiBase: 'http://api', isReconnectFallback: true },
+    );
+    expect(chats['thread-1']).toMatchObject({
+      status: 'sending',
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-9',
+      openTurnStartedAt: Date.parse('2026-09-24T00:00:09.000Z'),
+    });
   });
 
   test('an ordinary (non-reconnect) snapshot never triggers a messages refetch', () => {

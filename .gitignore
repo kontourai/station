@@ -56,6 +56,9 @@ archive/
 # to hold them and builds with the release icon from a fresh clone.
 !src-desktop/gen/android/app/src/debug/res/mipmap-*/*.png
 !src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/*.png
+# The Live Activity widget's app icon (#2513): without it the widget renders
+# an empty image from a clean checkout.
+!src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/*.png
 # Brand masters and the per-channel nightly set are source-controlled build
 # input too (bundle.icon in tauri.nightly.conf.json and the nightly.yml
 # Android copy step read them from a fresh clone).

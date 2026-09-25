@@ -705,6 +705,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // #2584 `notify_user`'s REST side: Station's own station-control tool code
+  // is its only caller (the route answers 404 to anything that is not the
+  // internal principal, then re-verifies the forwarded caller credential).
+  // Declared so no credential reaches it by default; a paired credential
+  // that did would need the operate tier notification writes already take.
+  {
+    id: '/api/notifications/agent:orchestration-operate',
+    method: '*',
+    prefix: '/api/notifications/agent',
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.

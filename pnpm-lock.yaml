@@ -440,6 +440,9 @@ importers:
       js-tiktoken:
         specifier: 1.0.21
         version: 1.0.21
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1(@noble/hashes@2.4.0)
       node-datachannel:
         specifier: 0.33.3
         version: 0.33.3

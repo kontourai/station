@@ -132,7 +132,7 @@ import {
   createRuntimeFrameworkModel,
   resolveDefaultManagedModelHint,
 } from '../plugins/runtime-provider-resolution.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import type { IAgentFramework } from '../types.js';
 import {
   createEventStoreWorkItemPrincipalLiveness,
@@ -585,8 +585,10 @@ export async function initializeRuntime(
     // multi-user runtime must migrate them and switch this to `deny`.
     ownerlessSessionAccess: 'single-user-compat',
     // #749: rows written before principal ownership retain this Station
-    // process's former OS alias. SessionAuthorization admits it only for the
-    // request-derived home-possession local-operator principal.
+    // process's former OS alias. SessionAuthorization reads it as the local
+    // operator's history: members of the personal conversation account
+    // (below) read it, and otherwise only the home-possession local operator
+    // does (#2611).
     legacyPersonalOwner: getCachedUser().alias,
     personalConversationAccess: {
       canRead: (requesterId, ownerId) =>
@@ -857,7 +859,7 @@ export async function initializeRuntime(
         logger,
         usageAggregator: nextUsageAggregator,
         defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-        autoApproveTools: SC_READ_ONLY_TOOLS,
+        autoApproveTools: SC_AUTO_APPROVED_TOOLS,
         replaceTemplateVariables,
         resolveDefaultModelHint: () =>
           resolveDefaultManagedModelHint(

@@ -27,6 +27,7 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
+import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
 import { BannerHost } from './components/notifications/BannerHost';
@@ -396,6 +397,31 @@ function App() {
       firstProjectLayouts,
     ],
   );
+  // `pending` withholds a decision only until Home's surface has settled once
+  // (#2414). After that it is a continuation still loading: creating the first
+  // project re-enters `pending` while that project's layouts load, and
+  // swapping Home for the skeleton then unmounted Home — and the first-run
+  // chapter open inside it — for that moment. What `pending` exists to
+  // withhold is the continuation (#223), and Home already renders a null one
+  // as "nothing to resume", so it stays mounted and the offer arrives when the
+  // layouts do. A failure resets this: after an error or an unavailable host,
+  // Home has not settled on what the Station now says. So does a different
+  // Station: what is recorded is WHICH Station Home settled for, so a switch
+  // re-enters `pending` unsettled and shows the skeleton rather than keeping
+  // the previous Station's Home up while the new one's projects load.
+  const homeSurfaceIdentity = `${API_BASE}|${activeConnectionUrl ?? ''}`;
+  const [homeSurfaceSettledFor, setHomeSurfaceSettledFor] = useState<
+    string | null
+  >(null);
+  if (homeSurface.status !== 'pending') {
+    const settledFor =
+      homeSurface.status === 'resolved' || homeSurface.status === 'empty'
+        ? homeSurfaceIdentity
+        : null;
+    if (settledFor !== homeSurfaceSettledFor)
+      setHomeSurfaceSettledFor(settledFor);
+  }
+  const homeSurfaceSettled = homeSurfaceSettledFor === homeSurfaceIdentity;
 
   const displayCurrentView: NavigationView =
     window.location.pathname === '/' ? { type: 'home' } : currentView;
@@ -539,29 +565,36 @@ function App() {
 
   // The routed view. Built once: it is what every route other than `/`
   // renders, and what `/` renders once the home surface has resolved.
+  //
+  // The boundary is what tells a dialog inside the view that its view was
+  // removed rather than that it was closed (#2414): the Home branches below
+  // swap this view for other states of the same URL, and a dialog taken down
+  // by that swap must not travel history on its way out.
   const routedView = (
-    <AppViewContent
-      currentView={displayCurrentView}
-      agents={agents}
-      apiBase={API_BASE}
-      availableModels={availableModels}
-      defaultModel={appConfig?.defaultModel}
-      onNavigate={navigateToView}
-      onShowHome={showHome}
-      onReturnToOutlet={returnToOutlet}
-      onSettingsSaved={handleSettingsSaved}
-      projectsLoading={projectsLoading}
-      homeContinuation={
-        homeSurface.status === 'resolved' ? homeSurface.target : null
-      }
-    />
+    <DialogHistoryHostBoundary>
+      <AppViewContent
+        currentView={displayCurrentView}
+        agents={agents}
+        apiBase={API_BASE}
+        availableModels={availableModels}
+        defaultModel={appConfig?.defaultModel}
+        onNavigate={navigateToView}
+        onShowHome={showHome}
+        onReturnToOutlet={returnToOutlet}
+        onSettingsSaved={handleSettingsSaved}
+        projectsLoading={projectsLoading}
+        homeContinuation={
+          homeSurface.status === 'resolved' ? homeSurface.target : null
+        }
+      />
+    </DialogHistoryHostBoundary>
   );
   // The Home branches of the route outlet, byte-for-byte what `/` rendered
   // before `main` became choosable (#928 C2a): rendered by the Home region
   // shell through `MainRegionSurface`, which is where a null or `home`
   // occupant lands.
   const renderHomeRoute = () =>
-    homeSurface.status === 'pending' ? (
+    homeSurface.status === 'pending' && !homeSurfaceSettled ? (
       <HomeRoutePendingSkeleton />
     ) : homeSurface.status === 'host-unavailable' ? (
       <HomeRouteHostUnavailable

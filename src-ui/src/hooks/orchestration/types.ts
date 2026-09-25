@@ -18,6 +18,8 @@ export type OrchestrationEvent = CanonicalRuntimeEvent extends infer Event
   : never;
 
 export type OrchestrationSnapshotPayload = {
+  /** Durable database identity; absent on older Station servers. */
+  epoch?: string;
   sessions: Array<{
     provider: EngineId;
     threadId: string;
@@ -49,12 +51,18 @@ export type OrchestrationSnapshotPayload = {
     delegation?: OrchestrationDelegationContext;
     createdAt?: string;
     lastEventAt?: string;
+    displayTitle?: string;
+    lastEventMethod?: CanonicalRuntimeEvent['method'];
+    lastRuntimeErrorMessage?: string;
+    lastTurnAbortReason?: string;
     /**
      * #2309: the activity of the conversation this row's session belongs
      * to — every execution child, not just this row's. Absent from older
      * servers and for sessions with no conversation lineage.
      */
     conversationActivity?: ConversationTurnActivity;
+    /** Current unresolved request ids; present even when empty. */
+    openRequestIds?: string[];
     /**
      * #2303: the durable conversation this execution thread belongs to — the
      * root for the root row AND for every `<root>:session:<uuid>`
@@ -65,6 +73,8 @@ export type OrchestrationSnapshotPayload = {
      * conversation, so this is how a turn running in a child reaches its chat.
      */
     conversationId?: string;
+    /** Durable current execution child, including when it is idle. */
+    currentSessionId?: string;
     /** #2456: see `OrchestrationSessionSummary.childWork`. Absent from older servers. */
     childWork?: SessionChildWork;
   }>;

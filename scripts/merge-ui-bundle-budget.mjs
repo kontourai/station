@@ -26,16 +26,16 @@ import { fileURLToPath } from 'node:url';
  * across the two sides. That value can never be below either parent's measured
  * actual, and if the merged tree costs more than both parents combined the
  * pre-push `npm run build:ui` gate fails on the excess exactly as it would
- * have on any other stale number. The build after the merge is the measurement;
- * this is only what lets the merge complete without a human typing a number
- * they have not measured either.
+ * have on any other stale number. Ceilings are round numbers with headroom
+ * (#1703), so the higher side is the resolution; the build after the merge
+ * only confirms the tree fits under it.
  *
  * If either side is not the JSON shape the gate reads, %A is never touched:
  * Git keeps the conflict for a human.
  */
 export const PROVISIONAL_NOTE =
   'provisional (max of both sides; a merge driver cannot see the merged tree) — ' +
-  'run `npm run build:ui` after the merge and record what it measures';
+  'run `npm run build:ui` after the merge to confirm the tree is under it';
 
 const FIELDS = ['entryJsGzipBytes', 'entryCssGzipBytes'];
 

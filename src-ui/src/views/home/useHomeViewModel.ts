@@ -1,7 +1,6 @@
 import {
   useAcknowledgeConversationMutation,
   useConversationInventoryQuery,
-  useModelPickerCatalogQuery,
   useOrchestrationSessionsQuery,
   useRemoteSessionsQuery,
   useTasksQuery,
@@ -15,11 +14,10 @@ import {
 } from '../../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
-import { runtimeCatalogVisibleModels } from '../../utils/execution';
-import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import {
   focusChatEventDetailForAction,
@@ -66,30 +64,10 @@ function useHomeWorkData(): HomeWorkData {
   const { data: remoteSessionsResult } = useRemoteSessionsQuery();
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
-  // archive#3391. Home's rows name a model; the New Chat surfaces name the
-  // same model through `resolveEffectiveModel`, which reads a connection's
-  // catalog. Home read the stored id instead, so one session was "Selected
-  // Test Model" on one card and `model-selected` on the card beside it. This
-  // is that catalog, unioned across every connection this Station knows —
-  // a Home row can belong to any of them, not only the default agent's.
-  const { data: pickerCatalog, isLoading: pickerCatalogLoading } =
-    useModelPickerCatalogQuery();
-  // Union, so first-match wins if two connections publish the SAME model id
-  // under different names (archive#3391). Left as-is deliberately:
-  // de-duplicating would have to pick a winner, and the honest winner is the
-  // connection the SESSION runs on — which is a per-row lookup this hook does
-  // not have and the rows do not carry. Accepted because the case needs two
-  // connections to disagree about one id's display name, and because the
-  // failure mode is a right-shaped name from the wrong connection rather than
-  // the internal id this replaced.
-  const resolveModelLabel = useMemo(() => {
-    const catalog = [
-      ...(pickerCatalog?.agentConnections ?? []),
-      ...(pickerCatalog?.modelConnections ?? []),
-    ].flatMap((connection) => runtimeCatalogVisibleModels(connection));
-    return (modelId: string | null | undefined) =>
-      modelIdentityLabel(modelId, catalog);
-  }, [pickerCatalog?.agentConnections, pickerCatalog?.modelConnections]);
+  // archive#3391: Home's rows name a model the way the New Chat surfaces
+  // do — through the connection catalogs, not the stored id.
+  const { resolveModelLabel, isLoading: pickerCatalogLoading } =
+    useCatalogModelLabel();
   // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
   // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
   const openChatItems = useOpenWorkChats(

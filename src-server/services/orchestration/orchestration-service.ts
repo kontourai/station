@@ -1565,10 +1565,7 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
-  /**
-   * #2456: process-local child work (engine subagents), served on session
-   * summaries beside `turnProgress` so the reconnect snapshot carries it.
-   */
+  /** Current running child work plus durable terminal outcomes. */
   /**
    * #2457: a child's running → terminal fold is the background-task settle
    * the `sessionBackgroundTasks` metric counts, once per child, for every
@@ -1598,7 +1595,24 @@ export class OrchestrationService {
   private readonly readChildWork = (
     threadId: string,
     provider: string | undefined,
-  ) => this.childWork.read(threadId, provider);
+  ) => {
+    this.hydrateHistoricalChildWork([threadId]);
+    return this.childWork.read(threadId, provider);
+  };
+
+  private hydrateHistoricalChildWork(threadIds: readonly string[]): void {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return;
+    const cold = this.childWork.threadsNeedingHistoricalSeed(threadIds);
+    if (cold.length === 0) return;
+    const historical = eventStore.listChildWorkHistoryForThreads(cold);
+    for (const threadId of cold) {
+      this.childWork.seedHistoricalSettled(
+        threadId,
+        (historical.get(threadId) ?? []).map((row) => row.payload),
+      );
+    }
+  }
   /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
@@ -3635,18 +3649,22 @@ export class OrchestrationService {
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
+    const readableThreadSet = new Set(readableThreadIds);
     // archive#4466: batched over every readable thread in a fixed number of
     // SQL round trips instead of one `listSessionProjectionEvents` +
     // `countEventsByThread` pair per thread — this route is polled on the
     // Activity view's mount and stalled proportionally to the thread count
     // before this change.
     const eventStore = this.options.eventStore;
+    this.hydrateHistoricalChildWork(readableThreadIds);
     const eventsByThread =
       eventStore?.listSessionProjectionEventsForThreads(readableThreadIds) ??
       new Map<string, PersistedRuntimeEvent[]>();
     const eventCountByThread =
       eventStore?.countEventsByThreads(readableThreadIds) ??
       new Map<string, number>();
+    const openRequestIdsByThread =
+      eventStore?.listOpenRequestIdsByThreads(readableThreadIds);
     // #1536 B4: batched beside the two reads above, never per row — a
     // continuation child's own events begin at the SECOND prompt, so without
     // the conversation's own first prompted turn every surface that titles a
@@ -3677,6 +3695,14 @@ export class OrchestrationService {
     // above for the same reason — one query for the whole list.
     const conversationDraftFactsByThread =
       eventStore?.conversationDraftFactsForThreads(readableThreadIds);
+    // A continuation child learns its conversation from `session.started`
+    // metadata, which a child whose start failed never emits — it then had no
+    // `conversationId`, and every inbox listed it as its own conversation
+    // ("No project · Model not reported · Stopped" beside the real row). The
+    // lineage row is written before the start, so it names the conversation
+    // either way.
+    const lineageByThread =
+      eventStore?.conversationLineageForThreads(readableThreadIds);
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -3695,9 +3721,14 @@ export class OrchestrationService {
         const conversationFirstPromptedTurn =
           conversationFirstPromptedTurnByThread.get(threadId)?.payload;
         const conversationActivity = conversationActivityFor(threadId);
+        const currentSessionId = conversationActivity
+          ? this.conversationActivity?.currentSessionId(
+              conversationActivity.conversationId,
+            )
+          : undefined;
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
-        return buildOrchestrationSessionSummary({
+        const summary = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -3705,7 +3736,13 @@ export class OrchestrationService {
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
           readChildWork: this.readChildWork,
+          ...(openRequestIdsByThread
+            ? { openRequestIds: openRequestIdsByThread.get(threadId) ?? [] }
+            : {}),
           ...(conversationActivity ? { conversationActivity } : {}),
+          ...(currentSessionId && readableThreadSet.has(currentSessionId)
+            ? { currentSessionId }
+            : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),
@@ -3715,6 +3752,11 @@ export class OrchestrationService {
             observedAt,
           ),
         });
+        const lineageConversationId =
+          lineageByThread?.get(threadId)?.conversationId;
+        return !summary.conversationId && lineageConversationId
+          ? { ...summary, conversationId: lineageConversationId }
+          : summary;
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
@@ -4098,6 +4140,7 @@ export class OrchestrationService {
   conversationStreamBinding(event: {
     threadId: string;
     method?: string;
+    force?: boolean;
   }):
     | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
     | undefined {
@@ -4548,6 +4591,11 @@ export class OrchestrationService {
   readEventStreamHead(): number {
     this.initialize();
     return this.sessionEventReads.readEventStreamHead();
+  }
+
+  readEventStreamEpoch(): string | undefined {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamEpoch();
   }
 
   readEventGlobalSequence(eventId: string): number | undefined {
@@ -8759,6 +8807,7 @@ export class OrchestrationService {
   }
 
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
+    this.options.eventStore?.assertNoOuterTransactionForPublication();
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
     // `ui-block-provenance.ts`'s docblock for why it is NOT the only one

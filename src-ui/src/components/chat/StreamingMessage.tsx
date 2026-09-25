@@ -254,6 +254,8 @@ export function StreamingMessageView({
 
         {!suppressActivity &&
           (statusLabel ||
+            workingStartedAt !== undefined ||
+            elapsedMs !== undefined ||
             (!hasAnswerText && !(progressSummary && renderToolCall))) && (
             <div
               className="streaming-activity"

@@ -56,6 +56,7 @@ import { useConversationActivityFeed } from '../../hooks/orchestration/useConver
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
   useChatDockActions,
@@ -238,7 +239,7 @@ const loadDelegationLauncher = () =>
 
 /**
  * station#1301 slice 1: an overlay behind an explicit trigger (the tab bar's
- * Background tasks button, or the mobile activity switcher's row) that
+ * Background tasks button, or the phone's ⋯ sheet row) that
  * renders nothing until opened — same lazy-load rationale as the two
  * launchers above. Keeps the sheet's markup and its per-row expand state out
  * of the entry chunk; only the small trigger button + the store it reads a
@@ -556,7 +557,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [orchestrationSessions],
   );
-  const openChatItems = useOpenChats(agents, orchestrationSessions);
+  // archive#3391: the inboxes name models through the catalog, as Home does.
+  const { resolveModelLabel } = useCatalogModelLabel();
+  const openChatItems = useOpenChats(
+    agents,
+    orchestrationSessions,
+    resolveModelLabel,
+  );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
     sessions: orchestrationSessions,
@@ -594,6 +601,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       agents,
       chatItems: openChatItems,
       currentSessionIdByConversation,
+      resolveModelLabel,
     }).map((item) => {
       const conversation = inventoryById.get(item.id);
       if (!conversation) return item;
@@ -612,6 +620,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryById,
     openChatItems,
     orchestrationSessions,
+    resolveModelLabel,
   ]);
   const acknowledgeTaskConversation = useCallback(
     (item: { id: string; conversationUpdatedAt?: string }) => {
@@ -696,7 +705,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     useState<ConversationOpenRecovery | null>(null);
 
   // station#1301 slice 1: the active session's running-background-task count,
-  // for the tab bar's badge and the mobile switcher's row label.
+  // for the tab bar's badge and the Background tasks rows' labels.
   const backgroundTasksRunningCount =
     useChatBackgroundTasksRunningCount(activeSessionId);
 
@@ -745,9 +754,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setActiveWorkPanel,
     isTaskSwitcherOpen,
     setIsTaskSwitcherOpen,
-    taskSwitcherMode,
-    setTaskSwitcherMode,
-    activityTriggerRef,
     isBackgroundTasksOpen,
     setIsBackgroundTasksOpen,
     backgroundTasksTriggerRef,
@@ -1731,7 +1737,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isFullscreenPlacement,
         });
         if (route.surface === 'task-switcher-sheet') {
-          setTaskSwitcherMode('tasks');
           setIsTaskSwitcherOpen(true);
           return;
         }
@@ -1769,7 +1774,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     agentsLoaded,
     showSurface,
     setIsTaskSwitcherOpen,
-    setTaskSwitcherMode,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
@@ -1984,11 +1988,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * renderer and pane renderers do not read region state.
    */
   const backgroundTasksOpensPane = !dockBottomOnly;
-  // Two callers with two meanings, kept apart: the More-menu row TOGGLES the
-  // sheet it announces as a dialog, while a switcher row that is dismissing
-  // itself OPENS it. Folding them into one toggle would let a second entry
-  // point close a sheet it never opened. The pane branch is the same either
-  // way — revealing a tab that is already there is a reveal.
+  // Two meanings, kept apart: the More-menu row TOGGLES the sheet it
+  // announces as a dialog, while the phone's ⋯ sheet row (which dismisses its
+  // own sheet) and the transcript banner OPEN it. Folding them into one toggle
+  // would let a second entry point close a sheet it never opened. The pane
+  // branch is the same either way — revealing a tab that is already there is
+  // a reveal.
   const showBackgroundTasks = useCallback(() => {
     if (backgroundTasksOpensPane) {
       showSurface('workspace-agents');
@@ -2181,15 +2186,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               activeCount={activeSessionCount}
               unreadCount={unreadCount}
               taskSwitcherTriggerRef={taskSwitcherTriggerRef}
-              activityTriggerRef={activityTriggerRef}
-              onOpenTaskSwitcher={() => {
-                setTaskSwitcherMode('tasks');
-                setIsTaskSwitcherOpen(true);
-              }}
-              onOpenActivity={() => {
-                setTaskSwitcherMode('activity');
-                setIsTaskSwitcherOpen(true);
-              }}
+              onOpenTaskSwitcher={() => setIsTaskSwitcherOpen(true)}
               onToggleSidebar={(trigger) =>
                 window.dispatchEvent(
                   new CustomEvent('toggle-sidebar', { detail: { trigger } }),
@@ -2258,6 +2255,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // the region model this renderer may not read.
                 regionPanes: chrome.regionPanes,
                 onSelectRegionPane: chrome.selectRegionPane,
+                // #2510: the phone's entry to Background tasks, through the
+                // same router as the desktop row. The sheet only mounts for
+                // an active chat, so without one the row is omitted rather
+                // than offered as a tap that opens nothing. While an imported
+                // session is on screen the sheet would show the chat hidden
+                // behind it, so the row is omitted then too.
+                onOpenBackgroundTasks:
+                  activeSessionId && !importedSessionId
+                    ? showBackgroundTasks
+                    : undefined,
+                backgroundTasksRunningCount,
               }}
             />
           ) : (
@@ -2722,7 +2730,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             load={loadMobileTaskSwitcher}
             componentProps={{
               open: isMobile && isTaskSwitcherOpen,
-              mode: taskSwitcherMode,
               tasks: taskItems,
               pending: taskItemsPending,
               loadError: taskItemsFailed,
@@ -2734,10 +2741,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
-              triggerRef:
-                taskSwitcherMode === 'activity'
-                  ? activityTriggerRef
-                  : taskSwitcherTriggerRef,
+              triggerRef: taskSwitcherTriggerRef,
               onClose: () => setIsTaskSwitcherOpen(false),
               onFocusChat: focusUserSelectedSessionInPane,
               onOpenConversation: openUserSelectedConversationInScopedPane,
@@ -2745,11 +2749,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onAcknowledgeConversation: acknowledgeTaskConversation,
               agentsLoaded,
               onOpenFailed: showInboxOpenFailure,
-              backgroundTaskCount: backgroundTasksRunningCount,
-              onOpenBackgroundTasks: () => {
-                setIsTaskSwitcherOpen(false);
-                showBackgroundTasks();
-              },
               onOpenSession: (threadId) => {
                 setIsTaskSwitcherOpen(false);
                 openImportedSessionInPane(threadId);
@@ -2757,16 +2756,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }}
             pending={
               <MobileSheetPending
-                label={
-                  taskSwitcherMode === 'activity' ? 'Activity' : 'Switch task'
-                }
+                label="Switch task"
                 style={visualViewport.style}
                 onClose={() => setIsTaskSwitcherOpen(false)}
-                returnFocusTarget={
-                  taskSwitcherMode === 'activity'
-                    ? activityTriggerRef.current
-                    : taskSwitcherTriggerRef.current
-                }
+                returnFocusTarget={taskSwitcherTriggerRef.current}
               />
             }
           />

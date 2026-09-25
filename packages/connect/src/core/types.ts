@@ -371,3 +371,9 @@ export interface SavedStationEdit {
   name: string;
   url: string;
 }
+
+/** An explicit request to forget a saved Station, bound to what the user saw. */
+export interface SavedStationRemoval {
+  connectionId: string;
+  expected: { name: string; url: string };
+}

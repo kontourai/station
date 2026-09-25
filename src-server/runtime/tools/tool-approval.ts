@@ -5,6 +5,7 @@ import {
   STATION_BROWSER_MCP_SERVER_ID,
 } from '../../tools/station-browser-policy.js';
 import { isBuiltinStationControl } from '../bootstrap/station-control-runtime-env.js';
+import type { MCPToolNameMappingEntry } from './mcp-tool-names.js';
 
 export function isAutoApproved(toolName: string, patterns: string[]): boolean {
   return patterns.some((pattern) => {
@@ -115,10 +116,97 @@ function reservedBuiltinServerForTool(toolName: string): string | null {
     const server = separatorIndex > 0 ? rest.slice(0, separatorIndex) : '';
     if (server && RESERVED_BUILTIN_SERVER_IDS.has(server)) return server;
   }
+  // Also the CANONICAL form: `mcp__station-control_x__y` canonicalizes to
+  // `station-control_x_y`, which a `station-control_*` pattern matches, so
+  // it must meet the reserved-server checks too (and fail them: its raw
+  // server is not the reserved id — see `masqueradesAsReserved`).
+  const canonical = canonicalizeExternalToolName(toolName);
   for (const id of RESERVED_BUILTIN_SERVER_IDS) {
-    if (toolName === id || toolName.startsWith(`${id}_`)) return id;
+    for (const name of [toolName, canonical]) {
+      if (name === id || name.startsWith(`${id}_`)) return id;
+    }
   }
   return null;
+}
+
+/**
+ * True when an `mcp__<server>__<tool>` name's REAL server (the first `__`
+ * segment the engine generated) is not the reserved id its canonical form
+ * resolved to: a differently named server borrowing the reserved prefix.
+ */
+function masqueradesAsReserved(toolName: string, reserved: string): boolean {
+  const prefix = 'mcp__';
+  if (!toolName.startsWith(prefix)) return false;
+  const rest = toolName.slice(prefix.length);
+  const separatorIndex = rest.indexOf('__');
+  const server = separatorIndex > 0 ? rest.slice(0, separatorIndex) : '';
+  return server !== reserved;
+}
+
+/**
+ * #2584: the bounded-write station-control tools every agent may call without
+ * an authored pattern (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`). Granted by
+ * EXACT identity, never through pattern matching: a pattern or a
+ * canonicalized name can be satisfied by a differently split name
+ * (`mcp__station-control_notify__user` canonicalizes to the same string), so
+ * only these identities qualify.
+ */
+const INTRINSIC_STATION_CONTROL_TOOL = 'notify_user';
+const INTRINSIC_EXTERNAL_TOOL_NAME = `mcp__station-control__${INTRINSIC_STATION_CONTROL_TOOL}`;
+
+function deliveredGenuineStationControl(
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+): boolean {
+  const delivered = (resolvedToolServers ?? [])
+    .filter((server) => server.id === 'station-control')
+    .at(-1);
+  return (
+    !!delivered &&
+    // The whole delivered shape, transport and endpoint included (#2614).
+    isBuiltinStationControl(delivered.id, {
+      id: delivered.id,
+      transport: delivered.transport,
+      command: delivered.command,
+      args: delivered.args,
+      endpoint: delivered.endpoint,
+    } as ToolDef)
+  );
+}
+
+/**
+ * External engines: the raw engine name is exactly the built-in's, the engine
+ * generated it (Claude's Agent SDK, from the `mcpServers` key Station handed
+ * it), and the server delivered under `station-control` is the genuine
+ * built-in. An ACP (`self-reported`) name never qualifies.
+ */
+function isIntrinsicExternalGrant(
+  toolName: string,
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  toolNameProvenance: ExternalToolNameProvenance,
+): boolean {
+  return (
+    toolName === INTRINSIC_EXTERNAL_TOOL_NAME &&
+    toolNameProvenance === 'authentic' &&
+    deliveredGenuineStationControl(resolvedToolServers)
+  );
+}
+
+/**
+ * Station's engine: the loaded tool's own record (keyed by the runtime name
+ * the model calls, e.g. `stationControl_notifyUser`) says it came from the
+ * built-in station-control server (`builtinStationControl`, stamped by the
+ * MCP loader from `isBuiltinStationControl`) and is its `notify_user` tool.
+ */
+export function isIntrinsicStationEngineGrant(
+  runtimeToolName: string,
+  toolNameMapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
+): boolean {
+  const entry = toolNameMapping.get(runtimeToolName);
+  return (
+    entry?.builtinStationControl === true &&
+    entry.provenance?.integrationId === 'station-control' &&
+    entry.provenance.originalToolName === INTRINSIC_STATION_CONTROL_TOOL
+  );
 }
 
 /**
@@ -166,6 +254,10 @@ export function isAutoApprovedExternalTool(
   resolvedToolServers?: readonly ResolvedAgentToolServer[],
   toolNameProvenance: ExternalToolNameProvenance = 'self-reported',
 ): boolean {
+  if (
+    isIntrinsicExternalGrant(toolName, resolvedToolServers, toolNameProvenance)
+  )
+    return true;
   if (!patterns || patterns.length === 0) return false;
   const canonical = canonicalizeExternalToolName(toolName);
   const matched =
@@ -174,6 +266,11 @@ export function isAutoApprovedExternalTool(
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
+  if (
+    reservedServer !== null &&
+    masqueradesAsReserved(toolName, reservedServer)
+  )
+    return false;
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
@@ -187,17 +284,8 @@ export function isAutoApprovedExternalTool(
     if (toolNameProvenance !== 'authentic') return false;
     // Check the entry that actually wins delivery (last-write-wins per id),
     // not merely "some entry with this id looks genuine" (Probe B).
-    const delivered = (resolvedToolServers ?? [])
-      .filter((server) => server.id === reservedServer)
-      .at(-1);
-    return (
-      !!delivered &&
-      isBuiltinStationControl(delivered.id, {
-        id: delivered.id,
-        command: delivered.command,
-        args: delivered.args,
-      } as ToolDef)
-    );
+    // (The only other reserved id, station-browser, returned above.)
+    return deliveredGenuineStationControl(resolvedToolServers);
   }
   return true;
 }
