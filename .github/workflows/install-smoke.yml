@@ -204,18 +204,26 @@ jobs:
           tar -czf "$bad_release/station-portable.tar.gz" -C "$bad_work" station
           # Swap the served fixture and re-sign the manifest so the packaged
           # upgrade verifies the bad candidate, fails its start, and rolls back.
+          # The bad candidate reuses the installed version with new bytes, which
+          # the installer refuses as a possible replay unless the exact version
+          # is named with STATION_INSTALL_ALLOW_ROLLBACK=1.
           cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"
           write_manifest_payload
           if env \
             HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
             "${public_install_env[@]}" \
-            "$launcher" upgrade
+            STATION_VERSION="$release_tag" \
+            STATION_INSTALL_ALLOW_ROLLBACK=1 \
+            "$launcher" upgrade 2>"$RUNNER_TEMP/bad-upgrade.err"
           then
             echo "Expected failed candidate start" >&2
             exit 1
           fi
           test "$(readlink "$install_root/current")" = "$previous_current"
+          # Fail for the reason under test, not an earlier refusal.
+          cat "$RUNNER_TEMP/bad-upgrade.err" >&2
+          grep -q 'the new release did not start' "$RUNNER_TEMP/bad-upgrade.err"
           node -e '
             const fs = require("node:fs");
             const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));

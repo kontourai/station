@@ -492,8 +492,12 @@ function makeInstallFixture(prefix: string): InstallFixture {
 }
 
 /** Builds a portable archive whose provenance names `version`. */
-function buildArchive(fixture: InstallFixture, version: string): string {
-  const base = join(fixture.dir, 'source', version);
+function buildArchive(
+  fixture: InstallFixture,
+  version: string,
+  variant = '',
+): string {
+  const base = join(fixture.dir, 'source', `${version}${variant}`);
   const source = join(base, 'station');
   mkdirSync(source, { recursive: true });
   writeFileSync(
@@ -509,8 +513,10 @@ function buildArchive(fixture: InstallFixture, version: string): string {
   writeFileSync(join(source, 'package-lock.json'), '{}\n');
   writeFileSync(
     join(source, '.station-release.json'),
-    `${JSON.stringify({ schemaVersion: 2, sha: 'a'.repeat(40), ref: `v${version}`, createdAt: '2026-08-16T00:00:00.000Z', channel: 'stable', releaseChannel: 'stable', prerelease: false })}\n`,
+    `${JSON.stringify({ schemaVersion: 2, sha: 'a'.repeat(40), ref: `v${version}`, createdAt: '2026-08-16T00:00:00.000Z', ...(version.includes('-preview.') ? { channel: 'beta', releaseChannel: 'preview', prerelease: true } : { channel: 'stable', releaseChannel: 'stable', prerelease: false }) })}\n`,
   );
+  // Different bytes for the same version (a republish, or a replayed one).
+  if (variant) writeFileSync(join(source, `variant-${variant}`), variant);
   writeFileSync(
     join(source, 'station'),
     `#!/bin/sh
@@ -519,7 +525,7 @@ exit 0
 `,
   );
   chmodSync(join(source, 'station'), 0o755);
-  const artifacts = join(fixture.dir, 'artifacts', version);
+  const artifacts = join(fixture.dir, 'artifacts', `${version}${variant}`);
   mkdirSync(artifacts, { recursive: true });
   const archive = join(artifacts, 'station-portable.tar.gz');
   expect(
@@ -528,21 +534,32 @@ exit 0
   return archive;
 }
 
-/** Signs a v2 stable manifest for `archive` with the fixture's test key. */
+let manifestSequence = 0;
+
+/**
+ * Signs a v2 manifest for `archive` with the fixture's test key. The channel
+ * follows the version (preview for `-preview.N`, otherwise stable).
+ */
 function signManifest(
   fixture: InstallFixture,
   version: string,
   archive: string,
-  overrides: { channel?: string; keyId?: string } = {},
+  overrides: { channel?: string; keyId?: string; url?: string } = {},
 ): string {
   const manifests = join(fixture.dir, 'manifests');
   mkdirSync(manifests, { recursive: true });
-  const payloadPath = join(fixture.dir, `payload-${version}.json`);
+  manifestSequence += 1;
+  const payloadPath = join(
+    fixture.dir,
+    `payload-${version}-${manifestSequence}.json`,
+  );
   writeFileSync(
     payloadPath,
     `${JSON.stringify({
       schemaVersion: 2,
-      channel: overrides.channel ?? 'stable',
+      channel:
+        overrides.channel ??
+        (version.includes('-preview.') ? 'preview' : 'stable'),
       version,
       releaseTag: `v${version}`,
       sourceSha: 'a'.repeat(40),
@@ -550,13 +567,13 @@ function signManifest(
       artifacts: {
         portable: {
           name: 'station-portable.tar.gz',
-          url: pathToFileURL(archive).href,
+          url: overrides.url ?? pathToFileURL(archive).href,
           sha256: digest(archive),
         },
       },
     })}\n`,
   );
-  const manifestPath = join(manifests, `${version}.json`);
+  const manifestPath = join(manifests, `${version}-${manifestSequence}.json`);
   const created = run(
     [
       'create',
@@ -612,16 +629,16 @@ function runInstaller(
   });
 }
 
-function currentRelease(fixture: InstallFixture): string {
+function currentRelease(fixture: InstallFixture, ring = 'stable'): string {
   return realpathSync(
-    join(fixture.dir, 'home', '.station', 'installs', 'stable', 'current'),
+    join(fixture.dir, 'home', '.station', 'installs', ring, 'current'),
   );
 }
 
-function installedTag(fixture: InstallFixture): string {
+function installedTag(fixture: InstallFixture, ring = 'stable'): string {
   return JSON.parse(
     readFileSync(
-      join(currentRelease(fixture), '.station-release.json'),
+      join(currentRelease(fixture, ring), '.station-release.json'),
       'utf8',
     ),
   ).ref;
@@ -945,5 +962,44 @@ describe('install.sh public manifest verification', () => {
     );
     expect(newer.status, newer.stderr).toBe(0);
     expect(installedTag(fixture)).toBe('v1.2.4');
+  });
+
+  it('refuses the same version with different bytes unless explicitly requested', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-same-version-');
+    const original = buildArchive(fixture, '1.2.3', 'A');
+    const installed = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', original),
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const installedRelease = currentRelease(fixture);
+    // A different archive signed as the same version: a republish, or a
+    // superseded archive replayed by a hostile host. The two look identical.
+    const other = signManifest(
+      fixture,
+      '1.2.3',
+      buildArchive(fixture, '1.2.3', 'B'),
+    );
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.3' },
+    ]) {
+      const refused = runInstaller(fixture, other, env);
+      expect(refused.stderr).toContain(
+        'refusing to replace the installed Station v1.2.3 with different bytes published as the same version',
+      );
+      expect(refused.status).toBe(1);
+      expect(currentRelease(fixture)).toBe(installedRelease);
+    }
+    const replaced = runInstaller(fixture, other, {
+      STATION_VERSION: 'v1.2.3',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(replaced.status, replaced.stderr).toBe(0);
+    expect(currentRelease(fixture)).not.toBe(installedRelease);
+    expect(existsSync(join(currentRelease(fixture), 'variant-B'))).toBe(true);
   });
 });

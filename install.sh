@@ -891,12 +891,19 @@ fi
 # verified when the current release was installed.
 #   newer manifest            -> install
 #   same version, same bytes  -> nothing to do (exit 0, no restart)
-#   same version, new bytes   -> reinstall (a signed republish of that version)
-#   older manifest            -> refuse, unless the caller names the exact
-#                                version (STATION_VERSION=v<x.y.z>) AND sets
-#                                STATION_INSTALL_ALLOW_ROLLBACK=1
+#   same version, new bytes   -> refuse without the explicit opt-in below:
+#                                a replayed, superseded archive of the same
+#                                version is indistinguishable from a republish
+#   older manifest            -> refuse without the explicit opt-in below
+# The opt-in is the caller naming the exact version (STATION_VERSION=v<x.y.z>)
+# AND setting STATION_INSTALL_ALLOW_ROLLBACK=1. One flag covers both cases on
+# purpose: each replaces the running release with one the caller did not get
+# by moving forward, so each needs the same deliberate "I want exactly this".
 # The authenticated gh path is unchanged: there, STATION_VERSION already
 # selects an exact signed release.
+explicit_replacement_requested() {
+  [ "${STATION_INSTALL_ALLOW_ROLLBACK:-0}" = 1 ] && [ "$version" = "$release_tag" ]
+}
 check_public_manifest_version() {
   [ -L "$current_link" ] || return 0
   version_order="$(node -e '
@@ -937,9 +944,14 @@ check_public_manifest_version() {
         printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
         exit 0
       fi
+      if explicit_replacement_requested; then
+        printf 'Replacing the installed Station %s with different bytes published as the same version (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag"
+      else
+        fail "refusing to replace the installed Station $installed_tag with different bytes published as the same version; to replace it deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
+      fi
       ;;
     older)
-      if [ "${STATION_INSTALL_ALLOW_ROLLBACK:-0}" = 1 ] && [ "$version" = "$release_tag" ]; then
+      if explicit_replacement_requested; then
         printf 'Rolling back Station from %s to %s (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$installed_tag" "$release_tag"
       else
         fail "refusing to downgrade Station from $installed_tag to $release_tag; to roll back deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
