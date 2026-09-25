@@ -168,12 +168,12 @@ export async function bootstrapLocalUiSession(
  */
 function refusalSentence(status: number): string {
   const freshLink =
-    'Run `station open` on this computer, or open Station from its menu bar or tray icon, for a fresh one.';
+    'Get a fresh one with `station open`, or from Station in the menu bar or tray.';
   if (status === 403)
-    return `This sign-in link can't be used here: it was already used, a newer one replaced it, or this page isn't a trusted Station address. ${freshLink} (refused: 403)`;
+    return `This sign-in link was already used or replaced, or this address isn't trusted. ${freshLink} (403)`;
   if (status === 429)
-    return 'This Station is at its limit for new browser sign-ins. Try this link again in a moment. (refused: 429)';
-  return `This Station refused the sign-in link. ${freshLink} (refused: ${status})`;
+    return 'Too many new sign-ins right now. Try this link again in a moment. (429)';
+  return `Station refused this sign-in link. ${freshLink} (${status})`;
 }
 
 /**

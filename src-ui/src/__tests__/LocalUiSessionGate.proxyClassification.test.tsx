@@ -528,9 +528,9 @@ describe('a refusal and an unreachable host are different answers (#1654)', () =
 
     await screen.findByRole('button', { name: 'Complete pairing' });
     expect(screen.getByRole('alert').textContent).toContain(
-      'it was already used, a newer one replaced it',
+      'already used or replaced',
     );
-    expect(screen.getByRole('alert').textContent).toContain('refused: 403');
+    expect(screen.getByRole('alert').textContent).toContain('(403)');
     // Never retried, and never followed by an identity read on this resolution:
     // the refusal is terminal. The count is the assertion.
     await settleForLongerThanTheLadder();
