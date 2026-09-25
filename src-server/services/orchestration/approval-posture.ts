@@ -2,8 +2,11 @@ import {
   type ApprovalMode,
   type EngineId,
   isApprovalMode,
+  PROVIDER_CODEX,
   PROVIDER_MODEL_OPTION_SUPPORT,
+  type StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import { isFullAccessGrant } from '../../security/coding-authority.js';
 
 /**
  * #2436: the conversation's approval posture as the SERVER orders it. See
@@ -22,6 +25,28 @@ export function approvalKnobSupported(provider: EngineId): boolean {
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );
+}
+
+/**
+ * #2493: whether this engine confines `never` to the workspace with a native
+ * process sandbox (Codex's `workspace-write`). An engine without one cannot
+ * run `never` confined, so a confined session applies `auto` there instead.
+ */
+function confinesFullAccessNatively(provider: EngineId): boolean {
+  return provider === PROVIDER_CODEX;
+}
+
+/** #2493: the mode an engine can apply for `mode` under `confinement`. */
+function applicableMode(
+  mode: ApprovalMode,
+  provider: EngineId,
+  confinement: StationConfinement,
+): ApprovalMode {
+  return mode === 'never' &&
+    confinement !== 'host' &&
+    !confinesFullAccessNatively(provider)
+    ? 'auto'
+    : mode;
 }
 
 export interface ApprovalPostureStore {
@@ -122,6 +147,52 @@ export class ApprovalPosture {
   }
 
   /**
+   * #2493: whether the conversation's latest recorded decision is a concrete
+   * `never`. Every writer of a decision is a route that refuses `never`
+   * unless `mayGrantFullAccess` holds (`/commands` `setApprovalMode`, and a
+   * pick carried on `/chat`, `/chat/:id/continue` or a handoff): the operator
+   * in person or a device holding `approval:full-access`, never Station's
+   * internal principal, marked as an agent's tool or not. So a recorded
+   * `never` is itself a grant of `host`.
+   */
+  private recordedFullAccess(threadId: string): boolean {
+    return this.decision(threadId)?.approvalMode === 'never';
+  }
+
+  /**
+   * #2493: the confinement a session START runs in. `host` only when the
+   * start's caller proved it may grant full access (`grant`, minted from the
+   * request by `fullAccessGrantFor` and checked by `instanceof`, so nothing
+   * parsed from JSON satisfies it), or the conversation's recorded decision
+   * is a concrete `never`. Everything else is `workspace`.
+   */
+  startConfinement(threadId: string, grant: unknown): StationConfinement {
+    return isFullAccessGrant(grant) || this.recordedFullAccess(threadId)
+      ? 'host'
+      : 'workspace';
+  }
+
+  /**
+   * #2493: the confinement of a session that already started: a turn, a
+   * dormant respawn, a credential-profile restart or recovery replay. `stamp`
+   * is the server's start stamp (`STATION_CONFINEMENT_METADATA_KEY`); a
+   * missing or unknown stamp (a session from before #2493) counts as
+   * `workspace`. Never derived from an approval mode a turn or replay
+   * carries: that is exactly the value a confined caller controls.
+   *
+   * Accepted residual (#2493 review F2): a Default pick needs no authority
+   * (the #2436 rule), and resolves to the Agent's and Station's defaults the
+   * operator configured, even when that is `never`. On a `host`-stamped
+   * session that `never` runs unconfined, including one the operator started
+   * with an explicit Ask.
+   */
+  standingConfinement(threadId: string, stamp: unknown): StationConfinement {
+    return stamp === 'host' || this.recordedFullAccess(threadId)
+      ? 'host'
+      : 'workspace';
+  }
+
+  /**
    * Compare-and-set (#2436 MEDIUM-1, narrowed by the orchestrator's decisions
    * of 2026-09-23): the decision that stands against a pick made having seen
    * `basedOnSequence` (`null`: having seen none), or `undefined` when the pick
@@ -186,6 +257,11 @@ export class ApprovalPosture {
    *   Station). A turn on a live session sends nothing: a default is the
    *   posture a session starts in, and re-requesting it would let an edit of
    *   the setting reconfigure a running chat (#2144 slice 6).
+   *
+   * #2493: on an engine with no native sandbox, `never` in a `workspace`
+   * session is applied as `auto`, so the engine is never spawned or turned
+   * with its permission checks bypassed on a caller's say-so. Codex keeps
+   * `never` and confines it with its sandbox (codex-approval-mode.ts).
    */
   async resolve(input: {
     threadId: string;
@@ -195,6 +271,8 @@ export class ApprovalPosture {
     /** The Agent execution config a foreground admission captured. */
     capturedAgent?: { approvalMode?: ApprovalMode };
     modelOptions?: Record<string, unknown>;
+    /** `startConfinement` or `standingConfinement`; required so every caller states it. */
+    confinement: StationConfinement;
   }): Promise<Record<string, unknown> | undefined> {
     if (!approvalKnobSupported(input.provider)) return input.modelOptions;
     const decision = this.decision(input.threadId);
@@ -214,7 +292,10 @@ export class ApprovalPosture {
     }
     if (!mode) return Object.keys(rest).length > 0 ? rest : undefined;
     this.stationApplied.add(input.threadId);
-    return { ...rest, approvalMode: mode };
+    return {
+      ...rest,
+      approvalMode: applicableMode(mode, input.provider, input.confinement),
+    };
   }
 
   /**

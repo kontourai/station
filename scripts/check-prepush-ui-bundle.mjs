@@ -6,9 +6,9 @@
  * That is too late to protect anybody: the ratchet fails on whoever gates
  * next, never on whoever added the bytes, so an unowned raise is consumed
  * within hours and the next lane inherits a red it did not cause (#3033,
- * #3141). Running the same measurement at push time makes the attribution
- * correct by construction — an over-ceiling UI tree physically cannot leave
- * the machine, and a raise happens in the branch that spent the bytes.
+ * #3141). Running the same measurement at push time means an over-ceiling UI
+ * tree physically cannot leave the machine. Ceilings carry headroom (#1703),
+ * so the lane that crosses one pays for growth since the last raise.
  *
  * This file adds no new opinion about size. It decides one thing — does this
  * push change anything the UI build reads — and then delegates to the

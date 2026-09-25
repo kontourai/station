@@ -377,3 +377,29 @@ test('calls the global fetch unbound, as the Workers runtime requires', async ()
     globalThis.fetch = original;
   }
 });
+
+test('checks per token, then per key, then global, stopping at the first refusal', async () => {
+  const order = ['token', 'key', 'global'] as const;
+  for (const [index, refused] of order.entries()) {
+    const seen: string[] = [];
+    const limiter = (name: (typeof order)[number]) => ({
+      limit: async () => {
+        seen.push(name);
+        return { success: name !== refused };
+      },
+    });
+    const { calls, fetchImpl } = upstream(() => Response.json({}));
+    const response = await send(
+      await config({
+        fetchImpl,
+        perTokenLimiter: limiter('token'),
+        perKeyLimiter: limiter('key'),
+        globalLimiter: limiter('global'),
+      }),
+    );
+    assert.equal(response.status, 429, refused);
+    // A request refused narrowly never spends a wider, shared budget.
+    assert.deepEqual(seen, order.slice(0, index + 1), refused);
+    assert.equal(calls.length, 0);
+  }
+});
