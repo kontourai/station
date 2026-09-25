@@ -2,12 +2,14 @@ import type {
   NativePushRegistrationRequest,
   NativePushRegistrationResponse,
 } from '@kontourai/station-contracts/native-push';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_ACTIVITY_REFRESH_AFTER_MS,
   type AgentActivityRegistrationRecord,
+  agentActivitySessionTarget,
   createAgentActivityController,
   localAgentActivityRegistrationStore,
+  openAgentActivityLaunchRoute,
 } from '../agentActivity';
 import { TauriNativePlatformAdapter } from '../tauri';
 import type { NativeAgentActivityStatus } from '../types';
@@ -426,5 +428,101 @@ describe('registration store', () => {
     expect(
       storage.get('station-agent-activity-registrations-v1'),
     ).not.toContain(PAYLOAD_KEY);
+  });
+});
+
+describe('agent-activity card tap routes (#2515)', () => {
+  it('opens the session in its project, or on the home route without one', () => {
+    expect(
+      agentActivitySessionTarget(
+        { stationId: STATION, sessionId: 'thread-1', projectSlug: 'login-app' },
+        STATION,
+      ),
+    ).toEqual({
+      pathname: '/projects/login-app',
+      params: { chat: 'thread-1', dock: 'open' },
+    });
+    expect(
+      agentActivitySessionTarget(
+        { stationId: STATION, sessionId: 'ns:thread.1' },
+        STATION,
+      ),
+    ).toEqual({ pathname: '/', params: { chat: 'ns:thread.1', dock: 'open' } });
+  });
+
+  it('ignores a route for another Station than the connected one', () => {
+    expect(
+      agentActivitySessionTarget(
+        { stationId: 'env-station-b', sessionId: 'thread-1' },
+        STATION,
+      ),
+    ).toBeNull();
+    expect(
+      agentActivitySessionTarget({ stationId: '', sessionId: 'thread-1' }, ''),
+    ).toBeNull();
+  });
+
+  it('ignores anything outside the contract grammar, whole', () => {
+    for (const bad of [
+      '',
+      '../x',
+      'a/b',
+      'a?b=c',
+      'a#b',
+      'a b',
+      '-lead',
+      'https://evil.example',
+      '//evil.example',
+      'x'.repeat(129),
+      'é',
+    ]) {
+      expect(
+        agentActivitySessionTarget(
+          { stationId: STATION, sessionId: bad },
+          STATION,
+        ),
+      ).toBeNull();
+      expect(
+        agentActivitySessionTarget(
+          { stationId: STATION, sessionId: 'thread-1', projectSlug: bad },
+          STATION,
+        ),
+      ).toBeNull();
+    }
+    for (const notARoute of [null, undefined, 'thread-1', 7, []])
+      expect(agentActivitySessionTarget(notARoute, STATION)).toBeNull();
+  });
+
+  it('takes the route from the plugin and navigates only to a valid one', async () => {
+    const navigate = vi.fn();
+    let route: unknown = {
+      stationId: STATION,
+      sessionId: 'thread-1',
+      projectSlug: 'login-app',
+    };
+    const plugin = {
+      takeAgentActivityLaunchRoute: vi.fn(async () => ({
+        status: 'ok' as const,
+        value: { route: route as never },
+      })),
+    };
+    await expect(
+      openAgentActivityLaunchRoute(plugin, STATION, navigate),
+    ).resolves.toBe(true);
+    expect(navigate).toHaveBeenCalledWith('/projects/login-app', {
+      chat: 'thread-1',
+      dock: 'open',
+    });
+
+    navigate.mockClear();
+    route = { stationId: 'env-station-b', sessionId: 'thread-1' };
+    await expect(
+      openAgentActivityLaunchRoute(plugin, STATION, navigate),
+    ).resolves.toBe(false);
+    route = null;
+    await expect(
+      openAgentActivityLaunchRoute(plugin, STATION, navigate),
+    ).resolves.toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

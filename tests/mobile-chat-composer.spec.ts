@@ -669,25 +669,30 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   expect(liveOrder).toEqual([...liveOrder].sort((a, b) => a - b));
   // archive#2652 redesign: settled work renders inline as quiet rows in
   // reading order — there is no "Show N work activities" gate. The
-  // awaiting-approval call surfaces its approval buttons without any
-  // expansion step, and a failed call discloses "Failed" collapsed.
+  // historical approval call shows its outcome without any expansion step,
+  // and a failed call discloses "Failed" collapsed.
   await expect(
     page.getByRole('button', { name: 'Show 1 work activities' }),
   ).toHaveCount(0);
-  // The Allow/Deny controls belong to the LIVE turn: `MessageContent.tsx:56-59`
-  // supplies `onApprove` only when the row is the streaming message, and
-  // `ToolCallDisplay.tsx:244-248` renders the buttons only when it has one. This
-  // fixture plants the approval on turn 9997, three turns back, so what a
-  // historical unresolved call surfaces — and what this line asserts — is the
-  // awaiting marker itself, inline and without an expansion step. The buttons
-  // are covered on the shape that actually wires them by
-  // `tests/orchestration-chat-flow.spec.ts:196-199`.
-  await expect(
-    transcript.getByRole('button', { name: 'Edit approved.txt' }),
-  ).toBeVisible();
+  // This fixture opens an approval request on turn 9997 and that turn then
+  // completes unanswered (`buildLongSessionTurns` ends every turn with
+  // `turn.completed`). Since #2316 (PR #2375) the projection retires such a
+  // card: the call it gated can no longer run, so it reads "Cancelled"
+  // rather than offering an answer nobody can act on
+  // (`approvalRetiredBy` / `retireApprovalCard` in
+  // `packages/shared/src/runtime-event-projection.ts`). What this asserts is
+  // that the historical approval row renders inline, three turns back in a
+  // virtualized transcript, with that honest outcome and no stale awaiting
+  // marker. Live Allow/Deny controls are covered on the shape that wires
+  // them by `tests/orchestration-chat-flow.spec.ts`.
+  const approvalWork = transcript.getByRole('button', {
+    name: 'Edit approved.txt',
+  });
+  await expect(approvalWork).toBeVisible();
+  await expect(approvalWork).toContainText('Cancelled');
   await expect(
     transcript.getByRole('img', { name: 'Awaiting approval' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   // `callLabel` speaks the bare infinitive for an unresolved call
   // (`utils/tool-call-labels.ts:181-199`): "Used" is the resolved past tense.
   const failedWork = transcript.getByRole('button', {
@@ -1866,10 +1871,16 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
    * pathname poll that is satisfied the instant it runs, both passed against
    * a click that revealed nothing at all. Assert the surface and the session
    * it was told to show.
+   *
+   * On a phone the only region is Chat's, so Activity opens as a pane in that
+   * region. A region that holds Chat keeps the "Dock" landmark whichever pane
+   * is selected (#2046 ownership decision D3, PR #2069; `DockShell.tsx`), so
+   * Activity is found inside "Dock", and its selected-pane "Hide Activity"
+   * control is what proves it is the pane on screen.
    */
   await expect(
     page
-      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('region', { name: 'Dock', exact: true })
       .getByRole('button', { name: 'Hide Activity' }),
   ).toBeVisible({ timeout: 10_000 });
   const revealed = page.getByTestId('session-detail');
@@ -3066,10 +3077,6 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
 
   const menu = page.getByRole('dialog', { name: 'Switch task' });
   await expect(menu).toBeVisible();
-  const showAll = menu.getByRole('button', {
-    name: /Show all chats \(\d+ more\)/,
-  });
-  if (await showAll.count()) await showAll.click();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
   await expect
