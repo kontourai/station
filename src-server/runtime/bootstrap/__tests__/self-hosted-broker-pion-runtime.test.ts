@@ -310,7 +310,9 @@ async function harness(
         ).connection.stationProof;
         markAdmitted();
       } catch {
-        // Ignore parse failure; endpoint stub below reports it.
+        // Ignore parse failure; endpoint stub below reports it. A test awaiting
+        // admission gets a named failure instead of vitest's generic timeout.
+        failAdmission(new Error('test_answer_body_unparseable'));
       }
     }
     return origImpl(url);
