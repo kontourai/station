@@ -65,6 +65,14 @@ interface KnowledgeIndexRouteDeps {
   dataDir: string;
   /** Resolved fresh on every request — see module doc. */
   getEmbedder: () => IEmbeddingProvider | null;
+  /**
+   * Runs index building (rebuild, migration) as the Station's own background
+   * reader, never as the caller. The index is shared: rebuilding a
+   * session-backed root as a caller who reads only part of it would drop
+   * everyone else's hits. Every search re-reads each hit as its own caller.
+   * Defaults to running as-is.
+   */
+  runAsIndexer?: <T>(build: () => Promise<T>) => Promise<T>;
 }
 
 interface RebuildRootReport {
@@ -128,6 +136,8 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
   // Drops and re-derives the index partition for each targeted root via
   // `indexProvider.rebuildRoot`, which walks the K2 store's records from scratch —
   // never a read from anything the index itself already holds.
+  const runAsIndexer =
+    deps.runAsIndexer ?? (<T>(build: () => Promise<T>) => build());
   app.post('/index/rebuild', async (c) => {
     try {
       const embedder = deps.getEmbedder();
@@ -152,10 +162,12 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       const roots: RebuildRootReport[] = [];
       for (const rootId of rootIds) {
         try {
-          const result = await deps.indexProvider.rebuildRoot(rootId, {
-            store: deps.store,
-            embedder,
-          });
+          const result = await runAsIndexer(() =>
+            deps.indexProvider.rebuildRoot(rootId, {
+              store: deps.store,
+              embedder,
+            }),
+          );
           roots.push({
             rootId,
             status: 'ok',
@@ -315,14 +327,16 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           ? body.projectSlug
           : undefined;
 
-      const result = await migratePreIndexKnowledge(
-        {
-          dataDir: deps.dataDir,
-          store: deps.store,
-          indexProvider: deps.indexProvider,
-          embedder,
-        },
-        { projectSlug },
+      const result = await runAsIndexer(() =>
+        migratePreIndexKnowledge(
+          {
+            dataDir: deps.dataDir,
+            store: deps.store,
+            indexProvider: deps.indexProvider,
+            embedder,
+          },
+          { projectSlug },
+        ),
       );
 
       // Partial-failure honesty (code-review MED-3): a wholly-failed migration (at

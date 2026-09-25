@@ -5013,6 +5013,19 @@ export function configureRuntimeRoutes(
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
+  // M2: the knowledge index and the Neo4j projection are shared, Station-wide
+  // artifacts, so they are BUILT as the Station's own background reader (its
+  // local operator), never as the caller who triggered the build: a
+  // delegation peer's rebuild must not drop the operator's conversation hits.
+  // Every read path re-reads each session-backed record as its own caller.
+  // Named and passed in explicitly; it is not the absence of a request.
+  const knowledgeIndexerAuthority = sessionReadAuthorityFromRequest(
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+    undefined,
+    hostedTenantRegistry,
+  );
+  const runAsKnowledgeIndexer = <T>(build: () => Promise<T>): Promise<T> =>
+    runWithRequestReadAuthority(knowledgeIndexerAuthority, build);
   context.app.route(
     '/api/knowledge',
     createCrossProjectKnowledgeRoutes(
@@ -5036,6 +5049,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeIndexRoutes({
       store: context.knowledgeStoreProvider,
+      runAsIndexer: runAsKnowledgeIndexer,
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -5085,6 +5099,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createNeo4jGraphRoutes({
       store: context.knowledgeStoreProvider,
+      runAsIndexer: runAsKnowledgeIndexer,
     }),
   );
   // #2363: commit and push are operator-only and act on a Project's own

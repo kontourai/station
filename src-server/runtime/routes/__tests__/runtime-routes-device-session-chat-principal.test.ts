@@ -78,8 +78,14 @@ import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-r
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { FakeNeo4jDriver } from '../../../knowledge-store/__tests__/fake-neo4j-driver.js';
 import { ensureConversationKnowledgeRoot } from '../../../knowledge-store/conversation-root-bootstrap.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import {
+  clearNeo4jGraphViewConnection,
+  registerNeo4jGraphViewConnection,
+} from '../../../knowledge-store/neo4j-connection.js';
+import { NEO4J_SYNC_QUERIES } from '../../../knowledge-store/neo4j-graph-sync.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
@@ -117,6 +123,22 @@ import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../r
 // suite's entire point is exercising the REAL credential pipeline
 // (`configureRuntimeHttp`'s bearer parsing, `verifyCredential`,
 // `resolveGrantedScope`, `resolveCredentialLocality`) end to end.
+// The production Neo4j route wiring loads a real driver; route it to an
+// in-memory fake shared with the test.
+const neo4jFake = vi.hoisted(() => ({ driver: undefined as unknown }));
+vi.mock(
+  '../../../knowledge-store/neo4j-graph-provider.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../knowledge-store/neo4j-graph-provider.js')
+    >()),
+    createNeo4jDriver: async () =>
+      neo4jFake.driver
+        ? { ok: true, driver: neo4jFake.driver }
+        : { ok: false, reason: 'no fake driver' },
+  }),
+);
+
 vi.mock('../runtime-route-support.js', () => {
   const runtimeSupportStub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -604,6 +626,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       ...(runtimeSearch ? { runtimeSearch } : {}),
       ...(orchestrationExtras.knowledge
         ? {
+            resolveEmbeddingProvider: () => ({
+              id: 'stub-embedder',
+              displayName: 'Stub embedder',
+              dimensions: () => 4,
+              embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
+            }),
             knowledgeStoreProvider: await (async () => {
               const persistence = new FileStorageAdapter(roomHomeDir);
               const provider = new KnowledgeStoreProvider(persistence);
@@ -2650,6 +2678,171 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(unscoped.status).toBe(403);
+    });
+
+    /** Agent conversations (thread id, owner) the knowledge adapter lists. */
+    function seedConversations(
+      seedStore: EventStore,
+      conversations: ReadonlyArray<readonly [string, string]>,
+    ) {
+      for (const [threadId, userId] of conversations) {
+        seedStore.upsertSession({
+          threadId,
+          provider: 'claude',
+          status: 'closed',
+          createdAt: '2026-09-04T00:00:00Z',
+          updatedAt: '2026-09-04T00:00:00Z',
+        });
+        seedStore.appendEvent({
+          eventId: `${threadId}:started`,
+          threadId,
+          sessionId: threadId,
+          provider: 'claude',
+          method: 'session.started',
+          createdAt: '2026-09-04T00:00:00Z',
+          metadata: { userId, agentSlug: 'claude' },
+        } as never);
+        seedStore.appendEvent({
+          eventId: `${threadId}:prompt`,
+          threadId,
+          turnId: `${threadId}:turn`,
+          provider: 'claude',
+          method: 'turn.started',
+          createdAt: '2026-09-04T00:00:01Z',
+          prompt: `knowledge note for ${threadId}`,
+        } as never);
+      }
+    }
+    const STRANGER = 'human:tailscale-serve:stranger@example';
+
+    // M1 (round 3): the Neo4j projection is Station-wide; every read re-checks
+    // each conversation node as the caller, and a path never crosses one the
+    // caller cannot read.
+    test('the Neo4j graph and shortest path show a caller only the conversation nodes it may read', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['op-a', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['op-b', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['op-c', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['str', STRANGER],
+            ]),
+        });
+        // The projection as a sync would leave it: every conversation (the
+        // stranger's included, from any earlier sync), with op-a and op-b
+        // linked only through the stranger's node.
+        const session = driver.session();
+        for (const id of ['op-a', 'op-b', 'op-c', 'str'])
+          await session.run(NEO4J_SYNC_QUERIES.mergeNode, {
+            rootId: 'root:conversations',
+            id,
+            type: 'raw',
+            title: `title of ${id}`,
+            category: 'conversation',
+            contentHash: id,
+            syncedAt: '2026-09-04T00:00:00Z',
+          });
+        for (const [sourceId, targetId] of [
+          ['op-a', 'str'],
+          ['str', 'op-b'],
+          ['op-b', 'op-c'],
+        ])
+          await session.run(NEO4J_SYNC_QUERIES.mergeEdge, {
+            rootId: 'root:conversations',
+            sourceId,
+            targetId,
+            kind: 'related',
+            label: null,
+            contentHash: `${sourceId}-${targetId}`,
+          });
+        const get = async (credential: string, path: string) => {
+          const response = await app.request(
+            `/api/knowledge/roots/root:conversations/graph/neo4j${path}`,
+            { headers: { Authorization: `Bearer ${credential}` } },
+            REMOTE_TAILNET_ENV,
+          );
+          const body = (await response.json()) as any;
+          expect(response.status, JSON.stringify(body)).toBe(200);
+          return body.data;
+        };
+        const operatorGraph = await get(OPERATOR_SECRET, '');
+        expect(
+          operatorGraph.nodes.map((node: { id: string }) => node.id).sort(),
+        ).toEqual(['op-a', 'op-b', 'op-c']);
+        expect(operatorGraph.edges).toEqual([
+          expect.objectContaining({ source: 'op-b', target: 'op-c' }),
+        ]);
+        expect(JSON.stringify(operatorGraph)).not.toContain('title of str');
+        // The only op-a..op-b route crosses the stranger's node: no path.
+        expect(
+          await get(OPERATOR_SECRET, '/shortest-path?fromId=op-a&toId=op-b'),
+        ).toBeNull();
+        expect(
+          await get(OPERATOR_SECRET, '/shortest-path?fromId=op-b&toId=op-c'),
+        ).toEqual({ nodeIds: ['op-b', 'op-c'], length: 1 });
+
+        const peer = pairDelegationPeer(pairing);
+        expect(await get(peer.credential, '')).toEqual({
+          nodes: [],
+          edges: [],
+        });
+        expect(
+          await get(peer.credential, '/shortest-path?fromId=op-b&toId=op-c'),
+        ).toBeNull();
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // M2 (round 3): the index is Station-wide and built as the Station, so a
+    // peer-triggered rebuild cannot drop the operator's hits; search still
+    // re-reads each hit as the caller.
+    test('a delegation peer’s index rebuild keeps the operator’s hits, which the peer still cannot see', async () => {
+      const { app, pairing } = await principalSetup({
+        knowledge: true,
+        seed: (seedStore) =>
+          seedConversations(seedStore, [
+            ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+          ]),
+      });
+      const peer = pairDelegationPeer(pairing);
+      const post = (credential: string, path: string, body: unknown) =>
+        app.request(
+          `/api/knowledge${path}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+      const rebuilt = await post(peer.credential, '/index/rebuild', {
+        rootId: 'root:conversations',
+      });
+      const rebuiltBody = (await rebuilt.json()) as any;
+      expect(rebuilt.status, JSON.stringify(rebuiltBody)).toBe(200);
+      expect(rebuiltBody.data.roots[0]).toMatchObject({ status: 'ok' });
+      expect(rebuiltBody.data.roots[0].records).toBeGreaterThan(0);
+      const hits = async (credential: string) => {
+        const response = await post(credential, '/index/search', {
+          query: 'knowledge note',
+          rootIds: ['root:conversations'],
+        });
+        const body = (await response.json()) as any;
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return body.data.map((hit: { recordId: string }) => hit.recordId);
+      };
+      expect(await hits(OPERATOR_SECRET)).toContain('operator-note');
+      expect(await hits(peer.credential)).toEqual([]);
     });
 
     function pairDelegationPeer(pairing: DevicePairingService) {
