@@ -91,7 +91,7 @@ describe('desktop runtime listener lease', () => {
       fs.readdirSync(root).filter((name) => name.includes('.retired-')),
     ).toEqual([]);
   });
-  it('returns the work result when the lock is already gone at release', async () => {
+  it('returns the work result when the lock vanishes between the read and the retire', async () => {
     const { withDesktopRuntimeListenerLease } = await import(
       '../lib/desktop-runtime-port-lease.mjs'
     );
@@ -100,7 +100,10 @@ describe('desktop runtime listener lease', () => {
     await expect(
       withDesktopRuntimeListenerLease(
         async () => {
-          fs.rmSync(path, { recursive: true, force: true });
+          // The only window the ENOENT branch covers: our lease was read,
+          // then the directory went before the retiring rename.
+          beforeRetire = () =>
+            fs.rmSync(path, { recursive: true, force: true });
           return 'done';
         },
         { path },
