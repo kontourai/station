@@ -23,6 +23,24 @@ import XCTest
 }
 @objc private final class ChildDelegate: ParentDelegate {}
 
+/// Stands in for UIApplication: records every delegate assignment, and
+/// whether the delegate already answered the token callback at that moment.
+private final class FakeApplication: ApplicationDelegateHolder {
+  var assignments: [(object: AnyObject?, answeredToken: Bool)] = []
+  private var stored: AnyObject?
+  init(_ delegate: AnyObject) { stored = delegate }
+  var hookableDelegate: AnyObject? {
+    get { stored }
+    set {
+      stored = newValue
+      assignments.append(
+        (newValue, newValue?.responds(to: RemoteNotificationDelegateHook.tokenSelector) ?? false))
+    }
+  }
+}
+
+@objc private final class LaunchDelegate: NSObject {}
+
 private struct Refused: LocalizedError {
   var errorDescription: String? { "no valid aps-environment entitlement" }
 }
@@ -115,12 +133,26 @@ final class ApnsDeviceTokenTests: XCTestCase {
     XCTAssertEqual(ParentDelegate.seen, 1)
     let first = await firstValue(timeout: 2) { broker.updates() }
     XCTAssertEqual(first, .token(hex32))
-    // The parent class itself was left alone: calling it reaches no broker.
-    let parentBroker = ApnsDeviceTokenBroker()
+    // The parent class itself was left alone: calling the parent reaches
+    // only its own method, never the child's broker.
+    broker.reset()
     _ = ParentDelegate().perform(
       RemoteNotificationDelegateHook.tokenSelector, with: NSObject(), with: token32 as NSData)
     XCTAssertEqual(ParentDelegate.seen, 2)
-    let none = await firstValue(timeout: 0.2) { parentBroker.updates() }
+    let none = await firstValue(timeout: 0.2) { broker.updates() }
     XCTAssertNil(none)
+  }
+
+  func testInstallingOnTheApplicationReassignsTheSameDelegateAfterHooking() {
+    let delegate = LaunchDelegate()
+    let application = FakeApplication(delegate)
+    XCTAssertTrue(RemoteNotificationDelegateHook.install(in: application, broker: ApnsDeviceTokenBroker()))
+    // Set again, to the very same object, once it already has the callbacks.
+    XCTAssertEqual(application.assignments.count, 1)
+    XCTAssertTrue(application.assignments.first?.object === delegate)
+    XCTAssertEqual(application.assignments.first?.answeredToken, true)
+    // A second install (the command after load) assigns nothing more.
+    XCTAssertFalse(RemoteNotificationDelegateHook.install(in: application, broker: ApnsDeviceTokenBroker()))
+    XCTAssertEqual(application.assignments.count, 1)
   }
 }

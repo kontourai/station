@@ -12,6 +12,12 @@ import ObjectiveC
 /// class already answers them (a newer runtime, another plugin), the
 /// original runs first and the broker is told after, so nothing is taken
 /// from it. Foundation and the runtime only, so it is tested on macOS.
+/// Whatever holds the app delegate: `UIApplication` in the app, a stand-in
+/// in tests (this target does not link UIKit).
+public protocol ApplicationDelegateHolder: AnyObject {
+  var hookableDelegate: AnyObject? { get set }
+}
+
 public enum RemoteNotificationDelegateHook {
   static let tokenSelector = NSSelectorFromString(
     "application:didRegisterForRemoteNotificationsWithDeviceToken:")
@@ -50,6 +56,28 @@ public enum RemoteNotificationDelegateHook {
     return true
   }
 
+  /// Hooks the holder's current delegate, then assigns that same delegate
+  /// back. UIKit may cache which optional delegate methods the delegate
+  /// answers when the delegate is set, so a method added later is only
+  /// guaranteed to be seen after the delegate is set again (swizzling push
+  /// libraries re-assign it for the same reason). Whether this iOS release
+  /// needs it is not verified on a device; it is harmless if not.
+  /// Re-assigns only when this call installed the hooks.
+  @discardableResult
+  public static func install(in holder: ApplicationDelegateHolder, broker: ApnsDeviceTokenBroker) -> Bool {
+    guard let delegate = holder.hookableDelegate, let delegateClass = object_getClass(delegate) else {
+      return false
+    }
+    guard install(on: delegateClass, broker: broker) else { return false }
+    // UIApplication does not retain its delegate; the one UIApplicationMain
+    // made is kept alive by UIKit, and a set could let go of it. Keeping our
+    // own reference makes the re-assignment safe either way (the delegate
+    // lives as long as the app does anyway).
+    hooked.keepAlive(delegate)
+    holder.hookableDelegate = delegate
+    return true
+  }
+
   /// Adds the method to the class itself (overriding an inherited one), or
   /// replaces the implementation the class already declares.
   private static func replace(_ cls: AnyClass, _ selector: Selector, _ imp: IMP) {
@@ -66,6 +94,13 @@ public enum RemoteNotificationDelegateHook {
 private final class HookedClasses: @unchecked Sendable {
   private let lock = NSLock()
   private var classes = Set<ObjectIdentifier>()
+  private var delegates: [AnyObject] = []
+
+  func keepAlive(_ delegate: AnyObject) {
+    lock.lock()
+    defer { lock.unlock() }
+    delegates.append(delegate)
+  }
 
   /// True for the first caller per class, false after.
   func claim(_ cls: AnyClass) -> Bool {

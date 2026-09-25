@@ -47,6 +47,12 @@ class AgentActivityPlugin: Plugin {
   }
 
   override func load(webview: WKWebView) {
+    // As early as a plugin can: the delegate gets its remote-notification
+    // callbacks, and is re-assigned so UIKit re-reads them, long before the
+    // first alert_token call registers. Nothing registers here.
+    DispatchQueue.main.async {
+      RemoteNotificationDelegateHook.install(in: UIApplication.shared, broker: .shared)
+    }
     if #available(iOS 18.0, *) {
       LiveActivities.startDeduplicating()
     }
@@ -144,6 +150,9 @@ class AgentActivityPlugin: Plugin {
   /// and waits for UIKit's answer. `unconfigured` when the build is not
   /// signed for push, `denied` when the person refused alerts; neither is an
   /// error. The Station sends it back as the registration's `alertToken`.
+  ///
+  /// Call it only from an explicit user action (turning alerts on): it shows
+  /// the system permission prompt the first time.
   @objc public func alertToken(_ invoke: Invoke) {
     guard let environment = ApnsEnvironment.current else {
       invoke.resolve(["state": "unconfigured"])
@@ -153,7 +162,7 @@ class AgentActivityPlugin: Plugin {
       // The completion-handler form: the async one needs iOS 15, and the
       // app still deploys below it.
       let granted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
           continuation.resume(returning: granted)
         }
       }
@@ -161,13 +170,12 @@ class AgentActivityPlugin: Plugin {
         invoke.resolve(["state": "denied"])
         return
       }
-      guard let delegate = UIApplication.shared.delegate, let delegateClass = object_getClass(delegate) else {
+      guard UIApplication.shared.delegate != nil else {
         invoke.reject("the app delegate is unavailable")
         return
       }
-      // Tauri's app delegate has no remote-notification callbacks of its
-      // own; this adds them once (see RemoteNotificationDelegateHook).
-      RemoteNotificationDelegateHook.install(on: delegateClass, broker: .shared)
+      // Normally done at load already; a no-op then.
+      RemoteNotificationDelegateHook.install(in: UIApplication.shared, broker: .shared)
       ApnsDeviceTokenBroker.shared.reset()
       UIApplication.shared.registerForRemoteNotifications()
       switch await firstValue(timeout: 10, of: { ApnsDeviceTokenBroker.shared.updates() }) {
@@ -381,6 +389,20 @@ enum LiveActivities {
     }
   }
 #endif
+
+extension UIApplication: ApplicationDelegateHolder {
+  /// Through `setDelegate:` rather than the typed property: tao declares its
+  /// AppDelegate class without adopting the UIApplicationDelegate protocol,
+  /// so `as? UIApplicationDelegate` would fail and clear the delegate. The
+  /// same object goes back; nil is never assigned.
+  public var hookableDelegate: AnyObject? {
+    get { delegate }
+    set {
+      guard let newValue else { return }
+      _ = perform(NSSelectorFromString("setDelegate:"), with: newValue)
+    }
+  }
+}
 
 @_cdecl("init_plugin_station_agent_activity")
 func initPlugin() -> Plugin {
