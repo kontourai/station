@@ -133,10 +133,7 @@ import {
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
 import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
-import {
-  anyPersonalOrchestrationStreamPresenceSubject,
-  OrchestrationStreamPresence,
-} from '../orchestration-stream-presence.js';
+import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
@@ -1531,6 +1528,135 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
+  // A dispatched Task's session belongs to the principal that dispatched it,
+  // on both the engine-start path and the default seeded (`task-dispatch`)
+  // path. This suite's service denies ownerless reads, so a session with no
+  // recorded owner would be invisible to the dispatcher itself.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'a Task session started by %s records its dispatcher as owner',
+    async (_label, provider) => {
+      const root = join(tmp, `owned-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'owned-project',
+        title: 'Owned dispatch',
+        agentId: 'codex',
+      });
+      const dispatcher = composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      });
+      const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'human:device:phone',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // An engine records the owner from its start metadata in the
+        // `session.started` it publishes (this suite's fake engine publishes
+        // nothing), so the start must carry it.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({ userId: 'human:device:phone' }),
+          }),
+        );
+        return;
+      }
+      expect(eventStore.findSessionOwnerUserId(sessionId)).toBe(
+        'human:device:phone',
+      );
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:device:phone'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('stranger'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  // B2: an unverified agent's (or an external sender's) dispatch is the
+  // operator's to read but acts for no one, on both dispatch paths.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'an unattributed Task session started by %s is readable by its owner and acts for no one',
+    async (_label, provider) => {
+      const root = join(tmp, `unattributed-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'unattributed-project',
+        title: 'Agent dispatch',
+        agentId: 'codex',
+      });
+      const dispatched = await composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      }).dispatch(task.id, {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // The start choke point stamps the marker the engine records.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({
+              userId: 'human:local:operator',
+              ownerAttribution: 'unattributed-agent',
+            }),
+          }),
+        );
+        return;
+      }
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:local:operator'),
+        ),
+      ).toBe(true);
+      expect(service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {
@@ -1568,6 +1694,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
@@ -1767,6 +1894,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
@@ -5921,7 +6049,6 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([stationAgent]),
       eventBus: new EventBus(),
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = peerService.recordPeerDelegationActivityDispatch({
@@ -7018,24 +7145,22 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock]),
       eventBus,
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // A personal Station refuses an ownerless session too.
     await expect(
       local.readSession('ownerless-thread', personal),
-    ).resolves.toEqual(
+    ).resolves.toBeNull();
+    await expect(local.readSession('alpha-thread', personal)).resolves.toEqual(
       expect.objectContaining({
-        session: expect.objectContaining({ threadId: 'ownerless-thread' }),
+        session: expect.objectContaining({ threadId: 'alpha-thread' }),
       }),
     );
   });
 
-  test('resolves a personal ownerless session to the any-personal presence subject (slice 6 I10 guard)', () => {
-    // The personal fallback branch of `resolveSessionPresenceSubject` — a
-    // session with no recorded owner in a non-hosted deployment falls back
-    // to the any-personal subject rather than resolving no subject at all.
-    // Before this fixture, deleting the fallback ran the whole suite green:
-    // the hosted test above only exercises tenant-bound subjects.
+  test('resolves no presence subject for a personal ownerless session: nobody may read it (slice 6 I10 guard)', () => {
+    // A session with no recorded owner has no one to notify, so a
+    // completion must not borrow any connected user's presence.
     const threadId = 'ownerless-presence-thread';
     eventStore.upsertSession({
       provider: 'bedrock',
@@ -7044,8 +7169,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-08T00:00:00.000Z',
       updatedAt: '2026-08-08T00:00:00.000Z',
     });
-    const subject = service.resolveSessionPresenceSubject(threadId);
-    expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
+    expect(service.resolveSessionPresenceSubject(threadId)).toBeUndefined();
   });
 
   test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
@@ -10484,6 +10608,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'both-halves-turn-1-started',
       provider: 'codex',
@@ -10661,6 +10796,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'failed-restart-turn-1-started',
       provider: 'codex',
@@ -10849,6 +10995,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'replay-fail-turn-1-started',
       provider: 'codex',
@@ -11033,6 +11190,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'teardown-failed-turn-1-started',
       provider: 'codex',
@@ -17543,11 +17711,9 @@ describe('OrchestrationService', () => {
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
     // so the resulting session.started/session.configured event carries a
     // real owner instead of leaving the adopted thread permanently
-    // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
-    // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy archive#1165 is about (under this suite's default `deny`
-    // policy, the pre-existing source-thread precheck wouldn't even let a
-    // userId-bearing dispatch through, masking the bug this test targets).
+    // ownerless. The attached source is owned by the adopting user, as the
+    // follow service records an attached transcript's owner (the local
+    // operator in production), so the source precheck admits the adoption.
     const sourceThreadId = 'external:claude:source-1165';
     const projectRoot = join(tmp, 'project-1165');
     mkdirSync(projectRoot, { recursive: true });
@@ -17571,7 +17737,6 @@ describe('OrchestrationService', () => {
       flowRunService,
       listProjects: () => localProjects,
       workflowSidecarService,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     localService.initialize();
@@ -17589,6 +17754,15 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'source-1165-owner',
+      provider: 'claude',
+      threadId: sourceThreadId,
+      createdAt: '2026-07-28T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: sourceThreadId,
+      metadata: { controlMode: 'read-only-attached', userId: 'adopter-user' },
+    } as CanonicalRuntimeEvent);
 
     const child = await localService.dispatch(
       { type: 'adoptSession', sourceThreadId },
@@ -23602,8 +23776,8 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(false);
       // Unknown thread: never seen by the store at all — falls through to
-      // a full (miss) read every time and is denied by this suite's
-      // default `ownerlessSessionAccess` (fail-closed, unset === deny).
+      // a full (miss) read every time and is denied: a session with no
+      // recorded owner is readable by no caller.
       expect(
         service.canUserReadSession(
           'thread-never-existed',

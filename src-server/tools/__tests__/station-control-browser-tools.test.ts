@@ -100,13 +100,18 @@ describe('station-control browser tools', () => {
       'caller-not-bound',
     ],
     [
-      'an inferred principal',
+      // No derivation produces one today; the consumer must still refuse a
+      // principal not marked eligible rather than assume every one is.
+      'a principal not eligible to elevate',
       {
         ...good,
-        principal: stationControlCallerPrincipal(
-          'human:local:operator',
-          'ownerless-single-operator',
-        ),
+        principal: Object.freeze({
+          ...stationControlCallerPrincipal(
+            'human:local:operator',
+            'session-owner',
+          ),
+          elevationEligible: false,
+        }),
       },
       'principal-unverified',
     ],
