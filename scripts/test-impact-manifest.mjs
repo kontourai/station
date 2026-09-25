@@ -539,9 +539,9 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
  *
  * The ONE list: the runner, the CI job and the classification pin in
  * `path-read-pin-boundary.test.ts` all read it. That pin requires every suite
- * whose text walks a directory to be here, classified with a reason, or
- * presumed to walk a temporary directory it creates; its docblock states
- * what that text heuristic cannot see.
+ * with a directory walk whose target does not look temporary to be here or
+ * classified with a reason; its docblock states what that text heuristic
+ * cannot see.
  */
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
@@ -558,6 +558,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/docs-snippets.test.ts',
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
+  'scripts/__tests__/product-docs-source-links.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
