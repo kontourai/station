@@ -646,9 +646,10 @@ function runInstaller(
   fixture: InstallFixture,
   manifestPath: string,
   env: Record<string, string> = {},
+  script = installer,
 ) {
   const { STATION_CHANNEL: _channel, ...inherited } = process.env;
-  return spawnSync('sh', [installer], {
+  return spawnSync('sh', [script], {
     encoding: 'utf8',
     env: {
       ...inherited,
@@ -698,6 +699,16 @@ describe('pinned manifest signing keys', () => {
     expect(block?.[1], `install.sh must embed:\n${expectedLine}`).toBe(
       expectedLine,
     );
+    // Exactly one assignment, and the verifier is its only reader: a second
+    // assignment (or an env/default expansion) could silently replace it.
+    const uses = script
+      .split('\n')
+      .filter((line) => line.includes('PINNED_MANIFEST_SIGNING_KEYS'))
+      .filter((line) => !line.startsWith('# '));
+    expect(uses).toHaveLength(2);
+    expect(uses[0]).toBe(expectedLine);
+    expect(uses[1]).toContain(' "$PINNED_MANIFEST_SIGNING_KEYS" ');
+    expect(uses[1]).not.toMatch(/PINNED_MANIFEST_SIGNING_KEYS[:=-]/);
     // The table the installer carries is the real release/nightly pair.
     expect(
       config.keys.map((entry: { keyId: string; channels: string[] }) => [
@@ -910,19 +921,44 @@ describe('install.sh public manifest verification', () => {
   it('verifies against the pinned public key when no test override is set', {
     timeout: 60_000,
   }, () => {
-    // A fixture key cannot produce a signature the real pinned release key
-    // accepts, so without the override the same manifest must fail.
     const fixture = makeInstallFixture('station-pinned-real-key-');
     const archive = buildArchive(fixture, '1.2.3');
-    const result = runInstaller(
-      fixture,
-      signManifest(fixture, '1.2.3', archive),
-      { STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: '' },
+    const manifestPath = signManifest(fixture, '1.2.3', archive);
+    const noOverride = { STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: '' };
+    const config = JSON.parse(readFileSync(keyTablePath, 'utf8'));
+    const releasePem: string = config.keys.find(
+      (entry: { keyId: string }) => entry.keyId === RELEASE_KEY_ID,
+    ).publicKeySpkiPem;
+    // The owner-provided public half, written out so a config edit alone
+    // cannot swap the trusted key unnoticed.
+    expect(releasePem).toBe(
+      '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk8YKOCVgKcXsNNMjkGwYOfE53pV1zrajakwI91oxbPo=\n-----END PUBLIC KEY-----\n',
     );
+    const pristine = readFileSync(installer, 'utf8');
+    expect(pristine).toContain(JSON.stringify(releasePem).slice(1, -1));
+
+    // The real pinned key rejects the fixture signature...
+    const result = runInstaller(fixture, manifestPath, noOverride);
     expect(result.stderr).toContain(
       'public ecosystem manifest signature did not verify',
     );
     expect(result.status).toBe(1);
+
+    // ...and the key it used is the embedded one: a copy of install.sh whose
+    // embedded release PEM is swapped for the fixture key installs the same
+    // manifest with no override at all.
+    const swapped = join(fixture.dir, 'install-swapped-key.sh');
+    const fixturePem = readFileSync(fixture.testKeyPath, 'utf8');
+    writeFileSync(
+      swapped,
+      pristine.replace(
+        JSON.stringify(releasePem).slice(1, -1),
+        JSON.stringify(fixturePem).slice(1, -1),
+      ),
+    );
+    const accepted = runInstaller(fixture, manifestPath, noOverride, swapped);
+    expect(accepted.status, accepted.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.3');
   });
 
   it('refuses the test-only key URL without the insecure test flag', {
