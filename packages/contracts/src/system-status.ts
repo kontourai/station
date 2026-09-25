@@ -80,6 +80,15 @@ export interface SystemIdentityResponse extends SystemRuntimeIdentity {
 /** Why an install could not state what it is (update provenance diagnostics). */
 export type UpdateProvenanceIssue = 'missing' | 'invalid-stamp';
 
+/**
+ * Why this server refuses to apply an update to itself, as a code a client can
+ * gate on. `service-managed`: the process runs under an OS service supervisor
+ * (`station service run`), which restarts it on exit, so an in-place
+ * pull-rebuild-restart would fight that supervisor. The human remedy travels
+ * beside it in `selfUpdateUnavailableReason`.
+ */
+export type SelfUpdateUnavailableCode = 'service-managed';
+
 /** Disclosure from this home, not a certificate of transferred execution authority. */
 export type HomeRecoveryDisclosure =
   | { kind: 'not-restored' | 'unavailable' }

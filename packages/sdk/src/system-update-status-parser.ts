@@ -16,6 +16,7 @@
 //   `updateAvailable`.
 import type {
   DevicePresentation,
+  SelfUpdateUnavailableCode,
   SystemIdentityResponse,
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
@@ -28,6 +29,10 @@ const GIT_SHA = /^[0-9a-f]{40,64}$/i;
 const PROVENANCE_ISSUES: readonly UpdateProvenanceIssue[] = [
   'missing',
   'invalid-stamp',
+];
+
+const SELF_UPDATE_UNAVAILABLE_CODES: readonly SelfUpdateUnavailableCode[] = [
+  'service-managed',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,6 +141,7 @@ export function parseSystemUpdateStatus(value: unknown): CoreUpdateStatus {
       provenanceIssue: null,
       technicalDetail: normalizeOptionalText(value.technicalDetail),
       selfUpdateUnavailableReason: null,
+      selfUpdateUnavailableCode: null,
     };
   }
   if (typeof value.updateAvailable !== 'boolean') {
@@ -185,5 +191,12 @@ export function parseSystemUpdateStatus(value: unknown): CoreUpdateStatus {
     selfUpdateUnavailableReason: normalizeOptionalText(
       value.selfUpdateUnavailableReason,
     ),
+    // An unknown code stays unknown (null), like `provenanceIssue`; the
+    // accompanying reason text still closes the apply offer.
+    selfUpdateUnavailableCode: SELF_UPDATE_UNAVAILABLE_CODES.includes(
+      value.selfUpdateUnavailableCode as SelfUpdateUnavailableCode,
+    )
+      ? (value.selfUpdateUnavailableCode as SelfUpdateUnavailableCode)
+      : null,
   };
 }

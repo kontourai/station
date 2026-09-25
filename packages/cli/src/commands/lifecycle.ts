@@ -105,11 +105,16 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import type { CommandRunner } from './service.js';
 import {
   renderServiceInstallRemedy,
   renderServiceStatusCommand,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
+import {
+  findSupervisingServices,
+  renderSupervisingServiceRefusal,
+} from './service-upgrade-guard.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -4746,7 +4751,9 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  * installer-owned state before it may touch the network; falling through to
  * Git would turn old or copied release files into an unsigned update path.
  */
-function delegatePackagedUpgradeIfPresent(): string | null {
+function delegatePackagedUpgradeIfPresent(
+  beforeInstall: (stationHome: string) => void,
+): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
   const installRoot = resolve(releasesRoot, '..');
@@ -4796,6 +4803,7 @@ function delegatePackagedUpgradeIfPresent(): string | null {
   }
   const installer = join(CWD, 'install.sh');
   readSafePackagedFile(installer, 'packaged release installer');
+  beforeInstall(state.stationHome);
 
   execFileSync('sh', ['./install.sh', 'install'], {
     cwd: CWD,
@@ -4810,6 +4818,43 @@ function delegatePackagedUpgradeIfPresent(): string | null {
     windowsHide: true,
   });
   return state.stationHome;
+}
+
+/** Synchronous command runner for the read-only service probes below. */
+function runServiceProbe(
+  command: string,
+  args: string[],
+): ReturnType<CommandRunner> {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return {
+    error: result.error,
+    status: result.status,
+    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
+    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
+  };
+}
+
+/**
+ * #2674: under an installed service, the live instance `upgrade` would stop is
+ * the service's supervised child. The supervisor exits with it, launchd/systemd
+ * restart the unit within seconds, and its `buildIfStale` races this upgrade's
+ * own pull and build in the same checkout (for a packaged install, the
+ * installer's swap). Refuse before touching anything and name the sequence
+ * that is safe; orchestrating stop/upgrade/start is deliberately not done here.
+ */
+function assertNoSupervisingService(stationHome: string, repoPath?: string) {
+  const supervising = findSupervisingServices(stationHome, {
+    fs: { existsSync, readFileSync, readdirSync, realpathSync },
+    platform: process.platform,
+    run: runServiceProbe,
+    ...(repoPath === undefined ? {} : { repoPath }),
+  });
+  if (supervising.length > 0) {
+    throw new Error(renderSupervisingServiceRefusal(supervising));
+  }
 }
 
 function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
@@ -4859,22 +4904,7 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
             : {}),
           unitPath: manifest.unitPath,
         },
-        {
-          run: (command, args) => {
-            const result = spawnSync(command, args, {
-              encoding: 'utf8',
-              windowsHide: true,
-            });
-            return {
-              error: result.error,
-              status: result.status,
-              stderr:
-                typeof result.stderr === 'string' ? result.stderr : undefined,
-              stdout:
-                typeof result.stdout === 'string' ? result.stdout : undefined,
-            };
-          },
-        },
+        { run: runServiceProbe },
       );
       if (scheduling.status === 'stale') {
         console.log(
@@ -4960,11 +4990,21 @@ function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
 }
 
 export async function upgrade(options: BuildOptions = {}): Promise<void> {
-  const packagedStationHome = delegatePackagedUpgradeIfPresent();
+  // A packaged install proves its provenance first; the service check runs on
+  // the home that provenance names, before the installer swaps anything.
+  const packagedStationHome = delegatePackagedUpgradeIfPresent((home) =>
+    assertNoSupervisingService(home),
+  );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
     return;
   }
+  // Source checkout: only services installed from THIS checkout are raced by
+  // its rebuild (`service install` records the checkout as `repoPath`).
+  assertNoSupervisingService(
+    resolveLifecycleHomeTarget({ baseDir: options.baseDir }).projectHome,
+    CWD,
+  );
   const liveInstances = listRunningInstances();
   if (liveInstances.length > 1) {
     throw new Error(

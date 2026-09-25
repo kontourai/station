@@ -221,6 +221,49 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     expect(screen.getByText(/Source ref: bbbbbbb/)).toBeTruthy();
   });
 
+  test('a behind checkout under the installed service offers no apply and says how to update instead (#2674)', () => {
+    // The exact shape the server writes for a supervised source checkout:
+    // the code AND the human remedy, on an otherwise apply-eligible compare.
+    renderWith(
+      behindCheckout({
+        selfUpdateUnavailableCode: 'service-managed',
+        selfUpdateUnavailableReason:
+          'this server runs under the installed Station service, which restarts it on exit. Stop the service with `station service stop`, run `station upgrade`, then start it again with `station service start`',
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        /Server update cannot be applied from here: this server runs under the installed Station service/,
+      ).textContent,
+    ).toContain('`station service stop`, run `station upgrade`');
+    // The comparison facts are still reported; only the apply is withheld.
+    expect(
+      screen.getByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a refusal reason with a code this client does not know still closes the apply offer', () => {
+    renderWith(
+      behindCheckout({
+        selfUpdateUnavailableCode: null,
+        selfUpdateUnavailableReason: 'a future refusal',
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        'Server update cannot be applied from here: a future refusal.',
+      ),
+    ).toBeTruthy();
+  });
+
   test('an unknown-provenance server renders the explicit refusal with its message collapsed into Technical details', () => {
     renderWith({
       installKind: 'unknown',
