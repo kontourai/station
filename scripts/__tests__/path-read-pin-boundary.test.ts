@@ -220,13 +220,18 @@ function selectedTests(paths: string[], manifest?: unknown): string[] {
  *   one test and used in another, or a helper called before its definition,
  *   resolves to whatever assignment precedes it textually. Imported fixture
  *   factories, object properties (`f.root`) and parameters of functions that
- *   are not the walking helper are not traced. Every one of these errs
- *   toward REPORTING a walk, and the suites it reports are classified by
- *   hand below (`TEMP_VIA_FIXTURE`). The direction that can hide a real walk:
- *   a real directory held in a binding NAMED with a temp token or spelled
- *   with one in a path literal (`'fixtures/tmp-shapes'`), or reached
- *   through a `return` the regex does not see (a multi-line return
- *   expression is judged by its first line).
+ *   are not the walking helper are not traced. The untraced forms err toward
+ *   REPORTING a walk, and the suites they report are classified by hand below
+ *   (`TEMP_VIA_FIXTURE`). The ways a real walk can still hide: a real
+ *   directory held in a binding NAMED with a temp token or spelled with one
+ *   in a path literal (`'fixtures/tmp-shapes'`); a `return` the regex does
+ *   not see (a multi-line return is judged by its first line); file-order
+ *   resolution itself, when an earlier test's temp `root` shadows a later
+ *   walk of a module-level real `root`; an argument that mentions any temp
+ *   value anywhere (`flag ? mkdtempSync() : join(cwd, 'src')`); and mixed
+ *   destructuring (`const { tmp, src } = { tmp: mkdtempSync(), src: … }`
+ *   marks `src` temp). None of these shapes existed in the suites when this
+ *   was written (every exempted walk argument was traced by hand).
  */
 const WALK_CALL = new RegExp(['\\bread', 'dir(?:Sync)?\\s*\\('].join(''), 'g');
 const LS_FILES = new RegExp(['\\bls', '-files\\b'].join(''), 'g');
