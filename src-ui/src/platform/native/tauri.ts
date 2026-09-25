@@ -713,6 +713,8 @@ function parseAgentActivityLaunchRoute(
 export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   readonly platform = 'tauri' as const;
   private capabilityReportReadFailed = false;
+  /** The compile target the host last reported; null until a report is read. */
+  private reportedTarget: NativeCapabilityReport['platform'] | null = null;
   private capabilities = Object.fromEntries(
     Object.entries(INITIAL_TAURI_CAPABILITIES).map(([id, status]) => [
       id,
@@ -757,6 +759,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         ),
       } as Record<NativeCapabilityId, NativeCapabilityStatus>;
       this.capabilityReportReadFailed = false;
+      this.reportedTarget = report.platform;
       return {
         status: 'ok',
         value: report,
@@ -1443,6 +1446,15 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   async takeAgentActivityLaunchRoute(): Promise<
     NativeCommandResult<{ route: NativeAgentActivityLaunchRoute | null }>
   > {
+    // Only the Android plugin records card-tap routes; the iOS plugin has no
+    // such command (an iOS tap opens the app where it was).
+    if (this.reportedTarget !== 'android') {
+      return {
+        status: 'unsupported',
+        command: 'take-agent-activity-launch-route',
+        reason: 'Card-tap routes are recorded only by the Android app.',
+      };
+    }
     return this.agentActivityCommand(
       'take-agent-activity-launch-route',
       'take_launch_route',
@@ -1459,6 +1471,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     const addPluginListener = this.bridge.addPluginListener;
     if (
       this.capabilities['remote-push'].state !== 'enabled' ||
+      this.reportedTarget !== 'android' ||
       !addPluginListener
     )
       return { dispose() {}, ready: Promise.resolve() };

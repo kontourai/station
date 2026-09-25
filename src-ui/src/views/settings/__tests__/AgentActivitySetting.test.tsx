@@ -342,4 +342,33 @@ describe('AgentActivitySetting on iOS', () => {
     expect(register).not.toHaveBeenCalled();
     expect((await toggle()).getAttribute('aria-checked')).toBe('false');
   });
+
+  it('stays visible while on when the build can no longer do Live Activities, so it can be turned off', async () => {
+    const status: Record<string, unknown> = {};
+    const { controller, commands } = await iosControllerFor(status);
+    await controller.enable({
+      environmentId: 'env-a',
+      apiBase: 'https://station.test',
+    });
+    status.pushConfigured = false;
+    status.apnsEnvironment = undefined;
+    renderWith(async () => controller);
+
+    const control = await toggle();
+    expect(control.getAttribute('aria-checked')).toBe('true');
+    expect(control).toHaveProperty('disabled', false);
+    expect(
+      await screen.findByText(
+        'This build can no longer show Live Activities. Turn this off to stop the Station sending them.',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(control);
+    await waitFor(() => expect(commands).toContain('clear'));
+    expect(controller.registration('env-a')).toBeNull();
+    // Off, on a build that cannot turn it on again: nothing is left to show.
+    await waitFor(() =>
+      expect(screen.queryByTestId('agent-activity')).toBeNull(),
+    );
+  });
 });

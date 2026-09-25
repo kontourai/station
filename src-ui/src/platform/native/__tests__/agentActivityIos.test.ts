@@ -56,6 +56,7 @@ function iosHarness(
 ) {
   const calls: Call[] = [];
   const events: string[] = [];
+  let status: Record<string, unknown> | undefined = options.status;
   let pushToken: Record<string, unknown> = options.pushToken ?? {
     state: 'available',
     token: TOKEN_1,
@@ -73,7 +74,7 @@ function iosHarness(
       events.push(name);
       switch (name) {
         case 'status':
-          return iosStatus(options.status) as T;
+          return iosStatus(status) as T;
         case 'push_token':
           return pushToken as T;
         case 'configure':
@@ -126,6 +127,9 @@ function iosHarness(
     registered,
     unregistered,
     storage,
+    setStatus: (next: Record<string, unknown>) => {
+      status = next;
+    },
     setPushToken: (next: Record<string, unknown>) => {
       pushToken = next;
     },
@@ -352,5 +356,72 @@ describe('agent activity controller on iOS', () => {
       }),
     );
     expect(h.controller.registration(STATION)).toBeNull();
+  });
+
+  it('keeps a record whose bundle the gateway no longer lists: refresh refuses it, disable still withdraws it', async () => {
+    await h.controller.enable(target);
+    const key = 'station-agent-activity-registrations-v1';
+    const stored = JSON.parse(h.storage.get(key) ?? '{}');
+    h.storage.set(
+      key,
+      JSON.stringify({
+        [STATION]: { ...stored[STATION], packageName: 'io.kontourai.retired' },
+      }),
+    );
+    expect(h.controller.registration(STATION)).toMatchObject({
+      packageName: 'io.kontourai.retired',
+    });
+    h.events.length = 0;
+    h.calls.length = 0;
+    h.advance(AGENT_ACTIVITY_REFRESH_AFTER_MS);
+
+    await expect(h.controller.refresh(target)).rejects.toThrow(
+      /not one the push gateway delivers to/,
+    );
+    expect(h.events).not.toContain('register');
+
+    h.events.length = 0;
+    h.calls.length = 0;
+    await h.controller.disable(target);
+    expect(h.events).toEqual(['unregister', 'clear']);
+    expect(h.calls).toEqual([
+      {
+        command: 'plugin:station-agent-activity|clear',
+        args: { registrationId: REGISTRATION_ID },
+      },
+    ]);
+    expect(h.controller.registration(STATION)).toBeNull();
+  });
+
+  it('builds a request the Station route accepts (isValidNativePushRequest)', async () => {
+    // Imported through a variable so the UI typecheck does not pull the
+    // server module in, as authenticatedTransport.test.ts does.
+    const storePath =
+      '../../../../../src-server/services/notifications/native-push-registration-store.js';
+    const { isValidNativePushRequest } = (await import(storePath)) as {
+      isValidNativePushRequest: (value: unknown) => boolean;
+    };
+    await h.controller.enable(target);
+    h.setPushToken({
+      state: 'available',
+      token: TOKEN_2,
+      apnsEnvironment: 'production',
+    });
+    await h.controller.refresh(target);
+
+    expect(h.registered.map((entry) => entry.request.platform)).toEqual([
+      'ios',
+      'ios',
+    ]);
+    for (const { request } of h.registered)
+      expect(isValidNativePushRequest(request)).toBe(true);
+    // The check has power: the same request without its APNs environment is
+    // refused.
+    expect(
+      isValidNativePushRequest({
+        ...h.registered[0]?.request,
+        apnsEnvironment: undefined,
+      }),
+    ).toBe(false);
   });
 });

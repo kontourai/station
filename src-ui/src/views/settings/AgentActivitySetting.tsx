@@ -121,20 +121,20 @@ function AgentActivityControl({
 
   const on = registration !== null;
   const phone = status.data;
+  const iosUnavailable =
+    phone?.platform === 'ios' &&
+    (!phone.pushConfigured || !phone.liveActivitiesSupported);
   // iOS: without a push-signed build on iOS 18 there is nothing to offer,
-  // so show nothing rather than a switch that can never turn on. A status
-  // that failed still renders, so its error is seen.
-  if (
-    iosApp &&
-    (status.isPending ||
-      (phone?.platform === 'ios' &&
-        (!phone.pushConfigured || !phone.liveActivitiesSupported)))
-  )
-    return null;
+  // so show nothing rather than a switch that can never turn on — unless
+  // this Station is already on, which must stay visible so it can be turned
+  // off. A status that failed still renders, so its error is seen.
+  if (iosApp && !on && (status.isPending || iosUnavailable)) return null;
   const android = phone?.platform !== 'ios' ? phone : undefined;
   const ios = phone?.platform === 'ios' ? phone : undefined;
+  // On iOS a build without push is `iosUnavailable` above; the outcome is
+  // still reachable if `push_token` disagrees with `status`.
   const unconfigured =
-    outcome === 'unconfigured' || phone?.pushConfigured === false;
+    outcome === 'unconfigured' || (!ios && phone?.pushConfigured === false);
   const notificationsOff =
     outcome === 'notifications-disabled' ||
     (on && android?.notificationsEnabled === false);
@@ -193,9 +193,10 @@ function AgentActivityControl({
           </Button>
         </div>
       )}
-      {outcome === 'unsupported' && (
+      {on && iosUnavailable && (
         <div className="settings__toggle-desc">
-          Live Activities need iOS 18 or later.
+          This build can no longer show Live Activities. Turn this off to stop
+          the Station sending them.
         </div>
       )}
       {liveActivitiesOff && (

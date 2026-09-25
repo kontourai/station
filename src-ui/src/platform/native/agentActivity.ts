@@ -63,7 +63,12 @@ export interface AgentActivityAndroidRegistrationRecord
 export interface AgentActivityIosRegistrationRecord
   extends AgentActivityRegistrationFields {
   platform: 'ios';
-  packageName: NativePushIosBundle;
+  /**
+   * The bundle id registered. Not narrowed to NATIVE_PUSH_IOS_BUNDLES: a
+   * record whose bundle the gateway no longer lists stays readable so it can
+   * still be turned off; only registering it again is refused.
+   */
+  packageName: string;
   /** The APNs environment the Station last accepted `token` for. */
   apnsEnvironment: NativeApnsEnvironment;
 }
@@ -82,6 +87,15 @@ type AgentActivityIdentity =
   | {
       platform: 'ios';
       packageName: NativePushIosBundle;
+      apnsEnvironment: NativeApnsEnvironment;
+    };
+
+/** A stored record's identity, before it is checked for registering again. */
+type AgentActivityStoredIdentity =
+  | { platform: 'android'; packageName: NativePushAndroidPackage }
+  | {
+      platform: 'ios';
+      packageName: string;
       apnsEnvironment: NativeApnsEnvironment;
     };
 
@@ -164,17 +178,13 @@ function unwrap<T>(result: NativeCommandResult<T>): T {
 const PAYLOAD_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 /**
- * The Station's per-registration payload key. The contract type does not
- * carry it yet (it lands with the publisher's end-to-end encryption), so read
- * it defensively and refuse to turn anything on without it: a phone
- * configured without the key could not read its cards. The value never
+ * The Station's per-registration payload key, checked again here (a Station
+ * that answers without a usable one must not turn anything on: a phone
+ * configured without the key could not read its cards). The value never
  * appears in an error.
- *
- * TODO: read `response.payloadKey` directly once
- * `NativePushRegistrationResponse` and `registerNativePush` carry it.
  */
 function payloadKeyOf(response: NativePushRegistrationResponse): string {
-  const value = (response as { payloadKey?: unknown }).payloadKey;
+  const value: unknown = response.payloadKey;
   if (typeof value !== 'string' || !PAYLOAD_KEY_PATTERN.test(value)) {
     throw new AgentActivityError(
       'The Station did not return a usable encryption key for this phone. Update the Station, then try again.',
@@ -220,7 +230,7 @@ function registrationRequest(
  * always been stored in; an iOS record adds its platform and environment.
  */
 function recordFor(
-  identity: AgentActivityIdentity,
+  identity: AgentActivityStoredIdentity,
   fields: AgentActivityRegistrationFields,
 ): AgentActivityRegistrationRecord {
   const { registrationId, stationId, stationKey, token, registeredAt } = fields;
@@ -424,7 +434,12 @@ export function createAgentActivityController(
           record.platform === 'ios'
             ? {
                 platform: 'ios',
-                packageName: record.packageName,
+                // Refused, not dropped: the record stays so disable can
+                // still withdraw it from the Station and the phone.
+                packageName: deliverable(
+                  NATIVE_PUSH_IOS_BUNDLES,
+                  record.packageName,
+                ),
                 apnsEnvironment: tokenApnsEnvironment(token),
               }
             : { platform: 'android', packageName: record.packageName };
@@ -454,11 +469,12 @@ function isRecord(value: unknown): value is AgentActivityRegistrationRecord {
     typeof candidate.registeredAt !== 'number'
   )
     return false;
+  // An iOS bundle is not checked against NATIVE_PUSH_IOS_BUNDLES here:
+  // dropping a record the gateway no longer delivers to would orphan its
+  // Station registration and keychain item. Refresh refuses to re-register it.
   if (candidate.platform === 'ios')
     return (
-      (NATIVE_PUSH_IOS_BUNDLES as readonly string[]).includes(
-        candidate.packageName,
-      ) &&
+      candidate.packageName.length > 0 &&
       (candidate.apnsEnvironment === 'production' ||
         candidate.apnsEnvironment === 'sandbox')
     );
