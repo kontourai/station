@@ -164,8 +164,8 @@ Use the example `agent.json` as a starting point:
 The `delegation` block above is not accepted yet.
 [`schemas/agent.schema.json`](../../schemas/agent.schema.json) has no
 `delegation` field and refuses unknown fields, so a spec that carries one fails
-to load, and a session on that Agent cannot delegate. Remove the block before
-you use this example. Every Agent's children get the default policy described
+to load: the Agent is unusable, not only unable to delegate. Remove the block
+before you use this example. Every Agent's children get the default policy described
 below.
 
 ## Delegation rules
