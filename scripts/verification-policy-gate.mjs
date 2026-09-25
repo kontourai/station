@@ -56,11 +56,11 @@ const guidance = [
 export const CI_FAST_DEADLINE_GUIDANCE = Object.freeze([
   Object.freeze({
     file: 'docs/guides/testing.md',
-    marker: 'twelve-minute coordinator deadline',
+    marker: 'fifteen-minute coordinator deadline',
   }),
   Object.freeze({
     file: 'docs/guides/code-quality.md',
-    marker: 'bounded twelve-minute feedback',
+    marker: 'bounded fifteen-minute feedback',
   }),
 ]);
 const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
@@ -265,7 +265,7 @@ const VERIFICATION_POLICY_SECTION_LINES = [
   'See `docs/reference/verification-receipts.md` for the field-by-field table.',
   '',
   '`ci:fast` is bounded diagnostic feedback, not completion evidence: it has a',
-  'twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
+  'fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
   '`origin/main`) in its request identity, runs the affected selection before a',
   'fixed bounded static invariant set. A selector exit 3 is reported as a',
   'diagnostic defer after those invariants, never completion evidence; the',
