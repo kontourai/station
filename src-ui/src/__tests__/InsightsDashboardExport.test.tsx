@@ -1,13 +1,31 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchMonitoringEvents = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   fetchMonitoringEvents: (...args: unknown[]) => fetchMonitoringEvents(...args),
   useInsightsQuery: () => ({ data: undefined }),
 }));
+
+// jsdom 30.1 implements URL.createObjectURL for its own Blob only, and this
+// file's global Blob is Node's; a browser never mixes the two realms. The
+// sibling attachment tests stub the pair the same way.
+const createObjectURL = vi.fn((_blob: Blob) => 'blob:station-insights');
+const revokeObjectURL = vi.fn();
+const originalObjectUrls = {
+  createObjectURL: URL.createObjectURL,
+  revokeObjectURL: URL.revokeObjectURL,
+};
+beforeEach(() => {
+  Object.assign(URL, { createObjectURL, revokeObjectURL });
+  createObjectURL.mockClear();
+  revokeObjectURL.mockClear();
+});
+afterEach(() => {
+  Object.assign(URL, originalObjectUrls);
+});
 
 const { downloadInsightEvents } = await import(
   '../components/monitoring/InsightsDashboard'
@@ -62,5 +80,9 @@ describe('the export refuses to misrepresent itself (station#3075)', () => {
 
     expect(result.written).toBe(true);
     expect(result.rows).toBe(2);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(createObjectURL.mock.calls[0]?.[0].type).toBe(
+      'application/x-ndjson',
+    );
   });
 });
