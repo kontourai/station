@@ -9,6 +9,8 @@ mod bundled_server_state;
 mod channel_ports_generated;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(not(mobile))]
+mod desktop_installation;
 mod notification_watch;
 #[cfg(not(mobile))]
 mod local_access_watch;
@@ -6676,6 +6678,18 @@ async fn notification_watch_start(
     Ok(())
 }
 
+/// The persisted id of this desktop installation, for the delivery surface
+/// `local:desktop-<id>` (#2587). See `desktop_installation`.
+#[cfg(not(mobile))]
+#[tauri::command]
+fn desktop_installation_id(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("resolve the desktop config directory: {error}"))?;
+    desktop_installation::read_or_create(&dir)
+}
+
 #[tauri::command]
 fn notification_watch_stop(app: AppHandle) {
     app.state::<notification_watch::NotificationWatch>().stop();
@@ -10852,6 +10866,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write,
         notification_watch_start,
         notification_watch_stop,
+        desktop_installation_id,
         open_local_browser_preview,
         open_external_link,
         discover_local_browser_preview_target,

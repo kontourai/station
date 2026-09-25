@@ -3222,6 +3222,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/notifications' },
     { method: 'DELETE', path: '/notifications/:id' },
     { method: 'POST', path: '/notifications/:id/action/:actionId' },
+    // #2587: records the caller's own read marker on a notification it can
+    // already read; the surface id is derived from the credential.
+    { method: 'POST', path: '/notifications/:id/read' },
     { method: 'POST', path: '/notifications/:id/snooze' },
     { method: 'DELETE', path: '/notifications/activity' },
     { method: 'GET', path: '/notifications/providers' },
