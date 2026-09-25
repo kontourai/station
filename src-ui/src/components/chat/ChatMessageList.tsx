@@ -271,7 +271,11 @@ function ChatMessageListComponent({
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
-  const isStreaming = isTurnStreamLive(activeSession) && !suppressStreamingRow;
+  const turnLive = isTurnStreamLive(activeSession);
+  // The background banner below means "turn over, work continues", so it
+  // reads turn liveness, not whether this row renders: suppression moves a
+  // live turn into the transcript window without ending it (#2654).
+  const isStreaming = turnLive && !suppressStreamingRow;
   const localBackgroundTasks = activeSession.backgroundTasks ?? [];
   const serverBackgroundCount =
     activeSession.conversationActivity?.runningChildWork?.count ?? 0;
@@ -820,7 +824,7 @@ function ChatMessageListComponent({
             {/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
-            {!isStreaming &&
+            {!turnLive &&
               (localBackgroundTasks.length > 0 || serverBackgroundCount > 0) &&
               (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
                 // archive#1301: a `<button>` cannot
