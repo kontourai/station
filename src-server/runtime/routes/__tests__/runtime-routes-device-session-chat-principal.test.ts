@@ -3030,6 +3030,124 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       ]);
     });
 
+    // LOW-3: the evidence attach is best-effort; a caller whose principal
+    // cannot be resolved still gets its tool result, and no attach happens.
+    test('an MCP-UI call whose principal cannot be resolved succeeds and attaches nothing', async () => {
+      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
+      const { app, pairing, paired } = await principalSetup({ flowReads });
+      // The device is bound to one person while the request's ingress names
+      // another: the credential authenticates, but principal resolution
+      // refuses the conflict.
+      const identify = pairing.identifyDevice.bind(pairing);
+      vi.spyOn(pairing, 'identifyDevice').mockImplementation((credential) => {
+        const device = identify(credential);
+        return device
+          ? ({
+              ...device,
+              principalBinding: {
+                provider: 'tailscale-serve',
+                subject: 'someone-else@github',
+              },
+            } as never)
+          : device;
+      });
+      const response = await app.request(
+        '/integrations/example-server/ui/call',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${paired.credential}`,
+            'Content-Type': 'application/json',
+            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+              JSON.stringify({
+                provider: 'tailscale-serve',
+                login: 'owner@github',
+              }),
+            ).toString('base64url'),
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          },
+          body: JSON.stringify({
+            tool: 'example-tool',
+            arguments: {},
+            threadId: 'operator-owned',
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      expect(response.status, await response.text()).toBe(200);
+      expect(flowReads).toEqual([]);
+    });
+
+    // LOW-1: through the production runtime-routes composition, Station's
+    // internal token (which any agent holding a stdio child's env can
+    // present) starts a session that is the operator's to read but acts for
+    // no one; the operator's own credential starts an ordinary one.
+    test('the production task and board-intent routes mark an internal-token dispatch unattributed', async () => {
+      const dispatch = vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'test stops at the dispatcher',
+      }));
+      const { app } = await principalSetup({
+        taskDispatcher: { dispatch },
+      });
+      const internalHeaders = {
+        'Content-Type': 'application/json',
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+      };
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: internalHeaders, body: '{}' },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      await app.request(
+        '/api/tasks/task-1/dispatch',
+        { method: 'POST', headers: operatorHeaders, body: '{}' },
+        REMOTE_TAILNET_ENV,
+      );
+      const intent = await app.request(
+        '/api/projects/project/operating-state/intent',
+        {
+          method: 'POST',
+          headers: internalHeaders,
+          body: JSON.stringify({
+            consent: true,
+            intent: {
+              id: 'dispatch-1',
+              kind: 'task dispatch',
+              authority: { product: 'station', command: 'task dispatch' },
+              subjectRefs: [{ product: 'station', kind: 'task', id: 'task-1' }],
+            },
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      const owners = dispatch.mock.calls.map((call) => {
+        const intentArg = (call as unknown[])[1] as {
+          ownerUserId: string;
+          ownerAttribution?: string;
+        };
+        return {
+          ownerUserId: intentArg.ownerUserId,
+          ownerAttribution: intentArg.ownerAttribution,
+        };
+      });
+      expect(owners, await intent.text()).toEqual([
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: undefined,
+        },
+        {
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: 'unattributed-agent',
+        },
+      ]);
+    });
+
     function pairDelegationPeer(pairing: DevicePairingService) {
       const offer = pairing.createOffer({
         endpoint: 'https://station.example.test',
