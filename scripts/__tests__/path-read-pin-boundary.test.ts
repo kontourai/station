@@ -663,10 +663,8 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     // What the runner hands the focused runner is asserted behaviourally in
     // run-repo-scan-suites.test.ts.
     const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
-    const job = ci.slice(
-      ci.indexOf('\n  repo-scans:\n'),
-      ci.indexOf('\n  fork-smoke:\n'),
-    );
+    // The last job in ci.yml, so the slice runs to the end of the file.
+    const job = ci.slice(ci.indexOf('\n  repo-scans:\n'));
     expect(job).toContain('run: npm run test:repo-scans');
     expect(job).toContain(
       'github.event.pull_request.head.repo.full_name == github.repository',
