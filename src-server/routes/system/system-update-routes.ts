@@ -560,6 +560,56 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
   input.exitFn(0);
 }
 
+/**
+ * Output ceiling for the install and build subprocesses. `execFile` buffers
+ * stdout/stderr and kills the child when the default 1 MiB is exceeded — a
+ * full dependency install plus a Vite build prints far more than that, which
+ * would read as a failed step while the step itself was fine.
+ */
+const CORE_UPDATE_STEP_MAX_BUFFER = 64 * 1024 * 1024;
+
+/**
+ * Runs the owned dependency install, then the build; returns the user-facing
+ * failure, or `null` when both succeeded. Nothing has been restarted when
+ * this fails, but the install may already have replaced dependencies under
+ * the running server — which is why the message says so.
+ */
+async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
+  const stepOptions = {
+    cwd: gitRoot,
+    timeout: 600000,
+    maxBuffer: CORE_UPDATE_STEP_MAX_BUFFER,
+    windowsHide: true,
+  };
+  let step = 'installing dependencies';
+  try {
+    await execFileAsync('npm', CORE_UPDATE_DEPENDENCY_INSTALL, stepOptions);
+    // Build through the pulled checkout's own `station build`, which runs
+    // buildApplication(): raw `npm run build:*` never refreshes
+    // dist-server/station-build.json, and a stale manifest is what sends a
+    // supervisor into the "managed boot identity mismatch" kill-loop
+    // (station#2671). A subprocess rather than an import: the pulled tree's
+    // CLI is the one that knows how to build the pulled tree, and the server
+    // does not reach into the CLI package. `--instance=default` targets
+    // dist-server/dist-ui — the same directories the raw builds wrote and
+    // the restart below launches.
+    step = 'building';
+    await execFileAsync(
+      join(gitRoot, 'station'),
+      ['build', `--instance=${DEFAULT_INSTANCE_ID}`],
+      stepOptions,
+    );
+    return null;
+  } catch (error) {
+    // An execFile failure message carries the child's whole stderr; with the
+    // raised buffer that can be megabytes. Keep the tail, where the failure is.
+    const detail = errorMessage(error);
+    const boundedDetail =
+      detail.length > 4000 ? `…${detail.slice(-4000)}` : detail;
+    return `Core update failed while ${step}: ${boundedDetail}. The pull already landed and nothing was restarted, but dependencies may already be updated under this running server; fix the failure, then rerun the update or restart the server.`;
+  }
+}
+
 export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
@@ -1003,29 +1053,10 @@ export function createSystemUpdateRoutes(
           500,
         );
       }
-      await execFileAsync('npm', CORE_UPDATE_DEPENDENCY_INSTALL, {
-        cwd: gitRoot,
-        timeout: 600000,
-        windowsHide: true,
-      });
-      // Build through the pulled checkout's own `station build`, which runs
-      // buildApplication(): raw `npm run build:*` never refreshes
-      // dist-server/station-build.json, and a stale manifest is what sends a
-      // supervisor into the "managed boot identity mismatch" kill-loop
-      // (station#2671). A subprocess rather than an import: the pulled tree's
-      // CLI is the one that knows how to build the pulled tree, and the server
-      // does not reach into the CLI package. `--instance=default` targets
-      // dist-server/dist-ui — the same directories the raw builds wrote and
-      // the restart below launches.
-      await execFileAsync(
-        join(gitRoot, 'station'),
-        ['build', `--instance=${DEFAULT_INSTANCE_ID}`],
-        {
-          cwd: gitRoot,
-          timeout: 600000,
-          windowsHide: true,
-        },
-      );
+      const installAndBuildFailure = await runInstallAndBuild(gitRoot);
+      if (installAndBuildFailure !== null) {
+        return c.json({ success: false, error: installAndBuildFailure }, 500);
+      }
 
       const newHashFull = (
         await execGit(['rev-parse', 'HEAD'], {

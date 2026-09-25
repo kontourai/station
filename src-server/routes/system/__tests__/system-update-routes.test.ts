@@ -897,11 +897,55 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     ]);
     for (const call of execFileMock.mock.calls) {
       expect(call[2]).toMatchObject({ cwd: gitRoot, windowsHide: true });
+      // execFile kills a child past 1 MiB of buffered output by default; an
+      // install + Vite build prints more than that (review L6).
+      expect(
+        (call[2] as { maxBuffer?: number }).maxBuffer,
+      ).toBeGreaterThanOrEqual(16 * 1024 * 1024);
     }
     // The pull precedes the install: the pulled tree's dependencies are the
     // ones installed.
     const pullOrder = vi.mocked(execGit).mock.invocationCallOrder[0];
     expect(pullOrder).toBeLessThan(execFileMock.mock.invocationCallOrder[0]);
+  });
+
+  test('a build failure after the install says dependencies may already be updated under the running server, and restarts nothing', async () => {
+    const gitRoot = tmpGitRoot();
+    armBehindSourceCheckout(gitRoot);
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const callback = (typeof args[2] === 'function' ? args[2] : args[3]) as
+        | ((error: unknown, result: unknown) => void)
+        | undefined;
+      const failed = args[0] !== 'npm';
+      callback?.(failed ? new Error('vite build exploded') : null, {
+        stdout: '',
+        stderr: '',
+      });
+    });
+    try {
+      const res = await createApp().request('/core-update', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(500);
+      const body = await json(res);
+      expect(body.error).toContain('Core update failed while building');
+      expect(body.error).toContain('vite build exploded');
+      expect(body.error).toContain(
+        'dependencies may already be updated under this running server',
+      );
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(
+        readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+      ).toBeNull();
+    } finally {
+      execFileMock.mockImplementation((...args: unknown[]) => {
+        const callback = (typeof args[2] === 'function' ? args[2] : args[3]) as
+          | ((error: unknown, result: unknown) => void)
+          | undefined;
+        callback?.(null, { stdout: '', stderr: '' });
+      });
+    }
   });
 
   test('a pulled tree without the owned dependency lifecycle fails closed: nothing installed, built, or restarted (#2673)', async () => {
