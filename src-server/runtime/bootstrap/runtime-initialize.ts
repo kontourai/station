@@ -579,10 +579,6 @@ export async function initializeRuntime(
       }
       return tenantExecutionContextFromSession(context);
     },
-    // Station currently exposes one local account. Keep legacy, pre-owner
-    // sessions readable only through this explicit compatibility mode; a
-    // multi-user runtime must migrate them and switch this to `deny`.
-    ownerlessSessionAccess: 'single-user-compat',
     personalConversationAccess: {
       canRead: (requesterId, ownerId) =>
         deps.environmentSecurityService.canSharePersonalConversation(

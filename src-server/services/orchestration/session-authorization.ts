@@ -6,13 +6,11 @@ import {
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { sessionOwnerCacheOps } from '../../telemetry/metrics.js';
 import type { StationControlCallerPrincipalSource } from '../../tools/station-control-shared.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
 import {
-  anyPersonalOrchestrationStreamPresenceSubject,
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from './orchestration-stream-presence.js';
@@ -25,21 +23,10 @@ const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
 /**
  * Station #90 lane D (station #122): the principal an agent session acts for, read
- * from the server's own ownership record. `source` says how it was derived,
- * so a consumer can refuse a derivation it does not accept:
- *
- * - `session-owner` — the session's recorded `metadata.userId`, stamped
- *   server-side from the authenticated caller that started it.
- * - `ownerless-single-operator` — a personal host in `single-user-compat`
- *   mode, where a session with no recorded owner is the local operator's
- *   (the only account such a host has). Hosted or `deny` hosts never
- *   produce it: an ownerless session there acts for no one.
- *
- * Only `session-owner` is eligible for elevation (a consumer granting a
- * Project role must require it; see `StationControlCallerPrincipal
- * .elevationEligible`). The ownerless mapping names the operator by
- * inference, not from an authenticated start, and grants nothing beyond what
- * the session already had.
+ * from the server's own ownership record. Its only `source` is
+ * `session-owner`: the session's recorded `metadata.userId`, stamped
+ * server-side from the authenticated caller that started it. A session with
+ * no recorded owner acts for no one; nothing infers an owner for it.
  */
 export interface SessionActingPrincipal {
   readonly id: string;
@@ -55,14 +42,12 @@ interface SessionAuthorizationDeps {
   // Every dep is a raw option VALUE from OrchestrationServiceOptions —
   // this cluster calls no service method at all, which is what makes the
   // seam one-way. Pass the options raw (two different call forms exist for
-  // requireTenantExecutionContext; ownerlessSessionAccess is compared as
-  // its union, never normalized to a boolean).
+  // requireTenantExecutionContext).
   eventStore?: EventStore;
   requireTenantExecutionContext?: () => boolean;
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
   personalConversationAccess?: PersonalConversationAccess;
   sessionOwnerCacheMaxEntries?: number;
 }
@@ -202,7 +187,7 @@ export class SessionAuthorization {
     sessionOwnerCacheOps.add(1, {
       outcome: cached === undefined ? 'miss' : 'hit',
     });
-    // A failure rejects, never becoming the policy's ownerless compatibility case.
+    // A failure rejects; it never reads as an ownerless (unreadable) session.
     const owner = cached ?? (await this.readOwnerAsync(threadId, signal));
     if (!current() || !sameGeneration()) return false;
     const allowed = this.canReadWithOwner(threadId, scope, () => owner);
@@ -270,14 +255,11 @@ export class SessionAuthorization {
       return ownerUserId;
     }
     // Deliberately NOT cached (archive#1120 safety requirement): an
-    // ownerless/unresolved result (unknown thread, or a read-only-attached
-    // session that never carries a `metadata.userId`) always falls through
-    // to a full store read on the next call. Caching a negative result
-    // here could let a thread that later legitimately resolves an owner
-    // stay stuck on a stale "no owner" answer — and for the
-    // `ownerlessSessionAccess: 'single-user-compat'` branch specifically,
-    // an authorization outcome must never be pinned by a cache the way a
-    // positive owner safely can be.
+    // ownerless/unresolved result (an unknown thread, or one whose
+    // ownership-shaped event has not been written yet) always falls through
+    // to a full store read on the next call. Caching a negative result here
+    // could let a thread that later legitimately resolves an owner stay
+    // stuck on a stale "no owner" answer, unreadable by its own owner.
     return undefined;
   }
 
@@ -289,15 +271,10 @@ export class SessionAuthorization {
     const attribution =
       this.deps.eventStore?.findSessionOwnerAttribution?.(threadId);
     if (!attribution || attribution.unattributedAgent) return undefined;
-    const hosted = this.deps.requireTenantExecutionContext?.() === true;
     const owner = attribution.ownerUserId;
-    if (owner !== undefined) return { id: owner, source: 'session-owner' };
-    if (hosted || this.deps.ownerlessSessionAccess !== 'single-user-compat')
-      return undefined;
-    return {
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'ownerless-single-operator',
-    };
+    return owner === undefined
+      ? undefined
+      : { id: owner, source: 'session-owner' };
   }
 
   /**
@@ -330,7 +307,10 @@ export class SessionAuthorization {
   }
 
   /**
-   * One policy for every session-derived read. In hosted mode both the
+   * One policy for every session-derived read. A session is readable only by
+   * its recorded principal owner, or (personal mode) by a member of that
+   * owner's personal conversation account. A session with no recorded owner
+   * is readable by no caller, in either mode. In hosted mode both the
    * request and persisted binding must be independently trustworthy: a
    * personal-mode authority, absent request binding, malformed/unknown
    * persisted binding, ownerless row, or exact-tenant mismatch is invisible.
@@ -379,9 +359,8 @@ export class SessionAuthorization {
     if (!authority) return false;
     const userId = authority.userId;
     const ownerUserId = readOwner();
-    if (ownerUserId === undefined) {
-      return this.deps.ownerlessSessionAccess === 'single-user-compat';
-    }
+    // Nobody owns it, so nobody reads it: an unknown or made-up id included.
+    if (ownerUserId === undefined) return false;
     // A personal Station's approved devices belong to one conversation
     // account. Device principals remain unchanged for action attribution.
     // Hosted authority returned above and never reaches this policy.
@@ -451,11 +430,10 @@ export class SessionAuthorization {
       const ownerUserId = this.sessionOwnerUserId(threadId);
       return ownerUserId !== undefined && ownerUserId === userId;
     }
+    // Internal commands (no caller) keep their existing reach.
     if (userId === undefined) return true;
     const ownerUserId = this.sessionOwnerUserId(threadId);
-    if (ownerUserId === undefined) {
-      return this.deps.ownerlessSessionAccess === 'single-user-compat';
-    }
+    if (ownerUserId === undefined) return false;
     return (
       ownerUserId === userId ||
       this.deps.personalConversationAccess?.canRead(userId, ownerUserId) ===
@@ -467,19 +445,16 @@ export class SessionAuthorization {
    * Resolves the private identity that a completion notification may use to
    * check stream presence. Hosted sessions require both a resolved owner and
    * their registry-valid persisted tenant binding; an incomplete binding is
-   * never allowed to borrow another tenant's same-user presence. Personal
-   * ownerless sessions retain the historic any-connected-user fallback.
+   * never allowed to borrow another tenant's same-user presence. An ownerless
+   * session has no subject in either mode: nobody may read it, so there is
+   * nobody to notify about it.
    */
   resolveSessionPresenceSubject(
     threadId: string,
   ): OrchestrationStreamPresenceSubject | undefined {
     const ownerUserId = this.sessionOwnerUserId(threadId);
+    if (!ownerUserId) return undefined;
     const hosted = this.deps.requireTenantExecutionContext?.() === true;
-    if (!ownerUserId) {
-      return hosted
-        ? undefined
-        : anyPersonalOrchestrationStreamPresenceSubject();
-    }
     if (!hosted) {
       return orchestrationStreamPresenceSubjectForSession(ownerUserId);
     }

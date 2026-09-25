@@ -136,7 +136,6 @@ const sessionAuthorization = new SessionAuthorization({
       unattributedAgent: false,
     }),
   } as never,
-  ownerlessSessionAccess: 'single-user-compat',
 });
 // Session start metadata and projects as the production sources read them;
 // the resolver is the production composition over those sources.
@@ -513,7 +512,7 @@ describe('station-control verified caller (REST side)', () => {
     expect(response.caller).toEqual(SESSION_A);
   });
 
-  test('the principal comes from the session ownership record: forged identity headers are ignored, an alias-owned row names only its alias, and an ownerless personal session maps to the local operator with its derivation named', async () => {
+  test('the principal comes from the session ownership record: forged identity headers are ignored, an alias-owned row names only its alias, and an ownerless session acts for no one', async () => {
     const a = mintStationControlMcpToken('session-a', 'url-token');
     const forged = await callerRoute({
       ...internalHeaders(),
@@ -561,15 +560,10 @@ describe('station-control verified caller (REST side)', () => {
       ...internalHeaders(),
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: c.token,
     });
+    // Nothing infers an owner: the caller carries no principal at all.
     expect(ownerless.caller).toEqual({
       sessionId: 'session-c',
       assurance: 'bearer-exposed',
-      // Names the operator by inference only: never eligible to elevate.
-      principal: {
-        id: LOCAL_OPERATOR_PRINCIPAL_ID,
-        source: 'ownerless-single-operator',
-        elevationEligible: false,
-      },
     });
   });
 
@@ -1081,7 +1075,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
     });
   });
 
-  test('a bound caller whose principal is only inferred (ownerless session) is unattributed', async () => {
+  test('a bound caller of an ownerless session acts for no one: unattributed', async () => {
     await inProcessCall('session-c', { delegate: true });
     expect(delegatedInput()).toMatchObject({
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,

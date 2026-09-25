@@ -6914,12 +6914,12 @@ describe('EventStore', () => {
         // `JSON.parse(row.payload)` is unguarded, so a malformed payload made
         // `sessionOwnerUserId` THROW — fail-closed, no owner resolved and no
         // read served. The SQL path skips the row instead and can resolve
-        // `undefined`, which under `ownerlessSessionAccess:
-        // 'single-user-compat'` makes the session READABLE. That is the
-        // WIDENING direction, and it is the one divergence in this branch
-        // that is not restrictive.
+        // `undefined`. That once made the session readable under the
+        // single-user ownerless compatibility mode; with that mode removed,
+        // an ownerless session is readable by no caller, so both paths now
+        // fail closed and the divergence only changes throw-vs-refuse.
         //
-        // Accepted, with the reasons stated. Reachability is LOW, not nil:
+        // Reachability is LOW, not nil:
         // every append serializes with `JSON.stringify`, but SQLite's JSON
         // parser caps nesting at 1000 levels, and `json_valid` returns 0 from
         // ~998 levels down — a payload of only ~6 KB. Nothing in `src-server`
@@ -8733,7 +8733,7 @@ describe('EventStore', () => {
     });
 
     test('an ownerless thread stays a candidate for the real predicate to judge', () => {
-      // `single-user-compat` is the predicate's decision, not this query's.
+      // The predicate refuses an ownerless session; narrowing never decides.
       store.appendEvent(attachmentTurn('evt-ownerless', 'thread-ownerless'));
       const blobRef = persistedRow('thread-ownerless').attachments[0].blobRef;
 

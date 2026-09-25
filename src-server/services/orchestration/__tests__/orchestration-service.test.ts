@@ -132,10 +132,7 @@ import {
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
 import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
-import {
-  anyPersonalOrchestrationStreamPresenceSubject,
-  OrchestrationStreamPresence,
-} from '../orchestration-stream-presence.js';
+import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
@@ -5987,7 +5984,6 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([stationAgent]),
       eventBus: new EventBus(),
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = peerService.recordPeerDelegationActivityDispatch({
@@ -7084,24 +7080,22 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock]),
       eventBus,
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // A personal Station refuses an ownerless session too.
     await expect(
       local.readSession('ownerless-thread', personal),
-    ).resolves.toEqual(
+    ).resolves.toBeNull();
+    await expect(local.readSession('alpha-thread', personal)).resolves.toEqual(
       expect.objectContaining({
-        session: expect.objectContaining({ threadId: 'ownerless-thread' }),
+        session: expect.objectContaining({ threadId: 'alpha-thread' }),
       }),
     );
   });
 
-  test('resolves a personal ownerless session to the any-personal presence subject (slice 6 I10 guard)', () => {
-    // The personal fallback branch of `resolveSessionPresenceSubject` — a
-    // session with no recorded owner in a non-hosted deployment falls back
-    // to the any-personal subject rather than resolving no subject at all.
-    // Before this fixture, deleting the fallback ran the whole suite green:
-    // the hosted test above only exercises tenant-bound subjects.
+  test('resolves no presence subject for a personal ownerless session: nobody may read it (slice 6 I10 guard)', () => {
+    // A session with no recorded owner has no one to notify, so a
+    // completion must not borrow any connected user's presence.
     const threadId = 'ownerless-presence-thread';
     eventStore.upsertSession({
       provider: 'bedrock',
@@ -7110,8 +7104,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-08T00:00:00.000Z',
       updatedAt: '2026-08-08T00:00:00.000Z',
     });
-    const subject = service.resolveSessionPresenceSubject(threadId);
-    expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
+    expect(service.resolveSessionPresenceSubject(threadId)).toBeUndefined();
   });
 
   test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
@@ -10481,6 +10474,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'both-halves-turn-1-started',
       provider: 'codex',
@@ -10658,6 +10662,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'failed-restart-turn-1-started',
       provider: 'codex',
@@ -10846,6 +10861,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'replay-fail-turn-1-started',
       provider: 'codex',
@@ -11030,6 +11056,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'teardown-failed-turn-1-started',
       provider: 'codex',
@@ -17540,11 +17577,9 @@ describe('OrchestrationService', () => {
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
     // so the resulting session.started/session.configured event carries a
     // real owner instead of leaving the adopted thread permanently
-    // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
-    // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy archive#1165 is about (under this suite's default `deny`
-    // policy, the pre-existing source-thread precheck wouldn't even let a
-    // userId-bearing dispatch through, masking the bug this test targets).
+    // ownerless. The attached source is owned by the adopting user, as the
+    // follow service records an attached transcript's owner (the local
+    // operator in production), so the source precheck admits the adoption.
     const sourceThreadId = 'external:claude:source-1165';
     const projectRoot = join(tmp, 'project-1165');
     mkdirSync(projectRoot, { recursive: true });
@@ -17568,7 +17603,6 @@ describe('OrchestrationService', () => {
       flowRunService,
       listProjects: () => localProjects,
       workflowSidecarService,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     localService.initialize();
@@ -17586,6 +17620,15 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'source-1165-owner',
+      provider: 'claude',
+      threadId: sourceThreadId,
+      createdAt: '2026-07-28T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: sourceThreadId,
+      metadata: { controlMode: 'read-only-attached', userId: 'adopter-user' },
+    } as CanonicalRuntimeEvent);
 
     const child = await localService.dispatch(
       { type: 'adoptSession', sourceThreadId },
@@ -23599,8 +23642,8 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(false);
       // Unknown thread: never seen by the store at all — falls through to
-      // a full (miss) read every time and is denied by this suite's
-      // default `ownerlessSessionAccess` (fail-closed, unset === deny).
+      // a full (miss) read every time and is denied: a session with no
+      // recorded owner is readable by no caller.
       expect(
         service.canUserReadSession(
           'thread-never-existed',

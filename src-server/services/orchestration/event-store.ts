@@ -3210,10 +3210,9 @@ export class EventStore {
    *
    * `owner_user_id` comes from the conversation-history projection, which
    * materializes the same `metadata.userId` the owner fold reads, written on
-   * this same append path. Rows with no owner stay candidates: an ownerless
-   * session is the `single-user-compat` case, which only the real predicate
-   * may decide, and a Station with one user has no cross-user disclosure to
-   * make.
+   * this same append path. Rows with no owner stay candidates for the real
+   * predicate to decide (it refuses an ownerless session for every caller):
+   * narrowing is an optimisation, never the authorization.
    */
   listAttachmentCandidateThreads(
     ref: string,
@@ -6544,7 +6543,6 @@ export class EventStore {
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
-    includeOwnerless?: boolean;
     limit: number;
     cursor?: ConversationHistoryCursor;
   }): ConversationHistoryPage {
@@ -6654,14 +6652,7 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = [
-      ...readRows('h.owner_user_id = ?'),
-      ...(options.includeOwnerless ? readRows('h.owner_user_id IS NULL') : []),
-    ].sort(
-      (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) ||
-        right.thread_id.localeCompare(left.thread_id),
-    );
+    const rows = readRows('h.owner_user_id = ?');
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,
@@ -6916,9 +6907,8 @@ export class EventStore {
    *   (thread_id=?)` and neither emits a temp b-tree.
    *
    * Deliberately NOT a bounded `LIMIT` over the old query: truncating could
-   * turn "owned by X" into `undefined`, and `ownerlessSessionAccess:
-   * 'single-user-compat'` makes an ownerless session READABLE — a silent
-   * authorization widening. The predicate is what bounds this, not the limit.
+   * turn "owned by X" into `undefined`, which makes the session unreadable
+   * by its own owner. The predicate is what bounds this, not the limit.
    */
   /**
    * archive#4075 stage 2: append-time ownership immutability guard, called

@@ -93,7 +93,6 @@ test('EventStore renews only its exact closed source and retired async authoriza
   populate(store);
   const oldAuthorization = new SessionAuthorization({
     eventStore: store,
-    ownerlessSessionAccess: 'deny',
   });
   const original = store.createIsolatedTranscriptReads();
   expect(store.releaseClosedIsolatedTranscriptReads(original)).toBe(false);
@@ -152,7 +151,6 @@ test('EventStore renews only its exact closed source and retired async authoriza
   expect(successorRead).not.toHaveBeenCalled();
   const newAuthorization = new SessionAuthorization({
     eventStore: store,
-    ownerlessSessionAccess: 'deny',
   });
   expect(
     await newAuthorization.canReadSessionAsync(
@@ -228,7 +226,6 @@ describe('isolated transcript read owner and existing session policy', () => {
       source,
       new SessionAuthorization({
         eventStore: store,
-        ownerlessSessionAccess: 'deny',
       }),
       () => true,
     );
@@ -294,7 +291,6 @@ describe('isolated transcript read owner and existing session policy', () => {
     readers.push(source);
     const authz = new SessionAuthorization({
       eventStore: store,
-      ownerlessSessionAccess: 'deny',
     });
     const isolated = createIsolatedSessionTranscriptSearch(
       source,
@@ -525,7 +521,6 @@ describe('isolated transcript read owner and existing session policy', () => {
     populate(store, 'other', 'user-b');
     const authz = new SessionAuthorization({
       eventStore: store,
-      ownerlessSessionAccess: 'deny',
     });
     const reads = syncReads(store, authz);
     const source = store.createIsolatedTranscriptReads();
@@ -661,33 +656,15 @@ describe('isolated transcript read owner and existing session policy', () => {
       { localHomePossession: true },
     );
     const cases = [
-      { thread: 'legacy', authority: local, allowOwnerless: false },
-      {
-        thread: 'legacy',
-        authority: personal('released-alias'),
-        allowOwnerless: false,
-      },
-      {
-        thread: 'legacy',
-        authority: personal(LOCAL_OPERATOR_PRINCIPAL_ID),
-        allowOwnerless: false,
-      },
-      { thread: 'ordinary', authority: personal(), allowOwnerless: false },
-      {
-        thread: 'ordinary',
-        authority: personal('wrong'),
-        allowOwnerless: false,
-      },
-      { thread: 'missing', authority: personal(), allowOwnerless: true },
-      { thread: 'missing', authority: personal(), allowOwnerless: false },
+      { thread: 'legacy', authority: local },
+      { thread: 'legacy', authority: personal('released-alias') },
+      { thread: 'legacy', authority: personal(LOCAL_OPERATOR_PRINCIPAL_ID) },
+      { thread: 'ordinary', authority: personal() },
+      { thread: 'ordinary', authority: personal('wrong') },
+      { thread: 'missing', authority: personal() },
     ];
     for (const item of cases) {
-      const options = {
-        eventStore: store,
-        ownerlessSessionAccess: item.allowOwnerless
-          ? ('single-user-compat' as const)
-          : ('deny' as const),
-      };
+      const options = { eventStore: store };
       const expected = new SessionAuthorization(options).canReadSession(
         item.thread,
         item.authority,
@@ -701,6 +678,13 @@ describe('isolated transcript read owner and existing session policy', () => {
         ),
       ).toBe(expected);
     }
+    // Only the recorded owner reads; the alias row and a missing thread are
+    // refused on both paths.
+    expect(
+      await new SessionAuthorization({
+        eventStore: store,
+      }).canReadSessionAsync('missing', personal(), () => true),
+    ).toBe(false);
     const authz = new SessionAuthorization({
       eventStore: store,
       requireTenantExecutionContext: () => true,
@@ -986,7 +970,6 @@ describe('isolated transcript read owner and existing session policy', () => {
     ).rejects.toThrow('unavailable');
     const authz = new SessionAuthorization({
       eventStore: store,
-      ownerlessSessionAccess: 'single-user-compat',
     });
     await expect(
       authz.canReadSessionAsync('large-owner', personal(), () => true),
@@ -1162,7 +1145,6 @@ describe('isolated transcript read owner and existing session policy', () => {
       const lookup = vi.spyOn(source, 'readOwner');
       const authz = new SessionAuthorization({
         eventStore: store,
-        ownerlessSessionAccess: 'single-user-compat',
       });
       await expect(
         authz.canReadSessionAsync('thread-a', personal(), () => true),
@@ -1205,16 +1187,17 @@ describe('isolated transcript read owner and existing session policy', () => {
     readers.push(source);
     const authz = new SessionAuthorization({
       eventStore: store,
-      ownerlessSessionAccess: 'single-user-compat',
     });
     const lookup = vi.spyOn(source, 'readOwner');
-    expect(
-      await authz.canReadSessionAsync('later', personal(), () => true),
-    ).toBe(true);
-    populate(store, 'later', 'other-user');
+    // Ownerless: refused, and the refusal is not cached...
     expect(
       await authz.canReadSessionAsync('later', personal(), () => true),
     ).toBe(false);
+    // ...so once the caller's ownership is durable, the caller reads it.
+    populate(store, 'later', 'user-a');
+    expect(
+      await authz.canReadSessionAsync('later', personal(), () => true),
+    ).toBe(true);
     expect(lookup).toHaveBeenCalledTimes(2);
   });
 });
@@ -1229,7 +1212,6 @@ test('the isolated search and message lookup include approved personal owners an
   readers.push(source);
   const authorization = new SessionAuthorization({
     eventStore: store,
-    ownerlessSessionAccess: 'deny',
     personalConversationAccess: {
       canRead: (requester, owner) =>
         requester === 'phone' && ['phone', 'desktop'].includes(owner),

@@ -23,7 +23,6 @@ function readServiceOptions(eventStore: EventStore) {
       observedBy: 'test',
       observedAt: '2026-08-08T12:00:00.000Z',
     }),
-    ownerlessPersonalAccess: false,
   };
 }
 
@@ -656,7 +655,7 @@ describe('ConversationHistoryReadService', () => {
     }
   });
 
-  test('includes a true NULL-owner record only when single-user compatibility is enabled and the authority check permits it', () => {
+  test('never lists a NULL-owner record, even when the authority check would permit it', () => {
     eventStore.upsertSession({
       provider: 'claude',
       threadId: 'thread-personal-ownerless',
@@ -680,24 +679,14 @@ describe('ConversationHistoryReadService', () => {
     );
     const canReadSession = vi.fn(() => true);
 
-    const disabled = new ConversationHistoryReadService({
+    const reader = new ConversationHistoryReadService({
       ...readServiceOptions(eventStore),
       canReadSession,
     });
-    expect(disabled.readPage({ authority, limit: 1 }).records).toEqual([]);
-
-    const enabled = new ConversationHistoryReadService({
-      ...readServiceOptions(eventStore),
-      canReadSession,
-      ownerlessPersonalAccess: true,
-    });
-    expect(enabled.readPage({ authority, limit: 1 }).records).toEqual([
-      expect.objectContaining({ threadId: 'thread-personal-ownerless' }),
-    ]);
-    expect(canReadSession).toHaveBeenCalledWith(
-      'thread-personal-ownerless',
-      authority,
-    );
+    // The owner-narrowed query never returns the ownerless row, so the
+    // permissive predicate above is never even asked about it.
+    expect(reader.readPage({ authority, limit: 1 }).records).toEqual([]);
+    expect(canReadSession).not.toHaveBeenCalled();
   });
 
   test('excludes an owner and tenant bound row that is quarantined for a missing agent in hosted mode', () => {

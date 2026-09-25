@@ -2118,9 +2118,78 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * A chat created in the UI is owned by the local-operator principal, while
    * the conversation-scoped routes decided with the cached OS alias — so a
    * conversation's linked pull requests answered "Conversation unavailable"
-   * for every real chat. (Ownerless ids stay readable in production's
-   * single-user compat mode; that is policy, not this route's decision.)
+   * for every real chat.
    */
+  // #2567: an id no one owns (a made-up one, or a session recorded without
+  // an owner) used to be readable by every personal caller under the
+  // single-user ownerless compatibility mode, on every conversation-scoped
+  // route. Now it is readable by no caller, however local.
+  test.each(['operator', 'home', 'device', 'whois'] as const)(
+    'a made-up or ownerless conversation id is refused for the %s caller (#2567)',
+    async (mode) => {
+      const { app, store, roomRuntime, paired } = await setup(
+        mode,
+        true,
+        undefined,
+        false,
+        false,
+        {
+          extraSessions: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]],
+          seed: (seedStore) =>
+            seedStore.appendEvent({
+              eventId: 'ownerless-session:start',
+              threadId: 'ownerless-session',
+              sessionId: 'ownerless-session',
+              provider: 'claude',
+              method: 'session.started',
+              createdAt: '2026-09-04T00:00:00Z',
+            }),
+        },
+      );
+      const headers = {
+        Authorization: `Bearer ${mode === 'operator' ? OPERATOR_SECRET : paired.credential}`,
+        ...(mode === 'whois'
+          ? {
+              [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+                JSON.stringify({
+                  provider: 'tailscale-serve',
+                  login: 'owner@github',
+                }),
+              ).toString('base64url'),
+              [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            }
+          : {}),
+      };
+      const environment =
+        mode === 'whois' ? LOOPBACK_SERVE_PROXY_ENV : REMOTE_TAILNET_ENV;
+      const read = (conversationId: string) =>
+        app.request(
+          `/api/conversation-pull-requests/${encodeURIComponent(conversationId)}`,
+          { headers },
+          environment,
+        );
+      for (const conversationId of [
+        'made-up-conversation',
+        'ownerless-session',
+      ]) {
+        const refused = await read(conversationId);
+        expect(
+          refused.status,
+          `${conversationId}: ${await refused.text()}`,
+        ).toBe(404);
+      }
+      // The same caller still reaches a conversation it owns (the operator,
+      // with or without home possession) — the refusal is ownership, not the
+      // route being unreachable.
+      if (mode === 'operator' || mode === 'home') {
+        const owned = await read('operator-owned');
+        expect(owned.status, await owned.text()).toBe(200);
+      }
+      await roomRuntime.close();
+      store.close();
+    },
+  );
+
   test('an operator reads the linked pull requests of the chat it owns', async () => {
     const { app, store, roomRuntime } = await setup(
       'operator',
@@ -2869,8 +2938,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // The owner narrowing alone refuses the device above, so that 404
       // cannot tell whether the session-read predicate still runs. The
       // ownerless thread passes the narrowing (`owner_user_id IS NULL`) and is
-      // refused ONLY by the predicate: this Station does not grant
-      // single-user-compat ownerless access.
+      // refused ONLY by the predicate: no caller may read an ownerless
+      // session.
       expect(
         store.listAttachmentCandidateThreads(
           ownerlessRef,

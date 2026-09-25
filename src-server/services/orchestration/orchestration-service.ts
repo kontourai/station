@@ -748,12 +748,6 @@ interface OrchestrationServiceOptions {
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  /**
-   * Explicit bridge for installations that still have pre-ownership sessions.
-   * Multi-user hosts must leave this at the secure default (`deny`) and
-   * migrate or quarantine ownerless rows before exposing them.
-   */
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
   personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
@@ -1872,9 +1866,6 @@ export class OrchestrationService {
               options.validateRecoveredTenantExecutionContext,
           }
         : {}),
-      ...(options.ownerlessSessionAccess !== undefined
-        ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
-        : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
         : {}),
@@ -2264,8 +2255,6 @@ export class OrchestrationService {
           this.observeAnswerability(threadId, provider, observedAt),
         readConversationActivity: (conversationId) =>
           this.conversationActivity?.readConversation(conversationId),
-        ownerlessPersonalAccess:
-          options.ownerlessSessionAccess === 'single-user-compat',
       });
     }
     // ConversationLineage captures `turnDeduplicator` and
@@ -4705,6 +4694,15 @@ export class OrchestrationService {
    * authorization: `canUserReadSession` stays the final check.
    */
   attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    return this.readableSessionOwnerIds(authority);
+  }
+
+  /**
+   * The owner principals whose sessions `authority` may read: its own id,
+   * plus (personal mode) every owner of the personal conversation account
+   * it belongs to. The same set transcript search binds.
+   */
+  readableSessionOwnerIds(authority: SessionReadAuthority): string[] {
     this.initialize();
     const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
     return [

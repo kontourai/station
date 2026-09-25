@@ -17,8 +17,9 @@
  * `OrchestrationService.resolveSessionPresenceSubject` and skips scheduling
  * only when that exact subject holds a live stream. Hosted subjects include
  * the persisted tenant binding; an incomplete hosted binding never borrows a
- * same-user stream from another tenant. Personal ownerless sessions retain
- * their single-user-compatible any-connected-user fallback inside that seam.
+ * same-user stream from another tenant. A session that resolves no subject
+ * (it has no recorded owner, or a hosted one lacks a valid binding) has no
+ * one who may read it, so nothing is scheduled for it at all.
  *
  * Body is deliberately minimal (`Agent finished in session <threadId>`) —
  * never the turn's `outputText` — matching archive#1225's guardrail against
@@ -104,7 +105,7 @@ async function deliverTurnCompletionPush(input: {
   threadId: string;
   turnId: string;
   outcome: TurnOutcome;
-}): Promise<'scheduled' | 'skipped_connected'> {
+}): Promise<'scheduled' | 'skipped_connected' | 'skipped_no_recipient'> {
   const {
     orchestrationService,
     presence,
@@ -115,9 +116,10 @@ async function deliverTurnCompletionPush(input: {
   } = input;
   const presenceSubject =
     orchestrationService.resolveSessionPresenceSubject(threadId);
-  const watching =
-    presenceSubject !== undefined && presence.isConnected(presenceSubject);
-  if (watching) return 'skipped_connected';
+  // No subject means no one may read this session: a push would announce a
+  // turn to devices whose owner cannot open it.
+  if (presenceSubject === undefined) return 'skipped_no_recipient';
+  if (presence.isConnected(presenceSubject)) return 'skipped_connected';
 
   await notificationService.schedule(TURN_COMPLETION_SOURCE, {
     category:

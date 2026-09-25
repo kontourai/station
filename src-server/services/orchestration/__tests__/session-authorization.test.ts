@@ -12,7 +12,6 @@ function authorization(owner: string | undefined) {
     eventStore: {
       findSessionOwnerUserId: () => owner,
     } as never,
-    ownerlessSessionAccess: 'deny',
     personalConversationAccess: {
       // Every member of the personal account may read the operator's rows.
       canRead: (_requester, ownerId) => ownerId === LOCAL_OPERATOR_PRINCIPAL_ID,
@@ -20,6 +19,53 @@ function authorization(owner: string | undefined) {
     },
   });
 }
+
+describe('SessionAuthorization refuses every ownerless session (#2567)', () => {
+  // No owner is recorded for an unknown or made-up id either, so this is
+  // also the refusal of a guessed id.
+  test.each([
+    ['the local operator', LOCAL_OPERATOR_PRINCIPAL_ID, { localHome: true }],
+    ['the operator credential', LOCAL_OPERATOR_PRINCIPAL_ID, {}],
+    ['a paired device', 'human:device:phone', {}],
+    ['a WhoIs identity', 'human:tailscale-serve:owner@github', {}],
+  ] as const)('%s cannot read or command it', (_label, userId, options) => {
+    const authz = authorization(undefined);
+    const authority = sessionReadAuthorityFromRequest(
+      userId,
+      undefined,
+      undefined,
+      'localHome' in options ? { localHomePossession: true } : undefined,
+    );
+    expect(authz.canReadSession('made-up-id', authority)).toBe(false);
+    expect(
+      authz.canReadSessionForCommand('made-up-id', userId, undefined),
+    ).toBe(false);
+    // It has no one to notify, either.
+    expect(authz.resolveSessionPresenceSubject('made-up-id')).toBeUndefined();
+  });
+
+  test('an internal command (no caller) keeps its reach', () => {
+    expect(
+      authorization(undefined).canReadSessionForCommand(
+        'made-up-id',
+        undefined,
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
+  test('an owned session is still read by its owner and account members', () => {
+    const authz = authorization(LOCAL_OPERATOR_PRINCIPAL_ID);
+    for (const userId of [LOCAL_OPERATOR_PRINCIPAL_ID, 'human:device:phone']) {
+      expect(
+        authz.canReadSession(
+          'owned',
+          sessionReadAuthorityFromRequest(userId, undefined, undefined),
+        ),
+      ).toBe(true);
+    }
+  });
+});
 
 describe('SessionAuthorization has no OS-alias owner bridge', () => {
   // A row whose recorded owner is this Station's former OS alias names no
@@ -83,7 +129,6 @@ test('personal sharing applies consistently to direct reads and transcript owner
   );
   const authz = new SessionAuthorization({
     eventStore: { findSessionOwnerUserId: () => 'desktop' } as never,
-    ownerlessSessionAccess: 'deny',
     personalConversationAccess: {
       canRead,
       ownerIds: (id) =>
@@ -153,10 +198,7 @@ test('hosted reads never consult the personal sharing policy', () => {
 describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () => {
   function actingPrincipal(
     owner: string | undefined,
-    options: {
-      ownerless?: 'deny' | 'single-user-compat';
-      hosted?: boolean;
-    } = {},
+    options: { hosted?: boolean } = {},
   ) {
     return new SessionAuthorization({
       eventStore: {
@@ -165,12 +207,11 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
           unattributedAgent: false,
         }),
       } as never,
-      ownerlessSessionAccess: options.ownerless ?? 'single-user-compat',
       requireTenantExecutionContext: () => options.hosted === true,
     }).sessionActingPrincipal('thread');
   }
 
-  test('reads the recorded owner, and names how an operator mapping was derived', () => {
+  test('reads the recorded owner, and never infers one', () => {
     expect(actingPrincipal('human:test:alice')).toEqual({
       id: 'human:test:alice',
       source: 'session-owner',
@@ -181,10 +222,9 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
       id: 'released-os-alias',
       source: 'session-owner',
     });
-    expect(actingPrincipal(undefined)).toEqual({
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'ownerless-single-operator',
-    });
+    // An ownerless session acts for no one: nothing maps it to the local
+    // operator any more.
+    expect(actingPrincipal(undefined)).toBeUndefined();
   });
 
   test('a session an agent started without a verified principal acts for no one, whatever owner it records (B2)', () => {
@@ -196,7 +236,6 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
             unattributedAgent,
           }),
         } as never,
-        ownerlessSessionAccess: 'single-user-compat',
       }).sessionActingPrincipal('child');
     expect(authz(true)).toBeUndefined();
     expect(authz(false)).toEqual({
@@ -205,8 +244,7 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
     });
   });
 
-  test('an ownerless session acts for no one on a deny or hosted host', () => {
-    expect(actingPrincipal(undefined, { ownerless: 'deny' })).toBeUndefined();
+  test('an ownerless session acts for no one on a hosted host either', () => {
     expect(actingPrincipal(undefined, { hosted: true })).toBeUndefined();
     expect(actingPrincipal('human:test:alice', { hosted: true })).toEqual({
       id: 'human:test:alice',

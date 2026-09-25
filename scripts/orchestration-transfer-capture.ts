@@ -148,7 +148,6 @@ const service = new OrchestrationService({
   eventBus: bus,
   eventStore: store,
   logger,
-  ownerlessSessionAccess: 'single-user-compat',
 });
 service.initialize();
 const app = new Hono();

@@ -503,7 +503,7 @@ export class SessionEventReads {
    * single chokepoint for both `/events` replay branches (thread-scoped and
    * global) to apply the SAME per-event authorization gate the live path
    * already applies at `orchestration.ts:879` — `canUserReadSession`, same
-   * argument order, same `ownerlessSessionAccess` treatment. Without this, a
+   * argument order, same ownerless-is-unreadable treatment. Without this, a
    * caller could replay another user's full persisted history simply by
    * reconnecting with a stale `Last-Event-ID`.
    */

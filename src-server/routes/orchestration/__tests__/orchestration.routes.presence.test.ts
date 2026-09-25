@@ -57,6 +57,10 @@ function makeMinimalService() {
     conversationStreamBinding: () => undefined,
     readEventGlobalSequence: () => undefined,
     readEventStreamReplay: () => [],
+    // Each caller may read only its own sessions in these fixtures.
+    readableSessionOwnerIds: (authority: { userId: string }) => [
+      authority.userId,
+    ],
   };
 }
 
@@ -364,6 +368,57 @@ describe('GET /presence/summary (station#4075 stage 3 slice 2)', () => {
       { id: 'human:local:operator', kind: 'human', connections: 1 },
     ]);
     expect(typeof body.observedAt).toBe('number');
+  });
+
+  test('lists only principals whose sessions the caller may read', async () => {
+    const presence = new OrchestrationStreamPresence();
+    const eventBus = new EventBus();
+    const principalFor = (id: string) => ({
+      id,
+      kind: 'human' as const,
+      display: id,
+    });
+    const app = createOrchestrationRoutes(
+      {
+        ...makeMinimalService(),
+        // A paired phone shares the operator's personal account; a stranger
+        // shares nobody's.
+        readableSessionOwnerIds: (authority: { userId: string }) =>
+          authority.userId === 'human:device:phone'
+            ? ['human:device:phone', 'human:local:operator']
+            : [authority.userId],
+      } as any,
+      {
+        eventBus,
+        logger: { debug: vi.fn() },
+        resolvePrincipal: (c: {
+          req: { header(n: string): string | undefined };
+        }) => principalFor(c.req.header('x-test-principal') ?? 'none'),
+        presence,
+      } as never,
+    );
+    for (const id of ['human:local:operator', 'human:test:stranger']) {
+      const res = await app.request('/events', {
+        headers: { 'x-test-principal': id },
+      });
+      const reader = res.body!.getReader();
+      activeReaders.push(reader);
+      await readUntilCaughtUp(reader);
+    }
+    const rosterFor = async (id: string) =>
+      (
+        (await (
+          await app.request('/presence/summary', {
+            headers: { 'x-test-principal': id },
+          })
+        ).json()) as { principals: Array<{ id: string }> }
+      ).principals.map((entry) => entry.id);
+    await expect(rosterFor('human:device:phone')).resolves.toEqual([
+      'human:local:operator',
+    ]);
+    await expect(rosterFor('human:test:stranger')).resolves.toEqual([
+      'human:test:stranger',
+    ]);
   });
 
   test('disconnect (a setup-time throw releasing the connection) removes the principal from the roster', async () => {

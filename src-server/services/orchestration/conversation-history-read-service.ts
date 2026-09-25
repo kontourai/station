@@ -71,7 +71,6 @@ export class ConversationHistoryReadService {
       readConversationActivity?: (
         conversationId: string,
       ) => ConversationTurnActivity | undefined;
-      ownerlessPersonalAccess: boolean;
     },
   ) {}
 
@@ -100,10 +99,6 @@ export class ConversationHistoryReadService {
       ...(tenantId ? { tenantId } : {}),
       ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
       ...(input.authority.mode === 'hosted' ? { requireBound: true } : {}),
-      ...(input.authority.mode === 'personal' &&
-      this.options.ownerlessPersonalAccess
-        ? { includeOwnerless: true }
-        : {}),
       limit: input.limit,
       ...(input.cursor ? { cursor: decodeCursor(input.cursor) } : {}),
     });

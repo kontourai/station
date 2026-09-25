@@ -282,7 +282,6 @@ async function fixture(
       agent: { slug: String(input.metadata?.agentSlug ?? 'agent') },
     }),
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   } as never);
   cleanups.push(async () => {
     await service.shutdown();

@@ -5193,13 +5193,13 @@ export function configureRuntimeRoutes(
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
         // One bounded, owner-narrowed query per owner the caller could read
-        // (their own, shared personal-account owners, and the legacy alias
-        // where the home-possession bridge admits it). The owner list comes
-        // from the caller, never from the reference, so a digest bound only
-        // to other people's threads costs the same as an unbound one.
-        // Ownerless rows come back with the first owner's query and count
-        // toward the bound; under an ownerless `deny` policy four of them
-        // could crowd out a later owner's readable thread.
+        // (their own, and shared personal-account owners). The owner list
+        // comes from the caller, never from the reference, so a digest bound
+        // only to other people's threads costs the same as an unbound one.
+        // Rows with no history owner come back with the first owner's query
+        // and count toward the bound; the session predicate refuses an
+        // ownerless thread, so four of them could crowd out a later owner's
+        // readable thread.
         const owners = context.orchestrationService.attachmentCandidateOwnerIds(
           conversationReadAuthorityForRequest(request),
         );

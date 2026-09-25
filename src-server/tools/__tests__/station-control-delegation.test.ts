@@ -2545,9 +2545,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
         },
         eventBus: new EventBus(),
         eventStore,
-        // The production bootstrap (runtime-initialize) configures exactly
-        // this for the single-local-account deployment mode.
-        ownerlessSessionAccess: 'single-user-compat',
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       const authority = sessionReadAuthorityFromRequest(
