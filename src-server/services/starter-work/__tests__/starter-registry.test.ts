@@ -1,7 +1,6 @@
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import type { TaskDispatcher } from '../../projects/task-dispatcher.js';
 import type { StarterOwnerAdapter } from '../starter-owner-adapter.js';
@@ -13,8 +12,10 @@ import {
 } from '../starter-registry.js';
 import { StarterWorkModule } from '../starter-work-module.js';
 
+const makeTempDir = trackTempDirs();
+
 async function fixture(firstRun = 'completed') {
-  const root = await mkdtemp(join(tmpdir(), 'starter-registry-'));
+  const root = makeTempDir('starter-registry-');
   const readTaskForOpen = vi.fn(async (id: string) =>
     id === 'task-1' ? ({ id, projectId: 'project-1' } as never) : null,
   );

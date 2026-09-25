@@ -1,6 +1,7 @@
 import './PdfCanvasViewer.css';
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import {
+  type ReactNode,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -179,7 +180,14 @@ function PdfPage({
  * the dialog's width, and zoom in steps. There is no text layer: text cannot
  * be selected or searched here, and Download stays available beside it.
  */
-export default function PdfCanvasViewer({ blob }: { blob: Blob }) {
+export default function PdfCanvasViewer({
+  blob,
+  actions,
+}: {
+  blob: Blob;
+  /** Rendered at the end of the zoom toolbar (e.g. the preview's Download). */
+  actions?: ReactNode;
+}) {
   const [state, setState] = useState<DocumentState>({ status: 'loading' });
   const [zoom, setZoom] = useState(1);
   const [viewport, setViewport] = useState<HTMLElement | null>(null);
@@ -250,54 +258,80 @@ export default function PdfCanvasViewer({ blob }: { blob: Blob }) {
     setZoom(target);
   };
 
+  // The actions stay reachable while the document loads and when it cannot be
+  // drawn: "Download it" is the advice those states give.
+  const actionsOnly = actions ? (
+    <div className="pdf-canvas-viewer__toolbar pdf-canvas-viewer__toolbar--end">
+      {actions}
+    </div>
+  ) : null;
   if (state.status === 'failed') {
-    return state.reason === 'password' ? (
-      <Empty
-        label="This PDF is password-protected"
-        description="Station can't unlock it here. Download it to open it in an app that can."
-      />
-    ) : (
-      <Empty
-        label="Preview unavailable"
-        description="Station could not read this PDF. Download it to open it."
-      />
+    return (
+      <div className="pdf-canvas-viewer">
+        {actionsOnly}
+        {state.reason === 'password' ? (
+          <Empty
+            label="This PDF is password-protected"
+            description="Station can't unlock it here. Download it to open it in an app that can."
+          />
+        ) : (
+          <Empty
+            label="Preview unavailable"
+            description="Station could not read this PDF. Download it to open it."
+          />
+        )}
+      </div>
     );
   }
   if (state.status === 'loading') {
-    return <SkeletonBlock count={3} label="Loading PDF preview" />;
+    return (
+      <div className="pdf-canvas-viewer">
+        {actionsOnly}
+        <SkeletonBlock count={3} label="Loading PDF preview" />
+      </div>
+    );
   }
 
   const pageCount = state.doc.numPages;
   const pages = Array.from({ length: pageCount }, (_, index) => index + 1);
   return (
     <div className="pdf-canvas-viewer">
-      <fieldset className="pdf-canvas-viewer__controls" aria-label="PDF zoom">
-        <output aria-label="PDF page count">
-          {pageCount === 1 ? '1 page' : `${pageCount} pages`}
-        </output>
-        <Button disabled={zoom === 1} onClick={() => changeZoom(1)}>
-          Fit width
-        </Button>
-        <Button
-          className="pdf-canvas-viewer__zoom-step"
-          disabled={zoom <= ZOOM_MIN}
-          onClick={() => changeZoom(zoom / ZOOM_STEP)}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          <span aria-hidden="true">−</span>
-        </Button>
-        <output aria-label="PDF zoom level">{Math.round(zoom * 100)}%</output>
-        <Button
-          className="pdf-canvas-viewer__zoom-step"
-          disabled={zoom >= ZOOM_MAX}
-          onClick={() => changeZoom(zoom * ZOOM_STEP)}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          <span aria-hidden="true">+</span>
-        </Button>
-      </fieldset>
+      <div className="pdf-canvas-viewer__toolbar">
+        <fieldset className="pdf-canvas-viewer__controls" aria-label="PDF zoom">
+          <output aria-label="PDF page count">
+            {pageCount === 1 ? '1 page' : `${pageCount} pages`}
+          </output>
+          {/* Short visible label so the row, with Download, fits a phone. */}
+          <Button
+            disabled={zoom === 1}
+            onClick={() => changeZoom(1)}
+            aria-label="Fit width"
+            title="Fit width"
+          >
+            Fit
+          </Button>
+          <Button
+            className="pdf-canvas-viewer__zoom-step"
+            disabled={zoom <= ZOOM_MIN}
+            onClick={() => changeZoom(zoom / ZOOM_STEP)}
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            <span aria-hidden="true">−</span>
+          </Button>
+          <output aria-label="PDF zoom level">{Math.round(zoom * 100)}%</output>
+          <Button
+            className="pdf-canvas-viewer__zoom-step"
+            disabled={zoom >= ZOOM_MAX}
+            onClick={() => changeZoom(zoom * ZOOM_STEP)}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            <span aria-hidden="true">+</span>
+          </Button>
+        </fieldset>
+        {actions}
+      </div>
       {/* A scrollable page region needs keyboard focus to scroll and zoom. */}
       <section
         ref={setViewport}

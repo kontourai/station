@@ -12,6 +12,7 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../platform/openExternalLink';
+import { Button } from './Button';
 import {
   attachmentBlobForObjectUrl,
   useRetainedAttachmentObjectUrls,
@@ -22,7 +23,7 @@ import { MarkdownImage } from './chat/markdown-images';
 import { classifyMarkdownLink } from './chat/markdownLinkTarget';
 import type { PreviewItem } from './ImagePreviewContent';
 import { LazyBoundary } from './LazyBoundary';
-import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
+import { PreviewDownloadLink } from './PreviewDownloadLink';
 import { Empty, SkeletonBlock } from './state';
 
 /**
@@ -144,13 +145,24 @@ function usePdfFrameUrl(item: PreviewItem, enabled: boolean) {
  * without the property at all predates it (Android WebView before 94, WebKit
  * before 16.4) and may frame a PDF as a blank box with no fallback, while
  * pdf.js draws on every one of them — so an unknown engine gets the canvas.
+ *
+ * iOS and iPadOS answer `true` and then draw a framed PDF as an empty white
+ * box (observed on iOS 26.5 Safari), so they get the canvas too. iPadOS
+ * reports a desktop Mac user agent; touch points are what tell it apart.
  */
 function engineShowsPdfs(): boolean {
   if (typeof navigator === 'undefined') return false;
+  if (isAppleMobileWebKit(navigator)) return false;
   return (
     (navigator as Navigator & { pdfViewerEnabled?: boolean })
       .pdfViewerEnabled === true
   );
+}
+
+function isAppleMobileWebKit(nav: Navigator): boolean {
+  const agent = nav.userAgent;
+  if (/\b(iPhone|iPad|iPod)\b/.test(agent)) return true;
+  return /\bMacintosh\b/.test(agent) && nav.maxTouchPoints > 1;
 }
 
 const loadPdfCanvasViewer = () => import('./PdfCanvasViewer');
@@ -202,6 +214,16 @@ const previewMarkdownComponents: NonNullable<Options['components']> = {
   img: MarkdownImage,
 };
 
+function fileKindLabel(kind: FilePreviewKind, mediaType: string): string {
+  if (kind === 'pdf') return 'PDF';
+  if (kind === 'markdown') return 'Markdown';
+  if (kind === 'json') return 'JSON';
+  const type = mediaType.toLowerCase().split(';')[0].trim();
+  if (type === 'text/csv') return 'CSV';
+  if (kind === 'text') return 'Text';
+  return type;
+}
+
 function prettyJson(text: string): string {
   try {
     return JSON.stringify(JSON.parse(text), null, 2);
@@ -231,6 +253,10 @@ export default function FilePreviewContent({
     [current, kind, pdfInline],
   );
   const name = current.name || 'Attachment';
+  const download = <PreviewDownloadLink href={current.url} name={name} />;
+  // The canvas viewer carries Download at the end of its own zoom toolbar;
+  // every other body gets one slim row naming the file type.
+  const viewerOwnsToolbar = kind === 'pdf' && !pdfInline && Boolean(pdfBlob);
 
   let body: ReactNode;
   if (kind === 'pdf') {
@@ -246,8 +272,29 @@ export default function FilePreviewContent({
     ) : pdfBlob ? (
       <LazyBoundary
         load={loadPdfCanvasViewer}
-        componentProps={{ blob: pdfBlob }}
-        pending={<SkeletonBlock count={3} label="Loading PDF preview" />}
+        componentProps={{ blob: pdfBlob, actions: download }}
+        // Until the viewer's own toolbar exists, and if its code never
+        // arrives, Download keeps a row here: it is the way out of both.
+        pending={
+          <>
+            <div className="file-preview__toolbar file-preview__toolbar--end">
+              {download}
+            </div>
+            <SkeletonBlock count={3} label="Loading PDF preview" />
+          </>
+        }
+        unavailable={(retry) => (
+          <>
+            <div className="file-preview__toolbar file-preview__toolbar--end">
+              {download}
+            </div>
+            <Empty
+              label="Preview unavailable"
+              description="Station could not load the PDF viewer. Download the file, or try again."
+              action={<Button onClick={retry}>Try again</Button>}
+            />
+          </>
+        )}
       />
     ) : (
       <Empty
@@ -299,16 +346,19 @@ export default function FilePreviewContent({
 
   return (
     <>
-      <ResponsiveSurfaceActions className="file-preview__actions">
-        <a
-          className="button button--secondary"
-          href={current.url}
-          download={name}
-        >
-          Download
-        </a>
-      </ResponsiveSurfaceActions>
-      <div className="file-preview__body">{body}</div>
+      {!viewerOwnsToolbar && (
+        <div className="file-preview__toolbar">
+          <span className="file-preview__kind">
+            {fileKindLabel(kind, current.mediaType)}
+          </span>
+          {download}
+        </div>
+      )}
+      <div
+        className={`file-preview__body${isText ? ' file-preview__body--fit' : ''}`}
+      >
+        {body}
+      </div>
     </>
   );
 }

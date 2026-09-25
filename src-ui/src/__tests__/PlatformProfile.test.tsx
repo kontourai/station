@@ -24,7 +24,11 @@ const state = vi.hoisted(() => ({
   adapter: null as PlatformProfileAdapter | null,
   profileHydrate: async () => {},
   profileRefresh: async () => false,
-  authorizeDefaultProfile: async () => false,
+  openLastStationOnLaunch: true,
+  authorizeDefaultProfile: async (_forgetRememberedSelection?: boolean) =>
+    false,
+  authorizeRememberedProfile: async () => false,
+  persistsClientSelection: false,
   authorizeActiveConnection: async (
     _connectionId: string,
     _explicit?: boolean,
@@ -38,22 +42,33 @@ vi.mock('../platform/native', () => ({
 }));
 
 vi.mock('../platform/native/stationProfileStorage', () => ({
-  nativeStationProfileStorage: () => ({
-    hydrate: () => state.profileHydrate(),
-    refresh: () => state.profileRefresh(),
-    get: () => null,
-    set: () => {},
-    remove: () => {},
-    commitVerifiedPairing: async () => {},
-    makeDefault: async () => {
-      throw new Error('not used');
-    },
-    authorizeDefaultProfile: () => state.authorizeDefaultProfile(),
-    hasSavedProfiles: () => true,
-    authorizeActiveConnection: (connectionId: string, explicit?: boolean) =>
-      state.authorizeActiveConnection(connectionId, explicit),
-    credentialEntries: () => [],
-  }),
+  nativeStationProfileStorage: (persistSelection: boolean) => {
+    state.persistsClientSelection = persistSelection;
+    return {
+      hydrate: () => state.profileHydrate(),
+      refresh: () => state.profileRefresh(),
+      get: () => null,
+      set: () => {},
+      remove: () => {},
+      commitVerifiedPairing: async () => {},
+      makeDefault: async () => {
+        throw new Error('not used');
+      },
+      authorizeDefaultProfile: (forgetRememberedSelection?: boolean) =>
+        state.authorizeDefaultProfile(forgetRememberedSelection),
+      authorizeRememberedProfile: () => state.authorizeRememberedProfile(),
+      hasSavedProfiles: () => true,
+      authorizeActiveConnection: (connectionId: string, explicit?: boolean) =>
+        state.authorizeActiveConnection(connectionId, explicit),
+      credentialEntries: () => [],
+    };
+  },
+}));
+
+vi.mock('../lib/device-settings-store', () => ({
+  deviceSettingsStore: {
+    get: () => state.openLastStationOnLaunch,
+  },
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -186,7 +201,10 @@ describe('PlatformProfile derivation', () => {
     cleanup();
     state.profileHydrate = async () => {};
     state.profileRefresh = async () => false;
+    state.openLastStationOnLaunch = true;
+    state.persistsClientSelection = false;
     state.authorizeDefaultProfile = async () => false;
+    state.authorizeRememberedProfile = async () => false;
     state.authorizeActiveConnection = async (
       _connectionId: string,
       _explicit?: boolean,
@@ -227,6 +245,24 @@ describe('PlatformProfile derivation', () => {
       isDesktop: false,
       supervisesBundledServer: false,
     });
+  });
+
+  test('mobile launch reauthorizes its remembered Station unless this device selects the default', async () => {
+    const remembered = vi.fn(async () => true);
+    const fallback = vi.fn(async () => true);
+    state.authorizeRememberedProfile = remembered;
+    state.authorizeDefaultProfile = fallback;
+    await resolveProfile(tauriAdapter('android', 'disabled'));
+    expect(state.persistsClientSelection).toBe(true);
+    expect(remembered).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+
+    cleanup();
+    state.openLastStationOnLaunch = false;
+    await resolveProfile(tauriAdapter('android', 'disabled'));
+    expect(fallback).toHaveBeenCalledOnce();
+    expect(fallback).toHaveBeenCalledWith(true);
+    expect(remembered).toHaveBeenCalledOnce();
   });
 
   test('desktop macOS with an enabled tray supervises and tags the root', async () => {

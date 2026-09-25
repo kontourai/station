@@ -36,6 +36,13 @@ type Access = {
     request: Request,
     conversationId: string,
   ) => Promise<ConversationPullRequestLink[]>;
+  /**
+   * The Session ids a conversation spans (its lineage). A link stored
+   * earlier under a successor Session's own id — the session-detail pane
+   * keyed links by thread before it keyed them by conversation — still
+   * belongs to the conversation, and is read with it.
+   */
+  lineageSessionIds?: (conversationId: string) => readonly string[];
 };
 
 export function createConversationPullRequestLinkRoutes(
@@ -51,8 +58,29 @@ export function createConversationPullRequestLinkRoutes(
     const conversationId = param(c, 'conversationId');
     if (!allowed(c, conversationId))
       return c.json({ success: false, error: 'Conversation unavailable' }, 404);
+    const storedUnder = [
+      ...new Set([
+        conversationId,
+        ...(access.lineageSessionIds?.(conversationId) ?? []),
+      ]),
+    ];
+    const storedKeys = new Set<string>();
+    const stored = storedUnder
+      .flatMap((id) => store.list(id))
+      .filter((link) => {
+        const key = JSON.stringify([
+          link.provider,
+          link.host.toLowerCase(),
+          link.repository.owner.toLowerCase(),
+          link.repository.name.toLowerCase(),
+          link.ref,
+        ]);
+        if (storedKeys.has(key)) return false;
+        storedKeys.add(key);
+        return true;
+      });
     const links = [
-      ...store.list(conversationId),
+      ...stored,
       ...(access.declared
         ? await access.declared(c.req.raw, conversationId)
         : []),
