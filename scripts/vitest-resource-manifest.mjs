@@ -348,6 +348,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // #2421: same shape again — the test temp-dir ratchet is driven as a real
+  // child process against throwaway git repositories so its `FAIL:` sentence
+  // and its EXIT STATUS are proven, not just its pure decision functions.
+  // Bounded single-shot children per case.
+  'scripts/__tests__/test-temp-dir-ratchet.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -387,6 +392,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // station#2543: proves the instruction-topology gate's build-output skip
+  // holds when the gate module runs as a real child process, not just
+  // in-process — one bounded single-shot node child per fixture root.
+  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
@@ -405,6 +414,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #2529: runs the real `fallow audit` binary (single-shot, ~2s) against a
+  // throwaway git repository to prove its base snapshot lands in the Station
+  // temp root rather than the system temp directory.
+  'scripts/__tests__/fallow-base-cache.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download
@@ -937,6 +950,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read cannot see a stacking context introduced on an ancestor of the
   // toolbar, which is one of the regressions this pins.
   'src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx',
+  // Same shape: launches a real Chromium to read what a selection over a
+  // host-badged chat link serialises to. jsdom's selection ignores CSS, so it
+  // cannot see `user-select` keep the screen-reader sentence out of a copy.
+  'src-ui/src/components/chat/__tests__/ChatLinkChip.copy.test.tsx',
   // #1616: same shape again — launches a real Chromium to measure whether the
   // workspace pane picker's overlay is taken out of flow using only the entry
   // stylesheet every route loads. jsdom computes no layout and would report

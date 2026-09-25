@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import { createFallowReview } from './fallow-review-status.mjs';
 import {
+  fallowChildEnvironment,
+  prepareFallowRun,
+} from './lib/fallow-base-cache.mjs';
+import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
   terminateSuiteExecution,
@@ -75,6 +79,10 @@ export function fallowCommands(scope) {
 }
 
 export async function runFallowAnalysis(root, command, outputFile, args = []) {
+  // `fallow audit` leaves a full base checkout in its temp directory for every
+  // base commit: give each run a private one under Station's temp root and
+  // remove it when the run ends (#2529).
+  const fallowRun = prepareFallowRun();
   const execution = executeOwnedCommand(
     process.execPath,
     [
@@ -91,7 +99,12 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
     ],
     undefined,
     `fallow ${command}`,
-    { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+    {
+      cwd: root,
+      env: fallowChildEnvironment(fallowRun.directory),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
   );
   const stop = () =>
     terminateSuiteExecution(execution, {
@@ -136,6 +149,7 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
     if (execution.isAlive()) await stop();
+    fallowRun.release();
   }
 }
 

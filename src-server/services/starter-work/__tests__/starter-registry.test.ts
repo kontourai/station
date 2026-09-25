@@ -1,7 +1,6 @@
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import type { TaskDispatcher } from '../../projects/task-dispatcher.js';
 import type { StarterOwnerAdapter } from '../starter-owner-adapter.js';
@@ -13,8 +12,10 @@ import {
 } from '../starter-registry.js';
 import { StarterWorkModule } from '../starter-work-module.js';
 
+const makeTempDir = trackTempDirs();
+
 async function fixture(firstRun = 'completed') {
-  const root = await mkdtemp(join(tmpdir(), 'starter-registry-'));
+  const root = makeTempDir('starter-registry-');
   const readTaskForOpen = vi.fn(async (id: string) =>
     id === 'task-1' ? ({ id, projectId: 'project-1' } as never) : null,
   );
@@ -567,7 +568,9 @@ describe('StarterRegistry', () => {
       operationId: 'continue-op-1',
       sourceSessionId: 'external-session',
     };
-    await expect(registry.launchContinueSession(input)).resolves.toMatchObject({
+    await expect(
+      registry.launchContinueSession(input, null),
+    ).resolves.toMatchObject({
       state: 'continued',
       source: { kind: 'session', id: 'external-session' },
       session: { threadId: 'continued-session', controlMode: 'station-owned' },
@@ -583,6 +586,7 @@ describe('StarterRegistry', () => {
     expect(continueSession).toHaveBeenCalledWith({
       sourceSessionId: 'external-session',
       operationId: 'continue-op-1',
+      fullAccessGrant: null,
     });
     await expect(registry.observe('continue-session')).resolves.toMatchObject({
       starterId: 'continue-session',
@@ -603,11 +607,14 @@ describe('StarterRegistry', () => {
   it('does not continue a missing or Station-owned source Session', async () => {
     const { registry, continueSession } = await fixture();
     await expect(
-      registry.launchContinueSession({
-        starterId: 'continue-session',
-        operationId: 'continue-op-2',
-        sourceSessionId: 'continued-session',
-      }),
+      registry.launchContinueSession(
+        {
+          starterId: 'continue-session',
+          operationId: 'continue-op-2',
+          sourceSessionId: 'continued-session',
+        },
+        null,
+      ),
     ).resolves.toMatchObject({ state: 'unavailable', retrySafe: false });
     expect(continueSession).not.toHaveBeenCalled();
   });

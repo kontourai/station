@@ -1400,7 +1400,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // state). Omitted when Station sent no override so the chip does not
       // claim Ask while Claude's own `defaultMode` still applies (#1950).
       ...(mapPermissionModeToApprovalMode(permissionMode)
-        ? { approvalMode: mapPermissionModeToApprovalMode(permissionMode) }
+        ? {
+            approvalMode: mapPermissionModeToApprovalMode(permissionMode),
+            // #2493: a confined session's `never` arrives here already
+            // applied as `auto` (approval-posture.ts); say which it is.
+            confinement: input.confinement ?? 'workspace',
+          }
         : {}),
       // archive#896: whether this session's SDK spawn env was layered with the
       // claude app-home profile, or left at the global config
@@ -1826,6 +1831,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               approvalMode: mapPermissionModeToApprovalMode(
                 record.currentPermissionMode,
               ),
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         ...(rejectedEscalation ? { approvalEscalationRejected: true } : {}),

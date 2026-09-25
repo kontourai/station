@@ -153,12 +153,22 @@ describe('classifying a link in a chat message (#2049)', () => {
       repository: 'station',
       ref: 'main',
       path: 'src/app.ts',
+      refPath: 'main/src/app.ts',
       lineRange: { start: 4, end: 9 },
       url: 'https://github.com/kontourai/station/blob/main/src/app.ts#L4-L9',
     });
     expect(
       classifyMarkdownLink('https://gitlab.com/g/p/-/blob/abc123/lib/x.rb'),
     ).toMatchObject({ kind: 'repo-file', repository: 'p', path: 'lib/x.rb' });
+    // A slash branch cannot be told from a directory by the URL alone: the
+    // undivided tail is kept for a reader that knows the branch.
+    expect(
+      classifyMarkdownLink('https://github.com/o/r/blob/feature/x/src/a.ts'),
+    ).toMatchObject({
+      ref: 'feature',
+      path: 'x/src/a.ts',
+      refPath: 'feature/x/src/a.ts',
+    });
     // A path the preview could not address is an ordinary external link.
     expect(
       classifyMarkdownLink('https://github.com/o/r/blob/main/a%2F..%2Fb.ts'),

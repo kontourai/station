@@ -10,9 +10,11 @@ import {
 } from '../utils/approvalMode';
 
 describe('approvalModeKnobSupported', () => {
-  test('clean codex and claude engine identities expose the knob', () => {
+  test('clean codex, claude and muse engine identities expose the knob', () => {
     expect(approvalModeKnobSupported('codex')).toBe(true);
     expect(approvalModeKnobSupported('claude')).toBe(true);
+    // #2452: `muse serve` applies the mode (muse-serve-session.ts).
+    expect(approvalModeKnobSupported('muse')).toBe(true);
   });
 
   test('acp, bedrock, ollama, station-agent, and an absent runtime have no knob', () => {

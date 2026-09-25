@@ -50,6 +50,7 @@ import {
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
@@ -368,6 +369,12 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   const isFullscreenPlacement = placement === 'fullscreen';
+  // A full-screen Chat shows its active chat without opening the dock; end-of-
+  // turn toasts must treat that chat as on screen (`isChatInForeground`).
+  useEffect(
+    () => (isFullscreenPlacement ? registerFullscreenChatSurface() : undefined),
+    [isFullscreenPlacement],
+  );
   // A full-screen placement never mounts inside the ambient `DockShell`, so
   // it owns an independent chrome instance (cmd+D / cmd+M keep working
   // there, and it never reserves ambient route space). A docked placement
@@ -1956,7 +1963,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the dock's alongside it, because a dock pane binds the dock's project and
   // the two differing is what makes the pane route wrong rather than merely
   // unavailable. `openPathInMain` is the route a preview took before #2049
-  // and still takes on a bottom-only device or a mismatched binding.
+  // and still takes on a mismatched binding or when the model refuses the
+  // pane; a bottom-only device opens the pane over Chat (the phone layer).
   const conversationProjectSlug = activeSession?.projectSlug ?? null;
   const conversationProjectId = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)
@@ -2006,7 +2014,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectSlug: conversationProjectSlug,
       projectId: conversationProjectId,
       dockProjectSlug,
-      bottomOnly: dockBottomOnly,
       // The project checkout, and the directory the session runs in with the
       // thread the server reads it through (#2476).
       projectRoots: conversationProjectDirectory
@@ -2033,7 +2040,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
-      dockBottomOnly,
       dockProjectSlug,
       sessionDisplayCwd,
       activeOrchestrationSession?.threadId,

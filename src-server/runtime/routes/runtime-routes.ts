@@ -1,4 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -131,13 +132,11 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
-  isSessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -256,6 +255,7 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
@@ -279,6 +279,7 @@ import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
+import { createFocusPresenceRoutes } from '../../routes/presence/focus-presence-routes.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
@@ -467,6 +468,7 @@ import type { PluginInstallationHost } from '../../services/plugins/plugin-insta
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -486,6 +488,7 @@ import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js'
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -525,6 +528,7 @@ import {
   StarterRegistry,
   type StarterScheduledCheckOwner,
 } from '../../services/starter-work/starter-registry.js';
+import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -740,6 +744,12 @@ export interface ConfigureRuntimeRoutesContext {
   // (`wireTurnCompletionNotifications`), so both sides observe the SAME
   // connection state instead of two independently-tracked counts.
   orchestrationStreamPresence: OrchestrationStreamPresence;
+  /**
+   * #2585: focus presence written by `POST /api/presence/focus`. The runtime
+   * supplies its one shared instance; a composition without one gets a
+   * route-local instance nothing else reads.
+   */
+  focusPresence?: FocusPresence;
   layoutService: LayoutService;
   modelCatalog?: BedrockModelCatalog;
   acpBridge: ACPManager;
@@ -1026,6 +1036,14 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
+/**
+ * Candidate threads an attachment read may judge, matching the event store's
+ * per-query bound. The read-predicate calls are therefore bounded at this;
+ * the number of store queries is up to one per readable owner, a count that
+ * comes from the caller and never from the reference.
+ */
+const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -1108,6 +1126,14 @@ export function configureRuntimeRoutes(
   // Keep only immutable deployment configuration in this closure.  Every
   // call constructs authority from the ingress context belonging to the
   // current Request; neither a tenant nor an authority crosses requests.
+  //
+  // #2561: its user is the cached OS alias, which owns no UI-created chat, so
+  // it must never decide a session or conversation read. The callers left
+  // read only `.mode` (personal vs hosted, which comes from the tenant context
+  // and registry, not the user), except the hosted public share view (see
+  // there), the usage rollup (see there), and the pull-request and
+  // file-preview reads a separate change moves onto the principal. New session reads use
+  // `conversationReadAuthorityForRequest`.
   const readAuthorityForRequest = (request: Request) =>
     sessionReadAuthorityFromRequest(
       getCachedUser().alias,
@@ -1416,6 +1442,44 @@ export function configureRuntimeRoutes(
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
   });
+  // #2561: every route family below decides a session or conversation read
+  // (or records an owner that a later session read compares against), so it
+  // must use the request's principal, exactly like the chat routes bound
+  // further down. `readAuthorityForRequest` names the cached OS alias, which
+  // owns no UI-created chat. Registered here, ahead of every mount, because
+  // Hono runs middleware in registration order: a binding registered after
+  // its route's mount never runs. A request whose principal cannot be
+  // resolved fails here rather than reading as the OS alias.
+  for (const path of [
+    '/integrations/:serverId/ui/:toolName/initial-result',
+    '/tool-approval/:approvalId',
+    '/api/shares',
+    '/api/shares/*',
+    '/api/projects/:slug/operating-state/*',
+    '/monitoring/*',
+    '/events',
+    '/api/runs',
+    '/api/runs/*',
+    '/notifications',
+    '/notifications/*',
+    '/api/attention',
+    '/api/attention/*',
+    '/api/action-operations',
+    '/api/action-operations/*',
+    '/api/insights',
+    '/api/insights/*',
+  ]) {
+    context.app.use(path, bindConversationReadAuthority);
+  }
+  // `/api/board` is classified per method leaf in the pairing-scope table, so
+  // an all-method `use` would register unclassified routes. (`/api/attachments`
+  // binds below, with the conversation routes.)
+  context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'POST',
+    ['/api/board/pin', '/api/board/unpin', '/api/board/move'],
+    bindConversationReadAuthority,
+  );
   context.app.route(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
@@ -1617,7 +1681,17 @@ export function configureRuntimeRoutes(
       request: c.req.raw,
       service: answerShareService,
       budget: answerShareViewBudget,
-      authority: readAuthorityForRequest(c.req.raw),
+      // #2561: the viewer is anonymous; the token is the capability, and the
+      // service reads the answer as the sharer recorded at mint. The cached
+      // OS alias is neither, and owns no UI-created chat, so passing it made
+      // every share of a real chat "no longer available". Hosted views keep
+      // the request's tenant-bound authority, whose user is the alias too;
+      // `/api/shares` refuses hosted mints until the hosted view reads as the
+      // recorded sharer within its tenant.
+      authority:
+        hostedTenantRegistry === undefined
+          ? undefined
+          : readAuthorityForRequest(c.req.raw),
       readBoundedBody: readBoundedRequestBody,
     });
     return outcome.kind === 'rate-limited'
@@ -1847,6 +1921,9 @@ export function configureRuntimeRoutes(
     createAnalyticsRoutes(
       context.usageAggregator,
       undefined,
+      // Still the alias, deliberately: production's usage source forwards no
+      // receipts, so the rollup is empty for every authority (#2568). Move it
+      // to the principal together with its owner set when that is wired.
       readAuthorityForRequest,
       () =>
         peerCredentialStore
@@ -2082,6 +2159,34 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Session- and conversation-scoped reads outside `/api/conversations` must
+  // decide with the same principal orchestration owns sessions under — the
+  // OS alias `readAuthorityForRequest` builds never owns a chat created in the
+  // UI (`human:local:operator` does), so those reads refused every real chat.
+  // A `/*` pattern also matches its bare prefix, so one binding covers each.
+  // GET and POST only: these families serve no other method, and an
+  // all-method `use` would register PUT/PATCH/DELETE/HEAD paths the route
+  // coverage table (pairing-route-scopes) does not classify.
+  context.app.on(
+    ['GET', 'POST'],
+    '/api/conversation-pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.on(
+    ['GET', 'POST'],
+    '/api/pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.use(
+    '/api/projects/:slug/file-preview/*',
+    bindConversationReadAuthority,
+  );
+  // Attachment bytes authorize through the thread that carried them, so they
+  // must resolve the same principal that owns that thread. The OS alias never
+  // matches a principal-owned Session, and every stored attachment 404'd.
+  // GET only: the route has one leaf, and `use` would register every method
+  // with the route-coverage guard.
+  context.app.get('/api/attachments/:ref', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -2714,7 +2819,7 @@ export function configureRuntimeRoutes(
   const taskBasisMcpInitialRead = createTaskBasisMcpInitialRead({
     taskBasis,
     taskGraph: context.taskGraphService,
-    authorityForRequest: readAuthorityForRequest,
+    authorityForRequest: conversationReadAuthorityForRequest,
     isRequestPrincipalCurrent,
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
@@ -2767,7 +2872,7 @@ export function configureRuntimeRoutes(
         const basisInput = parseStationBasisToolInput(input.arguments);
         if (basisInput?.scope !== 'answer')
           return buildStationBasisUnavailableToolResult();
-        const authority = readAuthorityForRequest(input.request);
+        const authority = conversationReadAuthorityForRequest(input.request);
         const outcome = await exactAnswerBasis.read({
           sessionId: basisInput.sessionId,
           turnId: basisInput.turnId,
@@ -2910,65 +3015,7 @@ export function configureRuntimeRoutes(
               ),
             checkScheduled: () => checkStarterAgentReadiness('station'),
           },
-          {
-            read: async (sessionId) => {
-              const detail = await context.orchestrationService.readSession(
-                sessionId,
-                INTERNAL_SESSION_READ_SCOPE,
-              );
-              return detail
-                ? {
-                    threadId: detail.session.threadId,
-                    controlMode: detail.session.controlMode,
-                  }
-                : null;
-            },
-            continue: async ({ sourceSessionId, operationId }) => {
-              try {
-                const outcome =
-                  await context.orchestrationService.dispatchWithReceipt({
-                    type: 'adoptSession',
-                    sourceThreadId: sourceSessionId,
-                    idempotencyKey: operationId,
-                  });
-                const session = outcome.result as
-                  | AdoptedSessionResult
-                  | undefined;
-                if (!session?.threadId)
-                  return {
-                    state: 'unavailable' as const,
-                    reason:
-                      'Station accepted continuation without an exact child Session.',
-                    retrySafe: true,
-                    receiptId: outcome.receipt.commandId,
-                  };
-                return {
-                  state: 'continued' as const,
-                  session,
-                  receiptId: outcome.receipt.commandId,
-                };
-              } catch (error) {
-                const observed = error as {
-                  message?: string;
-                  receipt?: { commandId?: string };
-                  receiptStatus?: 'persisted' | 'unavailable';
-                };
-                return {
-                  state:
-                    observed.receiptStatus === 'persisted'
-                      ? ('failed' as const)
-                      : ('indeterminate' as const),
-                  reason:
-                    observed.message ??
-                    'The Session continuation outcome is unavailable.',
-                  retrySafe: true,
-                  ...(observed.receipt?.commandId
-                    ? { receiptId: observed.receipt.commandId }
-                    : {}),
-                };
-              }
-            },
-          },
+          createStarterSessionOwner(context.orchestrationService),
           context.getLiveAppConfig,
           owners,
           scheduledChecks,
@@ -3070,14 +3117,7 @@ export function configureRuntimeRoutes(
           session: detail.session,
           events: detail.events,
         });
-        const outcome =
-          lifecycle.lifecycleState === 'completed'
-            ? 'completed'
-            : lifecycle.lifecycleState === 'failed'
-              ? 'failed'
-              : lifecycle.lifecycleState === 'canceled'
-                ? 'cancelled'
-                : undefined;
+        const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
           ...(outcome ? { outcome } : {}),
@@ -3269,6 +3309,8 @@ export function configureRuntimeRoutes(
         resolveClientOrigin: resolveClientOriginForRequest,
         isRequestPrincipalCurrent,
         resolveAgentDispatchActor,
+        fullAccessGrantFor: (c) =>
+          fullAccessGrantForRequest(c as unknown as Context),
       }),
     }),
   );
@@ -3599,7 +3641,9 @@ export function configureRuntimeRoutes(
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
   context.app.route(
     '/',
-    createInvokeRoutes(runtimeContext, { readAuthorityForRequest }),
+    createInvokeRoutes(runtimeContext, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+    }),
   );
   context.app.route(
     '/api/agents',
@@ -4142,7 +4186,7 @@ export function configureRuntimeRoutes(
               canRead: (id) =>
                 context.orchestrationService.canUserReadSession(
                   id,
-                  readAuthorityForRequest(routeContext.req.raw),
+                  conversationReadAuthorityForRequest(routeContext.req.raw),
                 ),
               listSessions: () =>
                 context.orchestrationService.listSessions(
@@ -4361,35 +4405,38 @@ export function configureRuntimeRoutes(
             : undefined;
         },
         canRead: (request, conversationId) =>
-          context.orchestrationService.canUserReadSession(
+          context.orchestrationService.canUserReadConversation(
             conversationId,
-            readAuthorityForRequest(request),
+            conversationReadAuthorityForRequest(request),
           ),
+        lineageSessionIds: (conversationId) =>
+          (
+            context.orchestrationEventStore?.conversationSessions(
+              conversationId,
+            ) ?? []
+          ).map((linked) => linked.sessionId),
         declared: async (request, conversationId) => {
           if (
-            !context.orchestrationService.canUserReadSession(
+            !context.orchestrationService.canUserReadConversation(
               conversationId,
-              readAuthorityForRequest(request),
+              conversationReadAuthorityForRequest(request),
             )
           )
             return [];
-          return context.taskGraphService
-            .listTasks()
-            .flatMap((task) =>
-              context.taskGraphService.listKeptDeclaredPullRequestsForSession(
-                task.id,
-                conversationId,
-              ),
-            )
-            .map((reference) => ({
-              provider: reference.provider,
-              host: reference.host,
-              repository: reference.repository,
-              ref: reference.ref,
-              source: 'task-declared' as const,
-              linkedAt: reference.keptAt,
-              linkedBy: 'station.task-graph',
-            }));
+          return declaredPullRequestsForConversation(
+            {
+              lineageSessionIds: (id) =>
+                (
+                  context.orchestrationEventStore?.conversationSessions(id) ??
+                  []
+                ).map((linked) => linked.sessionId),
+              keptForSessions: (sessionIds) =>
+                context.taskGraphService.listKeptDeclaredPullRequestsForSessions(
+                  sessionIds,
+                ),
+            },
+            conversationId,
+          );
         },
       },
     ),
@@ -4413,7 +4460,7 @@ export function configureRuntimeRoutes(
             canRead: (id) =>
               context.orchestrationService.canUserReadSession(
                 id,
-                readAuthorityForRequest(routeContext.req.raw),
+                conversationReadAuthorityForRequest(routeContext.req.raw),
               ),
             listSessions: () =>
               context.orchestrationService.listSessions(
@@ -4513,13 +4560,16 @@ export function configureRuntimeRoutes(
   // `access:manage` — see `pairing-route-scopes.ts` for the reasoning.
   context.app.route(
     '/api/shares',
-    createAnswerShareRoutes(answerShareService, { readAuthorityForRequest }),
+    createAnswerShareRoutes(answerShareService, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+    }),
   );
   context.app.get('/api/projects/:slug/conversations', async (routeContext) => {
     // File-memory conversations have no tenant binding.  They are therefore
     // not a hosted projection, even if an old shared home still contains
     // records; return the same empty inventory shape rather than exposing a
     // cross-tenant count or title.
+    // Only the deployment mode is read, which does not depend on the user.
     if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
       return routeContext.json({ success: true, data: [] });
     }
@@ -4738,6 +4788,7 @@ export function configureRuntimeRoutes(
       new WorkflowSidecarService({ logger: context.logger }),
       {
         getWorkspacePath: resolveWorkspacePath,
+        // Mode only: sidecars are refused when hosted, whoever asks.
         getSessionReadAuthority: readAuthorityForRequest,
       },
     ),
@@ -4754,6 +4805,7 @@ export function configureRuntimeRoutes(
       ),
       {
         getWorkspacePath: resolveWorkspacePath,
+        // Mode only: work items are refused when hosted, whoever asks.
         getSessionReadAuthority: readAuthorityForRequest,
         // Stateless service (package-root resolution only) — a separate
         // instance from the one `StationRuntime` wires into
@@ -4769,7 +4821,7 @@ export function configureRuntimeRoutes(
     '/api/projects/:slug/operating-state',
     createOperatingStateRoutes(operatingStateService, {
       getWorkspacePath: resolveWorkspacePath,
-      getSessionReadAuthority: readAuthorityForRequest,
+      getSessionReadAuthority: conversationReadAuthorityForRequest,
       intentBindingDeps: {
         taskGraphService: context.taskGraphService,
         taskDispatcher: context.taskDispatcher,
@@ -5033,7 +5085,7 @@ export function configureRuntimeRoutes(
       monitoringEvents: context.monitoringEvents,
       queryEventsFromDisk: context.queryEventsFromDisk,
       projectHomeDir: context.configLoader.getProjectHomeDir(),
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadMonitoringEvent: (event, authority) => {
         const sessionId = monitoringSessionIdentity(event);
         return sessionId
@@ -5135,16 +5187,32 @@ export function configureRuntimeRoutes(
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
-        const authority = readAuthorityForRequest(request);
-        return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
-          ref,
-          isSessionReadAuthority(authority) ? authority.userId : undefined,
+        // One bounded, owner-narrowed query per owner the caller could read
+        // (their own, shared personal-account owners, and the legacy alias
+        // where the home-possession bridge admits it). The owner list comes
+        // from the caller, never from the reference, so a digest bound only
+        // to other people's threads costs the same as an unbound one.
+        // Ownerless rows come back with the first owner's query and count
+        // toward the bound; under an ownerless `deny` policy four of them
+        // could crowd out a later owner's readable thread.
+        const owners = context.orchestrationService.attachmentCandidateOwnerIds(
+          conversationReadAuthorityForRequest(request),
         );
+        const threads = new Set<string>();
+        for (const owner of owners) {
+          for (const threadId of runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+            ref,
+            owner,
+          ))
+            threads.add(threadId);
+          if (threads.size >= ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST) break;
+        }
+        return [...threads].slice(0, ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST);
       },
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
-          readAuthorityForRequest(request),
+          conversationReadAuthorityForRequest(request),
         ),
     }),
   );
@@ -5253,7 +5321,7 @@ export function configureRuntimeRoutes(
       createOrchestrationBoardAuthorization({
         orchestrationService: context.orchestrationService,
         taskGraphService: context.taskGraphService,
-        readAuthorityForRequest,
+        readAuthorityForRequest: conversationReadAuthorityForRequest,
       }),
     ),
   );
@@ -5303,7 +5371,7 @@ export function configureRuntimeRoutes(
         };
       },
       logger: context.logger,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       /**
        * #2067. The plugin lifecycle channels, gated by the same projection
        * `GET /api/plugins` applies and the same memoized caller resolver.
@@ -5424,6 +5492,15 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route(
+    '/api/presence',
+    createFocusPresenceRoutes({
+      presence: context.focusPresence ?? new FocusPresence(),
+      identifyDevice: (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      resolvePrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
+  );
+  context.app.route(
     '/api/system',
     createPushRoutes({
       enabled: webPushEnabled,
@@ -5470,17 +5547,22 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/scheduler',
     createSchedulerRoutes(schedulerService, context.logger, {
+      // Mode only: the scheduler is hidden when hosted, whoever asks.
       readAuthorityForRequest,
     }),
   );
   context.app.route(
     '/api/runs',
-    createRunRoutes(runService, context.logger, readAuthorityForRequest),
+    createRunRoutes(
+      runService,
+      context.logger,
+      conversationReadAuthorityForRequest,
+    ),
   );
   context.app.route(
     '/notifications',
     createNotificationRoutes(notificationService, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
     }),
@@ -5488,7 +5570,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       // #2323 S5 review M6: plugin proposals are addressed to the operator,
       // decided by the same resolver `/api/plugin-proposals` reads.
       // Station's own agents resolve as the operator too; they see none
@@ -5549,7 +5631,7 @@ export function configureRuntimeRoutes(
     createActionOperationRoutes({
       operations: actionOperations,
       actorForRequest: (request) => {
-        const authority = readAuthorityForRequest(request);
+        const authority = conversationReadAuthorityForRequest(request);
         return actionOperationActorForRequest(request, authority, (sessionId) =>
           context.orchestrationService.canUserReadSession(sessionId, authority),
         );
@@ -5565,7 +5647,7 @@ export function configureRuntimeRoutes(
     // station#3130: insights reads the same directory as /monitoring/events
     // and must apply the same two authorization layers.
     createInsightsRoutes(context.eventLogPath, {
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       // The SAME central session predicate /monitoring/events composes, not a
       // second derivation of it.
       canReadMonitoringEvent: (event, authority) => {

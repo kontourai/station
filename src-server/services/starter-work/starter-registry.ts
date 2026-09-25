@@ -120,12 +120,21 @@ function scheduledCheckPrepareFailure(
   }
 }
 
-type StarterSessionOwner = {
+export type StarterSessionOwner = {
   read(sessionId: string): Promise<{
     threadId: string;
     controlMode: 'read-only-attached' | 'station-owned';
   } | null>;
-  continue(input: { sourceSessionId: string; operationId: string }): Promise<
+  continue(input: {
+    sourceSessionId: string;
+    operationId: string;
+    /**
+     * #2493: the launching request's full-access grant. The adopted child's
+     * confinement stamp records it (`host` only with one), the same as a
+     * `/commands adoptSession`.
+     */
+    fullAccessGrant: FullAccessGrant | null;
+  }): Promise<
     | {
         state: 'continued';
         session: AdoptedSessionResult;
@@ -643,6 +652,8 @@ export class StarterRegistry {
 
   async launchContinueSession(
     input: ContinueSessionStarterLaunchInput,
+    /** #2493: the launching request's grant; see `StarterSessionOwner.continue`. */
+    fullAccessGrant: FullAccessGrant | null,
   ): Promise<ContinueSessionStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -664,6 +675,7 @@ export class StarterRegistry {
       continuation = await this.sessions.continue({
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
+        fullAccessGrant,
       });
     } catch (error) {
       return {

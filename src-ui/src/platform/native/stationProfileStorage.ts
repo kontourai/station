@@ -276,8 +276,12 @@ export interface NativeStationProfileRepository {
    * changing the CLI default. An intentional process-local choice wins.
    */
   selectProfileForProcess(profileName: string): string | undefined;
-  /** Re-authorizes the CLI-owned default after each native process start. */
-  authorizeDefaultProfile(): Promise<boolean>;
+  /** Re-authorizes the CLI-owned default; optionally forgets client-local selection. */
+  authorizeDefaultProfile(
+    forgetRememberedSelection?: boolean,
+  ): Promise<boolean>;
+  /** Re-authorizes this client's saved choice, falling back to the shared default. */
+  authorizeRememberedProfile(): Promise<boolean>;
   /**
    * Whether the hydrated store holds any saved Station. Lets boot paths
    * that only make sense with a Station to watch (notification priming)
@@ -1008,7 +1012,10 @@ export class NativeStationProfileStorage
     }
   }
 
-  async authorizeDefaultProfile(): Promise<boolean> {
+  async authorizeDefaultProfile(
+    forgetRememberedSelection = false,
+  ): Promise<boolean> {
+    if (forgetRememberedSelection) this.clearExplicitProcessSelection();
     const defaultProfile = this.profileStore.defaultProfile;
     if (!defaultProfile) return false;
     const profile = this.profileStore.profiles.find(
@@ -1019,6 +1026,12 @@ export class NativeStationProfileStorage
     return profile
       ? this.authorizeActiveConnection(profileConnectionId(profile))
       : false;
+  }
+
+  async authorizeRememberedProfile(): Promise<boolean> {
+    return this.explicitProcessSelection
+      ? this.authorizeActiveConnection(this.explicitProcessSelection)
+      : this.authorizeDefaultProfile();
   }
 
   hasSavedProfiles(): boolean {

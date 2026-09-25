@@ -20,6 +20,13 @@ export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS =
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS +
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS +
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS;
+// Off Windows the own-process probe is macOS `ps` under its short fixed
+// timeout (or a Linux procfs read). Our own pid is certainly alive, so a null
+// there is a `ps` that hit the timeout under load: retry the same probe a
+// bounded number of times. This is the budget the saved Station lock used
+// before it moved onto this function (#2470): at most 3 x 1.5s + 2 x 100ms.
+const POSIX_OWN_PROCESS_BIRTH_ATTEMPTS = 3;
+const POSIX_OWN_PROCESS_BIRTH_RETRY_DELAY_MS = 100;
 
 // The Windows Job guard derives this exact representation from GetProcessTimes.
 // Keep the process-identity authority equally strict and normalize the same
@@ -378,12 +385,17 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
   const platform = dependencies.platform ?? process.platform;
-  const attempts =
-    platform === 'win32' ? WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS : 1;
+  const windows = platform === 'win32';
+  const attempts = windows
+    ? WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS
+    : POSIX_OWN_PROCESS_BIRTH_ATTEMPTS;
   const deadlineMs =
     dependencies.deadlineMs ?? WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS;
   const retryDelayMs =
-    dependencies.retryDelayMs ?? WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS;
+    dependencies.retryDelayMs ??
+    (windows
+      ? WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS
+      : POSIX_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
   const now = dependencies.now ?? Date.now;
   const wait =
     dependencies.wait ??
