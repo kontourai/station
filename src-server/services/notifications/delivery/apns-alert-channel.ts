@@ -20,10 +20,11 @@
  *   payload carries no title or body, so a future extension cannot reveal
  *   what the surface asked to hide. Urgency (sound, priority) is decided by
  *   the notification's urgency alone; hiding content never quiets it.
- * - Categories the Live Activity card already alerts on
- *   (`CARD_ALERTED_CATEGORIES`: approvals, finished, stopped and failed
- *   turns) are not carried, unconditionally: with Live Activities off on
- *   the phone they raise no alert (the inbox keeps them).
+ * - What the Live Activity card already alerts on (`isCardAlerted`:
+ *   orchestration approvals and finished, stopped and failed orchestration
+ *   turns) is not carried, unconditionally: with Live Activities off on the
+ *   phone those raise no alert (the inbox keeps them). Registry approvals
+ *   are never on the card, so they are carried.
  * - Retract: not supported (`capabilities.retract: false`). APNs has no call
  *   that removes a delivered notification; only code on the phone can
  *   (`removeDeliveredNotifications`), which needs the app to run: a
@@ -56,7 +57,7 @@ import type {
   NativePushRegistration,
 } from '../native-push-registration-store.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
-import { CARD_ALERTED_CATEGORIES } from './card-alerted-categories.js';
+import { isCardAlerted } from './card-alerted-categories.js';
 import {
   type ChannelTarget,
   type DeliveryChannel,
@@ -151,7 +152,7 @@ export class ApnsAlertChannel implements DeliveryChannel {
   accepts(notification: Notification, envelope: NotificationEnvelopeV1) {
     return (
       KIND_BY_URGENCY[envelope.urgency] !== undefined &&
-      !CARD_ALERTED_CATEGORIES.has(notification.category)
+      !isCardAlerted(notification)
     );
   }
 

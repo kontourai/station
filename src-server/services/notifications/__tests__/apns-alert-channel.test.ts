@@ -324,7 +324,6 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
       const payload = JSON.parse(h.appleCalls[0]?.body ?? '{}');
       // Hidden, but still urgent: the privacy setting never quiets it.
       expect(payload.aps.alert).toEqual(APNS_ALERT_TEXT['hidden-urgent']);
-      expect(payload.aps.alert).toEqual(APNS_ALERT_TEXT.hidden);
       expect(payload.aps.sound).toBe('default');
       expect(h.appleCalls[0]?.headers['apns-priority']).toBe('10');
       expect(
@@ -396,18 +395,43 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
     ]);
   });
 
+  // The metadata each producer really stamps (approval-inbox.ts,
+  // turn-completion-notifications.ts).
+  const orchestration = (category: string) =>
+    approval({
+      id: `n-${category}`,
+      category,
+      source:
+        category === 'approval-request' ? 'approval-inbox' : 'turn-completion',
+      metadata:
+        category === 'approval-request'
+          ? {
+              requestKind: 'orchestration',
+              requestKey: 'orchestration:s1:r1',
+              sessionId: 's1',
+              sessionKind: 'runtime',
+              threadId: 's1',
+            }
+          : {
+              sessionId: 's1',
+              sessionKind: 'runtime',
+              threadId: 's1',
+              turnId: 't1',
+            },
+    });
+
   test.each([
     'approval-request',
     'turn-completed',
     'turn-stopped',
     'turn-failed',
   ])(
-    '%s is left to the Live Activity card: no alert push',
+    'an orchestration %s is left to the Live Activity card: no alert push',
     async (category) => {
       const h = await harness();
       h.eventBus.emit(
         SERVER_EVENTS.NOTIFICATION_DELIVERED,
-        approval({ id: `n-${category}`, category }) as never,
+        orchestration(category) as never,
       );
       await settle();
       expect(h.stationFetch).not.toHaveBeenCalled();
@@ -416,6 +440,30 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
       expect(h.appleCalls).toHaveLength(1);
     },
   );
+
+  test('a registry approval is never on the card, so it still alerts', async () => {
+    const h = await harness();
+    await h.emit(
+      approval({
+        id: 'n-registry',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        metadata: {
+          approvalId: 'a1',
+          conversationId: 'c1',
+          sessionId: 'c1',
+          sessionKind: 'managed',
+          requestKind: 'registry',
+          requestKey: 'approval:a1',
+        },
+      }),
+      1,
+    );
+    expect(h.appleCalls).toHaveLength(1);
+    expect(JSON.parse(h.appleCalls[0]?.body ?? '{}').aps.alert).toEqual(
+      APNS_ALERT_TEXT.attention,
+    );
+  });
 
   test('a failure notification uses the failed text; a done one is quiet; info is not carried', async () => {
     const h = await harness();
