@@ -279,3 +279,40 @@ describe('agent-activity launch routes (#2515)', () => {
     expect(nudges).toBe(1);
   });
 });
+
+describe('agent-activity launch routes on iOS', () => {
+  it('never asks the iOS plugin for a launch route nor listens for one, though remote-push is enabled', async () => {
+    const calls: string[] = [];
+    const registered: string[] = [];
+    const instance = new TauriNativePlatformAdapter({
+      async invoke<T>(command: string) {
+        if (command === 'native_capability_report')
+          return completeNativeCapabilityReport('ios', {
+            'remote-push': { state: 'enabled', reason: 'from host' },
+          }) as T;
+        calls.push(command);
+        return { route: null } as T;
+      },
+      listen: async () => () => {},
+      async addPluginListener(_plugin, event) {
+        registered.push(event);
+        return () => {};
+      },
+    });
+    await instance.getCapabilityReport();
+
+    await expect(instance.takeAgentActivityLaunchRoute()).resolves.toEqual(
+      expect.objectContaining({
+        status: 'unsupported',
+        command: 'take-agent-activity-launch-route',
+      }),
+    );
+    const subscription = instance.subscribeToAgentActivityLaunchRoutes(
+      () => {},
+    );
+    await subscription.ready;
+    subscription.dispose();
+    expect(calls).toEqual([]);
+    expect(registered).toEqual([]);
+  });
+});
