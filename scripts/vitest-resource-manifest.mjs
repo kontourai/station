@@ -300,10 +300,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
-  // #3033: runs the pre-push UI-bundle guardrail as a real child process so
-  // its exit STATUS is asserted, not just its pure decision functions — a
-  // rejection path that has never executed is unproven.
-  'scripts/__tests__/prepush-ui-bundle.test.ts',
   // Same shape one gate over: runs the pre-push typecheck scope guard as a
   // real child process — once against a stub `npm` so its REFUSAL exit
   // status is proven, once with an empty scope so the skip path's zero is

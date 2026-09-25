@@ -23,14 +23,13 @@ npm run hooks:install    # git config core.hooksPath .githooks
 change surface feeds, using the hook's own scope deciders — ask it before
 writing to know what a change will owe.
 
-The pre-push hook runs nine checks, in this order (the hook file,
+The pre-push hook runs eight checks, in this order (the hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts):
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
-| `node scripts/check-prepush-ui-bundle.mjs` | ~9s, and only when the push changes a UI build input | a tree over the entry-bundle ceiling |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
@@ -57,17 +56,22 @@ lane and `full:regression` remains the sole completion receipt; the hook holds
 only the subset that is cheap enough to run on every push *and* whose failure
 would otherwise land on `main` and stop every other lane.
 
-**Why the last two moved here.** Both already existed inside `verify:static`,
-which runs after the whole Vitest corpus — so they failed on whoever gated
-next rather than on whoever caused the break, and each discovery cost a full
-gate cycle. On 2026-08-17 that shape cost six: `main` sat red for hours on one
-unformatted parameter list, with two lanes independently applying the identical
-three-second fix because neither could merge without carrying it (#3141); and
-the entry-bundle ceiling needed reconciling on five separate merges, with
-unowned raises consumed within hours (#3033). Run at push time, both become
-caught before they reach `main`: an over-ceiling UI tree cannot leave the
-machine. (With headroom ceilings, the lane that crosses the ceiling pays for
-growth since the last raise — see below.)
+**Why lint moved here.** It already existed inside `verify:static`, which
+runs after the whole Vitest corpus — so it failed on whoever gated next rather
+than on whoever caused the break, and each discovery cost a full gate cycle.
+On 2026-08-17 `main` sat red for hours on one unformatted parameter list, with
+two lanes independently applying the identical three-second fix because
+neither could merge without carrying it (#3141).
+
+**Why the UI bundle build left.** It used to run here too (#3033), which meant
+`build:ui` ran three times per change: at push, in `fast-checks`, and on the
+merge-queue candidate. With headroom ceilings
+([#1703](https://github.com/kontourai/station/issues/1703)) the CI
+enforcement is sufficient: `fast-checks` builds the candidate and fails over
+the ceiling, and the merge queue does the same on latest `main` plus the
+change. `fast-checks` also reports each pull request's entry-bundle delta
+against its merge base (never failing on it), so growth stays attributed to
+the change that added it.
 
 ### What the entry-bundle ceiling is for
 
@@ -105,20 +109,19 @@ builds latest `main` plus each queued pull request, so an exact ceiling failed
 whichever entry built next on bytes a sibling had just merged. Headroom does
 not hide growth: every build prints the measurement against the ceiling.
 
-The bundle check is scoped to the branch delta against `origin/main`, so a
-server-only push does not pay for a UI build. It measures when that delta
-touches `src-ui/`, `src-shared/`, the `packages/{sdk,connect,contracts}/src/`
-sources the Vite aliases resolve, `vite.config.ts`, either manifest (a
-dependency bump moves the bundle without touching a source file), or the
-budget script and its ceiling. When the scope cannot be computed at all, it
-measures rather than assuming — see *a default that decides*, below. It builds
-into `dist-ui-prepush/` so a push never replaces the `dist-ui/` a running dev
-server or desktop app is serving.
+The delta report (`scripts/ui-bundle-delta-report.mjs`) measures only when
+the change touches something the UI build reads: `src-ui/`, `src-shared/`,
+the `packages/{sdk,connect,contracts}/src/` sources the Vite aliases resolve,
+`vite.config.ts`, either manifest (a dependency bump moves the bundle without
+touching a source file), `patches/`, or the budget script and its ceiling.
+When it cannot measure, it says so and why in a notice rather than skipping
+silently. To measure your share locally, `npm run build:ui` on your branch and
+on the merge base, each in a worktree with its own `node_modules`.
 
-There is deliberately no per-check escape hatch for either. Both are
-properties of your own tree that you can fix in seconds, and a bypass would
-reproduce exactly the unowned-raise loop #3033 exists to close. Diagnose and
-fix the failing gate; do not bypass the pre-push hooks.
+A conflict on `scripts/ui-bundle-budget.json` is resolved by hand: keep the
+higher of each field. There is deliberately no escape hatch for the ceiling
+itself; a bypass would reproduce the unowned-raise loop #3033 exists to close.
+Diagnose and fix the failing gate; do not bypass the pre-push hooks.
 
 ### Composition freshness belongs to the merge queue
 
