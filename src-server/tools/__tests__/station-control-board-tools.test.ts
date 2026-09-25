@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 
 process.env.STATION_API_BASE = 'http://control-board-test.local';
 delete process.env.STATION_PORT;
@@ -37,7 +38,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 function toolPayload(result: ToolResult): unknown {
