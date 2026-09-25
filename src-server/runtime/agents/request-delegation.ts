@@ -39,6 +39,7 @@ import type {
   AgentDelegationContext,
   AgentSpec,
 } from '@kontourai/station-contracts/agent';
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import { createChildDelegationContext } from './delegation.js';
@@ -146,8 +147,6 @@ function recordedDelegation(
   };
 }
 
-const CLEAN_AGENT_ID = /^[a-z][a-z0-9-]{0,63}$/;
-
 /**
  * The Agent policy a calling session's children are bounded by.
  *
@@ -209,9 +208,11 @@ async function callerIdentity(
   if (agentSlug)
     return { agentSlug, spec: await callerAgentPolicy(agentSlug, sources) };
   if (nonEmptyString(metadata?.adoptedFromThreadId)) {
-    const engine = sources.sessionEngine(sessionId);
-    if (engine && CLEAN_AGENT_ID.test(engine))
-      return { agentSlug: engine, spec: undefined };
+    // The contract's clean-identity parse, the same rule `agentId` applies
+    // when the child context is built, so an engine it would reject is this
+    // typed refusal rather than an untyped throw.
+    const engine = parseEngineId(sources.sessionEngine(sessionId));
+    if (engine) return { agentSlug: engine, spec: undefined };
   }
   throw new DelegationLineageUnavailableError(
     'the session has no recorded Agent.',

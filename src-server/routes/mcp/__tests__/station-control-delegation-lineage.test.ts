@@ -138,8 +138,10 @@ const STARTED: Record<string, Record<string, unknown>> = {
   'session-broken': { agentSlug: 'broken' },
   // An adopted session (`attached-session-adoption.ts`): no Agent, an engine.
   'session-adopted': { adoptedFromThreadId: 'thread-attached-1' },
-  // An adopted session whose recorded engine is not a clean Agent id.
+  // Adopted sessions whose recorded engine is not a clean Agent id: a path
+  // shape, and a trailing hyphen (the clean-identity contract refuses it).
   'session-adopted-unclean': { adoptedFromThreadId: 'thread-attached-2' },
+  'session-adopted-trailing': { adoptedFromThreadId: 'thread-attached-3' },
   // A session with no recorded Agent that is not adopted either.
   'session-agentless': {},
   // Not adopted and no Agent, but WITH a known engine: only adoption lets an
@@ -151,6 +153,7 @@ const STARTED: Record<string, Record<string, unknown>> = {
 const ENGINES: Record<string, string> = {
   'session-adopted': 'codex',
   'session-adopted-unclean': 'Codex/../planner',
+  'session-adopted-trailing': 'codex-',
   'session-engine-only': 'codex',
 };
 const CONVERSATIONS: Record<string, string> = {
@@ -165,6 +168,7 @@ const CONVERSATIONS: Record<string, string> = {
   'session-adopted': 'conversation-adopted',
   'session-agentless': 'conversation-agentless',
   'session-adopted-unclean': 'conversation-adopted-unclean',
+  'session-adopted-trailing': 'conversation-adopted-trailing',
   'session-engine-only': 'conversation-engine-only',
   'session-policied': 'conversation-policied',
 };
@@ -723,16 +727,15 @@ describe('#2601 registry default Agents delegate under the default policy', () =
     );
   });
 
-  test('an adopted session whose recorded engine is not a clean Agent id is refused, not named by it', async () => {
-    const result = await callTool(
-      'session-adopted-unclean',
-      'delegate_task',
-      DELEGATE_ARGS,
-    );
-    expect(result.isError).toBe(true);
-    expect(result.text).toContain('the session has no recorded Agent');
-    expect(delegateTask).not.toHaveBeenCalled();
-  });
+  test.each(['session-adopted-unclean', 'session-adopted-trailing'])(
+    'an adopted session whose recorded engine is not a clean Agent id (%s) gets the typed refusal, not named by it',
+    async (sessionId) => {
+      const result = await callTool(sessionId, 'delegate_task', DELEGATE_ARGS);
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain('the session has no recorded Agent');
+      expect(delegateTask).not.toHaveBeenCalled();
+    },
+  );
 
   test('a session with a known engine but no Agent and no adoption record is refused: only adoption lets an engine name the caller', async () => {
     const result = await callTool(
