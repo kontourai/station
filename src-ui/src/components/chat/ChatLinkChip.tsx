@@ -104,6 +104,172 @@ function forgeUrlLabel(url: string): string | null {
   return null;
 }
 
+/**
+ * Suffixes that read as file extensions, not top-level domains. Consulted for
+ * scheme-less text with no `/` path and no `www.` (`logo.png`, `app.ts:42`,
+ * `README.md#install`): a file name, not a host claim. Text with a path is a
+ * host claim even when its top-level domain is on this list (`docs.rs/serde`,
+ * `example.net/login`, `github.com.zip/o/r`).
+ */
+const FILE_LIKE_SUFFIXES = new Set(
+  (
+    'asp aspx bat bmp c cc cfg cjs conf cpp cs css csv dart db dll doc docx ' +
+    'env exe gif go gradle h hpp htm html ico ini ipynb jar java jpeg jpg js ' +
+    'json jsx kt kts less lock log lua md mdx mjs mod mp3 mp4 net pdf php pl ' +
+    'plist png ps1 py pyc rb rs sass scss sh sql sqlite sum svelte svg swift ' +
+    'tar tf tgz toml ts tsv tsx txt vue wasm wav webp xls xlsx xml yaml yml zip'
+  ).split(' '),
+);
+
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+/** Dotted labels ending in a letter TLD, a punycode TLD, or a Unicode one. */
+const DOMAIN = /^(?:[\p{L}\p{N}-]+\.)+(?:\p{L}{2,}|xn--[a-z0-9-]+)$/u;
+
+interface HostClaim {
+  /** The host as the text shows it, lower-cased, without a port. */
+  host: string;
+  /** The port the text writes, or null when it writes none. */
+  port: string | null;
+  /** The text starts with `http://` or `https://`. */
+  scheme: boolean;
+  /** A `/` follows the authority: the text reads as a URL, not a name. */
+  path: boolean;
+}
+
+/**
+ * The host a link's VISIBLE TEXT claims, or null when the text does not read
+ * as a URL or host: `https://github.com/o/r`, `www.github.com`,
+ * `github.com/o/r`, `github.com:443`, `localhost:3000`, `127.0.0.1` and a
+ * bare `github.com` do; `the fix` and `src/app.ts` do not. Whether a claim
+ * COUNTS for a given link is `mismatchedLinkHost`'s decision.
+ *
+ * The authority is read from the text as a reader sees it, not as a URL
+ * parser would: in `https://github.com@evil.test` the parser's host is
+ * `evil.test` (the rest is userinfo), but the reader sees `github.com`, so
+ * the part before `@` is the claim. Without a scheme, `@` makes the text an
+ * address, not a host. IPv6 literals are not recognised.
+ */
+function claimedHost(text: string): HostClaim | null {
+  const value = text.trim();
+  if (!value || /\s/.test(value)) return null;
+  const scheme = /^https?:\/\//i.exec(value);
+  const rest = scheme ? value.slice(scheme[0].length) : value;
+  const end = rest.search(/[/?#]/);
+  let authority = end === -1 ? rest : rest.slice(0, end);
+  const at = authority.indexOf('@');
+  if (at !== -1) {
+    if (!scheme) return null;
+    authority = authority.slice(0, at);
+  }
+  const match = /^(.+?)(?::(\d{1,5}))?$/.exec(authority);
+  if (!match) return null;
+  const host = match[1]!.toLowerCase().replace(/\.$/, '');
+  if (host !== 'localhost' && !IPV4.test(host) && !DOMAIN.test(host))
+    return null;
+  return {
+    host,
+    port: match[2] ?? null,
+    scheme: !!scheme,
+    path: end !== -1 && rest[end] === '/',
+  };
+}
+
+/**
+ * Whether a claim counts for this link. Text with a scheme always does.
+ * Scheme-less text is ambiguous between a host and a file or identifier —
+ * `app.ts:42`, `README.md#install` and `package.json?plain=1` split into a
+ * "host" and a suffix exactly as `github.com:443/x` does — so:
+ *
+ * - a scheme-less host with no `/` path whose last label reads as a file
+ *   extension is a file name (`www.` hosts excepted: no file starts so) —
+ *   with a path it is a host claim whatever its top-level domain;
+ * - for a pull request or forge file, whose text is usually a file, ref or
+ *   path, only scheme-less text with a `/` path counts (`github.com/o/r`);
+ * - for an ordinary external site, bare text (`github.com`, `1.2.3.4`)
+ *   counts too.
+ *
+ * Known limit: a dotted code identifier on an external link
+ * (`Array.prototype.map`, `os.path.join`) reads as a host and gets a badge.
+ */
+function claimCounts(claim: HostClaim, external: boolean): boolean {
+  if (claim.scheme) return true;
+  if (!claim.path && !claim.host.startsWith('www.')) {
+    const suffix = claim.host.slice(claim.host.lastIndexOf('.') + 1);
+    if (FILE_LIKE_SUFFIXES.has(suffix)) return false;
+  }
+  return external || claim.path;
+}
+
+/** `host[:port]` normalised as the URL parser would, for comparison. */
+function normalisedAuthority(authority: string, protocol: string) {
+  try {
+    const url = new URL(`${protocol}//${authority}`);
+    return {
+      host: url.hostname.replace(/\.$/, '').replace(/^www\./, ''),
+      port: url.port,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The host a link REALLY goes to, when its visible text names a different
+ * one (`[github.com/o/r](https://evil.test/x)`), else null. A WebView shows no
+ * status-bar URL on hover, so without this the reader has no signal before
+ * clicking. `www.` is not a difference; a subdomain or a Unicode look-alike
+ * (compared in its punycode form) is. A port is compared only when the text
+ * writes one (`github.com:8443` against `github.com:9000`; a default port such
+ * as `:443` on https equals none). Text that does not read as a host returns
+ * null: prose link text is not a claim.
+ *
+ * `external` is true for a link to an ordinary external site, false for a
+ * pull request or forge file; `claimCounts` says what it changes.
+ */
+export function mismatchedLinkHost(
+  text: string,
+  url: string,
+  external: boolean,
+): string | null {
+  const claim = claimedHost(text);
+  if (!claim || !claimCounts(claim, external)) return null;
+  let real: URL;
+  try {
+    real = new URL(url);
+  } catch {
+    return null;
+  }
+  const claimed = normalisedAuthority(
+    claim.port === null ? claim.host : `${claim.host}:${claim.port}`,
+    real.protocol,
+  );
+  if (!claimed) return null;
+  const actual = {
+    host: real.hostname.replace(/\.$/, '').replace(/^www\./, ''),
+    port: real.port,
+  };
+  // Text that writes no port promises none: `[localhost](http://localhost:5173)`
+  // names the host it goes to. A port the text DOES write must match.
+  const portMatches = claim.port === null || claimed.port === actual.port;
+  return claimed.host === actual.host && portMatches ? null : real.host;
+}
+
+/**
+ * The real host beside the link text, for `mismatchedLinkHost`. The visible
+ * `(evil.test)` is hidden from assistive technology and replaced by a
+ * sentence that says what it means, so a screen reader hears where the link
+ * goes rather than a parenthetical it must interpret. The sentence is not
+ * selectable, so copying the link yields the visible text alone.
+ */
+export function LinkHostBadge({ host }: { host: string }) {
+  return (
+    <span className="chat-link-host">
+      <span aria-hidden="true"> ({host})</span>
+      <span className="chat-link-host__sr sr-only">, goes to {host}</span>
+    </span>
+  );
+}
+
 export interface ChipPresentation {
   icon: ReactNode;
   /** The compact label, or null to keep the link's own text. */

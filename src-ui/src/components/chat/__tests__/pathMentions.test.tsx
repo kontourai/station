@@ -48,7 +48,6 @@ const CONVERSATION = {
   projectSlug: 'alpha',
   projectId: 'alpha-id',
   dockProjectSlug: 'alpha',
-  bottomOnly: false,
   openPathInMain: vi.fn(),
   projectRoots: ['/work/repo'],
 };
