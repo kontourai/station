@@ -102,9 +102,7 @@ const CORE_UPDATE_DEPENDENCY_INSTALL = ['run', 'dependencies:install'];
  * binding and the lifecycle script). Mirrored rather than imported: the server
  * does not reach into the CLI package's internals.
  */
-export function ownedDependencyInstallerUnavailable(
-  gitRoot: string,
-): string | null {
+function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
   const manifestPath = join(gitRoot, 'package.json');
   let script: unknown;
   try {

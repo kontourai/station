@@ -46,6 +46,104 @@ function realpathOrSelf(
   }
 }
 
+type ServicePlatform = 'darwin' | 'linux' | 'win32';
+
+function readManifestObject(
+  fs: SupervisingServiceDependencies['fs'],
+  path: string,
+): Record<string, unknown> | string {
+  try {
+    const parsed = JSON.parse(String(fs.readFileSync(path, 'utf8'))) as unknown;
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed as Record<string, unknown>;
+    }
+    return 'service manifest could not be read (not a JSON object)';
+  } catch (error) {
+    return `service manifest could not be read (${error instanceof Error ? error.message : String(error)})`;
+  }
+}
+
+function registrationOf(
+  platform: ServicePlatform,
+  unitPath: string,
+  manifest: Record<string, unknown>,
+): ServiceRegistration {
+  const text = (key: string) =>
+    typeof manifest[key] === 'string' ? (manifest[key] as string) : undefined;
+  const label = text('label');
+  const unitName = text('unitName');
+  const taskName = text('taskName');
+  return {
+    platform,
+    unitPath,
+    ...(label === undefined ? {} : { label }),
+    ...(unitName === undefined ? {} : { unitName }),
+    ...(taskName === undefined ? {} : { taskName }),
+  };
+}
+
+function probeUnit(
+  registration: ServiceRegistration,
+  dependencies: SupervisingServiceDependencies,
+): Record<string, boolean | string | null> {
+  const probe = { fs: dependencies.fs as ServiceFs, run: dependencies.run };
+  if (registration.platform === 'darwin') {
+    return launchdStatus(registration, probe);
+  }
+  if (registration.platform === 'linux') {
+    return systemdStatus(registration, probe);
+  }
+  return windowsServiceStatus(registration, probe);
+}
+
+/** One manifest's verdict: `null` when it rules itself out. */
+function inspectManifest(
+  path: string,
+  fallbackId: string,
+  platform: ServicePlatform,
+  repoPath: string | undefined,
+  dependencies: SupervisingServiceDependencies,
+): SupervisingService | null {
+  const manifest = readManifestObject(dependencies.fs, path);
+  if (typeof manifest === 'string') {
+    return { instanceId: fallbackId, state: 'unknown', detail: manifest };
+  }
+  // Another platform's registration (a synced home) supervises nothing here.
+  if (manifest.platform !== platform) return null;
+  const instanceId =
+    typeof manifest.instanceId === 'string' ? manifest.instanceId : fallbackId;
+  if (
+    repoPath !== undefined &&
+    typeof manifest.repoPath === 'string' &&
+    realpathOrSelf(dependencies.fs, manifest.repoPath) !== repoPath
+  ) {
+    return null;
+  }
+  if (typeof manifest.unitPath !== 'string') {
+    return {
+      instanceId,
+      state: 'unknown',
+      detail: 'service manifest records no unit path',
+    };
+  }
+  const unit = probeUnit(
+    registrationOf(platform, manifest.unitPath, manifest),
+    dependencies,
+  );
+  if (unit.active === false) return null;
+  if (unit.active === true) {
+    return { instanceId, state: 'active', detail: null };
+  }
+  return {
+    instanceId,
+    state: 'unknown',
+    detail:
+      typeof unit.error === 'string'
+        ? unit.error
+        : 'the service backend did not report whether it is running',
+  };
+}
+
 /**
  * The installed services in `stationHome` that `station upgrade` must not
  * pull the rug from. Probed with the same platform status functions `station
@@ -61,7 +159,7 @@ export function findSupervisingServices(
   stationHome: string,
   dependencies: SupervisingServiceDependencies,
 ): SupervisingService[] {
-  const { fs, platform, run } = dependencies;
+  const { fs, platform } = dependencies;
   if (platform !== 'darwin' && platform !== 'linux' && platform !== 'win32') {
     return [];
   }
@@ -75,74 +173,14 @@ export function findSupervisingServices(
   for (const name of fs.readdirSync(serviceDirectory)) {
     const entry = String(name);
     if (!entry.endsWith('.json')) continue;
-    const fallbackId = entry.slice(0, -'.json'.length);
-    let manifest: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(
-        String(fs.readFileSync(join(serviceDirectory, entry), 'utf8')),
-      ) as unknown;
-      if (typeof parsed !== 'object' || parsed === null) {
-        throw new Error('not a JSON object');
-      }
-      manifest = parsed as Record<string, unknown>;
-    } catch (error) {
-      findings.push({
-        instanceId: fallbackId,
-        state: 'unknown',
-        detail: `service manifest could not be read (${error instanceof Error ? error.message : String(error)})`,
-      });
-      continue;
-    }
-    // Another platform's registration (a synced home) supervises nothing here.
-    if (manifest.platform !== platform) continue;
-    const instanceId =
-      typeof manifest.instanceId === 'string'
-        ? manifest.instanceId
-        : fallbackId;
-    if (
-      repoPath !== undefined &&
-      typeof manifest.repoPath === 'string' &&
-      realpathOrSelf(fs, manifest.repoPath) !== repoPath
-    ) {
-      continue;
-    }
-    if (typeof manifest.unitPath !== 'string') {
-      findings.push({
-        instanceId,
-        state: 'unknown',
-        detail: 'service manifest records no unit path',
-      });
-      continue;
-    }
-    const registration: ServiceRegistration = {
+    const finding = inspectManifest(
+      join(serviceDirectory, entry),
+      entry.slice(0, -'.json'.length),
       platform,
-      unitPath: manifest.unitPath,
-      ...(typeof manifest.label === 'string' ? { label: manifest.label } : {}),
-      ...(typeof manifest.unitName === 'string'
-        ? { unitName: manifest.unitName }
-        : {}),
-      ...(typeof manifest.taskName === 'string'
-        ? { taskName: manifest.taskName }
-        : {}),
-    };
-    const probeFs = fs as ServiceFs;
-    const unit =
-      platform === 'darwin'
-        ? launchdStatus(registration, { fs: probeFs, run })
-        : platform === 'linux'
-          ? systemdStatus(registration, { fs: probeFs, run })
-          : windowsServiceStatus(registration, { fs: probeFs, run });
-    if (unit.active === false) continue;
-    findings.push({
-      instanceId,
-      state: unit.active === true ? 'active' : 'unknown',
-      detail:
-        typeof unit.error === 'string'
-          ? unit.error
-          : unit.active === true
-            ? null
-            : 'the service backend did not report whether it is running',
-    });
+      repoPath,
+      dependencies,
+    );
+    if (finding) findings.push(finding);
   }
   return findings;
 }
