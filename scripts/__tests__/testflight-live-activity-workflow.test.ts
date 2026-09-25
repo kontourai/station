@@ -44,6 +44,27 @@ function indexOf(text: string, needle: string, from = 0) {
   expect(index, `missing ${needle}`).toBeGreaterThanOrEqual(0);
   return index;
 }
+/**
+ * The innermost shell conditional line enclosing `index`: the nearest
+ * preceding `if`/`elif`/`else` line, skipping any conditional already closed
+ * by a `fi` in between. A command is only as live as the branch it sits in.
+ */
+function guardOf(text: string, index: number) {
+  const lines = text.slice(0, index).split('\n').slice(0, -1).reverse();
+  let closed = 0;
+  for (const raw of lines) {
+    const line = raw.trim();
+    // A one-line `if ...; then ...; fi` opens and closes itself.
+    if (/^if .*; fi$/.test(line)) continue;
+    if (line === 'fi') closed++;
+    else if (/^(if|elif) /.test(line) || line === 'else') {
+      if (closed === 0) return line;
+      if (/^if /.test(line)) closed--;
+    }
+  }
+  return undefined;
+}
+const LIVE_GUARD = 'if [ "$LIVE_ACTIVITY" = true ]; then';
 
 const RESOLVE = 'Resolve whether this channel builds the Live Activity';
 const SECRETS = 'Fail closed on channel-owned secrets and exact iOS identity';
@@ -162,6 +183,9 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
     expect(livePlist).toBeGreaterThan(lastDiff);
     expect(exportOptions).toBeGreaterThan(lastDiff);
+    // Each of these runs exactly when the channel builds the Live Activity.
+    for (const index of [ensure, sign, livePlist, exportOptions])
+      expect(guardOf(text, index)).toBe(LIVE_GUARD);
     expect(
       indexOf(
         text,
@@ -220,6 +244,13 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       'test ! -e "$appex"',
     ])
       expect(text).toContain(needle);
+    expect(guardOf(text, indexOf(text, '--agent-activity-extension >'))).toBe(
+      LIVE_GUARD,
+    );
+    expect(guardOf(text, indexOf(text, 'test ! -e "$appex"'))).toBe('else');
+    expect(
+      guardOf(text, indexOf(text, '--live-activity "$APS_ENVIRONMENT"')),
+    ).toBe(LIVE_GUARD);
     // The audit of the whole package still runs after these checks.
     expect(
       indexOf(text, 'node scripts/check-mobile-package.mjs ios'),
