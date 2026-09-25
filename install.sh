@@ -9,6 +9,14 @@ DATA_ROOT_MARKER='.station-portable-data-root'
 INSTALL_ROOT_SIGNATURE='station-portable-install-root-v1'
 DATA_ROOT_SIGNATURE='station-portable-data-root-v1'
 
+# Public-manifest signing keys, pinned into this script so `curl | sh` needs no
+# second download to learn whom to trust. Generated from
+# config/release-manifest-keys.json (JSON.stringify of that file's content);
+# scripts/__tests__/ecosystem-manifest.test.ts fails when the two differ.
+# BEGIN PINNED MANIFEST SIGNING KEYS
+PINNED_MANIFEST_SIGNING_KEYS='{"keys":[{"keyId":"station-portable-nightly-2026-09","algorithm":"ed25519","publicKeySpkiPem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAH74uCwGmcJFftH+reVCJjJysQRRON2k0mTUoDBf14OM=\n-----END PUBLIC KEY-----\n","channels":["nightly"]},{"keyId":"station-portable-release-2026-09","algorithm":"ed25519","publicKeySpkiPem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk8YKOCVgKcXsNNMjkGwYOfE53pV1zrajakwI91oxbPo=\n-----END PUBLIC KEY-----\n","channels":["stable","preview"]}]}'
+# END PINNED MANIFEST SIGNING KEYS
+
 fail() {
   printf 'Station install failed: %s\n' "$*" >&2
   exit 1
@@ -550,46 +558,78 @@ if [ "$version" != latest ]; then
 fi
 
 if [ -n "$public_manifest_url" ]; then
-  public_key_url="${STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL:-}"
-  [ -n "$public_key_url" ] || fail 'STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is required for public installation'
+  # Trust comes from the signing keys pinned above plus the sha256 that the
+  # signed payload carries for the archive. The manifest, key, and archive
+  # hosts are only transport: a hostile host can withhold or corrupt bytes but
+  # cannot make them verify. That is why this path no longer requires the
+  # manifest, key, and archive to live on distinct origins, and why it no
+  # longer downloads its verification key.
+  #
+  # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a TEST-ONLY override for
+  # fixtures that cannot hold a pinned private key. It is refused unless
+  # STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1. It substitutes only the
+  # verification key bytes: the envelope's keyId must still name a pinned key,
+  # and that key's channel authorization still applies.
+  test_key_url="${STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL:-}"
+  allow_test_urls="${STATION_INSTALL_ALLOW_INSECURE_TEST_URLS:-0}"
+  if [ -n "$test_key_url" ] && [ "$allow_test_urls" != 1 ]; then
+    fail 'STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a test-only override and requires STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1; public installs verify against the pinned signing keys'
+  fi
   node -e '
-    const [manifest, key] = process.argv.slice(1);
-    const allowHttp = process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === "1";
-    for (const value of [manifest, key]) {
+    const allowTest = process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === "1";
+    for (const value of process.argv.slice(1)) {
+      if (!value) continue;
       const url = new URL(value);
-      if (url.protocol !== "https:" && !(allowHttp && ["http:", "file:"].includes(url.protocol))) process.exit(1);
+      if (url.protocol !== "https:" && !(allowTest && ["http:", "file:"].includes(url.protocol))) process.exit(1);
     }
-    const manifestUrl = new URL(manifest), keyUrl = new URL(key);
-    if (manifestUrl.protocol === "file:" && keyUrl.protocol === "file:") {
-      if (require("node:path").dirname(manifestUrl.pathname) === require("node:path").dirname(keyUrl.pathname)) process.exit(1);
-    } else if (manifestUrl.origin === keyUrl.origin) process.exit(1);
-  ' "$public_manifest_url" "$public_key_url" || \
-    fail 'public manifest and signing-key URLs must be distinct HTTPS authorities'
+  ' "$public_manifest_url" "$test_key_url" || \
+    fail 'the public manifest URL must use HTTPS'
   manifest_file="$tmp_root/station-ecosystem-manifest.json"
-  manifest_key="$tmp_root/station-ecosystem-manifest.pem"
+  test_key_file=""
   curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$manifest_file" -- "$public_manifest_url" || \
     fail 'could not download public ecosystem manifest'
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$manifest_key" -- "$public_key_url" || \
-    fail 'could not download public ecosystem manifest key'
+  if [ -n "$test_key_url" ]; then
+    test_key_file="$tmp_root/station-ecosystem-manifest-test-key.pem"
+    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$test_key_file" -- "$test_key_url" || \
+      fail 'could not download the test-only manifest verification key'
+  fi
+  # Exit codes: 2 unknown keyId, 3 key not authorized for the payload channel,
+  # 4 signature did not verify, anything else malformed.
   public_manifest_values="$(node -e '
     const crypto=require("node:crypto"),fs=require("node:fs");
-    const [manifestFile,keyFile,manifestUrl]=process.argv.slice(1);
+    const [manifestFile,pinnedKeysJson,testKeyFile]=process.argv.slice(1);
     const canonical=(v)=>Array.isArray(v)?`[${v.map(canonical).join(",")}]`:v&&typeof v==="object"?`{${Object.keys(v).sort().map(k=>`${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`:JSON.stringify(v);
+    const exact=(v,keys)=>Boolean(v)&&typeof v==="object"&&!Array.isArray(v)&&JSON.stringify(Object.keys(v).sort())===JSON.stringify(keys);
     const envelope=JSON.parse(fs.readFileSync(manifestFile,"utf8"));
-    if (JSON.stringify(Object.keys(envelope).sort())!==JSON.stringify(["algorithm","keyId","payload","schemaVersion","signature"])||envelope.schemaVersion!==1||envelope.algorithm!=="ed25519"||typeof envelope.signature!=="string") process.exit(1);
-    if (!crypto.verify(null,Buffer.from(canonical(envelope.payload)),crypto.createPublicKey(fs.readFileSync(keyFile,"utf8")),Buffer.from(envelope.signature,"base64"))) process.exit(1);
-    const p=envelope.payload, a=p?.artifacts?.portable;
-    const stable=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-    const preview=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-preview\.([1-9][0-9]*)$/;
-    if (JSON.stringify(Object.keys(p||{}).sort())!==JSON.stringify(["artifacts","channel","publishedAt","releaseTag","schemaVersion","sourceSha","version"])||p.schemaVersion!==1||! ["stable","preview"].includes(p.channel)||p.releaseTag!==`v${p.version}`||! ((p.channel==="stable"&&stable.test(p.version))||(p.channel==="preview"&&preview.test(p.version)))||! /^[0-9a-f]{40}$/i.test(p.sourceSha)||typeof p.publishedAt!=="string"||new Date(p.publishedAt).toISOString()!==p.publishedAt||JSON.stringify(Object.keys(p.artifacts||{}).sort())!==JSON.stringify(["macos","portable"])||!a||JSON.stringify(Object.keys(a).sort())!==JSON.stringify(["name","sha256","url"])||a.name!=="station-portable.tar.gz"||! /^[0-9a-f]{64}$/i.test(a.sha256)||typeof a.url!=="string") process.exit(1);
-    const artifactUrl=new URL(a.url), manifestOrigin=new URL(manifestUrl).origin;
+    if (!exact(envelope,["algorithm","keyId","payload","schemaVersion","signature"])||envelope.schemaVersion!==1||envelope.algorithm!=="ed25519"||typeof envelope.keyId!=="string"||typeof envelope.signature!=="string") process.exit(1);
+    const pinned=JSON.parse(pinnedKeysJson).keys.find((k)=>k.keyId===envelope.keyId&&k.algorithm==="ed25519");
+    if (!pinned) process.exit(2);
+    const p=envelope.payload;
+    if (!exact(p,["artifacts","channel","publishedAt","releaseTag","schemaVersion","sourceSha","version"])) process.exit(1);
+    if (!pinned.channels.includes(p.channel)) process.exit(3);
+    const key=crypto.createPublicKey(testKeyFile?fs.readFileSync(testKeyFile,"utf8"):pinned.publicKeySpkiPem);
+    if (!crypto.verify(null,Buffer.from(canonical(p)),key,Buffer.from(envelope.signature,"base64"))) process.exit(4);
+    const release="(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)";
+    const shapes={stable:new RegExp(`^${release}$`),preview:new RegExp(`^${release}-preview\\.([1-9][0-9]*)$`),nightly:new RegExp(`^${release}-nightly\\.([1-9][0-9]*)$`)};
+    // Schema 1 carries a macOS artifact beside the portable one and predates
+    // nightly; schema 2 is portable-only.
+    const artifactKeys=p.schemaVersion===1?["macos","portable"]:["portable"];
+    const channels=p.schemaVersion===1?["stable","preview"]:["stable","preview","nightly"];
+    const a=p.artifacts?.portable;
+    if (![1,2].includes(p.schemaVersion)||!channels.includes(p.channel)||typeof p.version!=="string"||!shapes[p.channel].test(p.version)||p.releaseTag!==`v${p.version}`||typeof p.sourceSha!=="string"||! /^[0-9a-f]{40}$/i.test(p.sourceSha)||typeof p.publishedAt!=="string"||Number.isNaN(new Date(p.publishedAt).getTime())||new Date(p.publishedAt).toISOString()!==p.publishedAt||!exact(p.artifacts,artifactKeys)||!exact(a,["name","sha256","url"])||a.name!=="station-portable.tar.gz"||typeof a.sha256!=="string"||! /^[0-9a-f]{64}$/i.test(a.sha256)||typeof a.url!=="string") process.exit(1);
+    const artifactUrl=new URL(a.url);
     const allowTest=process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS==="1";
     if (artifactUrl.protocol!=="https:" && !(allowTest&&["http:","file:"].includes(artifactUrl.protocol))) process.exit(1);
-    if (artifactUrl.protocol==="file:" && new URL(manifestUrl).protocol==="file:") {
-      if (require("node:path").dirname(artifactUrl.pathname)===require("node:path").dirname(new URL(manifestUrl).pathname)) process.exit(1);
-    } else if (artifactUrl.origin===manifestOrigin) process.exit(1);
-    process.stdout.write(`${p.channel}\n${p.releaseTag}\n${p.sourceSha}\n${a.url}\n${a.sha256}`);
-  ' "$manifest_file" "$manifest_key" "$public_manifest_url")" || fail 'public ecosystem manifest is invalid or its signature did not verify'
+    process.stdout.write(`${p.channel}\n${p.releaseTag}\n${p.sourceSha}\n${a.url}\n${a.sha256.toLowerCase()}`);
+  ' "$manifest_file" "$PINNED_MANIFEST_SIGNING_KEYS" "$test_key_file")" || {
+    manifest_status=$?
+    case "$manifest_status" in
+      2) fail 'public ecosystem manifest is signed by a key this installer does not pin' ;;
+      3) fail 'public ecosystem manifest signing key is not authorized for the manifest channel' ;;
+      4) fail 'public ecosystem manifest signature did not verify' ;;
+      *) fail 'public ecosystem manifest is invalid' ;;
+    esac
+  }
   release_channel="$(printf '%s\n' "$public_manifest_values" | sed -n '1p')"
   release_tag="$(printf '%s\n' "$public_manifest_values" | sed -n '2p')"
   release_sha="$(printf '%s\n' "$public_manifest_values" | sed -n '3p')"
@@ -842,6 +882,74 @@ if [ -e "$state_file" ] || [ -L "$state_file" ]; then
     fi
     fail 'existing install channel state is unsafe or malformed'
   }
+fi
+
+# Downgrade protection for the public-manifest path (archive#187). A signed
+# manifest proves who published a release, not that it is newer than what is
+# running: replaying an older, still-valid manifest must not roll an install
+# back silently. The installed version comes from the provenance that was
+# verified when the current release was installed.
+#   newer manifest            -> install
+#   same version, same bytes  -> nothing to do (exit 0, no restart)
+#   same version, new bytes   -> reinstall (a signed republish of that version)
+#   older manifest            -> refuse, unless the caller names the exact
+#                                version (STATION_VERSION=v<x.y.z>) AND sets
+#                                STATION_INSTALL_ALLOW_ROLLBACK=1
+# The authenticated gh path is unchanged: there, STATION_VERSION already
+# selects an exact signed release.
+check_public_manifest_version() {
+  [ -L "$current_link" ] || return 0
+  version_order="$(node -e '
+    const fs = require("node:fs");
+    const [provenancePath, candidateTag] = process.argv.slice(1);
+    const parse = (tag) => {
+      const match = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(preview|nightly)\.([1-9][0-9]*))?$/.exec(tag);
+      if (!match) return null;
+      return { core: match.slice(1, 4).map(Number), label: match[4] ?? null, build: match[5] ? Number(match[5]) : null };
+    };
+    let installedTag;
+    try { installedTag = JSON.parse(fs.readFileSync(provenancePath, "utf8"))?.ref; } catch { process.exit(1); }
+    const installed = typeof installedTag === "string" ? parse(installedTag) : null;
+    const candidate = parse(candidateTag);
+    if (!installed || !candidate) process.exit(1);
+    let order = 0;
+    for (let index = 0; index < 3 && order === 0; index += 1)
+      order = Math.sign(candidate.core[index] - installed.core[index]);
+    if (order === 0) {
+      if (installed.label === null && candidate.label === null) order = 0;
+      else if (installed.label === null) order = -1;
+      else if (candidate.label === null) order = 1;
+      else if (installed.label !== candidate.label) process.exit(1);
+      else order = Math.sign(candidate.build - installed.build);
+    }
+    process.stdout.write(`${order < 0 ? "older" : order > 0 ? "newer" : "same"}\n${installedTag}`);
+  ' "$current_link/.station-release.json" "$release_tag")" || \
+    fail "cannot compare the installed release with $release_tag; set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1 to replace it explicitly"
+  version_relation="$(printf '%s\n' "$version_order" | sed -n '1p')"
+  installed_tag="$(printf '%s\n' "$version_order" | sed -n '2p')"
+  case "$version_relation" in
+    newer) ;;
+    same)
+      candidate_dir="$install_root/releases/$actual_checksum"
+      if [ "$(readlink "$current_link")" = "$candidate_dir" ] && \
+        [ -f "$candidate_dir/.station-install-complete" ] && \
+        [ "$(cat "$candidate_dir/.station-install-complete")" = "$actual_checksum" ]; then
+        printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
+        exit 0
+      fi
+      ;;
+    older)
+      if [ "${STATION_INSTALL_ALLOW_ROLLBACK:-0}" = 1 ] && [ "$version" = "$release_tag" ]; then
+        printf 'Rolling back Station from %s to %s (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$installed_tag" "$release_tag"
+      else
+        fail "refusing to downgrade Station from $installed_tag to $release_tag; to roll back deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
+      fi
+      ;;
+    *) fail 'could not compare release versions' ;;
+  esac
+}
+if [ -n "$public_manifest_url" ]; then
+  check_public_manifest_version
 fi
 
 release_dir="$install_root/releases/$actual_checksum"

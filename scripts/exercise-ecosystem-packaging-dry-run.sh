@@ -57,7 +57,7 @@ node -e '
 STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$ROOT/scripts/ecosystem-manifest.mjs" create \
   --payload "$WORK/payload.json" \
   --private-key "$WORK/private.pem" \
-  --key-id station-ecosystem-v1 \
+  --key-id station-portable-release-2026-09 \
   --output "$MANIFESTS/stable.json"
 STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$ROOT/scripts/ecosystem-manifest.mjs" cask \
   --manifest "$MANIFESTS/stable.json" \

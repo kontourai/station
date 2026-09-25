@@ -130,10 +130,13 @@ jobs:
                 },
               }, null, 2)}\n`);
             ' "$RUNNER_TEMP/manifest-payload.json" "$serve_dir" "$release_channel" "$version" "$release_tag" "$source_sha"
+            # The keyId must name a pinned installer key; the throwaway key
+            # stands in for its bytes only through the test-only
+            # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL override below.
             STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$GITHUB_WORKSPACE/scripts/ecosystem-manifest.mjs" create \
               --payload "$RUNNER_TEMP/manifest-payload.json" \
               --private-key "$RUNNER_TEMP/manifest-private.pem" \
-              --key-id station-install-smoke-v1 \
+              --key-id station-portable-release-2026-09 \
               --output "$manifests_dir/manifest.json"
           }
           write_manifest_payload
