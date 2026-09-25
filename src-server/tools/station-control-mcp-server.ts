@@ -43,10 +43,9 @@ import {
  * may read in slice A), and tools that call no route (`install_plugin`
  * only explains).
  */
-function withToolSideRefusal<Callback>(
-  name: string,
-  callback: Callback,
-): Callback {
+function withToolSideRefusal<
+  Callback extends (input: never, ...rest: never[]) => unknown,
+>(name: string, callback: Callback): Callback {
   const policy = stationControlToolPolicy(name);
   if (
     !policy ||
@@ -55,9 +54,10 @@ function withToolSideRefusal<Callback>(
     policy.routes.length === 0
   )
     return callback;
-  const run = callback as unknown as (...args: unknown[]) => unknown;
-  return (async (...args: unknown[]) => {
-    const input = args[0];
+  const guarded = async (
+    ...args: Parameters<Callback>
+  ): Promise<ReturnType<Callback> | ReturnType<typeof jsonToolResult>> => {
+    const input: unknown = args[0];
     // A person-only request is refused before any caller lookup: no caller
     // could take it.
     const refusal: StationControlRefusal | undefined = personOnlyApplies(
@@ -70,8 +70,11 @@ function withToolSideRefusal<Callback>(
           body: input,
         });
     if (refusal) return jsonToolResult(stationControlRefusalBody(refusal));
-    return run(...args);
-  }) as unknown as Callback;
+    return Reflect.apply(callback, undefined, args) as ReturnType<Callback>;
+  };
+  // The SDK types a callback by its schema; `guarded` takes exactly the same
+  // arguments and returns either the callback's result or a tool result.
+  return guarded as Callback;
 }
 
 /**
@@ -125,12 +128,13 @@ export class StationControlToolRegistry {
         openWorldHint?: boolean;
       };
     },
-    callback: ToolCallback<Schema>,
+    unguardedCallback: ToolCallback<Schema>,
   ) {
     // @modelcontextprotocol/server v2 and ext-apps currently publish distinct
     // structural ServerContext types. The helper only calls registerTool;
     // keep the compatibility cast at this one adapter while still using the
     // official metadata normalization rather than reimplementing it.
+    const callback = withToolSideRefusal(name, unguardedCallback);
     return registerAppTool(
       this.server as unknown as Parameters<typeof registerAppTool>[0],
       name,
@@ -139,9 +143,7 @@ export class StationControlToolRegistry {
         inputSchema,
         ...config,
       } as unknown as Parameters<typeof registerAppTool>[2],
-      withToolSideRefusal(name, callback) as unknown as Parameters<
-        typeof registerAppTool
-      >[3],
+      callback as unknown as Parameters<typeof registerAppTool>[3],
     );
   }
 
