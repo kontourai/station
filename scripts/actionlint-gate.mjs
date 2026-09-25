@@ -1609,6 +1609,22 @@ function repoScansFindings(file, job) {
       jobId,
       message: 'repo-scans must not set continue-on-error on the job or a step',
     });
+  // A skipped scan step leaves a green job: the step that runs the scans must
+  // be exactly { name, run } — no `if:`, no `env:`, no `working-directory:`.
+  const scanSteps = (job.steps ?? []).filter(
+    (step) => step?.run === 'npm run test:repo-scans',
+  );
+  if (
+    scanSteps.length !== 1 ||
+    JSON.stringify(Object.keys(scanSteps[0]).sort()) !==
+      JSON.stringify(['name', 'run'])
+  )
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    });
   const checkouts = (job.steps ?? []).filter(
     (step) =>
       typeof step?.uses === 'string' &&
