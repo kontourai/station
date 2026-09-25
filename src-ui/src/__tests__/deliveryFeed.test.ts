@@ -258,6 +258,81 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(reads.at(-1)?.after).toBe(1);
   });
 
+  test('a deadline mid-posting loses nothing: the next read resumes at the unposted entries', async () => {
+    vi.useFakeTimers();
+    const storage = new Map<string, StoredCursor>();
+    const { d, reads } = deps([feed(0)], false, storage);
+    await pollDeliveryFeed(A, SCOPE, d);
+    const backlog = [alert(1, 'n-1'), alert(2, 'n-2')];
+    d.readFeed = async (input) => {
+      reads.push({ after: input.after });
+      return feed(
+        2,
+        backlog.filter((entry) => entry.seq > input.after),
+      );
+    };
+    // The OS notifier hangs on the first alert until the deadline passes.
+    const shown: string[] = [];
+    d.notify = (input) =>
+      shown.length === 0 && reads.length === 2
+        ? new Promise(() => {})
+        : Promise.resolve(void shown.push(input.title)).then(() => true);
+    const stuck = pollDeliveryFeed(A, SCOPE, d);
+    await vi.advanceTimersByTimeAsync(FEED_READ_DEADLINE_MS);
+    expect(await stuck).toBe(0);
+    // Nothing was handled, so the stored cursor did not move past either.
+    expect(storage.get(SCOPE)?.cursor).toBe(0);
+
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(2);
+    expect(reads.at(-1)).toEqual({ after: 0 });
+    expect(shown).toEqual(['Alert n-1', 'Alert n-2']);
+    expect(storage.get(SCOPE)?.cursor).toBe(2);
+  });
+
+  test('a deadline after the first post resumes at the second entry only', async () => {
+    vi.useFakeTimers();
+    const storage = new Map<string, StoredCursor>();
+    const { d, reads } = deps([feed(0)], false, storage);
+    await pollDeliveryFeed(A, SCOPE, d);
+    const backlog = [alert(1, 'n-1'), alert(2, 'n-2')];
+    d.readFeed = async (input) => {
+      reads.push({ after: input.after });
+      return feed(
+        2,
+        backlog.filter((entry) => entry.seq > input.after),
+      );
+    };
+    const shown: string[] = [];
+    let calls = 0;
+    d.notify = (input) => {
+      calls += 1;
+      if (calls === 2) return new Promise(() => {}); // hangs on n-2
+      shown.push(input.title);
+      return Promise.resolve(true);
+    };
+    const stuck = pollDeliveryFeed(A, SCOPE, d);
+    await vi.advanceTimersByTimeAsync(FEED_READ_DEADLINE_MS);
+    await stuck;
+    expect(storage.get(SCOPE)?.cursor).toBe(1);
+
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(reads.at(-1)).toEqual({ after: 1 });
+    expect(shown).toEqual(['Alert n-1', 'Alert n-2']);
+    expect(storage.get(SCOPE)?.cursor).toBe(2);
+  });
+
+  test('a read that completes ends at the feed cursor even past its last entry', async () => {
+    const storage = new Map<string, StoredCursor>();
+    const { d } = deps(
+      [feed(0), feed(7, [alert(3, 'n-1'), retract(4, 'n-0')])],
+      false,
+      storage,
+    );
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(storage.get(SCOPE)?.cursor).toBe(7);
+  });
+
   test('a poll for another connection does not join the old read, and the old read posts nothing', async () => {
     const storage = new Map<string, StoredCursor>([
       [SCOPE, { surface: LOCAL, cursor: 0, epoch: 'run-1' }],

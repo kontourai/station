@@ -232,15 +232,24 @@ async function readOnce(
   // connection now reads as a different caller) says nothing about this one.
   const seeding = current.cursor === null || current.surface !== feed.surface;
   const from = feed.epoch === current.epoch ? after : 0;
-  current.surface = feed.surface;
-  current.cursor = feed.cursor;
-  current.epoch = feed.epoch;
-  deps.saveCursor(scopeKey, {
-    surface: feed.surface,
-    cursor: feed.cursor,
-    epoch: feed.epoch,
-  });
-  if (seeding) return 0;
+  // The cursor moves as entries are handled, never ahead of them: a read
+  // abandoned at its deadline part-way through posting leaves the cursor at
+  // the last handled entry, and the next read resumes there. Committing
+  // `feed.cursor` up front used to skip every entry not yet posted.
+  const commit = (cursor: number) => {
+    current.surface = feed.surface;
+    current.cursor = cursor;
+    current.epoch = feed.epoch;
+    deps.saveCursor(scopeKey, {
+      surface: feed.surface,
+      cursor,
+      epoch: feed.epoch,
+    });
+  };
+  if (seeding) {
+    commit(feed.cursor);
+    return 0;
+  }
   const entries = [...feed.entries]
     .filter((entry) => entry.seq > from)
     .sort((a, b) => a.seq - b.seq);
@@ -248,12 +257,20 @@ async function readOnce(
   for (const entry of entries)
     if (entry.kind === 'retract')
       retractedAt.set(entry.notificationId, entry.seq);
-  if (deps.isWindowFocused()) return 0;
+  if (deps.isWindowFocused()) {
+    commit(feed.cursor);
+    return 0;
+  }
   let count = 0;
   for (const entry of entries) {
-    if (!live()) break;
-    if (entry.kind !== 'alert') continue;
-    if ((retractedAt.get(entry.notificationId) ?? -1) > entry.seq) continue;
+    if (!live()) return count;
+    if (
+      entry.kind !== 'alert' ||
+      (retractedAt.get(entry.notificationId) ?? -1) > entry.seq
+    ) {
+      commit(entry.seq);
+      continue;
+    }
     // JSON of the fields keeps the key unambiguous (no separator a title
     // could contain); entries are bounded by the router's caps.
     const key = JSON.stringify([
@@ -263,15 +280,21 @@ async function readOnce(
       entry.urgency,
     ]);
     const posted = deps.postedAlerts ?? boundedPostedAlerts;
-    if (posted.has(key)) continue;
-    posted.add(key);
-    await deps.notify(
-      entry.body === undefined
-        ? { title: entry.title }
-        : { title: entry.title, body: entry.body },
-    );
-    count += 1;
+    if (!posted.has(key)) {
+      await deps.notify(
+        entry.body === undefined
+          ? { title: entry.title }
+          : { title: entry.title, body: entry.body },
+      );
+      // Remembered once the OS took it, so an abandoned post (a notifier
+      // that hung past the deadline) is retried by the next read.
+      posted.add(key);
+      count += 1;
+    }
+    if (!live()) return count;
+    commit(entry.seq);
   }
+  commit(feed.cursor);
   return count;
 }
 
