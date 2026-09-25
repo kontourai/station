@@ -21,6 +21,17 @@ const repoRoot = resolve(import.meta.dirname, '../..');
 const installScript = join(repoRoot, 'install.sh');
 const roots: string[] = [];
 
+/** The bound on one installer run; a hung install fails here. */
+const INSTALLER_RUN_TIMEOUT_MS = 15_000;
+/**
+ * The most installer runs any one test makes ("keeps hostile launcher paths
+ * literal ..." makes six). The describe's budget covers that many runs on a
+ * loaded host; it used to be one run's worth (15s), so tests making two or
+ * more timed out under load while every run succeeded. Hangs are still caught
+ * by each run's own INSTALLER_RUN_TIMEOUT_MS.
+ */
+const MAX_INSTALLER_RUNS_PER_TEST = 6;
+
 function posixShellLiteral(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
@@ -234,7 +245,7 @@ function runInstaller(
   mkdirSync(home, { recursive: true });
   const result = spawnSync('sh', [installScript, ...args], {
     encoding: 'utf8',
-    timeout: 15_000,
+    timeout: INSTALLER_RUN_TIMEOUT_MS,
     windowsHide: true,
     ...(cwd ? { cwd } : {}),
     env: {
@@ -361,7 +372,9 @@ function privateDownloadFixture(
 // These integration-style cases intentionally execute the real shell installer
 // multiple times. Give each case enough headroom for loaded local/CI runners;
 // product subprocesses still retain their own tighter failure boundaries.
-describe('one-line Station installer', { timeout: 15_000 }, () => {
+describe('one-line Station installer', {
+  timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
+}, () => {
   it.each([
     {
       name: 'missing pnpm lock with an npm fallback',
