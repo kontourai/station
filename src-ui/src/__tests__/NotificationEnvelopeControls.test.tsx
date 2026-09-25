@@ -8,10 +8,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const authenticatedFetch = vi.fn();
-vi.mock('@kontourai/station-sdk', () => ({
-  authenticatedFetch: (...args: unknown[]) => authenticatedFetch(...args),
-}));
+const fetchPreferences = vi.fn();
+const patchPreferences = vi.fn();
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    NotificationPreferencesRequestError:
+      actual.NotificationPreferencesRequestError,
+    fetchNotificationPreferences: (...args: unknown[]) =>
+      fetchPreferences(...args),
+    patchNotificationPreferences: (...args: unknown[]) =>
+      patchPreferences(...args),
+  };
+});
+
+import { NotificationPreferencesRequestError } from '@kontourai/station-sdk';
+
 const markNotificationRead = vi.fn(async () => 'read');
 vi.mock('@kontourai/station-sdk/notification-read', () => ({
   markNotificationRead: (...args: unknown[]) =>
@@ -63,20 +76,14 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function preferencesRoute(present: boolean) {
-  authenticatedFetch.mockImplementation(
-    async (_url: string, init?: { method?: string }) => {
-      if (!present) return { ok: false, status: 404, json: async () => ({}) };
-      return {
-        ok: true,
-        status: 200,
-        json: async () =>
-          init?.method === 'PATCH'
-            ? { success: true }
-            : { success: true, data: { schemaVersion: 1 }, stored: false },
-      };
-    },
-  );
+function preferencesRoute(present: boolean | 503) {
+  const refusal = (status: number) =>
+    new NotificationPreferencesRequestError('refused', status);
+  fetchPreferences.mockImplementation(async () => {
+    if (present === true) return { schemaVersion: 1 };
+    throw refusal(present === 503 ? 503 : 404);
+  });
+  patchPreferences.mockResolvedValue({ schemaVersion: 1 });
 }
 
 function renderHistoryItem(notification = agentNotification()) {
@@ -94,7 +101,8 @@ function renderHistoryItem(notification = agentNotification()) {
 
 describe('inbox rows for enveloped notifications (#2587)', () => {
   beforeEach(() => {
-    authenticatedFetch.mockReset();
+    fetchPreferences.mockReset();
+    patchPreferences.mockReset();
     markNotificationRead.mockClear();
     navigate.mockClear();
   });
@@ -114,15 +122,10 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
       await screen.findByRole('button', { name: 'Mute this agent' }),
     );
     await screen.findByText('Muted');
-    const patch = authenticatedFetch.mock.calls.find(
-      ([, init]) => init?.method === 'PATCH',
+    expect(patchPreferences).toHaveBeenCalledWith(
+      { perAgent: { builder: 'off' } },
+      'http://station.test',
     );
-    expect(patch?.[0]).toBe(
-      'http://station.test/api/notifications/preferences',
-    );
-    expect(JSON.parse(patch?.[1].body)).toEqual({
-      perAgent: { builder: 'off' },
-    });
     expect(
       screen.getByRole('button', { name: 'Mute this project' }),
     ).toBeTruthy();
@@ -131,20 +134,16 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
   test('without the preferences route there is no Mute to press', async () => {
     preferencesRoute(false);
     renderHistoryItem();
-    await waitFor(() => expect(authenticatedFetch).toHaveBeenCalled());
+    await waitFor(() => expect(fetchPreferences).toHaveBeenCalled());
     // Let the settled query render before asserting absence.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
   });
 
   test('a failed preferences read offers no Mute either', async () => {
-    authenticatedFetch.mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: async () => ({}),
-    });
+    preferencesRoute(503);
     renderHistoryItem();
-    await waitFor(() => expect(authenticatedFetch).toHaveBeenCalled());
+    await waitFor(() => expect(fetchPreferences).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
   });

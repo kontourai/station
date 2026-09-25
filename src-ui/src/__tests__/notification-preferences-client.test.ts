@@ -1,73 +1,95 @@
+import { NotificationPreferencesRequestError } from '@kontourai/station-sdk';
 import { describe, expect, test, vi } from 'vitest';
 import { createNotificationPreferencesClient } from '../lib/notification-preferences-client';
 
-function response(status: number, body: unknown = {}) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
+const refused = (status: number, code?: string) =>
+  new NotificationPreferencesRequestError('refused', status, code);
+
+function transport(overrides: {
+  fetch?: () => Promise<unknown>;
+  patch?: () => Promise<unknown>;
+}) {
+  return {
+    fetch: vi.fn(overrides.fetch ?? (async () => ({ schemaVersion: 1 }))),
+    patch: vi.fn(overrides.patch ?? (async () => ({ schemaVersion: 1 }))),
+  } as unknown as {
+    fetch: ReturnType<typeof vi.fn>;
+    patch: ReturnType<typeof vi.fn>;
+  };
+}
+
+function client(t: ReturnType<typeof transport>) {
+  return createNotificationPreferencesClient({
+    apiBase: 'http://s',
+    transport: t as never,
+  });
 }
 
 describe('notification preferences client (#2587 against #2586)', () => {
   test('a Station without the route is unavailable', async () => {
-    const client = createNotificationPreferencesClient({
-      apiBase: 'http://s',
-      fetch: async () => response(404),
+    const t = transport({
+      fetch: async () => {
+        throw refused(404);
+      },
+      patch: async () => {
+        throw refused(404);
+      },
     });
-    expect(await client.read()).toBe('unavailable');
-    expect(await client.mute({ kind: 'agent', agent: 'builder' })).toBe(
+    expect(await client(t).read()).toBe('unavailable');
+    expect(await client(t).mute({ kind: 'agent', agent: 'builder' })).toBe(
       'unavailable',
     );
   });
 
-  test('an unreadable document, a 5xx or a network error is failed, not unavailable', async () => {
-    for (const fetch of [
-      async () =>
-        response(409, { success: false, error: 'preferences_unreadable' }),
-      async () => response(503),
-      async () => {
-        throw new TypeError('network');
-      },
+  test('an unreadable document, a 5xx or a network error is failed', async () => {
+    for (const error of [
+      refused(409, 'preferences_unreadable'),
+      refused(503),
+      new TypeError('network'),
+      new SyntaxError('not JSON'),
     ]) {
-      const client = createNotificationPreferencesClient({
-        apiBase: 'http://s',
-        fetch,
+      const t = transport({
+        fetch: async () => {
+          throw error;
+        },
       });
-      expect(await client.read()).toBe('failed');
+      expect(await client(t).read()).toBe('failed');
     }
   });
 
-  test('a readable document is ok', async () => {
-    const client = createNotificationPreferencesClient({
-      apiBase: 'http://s',
-      fetch: async () =>
-        response(200, {
-          success: true,
-          data: { schemaVersion: 1 },
-          stored: true,
-        }),
-    });
-    expect(await client.read()).toBe('ok');
-  });
-
-  test('mute is one server-side PATCH naming only the muted key', async () => {
-    const fetch = vi.fn(async () => response(200, { success: true }));
-    const client = createNotificationPreferencesClient({
-      apiBase: 'http://s',
-      fetch,
-    });
-    expect(await client.mute({ kind: 'project', projectId: 'proj-1' })).toBe(
+  test('mute is one PATCH of the one key through the SDK', async () => {
+    const t = transport({});
+    expect(await client(t).mute({ kind: 'project', projectId: 'proj-1' })).toBe(
       'muted',
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      'http://s/api/notifications/preferences',
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ perProject: { 'proj-1': 'off' } }),
-      },
+    expect(t.patch).toHaveBeenCalledTimes(1);
+    expect(t.patch).toHaveBeenCalledWith(
+      { perProject: { 'proj-1': 'off' } },
+      'http://s',
     );
-    fetch.mockResolvedValueOnce(response(500));
-    expect(await client.mute({ kind: 'agent', agent: 'builder' })).toBe(
+  });
+
+  test('a 412 refetches and retries once, then gives up', async () => {
+    const t = transport({
+      patch: vi
+        .fn()
+        .mockRejectedValueOnce(refused(412, 'preferences_changed'))
+        .mockResolvedValueOnce({ schemaVersion: 1 }) as never,
+    });
+    expect(await client(t).mute({ kind: 'agent', agent: 'builder' })).toBe(
+      'muted',
+    );
+    expect(t.fetch).toHaveBeenCalledTimes(1);
+    expect(t.patch).toHaveBeenCalledTimes(2);
+
+    const always = transport({
+      patch: async () => {
+        throw refused(412, 'preferences_changed');
+      },
+    });
+    expect(await client(always).mute({ kind: 'agent', agent: 'builder' })).toBe(
       'failed',
     );
+    expect(always.patch).toHaveBeenCalledTimes(2);
   });
 });

@@ -10,14 +10,24 @@ import { notifyNatively } from './notify';
 
 /**
  * Desktop OS alerts for enveloped notifications (#2587), read from the
- * server's per-surface delivery feed (#2586).
+ * server's per-surface delivery feed (#2586). The feed always serves the
+ * caller's OWN surface:
+ * - a Station on this computer (loopback endpoint, local operator): the
+ *   desktop host surface `local:desktop-<installationId>`, named in the
+ *   request;
+ * - any other Station (this app is a paired device there): the device's
+ *   `device:<id>` surface, derived by the server from the credential — the
+ *   request names no surface.
+ * The loopback guess is corrected by the server's answer: a surface refusal
+ * switches to the other form once, and the working form is remembered for
+ * the connection.
  *
  * The server's delivery router is the single policy engine: every entry in
  * the feed has already passed focus presence, quiet hours, mutes and
  * minimum urgency, and is redacted per the surface's `hideContent`. This
  * module does not re-decide any of that. It only
- * - reads the feed for `local:desktop-<installationId>` (reading also renews
- *   the host's lease, which is what makes the router target it at all);
+ * - reads the feed (reading also renews the surface's lease, which is what
+ *   makes the router target it at all);
  * - resumes across reloads: the cursor and epoch are kept in localStorage
  *   per (endpoint, connection id, surface), so a reload reads on from where
  *   the previous document stopped and posts what was queued in between;
@@ -29,16 +39,24 @@ import { notifyNatively } from './notify';
  *   alert already posted cannot be honoured: the desktop notification plugin
  *   exposes no way to close a delivered notification.
  *
- * A feed that cannot be read (older Station: 404; a remote Station, whose
- * feed is local-operator only: 403; 5xx; network) posts nothing.
+ * A feed that cannot be read (older Station: 404; 5xx; network) posts
+ * nothing.
  */
+export type FeedRead =
+  | { kind: 'feed'; feed: SurfaceDeliveryFeed }
+  /** The server refused the surface form (named vs the caller's own). */
+  | { kind: 'wrong-surface' }
+  | { kind: 'failed' };
+
+type FeedMode = 'installation' | 'own';
 export interface DeliveryFeedDeps {
   installationId(): Promise<string | undefined>;
+  /** `surface` undefined: the caller's own (device) surface. */
   readFeed(
-    surface: string,
+    surface: string | undefined,
     after: number,
     epoch: string | undefined,
-  ): Promise<SurfaceDeliveryFeed | undefined>;
+  ): Promise<FeedRead>;
   isWindowFocused(): boolean;
   notify(input: { title: string; body?: string }): Promise<boolean>;
   loadCursor(key: string): StoredCursor | undefined;
@@ -57,10 +75,13 @@ let state: {
   cursor: number | null;
   epoch?: string;
 } | null = null;
+/** The surface form that worked, per connection scope. */
+const modes = new Map<string, FeedMode>();
 
 /** Test seam. */
 export function resetDeliveryFeedState(): void {
   state = null;
+  modes.clear();
 }
 
 function defaultDeps(apiBase: string): DeliveryFeedDeps {
@@ -68,19 +89,29 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
     installationId: () => desktopInstallationId(),
     readFeed: async (surface, after, epoch) => {
       try {
-        const query = new URLSearchParams({ surface, after: String(after) });
+        const query = new URLSearchParams({ after: String(after) });
         if (epoch !== undefined) query.set('epoch', epoch);
+        if (surface !== undefined) query.set('surface', surface);
         const response = await authenticatedFetch(
           `${apiBase}${NOTIFICATION_DELIVERIES_PATH}?${query}`,
         );
-        if (!response.ok) return undefined;
-        const body = (await response.json()) as {
+        const body = (await response.json().catch(() => ({}))) as {
           success?: boolean;
           data?: SurfaceDeliveryFeed;
+          error?: string;
         };
-        return body.success && isFeed(body.data) ? body.data : undefined;
+        if (response.ok)
+          return body.success && isFeed(body.data)
+            ? { kind: 'feed', feed: body.data }
+            : { kind: 'failed' };
+        return (response.status === 400 && body.error === 'invalid_request') ||
+          (response.status === 403 &&
+            (body.error === 'surface_not_yours' ||
+              body.error === 'surface_required'))
+          ? { kind: 'wrong-surface' }
+          : { kind: 'failed' };
       } catch {
-        return undefined;
+        return { kind: 'failed' };
       }
     },
     isWindowFocused: () =>
@@ -126,21 +157,43 @@ export async function pollDeliveryFeed(
   deps: DeliveryFeedDeps = defaultDeps(apiBase),
 ): Promise<number> {
   const installationId = await deps.installationId();
-  if (!installationId) return 0;
-  const surface = desktopHostSurfaceId(installationId);
-  const storageKey = `${scopeKey}\n${surface}`;
-  if (state?.storageKey !== storageKey) {
-    const stored = deps.loadCursor(storageKey);
-    state = stored
-      ? { storageKey, cursor: stored.cursor, epoch: stored.epoch }
-      : { storageKey, cursor: null };
+  const hostSurface = installationId
+    ? desktopHostSurfaceId(installationId)
+    : undefined;
+  let mode: FeedMode =
+    modes.get(scopeKey) ??
+    (hostSurface && isLoopback(apiBase) ? 'installation' : 'own');
+  let read: FeedRead | undefined;
+  let current: NonNullable<typeof state> | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (mode === 'installation' && !hostSurface) return 0;
+    // `own` is keyed by the connection alone: its surface is the device the
+    // connection's credential belongs to.
+    const storageKey = `${scopeKey}\n${mode === 'installation' ? hostSurface : 'own'}`;
+    if (state?.storageKey !== storageKey) {
+      const stored = deps.loadCursor(storageKey);
+      state = stored
+        ? { storageKey, cursor: stored.cursor, epoch: stored.epoch }
+        : { storageKey, cursor: null };
+    }
+    current = state;
+    read = await deps.readFeed(
+      mode === 'installation' ? hostSurface : undefined,
+      current.cursor ?? 0,
+      current.epoch,
+    );
+    if (read.kind !== 'wrong-surface') break;
+    const other: FeedMode = mode === 'installation' ? 'own' : 'installation';
+    if (other === 'installation' && !hostSurface) return 0;
+    mode = other;
   }
-  const current = state;
-  const after = current.cursor ?? 0;
-  const feed = await deps.readFeed(surface, after, current.epoch);
   // A connection switch while the read was in flight: this answer belongs
   // to the previous connection.
-  if (state !== current || !feed) return 0;
+  if (!current || state !== current || read?.kind !== 'feed') return 0;
+  modes.set(scopeKey, mode);
+  const feed = read.feed;
+  const after = current.cursor ?? 0;
+  const storageKey = current.storageKey;
   const seeding = current.cursor === null;
   // A different epoch is a restarted server: its sequence began again and
   // it answered from the start of its feed, all of it newer than this
@@ -170,6 +223,16 @@ export async function pollDeliveryFeed(
     posted += 1;
   }
   return posted;
+}
+
+function isLoopback(apiBase: string): boolean {
+  try {
+    return ['localhost', '127.0.0.1', '[::1]'].includes(
+      new URL(apiBase).hostname,
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isFeed(value: unknown): value is SurfaceDeliveryFeed {

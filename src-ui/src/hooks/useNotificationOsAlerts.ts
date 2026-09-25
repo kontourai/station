@@ -16,7 +16,8 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  *   tray already owns.
  * - **Enveloped notifications** (`deliveryFeed.ts`) — agent and other
  *   producers' records with `metadata.envelope`, read from the server's
- *   per-surface delivery feed for `local:desktop-<installationId>`. The
+ *   delivery feed for this app's own surface (`local:desktop-<installationId>`
+ *   on this computer's Station, `device:<id>` on a remote one). The
  *   server's router decides them (focus, quiet hours, mutes, minUrgency,
  *   hideContent); the client only skips posting while its window is focused.
  *   Polled every {@link DELIVERY_FEED_POLL_MS}, inside the server's 90 s

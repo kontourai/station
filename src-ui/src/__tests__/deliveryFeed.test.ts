@@ -55,19 +55,25 @@ function retract(seq: number, id: string) {
 
 /** A scripted feed: each read returns the next answer. */
 function deps(
-  answers: Array<SurfaceDeliveryFeed | undefined>,
+  answers: Array<SurfaceDeliveryFeed | undefined | 'wrong-surface'>,
   focused = false,
   storage = new Map<string, StoredCursor>(),
 ) {
-  const reads: Array<{ surface: string; after: number; epoch?: string }> = [];
+  const reads: Array<{ surface?: string; after: number; epoch?: string }> = [];
   const notify = vi.fn(
     async (_input: { title: string; body?: string }) => true,
   );
   const d: DeliveryFeedDeps = {
     installationId: async () => '6f1c2d3e-aaaa-4bbb-8ccc-111122223333',
     readFeed: async (surface, after, epoch) => {
-      reads.push({ surface, after, ...(epoch ? { epoch } : {}) });
-      return answers.shift();
+      reads.push({
+        ...(surface ? { surface } : {}),
+        after,
+        ...(epoch ? { epoch } : {}),
+      });
+      const answer = answers.shift();
+      if (answer === 'wrong-surface') return { kind: 'wrong-surface' };
+      return answer ? { kind: 'feed', feed: answer } : { kind: 'failed' };
     },
     isWindowFocused: () => focused,
     notify,
@@ -237,7 +243,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     });
     expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
-      `${A}/api/notifications/deliveries?surface=${encodeURIComponent(SURFACE)}&after=3&epoch=run-1`,
+      `${A}/api/notifications/deliveries?after=3&epoch=run-1&surface=${encodeURIComponent(SURFACE)}`,
     );
   });
 
@@ -249,6 +255,82 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     await pollDeliveryFeed(A, SCOPE, d);
     expect(await pollDeliveryFeed(A, `${A}\nconn-b`, d)).toBe(0);
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  test('a remote Station: the device reads its own surface, no surface named', async () => {
+    const REMOTE = 'https://station.example.test';
+    const scope = `${REMOTE}\nconn-r`;
+    const { d, reads, notify, storage } = deps([
+      feed(2),
+      feed(3, [alert(3, 'n-1')]),
+    ]);
+    await pollDeliveryFeed(REMOTE, scope, d);
+    expect(await pollDeliveryFeed(REMOTE, scope, d)).toBe(1);
+    expect(reads).toEqual([{ after: 0 }, { after: 2, epoch: 'run-1' }]);
+    expect(notify).toHaveBeenCalledWith({
+      title: 'Alert n-1',
+      body: 'Body n-1',
+    });
+    expect([...storage.keys()]).toEqual([`${scope}\nown`]);
+  });
+
+  test('a surface refusal switches form once and the working form is remembered', async () => {
+    // Loopback guesses the desktop host surface; this Station answers as a
+    // paired device (surface_not_yours), so the device form is used.
+    const { d, reads } = deps(['wrong-surface', feed(5), feed(5)]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(reads).toEqual([
+      { surface: SURFACE, after: 0 },
+      { after: 0 },
+      { after: 5, epoch: 'run-1' },
+    ]);
+  });
+
+  test('a remote Station that wants a named surface gets the desktop host one', async () => {
+    const REMOTE = 'https://station.example.test';
+    const { d, reads } = deps(['wrong-surface', feed(1)]);
+    await pollDeliveryFeed(REMOTE, `${REMOTE}\nconn-r`, d);
+    expect(reads).toEqual([{ after: 0 }, { surface: SURFACE, after: 0 }]);
+  });
+
+  test('default wiring: a remote device read names no surface', async () => {
+    const REMOTE = 'https://station.example.test';
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    authenticatedFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: feed(1) }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: feed(2, [alert(2, 'n-1')]) }),
+      });
+    await pollDeliveryFeed(REMOTE, `${REMOTE}\nconn-r`);
+    expect(await pollDeliveryFeed(REMOTE, `${REMOTE}\nconn-r`)).toBe(1);
+    expect(authenticatedFetch).toHaveBeenLastCalledWith(
+      `${REMOTE}/api/notifications/deliveries?after=1&epoch=run-1`,
+    );
+  });
+
+  test('default wiring maps a surface_not_yours refusal to the device form', async () => {
+    authenticatedFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({ success: false, error: 'surface_not_yours' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: feed(1) }),
+      });
+    await pollDeliveryFeed(A, SCOPE);
+    expect(authenticatedFetch).toHaveBeenLastCalledWith(
+      `${A}/api/notifications/deliveries?after=0`,
+    );
   });
 
   test('default wiring: a refused or failed feed posts nothing', async () => {
@@ -282,7 +364,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     await pollDeliveryFeed(A, SCOPE);
     expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
-      `${A}/api/notifications/deliveries?surface=${encodeURIComponent(SURFACE)}&after=7&epoch=run-1`,
+      `${A}/api/notifications/deliveries?after=7&epoch=run-1&surface=${encodeURIComponent(SURFACE)}`,
     );
     expect(notifyNatively).toHaveBeenCalledWith({
       title: 'Alert n-1',
