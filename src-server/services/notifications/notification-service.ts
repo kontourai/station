@@ -33,6 +33,7 @@ import { notificationOps } from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
+import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 
 const logger = createLogger({ name: 'notification-service' });
@@ -164,6 +165,20 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'turn-completion',
 ]);
 
+/**
+ * #2589: the only sources that may write `metadata.onActivityCard`, the mark
+ * that tells a phone's alert channel the agent-activity card already
+ * announces this notification (card-alerted-categories.ts) and so silences
+ * its alert. They derive it from the session read model; any other writer
+ * (a request body, a provider, another internal producer) could only use it
+ * to silence its own alert. A plugin provider cannot register under either
+ * id (both are INTERNAL_NOTIFICATION_SOURCES).
+ */
+const CARD_MARK_WRITER_SOURCES: ReadonlySet<string> = new Set([
+  'approval-inbox',
+  'turn-completion',
+]);
+
 /** Provider ids a provider may not register under: they name REST/agent writes. */
 const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
   REST_NOTIFICATION_SOURCE,
@@ -192,11 +207,16 @@ export class NotificationDedupeSourceConflictError extends Error {
  * The untrusted `schedule()` path (REST `POST /notifications`, providers)
  * tried to write something only `scheduleEnveloped()` may: an envelope, an
  * `agent:` dedupe tag, an `agent-*` category, or an update to an enveloped
- * record.
+ * record; or (`onActivityCard`) the card mark, which only its two writers
+ * may set (CARD_MARK_WRITER_SOURCES).
  */
 export class NotificationReservedFieldError extends Error {
-  constructor(field: 'envelope' | 'dedupeTag' | 'category') {
-    super(`Notification ${field} is reserved to enveloped notifications`);
+  constructor(field: 'envelope' | 'dedupeTag' | 'category' | 'onActivityCard') {
+    super(
+      field === 'onActivityCard'
+        ? `Notification metadata.${ON_ACTIVITY_CARD_METADATA_KEY} is reserved to Station's card writers`
+        : `Notification ${field} is reserved to enveloped notifications`,
+    );
     this.name = 'NotificationReservedFieldError';
   }
 }
@@ -399,6 +419,14 @@ export class NotificationService {
     const metadata = jsonSafeMetadata(opts.metadata);
     if (Object.hasOwn(metadata, 'envelope'))
       throw new NotificationReservedFieldError('envelope');
+    // Refused, not stripped, as every other reserved field here is: a caller
+    // that sent the mark learns it was not honoured instead of getting a 201
+    // for a record that differs from its request.
+    if (
+      Object.hasOwn(metadata, ON_ACTIVITY_CARD_METADATA_KEY) &&
+      !CARD_MARK_WRITER_SOURCES.has(source)
+    )
+      throw new NotificationReservedFieldError('onActivityCard');
     if (
       typeof opts.category === 'string' &&
       opts.category.startsWith(AGENT_NOTIFICATION_CATEGORY_PREFIX)

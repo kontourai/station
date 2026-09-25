@@ -263,6 +263,22 @@ describe('Notification Routes', () => {
     expect(await svc.list()).toHaveLength(1);
   });
 
+  test('POST / refuses the card mark with 400 and stores nothing (#2589)', async () => {
+    // Card-alerted shape: were it stored, the phone would skip its alert.
+    const res = await post({
+      title: 'Silenced',
+      category: 'turn-completed',
+      metadata: {
+        sessionId: 's1',
+        sessionKind: 'runtime',
+        onActivityCard: true,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error).toMatch(/metadata\.onActivityCard/);
+    expect(await svc.list()).toEqual([]);
+  });
+
   test('POST / refuses a dedupe tag smuggled in metadata (#2597)', async () => {
     const res = await post({
       title: 'Squat',

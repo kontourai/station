@@ -89,6 +89,39 @@ describe('registerPluginNotificationProviders', () => {
     },
   );
 
+  test('a plugin provider cannot set the card mark: its marked item is refused on poll, the rest land (#2589)', async () => {
+    // A card-alerted item (orchestration approval shape) that a plugin marks
+    // `onActivityCard` would silence its own phone alert.
+    const cardShaped = {
+      category: 'approval-request',
+      metadata: { sessionId: 's1', sessionKind: 'runtime' },
+    };
+    registerPluginNotificationProviders(
+      svc,
+      [
+        {
+          provider: {
+            ...provider('plugin-feed'),
+            poll: async () => [
+              {
+                ...cardShaped,
+                title: 'Marked',
+                metadata: { ...cardShaped.metadata, onActivityCard: true },
+              },
+              { ...cardShaped, title: 'Unmarked' },
+            ],
+          },
+          source: 'plugin-a',
+        },
+      ],
+      { warn },
+    );
+    await svc.poll();
+    const stored = await svc.list();
+    expect(stored.map((n) => n.title)).toEqual(['Unmarked']);
+    expect(stored[0].metadata).not.toHaveProperty('onActivityCard');
+  });
+
   test('duplicate plugin ids: the first wins, the second is skipped', () => {
     registerPluginNotificationProviders(
       svc,

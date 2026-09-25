@@ -1787,6 +1787,31 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
     });
   });
 
+  test('only the card writers may set the card mark (#2589)', async () => {
+    const marked = (title: string) => ({
+      title,
+      category: 'turn-completed',
+      dedupeTag: `mark:${title}`,
+      metadata: {
+        sessionId: 's1',
+        sessionKind: 'runtime',
+        onActivityCard: true,
+      },
+    });
+    for (const source of ['scheduler', 'device-pairing', 'agent', 'plugin'])
+      await expect(svc.schedule(source, marked(source))).rejects.toThrow(
+        /onActivityCard is reserved/,
+      );
+    for (const source of ['approval-inbox', 'turn-completion'])
+      expect(
+        (await svc.schedule(source, marked(source))).metadata,
+      ).toMatchObject({ onActivityCard: true });
+    expect((await svc.list()).map((n) => n.source).sort()).toEqual([
+      'approval-inbox',
+      'turn-completion',
+    ]);
+  });
+
   test('same-source dedupe still updates', async () => {
     const first = await svc.schedule('device-pairing', pairingItem('v1'));
     const second = await svc.schedule('device-pairing', pairingItem('v2'));

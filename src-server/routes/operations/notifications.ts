@@ -159,7 +159,8 @@ export function createNotificationRoutes(
         );
       } catch (error) {
         // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
-        // the trusted enveloped path (#2583); a request body cannot claim them.
+        // the trusted enveloped path (#2583), and the card mark to its two
+        // writers (#2589); a request body cannot claim them.
         if (error instanceof NotificationDedupeSourceConflictError) {
           return c.json(
             {
@@ -174,7 +175,7 @@ export function createNotificationRoutes(
             {
               success: false,
               error:
-                'Envelopes, metadata.dedupeTag, agent: dedupe tags and agent-* categories are reserved',
+                'Envelopes, metadata.dedupeTag, metadata.onActivityCard, agent: dedupe tags and agent-* categories are reserved',
             },
             400,
           );
