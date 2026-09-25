@@ -541,3 +541,62 @@ This is distinct from the dormant generic/mobile notification watch described ab
 Channel-specific `open-browser` links are handled by the desktop host. It verifies the requested loopback browser port against its owned Station before minting a launcher capability. These links carry an origin, never an operator credential or arbitrary redirect destination.
 
 Closing the desktop main window hides it to the tray while its owned backend and access watch continue. Explicit Quit remains the process/sidecar shutdown action.
+
+## Desktop OS alerts: one native consumer of the delivery feed
+
+The server's delivery router decides desktop OS alerts and queues them per
+surface: this computer's desktop app reads `local:desktop-<installationId>`,
+a desktop app paired to a remote Station reads `device:<id>`, both from
+`GET /api/notifications/deliveries?after=&epoch=` with the
+`X-Station-Desktop-Installation` header. Every entry has already passed focus
+presence, quiet hours, mutes and minimum urgency, and is redacted per the
+surface's `hideContent`. A reader shows what it reads and filters nothing.
+
+**The desktop host is the only reader (#2608).** The webview used to read the
+feed, and a window hidden in the tray suspends its page, so nothing alerted
+while hidden. `src-desktop/src/notification_feed.rs` now reads it on a host
+thread every 20 seconds (inside the server's 90-second lease), whatever the
+window is doing. The webview asks `notification_feed_native_consumer` before
+its first read; this host answers `true`, and the webview then never reads the
+feed and never posts from it (`src-ui/src/platform/native/deliveryFeed.ts`).
+The answer is fixed for the process, so the role never changes hands at
+runtime and the two can never both alert. A shell without the command answers
+`false` and the webview stays the reader, as before.
+
+- **Same surface, same credential.** The host reads the host-authorized active
+  Station with that profile's bearer — the authority the webview's own
+  requests use through `station_native_http_request` — so the server derives
+  the same surface. No new credential exists; with no authorized Station the
+  host reads nothing.
+- **Cursor and epoch** persist per Station origin in the app config directory
+  (`notification-delivery-cursors.json`), tagged with the surface the server
+  echoed; a cursor for another surface is not used, and a different epoch is
+  a restarted server whose answer is all new.
+- **Handoff across an upgrade.** An older build's webview kept its cursor in
+  localStorage. The new webview hands it to the host once
+  (`notification_feed_adopt_cursor`) and deletes its copy. The host adopts it
+  only when it has no cursor of its own for that Station, so it resumes
+  exactly where the webview stopped: nothing between is lost, nothing before
+  repeats. Without either cursor the host reads without applying for up to 30
+  seconds, then starts from the cursor its first read saw, so entries after
+  that read still alert and an already-alerted backlog is not replayed.
+- **Focus.** No OS alert while the main window is focused and visible (the
+  in-app toast shows it); the entry is consumed.
+- **Retract** closes the OS notification the host posted for that id where the
+  pinned backend can: Linux (D-Bus `CloseNotification`). notify-rust 4.18's
+  macOS (NSUserNotificationCenter) and Windows handles expose no close, so
+  there a retract only stops an alert not yet posted (a retract later in the
+  same read). tauri-plugin-notification 2.4.0 cannot remove a delivered
+  notification on any desktop platform either.
+- **Click** focuses the app and hands the entry's `link` to the main webview:
+  the host keeps it for 60 seconds and emits `station://notification-open`,
+  and the webview takes it once (`take_notification_open_link`) and
+  navigates. The link must be an in-app path (`/…`, optional query; no
+  scheme, `//host`, backslash, fragment or whitespace), checked natively and
+  again in the webview (`src-ui/src/lib/notificationOpen.ts`). Anything else
+  opens the app where it was; no URL outside the app is ever opened.
+
+The legacy `notification_watch.rs` is not this: it posts raw titles and
+ignores envelopes, `hideContent`, quiet hours and mutes. It stays dormant.
+Blocking-category alerts (`blockingAlert.ts`) still come from the webview and
+so still pause while it is hidden.
