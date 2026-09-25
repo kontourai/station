@@ -12,6 +12,7 @@ import {
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
@@ -28,6 +29,7 @@ import { PushSigningKeyStore } from '../../services/notifications/push-signing-k
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
@@ -456,6 +458,12 @@ export function configureRuntimeSupportServices(
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
+              // An external monitor acts for no request; this Station's
+              // operator configured it and owns (reads) the session it
+              // dispatches, but the monitored source drives it, so it acts
+              // for no one.
+              ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,

@@ -123,8 +123,11 @@ const ORIGIN_PROBE_PATH =
 // over a fake ownership store, configured as a personal host is.
 const OWNERS: Record<string, string | undefined> = {
   'session-a': 'human:test:alice',
-  'session-b': 'released-os-alias',
+  'session-b': 'human:test:bob',
   'session-c': undefined,
+  // A row whose recorded owner is an OS display alias rather than a
+  // principal id: it names only itself, never the local operator.
+  'session-d': 'released-os-alias',
 };
 const sessionAuthorization = new SessionAuthorization({
   eventStore: {
@@ -133,8 +136,6 @@ const sessionAuthorization = new SessionAuthorization({
       unattributedAgent: false,
     }),
   } as never,
-  ownerlessSessionAccess: 'single-user-compat',
-  legacyPersonalOwner: 'released-os-alias',
 });
 // Session start metadata and projects as the production sources read them;
 // the resolver is the production composition over those sources.
@@ -511,7 +512,7 @@ describe('station-control verified caller (REST side)', () => {
     expect(response.caller).toEqual(SESSION_A);
   });
 
-  test('the principal comes from the session ownership record: forged identity headers are ignored, a legacy owner and an ownerless personal session map to the local operator with their derivation named', async () => {
+  test('the principal comes from the session ownership record: forged identity headers are ignored, an alias-owned row names only its alias, and an ownerless session acts for no one', async () => {
     const a = mintStationControlMcpToken('session-a', 'url-token');
     const forged = await callerRoute({
       ...internalHeaders(),
@@ -522,16 +523,16 @@ describe('station-control verified caller (REST side)', () => {
     expect(forged.caller).toEqual(SESSION_A);
 
     const b = mintStationControlMcpToken('session-b', 'url-token');
-    const legacy = await callerRoute({
+    const recorded = await callerRoute({
       ...internalHeaders(),
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: b.token,
     });
-    expect(legacy.caller).toMatchObject({
+    expect(recorded.caller).toMatchObject({
       sessionId: 'session-b',
       principal: {
-        id: LOCAL_OPERATOR_PRINCIPAL_ID,
-        source: 'legacy-personal-owner',
-        elevationEligible: false,
+        id: 'human:test:bob',
+        source: 'session-owner',
+        elevationEligible: true,
       },
       // The delegation-scoped slug wins over the plain one.
       localProjectId: 'local-project-b',
@@ -539,20 +540,30 @@ describe('station-control verified caller (REST side)', () => {
       projectSlug: 'project-b',
     });
 
+    // No alias-to-operator bridge: the alias is the recorded owner, and it
+    // is not the local operator.
+    const d = mintStationControlMcpToken('session-d', 'url-token');
+    const aliasOwned = await callerRoute({
+      ...internalHeaders(),
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: d.token,
+    });
+    expect(aliasOwned.caller).toMatchObject({
+      principal: {
+        id: 'released-os-alias',
+        source: 'session-owner',
+        elevationEligible: true,
+      },
+    });
+
     const c = mintStationControlMcpToken('session-c', 'url-token');
     const ownerless = await callerRoute({
       ...internalHeaders(),
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: c.token,
     });
+    // Nothing infers an owner: the caller carries no principal at all.
     expect(ownerless.caller).toEqual({
       sessionId: 'session-c',
       assurance: 'bearer-exposed',
-      // Names the operator by inference only: never eligible to elevate.
-      principal: {
-        id: LOCAL_OPERATOR_PRINCIPAL_ID,
-        source: 'ownerless-single-operator',
-        elevationEligible: false,
-      },
     });
   });
 
@@ -685,9 +696,9 @@ describe('station-control verified caller (stdio child path)', () => {
       sessionId: 'session-b',
       assurance: 'bearer-exposed',
       principal: {
-        id: LOCAL_OPERATOR_PRINCIPAL_ID,
-        source: 'legacy-personal-owner',
-        elevationEligible: false,
+        id: 'human:test:bob',
+        source: 'session-owner',
+        elevationEligible: true,
       },
       localProjectId: 'local-project-b',
       projectIdSource: 'slug-lookup',
@@ -1064,7 +1075,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
     });
   });
 
-  test('a bound caller whose principal is only inferred (ownerless session) is unattributed', async () => {
+  test('a bound caller of an ownerless session acts for no one: unattributed', async () => {
     await inProcessCall('session-c', { delegate: true });
     expect(delegatedInput()).toMatchObject({
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
