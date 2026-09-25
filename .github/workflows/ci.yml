@@ -165,6 +165,14 @@ jobs:
         id: fast_ci
         env:
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+          # station#2621: the typecheck slot default sizes from RAM alone
+          # (1 per 8 GiB) to protect SHARED dev hosts, so this 4 vCPU /
+          # ~15.6 GiB runner gets 2 slots and leaves half its CPUs idle
+          # through the 12-lane typecheck aggregate. One job per ephemeral VM
+          # has no sibling to protect. The heaviest lane peaks around 2.2 GB
+          # RSS, so 4 lanes fit. This is headroom: it does not explain the
+          # timed-out runs, which stalled inside the aggregate at low load.
+          STATION_TYPECHECK_SLOTS: '4'
         run: npm run ci:fast
 
       - name: Report contract-test changes for review
@@ -280,6 +288,10 @@ jobs:
       - name: Run isolated fork smoke
         env:
           STATION_CI_FAST_BASE: ${{ github.event.pull_request.base.sha }}
+          # See the "Run fast CI lane" step's comment above: this job runs on
+          # the same 4 vCPU / ~15.6 GiB `ubuntu-22.04` fleet, single job per
+          # ephemeral VM, so the same fix applies.
+          STATION_TYPECHECK_SLOTS: '4'
         run: npm run ci:fast
 
   full-regression:

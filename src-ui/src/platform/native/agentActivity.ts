@@ -20,6 +20,7 @@
  */
 
 import {
+  isNativePushSessionReference,
   NATIVE_PUSH_ANDROID_PACKAGES,
   type NativePushAndroidPackage,
   type NativePushRegistrationRequest,
@@ -368,4 +369,60 @@ export function localAgentActivityRegistrationStore(
       write(next);
     },
   };
+}
+
+/** Where a card tap lands: a route and query the navigator writes, never a URL. */
+export interface AgentActivitySessionTarget {
+  pathname: string;
+  params: Record<string, string>;
+}
+
+/**
+ * The navigation a card tap's route asks for (#2515), or null when it must
+ * be ignored: a route for another Station than the connected one (the phone
+ * may be paired with several), or an id or slug outside the contract
+ * grammar. The plugin validated it already; this is the web layer's own
+ * check, since the launcher activity is reachable by other apps. The target
+ * mirrors the Station's exact-session deep link
+ * (`resolveNotificationOpenHref`): the project route when the session has
+ * one, else the home route, with the chat dock open on the session.
+ */
+export function agentActivitySessionTarget(
+  route: unknown,
+  environmentId: string,
+): AgentActivitySessionTarget | null {
+  if (typeof route !== 'object' || route === null) return null;
+  const { stationId, sessionId, projectSlug } = route as Record<
+    string,
+    unknown
+  >;
+  if (stationId !== environmentId || !environmentId) return null;
+  if (!isNativePushSessionReference(sessionId)) return null;
+  if (projectSlug !== undefined && !isNativePushSessionReference(projectSlug))
+    return null;
+  return {
+    pathname: projectSlug
+      ? `/projects/${encodeURIComponent(projectSlug)}`
+      : '/',
+    params: { chat: sessionId, dock: 'open' },
+  };
+}
+
+/**
+ * Takes the pending card-tap route from the plugin and navigates to it when
+ * it passes {@link agentActivitySessionTarget}. Resolves whether it
+ * navigated. Taking clears the route either way, so a refused route is
+ * not retried.
+ */
+export async function openAgentActivityLaunchRoute(
+  adapter: Pick<NativePlatformAdapter, 'takeAgentActivityLaunchRoute'>,
+  environmentId: string,
+  navigate: (pathname: string, params?: Record<string, string | null>) => void,
+): Promise<boolean> {
+  const result = await adapter.takeAgentActivityLaunchRoute();
+  if (result.status !== 'ok') return false;
+  const target = agentActivitySessionTarget(result.value.route, environmentId);
+  if (!target) return false;
+  navigate(target.pathname, target.params);
+  return true;
 }
