@@ -32,6 +32,7 @@ import type {
   WebPushSubscription,
 } from '@kontourai/station-contracts';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -133,7 +134,11 @@ export function wireWebPushDelivery(
       const notification = message.data as unknown as Notification | undefined;
       if (
         !notification ||
-        !classifyNotificationCategory(notification.category)
+        !classifyNotificationCategory(notification.category) ||
+        // #2583: an enveloped record belongs to the delivery router, which
+        // applies audience, focus, quiet hours and `interrupt: 'silent'`.
+        // This legacy fan-out knows none of those, so it must not send it.
+        readNotificationEnvelope(notification) !== undefined
       ) {
         return;
       }

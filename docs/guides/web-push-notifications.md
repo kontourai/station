@@ -47,7 +47,9 @@ paired phone gets a push, and tapping it lands on the attention inbox
   to any category the attention-ranked outcome model classifies
   (`classifyNotificationCategory`, `@kontourai/station-shared/notification-priority`)
   — today that's `approval-request` (outcome `needs-input`) and `job-failure`
-  (outcome `failed`; station#1100). It fans out over every paired device's
+  (outcome `failed`; station#1100). A record carrying a readable
+  notification envelope (`metadata.envelope`, #2583 — agent notifications)
+  is skipped: the delivery router owns those. It fans out over every paired device's
   subscription, self-heals a 404/410 ("this subscription is gone") by
   clearing it, and catches everything — a push failure can never affect the
   in-app SSE/toast delivery path. `needs_input`/`review_pending` are polled
@@ -58,7 +60,7 @@ paired phone gets a push, and tapping it lands on the attention inbox
   title/body/deep-link/TTL:
   - **Ranking (AC1)**: when composing from more than one pending notification,
     the highest-outcome-priority one leads (approval/input > failed > running
-    > done, `NOTIFICATION_OUTCOME_PRIORITY`), ties broken by
+    > done > info, `NOTIFICATION_OUTCOME_PRIORITY`), ties broken by
     most-recently-updated. The live delivery path always composes from a
     single notification (the one that just fired) — ranking across
     everything else currently pending is deliberately not wired in (it risks
@@ -69,8 +71,8 @@ paired phone gets a push, and tapping it lands on the attention inbox
   - **Per-state TTL (AC2)**: the Web Push protocol TTL header (RFC 8030,
     `WebPushService.send`'s `ttlSeconds`) is sized per outcome —
     `needs-input`/`failed` ~24h (a user may legitimately ignore an approval
-    or a failure notice overnight), `running` ~2h, `done` ~15min
-    (`NOTIFICATION_TTL_MS`). The same TTL also defaults the *stored*
+    or a failure notice overnight), `running` ~2h, `done` ~15min, `info`
+    ~4h (#2583, agent informational notices) (`NOTIFICATION_TTL_MS`). The same TTL also defaults the *stored*
     `Notification.ttl` for a classifiable category
     (`NotificationService.schedule`), so an unresolved approval or job
     failure eventually expires out of the in-app inbox too, not just out of

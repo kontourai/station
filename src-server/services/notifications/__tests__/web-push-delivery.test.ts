@@ -314,3 +314,52 @@ describe('wireWebPushDelivery', () => {
     });
   });
 });
+
+describe('wireWebPushDelivery and enveloped notifications (#2583)', () => {
+  const AGENT_INFO_NOTIFICATION = {
+    ...APPROVAL_NOTIFICATION,
+    id: 'notification-agent-1',
+    source: 'agent',
+    category: 'agent-info',
+    title: 'Tests pass on fix-login',
+    priority: 'normal' as const,
+    metadata: {
+      sessionId: 'session-1',
+      envelope: {
+        v: 1,
+        source: { kind: 'agent', sessionId: 'session-1', assurance: 'bound' },
+        audience: { kind: 'session-readers', sessionId: 'session-1' },
+        urgency: 'info',
+        interrupt: 'silent',
+      },
+    },
+  };
+
+  async function sendsFor(notification: Record<string, unknown>) {
+    const eventBus = new EventBus();
+    const send = vi
+      .fn<WebPushService['send']>()
+      .mockResolvedValue('sent' as WebPushSendResult);
+    wireWebPushDelivery(
+      eventBus,
+      fakeDevicePairing([
+        { deviceId: 'device-1', subscription: subscription('a') },
+      ]),
+      { send },
+      quietLogger(),
+    );
+    eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification);
+    await flushMicrotasks();
+    return send.mock.calls.length;
+  }
+
+  test('an enveloped record is left to the delivery router: no legacy push, even for a classified category', async () => {
+    expect(await sendsFor(AGENT_INFO_NOTIFICATION)).toBe(0);
+  });
+
+  test('control: the same record without its envelope is pushed, so the skip is the envelope', async () => {
+    const { envelope: _envelope, ...metadata } =
+      AGENT_INFO_NOTIFICATION.metadata;
+    expect(await sendsFor({ ...AGENT_INFO_NOTIFICATION, metadata })).toBe(1);
+  });
+});
