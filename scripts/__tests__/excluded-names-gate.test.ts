@@ -10,20 +10,21 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { EXCLUDED_NAMES_PATTERN } from '../excluded-names-gate.mjs';
 
 const gate = fileURLToPath(
   new URL('../excluded-names-gate.mjs', import.meta.url),
 );
 const NAME = ['T', '3'].join('');
+const makeTempDir = trackTempDirs();
 
 function scratchRepo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'station-excluded-names-'));
+  const dir = makeTempDir('station-excluded-names-');
   const git = (...args: string[]) =>
     spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true });
   git('init', '-q');
@@ -85,7 +86,7 @@ describe('excluded-names gate', () => {
   });
 
   it('fails closed when it cannot scan', () => {
-    const notARepo = mkdtempSync(join(tmpdir(), 'station-excluded-names-'));
+    const notARepo = makeTempDir('station-excluded-names-');
     const result = runGate(notARepo);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('could not scan');
