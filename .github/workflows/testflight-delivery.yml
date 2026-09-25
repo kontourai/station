@@ -77,6 +77,9 @@ jobs:
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      # The Live Activity widget extension's App Store profile (#2513). Only
+      # the Beta and Nightly environments hold one; Stable builds no extension.
+      APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
       STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
@@ -152,11 +155,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios }
       - run: brew install xcodegen libimobiledevice cocoapods
+      - name: Resolve whether this channel builds the Live Activity
+        id: live_activity
+        run: |
+          set -euo pipefail
+          # The channel table is the one place a channel names its Live
+          # Activity widget extension (#2513): Beta and Nightly embed one,
+          # Stable does not. Both halves follow this answer: the plugin's
+          # STATION_IOS_LIVE_ACTIVITY and the extension target in the spec.
+          # A TestFlight build always talks to production APNs.
+          extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
+          if [ -n "$extension_bundle_id" ]; then enabled=true; else enabled=false; fi
+          { echo "enabled=$enabled"; echo "extension_bundle_id=$extension_bundle_id"; echo "aps_environment=production"; } >> "$GITHUB_OUTPUT"
       - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
           for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
+          if [ '${{ steps.live_activity.outputs.enabled }}' = true ]; then
+            test -n "$APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64" || { echo "Missing required protected channel value: APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64" >&2; exit 1; }
+          fi
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
       - run: STATION_BUILD_BRANCH="$AUTHORITY_REF" npm run build:native-client
       - name: Generate the exact channel identity overlay
@@ -251,6 +269,23 @@ jobs:
           profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
           [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
           cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+      - name: Import the Live Activity extension profile bound to this channel
+        if: steps.live_activity.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          extension_bundle_id='${{ steps.live_activity.outputs.extension_bundle_id }}'
+          test "$extension_bundle_id" = '${{ steps.app_store.outputs.bundle_id }}.AgentActivity'
+          extension_profile="$RUNNER_TEMP/station-ios-agent-activity.mobileprovision"
+          extension_metadata="$RUNNER_TEMP/station-ios-agent-activity-profile.json"
+          printf '%s' "$APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$extension_profile"
+          node scripts/check-ios-store-profile.mjs --station "$extension_profile" --label APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$extension_bundle_id" > "$extension_metadata"
+          # The build writes aps-environment into the app's entitlements, and
+          # codesign refuses it against a profile without push only after the
+          # full build: prove the app profile grants it now.
+          node scripts/check-ios-store-profile.mjs --station "$RUNNER_TEMP/station-ios.mobileprovision" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}' --expected-aps-environment '${{ steps.live_activity.outputs.aps_environment }}'
+          extension_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$extension_metadata")
+          [[ "$extension_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          cp "$extension_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$extension_uuid.mobileprovision"
       - name: Prove headless codesign access before the expensive build
         timeout-minutes: 2
         run: |
@@ -262,6 +297,10 @@ jobs:
           rm -f "$canary"
       - name: Regenerate the Xcode project with the manual signing template
         working-directory: src-desktop
+        env:
+          LIVE_ACTIVITY: ${{ steps.live_activity.outputs.enabled }}
+          APP_BUNDLE_ID: ${{ steps.app_store.outputs.bundle_id }}
+          APS_ENVIRONMENT: ${{ steps.live_activity.outputs.aps_environment }}
         run: |
           # Tauri renders `bundle.iOS.template` only while `tauri ios init`
           # writes project.yml; `tauri ios build` reuses whatever project
@@ -294,11 +333,31 @@ jobs:
           # stage it again from the same authority before building.
           (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
           test -s gen/apple/assets/station-build.json
+          live_info_plist="$RUNNER_TEMP/station-ios-live-activity-Info.plist"
+          live_export_options="$RUNNER_TEMP/station-ios-export-options.plist"
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            # The Live Activity (#2513): add the widget extension target, its
+            # embed and the app's push and keychain groups to the spec, then
+            # sign the extension with its own profile. The spec change must
+            # precede xcodegen; the Info.plist copy of the APNs environment is
+            # written to a scratch copy of the preserved plist, because
+            # xcodegen rewrites Info.plist and the preserved one is restored
+            # and diff-checked below before this copy replaces it.
+            ditto "$preserved/station_iOS/Info.plist" "$live_info_plist"
+            node ../scripts/ensure-ios-agent-activity-extension.mjs gen/apple/project.yml --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --info-plist "$live_info_plist"
+            node ../scripts/ios-store-signing-config.mjs agent-activity --profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --project gen/apple/project.yml --export-options-output "$live_export_options"
+          fi
           # Every source directory the spec names exists now, so regenerate
           # the Xcode project from the amended spec and prove the manifest
           # reached it; `tauri ios build` reuses this project as is.
           xcodegen generate --spec gen/apple/project.yml --project gen/apple
           grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            grep -Fq 'StationAgentActivity.appex' gen/apple/station.xcodeproj/project.pbxproj
+          elif grep -Fq 'StationAgentActivity' gen/apple/station.xcodeproj/project.pbxproj; then
+            echo 'A channel without a Live Activity extension generated one' >&2
+            exit 1
+          fi
           # xcodegen rewrites `info.path` (station_iOS/Info.plist) from the
           # spec's `info.properties`, and the Tauri-rendered spec carries no
           # usage descriptions, so the preserved Info.plist must be restored
@@ -307,20 +366,45 @@ jobs:
           # path, so restoring its bytes is enough.
           ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            # Only now, after the preserved files are proven unchanged: the
+            # preserved Info.plist plus StationApsEnvironment, and export
+            # options naming both bundles' profiles (see the build step).
+            ditto "$live_info_plist" gen/apple/station_iOS/Info.plist
+            test "$(/usr/libexec/PlistBuddy -c 'Print :StationApsEnvironment' gen/apple/station_iOS/Info.plist)" = "$APS_ENVIRONMENT"
+            ditto "$live_export_options" gen/apple/ExportOptions.plist
+            plutil -lint gen/apple/ExportOptions.plist
+          fi
           for key in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription; do
             grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist
           done
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
+        env:
+          LIVE_ACTIVITY: ${{ steps.live_activity.outputs.enabled }}
         run: |
-          IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station-ios.mobileprovision" | tr -d '\n')"
-          export IOS_MOBILE_PROVISION
-          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            # Tauri's export options replace gen/apple/ExportOptions.plist's
+            # provisioningProfiles with one naming only the app whenever
+            # IOS_MOBILE_PROVISION is set, and a manual-signing export then
+            # refuses the extension. Leave it unset: the project already names
+            # both profiles and the export options written above list both.
+            grep -Fq '<key>${{ steps.live_activity.outputs.extension_bundle_id }}</key>' gen/apple/ExportOptions.plist
+          else
+            IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station-ios.mobileprovision" | tr -d '\n')"
+            export IOS_MOBILE_PROVISION
+          fi
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT, { liveActivity: process.env.LIVE_ACTIVITY === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          if [ "$LIVE_ACTIVITY" = true ]; then grep -Fq 'STATION_IOS_LIVE_ACTIVITY' "$RUNNER_TEMP/station-ios-mobile-env.toml"; fi
           rm -rf gen/apple/build
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"
           STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify IPA identity, profile and package contents
         id: package
+        env:
+          LIVE_ACTIVITY: ${{ steps.live_activity.outputs.enabled }}
+          EXTENSION_BUNDLE_ID: ${{ steps.live_activity.outputs.extension_bundle_id }}
+          APS_ENVIRONMENT: ${{ steps.live_activity.outputs.aps_environment }}
         run: |
           ipa=$(find src-desktop/gen/apple/build -type f -name '*.ipa' -print)
           test "$(printf '%s\n' "$ipa" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
@@ -348,9 +432,37 @@ jobs:
           entitlements_json="$RUNNER_TEMP/station-ios-entitlements.json"
           codesign -d --entitlements :- "$app" 2>/dev/null > "$entitlements"
           plutil -convert json -o "$entitlements_json" "$entitlements"
-          node scripts/ios-exported-entitlements.mjs "$entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' > provider-receipts/exported-ios-entitlements.json
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            node scripts/ios-exported-entitlements.mjs "$entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' --live-activity "$APS_ENVIRONMENT" > provider-receipts/exported-ios-entitlements.json
+          else
+            node scripts/ios-exported-entitlements.mjs "$entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' > provider-receipts/exported-ios-entitlements.json
+          fi
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Info.plist")" = "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).productName')"
           node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
+          appex="$app/PlugIns/StationAgentActivity.appex"
+          if [ "$LIVE_ACTIVITY" = true ]; then
+            # The Live Activity widget (#2513) is the app's only extension,
+            # carries the app's versions, is signed with the extension profile
+            # imported for this channel, and holds only the shared keychain
+            # group; the app carries push for the environment it reports.
+            test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = 1
+            test -d "$appex"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$appex/Info.plist")" = "$EXTENSION_BUNDLE_ID"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$appex/Info.plist")" = '${{ inputs.marketing_version }}'
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$appex/Info.plist")" = '${{ inputs.bundle_version }}'
+            test "$(/usr/libexec/PlistBuddy -c 'Print :StationApsEnvironment' "$app/Info.plist")" = "$APS_ENVIRONMENT"
+            node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}' --expected-aps-environment "$APS_ENVIRONMENT"
+            extension_embedded="$RUNNER_TEMP/station-ios-agent-activity-embedded.json"
+            node scripts/check-ios-store-profile.mjs --station "$appex/embedded.mobileprovision" --label 'exported IPA Live Activity embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$EXTENSION_BUNDLE_ID" > "$extension_embedded"
+            node --input-type=module -e 'import {readFileSync} from "node:fs"; const uuid=(path)=>JSON.parse(readFileSync(path,"utf8")).uuid; if(uuid(process.argv[1])!==uuid(process.argv[2])) process.exit(1)' "$extension_embedded" "$RUNNER_TEMP/station-ios-agent-activity-profile.json"
+            extension_entitlements="$RUNNER_TEMP/station-ios-agent-activity-entitlements.plist"
+            extension_entitlements_json="$RUNNER_TEMP/station-ios-agent-activity-entitlements.json"
+            codesign -d --entitlements :- "$appex" 2>/dev/null > "$extension_entitlements"
+            plutil -convert json -o "$extension_entitlements_json" "$extension_entitlements"
+            node scripts/ios-exported-entitlements.mjs "$extension_entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' --agent-activity-extension > provider-receipts/exported-ios-agent-activity-entitlements.json
+          else
+            test ! -e "$appex"
+          fi
           codesign --verify --deep --strict --verbose=2 "$app"
           node scripts/check-mobile-package.mjs ios --root "$verification_dir/Payload"
           mkdir -p release-assets

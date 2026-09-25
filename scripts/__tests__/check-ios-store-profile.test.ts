@@ -55,6 +55,42 @@ describe('App Store iOS provisioning-profile gate', () => {
     ).toThrow('does not match expected ABCDE12345.io.kontourai.station');
   });
 
+  test('requires the APNs environment a push-enabled build writes, when asked', () => {
+    const profile = fixture('app-store-realistic.plist');
+    const options = {
+      expectedTeam: 'ABCDE12345',
+      expectedBundleIdentifier: 'ai.kontour.station',
+      now: new Date('2026-08-27T00:00:00Z'),
+    };
+    expect(
+      inspectAppStoreDistributionProfile(profile, {
+        ...options,
+        expectedApsEnvironment: 'production',
+      }),
+    ).toMatchObject({ distribution: 'app-store-connect' });
+    expect(() =>
+      inspectAppStoreDistributionProfile(profile, {
+        ...options,
+        expectedApsEnvironment: 'development',
+      }),
+    ).toThrow('aps-environment production does not match expected development');
+    const withoutPush = profile.replace(
+      /\s*<key>aps-environment<\/key>\s*<string>production<\/string>/,
+      '',
+    );
+    expect(withoutPush).not.toContain('aps-environment');
+    expect(() =>
+      inspectAppStoreDistributionProfile(withoutPush, {
+        ...options,
+        expectedApsEnvironment: 'production',
+      }),
+    ).toThrow('aps-environment (absent) does not match expected production');
+    // Without the option, a profile without push is still acceptable.
+    expect(
+      inspectAppStoreDistributionProfile(withoutPush, options),
+    ).toMatchObject({ distribution: 'app-store-connect' });
+  });
+
   test('rejects missing, invalid, future, and post-expiry profile creation dates', () => {
     const profile = fixture('app-store-realistic.plist');
     const options = {

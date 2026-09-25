@@ -171,8 +171,13 @@ export function assertAppStoreDistributionProfile(plist, label = 'profile') {
  *   label?: string,
  *   expectedTeam?: string,
  *   expectedBundleIdentifier?: string,
+ *   expectedApsEnvironment?: string,
  *   now?: Date,
  * }} [options]
+ *
+ * `expectedApsEnvironment` requires the profile to grant exactly that APNs
+ * environment: an app whose signed entitlements name `aps-environment` fails
+ * codesign against a profile without push, and only after the full build.
  */
 export function inspectAppStoreDistributionProfile(
   plist,
@@ -180,6 +185,7 @@ export function inspectAppStoreDistributionProfile(
     label = 'profile',
     expectedTeam,
     expectedBundleIdentifier,
+    expectedApsEnvironment,
     now = new Date(),
   } = {},
 ) {
@@ -262,6 +268,14 @@ export function inspectAppStoreDistributionProfile(
       `${label} application-identifier ${applicationIdentifier} does not match expected ${expectedApplicationIdentifier}.`,
     );
   }
+  if (
+    expectedApsEnvironment !== undefined &&
+    profile.Entitlements['aps-environment'] !== expectedApsEnvironment
+  ) {
+    throw new Error(
+      `${label} aps-environment ${profile.Entitlements['aps-environment'] ?? '(absent)'} does not match expected ${expectedApsEnvironment}; regenerate the profile after enabling Push Notifications on the App ID.`,
+    );
+  }
   return {
     distribution: 'app-store-connect',
     name,
@@ -307,6 +321,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const labelIndex = process.argv.indexOf('--label');
   const teamIndex = process.argv.indexOf('--expected-team');
   const bundleIndex = process.argv.indexOf('--expected-bundle-id');
+  const apsIndex = process.argv.indexOf('--expected-aps-environment');
   const profilePath = process.argv[profileIndex + 1];
   if (profileIndex < 0 || !profilePath)
     throw new Error('Expected --station <path>');
@@ -315,18 +330,22 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const expectedTeam = teamIndex < 0 ? undefined : process.argv[teamIndex + 1];
   const expectedBundleIdentifier =
     bundleIndex < 0 ? undefined : process.argv[bundleIndex + 1];
+  const expectedApsEnvironment =
+    apsIndex < 0 ? undefined : process.argv[apsIndex + 1];
   if (
     (teamIndex >= 0 && !expectedTeam) ||
-    (bundleIndex >= 0 && !expectedBundleIdentifier)
+    (bundleIndex >= 0 && !expectedBundleIdentifier) ||
+    (apsIndex >= 0 && !expectedApsEnvironment)
   )
     throw new Error(
-      'Expected values after --expected-team and --expected-bundle-id',
+      'Expected values after --expected-team, --expected-bundle-id and --expected-aps-environment',
     );
   console.log(
     JSON.stringify(
       verifyAppStoreProvisioningProfile(profilePath, label, {
         expectedTeam,
         expectedBundleIdentifier,
+        expectedApsEnvironment,
       }),
     ),
   );

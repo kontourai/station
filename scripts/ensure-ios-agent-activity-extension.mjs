@@ -8,12 +8,15 @@
 //
 // This is the project half of the feature switch; STATION_IOS_LIVE_ACTIVITY=1
 // (plugins/agent-activity/build.rs) is the plugin half, and a build enables
-// both or neither. The committed gen/apple spec carries NEITHER, so no
-// existing build path (CI simulator builds, `build:ios:simulator`,
-// `tauri ios dev`, a local App Store export, TestFlight) embeds an extension
-// or needs provisioning for one. An enabled build runs this on the rendered
-// spec, then `xcodegen generate`, and needs an App ID and profile for
-// `<app bundle id>.AgentActivity` plus push on the app (#2513 slice D).
+// both or neither. The committed gen/apple spec carries NEITHER, so the
+// local and CI simulator builds, `build:ios:simulator`, `tauri ios dev` and a
+// local App Store export embed no extension and need no provisioning for one.
+// The TestFlight delivery enables both for the channels whose table entry
+// names an extension (Beta and Nightly; scripts/ios-testflight-channel.mjs):
+// it runs this on the re-rendered spec, signs the extension target
+// (ios-store-signing-config.mjs agent-activity), then `xcodegen generate`,
+// with an App Store profile for `<app bundle id>.AgentActivity` and push on
+// the app (#2513 slice D).
 //
 // `--aps-environment` names the APNs environment once and writes it to both
 // places that must agree: the app's `aps-environment` entitlement and the
