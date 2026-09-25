@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { CheckGlyph, MicGlyph } from '../../components/icons/Glyph';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigation } from '../../contexts/NavigationContext';
@@ -10,6 +11,11 @@ import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { NotificationSoundSettings } from './NotificationSoundSettings';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
+
+// #2586: Station-wide delivery preferences; its SDK queries load with it.
+const NotificationDeliverySettings = lazy(
+  () => import('./NotificationDeliverySettings'),
+);
 
 // The `key` literals here trip gitleaks' generic-api-key rule, and the
 //gitleaks.toml allowlist for this file only masks identifiers matching
@@ -241,6 +247,9 @@ export function NotificationsSection({ apiBase }: { apiBase: string }) {
         {/* Native (FCM) delivery to the Android app. Independent of the browser
             push switch above, which a WebView cannot use. */}
         <AgentActivitySetting />
+        <Suspense fallback={null}>
+          <NotificationDeliverySettings />
+        </Suspense>
         <NotificationSoundSettings />
         <button
           type="button"

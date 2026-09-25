@@ -167,6 +167,9 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // only their own records — no leaf here reaches another principal.
   '/api/me',
   '/api/mobile-devices',
+  // #2586: notification delivery preferences. Both leaves are explicit
+  // operate-tier rules below.
+  '/api/notifications',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -373,6 +376,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       prefix,
       exact: true,
       scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  // #2586: reading the preferences discloses which projects and agents a
+  // person muted and their devices' ids; writing them decides what may
+  // interrupt every device. Both sit on the operate tier.
+  ...(['GET', 'PUT'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/notifications/preferences:${method.toLowerCase()}`,
+      method,
+      prefix: '/api/notifications/preferences',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       origin: 'explicit',
     }),
   ),

@@ -1134,6 +1134,13 @@ export {
   useFeaturePreviewsQuery,
   useUpdateFeaturePreviewMutation,
 } from './query-domains/featurePreviews.js';
+export {
+  fetchNotificationPreferences,
+  type NotificationPreferencesV1,
+  updateNotificationPreferences,
+  useNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+} from './query-domains/notificationPreferences.js';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,

@@ -378,6 +378,7 @@ import type { DeviceToolchainService } from '../../services/devices/toolchain/de
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -699,6 +700,7 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -4028,6 +4030,7 @@ export class StationRuntime {
       pluginDraftService,
       deviceHosts,
       agentActivityPublisher,
+      notificationDeliveryRouter,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4139,6 +4142,7 @@ export class StationRuntime {
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
+    this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4634,6 +4638,8 @@ export class StationRuntime {
       this.deviceSessions = undefined;
       await this.agentActivityPublisher?.stop();
       this.agentActivityPublisher = undefined;
+      this.notificationDeliveryRouter?.stop();
+      this.notificationDeliveryRouter = undefined;
     } catch (error) {
       failures.push(error);
     }

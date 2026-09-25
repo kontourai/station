@@ -248,6 +248,7 @@ import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
+import { createNotificationPreferencesRoutes } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -429,6 +430,7 @@ import { StationKitObservabilityRegistry } from '../../services/kits/kit-observa
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -810,6 +812,8 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
   agentActivityPublisher: AgentActivityPublisher;
+  /** #2586: the runtime stops it (and its escalation timers) on shutdown. */
+  notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -5209,6 +5213,8 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    notificationPreferences,
+    notificationDeliveryRouter,
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
@@ -5515,6 +5521,10 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route(
+    '/api/notifications',
+    createNotificationPreferencesRoutes(notificationPreferences),
+  );
+  context.app.route(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
       readAuthorityForRequest,
@@ -5629,6 +5639,7 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     agentActivityPublisher,
+    notificationDeliveryRouter,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,
