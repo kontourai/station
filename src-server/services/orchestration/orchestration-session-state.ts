@@ -36,6 +36,7 @@ import {
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
@@ -282,9 +283,7 @@ function foldFirstSendOutcome<
 >(folded: L, outcome: FirstSendOutcome | undefined): L {
   if (
     !outcome ||
-    folded.lifecycleState === 'failed' ||
-    folded.lifecycleState === 'completed' ||
-    folded.lifecycleState === 'canceled'
+    sessionLifecycleOutcome(folded.lifecycleState) !== undefined
   ) {
     return folded;
   }
@@ -2008,9 +2007,10 @@ function deriveAgentRunStatus(options: {
         //
         // `isTerminalAgentRunStatus` is the SAME predicate
         // `deriveLifecycleTransition` expresses as
-        // `isSessionLifecycleStateStopped(from)`; the two folds must answer
-        // this event identically or they diverge exactly as archive#3451/#3581
-        // catalogue.
+        // `isSessionLifecycleStateAtRest(from)` (#2540: an `idle` session's
+        // finished turn is a completed run, via `sessionLifecycleOutcome`);
+        // the two folds must answer this event identically or they diverge
+        // exactly as archive#3451/#3581 catalogue.
         if (status && isTerminalAgentRunStatus(status)) break;
         const impliedFailed =
           !status &&
@@ -2055,10 +2055,7 @@ function deriveAgentRunStatus(options: {
 function agentRunStatusFromSessionState(
   state: SessionLifecycleState | undefined,
 ): AgentRunStatus | null {
-  if (state === 'canceled') return 'cancelled';
-  if (state === 'completed') return 'completed';
-  if (state === 'failed') return 'failed';
-  return null;
+  return state ? (sessionLifecycleOutcome(state) ?? null) : null;
 }
 
 function isTerminalAgentRunStatus(status: AgentRunStatus): boolean {

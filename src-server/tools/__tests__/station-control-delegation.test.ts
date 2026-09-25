@@ -2454,7 +2454,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         session: baseSession,
         events: completedTurn,
       }),
-    ).toMatchObject({ lifecycleState: 'completed' });
+    ).toMatchObject({ lifecycleState: 'idle' });
     expect(
       projectSessionLifecycle({
         session: baseSession,

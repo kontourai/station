@@ -228,6 +228,23 @@ aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
 
+Muse through `muse serve` (#2452). The Station runtime drives each Muse
+session through one `muse serve` (MSP) host, and everything above about
+`muse exec` describes its fallback: a session whose host cannot be used (no
+`serve` subcommand, a failed handshake, a protocol schema Station has not
+verified, or a host that applied a different approval mode than requested)
+runs on exec and publishes a `muse-serve-unavailable` warning, because on
+that path no approval can reach Station. On serve, a Station turn ends at
+Muse's own terminal (a `cancelled` terminal nobody in Station asked for is
+`finishReason: 'cancelled'`, never `stop`); the follow-up turn Muse starts
+after background work is adopted as a provider turn as above; tool approvals,
+a workflow subagent's included, are `request.opened` events (attributed to
+the child by `payload.childWork`), resolved from Muse's own
+`approval/resolved`. Muse never expires an unanswered approval, so Station
+declines one after 30 minutes (`muse-approval-expired`) and resolves it
+`expired`. Workflow subagents are `child-work.updated` deltas, and an exec
+session reports its child work `not-reported`.
+
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build

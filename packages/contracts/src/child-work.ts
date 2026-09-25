@@ -18,6 +18,11 @@
  * nothing is running".
  */
 
+import {
+  isSessionLifecycleState,
+  sessionLifecycleOutcome,
+} from './session-lifecycle.js';
+
 export const CHILD_WORK_STATUSES = [
   'running',
   'completed',
@@ -553,18 +558,14 @@ export interface DelegateChildWorkSource {
 function delegateTerminalStatus(
   lifecycleState: string | undefined,
 ): ChildWorkTerminalStatus {
-  switch (lifecycleState) {
-    case 'completed':
-      return 'completed';
-    case 'failed':
-      return 'failed';
-    case 'canceled':
-      return 'cancelled';
-    default:
-      // No open turn and no terminal lifecycle: nothing observed says how
-      // the child ended.
-      return 'unresolved';
-  }
+  // The one outcome mapping (#2540): a delegate whose turn finished rests
+  // `idle`, as completed as the terminal `completed`. No open turn and no
+  // recorded outcome: nothing observed says how the child ended.
+  return (
+    (isSessionLifecycleState(lifecycleState) &&
+      sessionLifecycleOutcome(lifecycleState)) ||
+    'unresolved'
+  );
 }
 
 /**
