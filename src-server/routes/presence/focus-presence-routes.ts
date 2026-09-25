@@ -14,7 +14,7 @@ import {
   FOCUS_STATES,
   type FocusState,
 } from '@kontourai/station-contracts/presence';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type {
   FocusPresence,
@@ -29,7 +29,17 @@ export interface FocusPresenceRouteDeps {
   readonly identifyDevice: (
     credential: string,
   ) => { readonly id: string; readonly kind?: string } | null;
+  /**
+   * The canonical request principal id for this request (the runtime passes
+   * its one orchestration principal resolver). Throwing means the caller has
+   * no resolvable person, and the report is refused.
+   */
+  readonly resolvePrincipalId: (c: Context) => string;
 }
+
+type UnattributedReporter =
+  | { readonly kind: 'device'; readonly deviceId: string }
+  | { readonly kind: 'local'; readonly clientSessionId: string };
 
 function isFocusState(value: unknown): value is FocusState {
   return (
@@ -42,7 +52,7 @@ function resolveFocusReporter(
   request: Request,
   clientSessionId: string,
   identifyDevice: FocusPresenceRouteDeps['identifyDevice'],
-): FocusReporter | undefined {
+): UnattributedReporter | undefined {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (principal?.kind !== 'credential') return undefined;
   if (principal.authority === 'operator-credential') {
@@ -83,15 +93,31 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
     ) {
       return c.json({ error: 'invalid_request' }, 400);
     }
+    // Presence elsewhere (SSE liveness, stream logs) keys on this header. A
+    // report naming a different document than the header could never be
+    // joined to it, so refuse the mismatch rather than store two identities.
+    const header = c.req.header('x-station-client-session');
+    if (header?.toLowerCase() !== clientSessionId.toLowerCase()) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
 
-    const reporter = resolveFocusReporter(
+    const surface = resolveFocusReporter(
       c.req.raw,
       clientSessionId.toLowerCase(),
       deps.identifyDevice,
     );
-    if (!reporter) {
+    let principalId: string | undefined;
+    if (surface) {
+      try {
+        principalId = deps.resolvePrincipalId(c);
+      } catch {
+        principalId = undefined;
+      }
+    }
+    if (!surface || !principalId) {
       return c.json({ error: 'focus_surface_unavailable' }, 403);
     }
+    const reporter: FocusReporter = { ...surface, principalId };
     const result = deps.presence.report(
       reporter,
       clientSessionId.toLowerCase(),

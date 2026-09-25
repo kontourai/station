@@ -14,11 +14,13 @@ import {
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
+import { createFocusPresenceRoutes } from '../../routes/presence/focus-presence-routes.js';
 import {
   PAIRING_SCOPE_ROUTE_TABLE,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 
 const OPERATOR_CREDENTIAL = 'operator-credential-full-authority';
@@ -386,6 +388,77 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
   // read-only and a standard credential (`pairing-route-scopes.ts`'s
   // `PAIRING_SCOPE_FAMILY_INHERITED_LEAVES` entry records the reconciled
   // reasoning for staying at the family default rather than a raised tier).
+  it('focus presence (#2585): a read-only paired device reports focus through the real gate and route, but gets no other /api/presence write', async () => {
+    const TAB = '0f0e0d0c-0b0a-4908-8706-050403020100';
+    const app = new Hono<{ Bindings: TestBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+        trace() {},
+        fatal() {},
+        child() {
+          return this;
+        },
+        setLevel() {},
+        getLevel() {
+          return 'info' as const;
+        },
+      },
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (candidate) => candidate === READ_ONLY_CREDENTIAL,
+        resolveGrantedScope: (candidate) => scopeFor(candidate),
+        resolveCredentialAuthority: () => 'device-credential',
+        resolveCredentialDeviceId: () => 'read-only-phone',
+        allowedOrigins: [],
+      },
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    const presence = new FocusPresence();
+    app.route(
+      '/api/presence',
+      createFocusPresenceRoutes({
+        presence,
+        identifyDevice: (credential) =>
+          credential === READ_ONLY_CREDENTIAL
+            ? { id: 'read-only-phone', kind: 'device' }
+            : null,
+        resolvePrincipalId: () => 'human:read-only-owner',
+      }),
+    );
+    app.all('*', (c) => c.json({ reached: true }));
+    const post = (path: string) =>
+      app.request(
+        path,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${READ_ONLY_CREDENTIAL}`,
+            'Content-Type': 'application/json',
+            'X-Station-Client-Session': TAB,
+          },
+          body: JSON.stringify({ clientSessionId: TAB, state: 'focused' }),
+        },
+        {
+          incoming: { socket: { remoteAddress: '100.96.12.7' } },
+        } as TestBindings,
+      );
+
+    expect((await post('/api/presence/focus')).status).toBe(204);
+    expect(presence.snapshot().get('device:read-only-phone')).toMatchObject({
+      principalId: 'human:read-only-owner',
+      state: 'focused',
+    });
+    const other = await post('/api/presence/other');
+    expect(other.status).toBe(403);
+    await expect(other.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
+  });
+
   it('presence roster (station#4075 stage 3 slice 2): both a read-only and a standard credential reach GET /api/orchestration/presence/summary', async () => {
     const { request } = createHarness();
 

@@ -5466,6 +5466,7 @@ export function configureRuntimeRoutes(
       presence: context.focusPresence ?? new FocusPresence(),
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      resolvePrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
     }),
   );
   context.app.route(

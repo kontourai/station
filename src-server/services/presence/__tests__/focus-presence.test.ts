@@ -3,7 +3,15 @@ import { FocusPresence, focusSurfaceId } from '../focus-presence.js';
 
 const TAB_A = '11111111-1111-4111-8111-111111111111';
 const TAB_B = '22222222-2222-4222-8222-222222222222';
-const phone = { kind: 'device', deviceId: 'phone' } as const;
+const phone = {
+  kind: 'device',
+  deviceId: 'phone',
+  principalId: 'human:alice',
+} as const;
+const local = (clientSessionId: string, principalId = 'operator') =>
+  ({ kind: 'local', clientSessionId, principalId }) as const;
+const device = (deviceId: string, principalId = 'human:alice') =>
+  ({ kind: 'device', deviceId, principalId }) as const;
 
 function clock(start = 1_000_000) {
   let now = start;
@@ -18,9 +26,7 @@ function clock(start = 1_000_000) {
 describe('FocusPresence', () => {
   test('derives device and local surface ids from the reporter kind', () => {
     expect(focusSurfaceId(phone)).toBe('device:phone');
-    expect(focusSurfaceId({ kind: 'local', clientSessionId: TAB_A })).toBe(
-      `local:${TAB_A}`,
-    );
+    expect(focusSurfaceId(local(TAB_A))).toBe(`local:${TAB_A}`);
   });
 
   test('a report lapses at the 120 s lease and the surface reads as absent', () => {
@@ -33,6 +39,7 @@ describe('FocusPresence', () => {
     time.advance(119_999);
     expect(presence.snapshot(['device:phone']).get('device:phone')).toEqual({
       surfaceId: 'device:phone',
+      principalId: 'human:alice',
       state: 'focused',
       reportedAt: 1_000_000,
     });
@@ -80,11 +87,7 @@ describe('FocusPresence', () => {
   test('snapshot restricts to the requested surfaces', () => {
     const presence = new FocusPresence({ now: clock().now });
     presence.report(phone, TAB_A, 'focused');
-    presence.report(
-      { kind: 'local', clientSessionId: TAB_B },
-      TAB_B,
-      'visible',
-    );
+    presence.report(local(TAB_B), TAB_B, 'visible');
     expect([...presence.snapshot([`local:${TAB_B}`]).keys()]).toEqual([
       `local:${TAB_B}`,
     ]);
@@ -96,14 +99,14 @@ describe('FocusPresence', () => {
   test('capacity is bounded: a new surface evicts the least recently reported one', () => {
     const time = clock();
     const presence = new FocusPresence({ now: time.now, capacity: 2 });
-    presence.report({ kind: 'device', deviceId: 'a' }, TAB_A, 'focused');
+    presence.report(device('a'), TAB_A, 'focused');
     time.advance(10);
-    presence.report({ kind: 'device', deviceId: 'b' }, TAB_A, 'focused');
+    presence.report(device('b'), TAB_A, 'focused');
     time.advance(10);
     // `a` reports again, so `b` is now the oldest.
-    presence.report({ kind: 'device', deviceId: 'a' }, TAB_A, 'focused');
+    presence.report(device('a'), TAB_A, 'focused');
     time.advance(10);
-    presence.report({ kind: 'device', deviceId: 'c' }, TAB_A, 'focused');
+    presence.report(device('c'), TAB_A, 'focused');
     expect([...presence.snapshot().keys()].sort()).toEqual([
       'device:a',
       'device:c',
@@ -120,23 +123,63 @@ describe('FocusPresence', () => {
     expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
   });
 
-  test('reports past the per-surface rate are refused without changing state', () => {
+  test('a report that lowers or keeps a document state is taken even past the rate', () => {
+    const time = clock();
+    const presence = new FocusPresence({ now: time.now });
+    for (let index = 0; index < 30; index += 1) {
+      expect(presence.report(phone, TAB_A, 'focused').accepted).toBe(true);
+    }
+    // Raising is refused: a new document, or hidden -> focused.
+    expect(presence.report(phone, TAB_B, 'focused').accepted).toBe(false);
+    expect(presence.report(phone, TAB_A, 'hidden')).toEqual({
+      accepted: true,
+      surfaceId: 'device:phone',
+    });
+    expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
+    expect(presence.isAnyFocused(['device:phone'])).toBe(false);
+    expect(presence.report(phone, TAB_A, 'hidden').accepted).toBe(true);
+    expect(presence.report(phone, TAB_A, 'focused').accepted).toBe(false);
+  });
+
+  test('snapshotForPrincipals returns only the named people and carries the principal', () => {
+    const presence = new FocusPresence({ now: clock().now });
+    presence.report(device('alice-phone', 'human:alice'), TAB_A, 'focused');
+    presence.report(device('bob-phone', 'human:bob'), TAB_A, 'focused');
+    presence.report(local(TAB_B), TAB_B, 'visible');
+    const alice = presence.snapshotForPrincipals(['human:alice']);
+    expect([...alice.values()]).toEqual([
+      {
+        surfaceId: 'device:alice-phone',
+        principalId: 'human:alice',
+        state: 'focused',
+        reportedAt: 1_000_000,
+      },
+    ]);
+    expect(
+      [
+        ...presence.snapshotForPrincipals(['operator', 'human:bob']).keys(),
+      ].sort(),
+    ).toEqual(['device:bob-phone', `local:${TAB_B}`]);
+    expect(presence.snapshotForPrincipals([]).size).toBe(0);
+  });
+
+  test('raising reports past the per-surface rate are refused without changing state', () => {
     const time = clock();
     const presence = new FocusPresence({
       now: time.now,
       reportsPerWindow: 2,
       reportWindowMs: 60_000,
     });
-    presence.report(phone, TAB_A, 'focused');
+    presence.report(phone, TAB_A, 'hidden');
     time.advance(1_000);
-    presence.report(phone, TAB_A, 'focused');
+    presence.report(phone, TAB_A, 'hidden');
     time.advance(1_000);
-    expect(presence.report(phone, TAB_A, 'hidden')).toEqual({
+    expect(presence.report(phone, TAB_A, 'focused')).toEqual({
       accepted: false,
       retryAfterMs: 58_000,
     });
-    expect(presence.snapshot().get('device:phone')?.state).toBe('focused');
+    expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
     time.advance(58_000);
-    expect(presence.report(phone, TAB_A, 'hidden').accepted).toBe(true);
+    expect(presence.report(phone, TAB_A, 'focused').accepted).toBe(true);
   });
 });

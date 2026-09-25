@@ -41,6 +41,13 @@ export type SurfaceId = `device:${string}` | `local:${string}`;
 /** A surface's current focus, reconciled across its live client sessions. */
 export interface FocusSurfaceSnapshot {
   readonly surfaceId: SurfaceId;
+  /**
+   * The person the surface belongs to: the canonical request principal id
+   * (`PrincipalRef.id`) Station resolved for the reporting credential — a
+   * paired device's person binding, or the operator for `local:*`. Focus on
+   * one person's surface must only quiet that same person's other surfaces.
+   */
+  readonly principalId: string;
   /** The strongest state any unexpired client session on it reported. */
   readonly state: FocusState;
   /** Epoch milliseconds of the newest report carrying {@link state}. */

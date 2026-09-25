@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
 import {
+  getRuntimeAuthenticatedRequestPrincipal,
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
@@ -11,6 +12,7 @@ const TAB = '0f0e0d0c-0b0a-4908-8706-050403020100';
 const DEVICES: Record<string, { id: string; kind?: string }> = {
   'phone-credential': { id: 'phone', kind: 'device' },
   'peer-station-credential': { id: 'peer', kind: 'delegation' },
+  'unbound-credential': { id: 'unbound', kind: 'device' },
 };
 
 const operator: RuntimeAuthenticatedRequestPrincipal = {
@@ -40,12 +42,23 @@ function harness(principal: RuntimeAuthenticatedRequestPrincipal | undefined) {
     createFocusPresenceRoutes({
       presence,
       identifyDevice: (credential) => DEVICES[credential] ?? null,
+      resolvePrincipalId: (c) => {
+        const found = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+        if (found?.authority === 'operator-credential') return 'operator';
+        if (found?.credential === 'unbound-credential') {
+          throw new Error('PrincipalUnresolvedError');
+        }
+        return `person-of:${found?.credential}`;
+      },
     }),
   );
-  const post = (body: unknown) =>
+  const post = (body: unknown, header: string | null = TAB) =>
     app.request('/api/presence/focus', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(header === null ? {} : { 'x-station-client-session': header }),
+      },
       body: typeof body === 'string' ? body : JSON.stringify(body),
     });
   return { presence, post };
@@ -57,6 +70,39 @@ describe('POST /api/presence/focus', () => {
     const response = await post({ clientSessionId: TAB, state: 'focused' });
     expect(response.status).toBe(204);
     expect([...presence.snapshot().keys()]).toEqual(['device:phone']);
+  });
+
+  test('the surface carries the principal Station resolved for the caller', async () => {
+    const device = harness(phone);
+    await device.post({ clientSessionId: TAB, state: 'focused' });
+    expect(device.presence.snapshot().get('device:phone')?.principalId).toBe(
+      'person-of:phone-credential',
+    );
+    const local = harness(operator);
+    await local.post({ clientSessionId: TAB, state: 'focused' });
+    expect(local.presence.snapshot().get(`local:${TAB}`)?.principalId).toBe(
+      'operator',
+    );
+  });
+
+  test('the body must name the same document as the X-Station-Client-Session header', async () => {
+    const { presence, post } = harness(phone);
+    const other = '99999999-9999-4999-8999-999999999999';
+    expect(
+      (await post({ clientSessionId: TAB, state: 'focused' }, other)).status,
+    ).toBe(400);
+    expect(
+      (await post({ clientSessionId: TAB, state: 'focused' }, null)).status,
+    ).toBe(400);
+    expect(presence.snapshot().size).toBe(0);
+    expect(
+      (
+        await post(
+          { clientSessionId: TAB, state: 'focused' },
+          TAB.toUpperCase(),
+        )
+      ).status,
+    ).toBe(204);
   });
 
   test('the operator credential reports on the local surface of its document', async () => {
@@ -102,6 +148,7 @@ describe('POST /api/presence/focus', () => {
     for (const principal of [
       { ...phone, credential: 'revoked-credential' },
       { ...phone, credential: 'peer-station-credential', deviceId: 'peer' },
+      { ...phone, credential: 'unbound-credential', deviceId: 'unbound' },
       {
         kind: 'internal',
         credential: 'internal-token',
@@ -141,13 +188,17 @@ describe('POST /api/presence/focus', () => {
     expect(presence.snapshot().size).toBe(0);
   });
 
-  test('a surface over its report rate gets 429 with Retry-After', async () => {
-    const { post } = harness(phone);
-    let last: Response | undefined;
-    for (let index = 0; index < 31; index += 1) {
-      last = await post({ clientSessionId: TAB, state: 'focused' });
+  test('a surface over its report rate gets 429 for a raise, but a hidden still lands', async () => {
+    const { presence, post } = harness(phone);
+    for (let index = 0; index < 30; index += 1) {
+      await post({ clientSessionId: TAB, state: 'visible' });
     }
-    expect(last?.status).toBe(429);
-    expect(last?.headers.get('retry-after')).toBe('60');
+    const raise = await post({ clientSessionId: TAB, state: 'focused' });
+    expect(raise.status).toBe(429);
+    expect(raise.headers.get('retry-after')).toBe('60');
+    expect((await post({ clientSessionId: TAB, state: 'hidden' })).status).toBe(
+      204,
+    );
+    expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
   });
 });

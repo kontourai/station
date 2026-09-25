@@ -17,6 +17,21 @@ import {
  * Everything is bounded: surfaces, sessions per surface, and the report rate
  * per surface. A report older than the lease reads as absent — a client that
  * closed or froze without saying so stops counting as present on its own.
+ *
+ * The rate limit only refuses reports that would RAISE a document's state (a
+ * new document, or hidden → visible → focused). A report that keeps or lowers
+ * an existing document's state is always taken: refusing a "hidden" would
+ * leave the device reading focused for the rest of the lease and silence the
+ * person's other surfaces — the failure that matters here.
+ *
+ * Bounds and their direction of error:
+ * - `local:*` surfaces are keyed by a client-chosen session id, so the
+ *   per-surface rate does not bound a caller who mints fresh ids. Only the
+ *   operator credential can report on them (the route refuses every other
+ *   caller), and the surface cap still bounds memory.
+ * - Eviction (surface cap, sessions per surface) and the lease only ever
+ *   REMOVE focus, so every overflow errs toward notifying, never toward
+ *   suppressing a notification someone needed.
  */
 
 const FOCUS_SURFACE_CAPACITY = 256;
@@ -36,9 +51,13 @@ const STATE_RANK: Readonly<Record<FocusState, number>> = {
  * `local` carries the reporting document's client session id because a local
  * operator surface IS that document; a device surface is the whole device.
  */
-export type FocusReporter =
+export type FocusReporter = (
   | { readonly kind: 'device'; readonly deviceId: string }
-  | { readonly kind: 'local'; readonly clientSessionId: string };
+  | { readonly kind: 'local'; readonly clientSessionId: string }
+) & {
+  /** The canonical request principal id (`PrincipalRef.id`) of the caller. */
+  readonly principalId: string;
+};
 
 export type FocusReportResult =
   | { readonly accepted: true; readonly surfaceId: SurfaceId }
@@ -60,6 +79,7 @@ interface SessionReport {
 
 interface SurfaceRecord {
   readonly sessions: Map<string, SessionReport>;
+  principalId: string;
   lastReportAt: number;
   windowStartedAt: number;
   windowCount: number;
@@ -105,7 +125,10 @@ export class FocusPresence {
         surface.windowStartedAt = now;
         surface.windowCount = 0;
       }
-      if (surface.windowCount >= this.#reportsPerWindow) {
+      const existing = surface.sessions.get(clientSessionId);
+      const raises =
+        !existing || STATE_RANK[state] > STATE_RANK[existing.state];
+      if (raises && surface.windowCount >= this.#reportsPerWindow) {
         return {
           accepted: false,
           retryAfterMs: surface.windowStartedAt + this.#reportWindowMs - now,
@@ -115,6 +138,7 @@ export class FocusPresence {
       if (this.#surfaces.size >= this.#capacity) this.#evictOldestSurface();
       surface = {
         sessions: new Map(),
+        principalId: reporter.principalId,
         lastReportAt: now,
         windowStartedAt: now,
         windowCount: 0,
@@ -123,6 +147,7 @@ export class FocusPresence {
     }
     surface.windowCount += 1;
     surface.lastReportAt = now;
+    surface.principalId = reporter.principalId;
     if (
       !surface.sessions.has(clientSessionId) &&
       surface.sessions.size >= this.#sessionsPerSurface
@@ -156,12 +181,27 @@ export class FocusPresence {
       if (best) {
         result.set(surfaceId, {
           surfaceId,
+          principalId: surface.principalId,
           state: best.state,
           reportedAt: best.reportedAt,
         });
       }
     }
     return result;
+  }
+
+  /**
+   * Unexpired surfaces belonging to any of `principalIds`. The notification
+   * router asks this for the audience's people, so focus on one person's
+   * surface never quiets another person's. Bounded by the surface cap.
+   */
+  snapshotForPrincipals(principalIds: readonly string[]): FocusSnapshot {
+    const wanted = new Set(principalIds);
+    const ids: SurfaceId[] = [];
+    for (const [surfaceId, surface] of this.#surfaces) {
+      if (wanted.has(surface.principalId)) ids.push(surfaceId);
+    }
+    return this.snapshot(ids);
   }
 
   isAnyFocused(surfaceIds: readonly SurfaceId[]): boolean {

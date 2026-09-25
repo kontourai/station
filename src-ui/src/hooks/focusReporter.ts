@@ -1,4 +1,5 @@
 import {
+  FOCUS_PRESENCE_LEASE_MS,
   FOCUS_PRESENCE_REPORT_PATH,
   type FocusState,
 } from '@kontourai/station-contracts/presence';
@@ -31,23 +32,44 @@ function readFocusState(doc: Document): FocusState {
   return doc.hasFocus() ? 'focused' : 'visible';
 }
 
+/** The server's answer, as much of it as the reporter reads. */
+export type FocusReportResponse = Pick<Response, 'status' | 'headers'>;
+
+const RETRY_BASE_MS = 2_000;
+const RETRY_MAX_MS = 30_000;
+const RATE_LIMIT_FALLBACK_MS = 60_000;
+
+function retryAfterMs(response: FocusReportResponse): number {
+  const seconds = Number(response.headers.get('retry-after'));
+  return Number.isFinite(seconds) && seconds > 0
+    ? seconds * 1000
+    : RATE_LIMIT_FALLBACK_MS;
+}
+
 /**
  * Reports this document's focus to Station (#2585) and returns a stop
  * function.
  *
- * - focus/blur/visibility changes are debounced by 1 s and sent only when the
- *   state differs from the last one sent;
+ * - focus/blur/visibility changes are debounced by 1 s and sent when the
+ *   state differs from the last one the server ACCEPTED (a 2xx);
  * - becoming hidden is sent at once: a backgrounded mobile webview may be
  *   frozen before a debounce timer fires, and a stale `focused` would keep
  *   suppressing this person's notifications for the rest of the lease;
  * - while focused, a 60 s heartbeat renews the lease only if there was user
- *   input in the last 2 minutes, so an unattended focused window lapses.
+ *   input in the last 2 minutes, so an unattended focused window lapses; the
+ *   first input after the lease lapsed renews it at once;
+ * - a refused report is retried: 429 after its Retry-After, a network or
+ *   server error with backoff (2 s doubling to 30 s), until the state that
+ *   is current then has been accepted;
+ * - 401/403/400 are not retried on a timer. A 401 (not signed in yet) is
+ *   retried on the next focus/visibility change, or by the next heartbeat
+ *   tick after user input — so within a minute of signing in.
  *
- * `send` failures are swallowed: presence is advisory and must never break
- * the app.
+ * One report is in flight at a time, so the server sees states in order.
+ * Nothing here throws: presence is advisory and must never break the app.
  */
 export function startFocusReporter(
-  send: (state: FocusState) => Promise<unknown> | undefined,
+  send: (state: FocusState) => Promise<FocusReportResponse>,
   env: FocusReporterEnvironment = {
     document,
     window,
@@ -56,32 +78,83 @@ export function startFocusReporter(
 ): () => void {
   const { document: doc, window: win, now } = env;
   let stopped = false;
-  let lastSent: FocusState | undefined;
+  let acked: FocusState | undefined;
+  let ackedAt = Number.NEGATIVE_INFINITY;
   let lastInputAt = Number.NEGATIVE_INFINITY;
+  let inFlight = false;
+  let queued: FocusState | 'current' | undefined;
+  let authBlocked = false;
+  let backoffMs = 0;
   let debounce: ReturnType<typeof setTimeout> | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
 
-  const emit = (state: FocusState) => {
-    lastSent = state;
-    try {
-      void Promise.resolve(send(state)).catch(() => {});
-    } catch {
-      /* advisory */
-    }
+  const clearDebounce = () => {
+    if (debounce !== undefined) clearTimeout(debounce);
+    debounce = undefined;
   };
-  const flush = () => {
+  const retryIn = (ms: number) => {
+    if (retry !== undefined) clearTimeout(retry);
+    retry = setTimeout(() => {
+      retry = undefined;
+      flush();
+    }, ms);
+  };
+
+  const deliver = async (state: FocusState) => {
+    if (stopped) return;
+    if (inFlight) {
+      queued = state;
+      return;
+    }
+    inFlight = true;
+    let response: FocusReportResponse | undefined;
+    try {
+      response = await send(state);
+    } catch {
+      response = undefined;
+    }
+    inFlight = false;
+    if (stopped) return;
+    const status = response?.status ?? 0;
+    if (status >= 200 && status < 300) {
+      acked = state;
+      ackedAt = now();
+      authBlocked = false;
+      backoffMs = 0;
+    } else if (response && status === 429) {
+      retryIn(retryAfterMs(response));
+    } else if (status === 401) {
+      authBlocked = true;
+    } else if (status !== 400 && status !== 403) {
+      backoffMs = Math.min(
+        Math.max(backoffMs * 2, RETRY_BASE_MS),
+        RETRY_MAX_MS,
+      );
+      retryIn(backoffMs);
+    }
+    const next = queued;
+    queued = undefined;
+    if (next === 'current') flush();
+    else if (next) void deliver(next);
+  };
+  function flush() {
     debounce = undefined;
     if (stopped) return;
+    if (inFlight) {
+      queued ??= 'current';
+      return;
+    }
     const state = readFocusState(doc);
-    if (state !== lastSent) emit(state);
-  };
+    if (state !== acked) void deliver(state);
+  }
   const schedule = () => {
     if (stopped) return;
-    if (debounce !== undefined) clearTimeout(debounce);
+    clearDebounce();
     debounce = setTimeout(flush, FOCUS_REPORT_DEBOUNCE_MS);
   };
   const onVisibility = () => {
     if (doc.visibilityState === 'hidden') {
-      if (debounce !== undefined) clearTimeout(debounce);
+      clearDebounce();
       flush();
       return;
     }
@@ -90,9 +163,8 @@ export function startFocusReporter(
   // The page is going away (or into the back/forward cache) and may already
   // read as visible; nothing after this runs, so say hidden now.
   const onPageHide = () => {
-    if (debounce !== undefined) clearTimeout(debounce);
-    debounce = undefined;
-    if (!stopped && lastSent !== 'hidden') emit('hidden');
+    clearDebounce();
+    if (!stopped && acked !== 'hidden') void deliver('hidden');
   };
   const onFocus = () => {
     lastInputAt = now();
@@ -100,12 +172,27 @@ export function startFocusReporter(
   };
   const onInput = () => {
     lastInputAt = now();
+    // A focused document whose lease lapsed while nobody touched it is
+    // absent on the server; the person is back, so say so now rather than
+    // at the next heartbeat.
+    if (
+      !authBlocked &&
+      !inFlight &&
+      acked === 'focused' &&
+      now() - ackedAt >= FOCUS_PRESENCE_LEASE_MS &&
+      readFocusState(doc) === 'focused'
+    ) {
+      void deliver('focused');
+    }
   };
   const heartbeat = setInterval(() => {
     if (stopped) return;
-    if (readFocusState(doc) !== 'focused') return;
     if (now() - lastInputAt > FOCUS_INPUT_RECENCY_MS) return;
-    emit('focused');
+    if (readFocusState(doc) === 'focused') {
+      void deliver('focused');
+    } else if (authBlocked) {
+      flush();
+    }
   }, FOCUS_HEARTBEAT_MS);
 
   doc.addEventListener('visibilitychange', onVisibility);
@@ -119,7 +206,8 @@ export function startFocusReporter(
 
   return () => {
     stopped = true;
-    if (debounce !== undefined) clearTimeout(debounce);
+    clearDebounce();
+    if (retry !== undefined) clearTimeout(retry);
     clearInterval(heartbeat);
     doc.removeEventListener('visibilitychange', onVisibility);
     win.removeEventListener('pagehide', onPageHide);
