@@ -238,6 +238,34 @@ export function writeMergedCoverageReports(
 }
 
 /**
+ * Merge already-produced shard reports and write the merged output, without
+ * running any corpus. Shared by the serial local run below and by
+ * `scripts/merge-coverage-shards.mjs`, the hosted merge job that downloads
+ * shard reports uploaded by parallel `coverage-shard` matrix legs
+ * (.github/workflows/ci-extended.yml, #2416) instead of running the corpus
+ * itself. The same fail-closed rules apply either way: a missing, empty,
+ * unreadable, or malformed slice refuses the merge.
+ */
+export async function mergeCoverageReports({
+  outputDirectory,
+  shardRoot,
+  shardIds,
+  log = (/** @type {string} */ line) => {
+    process.stdout.write(`${line}\n`);
+  },
+}) {
+  try {
+    const map = await mergeCoverageShards({ shardRoot, shardIds });
+    writeMergedCoverageReports(map, outputDirectory);
+    return { mergeError: null, summary: map.getCoverageSummary().toJSON() };
+  } catch (error) {
+    const mergeError = error instanceof Error ? error.message : String(error);
+    log(`[coverage-corpus] ${mergeError}`);
+    return { mergeError, summary: null };
+  }
+}
+
+/**
  * Run every slice with coverage, merge, then evaluate thresholds. Test
  * failures in one slice do not stop the others (their names are all worth
  * having from one run); cancellation and unsafe cleanup do.
@@ -266,19 +294,15 @@ export async function runCoverageCorpus({
     timeoutScale: COVERAGE_SLICE_TIMEOUT_SCALE,
   });
 
-  let merged = null;
-  let mergeError = null;
-  try {
-    const map = await mergeCoverageShards({ shardRoot, shardIds });
-    writeMergedCoverageReports(map, outputDirectory);
-    merged = map.getCoverageSummary().toJSON();
-  } catch (error) {
-    mergeError = error instanceof Error ? error.message : String(error);
-    log(`[coverage-corpus] ${mergeError}`);
-  }
+  const { mergeError, summary } = await mergeCoverageReports({
+    outputDirectory,
+    shardRoot,
+    shardIds,
+    log,
+  });
 
-  const thresholdResult = merged
-    ? evaluateCoverageThresholds(merged, thresholds)
+  const thresholdResult = summary
+    ? evaluateCoverageThresholds(summary, thresholds)
     : null;
   for (const failure of thresholdResult?.failures ?? [])
     log(`[coverage-corpus] threshold: ${failure}`);
