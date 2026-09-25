@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -1473,12 +1474,10 @@ export class StationRuntime {
                 session: detail.session,
                 events: detail.events,
               });
+              // An exit while work was still in progress was cut off.
               const outcome =
-                lifecycle.lifecycleState === 'completed'
-                  ? 'completed'
-                  : lifecycle.lifecycleState === 'failed'
-                    ? 'failed'
-                    : 'cancelled';
+                sessionLifecycleOutcome(lifecycle.lifecycleState) ??
+                'cancelled';
               await this.projectTaskRoomRuntime?.publishAgentFinished({
                 taskId: task.id,
                 sessionId,
