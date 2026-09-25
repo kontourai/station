@@ -1160,4 +1160,45 @@ describe('install.sh public manifest verification', () => {
     expect(signed.status).toBe(1);
     expect(signed.stderr).toContain('invalid portable artifact descriptor');
   });
+
+  it('replaces an install whose version cannot be read only when explicitly requested', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-unreadable-');
+    const installed = runInstaller(
+      fixture,
+      signManifest(fixture, '1.2.3', buildArchive(fixture, '1.2.3')),
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    const provenance = join(currentRelease(fixture), '.station-release.json');
+    const value = JSON.parse(readFileSync(provenance, 'utf8'));
+    chmodSync(provenance, 0o644);
+    writeFileSync(provenance, JSON.stringify({ ...value, ref: 'garbage' }));
+    const target = signManifest(
+      fixture,
+      '1.2.2',
+      buildArchive(fixture, '1.2.2'),
+    );
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.2' },
+    ]) {
+      const refused = runInstaller(fixture, target, env);
+      // The refusal's advice is the combination proven to work below.
+      expect(refused.stderr).toContain(
+        'cannot compare the installed release with v1.2.2; set STATION_VERSION=v1.2.2 and STATION_INSTALL_ALLOW_ROLLBACK=1',
+      );
+      expect(refused.status).toBe(1);
+    }
+    const replaced = runInstaller(fixture, target, {
+      STATION_VERSION: 'v1.2.2',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(replaced.status, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain(
+      'cannot read the installed Station version; replacing it with v1.2.2',
+    );
+    expect(installedTag(fixture)).toBe('v1.2.2');
+  });
 });

@@ -951,8 +951,15 @@ check_public_manifest_version() {
       else order = Math.sign(candidate.build - installed.build);
     }
     process.stdout.write(`${order < 0 ? "older" : order > 0 ? "newer" : "same"}\n${installedTag}`);
-  ' "$current_link/.station-release.json" "$release_tag")" || \
+  ' "$current_link/.station-release.json" "$release_tag")" || {
+    # Unreadable or incomparable installed provenance: only an explicit,
+    # exact replacement may proceed, since nothing can say it is not older.
+    if explicit_replacement_requested; then
+      printf 'Warning: cannot read the installed Station version; replacing it with %s as explicitly requested (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" >&2
+      return 0
+    fi
     fail "cannot compare the installed release with $release_tag; set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1 to replace it explicitly"
+  }
   version_relation="$(printf '%s\n' "$version_order" | sed -n '1p')"
   installed_tag="$(printf '%s\n' "$version_order" | sed -n '2p')"
   case "$version_relation" in
