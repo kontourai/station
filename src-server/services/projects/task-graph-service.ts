@@ -2136,6 +2136,23 @@ export class TaskGraphService {
       .map((keep) => structuredClone(stripDeclaredPullRequestKeep(keep)));
   }
 
+  /**
+   * Every Task's kept declared pull requests whose provenance names one of
+   * `sessionIds` — one store read, for a conversation spanning several
+   * Sessions (the per-Task, per-Session reader above re-reads the store each
+   * call).
+   */
+  listKeptDeclaredPullRequestsForSessions(
+    sessionIds: readonly string[],
+  ): TaskKeptDeclaredPullRequest[] {
+    const wanted = new Set(sessionIds);
+    return this.readStore()
+      .declaredPullRequestKeeps.filter((keep) =>
+        wanted.has(keep.provenance.sessionId),
+      )
+      .map((keep) => structuredClone(stripDeclaredPullRequestKeep(keep)));
+  }
+
   /** Task-owned removal keeps a bounded tombstone so replay cannot resurrect it. */
   async deleteKeptDeclaredPullRequest(
     taskId: string,

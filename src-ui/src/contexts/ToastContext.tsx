@@ -44,7 +44,12 @@ type Toast = {
   // union regardless, because the rendering code already switches on it and
   // a real device-pairing notification producer is meant to opt into this
   // exact shape next, not invent a second one.
-  type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
+  type?:
+    | ToastTone
+    | 'tool-approval'
+    | 'tool-activity'
+    | 'turn-activity'
+    | 'pairing-request';
   toolName?: string;
   /**
    * #1545: a bounded, single-line, redacted preview naming which command, or
@@ -285,6 +290,52 @@ class ToastStore {
       this.timeouts.set(id, timeout);
     }
 
+    return id;
+  }
+
+  /**
+   * A background chat's turn ended and it needs its user: finished, failed,
+   * stopped, or replied on its own. Composed by `turnAttentionNotifications`;
+   * this only stores and times it. `Open` and the conversation link both run
+   * `onNavigate`.
+   */
+  showTurnActivity(options: {
+    sessionId: string;
+    message: string;
+    conversationTitle: string;
+    detail?: string;
+    /** A failure stays up longer, as a tool failure does. */
+    failed: boolean;
+    onNavigate: () => void;
+  }) {
+    const id = `turn-${Date.now()}-${Math.random()}`;
+    const duration = options.failed ? 9000 : 7000;
+    const toast: Toast = {
+      id,
+      message: stripAnsi(options.message),
+      sessionId: options.sessionId,
+      type: 'turn-activity',
+      conversationTitle: options.conversationTitle,
+      onNavigate: options.onNavigate,
+      actions: [
+        { label: 'Open', variant: 'primary', onClick: options.onNavigate },
+      ],
+      duration,
+      metadata: options.detail ? { detail: options.detail } : undefined,
+    };
+
+    this.toasts.push(toast);
+    this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
+    if (this.history.length > this.maxHistory) {
+      this.history = this.history.slice(0, this.maxHistory);
+    }
+    this.notify();
+    this.notifyHistory();
+
+    this.timeouts.set(
+      id,
+      setTimeout(() => this.dismiss(id), duration),
+    );
     return id;
   }
 

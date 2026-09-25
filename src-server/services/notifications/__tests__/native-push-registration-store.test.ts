@@ -161,4 +161,43 @@ describe('NativePushRegistrationStore', () => {
       'f'.repeat(64),
     );
   });
+
+  test('records whether the phone shows rows durably, keeps it across token rotation, and writes nothing while false', () => {
+    const { store, path, reopen } = fixture();
+    const first = store.upsert('device-1', REQUEST, KEY, 1);
+    const before = readFileSync(path, 'utf8');
+    // False is the absent key: an unchanged, older-readable record.
+    store.recordCardShown('device-1', first.registrationId, false);
+    expect(readFileSync(path, 'utf8')).toBe(before);
+    store.recordCardShown('device-1', first.registrationId, true);
+    expect(reopen().list().get('device-1')?.cardShown).toBe(true);
+    store.upsert(
+      'device-1',
+      { ...REQUEST, token: `fcm-token-${'z'.repeat(40)}` },
+      KEY,
+      2,
+    );
+    expect(reopen().list().get('device-1')?.cardShown).toBe(true);
+    // A stale registrationId changes nothing.
+    store.recordCardShown('device-1', 'other', false);
+    expect(reopen().list().get('device-1')?.cardShown).toBe(true);
+    store.recordCardShown('device-1', first.registrationId, false);
+    expect(Object.keys(reopen().list().get('device-1') ?? {})).not.toContain(
+      'cardShown',
+    );
+  });
+
+  test('refuses a cardShown that is not true', () => {
+    const { store, path, reopen } = fixture();
+    const registration = store.upsert('device-1', REQUEST, KEY, 1);
+    writeFileSync(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        registrations: { 'device-1': { ...registration, cardShown: false } },
+      }),
+      { mode: 0o600 },
+    );
+    expect(() => reopen().list()).toThrow(NativePushRegistrationStoreError);
+  });
 });

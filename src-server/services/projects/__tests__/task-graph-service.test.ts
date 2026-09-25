@@ -1,13 +1,12 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -67,6 +66,7 @@ vi.mock('../../../telemetry/metrics.js', () => taskMetrics);
 
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type {
@@ -91,6 +91,8 @@ import {
   TaskReferenceAuthorizationError,
 } from '../task-graph-service.js';
 import { dispatchTaskForTest } from './task-dispatch-test-helpers.js';
+
+const makeTempDir = trackTempDirs();
 
 const TASK_RACE_ID = '11111111-1111-4111-8111-111111111111';
 const TASK_DUPLICATE_ID = '22222222-2222-4222-8222-222222222222';
@@ -180,7 +182,7 @@ function createChatHarness(adapter: FileStorageAdapter) {
     get: (provider) => (provider === 'claude' ? engine : undefined),
     list: () => [engine],
   };
-  const tmp = mkdtempSync(join(tmpdir(), 'station-1501-pin-chat-'));
+  const tmp = makeTempDir('station-1501-pin-chat-');
   const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
   const orchestration = new OrchestrationService({
     adapterRegistry: registry,
@@ -203,8 +205,8 @@ function createChatHarness(adapter: FileStorageAdapter) {
 function createTempService(
   deps?: ConstructorParameters<typeof TaskGraphService>[1],
 ) {
-  const workspace = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
-  return new TaskGraphService(mkdtempSync(join(tmpdir(), 'station-tasks-')), {
+  const workspace = makeTempDir('station-task-workspace-');
+  return new TaskGraphService(makeTempDir('station-tasks-'), {
     projectService: {
       getProject: (slug: string) => {
         if (slug !== 'project-alpha') throw new Error('missing project');
@@ -273,6 +275,18 @@ describe('TaskGraphService', () => {
     expect(
       service.listKeptDeclaredPullRequestsForSession(task.id, 'session-other'),
     ).toEqual([]);
+    // The conversation-wide reader answers for a SET of Sessions, any Task.
+    expect(
+      service.listKeptDeclaredPullRequestsForSessions([
+        'session-other',
+        'session-a',
+      ]),
+    ).toMatchObject([
+      { provenance: { sessionId: 'session-a', eventId: 'event-a' } },
+    ]);
+    expect(
+      service.listKeptDeclaredPullRequestsForSessions(['session-other']),
+    ).toEqual([]);
     await expect(
       service.deleteKeptDeclaredPullRequest(
         task.id,
@@ -337,7 +351,7 @@ describe('TaskGraphService', () => {
   });
 
   test('fails closed on an ill-shaped persisted graph without changing its bytes', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-corrupt-'));
+    const home = makeTempDir('station-task-graph-corrupt-');
     const path = join(home, 'task-graph.json');
     const corrupt = JSON.stringify({
       tasks: [],
@@ -362,7 +376,7 @@ describe('TaskGraphService', () => {
   });
 
   test('serializes distinct link writes from two service instances against a fresh graph', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-race-'));
+    const home = makeTempDir('station-task-graph-race-');
     const second = new TaskGraphService(home);
     let interleaved = false;
     const first = new TaskGraphService(home, {
@@ -401,7 +415,7 @@ describe('TaskGraphService', () => {
   });
 
   test('freshly validates a status transition after another instance changes the task', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-status-race-'));
+    const home = makeTempDir('station-task-graph-status-race-');
     const path = join(home, 'task-graph.json');
     writeFileSync(
       path,
@@ -449,7 +463,7 @@ describe('TaskGraphService', () => {
   });
 
   test('refuses a task graph mutation when its lock cannot be acquired', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-lock-'));
+    const home = makeTempDir('station-task-graph-lock-');
     const service = new TaskGraphService(home, {
       acquireMutationLock: () => {
         throw new Error('task graph mutation lock is held');
@@ -469,7 +483,7 @@ describe('TaskGraphService', () => {
   });
 
   test('releases the mutation lock when a durable graph write fails', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-write-fail-'));
+    const home = makeTempDir('station-task-graph-write-fail-');
     const service = new TaskGraphService(home);
     const internal = service as unknown as {
       store: { write(data: unknown): void };
@@ -492,7 +506,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects duplicate persisted task identities without repairing the graph', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-id-conflict-'));
+    const home = makeTempDir('station-task-graph-id-conflict-');
     const path = join(home, 'task-graph.json');
     const task = {
       id: TASK_DUPLICATE_ID,
@@ -520,9 +534,7 @@ describe('TaskGraphService', () => {
   });
 
   test('reserves dispatch before awaiting a provider so another instance cannot start it twice', async () => {
-    const home = mkdtempSync(
-      join(tmpdir(), 'station-task-graph-dispatch-race-'),
-    );
+    const home = makeTempDir('station-task-graph-dispatch-race-');
     const path = join(home, 'task-graph.json');
     writeFileSync(
       path,
@@ -592,7 +604,7 @@ describe('TaskGraphService', () => {
   });
 
   test('does not call a provider after the exact reservation generation is superseded', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-generation-'));
+    const home = makeTempDir('station-task-graph-generation-');
     const path = join(home, 'task-graph.json');
     writeFileSync(
       path,
@@ -647,7 +659,7 @@ describe('TaskGraphService', () => {
   });
 
   test('reconciles an expired provider-start reservation so a crash cannot permanently block retry', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-expired-'));
+    const home = makeTempDir('station-task-graph-expired-');
     const path = join(home, 'task-graph.json');
     const reservedAt = new Date(Date.now() - 6 * 60 * 1000).toISOString();
     const expiresAt = new Date(
@@ -701,7 +713,7 @@ describe('TaskGraphService', () => {
   });
 
   test('refuses cancellation while a provider start is reserved, then records the started dispatch before a later cancel', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-cancel-race-'));
+    const home = makeTempDir('station-task-graph-cancel-race-');
     let resolveStart: ((session: ProviderSession) => void) | undefined;
     const started = vi.fn(
       () =>
@@ -758,7 +770,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects non-UUIDv4 identities and noncanonical timestamps in persisted data without repairing bytes', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-canonical-'));
+    const home = makeTempDir('station-task-graph-canonical-');
     const path = join(home, 'task-graph.json');
     const malformed = JSON.stringify({
       tasks: [
@@ -785,7 +797,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects contradictory persisted claim discriminants without repairing bytes', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-claim-shape-'));
+    const home = makeTempDir('station-task-graph-claim-shape-');
     const path = join(home, 'task-graph.json');
     const malformed = JSON.stringify({
       tasks: [
@@ -825,7 +837,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects a noncanonical claimedAt timestamp without repairing bytes', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-graph-claim-time-'));
+    const home = makeTempDir('station-task-graph-claim-time-');
     const path = join(home, 'task-graph.json');
     const malformed = JSON.stringify({
       tasks: [
@@ -930,8 +942,8 @@ describe('TaskGraphService', () => {
   });
 
   test('persists a server-derived workspace binding and task references across reconstruction', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-tasks-reconstruct-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
+    const home = makeTempDir('station-tasks-reconstruct-');
+    const workspace = makeTempDir('station-task-workspace-');
     const projectService = {
       getProject: () => ({
         id: 'project-alpha',
@@ -971,8 +983,8 @@ describe('TaskGraphService', () => {
   });
 
   test('persists distinct turn references as identity-only Session/turn tuples across reconstruction', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-turn-references-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
+    const home = makeTempDir('station-task-turn-references-');
+    const workspace = makeTempDir('station-task-workspace-');
     const projectService = {
       getProject: () => ({
         id: 'project-alpha',
@@ -1075,8 +1087,8 @@ describe('TaskGraphService', () => {
   });
 
   test('persists distinct user-input event tuples across restart and makes duplicate concurrent attaches idempotent', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-task-input-references-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
+    const home = makeTempDir('station-task-input-references-');
+    const workspace = makeTempDir('station-task-workspace-');
     const projectService = {
       getProject: () => ({
         id: 'project-alpha',
@@ -1118,7 +1130,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects persisted tasks without required workspace bindings without rewriting bytes', () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-tasks-legacy-'));
+    const home = makeTempDir('station-tasks-legacy-');
     const path = join(home, 'task-graph.json');
     const malformed = JSON.stringify({
       tasks: [
@@ -1163,9 +1175,9 @@ describe('TaskGraphService', () => {
   });
 
   test('reports an ambiguous reopen when the Project workspace has changed', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-tasks-ambiguous-'));
-    const firstWorkspace = mkdtempSync(join(tmpdir(), 'station-task-first-'));
-    const secondWorkspace = mkdtempSync(join(tmpdir(), 'station-task-second-'));
+    const home = makeTempDir('station-tasks-ambiguous-');
+    const firstWorkspace = makeTempDir('station-task-first-');
+    const secondWorkspace = makeTempDir('station-task-second-');
     let workingDirectory = firstWorkspace;
     const projectService = {
       getProject: () => ({
@@ -1193,8 +1205,8 @@ describe('TaskGraphService', () => {
   });
 
   test('reports an ambiguous reopen when the captured Git branch has changed', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-tasks-branch-drift-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-task-git-'));
+    const home = makeTempDir('station-tasks-branch-drift-');
+    const workspace = makeTempDir('station-task-git-');
     let branch = 'main';
     const runGit = vi.fn(async (args: string[]) => ({
       stdout: args.includes('--show-toplevel')
@@ -1229,8 +1241,8 @@ describe('TaskGraphService', () => {
   });
 
   test('reports unavailable after the configured Project workspace disappears', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-tasks-unavailable-'));
-    const workspace = mkdtempSync(join(tmpdir(), 'station-task-vanished-'));
+    const home = makeTempDir('station-tasks-unavailable-');
+    const workspace = makeTempDir('station-task-vanished-');
     const projectService = {
       getProject: () => ({
         id: 'project-alpha',
@@ -1704,9 +1716,7 @@ describe('TaskGraphService', () => {
   });
 
   test('rejects unsupported queued/running persisted statuses without rewriting bytes', () => {
-    const home = mkdtempSync(
-      join(tmpdir(), 'station-task-graph-status-shape-'),
-    );
+    const home = makeTempDir('station-task-graph-status-shape-');
     const path = join(home, 'task-graph.json');
     const unsupported = JSON.stringify({
       tasks: [
@@ -1746,7 +1756,7 @@ describe('TaskGraphService', () => {
  */
 describe('TaskGraphService workspace binding — migrated onto resolveProjectResource', () => {
   function seamHome() {
-    const home = mkdtempSync(join(tmpdir(), 'station-1501-tg-home-'));
+    const home = makeTempDir('station-1501-tg-home-');
     const adapter = new FileStorageAdapter(home);
     return { home, adapter };
   }
@@ -1847,7 +1857,7 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
 
   test('a project whose manifest cannot be READ fails closed, and does NOT masquerade as "not found"', async () => {
     const { home, adapter } = seamHome();
-    const workspace = mkdtempSync(join(tmpdir(), 'station-1501-tg-ws-'));
+    const workspace = makeTempDir('station-1501-tg-ws-');
     await saveSeamProject(adapter, {
       slug: 'broken',
       workingDirectory: workspace,
@@ -1922,8 +1932,8 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
 
   test('A → B → A: the project gains a working directory, loses it, and regains it', async () => {
     const { home, adapter } = seamHome();
-    const dirA = mkdtempSync(join(tmpdir(), 'station-1501-tg-a-'));
-    const dirB = mkdtempSync(join(tmpdir(), 'station-1501-tg-b-'));
+    const dirA = makeTempDir('station-1501-tg-a-');
+    const dirB = makeTempDir('station-1501-tg-b-');
     const project = await saveSeamProject(adapter, { slug: 'acme' });
 
     expect(await bindingFor(home, adapter, 'acme')).toMatchObject({
@@ -1956,7 +1966,7 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
 
   test('the DIRECTORY itself is deleted and recreated', async () => {
     const { home, adapter } = seamHome();
-    const workspace = mkdtempSync(join(tmpdir(), 'station-1501-tg-dir-'));
+    const workspace = makeTempDir('station-1501-tg-dir-');
     await saveSeamProject(adapter, {
       slug: 'acme',
       workingDirectory: workspace,
@@ -1978,7 +1988,7 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
 
   test('restart-after-write and the upgrade path: a fresh service over the same home, with project.json and NO manifest sidecar', async () => {
     const { home, adapter } = seamHome();
-    const workspace = mkdtempSync(join(tmpdir(), 'station-1501-tg-restart-'));
+    const workspace = makeTempDir('station-1501-tg-restart-');
     await saveSeamProject(adapter, {
       slug: 'acme',
       workingDirectory: workspace,
