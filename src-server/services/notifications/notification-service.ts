@@ -131,6 +131,32 @@ export class NotificationEnvelopeValidationError extends Error {
 }
 
 /**
+ * A dedupe tag already names a record written by a DIFFERENT source (#2597).
+ * Tags are global, so without this a writer could rewrite another source's
+ * record — its title and actions — while `source` (which routes the action
+ * to a provider) stayed the victim's. Refused whatever the existing record's
+ * status: a dismissed/expired record of another source still owns its tag,
+ * and creating a second record under it would shadow it (and fail the
+ * store's unique-tag validation).
+ */
+/**
+ * Source of every record created through `POST /notifications`, and the
+ * namespace its dedupe tags are stored under (#2597). A request body chooses
+ * neither: a caller-chosen source could relabel (and, through a shared tag,
+ * rewrite) another producer's record, and an un-namespaced tag could squat an
+ * internal producer's tag and block it forever.
+ */
+export const REST_NOTIFICATION_SOURCE = 'api';
+export const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
+
+export class NotificationDedupeSourceConflictError extends Error {
+  constructor() {
+    super('Notification dedupe tag belongs to another source');
+    this.name = 'NotificationDedupeSourceConflictError';
+  }
+}
+
+/**
  * The untrusted `schedule()` path (REST `POST /notifications`, providers)
  * tried to write something only `scheduleEnveloped()` may: an envelope, an
  * `agent:` dedupe tag, an `agent-*` category, or an update to an enveloped
@@ -257,6 +283,39 @@ export class NotificationService {
     source: string,
     opts: ScheduleNotificationOpts,
   ): Promise<Notification> {
+    return this.scheduleUntrusted(source, opts, false);
+  }
+
+  /**
+   * `POST /notifications` (#2597): always source `api`, and the caller's
+   * dedupe tag is stored as `api:<tag>` (dedupe matches the prefixed form),
+   * so a request can never collide with — or squat — an internal, provider
+   * or agent tag. A tag smuggled in `metadata.dedupeTag` is refused.
+   */
+  async scheduleFromRequest(
+    opts: ScheduleNotificationOpts,
+  ): Promise<Notification> {
+    if (Object.hasOwn(jsonSafeMetadata(opts.metadata), 'dedupeTag'))
+      throw new NotificationReservedFieldError('dedupeTag');
+    return this.scheduleUntrusted(
+      REST_NOTIFICATION_SOURCE,
+      {
+        ...opts,
+        ...(opts.dedupeTag === undefined
+          ? {}
+          : {
+              dedupeTag: `${REST_NOTIFICATION_DEDUPE_PREFIX}${opts.dedupeTag}`,
+            }),
+      },
+      true,
+    );
+  }
+
+  private async scheduleUntrusted(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    fromRequest: boolean,
+  ): Promise<Notification> {
     const metadata = jsonSafeMetadata(opts.metadata);
     if (Object.hasOwn(metadata, 'envelope'))
       throw new NotificationReservedFieldError('envelope');
@@ -268,7 +327,8 @@ export class NotificationService {
     const tag = opts.dedupeTag ?? metadata.dedupeTag;
     if (
       typeof tag === 'string' &&
-      tag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX)
+      (tag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX) ||
+        (!fromRequest && tag.startsWith(REST_NOTIFICATION_DEDUPE_PREFIX)))
     )
       throw new NotificationReservedFieldError('dedupeTag');
     return (await this.scheduleRecord(source, opts, metadata, undefined))
@@ -341,15 +401,32 @@ export class NotificationService {
     created: boolean;
     updated: boolean;
   }> {
+    let displaced: string | undefined;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
       // lock, so a stale schedule cannot restore a concurrent dismissal or
       // publish a second notification for the same provider item.
       if (opts.dedupeTag) {
-        const existing = all.find(
+        let existing = all.find(
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
+        if (existing && existing.source !== source) {
+          // A REST record holding a non-`api:` tag predates #2597's
+          // namespacing: that tag was never the request's to hold, so an
+          // internal/provider/agent writer takes it over (whatever its
+          // status) rather than being blocked forever.
+          if (
+            existing.source === REST_NOTIFICATION_SOURCE &&
+            source !== REST_NOTIFICATION_SOURCE
+          ) {
+            all.splice(all.indexOf(existing), 1);
+            displaced = existing.id;
+            existing = undefined;
+          } else {
+            throw new NotificationDedupeSourceConflictError();
+          }
+        }
         // Only the trusted path may rewrite an enveloped record: an untrusted
         // update would replace metadata wholesale and strip its envelope.
         if (
@@ -458,6 +535,7 @@ export class NotificationService {
       };
     });
 
+    if (displaced) this.clearTimer(displaced);
     if (created) notificationOps.add(1, { op: 'schedule' });
 
     if (created && notification.status === 'delivered') {
@@ -1203,7 +1281,23 @@ export class NotificationService {
       if (provider.poll) {
         try {
           const items = await provider.poll();
-          for (const opts of items) await this.schedule(provider.id, opts);
+          for (const opts of items) {
+            try {
+              await this.schedule(provider.id, opts);
+            } catch (e) {
+              // One refused item (a tag another source owns, a reserved
+              // field) must not drop the rest of this provider's poll.
+              if (
+                !(e instanceof NotificationDedupeSourceConflictError) &&
+                !(e instanceof NotificationReservedFieldError)
+              )
+                throw e;
+              logger.warn('Notification provider item refused', {
+                provider: provider.id,
+                reason: e.name,
+              });
+            }
+          }
         } catch (e) {
           logger.debug('Failed to poll notification provider', {
             provider: provider.id,

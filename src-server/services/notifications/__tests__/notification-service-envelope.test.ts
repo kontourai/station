@@ -6,8 +6,7 @@
  * slice does not modify. Only `scheduleEnveloped` writes an envelope; the
  * untrusted `schedule` (REST body, providers) cannot.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   Notification,
@@ -19,6 +18,7 @@ import {
   readNotificationEnvelope,
 } from '@kontourai/station-shared/notification-envelope';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
@@ -97,13 +97,15 @@ const LEGACY_STORE = [
 ];
 
 describe('NotificationService envelope (#2583)', () => {
+  // Created before the shutdown hook so directories are removed after it.
+  const makeTempDir = trackTempDirs();
   let dir: string;
   let storePath: string;
   let bus: InstanceType<typeof EventBus>;
   let svc: InstanceType<typeof NotificationService>;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'notif-envelope-test-'));
+    dir = makeTempDir('notif-envelope-test-');
     storePath = join(dir, 'notifications.json');
     bus = new EventBus();
     svc = new NotificationService(bus, dir, 999_999);
@@ -111,7 +113,6 @@ describe('NotificationService envelope (#2583)', () => {
 
   afterEach(async () => {
     await svc.shutdown();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function freshReader() {
@@ -294,7 +295,9 @@ describe('NotificationService envelope (#2583)', () => {
         { dedupeTag: 'scheduler:nightly', category: 'job-failure' },
       );
       await expect(
-        svc.schedule('api', {
+        // Same source, so this reaches the envelope-rewrite refusal (a different
+        // source is refused earlier, #2597).
+        svc.schedule('agent', {
           category: 'job-failure',
           title: 'Overwrite',
           dedupeTag: 'scheduler:nightly',
