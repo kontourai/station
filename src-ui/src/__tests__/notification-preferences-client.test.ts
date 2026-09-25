@@ -69,27 +69,16 @@ describe('notification preferences client (#2587 against #2586)', () => {
     );
   });
 
-  test('a 412 refetches and retries once, then gives up', async () => {
+  test('a refused PATCH is failed and not retried (the server merges it)', async () => {
     const t = transport({
-      patch: vi
-        .fn()
-        .mockRejectedValueOnce(refused(412, 'preferences_changed'))
-        .mockResolvedValueOnce({ schemaVersion: 1 }) as never,
-    });
-    expect(await client(t).mute({ kind: 'agent', agent: 'builder' })).toBe(
-      'muted',
-    );
-    expect(t.fetch).toHaveBeenCalledTimes(1);
-    expect(t.patch).toHaveBeenCalledTimes(2);
-
-    const always = transport({
       patch: async () => {
-        throw refused(412, 'preferences_changed');
+        throw refused(500);
       },
     });
-    expect(await client(always).mute({ kind: 'agent', agent: 'builder' })).toBe(
+    expect(await client(t).mute({ kind: 'agent', agent: 'builder' })).toBe(
       'failed',
     );
-    expect(always.patch).toHaveBeenCalledTimes(2);
+    expect(t.patch).toHaveBeenCalledTimes(1);
+    expect(t.fetch).not.toHaveBeenCalled();
   });
 });

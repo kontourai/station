@@ -13,8 +13,8 @@ import {
  *
  * The client never evaluates the preferences: the server's delivery router
  * applies them, and the desktop OS channel reads its decisions from the
- * delivery feed. This only feature-detects the route and writes a mute,
- * through the SDK, which sends the last read's ETag as If-Match.
+ * delivery feed. This only feature-detects the route and writes a mute
+ * through the SDK.
  *
  * `read()` separates two non-answers:
  * - `unavailable` — no route (404/405): an older Station with nothing to
@@ -67,35 +67,19 @@ export function createNotificationPreferencesClient(input: {
     },
 
     async mute(target) {
-      // A server-side PATCH of the one key. If-Match comes from the last
-      // read; a 412 means someone else wrote since, so read again and retry
-      // once — the patch itself does not depend on what changed.
+      // A server-side PATCH of the one key: the server merges it, so a
+      // concurrent change to any other field is never lost and no If-Match
+      // round-trip is needed.
       const patch: NotificationPreferencesPatch =
         target.kind === 'agent'
           ? { perAgent: { [target.agent]: 'off' } }
           : { perProject: { [target.projectId]: 'off' } };
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          await transport.patch(patch, apiBase);
-          return 'muted';
-        } catch (error) {
-          if (isAbsentRoute(error)) return 'unavailable';
-          if (
-            attempt === 0 &&
-            error instanceof NotificationPreferencesRequestError &&
-            error.code === 'preferences_changed'
-          ) {
-            try {
-              await transport.fetch(apiBase);
-            } catch {
-              return 'failed';
-            }
-            continue;
-          }
-          return 'failed';
-        }
+      try {
+        await transport.patch(patch, apiBase);
+        return 'muted';
+      } catch (error) {
+        return isAbsentRoute(error) ? 'unavailable' : 'failed';
       }
-      return 'failed';
     },
   };
 }
