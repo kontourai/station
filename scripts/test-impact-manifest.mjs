@@ -335,8 +335,9 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   Object.freeze({
     pattern: '.github/workflows/**',
     tests: Object.freeze([
-      // Reads three workflows through a templated URL the path-read scan
-      // cannot resolve, so it had no edge from them (#2176).
+      // These two read workflows through a templated URL or a directory
+      // listing the path-read scan cannot resolve, so they had no edge (#2176).
+      'scripts/__tests__/android-firebase-workflow-env.test.ts',
       'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
@@ -536,25 +537,58 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
  * queue candidate (#2553).
  *
  * The ONE list: the runner, the CI job and the classification pin in
- * `path-read-pin-boundary.test.ts` all read it. That pin requires every
- * directory-walking suite the path-read scan cannot report to be either here
- * or classified with a reason there.
+ * `path-read-pin-boundary.test.ts` all read it. That pin requires every suite
+ * whose text walks a directory to be here, classified with a reason, or
+ * presumed to walk a temporary directory it creates; its docblock states
+ * what that text heuristic cannot see.
  */
 export const REPO_SCAN_SUITES = Object.freeze([
+  'packages/basis-pane/src/__tests__/package-boundary.test.ts',
+  'packages/board-pane/src/__tests__/package-boundary.test.ts',
   'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
+  'packages/sdk/src/__tests__/publicBarrel.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
+  'scripts/__tests__/docs-index-reachability.test.ts',
+  'scripts/__tests__/docs-reference-gate.test.ts',
+  'scripts/__tests__/docs-snippets.test.ts',
+  'scripts/__tests__/dogfood-evidence-retention.test.ts',
+  'scripts/__tests__/gate-scope.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
+  'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/trust-bundle-claim-prose.test.ts',
+  'src-server/providers/__tests__/child-work-conformance.test.ts',
+  'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/devices/__tests__/device-host-resolver.test.ts',
+  'src-server/services/infra/__tests__/resource-posture.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
+  'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
+  'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/board-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/connection-host-copy.test.ts',
+  'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
+  'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
+  'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  'src-ui/src/__tests__/native-notification-watch.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
+  'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  'src-ui/src/__tests__/plain-language-policy.test.ts',
+  'src-ui/src/__tests__/project-query-scope-tripwire.test.ts',
+  'src-ui/src/__tests__/raw-local-storage-policy.test.ts',
+  'src-ui/src/__tests__/region-surface-boundary.test.ts',
+  'src-ui/src/__tests__/responsive-dialog-close-adoption.test.ts',
   'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
+  'src-ui/src/__tests__/settings-row-literal-coverage.test.ts',
+  'src-ui/src/__tests__/single-main-landmark.test.ts',
+  'src-ui/src/__tests__/undefined-css-custom-properties.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
+  'src-ui/src/components/__tests__/PageCallout.test.tsx',
 ]);
 
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([

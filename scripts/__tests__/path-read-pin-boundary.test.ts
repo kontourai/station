@@ -193,61 +193,133 @@ function selectedTests(paths: string[], manifest?: unknown): string[] {
 }
 
 /**
- * #2176: the directory-walking suites among the unreported ones, classified.
- * A suite that walks a source tree has no impact edge an honest selection
- * could use, so it must be a whole-tree scan the `repo-scans` job runs
- * (`REPO_SCAN_SUITES`), or say here why it is not one. Detection is a
- * `readdir(`/`readdirSync(` call in the suite's text — deliberately loose:
- * a false hit costs one entry below, a miss would leave a scanner unrun.
+ * #2176: every suite that walks a source tree is run by the `repo-scans` job
+ * (`REPO_SCAN_SUITES`) or says here why it need not be. A tree walk has no
+ * impact edge an honest selection can use, so without this a new scanner
+ * would run only in the merge queue's full corpus again.
+ *
+ * WHAT THE DETECTOR SEES, AND WHAT IT DOES NOT. It is a text heuristic over
+ * every suite file (`listSuiteFiles`, so `tests/` specs too):
+ *
+ * - A WALK is a `readdir(`/`readdirSync(` call, a `git ls-files`
+ *   invocation, or a `glob(`/globby-family call in the file's text. A walk
+ *   written any other way — a lister imported from a gate module, a shell
+ *   `find`, `fs.opendir` — is invisible. `HELPER_BASED_SCANS` names the ones
+ *   known when this landed, and each must be in `REPO_SCAN_SUITES`.
+ * - A suite that also creates a temporary directory (`mkdtemp`, `tmpdir()`,
+ *   `trackTempDirs`, `makeTempDir`) is PRESUMED to walk that directory and
+ *   is not required to be classified. Some also walk the real tree in one of
+ *   their tests; those found by hand are recorded in
+ *   `TEMP_SUITES_THAT_ALSO_WALK_SOURCE`. The pin keeps that record from
+ *   rotting (every entry must still be detected) but cannot find a new one.
+ * - A text match in a comment counts as a walk; such a false hit costs one
+ *   entry below, which is the safe direction.
  */
+const WALK_CALL =
+  /\breaddir(?:Sync)?\s*\(|\bls-files\b|\b(?:glob|globSync|globby|fastGlob|tinyglobby)\s*\(/;
+const CREATES_TEMP_DIRECTORY =
+  /\bmkdtemp(?:Sync)?\b|\btmpdir\(\)|\btrackTempDirs\b|\bmakeTempDir\b/;
+
+/** Scans whose walk is not visible in their own text. */
+const HELPER_BASED_SCANS = Object.freeze([
+  // Lists its scope through the gate module's `scopedFiles()`.
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+]);
+
+/** Detected walkers that are not whole-tree scans, and why. */
 const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   Record<string, string>
 > = Object.freeze({
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
     'walks its own fixture directory',
-  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
-    'scoped scan; its root, packages/sdk/src/client/**, has an impact edge naming it',
-  'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
-    'walks its own fixture root',
-  'scripts/__tests__/release-sbom-generation.test.ts':
-    'lists a temporary directory it wrote',
-  'scripts/__tests__/verification-reporter.test.ts':
-    'lists a temporary workspace it wrote',
-  'src-server/services/evidence/__tests__/console-bridge-service.test.ts':
-    'lists a temporary segment directory',
-  'src-server/services/orchestration/__tests__/event-store.test.ts':
-    'lists a temporary attachments directory',
-  'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts':
-    'lists a temporary plugin home',
-  'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts':
-    'lists a temporary plugin data root',
-  'tests/builder-delivery-viewer.spec.ts':
-    'a Playwright spec; Vitest cannot schedule it (#1817)',
+  'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
+    'walks its own fixture directory',
+  'scripts/__tests__/android-firebase-workflow-env.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/basis-mcp-apps.test.ts':
+    'git ls-files over its own generated outputs, to prove they are untracked',
+  'scripts/__tests__/verification-policy-gate.test.ts':
+    'stubs git ls-files to test the gate; walks nothing real',
+  'src-server/routes/plugins/__tests__/plugins.routes.test.ts':
+    'names readdirSync only in a comment about a fixture',
+  'src-ui/src/__tests__/station-vocabulary.test.ts':
+    'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
 });
 
+/**
+ * Suites that create a temporary directory AND walk the real tree in one of
+ * their tests, with where that scan runs. Found by hand; not enforceable in
+ * the forward direction (see above). Each runs a behavioural or fixture
+ * suite around its scan, so running it whole in `repo-scans` is not the
+ * proportionate fix; extracting the scan is.
+ */
+const TEMP_SUITES_THAT_ALSO_WALK_SOURCE: Readonly<Record<string, string>> =
+  Object.freeze({
+    // This file: presumed temporary only because its detector names the
+    // temp-directory calls. It walks every suite root; the prepush floor runs
+    // it (#1913).
+    'scripts/__tests__/path-read-pin-boundary.test.ts':
+      'every suite root, via listSuiteFiles; on the prepush floor (#1913)',
+    'tests/builder-delivery-viewer.spec.ts':
+      'examples/builder-delivery-viewer; a Playwright spec, Vitest cannot schedule it (#1817)',
+    'packages/sdk/src/__tests__/client-entry-portability.test.ts':
+      'packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
+    'scripts/__tests__/android-channel-release-generation.test.ts':
+      '.github/workflows; not selected by that edge (follow-up)',
+    'scripts/__tests__/classify-ci-change.test.ts':
+      'src-desktop crate sources (follow-up)',
+    'scripts/__tests__/content-integrity-gate.test.ts':
+      'git ls-files --eol over the repository (follow-up)',
+    'scripts/__tests__/generate-app-icons.test.ts':
+      'src-desktop icons and tracked .icns files (follow-up)',
+    'scripts/__tests__/release-workflow.test.ts':
+      '.github/workflows; the .github/workflows/** edge selects it',
+    'scripts/__tests__/test-import-existence-gate.test.ts':
+      'git ls-files over the repository (follow-up)',
+    'scripts/__tests__/test-temp-dir-ratchet.test.ts':
+      'git ls-files over the source roots (follow-up)',
+    'scripts/__tests__/vitest-resource-manifest.test.ts':
+      'git ls-files over packages/connect tests (follow-up)',
+    'src-server/services/orchestration/__tests__/orchestration-service.test.ts':
+      'the src-server/services tree, in two of its tests (follow-up)',
+    'src-server/services/plugins/__tests__/example-manifest-fields.test.ts':
+      'examples/; its examples/** edge selects it',
+  });
+
 describe('whole-tree scans are run or classified (#2176)', () => {
-  const walkers = UNREPORTED_PATH_READING_SUITES.filter((file) =>
-    /\breaddir(?:Sync)?\s*\(/.test(readFileSync(join(ROOT, file), 'utf8')),
+  const suites = listSuiteFiles(ROOT);
+  const text = new Map(
+    suites.map((file) => [file, readFileSync(join(ROOT, file), 'utf8')]),
+  );
+  const walkers = suites.filter((file) => WALK_CALL.test(text.get(file) ?? ''));
+  const presumedTemporary = new Set(
+    walkers.filter((file) => CREATES_TEMP_DIRECTORY.test(text.get(file) ?? '')),
   );
 
-  it('every directory-walking unreported suite is a repo scan or says why not', () => {
-    // Population first: an empty `walkers` would pass both checks below.
-    expect(walkers.length).toBeGreaterThanOrEqual(
-      Object.keys(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS).length,
-    );
+  it('every detected walker is a repo scan, classified, or presumed temporary', () => {
+    // Population first: the checks below are satisfied by an empty list.
+    expect(walkers.length).toBeGreaterThan(REPO_SCAN_SUITES.length);
     expect(
       walkers.filter(
         (file) =>
           !REPO_SCAN_SUITES.includes(file) &&
-          !(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS),
+          !(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS) &&
+          !presumedTemporary.has(file),
       ),
       'a suite walks a directory but is neither in REPO_SCAN_SUITES ' +
         '(scripts/test-impact-manifest.mjs) nor classified here',
     ).toEqual([]);
-    // And no classification outlives the walk it explains.
+  });
+
+  it('no classification outlives the walk it explains', () => {
     expect(
       Object.keys(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS).filter(
-        (file) => !walkers.includes(file),
+        (file) => !walkers.includes(file) || presumedTemporary.has(file),
+      ),
+    ).toEqual([]);
+    expect(
+      Object.keys(TEMP_SUITES_THAT_ALSO_WALK_SOURCE).filter(
+        (file) => !presumedTemporary.has(file),
       ),
     ).toEqual([]);
   });
@@ -259,6 +331,8 @@ describe('whole-tree scans are run or classified (#2176)', () => {
       expect(file.startsWith('tests/'), file).toBe(false);
       expect(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS, file).toBe(false);
     }
+    for (const file of HELPER_BASED_SCANS)
+      expect(REPO_SCAN_SUITES, file).toContain(file);
     expect(new Set(REPO_SCAN_SUITES).size).toBe(REPO_SCAN_SUITES.length);
   });
 

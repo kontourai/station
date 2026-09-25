@@ -93,6 +93,7 @@ const skippedReport = readFileSync(
 // the production mapping, not another projection of that mapping.
 const EXPECTED_GOVERNED_READERS = {
   '.github/workflows/**': [
+    'scripts/__tests__/android-firebase-workflow-env.test.ts',
     'scripts/__tests__/android-network-policy.test.ts',
     'scripts/__tests__/backlog-priority-policy.test.ts',
     'scripts/__tests__/ci-workflow-contract.test.ts',
