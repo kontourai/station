@@ -417,16 +417,27 @@ describe('approval inbox notifications', () => {
   // notification, and the agent-activity card). Both are on the card, so
   // neither may raise a phone alert; a plain chat's approval must. An
   // ephemeral (webhook) session is left out of the session read model the
-  // card is built from, so both of its records must alert.
-  test.each([
+  // card is built from, so both of its records must alert, and so must they
+  // when the ephemeral lookup throws (fail-soft: unmarked still alerts).
+  test.each<[string, string | undefined, boolean | 'throws', boolean]>([
     ['a Station-agent relay turn', 'thread-7', false, true],
     ['an ephemeral Station-agent relay turn', 'thread-7', true, false],
+    [
+      'a Station-agent relay turn whose ephemeral lookup throws',
+      'thread-7',
+      'throws',
+      false,
+    ],
     ['a plain managed chat', undefined, false, false],
   ])(
     'a registry approval from %s (relay thread %s, ephemeral %s) is card-alerted: %s',
     async (_label, orchestrationThreadId, ephemeral, cardAlerted) => {
       vi.mocked(orchestrationService.isEphemeralSession).mockImplementation(
-        (threadId) => ephemeral && threadId === 'thread-7',
+        (threadId) => {
+          if (ephemeral === 'throws')
+            throw new Error('ephemeral lookup failed');
+          return ephemeral && threadId === 'thread-7';
+        },
       );
       const elicit = createElicitationCallback(
         { name: 'Reviewer', tools: { autoApprove: [] } } as any,

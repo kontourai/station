@@ -209,7 +209,12 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     wireTurnCompletionNotifications(
       bus,
       {
-        isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
+        isEphemeralSession: (threadId) => {
+          // #2589: the fail-soft path, a lookup that cannot answer.
+          if (threadId === 'thread-lookup-throws')
+            throw new Error('ephemeral lookup failed');
+          return ephemeralThreads.has(threadId);
+        },
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
       },
@@ -242,6 +247,19 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     [
       'a failed turn in an ephemeral session',
       'thread-e',
+      { method: 'runtime.error' },
+      false,
+    ],
+    // Fail-soft: an unmarked notification still alerts.
+    [
+      'a completed turn whose ephemeral lookup throws',
+      'thread-lookup-throws',
+      {},
+      false,
+    ],
+    [
+      'a failed turn whose ephemeral lookup throws',
+      'thread-lookup-throws',
       { method: 'runtime.error' },
       false,
     ],
