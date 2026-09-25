@@ -52,9 +52,13 @@ export interface NotificationSurfacePreference {
 export interface NotificationPreferencesV1 {
   schemaVersion: 1;
   agentNotifications: AgentNotificationLevel;
-  /** Overrides by project slug; a per-agent override wins over these. */
+  /**
+   * Overrides keyed by the agent notification envelope's
+   * `source.projectId` — the exact value the router compares, and the value
+   * the inbox's "Mute this project" sends. A per-agent override wins.
+   */
   perProject: Record<string, AgentNotificationLevel>;
-  /** Overrides by agent name. */
+  /** Overrides keyed by the envelope's `source.agent`. */
   perAgent: Record<string, AgentNotificationLevel>;
   quietHours?: NotificationQuietHours;
   perSurface: Record<string, NotificationSurfacePreference>;
@@ -96,9 +100,11 @@ export function desktopHostSurfaceId(installationId: string): SurfaceId {
 }
 
 /**
- * The per-surface feed a native host reads the router's decided OS alerts
- * from (`?surface=<SurfaceId>&after=<cursor>&epoch=<epoch>`). Only `local:desktop-*`
- * surfaces have one today.
+ * The per-surface feed a desktop app reads the router's decided OS alerts
+ * from (`?surface=<SurfaceId>&after=<cursor>&epoch=<epoch>`). Always the
+ * CALLER'S OWN surface: a paired device (a desktop app on a remote Station)
+ * reads `device:<its id>`, derived from its credential; this computer's
+ * desktop host reads `local:desktop-<installationId>`.
  */
 export const NOTIFICATION_DELIVERIES_PATH = '/api/notifications/deliveries';
 

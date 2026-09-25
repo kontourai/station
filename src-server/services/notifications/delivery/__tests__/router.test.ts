@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -347,6 +347,48 @@ describe('NotificationDeliveryRouter', () => {
       metadata: {},
     });
     expect(plain.deliveries).toHaveLength(1);
+  });
+
+  test("a project muted by the envelope's source.projectId (what the inbox Mute sends) is not pushed", () => {
+    const home = mkdtempSync(join(tmpdir(), 'router-mute-'));
+    try {
+      const store = new NotificationPreferencesStore(home);
+      const envelope = agentEnvelope({
+        source: {
+          kind: 'agent',
+          sessionId: 'session-1',
+          projectId: 'project-alpha',
+          assurance: 'bound',
+        },
+      });
+      // The inbox's Mute: key taken straight from the envelope.
+      if (envelope.source.kind !== 'agent') throw new Error('agent source');
+      store.patch({ perProject: { [envelope.source.projectId!]: 'off' } });
+      const { bus, plain } = setup({ preferences: store });
+      bus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification({ envelope }),
+      );
+      expect(plain.deliveries).toHaveLength(0);
+      // Control: another project still goes out.
+      bus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification({
+          id: 'n-2',
+          envelope: agentEnvelope({
+            source: {
+              kind: 'agent',
+              sessionId: 'session-1',
+              projectId: 'project-beta',
+              assurance: 'bound',
+            },
+          }),
+        }),
+      );
+      expect(plain.deliveries.map((d) => d.id)).toEqual(['n-2']);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   describe('unreadable preferences (a corrupted file)', () => {

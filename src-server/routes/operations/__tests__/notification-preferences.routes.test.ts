@@ -289,6 +289,49 @@ describe('GET /api/notifications/deliveries (desktop host feed)', () => {
     expect(desktopHost.registrations()).toEqual([{ surface, ref: surface }]);
   });
 
+  test('a paired device reads its OWN feed, derived from its credential', async () => {
+    const phone = {
+      ...PERSON,
+      deviceId: 'phone',
+      deviceKind: 'device' as const,
+    };
+    const own = await call('GET', undefined, phone, {
+      path: `${NOTIFICATION_DELIVERIES_PATH}?after=0`,
+    });
+    expect(own.status).toBe(200);
+    // Naming its own surface explicitly is fine too.
+    expect(
+      (
+        await call('GET', undefined, phone, {
+          path: `${NOTIFICATION_DELIVERIES_PATH}?surface=device:phone&after=0`,
+        })
+      ).status,
+    ).toBe(200);
+    expect(desktopHost.registrations()).toEqual([
+      { surface: 'device:phone', ref: 'device:phone' },
+    ]);
+  });
+
+  test.each([
+    'surface=device:tablet',
+    `surface=${desktopHostSurfaceId('7c9e6679-7425-40de-944b-e07fc1f90ae7')}`,
+  ])(
+    'a paired device naming another surface is refused 403 (%s)',
+    async (query) => {
+      const phone = {
+        ...PERSON,
+        deviceId: 'phone',
+        deviceKind: 'device' as const,
+      };
+      const other = await call('GET', undefined, phone, {
+        path: `${NOTIFICATION_DELIVERIES_PATH}?${query}&after=0`,
+      });
+      expect(other.status).toBe(403);
+      expect(other.json.error).toBe('surface_not_yours');
+      expect(desktopHost.registrations()).toEqual([]);
+    },
+  );
+
   test('a remote person (not this machine) is refused', async () => {
     const result = await feed(`surface=${surface}&after=0`, PERSON);
     expect(result.status).toBe(403);
