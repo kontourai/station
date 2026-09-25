@@ -191,13 +191,13 @@ final class SealedAlertTests: XCTestCase {
   func testOnlyAFreshAlertOpens() {
     let hour: TimeInterval = 60 * 60
     let opened = SealedAlertText(title: "Approval needed", body: "Fix the flaky login test · Login App")
-    // 86_400_000 ms and 600_000 ms, written out rather than derived.
-    XCTAssertEqual(SealedAlertResolver.maxAgeMilliseconds, 86_400_000)
+    // 7_200_000 ms and 600_000 ms, written out rather than derived.
+    XCTAssertEqual(SealedAlertResolver.maxAgeMilliseconds, 7_200_000)
     XCTAssertEqual(SealedAlertResolver.maxFutureSkewMilliseconds, 600_000)
     let issued = AlertTestVector.issuedAt
     XCTAssertEqual(resolve(userInfo(), now: issued), opened, "at issue")
-    XCTAssertEqual(resolve(userInfo(), now: issued.addingTimeInterval(24 * hour)), opened, "24 h old")
-    XCTAssertNil(resolve(userInfo(), now: issued.addingTimeInterval(24 * hour + 0.001)), "just past 24 h")
+    XCTAssertEqual(resolve(userInfo(), now: issued.addingTimeInterval(2 * hour)), opened, "2 h old")
+    XCTAssertNil(resolve(userInfo(), now: issued.addingTimeInterval(2 * hour + 0.001)), "just past 2 h")
     XCTAssertNil(resolve(userInfo(), now: issued.addingTimeInterval(30 * 24 * hour)), "a month old")
     XCTAssertEqual(resolve(userInfo(), now: issued.addingTimeInterval(-600)), opened, "10 min ahead")
     XCTAssertNil(resolve(userInfo(), now: issued.addingTimeInterval(-601)), "past the skew allowance")

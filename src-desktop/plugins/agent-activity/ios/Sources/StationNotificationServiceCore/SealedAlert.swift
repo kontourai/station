@@ -38,8 +38,10 @@ public enum SealedAlertResolver {
   /// Bounds replay: whoever holds a genuine sealed push (the gateway, or
   /// anyone with its APNs credentials and the device token) can send it
   /// again, and an old one must not bring text back to the lock screen
-  /// after the user has turned on hidden content.
-  public static let maxAgeMilliseconds: Int64 = 24 * 60 * 60 * 1000
+  /// after the user has turned on hidden content. Two hours: the gateway
+  /// sets a one-hour APNs expiry and every retry is sealed afresh, so a
+  /// genuine alert is never older than that plus clock skew.
+  public static let maxAgeMilliseconds: Int64 = 2 * 60 * 60 * 1000
   /// How far ahead of this phone's clock `issued_at` may be (clock skew).
   public static let maxFutureSkewMilliseconds: Int64 = 10 * 60 * 1000
 

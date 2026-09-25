@@ -548,8 +548,12 @@ the route answers 503. The gateway is deployed by hand
   the shared keychain group for `rid`, `sk` equal to that registration's
   pinned Station key, a seal that opens under its payload key in the alert
   domain, `user_id` naming its Station, and a sealed `issued_at` no more
-  than 24 hours older than the phone's clock and no more than 10 minutes
-  ahead of it. Anything else, a seal without a title or body (hidden
+  than 2 hours older than the phone's clock and no more than 10 minutes
+  ahead of it. The gateway sets a one-hour APNs expiry and every retry is
+  sealed afresh, so a genuine alert fits that window. The window compares
+  the Station's clock with the phone's: a Station clock more than 10
+  minutes ahead of the phone, or 2 hours behind it, makes every alert show
+  its fixed text. Anything else, a seal without a title or body (hidden
   content), and `serviceExtensionTimeWillExpire` deliver the push exactly as
   it arrived; a seal with a title and no body keeps the fixed body. The
   logic is `StationNotificationServiceCore` in the agent-activity Swift
@@ -557,7 +561,7 @@ the route answers 503. The gateway is deployed by hand
   Replay is bounded by that `issued_at` window, not by APNs expiry: whoever
   holds a genuine sealed push (the gateway, or anyone with its APNs
   credentials and the device token) can re-send it and have it open for up
-  to 24 hours after the Station sealed it, including after the user has
+  to 2 hours after the Station sealed it, including after the user has
   since turned on hidden content. It cannot suppress a push, only rewrite
   it.
 - **What stops a stranger.** Nothing binds a device token to the Station that
