@@ -1284,7 +1284,7 @@ interface Screen {
 const SCREENS: Screen[] = [
   {
     name: 'mobile-activity-compact',
-    title: 'Mobile — Activity controls in a short dock',
+    title: 'Mobile — Activity opened over Chat (#2549)',
     path: '/?surface=activity',
     viewport: MOBILE,
     waitFor: '.sessions-axis-tabs',
