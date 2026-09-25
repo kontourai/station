@@ -592,19 +592,29 @@ runtime and the two can never both alert. A shell without the command answers
   still being committed), so entries queued between the webview's cursor and
   the host's first read (while the app was closed for the upgrade) are then
   not alerted.
-- **Retry, skip and at-least-once.** A read is decided under the consumer
-  lock, its OS calls are made with the lock released, in order, and the
-  cursor is then committed up to the entry before the first post the OS
-  refused or the first call that did not answer; that entry and everything
-  after it are retried next poll. The same alert refused on three polls in a
-  row is skipped and logged, so one entry cannot hold the feed; a call that
-  does not answer is never counted towards that. Each OS call (show, and on
-  Linux close) runs on a helper thread bounded at five seconds, and while
-  four calls are still stuck (zbus has no method timeout) no new call is made
-  at all, so a stalled notification service costs at most four parked
-  threads, one attempt per poll, and never holds the consumer lock or blocks
-  a handover. A crash between posting and the commit, or a show that times
-  out but appears later, can show an alert twice.
+- **What each OS call's outcome does.** A read is decided under the
+  consumer lock, its OS calls are made with the lock released, in order, and
+  the cursor is committed as far as the outcomes allow. A shown alert is
+  consumed. A call that was made but did not answer within five seconds is
+  treated as shown: consumed, remembered, never posted again (at-most-once),
+  and the poll stops there; if the show answers later its handle is still
+  kept. A call not made because the breaker is open stops the poll and is
+  retried next poll. A refused alert does not block later entries; the
+  cursor stops before it and it is retried, and dropped after three refusals
+  in a row. Once three distinct alerts are refused in a row the service
+  counts as down: refused alerts are dropped at once (at-most-once, logged
+  once per outage) until an alert is shown again. Refusal counts are kept per
+  Station origin, server run and entry, and start over when the entry is
+  consumed or the server restarts.
+- **Stuck notification service.** zbus has no method timeout, so each OS
+  call runs on a helper thread bounded at five seconds, and while four calls
+  are still stuck no new call is made. After 15 polls in a row (about five
+  minutes) ending that way, the stuck calls are written off and calls
+  resume; once 16 calls have been written off over the process's lifetime,
+  Station makes no OS notification call again and **desktop alerts stop until
+  the app restarts** (logged as an error). The consumer lock is never held
+  across an OS call, so none of this blocks a handover. A crash between
+  posting and the commit can show an alert twice.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the

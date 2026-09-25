@@ -26,18 +26,27 @@
 //! between the webview's cursor and this consumer's first read (while the
 //! app was closed for the upgrade) are then not alerted.
 //!
-//! **Retry and at-least-once.** A read is decided under the consumer lock,
-//! its OS calls are made with the lock released, in order, and the cursor is
-//! then committed up to the entry BEFORE the first post the OS refused or the
-//! first call that did not answer (timed out, or not made because earlier
-//! calls are still stuck — [`OsCallGate`]). That entry and everything after it
-//! are read and tried again next poll. The same alert refused on
-//! [`MAX_REFUSALS`] polls in a row is skipped (logged once), so one entry
-//! cannot hold the feed; a call that does not answer is never counted
-//! towards that and never skipped. A crash between posting and the commit
-//! posts those entries again on the next run (the in-memory dedupe does not
-//! survive a restart), and a show that times out but appears later is shown
-//! again by the retry.
+//! **What each OS call's outcome does.** A read is decided under the
+//! consumer lock, its OS calls are made with the lock released, in order,
+//! and the cursor is then committed as far as the outcomes allow:
+//! - shown: consumed;
+//! - timed out (the call was made, no answer within 5 s): treated as shown —
+//!   consumed, remembered, never posted again (at-most-once), and the poll
+//!   stops there. A show that answers late still gets its handle kept;
+//! - not made (the breaker is open, [`OsCallGate`]): the poll stops before it
+//!   and the next poll retries it;
+//! - refused: later entries still run, and the cursor stops before it so the
+//!   next poll retries it; refused on [`MAX_REFUSALS`] polls in a row it is
+//!   dropped. After [`DOWN_AFTER_REFUSALS`] distinct entries are refused in a
+//!   row the service counts as down: refused alerts are dropped at once
+//!   (at-most-once, logged once per outage) until an alert is shown.
+//!
+//! Refusal counts are per Station origin, server run (epoch) and entry, and
+//! start over when the entry is consumed or the epoch changes. The gate
+//! writes stuck calls off after 15 saturated polls and resumes; once 16 calls
+//! have been written off, no OS notification call is made until restart.
+//! A crash between posting and the commit posts those entries again on the
+//! next run (the in-memory dedupe does not survive a restart).
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -82,8 +91,10 @@ pub(crate) const ADOPTION_GRACE_MS: u64 = 30_000;
 const POSTED_MAX: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_STORED_ORIGINS: usize = 16;
-/// Polls in a row the OS may refuse the same alert before it is skipped.
+/// Polls in a row the OS may refuse the same alert before it is dropped.
 pub(crate) const MAX_REFUSALS: u32 = 3;
+/// Distinct alerts refused in a row after which the service counts as down.
+pub(crate) const DOWN_AFTER_REFUSALS: u32 = 3;
 const MAX_LINK_LEN: usize = 2048;
 pub(crate) const OPEN_EVENT: &str = "station://notification-open";
 const CURSOR_FILE: &str = "notification-delivery-cursors.json";
@@ -157,9 +168,11 @@ pub(crate) enum OsOutcome {
     Done,
     /// The OS refused the post, or there was nothing held to close.
     NotDone,
-    /// Not known to have happened: the call timed out, or it was not made
-    /// because earlier calls are still stuck (see [`OsCallGate`]).
-    Deferred,
+    /// The call was made and did not answer in time. Treated as done: the
+    /// entry is consumed and not tried again (at-most-once).
+    Unknown,
+    /// No call was made: the gate's breaker is open. Tried again next poll.
+    NotCalled,
 }
 
 pub(crate) trait AlertSink {
@@ -167,58 +180,253 @@ pub(crate) trait AlertSink {
     fn post(&mut self, alert: &Alert) -> OsOutcome;
     /// Take down the alert this process posted for `notification_id`.
     fn close(&mut self, notification_id: &str) -> OsOutcome;
+    /// Called once after each poll's calls (see [`OsCallGate::end_poll`]).
+    fn end_poll(&mut self) {}
 }
 
-/// Runs OS notification calls on helper threads, each bounded by a timeout,
-/// with a breaker: while `cap` earlier calls are still running (parked on a
-/// notification service that does not answer — zbus has no default method
-/// timeout), no new call is made at all. A stuck service therefore costs at
-/// most `cap` parked threads, never one per alert.
-pub(crate) struct OsCallGate {
+/// What [`OsCallGate::run`] got.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum GateAnswer<T> {
+    Answered(T),
+    /// Called; no answer within the timeout. A late answer goes to `on_late`.
+    TimedOut,
+    /// Not called: breaker open.
+    NotCalled,
+}
+
+enum Handoff<T> {
+    Waiting,
+    Answered(T),
+    GaveUp,
+}
+
+struct GateState {
+    /// Calls running in the current generation (reset by recovery).
     in_flight: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    saturated_polls: u32,
+    /// Calls written off by recovery over the process lifetime.
+    leaked: usize,
+    disabled: bool,
+}
+
+/// Runs OS notification calls on helper threads, each bounded by a
+/// timeout, with a breaker. zbus has no default method timeout, so a
+/// notification service that stops answering parks each call's thread.
+///
+/// - While `cap` calls are still running, no new call is made (`NotCalled`).
+/// - Recovery: after `reset_after_polls` consecutive polls ending saturated,
+///   the running calls are written off as leaked and calls resume.
+/// - Hard stop: once `leak_cap` calls have been written off over the
+///   process's lifetime, no OS call is made again until restart (logged).
+pub(crate) struct OsCallGate {
+    state: Mutex<GateState>,
     cap: usize,
     timeout: std::time::Duration,
+    reset_after_polls: u32,
+    leak_cap: usize,
 }
 
 impl OsCallGate {
-    pub(crate) fn new(cap: usize, timeout: std::time::Duration) -> Self {
+    pub(crate) fn new(
+        cap: usize,
+        timeout: std::time::Duration,
+        reset_after_polls: u32,
+        leak_cap: usize,
+    ) -> Self {
         Self {
-            in_flight: Default::default(),
+            state: Mutex::new(GateState {
+                in_flight: Default::default(),
+                saturated_polls: 0,
+                leaked: 0,
+                disabled: false,
+            }),
             cap,
             timeout,
+            reset_after_polls,
+            leak_cap,
         }
     }
 
-    /// `None` when the call timed out or was not made (breaker open).
+    fn lock(&self) -> std::sync::MutexGuard<'_, GateState> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Run `work` on a helper thread and wait at most the timeout. A call
+    /// that answers after the timeout hands its answer to `on_late` (on the
+    /// helper thread) instead of dropping it.
     pub(crate) fn run<T: Send + 'static>(
         &self,
         work: impl FnOnce() -> T + Send + 'static,
-    ) -> Option<T> {
+        on_late: impl FnOnce(T) + Send + 'static,
+    ) -> GateAnswer<T> {
         use std::sync::atomic::Ordering;
-        if self
-            .in_flight
+        let counter = {
+            let state = self.lock();
+            if state.disabled {
+                return GateAnswer::NotCalled;
+            }
+            std::sync::Arc::clone(&state.in_flight)
+        };
+        if counter
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
                 (count < self.cap).then_some(count + 1)
             })
             .is_err()
         {
-            return None;
+            return GateAnswer::NotCalled;
         }
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let in_flight = std::sync::Arc::clone(&self.in_flight);
+        let handoff =
+            std::sync::Arc::new((Mutex::new(Handoff::Waiting), std::sync::Condvar::new()));
+        let helper_handoff = std::sync::Arc::clone(&handoff);
+        let helper_counter = std::sync::Arc::clone(&counter);
         let spawned = std::thread::Builder::new()
             .name("station-notification-os-call".into())
             .spawn(move || {
                 let answer = work();
-                in_flight.fetch_sub(1, Ordering::SeqCst);
-                let _ = sender.send(answer);
+                helper_counter.fetch_sub(1, Ordering::SeqCst);
+                let (slot, ready) = &*helper_handoff;
+                let mut slot = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                if matches!(*slot, Handoff::GaveUp) {
+                    drop(slot);
+                    on_late(answer);
+                } else {
+                    *slot = Handoff::Answered(answer);
+                    ready.notify_all();
+                }
             });
         if spawned.is_err() {
-            self.in_flight.fetch_sub(1, Ordering::SeqCst);
-            return None;
+            counter.fetch_sub(1, Ordering::SeqCst);
+            return GateAnswer::NotCalled;
         }
-        receiver.recv_timeout(self.timeout).ok()
+        let (slot, ready) = &*handoff;
+        let slot = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (mut slot, _) = ready
+            .wait_timeout_while(slot, self.timeout, |slot| matches!(slot, Handoff::Waiting))
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match std::mem::replace(&mut *slot, Handoff::GaveUp) {
+            Handoff::Answered(answer) => GateAnswer::Answered(answer),
+            _ => GateAnswer::TimedOut,
+        }
     }
+
+    /// Called once per poll: counts polls that end saturated and recovers.
+    pub(crate) fn end_poll(&self) {
+        use std::sync::atomic::Ordering;
+        let mut state = self.lock();
+        if state.disabled {
+            return;
+        }
+        let running = state.in_flight.load(Ordering::SeqCst);
+        if running < self.cap {
+            state.saturated_polls = 0;
+            return;
+        }
+        state.saturated_polls += 1;
+        if state.saturated_polls < self.reset_after_polls {
+            return;
+        }
+        state.saturated_polls = 0;
+        state.leaked += running;
+        state.in_flight = Default::default();
+        if state.leaked >= self.leak_cap {
+            state.disabled = true;
+            log::error!(
+                "the notification service stopped answering ({} calls stuck); Station makes no more OS notification calls until it restarts",
+                state.leaked
+            );
+        } else {
+            log::warn!(
+                "the notification service has not answered {running} calls; writing them off ({} so far) and trying again",
+                state.leaked
+            );
+        }
+    }
+
+    #[cfg(test)]
+    fn leaked(&self) -> usize {
+        self.lock().leaked
+    }
+}
+
+/// Handles kept so a retract can close them, oldest first, at most `cap`.
+/// Used on Linux (the only backend with a close); generic so it is tested
+/// everywhere.
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+pub(crate) struct HeldHandles<H> {
+    map: HashMap<String, std::sync::Arc<H>>,
+    order: VecDeque<String>,
+    cap: usize,
+}
+
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+impl<H> HeldHandles<H> {
+    pub(crate) fn new(cap: usize) -> Self {
+        Self {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            cap,
+        }
+    }
+
+    pub(crate) fn insert(&mut self, id: String, handle: std::sync::Arc<H>) {
+        self.order.retain(|held| *held != id);
+        self.order.push_back(id.clone());
+        self.map.insert(id, handle);
+        while self.map.len() > self.cap {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            self.map.remove(&oldest);
+        }
+    }
+
+    pub(crate) fn get(&self, id: &str) -> Option<std::sync::Arc<H>> {
+        self.map.get(id).cloned()
+    }
+
+    /// Remove `id` only if it still holds `handle` (a newer post under the
+    /// same id keeps its own).
+    pub(crate) fn remove_if(&mut self, id: &str, handle: &std::sync::Arc<H>) {
+        if self
+            .map
+            .get(id)
+            .is_some_and(|held| std::sync::Arc::ptr_eq(held, handle))
+        {
+            self.map.remove(id);
+            self.order.retain(|held| held != id);
+        }
+    }
+}
+
+/// Close a held handle through the gate. The handle stays held unless the
+/// close was actually called: `NotCalled` keeps it for the retried retract;
+/// an answered or timed-out close releases it (the entry is consumed).
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+pub(crate) fn close_held<H: Send + Sync + 'static>(
+    held: &Mutex<HeldHandles<H>>,
+    gate: &OsCallGate,
+    id: &str,
+    close: impl FnOnce(std::sync::Arc<H>) + Send + 'static,
+) -> OsOutcome {
+    let Some(handle) = held
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(id)
+    else {
+        return OsOutcome::NotDone;
+    };
+    let closing = std::sync::Arc::clone(&handle);
+    let outcome = match gate.run(move || close(closing), |()| {}) {
+        GateAnswer::NotCalled => return OsOutcome::NotCalled,
+        GateAnswer::Answered(()) => OsOutcome::Done,
+        GateAnswer::TimedOut => OsOutcome::Unknown,
+    };
+    held.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove_if(id, &handle);
+    outcome
 }
 
 pub(crate) trait CursorStore {
@@ -280,8 +488,17 @@ pub(crate) struct Applied {
 /// (OS calls) after it is released. Each carries its entry's `seq`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Action {
-    Post { seq: u64, alert: Alert, key: String },
-    Close { seq: u64, notification_id: String },
+    Post {
+        seq: u64,
+        alert: Alert,
+        key: String,
+        /// Polls in a row the OS has refused this entry before.
+        refusals: u32,
+    },
+    Close {
+        seq: u64,
+        notification_id: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -289,6 +506,9 @@ pub(crate) struct Plan {
     pub actions: Vec<Action>,
     /// The position to commit once the actions ran; `None` while waiting.
     commit: Option<StoredCursor>,
+    /// The service state when the read was planned (see `FeedConsumer`).
+    down: bool,
+    streak: u32,
 }
 
 impl Plan {
@@ -300,36 +520,77 @@ impl Plan {
 /// What carrying out a plan did.
 #[derive(Debug, Default)]
 pub(crate) struct Executed {
-    /// Dedupe keys of alerts the OS accepted.
+    /// Dedupe keys of alerts consumed as posted (shown, or timed out).
     accepted: Vec<String>,
-    /// The entry the run stopped at (not handled); nothing after it ran.
-    stopped_at: Option<u64>,
-    /// The key of a post the OS refused, when that is why it stopped.
-    refused: Option<String>,
+    /// The highest cursor the outcome allows committing.
+    limit: Option<u64>,
+    /// Entries refused and kept for a retry.
+    refused: Vec<u64>,
+    down: bool,
+    streak: u32,
     pub applied: Applied,
 }
 
-/// Carry out a plan's OS calls, in order, stopping at the first post the OS
-/// refuses and at the first call that is deferred (timed out, or breaker
-/// open). The stopping entry and everything after it stay uncommitted, so a
-/// later poll retries them.
-pub(crate) fn execute(actions: Vec<Action>, sink: &mut dyn AlertSink) -> Executed {
-    let mut executed = Executed::default();
-    for action in actions {
+/// Carry out a plan's OS calls in order.
+///
+/// - Shown: consumed. Timed out (`Unknown`): consumed as posted — never
+///   shown twice — and the poll stops there, so a slow service costs one
+///   timeout per poll.
+/// - Not called (breaker open): the poll stops before it; retried next poll.
+/// - Refused: kept for a retry (later entries still run; the cursor stops
+///   before it) — unless it was refused on [`MAX_REFUSALS`] polls in a row,
+///   or the service is down, in which case it is consumed. The service is
+///   down after [`DOWN_AFTER_REFUSALS`] distinct entries are refused in a
+///   row, and up again at the next shown alert.
+pub(crate) fn execute(plan: &mut Plan, sink: &mut dyn AlertSink) -> Executed {
+    let mut executed = Executed {
+        down: plan.down,
+        streak: plan.streak,
+        ..Executed::default()
+    };
+    let limit_to = |executed: &mut Executed, cursor: u64| {
+        executed.limit = Some(executed.limit.map_or(cursor, |limit| limit.min(cursor)));
+    };
+    for action in std::mem::take(&mut plan.actions) {
         match action {
-            Action::Post { seq, alert, key } => match sink.post(&alert) {
+            Action::Post {
+                seq,
+                alert,
+                key,
+                refusals,
+            } => match sink.post(&alert) {
                 OsOutcome::Done => {
                     executed.accepted.push(key);
                     executed.applied.posted += 1;
+                    executed.down = false;
+                    executed.streak = 0;
+                }
+                OsOutcome::Unknown => {
+                    executed.accepted.push(key);
+                    limit_to(&mut executed, seq);
+                    break;
+                }
+                OsOutcome::NotCalled => {
+                    limit_to(&mut executed, seq.saturating_sub(1));
+                    break;
                 }
                 OsOutcome::NotDone => {
-                    executed.stopped_at = Some(seq);
-                    executed.refused = Some(key);
-                    break;
-                }
-                OsOutcome::Deferred => {
-                    executed.stopped_at = Some(seq);
-                    break;
+                    // Distinct entries: a retried refusal is not counted again.
+                    if !executed.down && refusals == 0 {
+                        executed.streak += 1;
+                        if executed.streak >= DOWN_AFTER_REFUSALS {
+                            executed.down = true;
+                        }
+                    }
+                    if !executed.down && refusals + 1 < MAX_REFUSALS {
+                        executed.refused.push(seq);
+                        limit_to(&mut executed, seq.saturating_sub(1));
+                    } else {
+                        log::warn!(
+                            "notification {} not shown: the OS refused it",
+                            alert.notification_id
+                        );
+                    }
                 }
             },
             Action::Close {
@@ -338,14 +599,26 @@ pub(crate) fn execute(actions: Vec<Action>, sink: &mut dyn AlertSink) -> Execute
             } => match sink.close(&notification_id) {
                 OsOutcome::Done => executed.applied.closed += 1,
                 OsOutcome::NotDone => {}
-                OsOutcome::Deferred => {
-                    executed.stopped_at = Some(seq);
+                OsOutcome::Unknown => {
+                    limit_to(&mut executed, seq);
+                    break;
+                }
+                OsOutcome::NotCalled => {
+                    limit_to(&mut executed, seq.saturating_sub(1));
                     break;
                 }
             },
         }
     }
     executed
+}
+
+/// Refusal counts for one Station origin and server run, by entry `seq`.
+#[derive(Default)]
+struct Refusals {
+    origin: String,
+    epoch: String,
+    counts: HashMap<u64, u32>,
 }
 
 /// The consumer's decisions, free of HTTP and OS calls so they can be tested.
@@ -362,8 +635,11 @@ pub(crate) struct FeedConsumer {
     first_read: HashMap<String, (StoredCursor, u64)>,
     posted: VecDeque<String>,
     posted_set: HashSet<String>,
-    /// The post the OS last refused, and how many polls in a row it did.
-    refused: Option<(String, u32)>,
+    refusals: Refusals,
+    /// The notification service refuses everything (see [`execute`]).
+    down: bool,
+    /// Distinct entries refused in a row.
+    streak: u32,
     /// Origins with a planned read whose outcome is not committed yet.
     pending: HashSet<String>,
 }
@@ -380,6 +656,11 @@ impl FeedConsumer {
     #[cfg(test)]
     pub(crate) fn cursor(&self, origin: &str) -> Option<&StoredCursor> {
         self.cursors.get(origin)
+    }
+
+    #[cfg(test)]
+    fn refusal_count(&self, seq: u64) -> u32 {
+        self.refusals.counts.get(&seq).copied().unwrap_or(0)
     }
 
     /// `after` and `epoch` for the next read. Without a cursor the whole
@@ -444,6 +725,14 @@ impl FeedConsumer {
         } else {
             0
         };
+        // Refusal counts belong to one origin's server run.
+        if self.refusals.origin != origin || self.refusals.epoch != feed.epoch {
+            self.refusals = Refusals {
+                origin: origin.to_string(),
+                epoch: feed.epoch.clone(),
+                counts: HashMap::new(),
+            };
+        }
         let mut entries: Vec<&FeedEntry> = feed
             .entries
             .iter()
@@ -482,19 +771,6 @@ impl FeedConsumer {
                     // under the same id with new content alerts again.
                     let key = serde_json::to_string(&(notification_id, title, body, urgency))
                         .unwrap_or_default();
-                    if self
-                        .refused
-                        .as_ref()
-                        .is_some_and(|(refused, count)| *refused == key && *count >= MAX_REFUSALS)
-                    {
-                        // Refused on every one of the last MAX_REFUSALS polls:
-                        // skipped, so one entry cannot hold the feed forever.
-                        log::warn!(
-                            "skipping notification {notification_id}: the OS refused it {MAX_REFUSALS} times"
-                        );
-                        self.refused = None;
-                        continue;
-                    }
                     if !retracted_later
                         && !focused
                         && !self.posted_set.contains(&key)
@@ -509,6 +785,7 @@ impl FeedConsumer {
                                 link: in_app_link(link.as_deref()),
                             },
                             key,
+                            refusals: self.refusals.counts.get(seq).copied().unwrap_or(0),
                         });
                     }
                 }
@@ -522,13 +799,14 @@ impl FeedConsumer {
                 cursor: feed.cursor,
                 epoch: feed.epoch.clone(),
             }),
+            down: self.down,
+            streak: self.streak,
         }
     }
 
-    /// Record a plan's outcome: remember the accepted alerts and commit the
-    /// cursor — up to the entry BEFORE the one the run stopped at, so a
-    /// refused or deferred post and everything after it are read again next
-    /// poll. Committing after the OS calls also means a crash between
+    /// Record a plan's outcome: remember the consumed alerts, count the
+    /// refusals kept for a retry, and commit the cursor up to what the
+    /// outcome allows. Committing after the OS calls means a crash between
     /// posting and this save posts those entries again.
     pub(crate) fn finish(
         &mut self,
@@ -539,28 +817,36 @@ impl FeedConsumer {
     ) {
         self.pending.remove(origin);
         for key in executed.accepted {
-            if self
-                .refused
-                .as_ref()
-                .is_some_and(|(refused, _)| *refused == key)
-            {
-                self.refused = None;
-            }
             self.remember_posted(key);
         }
-        if let Some(key) = executed.refused {
-            let count = match &self.refused {
-                Some((refused, count)) if *refused == key => count + 1,
-                _ => 1,
-            };
-            self.refused = Some((key, count));
+        if executed.down && !self.down {
+            log::warn!(
+                "the OS refused {DOWN_AFTER_REFUSALS} notifications in a row; refused alerts are dropped until one is shown"
+            );
         }
-        if let Some(mut next) = plan_commit {
-            if let Some(stopped) = executed.stopped_at {
-                next.cursor = next.cursor.min(stopped.saturating_sub(1));
+        self.down = executed.down;
+        self.streak = executed.streak;
+        let Some(mut next) = plan_commit else {
+            return;
+        };
+        if let Some(limit) = executed.limit {
+            next.cursor = next.cursor.min(limit);
+        }
+        if self.refusals.origin == origin && self.refusals.epoch == next.epoch {
+            // Consumed entries (at or below the new cursor) and entries not
+            // refused this time start over; refused ones count up.
+            let mut counts = HashMap::new();
+            for seq in executed.refused {
+                if seq > next.cursor {
+                    counts.insert(
+                        seq,
+                        self.refusals.counts.get(&seq).copied().unwrap_or(0) + 1,
+                    );
+                }
             }
-            self.commit(origin, next, store);
+            self.refusals.counts = counts;
         }
+        self.commit(origin, next, store);
     }
 
     /// Plan, execute and finish in one call, for callers without a lock to
@@ -575,9 +861,10 @@ impl FeedConsumer {
         sink: &mut dyn AlertSink,
         store: &mut dyn CursorStore,
     ) -> Applied {
-        let plan = self.plan(origin, feed, focused, now_ms, store);
+        let mut plan = self.plan(origin, feed, focused, now_ms, store);
         let waiting = plan.waiting();
-        let mut executed = execute(plan.actions, sink);
+        let mut executed = execute(&mut plan, sink);
+        sink.end_poll();
         let mut applied = std::mem::take(&mut executed.applied);
         self.finish(origin, plan.commit, executed, store);
         applied.waiting = waiting;
@@ -712,12 +999,13 @@ impl<C: CursorStore> SharedConsumer<C> {
         now_ms: u64,
         sink: &mut dyn AlertSink,
     ) -> Option<Applied> {
-        let plan = self.with(init, |consumer, store| {
+        let mut plan = self.with(init, |consumer, store| {
             consumer.plan(origin, feed, focused, now_ms, store)
         })?;
         let waiting = plan.waiting();
         // No consumer lock from here until the outcome is committed.
-        let mut executed = execute(plan.actions, sink);
+        let mut executed = execute(&mut plan, sink);
+        sink.end_poll();
         let mut applied = std::mem::take(&mut executed.applied);
         self.with(
             || None,
@@ -810,15 +1098,20 @@ mod host {
     /// Threads waiting on a click, at most. Past this an alert still shows;
     /// only its click is not observed.
     const MAX_CLICK_WAITERS: usize = 32;
-    /// The longest one OS notification call (show, close) may take. A show
-    /// that times out may still appear later: that notification is orphaned
-    /// (no handle kept, so no retract; no click waiter; not remembered as
-    /// posted), and because a timed-out post leaves its entry uncommitted the
-    /// next poll posts it again — it can then show twice.
+    /// The longest one OS notification call (show, close) may take. A call
+    /// that times out is treated as done (at-most-once): its entry is
+    /// consumed and remembered as posted, so it is never shown twice. If the
+    /// show answers later, its handle is kept then (retract on Linux, click).
     const OS_CALL_TIMEOUT: Duration = Duration::from_secs(5);
-    /// OS calls still running (parked past their timeout) before the breaker
+    /// OS calls still running (stuck past their timeout) before the breaker
     /// stops making new ones.
     const MAX_PARKED_OS_CALLS: usize = 4;
+    /// Polls in a row ending with the breaker open before the stuck calls
+    /// are written off and calls resume (~5 min at the 20 s poll).
+    const GATE_RESET_AFTER_POLLS: u32 = 15;
+    /// Calls written off over the process lifetime before OS notification
+    /// calls stop until restart.
+    const GATE_LEAK_CAP: usize = 16;
     /// Posted alerts whose handle is kept for a retract (Linux), at most;
     /// the oldest is dropped first.
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -983,31 +1276,84 @@ mod host {
         }
     }
 
-    /// Linux: handles kept for a retract, oldest first.
-    #[cfg(all(unix, not(target_os = "macos")))]
-    #[derive(Default)]
-    struct HeldHandles {
-        map: HashMap<String, Arc<notify_rust::NotificationHandle>>,
-        order: VecDeque<String>,
+    /// What a shown notification needs after the call returns — possibly
+    /// late, on the gate's helper thread.
+    struct SinkShared {
+        app: AppHandle,
+        waiters: std::sync::atomic::AtomicUsize,
+        #[cfg(all(unix, not(target_os = "macos")))]
+        handles: Mutex<HeldHandles<notify_rust::NotificationHandle>>,
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    impl HeldHandles {
-        fn insert(&mut self, id: String, handle: Arc<notify_rust::NotificationHandle>) {
-            self.order.retain(|held| *held != id);
-            self.order.push_back(id.clone());
-            self.map.insert(id, handle);
-            while self.map.len() > MAX_HELD_HANDLES {
-                let Some(oldest) = self.order.pop_front() else {
-                    break;
-                };
-                self.map.remove(&oldest);
-            }
+    impl SinkShared {
+        fn claim_waiter(&self) -> bool {
+            use std::sync::atomic::Ordering;
+            self.waiters
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+                    (count < MAX_CLICK_WAITERS).then_some(count + 1)
+                })
+                .is_ok()
         }
 
-        fn remove(&mut self, id: &str) -> Option<Arc<notify_rust::NotificationHandle>> {
-            self.order.retain(|held| held != id);
-            self.map.remove(id)
+        /// Keep a shown notification: its handle for a retract (Linux) and a
+        /// waiter for its click.
+        fn present(
+            self: &Arc<Self>,
+            id: String,
+            link: Option<String>,
+            shown: notify_rust::NotificationHandle,
+        ) {
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                let shown = Arc::new(shown);
+                self.handles
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(id.clone(), Arc::clone(&shown));
+                if self.claim_waiter() {
+                    let shared = Arc::clone(self);
+                    std::thread::spawn(move || {
+                        tauri::async_runtime::block_on(shown.wait_for_action_async(
+                            |response| {
+                                if matches!(response, notify_rust::NotificationResponse::Default)
+                                    || matches!(response, notify_rust::NotificationResponse::Action(action) if is_open_action(action))
+                                {
+                                    open_from_click(&shared.app, link);
+                                }
+                            },
+                        ));
+                        // Answered or closed: nothing left to take down.
+                        shared
+                            .handles
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .remove_if(&id, &shown);
+                        shared
+                            .waiters
+                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    });
+                }
+            }
+            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            {
+                let _ = id;
+                if self.claim_waiter() {
+                    let shared = Arc::clone(self);
+                    std::thread::spawn(move || {
+                        shown.wait_for_action(|action| {
+                            if is_open_action(action) {
+                                open_from_click(&shared.app, link);
+                            }
+                        });
+                        shared
+                            .waiters
+                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    });
+                } else {
+                    // Shown without observing its click (macOS sends on drop).
+                    drop(shown);
+                }
+            }
         }
     }
 
@@ -1020,31 +1366,26 @@ mod host {
     /// keeps its slots taken: past the cap, alerts still show but their
     /// clicks open nothing.
     pub(crate) struct OsAlertSink {
-        app: AppHandle,
-        waiters: Arc<std::sync::atomic::AtomicUsize>,
+        shared: Arc<SinkShared>,
         gate: OsCallGate,
-        #[cfg(all(unix, not(target_os = "macos")))]
-        handles: Arc<Mutex<HeldHandles>>,
     }
 
     impl OsAlertSink {
         fn new(app: AppHandle) -> Self {
             Self {
-                app,
-                waiters: Arc::default(),
-                gate: OsCallGate::new(MAX_PARKED_OS_CALLS, OS_CALL_TIMEOUT),
-                #[cfg(all(unix, not(target_os = "macos")))]
-                handles: Arc::default(),
+                shared: Arc::new(SinkShared {
+                    app,
+                    waiters: Default::default(),
+                    #[cfg(all(unix, not(target_os = "macos")))]
+                    handles: Mutex::new(HeldHandles::new(MAX_HELD_HANDLES)),
+                }),
+                gate: OsCallGate::new(
+                    MAX_PARKED_OS_CALLS,
+                    OS_CALL_TIMEOUT,
+                    GATE_RESET_AFTER_POLLS,
+                    GATE_LEAK_CAP,
+                ),
             }
-        }
-
-        fn claim_waiter(&self) -> bool {
-            use std::sync::atomic::Ordering;
-            self.waiters
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-                    (count < MAX_CLICK_WAITERS).then_some(count + 1)
-                })
-                .is_ok()
         }
     }
 
@@ -1061,102 +1402,45 @@ mod host {
                 .body(alert.body.as_deref().unwrap_or(""))
                 .action("default", "Open");
             #[cfg(target_os = "macos")]
-            let _ = notify_rust::set_application(&self.app.config().identifier);
+            let _ = notify_rust::set_application(&self.shared.app.config().identifier);
             #[cfg(target_os = "windows")]
-            notification.app_id(&self.app.config().identifier);
-            // Gated: on Linux `show` is a D-Bus round trip with no timeout.
-            let shown = match self.gate.run(move || notification.show()) {
-                None => {
-                    log::warn!("a notification did not show within {OS_CALL_TIMEOUT:?}, or the notification service is stuck; retrying next poll");
-                    return OsOutcome::Deferred;
+            notification.app_id(&self.shared.app.config().identifier);
+            let late = {
+                let shared = Arc::clone(&self.shared);
+                let id = alert.notification_id.clone();
+                let link = alert.link.clone();
+                move |shown: notify_rust::error::Result<notify_rust::NotificationHandle>| {
+                    if let Ok(shown) = shown {
+                        shared.present(id, link, shown);
+                    }
                 }
-                Some(Err(_)) => return OsOutcome::NotDone,
-                Some(Ok(shown)) => shown,
             };
-            let app = self.app.clone();
-            let link = alert.link.clone();
-            #[cfg(all(unix, not(target_os = "macos")))]
-            {
-                let shown = Arc::new(shown);
-                self.handles
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(alert.notification_id.clone(), Arc::clone(&shown));
-                if self.claim_waiter() {
-                    let waiters = Arc::clone(&self.waiters);
-                    let handles = Arc::clone(&self.handles);
-                    let id = alert.notification_id.clone();
-                    std::thread::spawn(move || {
-                        tauri::async_runtime::block_on(shown.wait_for_action_async(
-                            |response| {
-                                if matches!(response, notify_rust::NotificationResponse::Default)
-                                    || matches!(response, notify_rust::NotificationResponse::Action(action) if is_open_action(action))
-                                {
-                                    open_from_click(&app, link);
-                                }
-                            },
-                        ));
-                        // Answered or closed: nothing left to take down.
-                        let mut handles = handles
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        if handles
-                            .map
-                            .get(&id)
-                            .is_some_and(|held| Arc::ptr_eq(held, &shown))
-                        {
-                            handles.remove(&id);
-                        }
-                        waiters.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                    });
+            // Gated: on Linux `show` is a D-Bus round trip with no timeout.
+            match self.gate.run(move || notification.show(), late) {
+                GateAnswer::NotCalled => OsOutcome::NotCalled,
+                GateAnswer::TimedOut => {
+                    log::warn!("a notification did not show within {OS_CALL_TIMEOUT:?}; treating it as shown");
+                    OsOutcome::Unknown
+                }
+                GateAnswer::Answered(Err(_)) => OsOutcome::NotDone,
+                GateAnswer::Answered(Ok(shown)) => {
+                    self.shared
+                        .present(alert.notification_id.clone(), alert.link.clone(), shown);
+                    OsOutcome::Done
                 }
             }
-            #[cfg(not(all(unix, not(target_os = "macos"))))]
-            {
-                if self.claim_waiter() {
-                    let waiters = Arc::clone(&self.waiters);
-                    std::thread::spawn(move || {
-                        shown.wait_for_action(|action| {
-                            if is_open_action(action) {
-                                open_from_click(&app, link);
-                            }
-                        });
-                        waiters.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-                    });
-                } else {
-                    // Shown without observing its click (macOS sends on drop).
-                    drop(shown);
-                }
-            }
-            OsOutcome::Done
         }
 
         fn close(&mut self, notification_id: &str) -> OsOutcome {
             #[cfg(all(unix, not(target_os = "macos")))]
             {
-                let held = self
-                    .handles
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .remove(notification_id);
-                let Some(handle) = held else {
-                    return OsOutcome::NotDone;
-                };
-                let closing = Arc::clone(&handle);
                 // Gated D-Bus `CloseNotification`.
-                if self
-                    .gate
-                    .run(move || tauri::async_runtime::block_on(closing.close_async()))
-                    .is_some()
-                {
-                    return OsOutcome::Done;
-                }
-                // Kept, so the retried retract can close it.
-                self.handles
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(notification_id.to_string(), handle);
-                OsOutcome::Deferred
+                close_held(
+                    &self.shared.handles,
+                    &self.gate,
+                    notification_id,
+                    |handle| tauri::async_runtime::block_on(handle.close_async()),
+                )
             }
             #[cfg(not(all(unix, not(target_os = "macos"))))]
             {
@@ -1165,6 +1449,10 @@ mod host {
                 let _ = notification_id;
                 OsOutcome::NotDone
             }
+        }
+
+        fn end_poll(&mut self) {
+            self.gate.end_poll();
         }
     }
 
@@ -1648,11 +1936,12 @@ mod tests {
         assert!(parse_feed_response("not json").is_none());
     }
 
-    /// Answers each post from a script per notification id (default Done),
-    /// and records every attempt.
+    /// Answers each post and close from a script per notification id
+    /// (posts default to Done, closes to NotDone), recording every attempt.
     #[derive(Default)]
     struct Scripted {
         answers: HashMap<String, VecDeque<OsOutcome>>,
+        closes: HashMap<String, VecDeque<OsOutcome>>,
         attempts: Vec<String>,
     }
     impl AlertSink for Scripted {
@@ -1663,19 +1952,26 @@ mod tests {
                 .and_then(VecDeque::pop_front)
                 .unwrap_or(OsOutcome::Done)
         }
-        fn close(&mut self, _notification_id: &str) -> OsOutcome {
-            OsOutcome::NotDone
+        fn close(&mut self, notification_id: &str) -> OsOutcome {
+            self.attempts.push(format!("close:{notification_id}"));
+            self.closes
+                .get_mut(notification_id)
+                .and_then(VecDeque::pop_front)
+                .unwrap_or(OsOutcome::NotDone)
         }
     }
     fn scripted(id: &str, answers: &[OsOutcome]) -> Scripted {
         Scripted {
             answers: HashMap::from([(id.to_string(), answers.iter().copied().collect())]),
-            attempts: Vec::new(),
+            ..Scripted::default()
         }
+    }
+    fn count(attempts: &[String], id: &str) -> usize {
+        attempts.iter().filter(|attempt| *attempt == id).count()
     }
 
     #[test]
-    fn a_refused_post_is_retried_from_there_next_poll() {
+    fn a_refused_post_is_retried_and_does_not_block_what_follows() {
         let mut consumer = started(0, "run-1");
         let mut store = MemoryStore::default();
         let mut sink = scripted("b", &[OsOutcome::NotDone]);
@@ -1685,10 +1981,11 @@ mod tests {
             "run-1",
         );
         let applied = consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(applied.posted, 1, "a refused post is not counted");
-        // Nothing after the refusal ran, and the cursor stops before it.
-        assert_eq!(sink.attempts, ["a", "b"]);
+        assert_eq!(applied.posted, 2, "a refused post is not counted");
+        assert_eq!(sink.attempts, ["a", "b", "c"]);
+        // The cursor stops before the refused entry.
         assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
+        assert_eq!(consumer.refusal_count(2), 1);
         consumer.apply(
             ORIGIN,
             &feed(3, vec![alert(2, "b"), alert(3, "c")], "run-1"),
@@ -1697,12 +1994,18 @@ mod tests {
             &mut sink,
             &mut store,
         );
-        assert_eq!(sink.attempts, ["a", "b", "b", "c"]);
+        // b is retried and shown; c, already shown, is not shown again.
+        assert_eq!(sink.attempts, ["a", "b", "c", "b"]);
         assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
+        assert_eq!(
+            consumer.refusal_count(2),
+            0,
+            "an accepted entry's count starts over"
+        );
     }
 
     #[test]
-    fn an_entry_the_os_keeps_refusing_is_skipped_after_the_limit() {
+    fn an_entry_the_os_keeps_refusing_is_dropped_on_its_last_try() {
         let mut consumer = started(0, "run-1");
         let mut store = MemoryStore::default();
         let mut sink = scripted("b", &[OsOutcome::NotDone; 10]);
@@ -1710,28 +2013,96 @@ mod tests {
         for _ in 0..MAX_REFUSALS {
             consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
         }
-        assert_eq!(sink.attempts, vec!["b"; MAX_REFUSALS as usize]);
-        assert_eq!(consumer.request(ORIGIN), (0, Some("run-1".into())));
-        // The next poll skips it instead of holding the feed forever.
-        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
-        assert_eq!(sink.attempts.last().map(String::as_str), Some("c"));
-        assert_eq!(
-            sink.attempts.iter().filter(|id| *id == "b").count(),
-            MAX_REFUSALS as usize
-        );
+        assert_eq!(count(&sink.attempts, "b"), MAX_REFUSALS as usize);
+        assert_eq!(count(&sink.attempts, "c"), 1);
         assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
+        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(count(&sink.attempts, "b"), MAX_REFUSALS as usize);
     }
 
     #[test]
-    fn a_deferred_post_stops_the_poll_and_is_never_skipped() {
+    fn a_service_refusing_everything_is_drained_not_retried_one_by_one() {
         let mut consumer = started(0, "run-1");
         let mut store = MemoryStore::default();
-        let mut sink = scripted("b", &[OsOutcome::Deferred; 5]);
+        let ids = ["a", "b", "c", "d", "e"];
+        let mut sink = Scripted::default();
+        for id in ids {
+            sink.answers
+                .insert(id.into(), vec![OsOutcome::NotDone; 10].into());
+        }
+        let batch = feed(
+            5,
+            ids.iter()
+                .enumerate()
+                .map(|(i, id)| alert(i as u64 + 1, id))
+                .collect(),
+            "run-1",
+        );
+        let mut polls = 0;
+        while consumer.request(ORIGIN).0 < 5 {
+            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+            polls += 1;
+            assert!(polls <= 10, "the backlog never drained");
+        }
+        // One entry at a time would take 5 × MAX_REFUSALS polls.
+        assert_eq!(polls, 2);
+        // An accepted post ends the outage: refusals are retried again.
+        let mut up = scripted("f", &[OsOutcome::NotDone]);
+        consumer.apply(
+            ORIGIN,
+            &feed(7, vec![alert(6, "ok"), alert(7, "f")], "run-1"),
+            false,
+            0,
+            &mut up,
+            &mut store,
+        );
+        assert_eq!(consumer.request(ORIGIN), (6, Some("run-1".into())));
+    }
+
+    #[test]
+    fn refusal_counts_start_over_in_a_new_server_run() {
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let mut sink = scripted("b", &[OsOutcome::NotDone; 10]);
+        for _ in 0..MAX_REFUSALS - 1 {
+            consumer.apply(
+                ORIGIN,
+                &feed(1, vec![alert(1, "b")], "run-1"),
+                false,
+                0,
+                &mut sink,
+                &mut store,
+            );
+        }
+        assert_eq!(consumer.refusal_count(1), MAX_REFUSALS - 1);
+        // The server restarted: seq 1 is a different delivery with its own count.
+        consumer.apply(
+            ORIGIN,
+            &feed(1, vec![alert(1, "b")], "run-2"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert_eq!(
+            count(&sink.attempts, "b"),
+            MAX_REFUSALS as usize,
+            "it was called, not skipped"
+        );
+        assert_eq!(consumer.refusal_count(1), 1);
+        assert_eq!(consumer.request(ORIGIN), (0, Some("run-2".into())));
+    }
+
+    #[test]
+    fn a_call_not_made_is_retried_and_never_dropped() {
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let mut sink = scripted("b", &[OsOutcome::NotCalled; 5]);
         let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
         for _ in 0..5 {
             consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
         }
-        // A stuck service: one attempt per poll, nothing after it, nothing committed.
+        // Breaker open: one attempt per poll, nothing after it, nothing committed.
         assert_eq!(sink.attempts, vec!["b"; 5]);
         assert_eq!(consumer.request(ORIGIN), (0, Some("run-1".into())));
         consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
@@ -1739,39 +2110,263 @@ mod tests {
     }
 
     #[test]
-    fn the_gate_stops_calling_while_earlier_calls_are_stuck() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::mpsc::channel;
+    fn a_slow_service_shows_each_alert_once_and_reaches_the_next() {
         use std::sync::Arc;
         use std::time::Duration;
 
-        let gate = OsCallGate::new(2, Duration::from_millis(50));
-        let started_calls = Arc::new(AtomicUsize::new(0));
-        let (release, released) = channel::<()>();
-        let released = Arc::new(Mutex::new(released));
-        let stuck = || {
-            let started_calls = Arc::clone(&started_calls);
-            let released = Arc::clone(&released);
-            move || {
-                started_calls.fetch_add(1, Ordering::SeqCst);
-                let _ = released.lock().unwrap().recv();
+        // The reviewer's probe: 80 ms calls against a 50 ms bound.
+        struct Slow {
+            gate: OsCallGate,
+            displayed: Arc<Mutex<Vec<String>>>,
+        }
+        impl AlertSink for Slow {
+            fn post(&mut self, alert: &Alert) -> OsOutcome {
+                let displayed = Arc::clone(&self.displayed);
+                let id = alert.notification_id.clone();
+                let show = move || {
+                    std::thread::sleep(Duration::from_millis(80));
+                    displayed.lock().unwrap().push(id);
+                };
+                match self.gate.run(show, |()| {}) {
+                    GateAnswer::Answered(()) => OsOutcome::Done,
+                    GateAnswer::TimedOut => OsOutcome::Unknown,
+                    GateAnswer::NotCalled => OsOutcome::NotCalled,
+                }
             }
+            fn close(&mut self, _notification_id: &str) -> OsOutcome {
+                OsOutcome::NotDone
+            }
+            fn end_poll(&mut self) {
+                self.gate.end_poll();
+            }
+        }
+        let displayed = Arc::new(Mutex::new(Vec::new()));
+        let mut sink = Slow {
+            gate: OsCallGate::new(4, Duration::from_millis(50), 15, 16),
+            displayed: Arc::clone(&displayed),
         };
-        assert_eq!(gate.run(stuck()), None, "a stuck call times out");
-        assert_eq!(gate.run(stuck()), None);
-        // Two calls are parked: the breaker makes no third call at all.
-        assert_eq!(gate.run(stuck()), None);
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let batch = feed(2, vec![alert(1, "b"), alert(2, "c")], "run-1");
+        for _ in 0..6 {
+            consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(*displayed.lock().unwrap(), ["b", "c"]);
+        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
+    }
+
+    #[test]
+    fn a_close_not_made_is_retried_and_a_timed_out_close_is_consumed() {
+        let mut consumer = started(0, "run-1");
+        let mut store = MemoryStore::default();
+        let mut sink = Scripted::default();
+        sink.closes.insert(
+            "n-1".into(),
+            VecDeque::from([OsOutcome::NotCalled, OsOutcome::Unknown]),
+        );
+        let batch = feed(3, vec![retract(2, "n-1"), alert(3, "after")], "run-1");
+        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(sink.attempts, ["close:n-1"]);
+        assert_eq!(consumer.request(ORIGIN), (1, Some("run-1".into())));
+        // Timed out: consumed, and the poll stops after it.
+        consumer.apply(ORIGIN, &batch, false, 0, &mut sink, &mut store);
+        assert_eq!(sink.attempts, ["close:n-1", "close:n-1"]);
+        assert_eq!(consumer.request(ORIGIN), (2, Some("run-1".into())));
+        consumer.apply(
+            ORIGIN,
+            &feed(3, vec![alert(3, "after")], "run-1"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert_eq!(sink.attempts.last().map(String::as_str), Some("after"));
+    }
+
+    /// Wait until `done` holds, or fail after a deadline (hosts here run at
+    /// load 90).
+    fn eventually(what: &str, mut done: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !done() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    type Release = std::sync::Arc<Mutex<std::sync::mpsc::Receiver<()>>>;
+    fn stuck_call(
+        started_calls: &std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        released: &Release,
+    ) -> impl FnOnce() + Send + 'static {
+        let started_calls = std::sync::Arc::clone(started_calls);
+        let released = std::sync::Arc::clone(released);
+        move || {
+            started_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _ = released.lock().unwrap().recv();
+        }
+    }
+
+    #[test]
+    fn the_gate_stops_calling_while_earlier_calls_are_stuck() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let gate = OsCallGate::new(2, Duration::from_millis(50), 100, 100);
+        let started_calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released: Release = Arc::new(Mutex::new(released));
+        let stuck = || stuck_call(&started_calls, &released);
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
+        eventually("both calls to start", || {
+            started_calls.load(Ordering::SeqCst) == 2
+        });
+        // Two calls are stuck: the breaker makes no third call at all.
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::NotCalled);
+        std::thread::sleep(Duration::from_millis(20));
         assert_eq!(started_calls.load(Ordering::SeqCst), 2);
         release.send(()).unwrap();
         release.send(()).unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while gate.run(|| 7) != Some(7) {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "the gate never reopened"
-            );
-            std::thread::sleep(Duration::from_millis(10));
+        eventually("the gate to reopen", || {
+            gate.run(|| 7, |_| {}) == GateAnswer::Answered(7)
+        });
+    }
+
+    #[test]
+    fn a_late_answer_is_handed_over_not_dropped() {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let gate = OsCallGate::new(4, Duration::from_millis(20), 15, 16);
+        let late = Arc::new(Mutex::new(None));
+        let sink = Arc::clone(&late);
+        let answer = gate.run(
+            || {
+                std::thread::sleep(Duration::from_millis(80));
+                "handle"
+            },
+            move |handle| *sink.lock().unwrap() = Some(handle),
+        );
+        assert_eq!(answer, GateAnswer::TimedOut);
+        eventually("the late answer", || late.lock().unwrap().is_some());
+        assert_eq!(*late.lock().unwrap(), Some("handle"));
+    }
+
+    #[test]
+    fn a_saturated_gate_recovers_then_stops_for_good_at_the_leak_cap() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        // One call at a time; write off after 2 saturated polls; stop after 2 written off.
+        let gate = OsCallGate::new(1, Duration::from_millis(20), 2, 2);
+        let started_calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released: Release = Arc::new(Mutex::new(released));
+        let stuck = || stuck_call(&started_calls, &released);
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
+        gate.end_poll();
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::NotCalled);
+        gate.end_poll();
+        // Two saturated polls: the stuck call is written off and calls resume.
+        assert_eq!(gate.leaked(), 1);
+        assert_eq!(gate.run(stuck(), |()| {}), GateAnswer::TimedOut);
+        eventually("the second call to start", || {
+            started_calls.load(Ordering::SeqCst) == 2
+        });
+        gate.end_poll();
+        gate.end_poll();
+        assert_eq!(gate.leaked(), 2);
+        // Leak cap reached: no OS call again, even once the stuck calls return.
+        release.send(()).unwrap();
+        release.send(()).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        gate.end_poll();
+        assert_eq!(gate.run(|| 7, |_| {}), GateAnswer::NotCalled);
+        assert_eq!(started_calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn held_handles_drop_the_oldest_first() {
+        use std::sync::Arc;
+        let mut held = HeldHandles::new(2);
+        held.insert("a".into(), Arc::new(1));
+        held.insert("b".into(), Arc::new(2));
+        held.insert("c".into(), Arc::new(3));
+        assert!(held.get("a").is_none());
+        // Re-posting b makes it the newest, so c is the oldest now.
+        held.insert("b".into(), Arc::new(4));
+        held.insert("d".into(), Arc::new(5));
+        assert!(held.get("c").is_none());
+        assert_eq!(held.get("b").as_deref(), Some(&4));
+        // A handle replaced under the same id is not removed by the old one.
+        let old = Arc::new(9);
+        held.remove_if("b", &old);
+        assert!(held.get("b").is_some());
+    }
+
+    #[test]
+    fn a_close_keeps_its_handle_unless_it_was_called() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let held = Mutex::new(HeldHandles::new(8));
+        held.lock().unwrap().insert("n-1".into(), Arc::new(1));
+        // Breaker open (its one slot is stuck): not called, still held.
+        let blocked = OsCallGate::new(1, Duration::from_millis(20), 100, 100);
+        let started_calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released: Release = Arc::new(Mutex::new(released));
+        assert_eq!(
+            blocked.run(stuck_call(&started_calls, &released), |()| {}),
+            GateAnswer::TimedOut
+        );
+        assert_eq!(
+            close_held(&held, &blocked, "n-1", |_| {}),
+            OsOutcome::NotCalled
+        );
+        assert!(
+            held.lock().unwrap().get("n-1").is_some(),
+            "kept for the retried retract"
+        );
+        // Called and timed out: consumed, released.
+        let slow = OsCallGate::new(4, Duration::from_millis(20), 100, 100);
+        assert_eq!(
+            close_held(&held, &slow, "n-1", |_| std::thread::sleep(
+                Duration::from_millis(80)
+            )),
+            OsOutcome::Unknown
+        );
+        assert!(held.lock().unwrap().get("n-1").is_none());
+        // Answered: closed.
+        held.lock().unwrap().insert("n-2".into(), Arc::new(2));
+        assert_eq!(close_held(&held, &slow, "n-2", |_| {}), OsOutcome::Done);
+        assert!(held.lock().unwrap().get("n-2").is_none());
+        assert_eq!(
+            close_held(&held, &slow, "missing", |_| {}),
+            OsOutcome::NotDone
+        );
+        release.send(()).unwrap();
+    }
+
+    #[test]
+    fn handed_over_cursors_are_capped() {
+        let mut consumer = FeedConsumer::default();
+        for index in 0..MAX_STORED_ORIGINS {
+            assert!(consumer.hand_over(
+                &format!("http://127.0.0.1:{}", 6000 + index),
+                stored(0, "run-1")
+            ));
         }
+        assert!(!consumer.hand_over("http://127.0.0.1:7000", stored(0, "run-1")));
+        // Replacing one already offered is still allowed.
+        assert!(consumer.hand_over("http://127.0.0.1:6000", stored(1, "run-1")));
     }
 
     #[test]
