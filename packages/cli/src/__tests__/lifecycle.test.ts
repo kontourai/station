@@ -5422,6 +5422,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
               Host: host,
               'X-Station-Internal-Token': 'caller-spoof',
               'X-Station-Proxy-Caller': 'local',
+              'X-Station-Orchestration-Thread': 'caller-spoof-thread',
             },
           },
           (res) => {
@@ -5443,6 +5444,10 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     expect(observed[0]?.['x-station-internal-token']).toBe(
       'test-only-internal-api-token',
     );
+    // #2589: never relayed, so no browser can name a relay thread.
+    expect(
+      observed.map((headers) => headers['x-station-orchestration-thread']),
+    ).toEqual([undefined, undefined, undefined]);
     expect(JSON.stringify(observed)).not.toContain('caller-spoof');
   });
 

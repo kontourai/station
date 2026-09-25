@@ -312,6 +312,9 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // authorizes it — scoped by host, not origin — is never sent.
   const INTERNAL_PROXY_FORWARDED_HOST_HEADER = 'x-station-proxy-forwarded-host';
   const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
+  // #2589: the Station-agent relay's orchestration thread. The backend
+  // already ignores it from a `remote` caller; stripped here too.
+  const INTERNAL_ORCHESTRATION_THREAD_HEADER = 'x-station-orchestration-thread';
   const TAILSCALE_HEADERS_INFO_URL = 'https://tailscale.com/s/serve-headers';
   const isLoopbackAddress = (value: string | undefined) => {
     const normalized = (value ?? '').trim().toLowerCase();
@@ -566,6 +569,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     delete headers[INTERNAL_PROXY_PEER_HEADER];
     delete headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER];
     delete headers[INTERNAL_TENANT_HEADER];
+    delete headers[INTERNAL_ORCHESTRATION_THREAD_HEADER];
     for (const name of Object.keys(headers)) {
       if (name.startsWith('tailscale-')) delete headers[name];
     }

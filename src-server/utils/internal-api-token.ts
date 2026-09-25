@@ -56,7 +56,8 @@ export const INTERNAL_PROXY_FORWARDED_HOST_HEADER =
  * `request.opened`. `/chat` accepts it only from a direct internal caller
  * (trusted {@link INTERNAL_API_TOKEN_HEADER} AND
  * {@link INTERNAL_PROXY_CALLER_HEADER} `local`: the UI proxy forces
- * `remote`, so a browser cannot claim it) and only when it names the
+ * `remote`, and strips this header too, so a browser cannot claim it) and
+ * only when it names the
  * request's own conversation.
  */
 export const INTERNAL_ORCHESTRATION_THREAD_HEADER =

@@ -800,6 +800,11 @@ describe('Chat Routes: the Station-agent relay thread (#2589)', () => {
       { 'x-station-orchestration-thread': 'thread-other' },
       undefined,
     ],
+    [
+      'a request with the internal token but no caller header',
+      { 'x-station-proxy-caller': undefined },
+      undefined,
+    ],
   ])('%s', async (_label, override, expected) => {
     streamPrimaryAgentChat.mockClear();
     vi.mocked(prepareChatRequest).mockImplementationOnce(
@@ -813,13 +818,16 @@ describe('Chat Routes: the Station-agent relay thread (#2589)', () => {
     );
     const response = await relayApp().request('/station/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-station-internal-token': getInternalApiToken(),
-        'x-station-proxy-caller': 'local',
-        'x-station-orchestration-thread': 'thread-7',
-        ...override,
-      },
+      // An `undefined` override drops the header entirely.
+      headers: Object.fromEntries(
+        Object.entries({
+          'Content-Type': 'application/json',
+          'x-station-internal-token': getInternalApiToken(),
+          'x-station-proxy-caller': 'local',
+          'x-station-orchestration-thread': 'thread-7',
+          ...override,
+        }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      ),
       body: JSON.stringify({
         input: 'ping',
         options: { conversationId: 'thread-7' },
