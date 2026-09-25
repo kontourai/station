@@ -6,6 +6,7 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -88,6 +89,36 @@ describe('Notification Routes', () => {
     expect(body.success).toBe(true);
     expect(body.data.title).toBe('Test');
   });
+
+  test.each([
+    [
+      'a forged envelope',
+      {
+        metadata: {
+          envelope: {
+            v: 1,
+            source: { kind: 'agent', sessionId: 'victim', assurance: 'bound' },
+            audience: { kind: 'owner' },
+            urgency: 'attention',
+            interrupt: 'default',
+          },
+        },
+      },
+    ],
+    ['an agent: dedupe tag', { dedupeTag: 'agent:victim-root:build' }],
+    ['an agent-* category', { category: 'agent-attention' }],
+  ])(
+    'POST / refuses %s with 400 and stores nothing (#2583)',
+    async (_label, extra) => {
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Forged', category: 'test', ...extra }),
+      });
+      expect(res.status).toBe(400);
+      expect(await svc.list()).toEqual([]);
+    },
+  );
 
   test('POST /:id/action/:actionId carries the authenticated request origin through the approval inbox into the registry resolution event (#3830)', async () => {
     const eventBus = new EventBus();
@@ -434,7 +465,7 @@ describe('Notification Routes', () => {
 
   describe('POST /:id/read (#2587)', () => {
     const CLIENT_SESSION = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
-    const envelope = {
+    const envelope: NotificationEnvelopeV1 = {
       v: 1,
       source: {
         kind: 'agent',
@@ -471,11 +502,13 @@ describe('Notification Routes', () => {
     }
 
     test('records the local client session as the reader, ignoring a body claim', async () => {
-      const n = await svc.schedule('agent', {
-        title: 'Tests pass',
-        category: 'agent-done',
-        metadata: { envelope },
-      });
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
       const res = await app.request(`/${n.id}/read`, {
         method: 'POST',
         headers: {
@@ -490,11 +523,13 @@ describe('Notification Routes', () => {
     });
 
     test('a paired device reads as device:<id> from its verified credential', async () => {
-      const n = await svc.schedule('agent', {
-        title: 'Tests pass',
-        category: 'agent-done',
-        metadata: { envelope },
-      });
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
       const res = await withDevice('device-7').request(`/${n.id}/read`, {
         method: 'POST',
         headers: { 'X-Station-Client-Session': CLIENT_SESSION },
@@ -504,11 +539,13 @@ describe('Notification Routes', () => {
     });
 
     test('refuses a caller that names no surface, and records nothing', async () => {
-      const n = await svc.schedule('agent', {
-        title: 'Tests pass',
-        category: 'agent-done',
-        metadata: { envelope },
-      });
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
       for (const headers of [
         {},
         { 'X-Station-Client-Session': 'not-a-uuid' },
@@ -523,11 +560,13 @@ describe('Notification Routes', () => {
     });
 
     test('reports first-reader-wins and legacy records truthfully', async () => {
-      const n = await svc.schedule('agent', {
-        title: 'Tests pass',
-        category: 'agent-done',
-        metadata: { envelope },
-      });
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
       const headers = { 'X-Station-Client-Session': CLIENT_SESSION };
       await app.request(`/${n.id}/read`, { method: 'POST', headers });
       const second = await withDevice('device-7').request(`/${n.id}/read`, {
@@ -547,14 +586,43 @@ describe('Notification Routes', () => {
         (await app.request('/missing/read', { method: 'POST', headers }))
           .status,
       ).toBe(404);
+
+      const pending = (
+        await svc.scheduleEnveloped(
+          'agent',
+          {
+            title: 'Later',
+            category: 'agent-done',
+            scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+          envelope,
+        )
+      ).notification;
+      const pendingRes = await app.request(`/${pending.id}/read`, {
+        method: 'POST',
+        headers,
+      });
+      expect((await json(pendingRes)).data).toEqual({
+        outcome: 'not-delivered',
+      });
     });
 
     test("a hosted caller cannot mark another tenant's notification read", async () => {
-      const alpha = await svc.schedule('agent', {
-        title: 'Alpha only',
-        category: 'agent-done',
-        metadata: { envelope, sessionId: 'alpha-session' },
-      });
+      const alpha = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Alpha only', category: 'agent-done' },
+          {
+            ...envelope,
+            source: {
+              kind: 'agent',
+              sessionId: 'alpha-session',
+              assurance: 'bound',
+            },
+            audience: { kind: 'session-readers', sessionId: 'alpha-session' },
+          },
+        )
+      ).notification;
       const hostedApp = createNotificationRoutes(svc, {
         readAuthorityForRequest: (request) =>
           hostedAuthority(

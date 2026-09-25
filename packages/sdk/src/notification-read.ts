@@ -1,7 +1,11 @@
 import { _getApiBase, apiErrorMessage } from './api-core';
 import { authenticatedFetch } from './client/http';
 
-export type NotificationReadOutcome = 'read' | 'already-read' | 'no-envelope';
+export type NotificationReadOutcome =
+  | 'read'
+  | 'already-read'
+  | 'no-envelope'
+  | 'not-delivered';
 
 /**
  * Record that this client read an enveloped notification (#2587). The server

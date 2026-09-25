@@ -155,6 +155,23 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     });
   });
 
+  test('an unknown source kind gets Open but no attribution or Mute', async () => {
+    preferencesRoute(true);
+    const newer = agentNotification();
+    newer.metadata = {
+      envelope: {
+        ...(newer.metadata?.envelope as object),
+        source: { kind: 'robot', robotId: 'r-1' },
+        target: { kind: 'path', path: '/schedule' },
+      },
+    };
+    renderHistoryItem(newer);
+    expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy();
+    expect(screen.queryByTestId('notification-attribution')).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
+  });
+
   test('a legacy record renders neither attribution nor Open', () => {
     const legacy = agentNotification();
     legacy.metadata = {};

@@ -235,6 +235,16 @@ describe('reconcileNotificationAlerts', () => {
     expect(silent.notify).not.toHaveBeenCalled();
   });
 
+  test('a source kind this build does not know never interrupts', async () => {
+    const d = deps();
+    await reconcileNotificationAlerts([], A, d);
+    const newer = agentNotification('n-1', {
+      source: { kind: 'robot', robotId: 'r-1' } as never,
+    });
+    await reconcileNotificationAlerts([newer], A, d);
+    expect(d.notify).not.toHaveBeenCalled();
+  });
+
   test('leaves legacy records and blocking categories to their own paths', async () => {
     const d = deps();
     await reconcileNotificationAlerts([], A, d);
