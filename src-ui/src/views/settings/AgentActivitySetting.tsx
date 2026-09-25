@@ -24,9 +24,10 @@ const STATUS_QUERY_KEY = ['native', 'agent-activity-status'] as const;
  * iOS app's Live Activity, for the active Station. Renders nothing unless
  * this is the Android or iOS app and its host reports `remote-push` as
  * enabled: an Android build carrying a push configuration, or an iOS build
- * with the Live Activity half. On iOS it also stays hidden until the plugin
- * says the build is signed for push on an OS with Live Activities (iOS 18),
- * since nothing else there could ever turn it on.
+ * with the Live Activity half. On iOS, while this Station is off, it also
+ * stays hidden until the plugin says the build is signed for push on an OS
+ * with Live Activities, since nothing else there could ever turn it on. A
+ * Station that is already on stays visible so it can be turned off.
  */
 export function AgentActivitySetting({
   loadController = loadAgentActivityController,

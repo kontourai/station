@@ -362,6 +362,10 @@ describe('AgentActivitySetting on iOS', () => {
         'This build can no longer show Live Activities. Turn this off to stop the Station sending them.',
       ),
     ).toBeTruthy();
+    // iOS explains itself with the sentence above, not Android's line.
+    expect(
+      screen.queryByText('This build has no push configuration.'),
+    ).toBeNull();
 
     fireEvent.click(control);
     await waitFor(() => expect(commands).toContain('clear'));
