@@ -143,6 +143,7 @@ final class ApnsDeviceTokenTests: XCTestCase {
     XCTAssertNil(none)
   }
 
+  @MainActor
   func testInstallingOnTheApplicationReassignsTheSameDelegateAfterHooking() {
     let delegate = LaunchDelegate()
     let application = FakeApplication(delegate)

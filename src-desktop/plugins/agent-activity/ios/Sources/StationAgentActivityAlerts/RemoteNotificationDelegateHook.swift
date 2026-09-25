@@ -1,6 +1,14 @@
 import Foundation
 import ObjectiveC
 
+/// Whatever holds the app delegate: `UIApplication` in the app, a stand-in
+/// in tests (this target does not link UIKit). Main-actor isolated, as
+/// `UIApplication` is.
+@MainActor
+public protocol ApplicationDelegateHolder: AnyObject {
+  var hookableDelegate: AnyObject? { get set }
+}
+
 /// Gives the app delegate the two remote-notification callbacks UIKit
 /// reports the APNs device token through, forwarding them to a broker.
 ///
@@ -12,12 +20,6 @@ import ObjectiveC
 /// class already answers them (a newer runtime, another plugin), the
 /// original runs first and the broker is told after, so nothing is taken
 /// from it. Foundation and the runtime only, so it is tested on macOS.
-/// Whatever holds the app delegate: `UIApplication` in the app, a stand-in
-/// in tests (this target does not link UIKit).
-public protocol ApplicationDelegateHolder: AnyObject {
-  var hookableDelegate: AnyObject? { get set }
-}
-
 public enum RemoteNotificationDelegateHook {
   static let tokenSelector = NSSelectorFromString(
     "application:didRegisterForRemoteNotificationsWithDeviceToken:")
@@ -63,6 +65,7 @@ public enum RemoteNotificationDelegateHook {
   /// libraries re-assign it for the same reason). Whether this iOS release
   /// needs it is not verified on a device; it is harmless if not.
   /// Re-assigns only when this call installed the hooks.
+  @MainActor
   @discardableResult
   public static func install(in holder: ApplicationDelegateHolder, broker: ApnsDeviceTokenBroker) -> Bool {
     guard let delegate = holder.hookableDelegate, let delegateClass = object_getClass(delegate) else {
