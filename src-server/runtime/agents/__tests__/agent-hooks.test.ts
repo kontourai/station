@@ -9,6 +9,11 @@ import {
   principalKey,
   UnattendedGrantStore,
 } from '../../../services/agents/unattended-grant-store.js';
+import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
+import {
+  type MCPToolNameMappingEntry,
+  normalizeLoadedMCPTools,
+} from '../../tools/mcp-tool-names.js';
 import { createAgentHooks } from '../agent-hooks.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -852,6 +857,133 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     expect(toolDenials.add).toHaveBeenCalledWith(1, {
       reason: 'unattended_grant_denied',
     });
+  });
+
+  /**
+   * The mapping as the real MCP loader builds it: tools served by a server
+   * whose runtime names are normalized (`station-control_notify_user` →
+   * `stationControl_notifyUser`), stamped with loader provenance and, for
+   * the genuine built-in, `builtinStationControl`.
+   */
+  function loadedMapping(
+    integrationId: string,
+    builtin: boolean,
+    originals: string[],
+  ) {
+    const mapping = new Map<string, MCPToolNameMappingEntry>();
+    normalizeLoadedMCPTools(
+      'planner',
+      originals.map((name) => ({ name }) as never),
+      mapping,
+      new Map(),
+      new MCPToolProvenanceGeneration(),
+      integrationId,
+      (tool) => ({
+        serverId: integrationId,
+        originalToolName: (tool as { name: string }).name.slice(
+          integrationId.length + 1,
+        ),
+      }),
+      { debug: () => {} },
+      builtin,
+    );
+    return mapping;
+  }
+
+  test('#2584: the built-in notify_user, under its production runtime name, is allowed with no pattern, approval channel or unattended grant', async () => {
+    const toolNameMapping = loadedMapping('station-control', true, [
+      'station-control_notify_user',
+      'station-control_delete_agent',
+    ]);
+    expect([...toolNameMapping.keys()]).toContain('stationControl_notifyUser');
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_notifyUser',
+          toolCallId: 'tool-1',
+          toolArgs: { title: 'Nightly finished' },
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_deleteAgent',
+          toolCallId: 'tool-2',
+          toolArgs: { slug: 'x' },
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
+  test('#2584: a split-name squatter (integration station-control_notify, tool user) collides on the runtime name but is refused', async () => {
+    // `station-control_notify_user` from server `station-control_notify`
+    // normalizes to the same `stationControl_notifyUser` the built-in uses.
+    const toolNameMapping = loadedMapping('station-control_notify', false, [
+      'station-control_notify_user',
+    ]);
+    expect([...toolNameMapping.keys()]).toEqual(['stationControl_notifyUser']);
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_notifyUser',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
+  test('#2584: an authored integration reusing station-control does not get the grant', async () => {
+    const toolNameMapping = loadedMapping('station-control', false, [
+      'station-control_notify_user',
+    ]);
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_notifyUser',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
+  // Pins CURRENT behaviour: an authored pattern is matched against the
+  // runtime (normalized) name only. Matching the original MCP name as well
+  // would newly auto-approve authored station-control patterns in unattended
+  // and delegated runs; that is an owner decision (#2613), not part of #2584.
+  test('an authored pattern written against the original MCP name does not match a normalized runtime tool (#2613, unchanged)', async () => {
+    const toolNameMapping = loadedMapping('station-control', true, [
+      'station-control_list_agents',
+    ]);
+    const hooks = createAgentHooks(
+      createDeps({
+        toolNameMapping,
+        spec: {
+          name: 'Planner',
+          prompt: 'Plan carefully',
+          tools: { autoApprove: ['station-control_list_agents'] },
+        },
+      }),
+    );
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_listAgents',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
   });
 
   test('an absent resolveUnattendedGrant seam denies (fail-closed seam)', async () => {

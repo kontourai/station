@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  isBuiltinStationControl,
+} from '../../bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
   isAutoApproved,
@@ -160,6 +163,160 @@ describe('tool-approval', () => {
           [GENUINE_STATION_CONTROL],
         ),
       ).toBe(false);
+    });
+
+    test('#2584: notify_user is granted only by exact identity: the raw built-in name, authentic, genuine server delivered', () => {
+      const notify = 'mcp__station-control__notify_user';
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(true);
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          undefined,
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(true);
+      // ACP names are self-reported: never the intrinsic grant.
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [IMPOSTOR_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(false);
+      // A mutating station-control tool still needs an authored pattern.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__delete_agent',
+          [],
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(false);
+    });
+
+    test('#2614: a definition with the genuine command/args but an http transport or an endpoint is not the built-in, and gets no grant', () => {
+      const httpTransport = {
+        ...GENUINE_STATION_CONTROL,
+        transport: 'streamable-http' as const,
+        endpoint: 'http://127.0.0.1:9/mcp',
+      };
+      const endpointOnly = {
+        ...GENUINE_STATION_CONTROL,
+        endpoint: 'http://127.0.0.1:9/mcp',
+      };
+      for (const server of [httpTransport, endpointOnly]) {
+        expect(
+          isBuiltinStationControl(server.id, { ...server, kind: 'mcp' }),
+        ).toBe(false);
+        expect(
+          isAutoApprovedExternalTool(
+            'mcp__station-control__notify_user',
+            [],
+            [server],
+            'authentic',
+          ),
+        ).toBe(false);
+        expect(
+          isAutoApprovedExternalTool(
+            'mcp__station-control__list_agents',
+            ['station-control_*'],
+            [server],
+            'authentic',
+          ),
+        ).toBe(false);
+      }
+      // Control: explicit stdio is still genuine.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__notify_user',
+          [],
+          [{ ...GENUINE_STATION_CONTROL, transport: 'stdio' as const }],
+          'authentic',
+        ),
+      ).toBe(true);
+    });
+
+    test('#2584 review: split-name impostors that canonicalize to station-control_notify_user are refused', () => {
+      // Server `station-control_notify`, tool `user`: canonicalizes to
+      // `station-control_notify_user`.
+      const split = 'mcp__station-control_notify__user';
+      const impostorServer = {
+        id: 'station-control_notify',
+        command: 'node',
+        args: ['/tmp/station-control_notify.js'],
+      };
+      // ACP agent with no configuration at all.
+      expect(isAutoApprovedExternalTool(split, [], [], 'self-reported')).toBe(
+        false,
+      );
+      expect(
+        isAutoApprovedExternalTool(
+          'station-control_notify_user',
+          [],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      // Claude, with the genuine built-in AND the impostor delivered.
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          [],
+          [GENUINE_STATION_CONTROL, impostorServer],
+          'authentic',
+        ),
+      ).toBe(false);
+    });
+
+    test('a split name borrowing the reserved prefix (mcp__station-control_x__y) cannot dodge the reserved-server checks for an authored station-control_* pattern', () => {
+      const split = 'mcp__station-control_x__y';
+      const borrower = {
+        id: 'station-control_x',
+        command: 'node',
+        args: ['/tmp/station-control_x.js'],
+      };
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL, borrower],
+          'authentic',
+        ),
+      ).toBe(false);
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      // Control: the genuine name under the same pattern is still approved.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__list_agents',
+          ['station-control_*'],
+          [GENUINE_STATION_CONTROL, borrower],
+          'authentic',
+        ),
+      ).toBe(true);
     });
 
     test('when the reserved id appears twice, the ENTRY THAT WINS DELIVERY (last) decides — genuine last approves, impostor last does not', () => {
