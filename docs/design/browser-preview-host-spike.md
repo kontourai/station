@@ -29,9 +29,11 @@ blocks navigation outside the exact approved loopback origin, and denies
 popups/downloads. The external open action remains independently available.
 Every platform claim not backed by the cited experiment is `NOT_VERIFIED`.
 
-**Evidence refresh:** 2026-08-09; Station `origin/main` `e1259c782`, an
-audited Electron-based preview host, and the checked-in Station Tauri
-lockfile.
+**Evidence refresh:** 2026-08-09; Station `origin/main` `e1259c782`, the
+checked-in Station Tauri lockfile, and an external audit of an Electron-based
+preview host. That audit's source and snapshot are no longer cited, so its
+observations below cannot be traced or re-checked from this record and count
+as `NOT_VERIFIED`.
 
 ## Boundary
 
@@ -64,7 +66,8 @@ availability result, or native capability.
   through the system-browser action; native discovery does not perform DNS.
   `open_local_browser_preview_window` accepts only that opaque grant id. The
   persisted Pane contract remains unchanged.
-- The audited Electron host pins Electron `41.5.0`. Its desktop preview uses a
+- The externally audited Electron host (source no longer cited;
+  `NOT_VERIFIED`) pins Electron `41.5.0`. Its desktop preview uses a
   partitioned, hardened `webviewTag` with a typed bridge and
   `will-attach-webview` enforcement; it also has `WebContentsView`-specific
   focus/zoom handling. It supplies security and lifecycle questions, not a

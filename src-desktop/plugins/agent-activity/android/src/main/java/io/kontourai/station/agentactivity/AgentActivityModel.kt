@@ -22,7 +22,7 @@ import org.json.JSONObject
  * | `device_id` | the registration id `configure` stored |
  * | `user_id` | the Station id `configure` stored |
  * | `station_key` | stamped by the push gateway; must equal the stored Station key thumbprint ([acceptsPush]) |
- * | `updated_at` | epoch millis; too old, too new or older than the last applied update is ignored |
+ * | `updated_at` | epoch millis; a push too far from the phone's clock is dropped whole; one older than the last applied update has its card update ignored (its alert is still handled) |
  * | `active` | `true` while an agent is working or waiting on the user |
  * | `activity_phase` | an [ActivityPhase.wire] value |
  * | `activity_line_0` .. `activity_line_4` | `status<TAB>title<TAB>project`, in the sender's order |

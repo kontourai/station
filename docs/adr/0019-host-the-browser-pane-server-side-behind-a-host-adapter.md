@@ -94,12 +94,11 @@ Facts this decision depends on, checked on this branch:
   the main webview), #15656 (Wayland bounds) and #11794 (no mobile
   `add_child`).
 
-The automation model is independent of the host: a server-side automation
-broker drives the browser over the Chrome DevTools Protocol (CDP), human input
-takes control through control epochs, and locators use Playwright's injected
-script. Keeping that model separate from the host is what lets the host
-change (a streamed Chromium now, a native adapter later) without changing the
-tools or their arbitration.
+Prior art: an existing product runs an Electron webview driven over the Chrome
+DevTools Protocol (CDP). It has a server-side automation broker, human-input
+control epochs, and uses Playwright's injected script for locators. Station's
+broker, tool and arbitration model follow that prior art. The host is what
+differs.
 
 ## Decision
 

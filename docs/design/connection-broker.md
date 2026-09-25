@@ -115,11 +115,12 @@ Reuse those owners; keep discovery metadata separate from secret custody and
 inbound grants separate from outbound grants. A device's successful connection
 does not prove the server can reach the same endpoint.
 
-Keep a hosted broker out of normal traffic: it helps a client bootstrap, the
-environment supervises the tunnel (for example cloudflared), and afterwards the
-client uses the tunnel endpoint directly. Credential renewal may need the
-broker again, so its availability still matters, but it never carries session
-traffic.
+Prior art: an existing self-hosted product separates its hosted broker from
+normal traffic. Its environment supervises cloudflared; the client uses the
+tunnel endpoint after bootstrap. Credential renewal may need the broker again.
+Its relay implementation depends on its own contracts, client runtime and
+hosted identity and tunnel provisioning. Reuse mechanisms and failure cases
+from it rather than importing that application wholesale.
 
 Station's current public proof uses a credential-derived HMAC. A broker must
 not gain verification by receiving that operator credential. Add a separately

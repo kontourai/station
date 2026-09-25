@@ -19,8 +19,10 @@ import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-d
  *   buttons `{type:'home'|'back'|'recents'|'power'}`, key
  *   `{type:'key', keycode, action}`, text `{type:'text', text}`.
  *
- * Key numbers come from the published standards: the USB HID Usage Tables
- * (Keyboard/Keypad page) for iOS, and Android's `KeyEvent` keycodes.
+ * The key tables hold standard values: USB HID usage IDs (Keyboard/Keypad
+ * page) for iOS and Android `KeyEvent` keycodes. The point mapping
+ * (`surfacePointToRawUnit`) is plain geometry: undo the viewer's rotation to
+ * address the unrotated framebuffer.
  */
 
 export const IOS_MSG_TOUCH = 0x03;

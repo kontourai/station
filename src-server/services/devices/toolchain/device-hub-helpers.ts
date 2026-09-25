@@ -14,9 +14,10 @@
  * serve-sim state (for example another app's serve-sim hub on the same
  * machine, using the shared `$TMPDIR/serve-sim/`). A helper is killed only
  * when its command line names a Station-managed hub install —
- * `<tools>/expo-device-hub/<version>/` on a path-segment boundary, any managed version — so an orphaned helper of
- * an older install is still reaped, and a similarly named directory outside
- * Station's tool root never is.
+ * `<tools>/expo-device-hub/<version>/` on a path-segment boundary, any
+ * managed version — so an orphaned helper of an older install is still
+ * reaped, and a similarly named directory outside Station's tool root never
+ * is.
  *
  * Not tracked here, and disclosed: serve-emu forwards scrcpy through
  * `adb forward` to local ports it picks (owned by the adb server, not a

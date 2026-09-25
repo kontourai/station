@@ -55,8 +55,8 @@ class AgentActivityExpiryReceiver : RegistrationBroadcastReceiver() {
 }
 
 /**
- * The two notification channels. Ids and names are persisted by Android
- * once created, so they must not change.
+ * The two notification channels. Android keys a channel (and the user's
+ * settings for it) by id, so the ids must not change; the names may.
  */
 private enum class Channel(
   val id: String,

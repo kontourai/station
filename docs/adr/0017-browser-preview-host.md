@@ -35,10 +35,13 @@ enabled on desktop and unsupported on mobile; this report is not a production
 browser-preview host. This spike must not attach a host to that capability or
 change any release configuration.
 
-An Electron host was also examined: Electron `41.5.0` with a hardened,
-partitioned `webviewTag` preview path and `WebContentsView`-specific
-interaction handling. It is useful evidence about the security and lifecycle
-questions, not an implementation to copy. Electron documents
+An external Electron-based preview host was also audited: Electron `41.5.0`
+with a hardened, partitioned `webviewTag` preview path and
+`WebContentsView`-specific interaction handling. The audit's source and
+snapshot are no longer cited, so these observations cannot be traced or
+re-checked from this record; treat them as `NOT_VERIFIED` context. It is
+useful evidence about the security and lifecycle questions, not an
+implementation to copy. Electron documents
 `WebContentsView` as the embedded-content API for a separately justified
 future migration.
 
