@@ -72,9 +72,12 @@ export type BlockingNotificationCategory =
  * previous build refuse the whole file. Records without an envelope keep
  * working; readers must treat a missing or malformed envelope as "legacy".
  *
- * The strict reader (`readNotificationEnvelope`) is a runtime parser and lives
- * in `@kontourai/station-shared/notification-envelope` — this package carries
- * shapes and constants only.
+ * Reads are lenient and writes are strict (both parsers live in
+ * `@kontourai/station-shared/notification-envelope`; this package carries
+ * shapes and constants only). A v1 reader ignores keys it does not know, so a
+ * newer build may ADD optional fields without bumping `v`; any change an older
+ * reader would misread (a new urgency, a changed meaning) bumps `v`, and an
+ * unknown `v` reads as a legacy record.
  */
 export type NotificationUrgency = 'info' | 'attention' | 'done' | 'failed';
 
@@ -108,7 +111,13 @@ export type NotificationSource =
       assurance: NotificationAgentAssurance;
     }
   | { kind: 'system'; subsystem: string }
-  | { kind: 'provider'; providerId: string };
+  | { kind: 'provider'; providerId: string }
+  /**
+   * Read-side only: a v1 source whose `kind` this build does not know (a
+   * newer build wrote it). Readers fail closed on it — the envelope is read
+   * as `interrupt: 'silent'` — and writers never produce it.
+   */
+  | { kind: 'unknown'; observedKind: string };
 
 export type NotificationAudience =
   | { kind: 'owner' }
@@ -123,6 +132,12 @@ export type NotificationTarget =
 
 export type NotificationInterrupt = 'default' | 'silent';
 
+/**
+ * A place a user reads notifications: a paired device, or one local-operator
+ * client session (`x-station-client-session`).
+ */
+export type SurfaceId = `device:${string}` | `local:${string}`;
+
 export interface NotificationEnvelopeV1 {
   v: 1;
   source: NotificationSource;
@@ -130,11 +145,14 @@ export interface NotificationEnvelopeV1 {
   urgency: NotificationUrgency;
   target?: NotificationTarget;
   interrupt: NotificationInterrupt;
-  /** First surface to read it wins; later reads never overwrite these. */
+  /**
+   * Set only by the service (`markRead` / `dismiss`), never by a producer.
+   * First surface wins; later reads never overwrite these.
+   */
   readAt?: string;
-  readBy?: string;
+  readBy?: SurfaceId;
   dismissedAt?: string;
-  dismissedBy?: string;
+  dismissedBy?: SurfaceId;
 }
 
 /** Categories agent notifications are stored under, one per urgency. */

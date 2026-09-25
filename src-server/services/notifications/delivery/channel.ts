@@ -8,16 +8,16 @@
  * (`local:<clientSessionId>`). There is no new registry — each channel lists
  * its registrations from the store that already holds them.
  */
-import {
-  type Notification,
-  type NotificationEnvelopeV1,
-  type NotificationUrgency,
+import type {
+  Notification,
+  NotificationEnvelopeV1,
+  NotificationUrgency,
+  SurfaceId,
 } from '@kontourai/station-contracts/notification';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 
-/** Same shape as `@kontourai/station-contracts/presence`'s (#2585). */
-export type SurfaceId = `device:${string}` | `local:${string}`;
+export type { SurfaceId };
 
 export type ChannelKind =
   | 'in-app'
