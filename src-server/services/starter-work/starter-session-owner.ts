@@ -31,14 +31,17 @@ export function createStarterSessionOwner(
     },
     continue: async ({ sourceSessionId, operationId, fullAccessGrant }) => {
       try {
-        const outcome = await orchestration.dispatchWithReceipt(
-          {
-            type: 'adoptSession',
-            sourceThreadId: sourceSessionId,
-            idempotencyKey: operationId,
-          },
-          fullAccessGrant ? { fullAccessGrant } : undefined,
-        );
+        const command = {
+          type: 'adoptSession' as const,
+          sourceThreadId: sourceSessionId,
+          idempotencyKey: operationId,
+        };
+        // Without a grant this is exactly the call it always was.
+        const outcome = fullAccessGrant
+          ? await orchestration.dispatchWithReceipt(command, {
+              fullAccessGrant,
+            })
+          : await orchestration.dispatchWithReceipt(command);
         const session = outcome.result as AdoptedSessionResult | undefined;
         if (!session?.threadId)
           return {

@@ -51,9 +51,10 @@ describe('createStarterSessionOwner (#2493)', () => {
       operationId: 'op-2',
       fullAccessGrant: null,
     });
-    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+    // Exactly the call it always was: the command alone, no context argument.
+    expect(dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    expect(dispatchWithReceipt.mock.calls[0]).toEqual([
       expect.objectContaining({ type: 'adoptSession' }),
-      undefined,
-    );
+    ]);
   });
 });
