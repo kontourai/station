@@ -32,6 +32,7 @@ import {
   SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
+  UNMODELLED_INPUT_EDGES,
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
@@ -189,6 +190,40 @@ describe('changed verification selection', () => {
    * dropping `supplemental` loses the lane, and dropping the edge loses the
    * named test.
    */
+  test('the settings-registry input edges only add the generator suite (#2176)', () => {
+    // Each input is compared against the same manifest WITHOUT these edges:
+    // the related paths, lanes and escalation must be identical and the
+    // tests a strict superset, so the edge cannot trade the import graph (or
+    // a contracts escalation) for one named suite.
+    const without = TEST_IMPACT_MANIFEST.filter(
+      (edge) => !UNMODELLED_INPUT_EDGES.includes(edge),
+    );
+    expect(without).toHaveLength(
+      TEST_IMPACT_MANIFEST.length - UNMODELLED_INPUT_EDGES.length,
+    );
+    for (const path of [
+      'src-ui/src/views/settings/settings-catalog.ts',
+      'src-ui/src/views/settings/settings-deep-link.ts',
+      'packages/contracts/src/settings-registry.ts',
+      'packages/contracts/src/device-settings.ts',
+      'src-server/generated/settings-registry.json',
+    ]) {
+      const before = selectChangedVerification([path], without);
+      const after = selectChangedVerification([path]);
+      expect(after.relatedPaths, path).toEqual(before.relatedPaths);
+      expect(after.lanes, path).toEqual(before.lanes);
+      expect(after.escalated, path).toBe(before.escalated);
+      expect(
+        after.tests.map((entry) => entry.path),
+        path,
+      ).toEqual(
+        [
+          ...before.tests.map((entry) => entry.path),
+          'scripts/__tests__/gen-settings-registry.test.ts',
+        ].sort(),
+      );
+    }
+  });
   test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
     const selection = selectChangedVerification([
       'packages/contracts/src/layout.ts',

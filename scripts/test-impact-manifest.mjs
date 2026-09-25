@@ -446,6 +446,59 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
   'script source is read and asserted by its test rather than imported, so ' +
   'the import graph has no edge to it (#1757)';
 
+/**
+ * #2176: suites whose subject reaches them by a path the module graph does
+ * not model, so neither `vitest related` nor a generic boundary edge ever
+ * schedules them. Before these edges a new settings row first failed
+ * `gen-settings-registry.test.ts` in the merge queue's full-corpus
+ * regression (#2511, #2593), costing a queue candidate and a rebuild of
+ * everything behind it.
+ *
+ * Every edge is `supplemental`: it only ADDS the suite and leaves the path's
+ * related selection, escalation, and lanes as they were (an ordinary edge
+ * naming `tests` would set `hasExplicitBoundary` and drop the related graph;
+ * #1563, #1613). The suite asserts through `selectChangedVerification` that
+ * each generator input still selects it, so a new input without an edge reds
+ * on the pull request that adds it.
+ *
+ * NOT here, deliberately: whole-repository source scans such as
+ * `orchestration-source-invariants.test.ts` (#2553). Their honest edge is
+ * every file under seven roots, and a supplemental test on every path is not
+ * free: a supplemental test is a selection candidate, so a changed file whose
+ * related discovery finds NOTHING stops escalating to `test-full` and
+ * completes green on the unrelated scan alone (measured: exit 0, `completed`,
+ * where the same change exits 3 with a `test-full` obligation without it).
+ * `src-ui/src/**`'s vocabulary ratchet already has that property for UI
+ * files. A repo-wide invariant belongs in ci:fast's fixed static set, or the
+ * selector must stop letting supplemental tests satisfy an empty related
+ * discovery — both owner decisions (#2176).
+ */
+const GENERATED_SETTINGS_REGISTRY_TEST =
+  'scripts/__tests__/gen-settings-registry.test.ts';
+export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The generator loads its sources through a computed specifier (so the
+  // scripts typecheck never follows it into `.tsx`), and `--check` reads the
+  // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
+  // the list these mirror. The generator itself needs no edge: the suite
+  // imports it.
+  ...[
+    'src-ui/src/views/settings/settings-catalog.ts',
+    'src-ui/src/views/settings/settings-deep-link.ts',
+    'packages/contracts/src/settings-registry.ts',
+    'packages/contracts/src/device-settings.ts',
+    'src-server/generated/settings-registry.json',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([GENERATED_SETTINGS_REGISTRY_TEST]),
+      reason:
+        'settings registry artifact is generated from this input outside ' +
+        'the import graph (#2176)',
+    }),
+  ),
+]);
+
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/build-desktop.mjs',
@@ -1334,6 +1387,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'script boundary',
   },
   ...SPAWNED_SCRIPT_EDGES,
+  ...UNMODELLED_INPUT_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [
