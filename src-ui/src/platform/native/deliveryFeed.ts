@@ -249,7 +249,7 @@ export function pollDeliveryFeed(
   const entry = {
     scopeKey,
     promise: Promise.race([
-      readOnce(apiBase, scopeKey, deps, live),
+      consumeOnce(apiBase, scopeKey, deps, live),
       deadline,
     ]).finally(() => {
       clearTimeout(timer);
@@ -260,19 +260,29 @@ export function pollDeliveryFeed(
   return entry.promise;
 }
 
-async function readOnce(
+/**
+ * Asked before any read, inside the single flight: when the host consumes
+ * the feed, this document never reads it, so it cannot post an entry the
+ * host also posts.
+ */
+async function consumeOnce(
   apiBase: string,
   scopeKey: string,
   deps: DeliveryFeedDeps,
   live: () => boolean,
 ): Promise<number> {
-  // Asked before any read, inside the single flight: when the host consumes
-  // the feed, this document never reads it, so it cannot post an entry the
-  // host also posts.
   if (deps.nativeConsumer && (await deps.nativeConsumer())) {
     if (live()) await handOffStoredCursor(apiBase, scopeKey, deps);
     return 0;
   }
+  return readOnce(scopeKey, deps, live);
+}
+
+async function readOnce(
+  scopeKey: string,
+  deps: DeliveryFeedDeps,
+  live: () => boolean,
+): Promise<number> {
   const installationId = await deps.installationId();
   if (!live()) return 0;
   if (state?.scopeKey !== scopeKey) {
