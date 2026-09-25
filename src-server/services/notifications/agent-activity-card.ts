@@ -166,7 +166,7 @@ export interface AgentActivitySessionReference {
  * the phone would refuse it, so it is not sent and the tap opens the app
  * where it was. A session with no project is referenced by id alone.
  */
-export function agentActivitySessionReference(session: {
+function agentActivitySessionReference(session: {
   sessionId: string;
   projectSlug?: string;
 }): AgentActivitySessionReference | undefined {
