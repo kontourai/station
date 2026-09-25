@@ -264,9 +264,12 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   launcher activity safe: extras another app supplies name no issued nonce,
   and the original launch intent Android restores to a recreated activity
   after process death names a nonce already redeemed (removing the extra
-  only helps within one process). Redeeming re-issues a fresh nonce into the
-  same still-existing PendingIntent (`FLAG_NO_CREATE` check, then
-  `FLAG_UPDATE_CURRENT`), so tapping the same ongoing card again works. The
+  only helps within one process). Redeeming always records a fresh nonce for
+  the same card or alert, and writes it into that notification's
+  PendingIntent only if it still exists (`FLAG_NO_CREATE` check, then
+  `FLAG_UPDATE_CURRENT`), so tapping the same ongoing card again works; for
+  a notification already gone the fresh nonce is never carried and simply
+  occupies a ledger slot until it expires. The
   plugin then holds the route
   and hands it to the web layer through `take_launch_route` (returns and
   clears), announced by a `launchRoute` plugin event while the app runs. The
@@ -274,7 +277,13 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   and navigates only when the route's Station is the connected one, to the
   Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
   or `/?chat=<id>&dock=open` without a project. A route for another Station
-  is dropped; switching Stations from a tap is not attempted.
+  is dropped; switching Stations from a tap is not attempted. The check is
+  per Station, not per user: with two registrations for different users on
+  one Station, a card may navigate the app while it is connected as the
+  other user. Only navigation follows; the session itself stays behind the
+  server's per-session read checks. The iOS Live Activity receives the same
+  fields inside its seal and ignores them: an iOS tap opens the app without
+  routing.
   The references count against the 2500-byte plaintext budget and are
   never cut: the card's reference stays for as long as row 0 does, and an
   alert's stays with the alert, so under a tight budget they displace tail

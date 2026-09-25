@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** #2515: the session a card or alert tap opens, validated before any intent carries it. */
+/** #2515: the session a card or alert tap opens, validated before it is recorded against a tap nonce. */
 class SessionRouteTest {
   private val registration = Registration(
     id = "AAECAwQFBgcICQoLDA0ODw",

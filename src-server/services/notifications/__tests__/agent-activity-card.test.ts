@@ -265,13 +265,19 @@ describe('buildAgentActivityCard', () => {
   test('a sealed card of long multibyte titles and a full alert still fits what the gateway forwards', () => {
     const wide = '界'.repeat(400);
     // Longest session references the contract allows (#2515), on the hero
-    // and on the alert, are inside the same budget.
+    // and on a single-session alert (so the alert carries its own
+    // reference), are inside the same budget.
     const sessions = Array.from({ length: 8 }, (_, i) =>
-      snapshot(`${i}${'s'.repeat(127)}`, 'waiting_for_approval', i * MINUTE, {
-        title: wide,
-        project: wide,
-        projectSlug: `${i}${'p'.repeat(127)}`,
-      }),
+      snapshot(
+        `${i}${'s'.repeat(127)}`,
+        i === 0 ? 'waiting_for_approval' : 'running',
+        i * MINUTE,
+        {
+          title: wide,
+          project: wide,
+          projectSlug: `${i}${'p'.repeat(127)}`,
+        },
+      ),
     );
     const built = card(sessions);
     const plaintext = composeAgentActivityPlaintext(
@@ -310,8 +316,11 @@ describe('buildAgentActivityCard', () => {
     expect(rows(fields).length).toBeGreaterThan(0);
     expect(fields.activity_session_id).toBe(`0${'s'.repeat(127)}`);
     expect(fields.activity_project_slug).toBe(`0${'p'.repeat(127)}`);
+    expect(fields.alert_session_id).toBe(`0${'s'.repeat(127)}`);
+    expect(fields.alert_project_slug).toBe(`0${'p'.repeat(127)}`);
     // Counts still describe all eight, not just the rows that fit.
-    expect(fields.activity_attention_count).toBe('8');
+    expect(fields.activity_active_count).toBe('8');
+    expect(fields.activity_attention_count).toBe('1');
   });
 });
 

@@ -144,9 +144,10 @@ export const NATIVE_PUSH_SEALED_TEST_VECTOR = {
  * - `alert_session_id` / `alert_project_slug`: the alert's one session.
  *
  * The project slug is optional (a session with no project opens at `/`).
- * The phone validates both again before attaching them to an intent, and the
- * web layer validates them a third time and navigates only when the card's
- * Station is the one the app is connected to.
+ * The phone validates both again before recording them against a one-time
+ * tap nonce (the route itself never rides on an intent), and the web layer
+ * validates them a third time and navigates only when the card's Station is
+ * the one the app is connected to.
  */
 export const NATIVE_PUSH_SESSION_REFERENCE_FIELDS = {
   activity: {
