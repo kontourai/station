@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
   compareToBaseline,
+  expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
   PNPM_SETUP_ACTION,
@@ -712,13 +713,17 @@ describe('persistent runner policy', () => {
   );
 
   test.each(['fast-checks', 'ui-bundle-delta', 'fork-smoke'])(
-    'rejects a secrets or GitHub token reference in PR-head job %s',
+    'rejects a credential or whole-github-context reference in %s',
     (jobId) => {
       for (const value of [
         // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
         '${{ secrets.NPM_TOKEN }}',
         // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
         '${{ github.token }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ github['token'] }}",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ toJSON(github) }}',
       ]) {
         const findings = persistentRunnerPolicyFindings(
           primaryCiJobFixture(jobId, (job) => {
@@ -733,19 +738,40 @@ describe('persistent runner policy', () => {
           file: '.github/workflows/ci.yml',
           jobId,
           message:
-            'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
+            'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
         });
       }
     },
   );
 
-  test('the shipped PR-head jobs reference no credential', () => {
+  test('classifies credential expressions without flagging ordinary github reads', () => {
+    for (const expression of [
+      ' secrets.NPM_TOKEN ',
+      ' github.token ',
+      " github [ 'token' ] ",
+      ' github["token"] ',
+      ' toJSON(github) ',
+      " format('{0}', github) ",
+    ])
+      expect(expressionReadsCredential(expression), expression).toBe(true);
+    for (const expression of [
+      ' github.event.pull_request.head.sha ',
+      " github.event_name == 'merge_group' ",
+      ' github.repository ',
+      " github['event_name'] ",
+      " 'kontourai/.github' ",
+      ' toJSON(github.event.pull_request.labels) ',
+    ])
+      expect(expressionReadsCredential(expression), expression).toBe(false);
+  });
+
+  test('the shipped ci.yml jobs reference no credential', () => {
     const findings = persistentRunnerPolicyFindings(
       primaryCiJobFixture('fast-checks', () => {}),
     );
     expect(
       findings.filter(({ message }) =>
-        message.includes('must not reference secrets or the GitHub token'),
+        message.includes('must not reference secrets, the GitHub token'),
       ),
     ).toEqual([]);
   });
@@ -847,7 +873,7 @@ describe('persistent runner policy', () => {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           if (step?.env) step.env.TOKEN = '${{ secrets.NPM_TOKEN }}';
         },
-        'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
+        'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
       ],
       [
         'a GitHub token reference',
@@ -856,7 +882,7 @@ describe('persistent runner policy', () => {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           if (step?.env) step.env.GH_TOKEN = '${{ github.token }}';
         },
-        'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
+        'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
       ],
       [
         'an extra shell command',

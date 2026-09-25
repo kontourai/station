@@ -245,11 +245,18 @@ function measureMergeBase(baseSha) {
     process.env.RUNNER_TEMP || tmpdir(),
     `station-ui-bundle-base-${baseSha.slice(0, 12)}`,
   );
+  // A previous run can leave this exact path registered. Remove only that
+  // registration: a repo-wide `git worktree prune` would also drop every
+  // sibling registration in a developer's repository.
+  try {
+    git(['worktree', 'remove', '--force', root]);
+  } catch {
+    // Not a registered working tree: nothing of ours to clean up.
+  }
   rmSync(root, { recursive: true, force: true });
-  // A previous run's removed directory can leave a stale registration that
-  // makes `worktree add` refuse the path.
-  git(['worktree', 'prune']);
-  git(['worktree', 'add', '--detach', root, baseSha]);
+  // --force covers the one case remove cannot: this path still registered
+  // after its directory was deleted by hand.
+  git(['worktree', 'add', '--force', '--detach', root, baseSha]);
   try {
     return installBuildAndMeasure(root);
   } finally {

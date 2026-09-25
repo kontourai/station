@@ -123,7 +123,8 @@ number. When it cannot measure, it says so and why in a notice rather than
 skipping silently. To measure your share locally, run
 `STATION_UI_BUNDLE_DELTA_BASE=origin/main node scripts/ui-bundle-delta-report.mjs`
 in your worktree: it installs and builds your branch there and the merge base
-in a temporary worktree with its own `node_modules`, both in observe mode.
+in a temporary worktree with its own `node_modules`, both in observe mode. Locally the
+branch side is your working tree as it stands, uncommitted edits included.
 
 A conflict on `scripts/ui-bundle-budget.json` is resolved by hand: keep the
 higher of each field. There is deliberately no escape hatch for the ceiling

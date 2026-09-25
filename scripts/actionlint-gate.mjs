@@ -1319,32 +1319,55 @@ function uiBundleDeltaJobFindings(file, job) {
   return findings;
 }
 
-const PR_HEAD_CREDENTIAL_MESSAGE =
-  'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token';
+const CI_CREDENTIAL_MESSAGE =
+  'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
 
-function checksOutPullRequestHead(job) {
-  return checkoutSteps(job).some((step) =>
-    String(step?.with?.ref ?? '').includes(
-      'github.event.pull_request.head.sha',
-    ),
+/** Every string value in a parsed workflow node, keys excluded. */
+function workflowStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(workflowStrings);
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(workflowStrings);
+  return [];
+}
+
+/**
+ * A `${{ }}` expression that can yield a credential: `secrets.*`, the token
+ * by dot or index (`github.token`, `github['token']`), or the whole github
+ * context, which contains the token (`toJSON(github)`, any bare `github`
+ * that is not immediately dereferenced with `.` or `[`).
+ */
+export function expressionReadsCredential(expression) {
+  return (
+    /\bsecrets\b/i.test(expression) ||
+    /\bgithub\s*\.\s*token\b/i.test(expression) ||
+    /\bgithub\s*\[\s*['"]\s*token\s*['"]\s*\]/i.test(expression) ||
+    /(?<![\w./'"-])github(?![\w-]|\s*[.[])/i.test(expression)
+  );
+}
+
+function referencesCredential(job) {
+  return (
+    containsSecretReference(job) ||
+    workflowStrings(job).some((text) =>
+      Array.from(text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)).some(([, body]) =>
+        expressionReadsCredential(body),
+      ),
+    )
   );
 }
 
 /**
  * `baseControlledPrWorkflowFindings` exempts ci.yml, so its generic "must not
- * expose secrets" rule never covered the jobs here that run PR head code
- * under pull_request_target (fast-checks, ui-bundle-delta, fork-smoke). None
- * needs a credential; a reference to one is a path for head code to reach it.
+ * expose secrets" rule never covered this workflow, several of whose jobs run
+ * pull-request head code under pull_request_target. No job here needs a
+ * credential, so the rule applies to every job rather than guessing which
+ * ones run head code.
  */
-function prHeadCredentialFindings(file, jobs) {
+function ciCredentialFindings(file, jobs) {
   return Object.entries(jobs)
-    .filter(
-      ([, job]) =>
-        checksOutPullRequestHead(job) &&
-        (containsSecretReference(job) ||
-          /\bgithub\.token\b/i.test(JSON.stringify(job))),
-    )
-    .map(([jobId]) => ({ file, jobId, message: PR_HEAD_CREDENTIAL_MESSAGE }));
+    .filter(([, job]) => referencesCredential(job))
+    .map(([jobId]) => ({ file, jobId, message: CI_CREDENTIAL_MESSAGE }));
 }
 
 function forkSmokeIsolationFindings(file, job) {
@@ -1989,7 +2012,7 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
-  findings.push(...prHeadCredentialFindings(file, jobs));
+  findings.push(...ciCredentialFindings(file, jobs));
 
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];
