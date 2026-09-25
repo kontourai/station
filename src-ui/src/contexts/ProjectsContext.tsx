@@ -82,8 +82,11 @@ function isMemberProjectView(
 
 /**
  * Project page detail read that preserves the server's narrow member view.
- * It is always bound to the render-captured host scope and a credentialed SDK
- * transport; no ambient API-base or browser-cookie path is available here.
+ * It is always bound to the render-captured host scope. Over a native host
+ * transport or a browser relay route it requires the SDK-owned credential; a
+ * browser talking to its own Station directly is authenticated by that
+ * Station's session cookie (#2598), which the server enforces. No ambient
+ * API-base path is available here.
  */
 export function useScopedProjectPageViewQuery(slug: string) {
   const requestScope = useHostRequestAuthorityScope();
@@ -104,7 +107,7 @@ export function useScopedProjectPageViewQuery(slug: string) {
       const { getProjectView } = await import('@kontourai/station-sdk');
       const value = (await getProjectView(captured.apiBase, slug, {
         requestScope: captured,
-        requireCredential: true,
+        requireCredential: captured.requiresEnrolledCredential ?? true,
         signal,
         timeoutMs: 15_000,
         maxResponseBytes: 64 * 1024,
@@ -173,7 +176,7 @@ export function useScopedMemberProjectSharedTasksQuery(
         project.slug,
         {
           requestScope: captured,
-          requireCredential: true,
+          requireCredential: captured.requiresEnrolledCredential ?? true,
           signal,
           timeoutMs: 15_000,
           maxResponseBytes: 1024 * 1024,

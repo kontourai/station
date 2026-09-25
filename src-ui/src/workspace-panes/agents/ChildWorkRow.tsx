@@ -138,7 +138,17 @@ export function ChildWorkRow({
   const stopProviderTask = useStopProviderTaskMutation();
   const stopMutation =
     row.stop === 'delegate-interrupt' ? interrupt : stopProviderTask;
-  const stopRequested = stopMutation.isPending || stopMutation.isSuccess;
+  // #2486 review: a child registered before its own turn/started can offer
+  // no target yet, so a click can genuinely land on nothing — an engine-
+  // generic race (`ProviderTaskStopResult`'s `no-active-task`, shared with
+  // every `provider-task-stop` engine), not a Codex-specific one. Without
+  // this the button stayed on "Stopping…" forever for a request that had
+  // already resolved successfully to "there was nothing to stop".
+  const noActiveTask =
+    row.stop === 'provider-task-stop' &&
+    stopProviderTask.data?.outcome === 'no-active-task';
+  const stopRequested =
+    (stopMutation.isPending || stopMutation.isSuccess) && !noActiveTask;
 
   const elapsedMs =
     row.startedAtMs === undefined
@@ -245,6 +255,15 @@ export function ChildWorkRow({
               pending={stopRequested}
               pendingLabel="Stopping…"
               onClick={stop}
+              // #2486: some engines (Codex) have no softer path — stopping
+              // one subagent also ends the turn that started it. The matrix
+              // says so per engine (`stopEndsParentTurn`); this is never a
+              // copy hardcoded the same for every engine's control.
+              title={
+                row.stopEndsParentTurn
+                  ? 'Stop this subagent and the turn that started it'
+                  : undefined
+              }
             >
               Stop
             </Button>
@@ -252,6 +271,11 @@ export function ChildWorkRow({
           {stopMutation.isError && row.stop && (
             <span className="child-work-row__error" role="alert">
               Could not stop this {isDelegate ? 'task' : 'subagent'}. Try again.
+            </span>
+          )}
+          {noActiveTask && (
+            <span className="child-work-row__hint" role="status">
+              Nothing to stop yet — try again.
             </span>
           )}
         </div>

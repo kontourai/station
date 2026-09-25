@@ -16,6 +16,7 @@ const authority = vi.hoisted(() => ({
         apiBase: string;
         authorityKey: string;
         isCurrent: () => boolean;
+        requiresEnrolledCredential?: boolean;
       }
     | undefined,
 }));
@@ -65,7 +66,9 @@ vi.mock('@kontourai/station-sdk/project-shared-tasks', () => ({
     expect(base).toBe('https://station.example.test');
     expect(slug).toBe('relay-shared');
     const opts = options as Record<string, unknown>;
-    expect(opts.requireCredential).toBe(true);
+    expect(opts.requireCredential).toBe(
+      authority.current?.requiresEnrolledCredential ?? true,
+    );
     expect(opts.authentication).not.toBe('omit');
     expect(opts.requestScope).toEqual(authority.current);
     return sharedWork.read();
@@ -172,6 +175,40 @@ test('renders the member-safe Project view and shared summaries through one capt
     maxResponseBytes: 64 * 1024,
   });
   expect(sdk.projectOptions[0]).not.toHaveProperty('authentication', 'omit');
+});
+
+test('reads its own Station through a cookie session without requiring an enrolled credential (#2598)', async () => {
+  authority.current = {
+    apiBase: 'https://station.example.test',
+    authorityKey: 'local-session',
+    isCurrent: () => true,
+    requiresEnrolledCredential: false,
+  };
+  sdk.memberView = project;
+  sharedWork.read.mockResolvedValue([summary]);
+  renderPage();
+
+  expect(
+    await screen.findByRole('heading', { name: project.name }),
+  ).toBeTruthy();
+  expect(sdk.projectOptions[0]).toMatchObject({ requireCredential: false });
+});
+
+test('still requires the enrolled credential over a relay route', async () => {
+  authority.current = {
+    apiBase: 'https://station.example.test',
+    authorityKey: 'relay-account:device-generation-3',
+    isCurrent: () => true,
+    requiresEnrolledCredential: true,
+  };
+  sdk.memberView = project;
+  sharedWork.read.mockResolvedValue([summary]);
+  renderPage();
+
+  expect(
+    await screen.findByRole('heading', { name: project.name }),
+  ).toBeTruthy();
+  expect(sdk.projectOptions[0]).toMatchObject({ requireCredential: true });
 });
 
 test('an operator Project update invalidates the member-aware Project page detail cache', async () => {

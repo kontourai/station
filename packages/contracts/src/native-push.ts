@@ -1,6 +1,6 @@
 /**
- * Native (FCM) agent-activity push registration: the wire shapes a paired
- * phone uses to ask its Station for agent-activity cards, the values the
+ * Native agent-activity push registration (FCM on Android, Live Activities
+ * over APNs on iOS): the wire shapes a paired phone uses to ask its Station for agent-activity cards, the values the
  * Station answers with (checked or used on every push), and the sealed card
  * format that keeps the card end-to-end encrypted to the phone.
  *
@@ -29,12 +29,50 @@ export const NATIVE_PUSH_ANDROID_PACKAGES = [
 export type NativePushAndroidPackage =
   (typeof NATIVE_PUSH_ANDROID_PACKAGES)[number];
 
-export interface NativePushRegistrationRequest {
+/**
+ * iOS bundle ids the gateway delivers Live Activity pushes to (the gateway's
+ * `ALLOWED_IOS_BUNDLES`). The APNs topic is
+ * `<bundle>.push-type.liveactivity`; the widget extension is
+ * `<bundle>.AgentActivity`.
+ */
+export const NATIVE_PUSH_IOS_BUNDLES = [
+  'io.kontourai.station',
+  'io.kontourai.station.beta',
+  'io.kontourai.station.nightly',
+  'io.kontourai.station.dev.instance',
+] as const;
+
+export type NativePushIosBundle = (typeof NATIVE_PUSH_IOS_BUNDLES)[number];
+
+/** The ActivityKit attributes type name the gateway names in a start push. */
+export const NATIVE_PUSH_IOS_ATTRIBUTES_TYPE = 'StationAgentActivityAttributes';
+
+/** `v` of {@link NativePushLiveActivityState}; the widget refuses others. */
+export const NATIVE_PUSH_LIVE_ACTIVITY_STATE_VERSION = 1;
+
+export interface NativePushAndroidRegistrationRequest {
   /** FCM registration token: 20..4096 characters, no whitespace. */
   token: string;
   packageName: NativePushAndroidPackage;
   platform: 'android';
 }
+
+export interface NativePushIosRegistrationRequest {
+  /**
+   * ActivityKit push-to-start token, lowercase hex, 64..200 characters. The
+   * Station never asks for a per-activity token: every update and end goes
+   * to the registration's broadcast channel.
+   */
+  token: string;
+  packageName: NativePushIosBundle;
+  platform: 'ios';
+  /** Which APNs the token belongs to (a debug build is `sandbox`). */
+  apnsEnvironment: 'production' | 'sandbox';
+}
+
+export type NativePushRegistrationRequest =
+  | NativePushAndroidRegistrationRequest
+  | NativePushIosRegistrationRequest;
 
 export interface NativePushRegistrationResponse {
   /**
@@ -135,4 +173,22 @@ export function isNativePushSessionReference(value: unknown): value is string {
     typeof value === 'string' &&
     NATIVE_PUSH_SESSION_REFERENCE_PATTERN.test(value)
   );
+}
+
+/**
+ * A Live Activity's `content-state` as the widget extension decodes it. The
+ * Station supplies `v`, `rid` and `sealed` (the same sealed card an Android
+ * phone gets, sealed to the iOS registration); the gateway always stamps
+ * `sk` from the verified signing key, as it stamps `station_key` for FCM.
+ */
+export interface NativePushLiveActivityState {
+  v: typeof NATIVE_PUSH_LIVE_ACTIVITY_STATE_VERSION;
+  rid: string;
+  sk?: string;
+  sealed: string;
+}
+
+/** A Live Activity's static attributes: only the registration id. */
+export interface NativePushLiveActivityAttributes {
+  rid: string;
 }

@@ -4,6 +4,12 @@ export const SESSION_LIFECYCLE_STATES = [
   'needs_input',
   'review_pending',
   'blocked',
+  /**
+   * #2540: a turn finished and the session is at rest, still live and
+   * reusable — the next message runs in THIS session. Distinct from
+   * `completed`, which remains the terminal, explicit close.
+   */
+  'idle',
   'completed',
   'failed',
   'canceled',
@@ -96,13 +102,32 @@ export const SESSION_LIFECYCLE_TRANSITIONS: SessionLifecycleTransitionMap = {
     'needs_input',
     'review_pending',
     'blocked',
+    'idle',
     'completed',
     'failed',
     'canceled',
   ],
   needs_input: ['running', 'blocked', 'failed', 'canceled'],
-  review_pending: ['running', 'blocked', 'completed', 'failed', 'canceled'],
+  review_pending: [
+    'running',
+    'blocked',
+    'idle',
+    'completed',
+    'failed',
+    'canceled',
+  ],
   blocked: ['queued', 'running', 'failed', 'canceled'],
+  // #2540: at rest between turns. The next turn resumes it; closing it out
+  // is still an explicit, terminal `completed`.
+  idle: [
+    'running',
+    'needs_input',
+    'review_pending',
+    'blocked',
+    'completed',
+    'failed',
+    'canceled',
+  ],
   completed: [],
   failed: ['queued', 'running'],
   canceled: ['queued'],
@@ -197,6 +222,40 @@ export function isSessionLifecycleStateStopped(
   return (
     allowed?.every((next) => next === 'queued' || next === 'running') ?? false
   );
+}
+
+/** How a session's work ended, in the run/receipt vocabulary. */
+export type SessionLifecycleOutcome = 'completed' | 'failed' | 'cancelled';
+
+/**
+ * How the session's work last ENDED, or `undefined` while it is in progress.
+ * The one mapping from lifecycle to outcome — room notices, runtime reads,
+ * agent-run status and worktree finalization all report it, and four
+ * hand-written copies of it are how a new state (`idle`, #2540) would drift.
+ * A finished turn at rest (`idle`) is a completed outcome, the same as the
+ * terminal `completed` that ordinary turns used to end in.
+ */
+export function sessionLifecycleOutcome(
+  state: SessionLifecycleState,
+): SessionLifecycleOutcome | undefined {
+  if (state === 'idle' || state === 'completed') return 'completed';
+  if (state === 'failed') return 'failed';
+  if (state === 'canceled') return 'cancelled';
+  return undefined;
+}
+
+/**
+ * **At rest** — no work is in progress: the session is `idle` between turns,
+ * or stopped with a recorded outcome. #2540: surfaces that ask "is this
+ * session doing anything?" (attention, chips, monitoring, polling) read this;
+ * continuation and dispatch read `isSessionLifecycleStateStopped`, which
+ * excludes `idle`, so a follow-up reuses an idle session instead of starting
+ * a successor.
+ */
+export function isSessionLifecycleStateAtRest(
+  state: SessionLifecycleState,
+): boolean {
+  return state === 'idle' || isSessionLifecycleStateStopped(state);
 }
 
 /**

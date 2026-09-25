@@ -14,6 +14,7 @@ import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import {
   NATIVE_PUSH_REGISTER_PATH,
   NATIVE_PUSH_REGISTRATION_PATH,
+  type NativePushAndroidRegistrationRequest,
   type NativePushRegistrationRequest,
 } from '@kontourai/station-contracts/native-push';
 import { Hono } from 'hono';
@@ -181,6 +182,13 @@ const androidBody = (token: string, packageName = 'io.kontourai.station') => ({
   packageName,
   platform: 'android',
 });
+
+const IOS_TOKEN = 'ab'.repeat(40);
+const iosBody = (
+  token = IOS_TOKEN,
+  packageName = 'io.kontourai.station',
+  apnsEnvironment = 'production',
+) => ({ token, packageName, platform: 'ios', apnsEnvironment });
 
 afterEach(() => {
   for (const home of homes.splice(0))
@@ -518,7 +526,7 @@ describe('native push routes', () => {
     // As if dropping it had failed: the entry is still in the sidecar.
     new NativePushRegistrationStore(harness.homeDir).upsert(
       paired.device.id,
-      androidBody(TOKEN_A) as NativePushRegistrationRequest,
+      androidBody(TOKEN_A) as NativePushAndroidRegistrationRequest,
       'k'.repeat(43),
       1,
     );
@@ -561,5 +569,109 @@ describe('native push routes', () => {
       error: 'native_push_not_allowed',
     });
     expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+  });
+
+  describe('iOS (Live Activities)', () => {
+    const iosPath = (harness: ReturnType<typeof createHarness>) =>
+      join(harness.homeDir, 'security', 'native-push-ios-registrations.json');
+
+    test('registers into its own file, answers the same shape, and leaves the Android file alone', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness, 'iPhone');
+      const response = await harness.register(
+        paired.credential,
+        // Extra keys are dropped, not stored; uppercase hex is normalized.
+        { ...iosBody(IOS_TOKEN.toUpperCase()), channelId: 'x'.repeat(20) },
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as Record<string, string>;
+      expect(Object.keys(body).sort()).toEqual([
+        'payloadKey',
+        'registrationId',
+        'stationId',
+        'stationKey',
+      ]);
+      expect(harness.onRegistered).toHaveBeenCalledTimes(1);
+      expect(existsSync(harness.sidecarPath)).toBe(false);
+      const file = JSON.parse(readFileSync(iosPath(harness), 'utf8'));
+      expect(file).toEqual({
+        schemaVersion: 1,
+        registrations: {
+          [paired.device.id]: {
+            token: IOS_TOKEN,
+            packageName: 'io.kontourai.station',
+            platform: 'ios',
+            apnsEnvironment: 'production',
+            registrationId: body.registrationId,
+            payloadKey: body.payloadKey,
+            stationKey: body.stationKey,
+            updatedAt: expect.any(Number),
+          },
+        },
+      });
+      if (process.platform !== 'win32')
+        expect(statSync(iosPath(harness)).mode & 0o777).toBe(0o600);
+    });
+
+    test('a device that moves from Android to iOS keeps one registration', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      await harness.register(paired.credential, androidBody(TOKEN_A));
+      expect(
+        (await harness.register(paired.credential, iosBody())).status,
+      ).toBe(200);
+      expect(
+        harness.pairing
+          .listNativePushRegistrations()
+          .map((entry) => entry.registration.platform),
+      ).toEqual(['ios']);
+      expect(readFileSync(harness.sidecarPath, 'utf8')).not.toContain(TOKEN_A);
+    });
+
+    test.each([
+      [
+        'a bundle the gateway does not deliver to',
+        iosBody(IOS_TOKEN, 'io.kontourai.station.debug'),
+      ],
+      [
+        'a missing APNs environment',
+        {
+          token: IOS_TOKEN,
+          packageName: 'io.kontourai.station',
+          platform: 'ios',
+        },
+      ],
+      [
+        'an unknown APNs environment',
+        iosBody(IOS_TOKEN, 'io.kontourai.station', 'development'),
+      ],
+      ['a token that is not hex', iosBody(`zz${IOS_TOKEN.slice(2)}`)],
+      ['a token shorter than 32 bytes', iosBody('ab'.repeat(31))],
+      ['a token longer than 100 bytes', iosBody('ab'.repeat(101))],
+      ['a token of odd length', iosBody(`${IOS_TOKEN}a`)],
+      ['an FCM token', iosBody(TOKEN_A)],
+    ])('rejects %s without storing anything', async (_label, body) => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      const response = await harness.register(paired.credential, body);
+      expect(response.status).toBe(400);
+      expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+      expect(existsSync(iosPath(harness))).toBe(false);
+      expect(existsSync(harness.keyPath)).toBe(false);
+    });
+
+    test('delete and revoke clear the iOS file too', async () => {
+      const harness = createHarness();
+      const a = await pairDevice(harness, 'A');
+      const b = await pairDevice(harness, 'B');
+      await harness.register(a.credential, iosBody());
+      await harness.register(b.credential, iosBody('cd'.repeat(40)));
+      expect((await harness.unregister(a.credential)).status).toBe(200);
+      harness.pairing.revokeDevice(b.device.id, 'operator-credential');
+      expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+      const file = readFileSync(iosPath(harness), 'utf8');
+      expect(file).not.toContain(IOS_TOKEN);
+      expect(file).not.toContain('cd'.repeat(40));
+    });
   });
 });

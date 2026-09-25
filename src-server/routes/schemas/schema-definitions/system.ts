@@ -7,6 +7,8 @@ export const notificationCreateSchema = z
     body: z.string().optional(),
     category: z.string().optional(),
     source: z.string().optional(),
+    // Stored as `api:<tag>` (#2597); bounded so the prefixed tag stays sane.
+    dedupeTag: z.string().trim().min(1).max(256).optional(),
   })
   .passthrough();
 

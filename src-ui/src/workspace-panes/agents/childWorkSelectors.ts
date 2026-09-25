@@ -43,6 +43,14 @@ export interface ChildWorkRowModel {
   startedAtMs?: number;
   endedAtMs?: number;
   stop?: ChildWorkStopControl;
+  /**
+   * #2486: the engine's matrix says `stop` also ends the reporting session's
+   * own active turn (no softer path exists) — a control offered this way
+   * must say so, rather than a copy hardcoded the same for every engine.
+   * Absent/false when `stop` is scoped exactly to the child (or when there
+   * is no stop to offer at all).
+   */
+  stopEndsParentTurn?: boolean;
   provenance: ChildWorkProvenance;
   /** Indentation: reported nesting only. */
   level: number;
@@ -150,6 +158,21 @@ function engineStopIsWired(provider: string | undefined): boolean {
 /** Whether the engine's matrix says it reports nothing about subagents. */
 function engineReportsNoSubagents(provider: string | undefined): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
+}
+
+/**
+ * #2486: whether the engine's own wired stop cell says the action also ends
+ * the reporting session's own active turn (Codex: no softer path exists). A
+ * per-engine declared fact, not a copy hardcoded the same for every engine —
+ * an engine whose stop stays task-scoped (or is not wired at all) is false.
+ */
+function engineStopEndsParentTurn(provider: string | undefined): boolean {
+  const cell = engineMatrix(provider)?.subagentControl;
+  return (
+    cell?.state === 'wired' &&
+    cell.stop.state === 'available' &&
+    cell.stop.endsParentTurn === true
+  );
 }
 
 /**
@@ -263,6 +286,10 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
         ? input.toolCallStartedAt?.(item.parent.toolCallId)
         : undefined);
     const endedAtMs = parseTime(item.endedAt);
+    const stopEndsParentTurn =
+      stop === 'provider-task-stop'
+        ? engineStopEndsParentTurn(provider)
+        : false;
     candidates.push({
       row: {
         key,
@@ -271,6 +298,7 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
         ...(startedAtMs !== undefined ? { startedAtMs } : {}),
         ...(endedAtMs !== undefined ? { endedAtMs } : {}),
         ...(stop ? { stop } : {}),
+        ...(stopEndsParentTurn ? { stopEndsParentTurn } : {}),
         provenance: provenanceIn(item, input, sessions),
         level: reportedDepth,
       },

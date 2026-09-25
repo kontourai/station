@@ -30,6 +30,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
@@ -109,6 +110,12 @@ export interface ForegroundMessageInput {
    * new session so it acts for no one (`session-owner-attribution.ts`).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: set only by the dispatch routes, from the request itself
+   * (`resolveDispatchActor`). It rides the start's dispatch context, where
+   * `OrchestrationService` lets the session run `host` only with it.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**
@@ -336,7 +343,11 @@ export interface ExecutionTargetExecutionDependencies
   resolveConversationSession?: (
     access: EnvironmentAccess,
     conversationId: string,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ) => Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -594,6 +605,9 @@ export async function executeForegroundMessage(
             provider: resolved.provider,
             ...(resolved.engine.kind === 'connection'
               ? { connectionId: resolved.engine.connectionId }
+              : {}),
+            ...(input.target.model?.override
+              ? { modelOverride: input.target.model.override }
               : {}),
           },
         )

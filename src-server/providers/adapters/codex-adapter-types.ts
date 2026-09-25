@@ -1,5 +1,9 @@
-import type { ProviderSession } from '../adapter-shape.js';
+import type {
+  ProviderInterruptTurnResult,
+  ProviderSession,
+} from '../adapter-shape.js';
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
+import type { CodexThreadSandbox } from './codex-approval-mode.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -72,6 +76,13 @@ export interface CodexSessionRecord {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * #2559: the sandbox the thread runs in, from `thread/start`,
+   * `thread/resume` or `thread/fork`'s own report, updated whenever a turn
+   * sends a `sandboxPolicy`. `turn/start` takes no sandbox mode string, so
+   * this is what a turn's sandbox actually is.
+   */
+  threadSandbox?: CodexThreadSandbox;
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**
@@ -151,4 +162,50 @@ export interface CodexSessionRecord {
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
   childWork?: CodexChildWorkState;
+  /**
+   * #2486 review: single-flight guard for the parent's own `turn/interrupt`.
+   * `stopProviderTask` (per-child) and `interruptTurn`'s cascade (plain
+   * Stop) can both reach the parent step for the SAME record — e.g. two
+   * concurrent per-child stops for different children of one parent. Set
+   * while a parent interrupt is in flight so a second caller awaits the
+   * SAME RPC instead of sending its own; cleared once it settles.
+   */
+  parentInterruptInFlight?: {
+    turnId: string;
+    promise: Promise<ProviderInterruptTurnResult>;
+  };
+  /**
+   * #2486: turns that already published their terminal, newest last and
+   * bounded. Unlike `terminalPublishedForTurnId`, a new turn starting does
+   * not reset it, so an interrupt that resolves after its turn ended AND a
+   * newer turn began still sees that its turn already has a terminal.
+   */
+  recentTerminalTurnIds?: string[];
+}
+
+const RECENT_TERMINAL_TURN_LIMIT = 16;
+
+/** Record that `turnId`'s terminal has been published (or is about to be). */
+export function markCodexTurnTerminal(
+  record: CodexSessionRecord,
+  turnId: string | undefined,
+): void {
+  record.terminalPublishedForTurnId = turnId;
+  if (!turnId) return;
+  const recent = (record.recentTerminalTurnIds ?? []).filter(
+    (id) => id !== turnId,
+  );
+  recent.push(turnId);
+  record.recentTerminalTurnIds = recent.slice(-RECENT_TERMINAL_TURN_LIMIT);
+}
+
+/** Whether `turnId` has already published its terminal. */
+export function codexTurnAlreadyTerminal(
+  record: CodexSessionRecord,
+  turnId: string,
+): boolean {
+  return (
+    record.terminalPublishedForTurnId === turnId ||
+    (record.recentTerminalTurnIds ?? []).includes(turnId)
+  );
 }

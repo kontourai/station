@@ -39,8 +39,9 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
   isSessionTransitionReason,
+  sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type SessionReadAuthority,
@@ -68,6 +69,7 @@ import {
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
@@ -230,6 +232,12 @@ export interface DelegateTaskInput {
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: route-set only, like `ownerAttribution`: the request's proof that
+   * the session this starts may run `host`. Absent (the agent tool, every
+   * in-process caller) starts it confined to its workspace.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -473,6 +481,8 @@ export interface ContinueDelegatedTaskInput
    * owner attribution as a fresh delegation (session-owner-attribution.ts).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /** #2493: route-set only; see `DelegateTaskInput.fullAccessGrant`. */
+  fullAccessGrant?: FullAccessGrant | null;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -1026,7 +1036,11 @@ export function delegatedTaskReason(
 ): DelegatedTaskReason | undefined {
   // A clean success carries no reason: an older turn's budget code must
   // never label it (root review 00:40 — observable wrong status, not style).
-  if (session.lifecycleState === 'completed') return undefined;
+  if (
+    isSessionLifecycleState(session.lifecycleState) &&
+    sessionLifecycleOutcome(session.lifecycleState) === 'completed'
+  )
+    return undefined;
   const reversed = [...events].reverse();
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
@@ -1279,12 +1293,16 @@ function dispatchContextForAuthority(
   // The service stamps it on the new session (`prepareStart`), the one
   // place every start passes.
   ownerAttribution?: StartOwnerAttribution,
+  // #2493: the route's full-access grant for a start this dispatch causes.
+  // `prepareStart` reads it (`startConfinement`); absent confines the start.
+  fullAccessGrant?: FullAccessGrant | null,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
+  fullAccessGrant?: FullAccessGrant;
 } {
   return {
     userId: authority.userId,
@@ -1294,6 +1312,7 @@ function dispatchContextForAuthority(
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
+    ...(fullAccessGrant ? { fullAccessGrant } : {}),
   };
 }
 
@@ -2803,6 +2822,9 @@ function taskStatus(
   session: Record<string, unknown>,
 ): DelegatedTaskSnapshot['status'] {
   const lifecycle = session.lifecycleState;
+  // #2540: a delegated session whose turn finished is at rest and reusable;
+  // to the delegator the task is done.
+  if (lifecycle === 'idle') return 'completed';
   if (
     lifecycle === 'queued' ||
     lifecycle === 'running' ||
@@ -2944,7 +2966,7 @@ function conversationCanAcceptFollowUp(
   // made only for a state the contract recognizes.
   return (
     isSessionLifecycleState(status) &&
-    (status === 'queued' || isSessionLifecycleStateStopped(status))
+    (status === 'queued' || isSessionLifecycleStateAtRest(status))
   );
 }
 
@@ -3813,7 +3835,7 @@ export async function refreshPeerDelegationActivity(
       (session) =>
         session.delegation?.environmentKind === 'peer' &&
         session.delegation.environmentId &&
-        !isSessionLifecycleStateStopped(session.lifecycleState ?? 'queued'),
+        !isSessionLifecycleStateAtRest(session.lifecycleState ?? 'queued'),
     )
     .slice(-20);
   await Promise.allSettled(
@@ -3924,6 +3946,9 @@ export async function continueDelegatedTask(
       userId: readAuthority.userId,
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
+        : {}),
+      ...(input.fullAccessGrant
+        ? { fullAccessGrant: input.fullAccessGrant }
         : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
@@ -4830,6 +4855,7 @@ export async function delegateTask(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           conversationIdentity: {
@@ -5096,7 +5122,13 @@ export async function executeExecutionTargetMessage(
       selectedTarget,
       input.target,
     );
-    const { automaticBackground: _automaticBackground, ...remoteInput } = input;
+    // #2493: a grant is this Station's proof about this request; the peer
+    // derives its own from the credential that reaches it.
+    const {
+      automaticBackground: _automaticBackground,
+      fullAccessGrant: _fullAccessGrant,
+      ...remoteInput
+    } = input;
     return postForegroundMessage(
       selectedTarget,
       input.delegation
@@ -5285,7 +5317,11 @@ export async function executeExecutionTargetMessage(
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
-      requested: { provider: EngineId; connectionId?: string },
+      requested: {
+        provider: EngineId;
+        connectionId?: string;
+        modelOverride?: string;
+      },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
       // lightweight compatibility doubles (and an older remote Station
@@ -5442,6 +5478,7 @@ export async function executeExecutionTargetMessage(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),
