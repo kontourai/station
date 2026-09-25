@@ -615,11 +615,13 @@ export async function executeForegroundMessage(
   const sessionId = continuation?.sessionId ?? conversationId;
   // A fresh or successor session records `userId` as its owner, and a
   // session with no recorded owner is readable by no caller. Refuse the start
-  // before this send writes anything else: its approval-mode receipt, a
-  // boundary claim, a worktree or an engine start. (A successor's child is
-  // already reserved above by `resolveConversationSession`; that happens
-  // only for a conversation whose binding the caller passed, and a binding
-  // recording an owner refuses a caller who names none.)
+  // here, before its approval-mode receipt, a boundary claim, a worktree or
+  // an engine start. Two effects can already have happened above, both only
+  // for a conversation that already has a binding (the binding check above
+  // refuses a caller naming no user when that binding records an owner):
+  // `prepareConversationHandoff` may have written a handoff marker, and
+  // `resolveConversationSession` may have reserved the successor child.
+  // A fresh conversation reaches this point with neither.
   if ((!binding || continuation?.startRequired) && !input.userId?.trim()) {
     throw new Error(
       'A session start requires the principal it belongs to (userId).',
