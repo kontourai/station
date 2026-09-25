@@ -2,14 +2,20 @@
  * Notification Routes — notification management REST API.
  */
 
-import type { Notification } from '@kontourai/station-contracts/notification';
+import type {
+  Notification,
+  SurfaceId,
+} from '@kontourai/station-contracts/notification';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import type { NotificationService } from '../../services/notifications/notification-service.js';
+import {
+  NotificationReservedFieldError,
+  type NotificationService,
+} from '../../services/notifications/notification-service.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
@@ -91,10 +97,27 @@ export function createNotificationRoutes(
     if (!canReadNotification(provisional, c.req.raw)) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
-    const notification = await notificationService.schedule(
-      body.source ?? 'api',
-      body,
-    );
+    let notification: Notification;
+    try {
+      notification = await notificationService.schedule(
+        body.source ?? 'api',
+        body,
+      );
+    } catch (error) {
+      // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
+      // the trusted enveloped path (#2583); a request body cannot claim them.
+      if (error instanceof NotificationReservedFieldError) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Envelopes, agent: dedupe tags and agent-* categories are reserved to agent notifications',
+          },
+          400,
+        );
+      }
+      throw error;
+    }
     notificationOps.add(1, { op: 'schedule' });
     return c.json({ success: true, data: notification }, 201);
   });
@@ -220,7 +243,7 @@ export function createNotificationRoutes(
   return app;
 }
 
-function readerSurfaceId(request: Request): string | undefined {
+function readerSurfaceId(request: Request): SurfaceId | undefined {
   const origin = resolveClientOriginForRequest(request);
   if (origin.actor.kind === 'device') return `device:${origin.actor.deviceId}`;
   const clientSession = request.headers.get('x-station-client-session');
