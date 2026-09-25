@@ -1196,6 +1196,8 @@ export interface FetchSseMessage {
 
 export interface FetchSseOptions extends ClientRequestOptions {
   signal?: AbortSignal;
+  /** Resume cursor for this transport's first request. */
+  initialLastEventId?: string;
   reconnect?: boolean;
   retryDelayMs?: number;
   maxRetryDelayMs?: number;
@@ -1650,7 +1652,7 @@ export function fetchSSE(
     let retryDelay = baseRetryDelay;
     const maxRetryDelay = opts.maxRetryDelayMs ?? 30_000;
     const healthyConnectionMs = opts.healthyConnectionMs ?? 30_000;
-    let lastEventId: string | undefined;
+    let lastEventId: string | undefined = opts.initialLastEventId;
     let retryCount = 0;
     const resetAfterMessages = Math.max(1, opts.retryResetAfterMessages ?? 1);
     while (!controller.signal.aborted) {

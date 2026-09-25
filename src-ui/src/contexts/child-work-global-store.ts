@@ -339,6 +339,33 @@ function reconcileInto(
           },
       at,
     );
+    if (view.observability === 'reported') {
+      for (const item of view.settled ?? []) {
+        const {
+          producer,
+          reporterThreadId,
+          childId,
+          status,
+          result,
+          usage,
+          ...identity
+        } = item;
+        if (status === 'running') continue;
+        fold(
+          {
+            kind: 'settle',
+            producer,
+            reporterThreadId,
+            childId,
+            status,
+            ...(result ? { result } : {}),
+            ...(usage ? { usage } : {}),
+            identity,
+          },
+          at,
+        );
+      }
+    }
   }
   const listed = new Set(sessions.map((session) => session.threadId));
   const reporters = new Set([

@@ -497,7 +497,53 @@ describe('reconcileBackgroundTasksSnapshot', () => {
     expect(state.entries['task:delegate-1']).toBeUndefined();
   });
 
-  test('hasActiveTurn === false demotes a client-tracked running delegate to stopped', () => {
+  test('seeds a finished delegate from a current server child-work outcome', () => {
+    const state = reconcileBackgroundTasksSnapshot(
+      createEmptyBackgroundTasksState(),
+      payload([
+        {
+          provider: 'claude',
+          threadId: 'task:delegate-finished',
+          status: 'ready',
+          hasActiveTurn: false,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          lastEventAt: '2026-09-24T00:00:03.000Z',
+          displayTitle: 'Explore files',
+          delegation: {
+            taskId: 'task:delegate-finished',
+            parentTaskId: 'chat-1',
+          },
+          childWork: {
+            asChild: {
+              producer: 'station-delegate',
+              reporterThreadId: 'task:delegate-finished',
+              childId: 'task:delegate-finished',
+              status: 'completed',
+              parent: { taskId: 'chat-1' },
+              startedAt: '2026-09-24T00:00:00.000Z',
+              endedAt: '2026-09-24T00:00:03.000Z',
+              controls: { stop: 'delegate-interrupt' },
+            },
+          },
+        },
+      ]),
+    );
+    expect(state.entries['task:delegate-finished']).toMatchObject({
+      title: 'Explore files',
+      state: 'completed',
+      startedAt: Date.parse('2026-09-24T00:00:00.000Z'),
+      endedAt: Date.parse('2026-09-24T00:00:03.000Z'),
+      chatThreadId: 'chat-1',
+    });
+  });
+
+  // #2530 review 2 round 2: an older server's bare `delegation` row (no
+  // `childWork.asChild`) carries no terminal lifecycle fact either — nothing
+  // says a stop was requested, only that the turn is no longer open. That is
+  // 'unresolved', not 'stopped'; 'stopped' would claim a stop nothing
+  // derived. See the matching current-server case below, which must land on
+  // the same honest state for the same "no terminal fact" situation.
+  test('hasActiveTurn === false demotes a client-tracked running delegate to unresolved (legacy fallback, no childWork)', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),
       event('session.started', {
@@ -520,6 +566,82 @@ describe('reconcileBackgroundTasksSnapshot', () => {
       ]),
     );
     expect(state.entries['task:delegate-1']).toMatchObject({
+      state: 'unresolved',
+      endedAt: Date.parse('2026-07-29T00:05:00.000Z'),
+    });
+  });
+
+  test('a current server childWork.asChild demoting to its own unresolved status also reads unresolved, not stopped', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('session.started', {
+        threadId: 'task:delegate-2',
+        sessionId: 'task:delegate-2',
+        metadata: { taskId: 'task:delegate-2', parentTaskId: 'chat-1' },
+      }),
+    );
+    state = reconcileBackgroundTasksSnapshot(
+      state,
+      payload([
+        {
+          provider: 'claude',
+          threadId: 'task:delegate-2',
+          status: 'idle',
+          hasActiveTurn: false,
+          lastEventAt: '2026-07-29T00:05:00.000Z',
+          delegation: { taskId: 'task:delegate-2', parentTaskId: 'chat-1' },
+          childWork: {
+            asChild: {
+              producer: 'station-delegate',
+              reporterThreadId: 'task:delegate-2',
+              childId: 'task:delegate-2',
+              status: 'unresolved',
+              parent: { taskId: 'chat-1' },
+              controls: { stop: 'delegate-interrupt' },
+            },
+          },
+        },
+      ]),
+    );
+    expect(state.entries['task:delegate-2']).toMatchObject({
+      state: 'unresolved',
+      endedAt: Date.parse('2026-07-29T00:05:00.000Z'),
+    });
+  });
+
+  test('a current server childWork.asChild still reports a genuine richer terminal status (cancelled)', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('session.started', {
+        threadId: 'task:delegate-3',
+        sessionId: 'task:delegate-3',
+        metadata: { taskId: 'task:delegate-3', parentTaskId: 'chat-1' },
+      }),
+    );
+    state = reconcileBackgroundTasksSnapshot(
+      state,
+      payload([
+        {
+          provider: 'claude',
+          threadId: 'task:delegate-3',
+          status: 'idle',
+          hasActiveTurn: false,
+          lastEventAt: '2026-07-29T00:05:00.000Z',
+          delegation: { taskId: 'task:delegate-3', parentTaskId: 'chat-1' },
+          childWork: {
+            asChild: {
+              producer: 'station-delegate',
+              reporterThreadId: 'task:delegate-3',
+              childId: 'task:delegate-3',
+              status: 'cancelled',
+              parent: { taskId: 'chat-1' },
+              controls: { stop: 'delegate-interrupt' },
+            },
+          },
+        },
+      ]),
+    );
+    expect(state.entries['task:delegate-3']).toMatchObject({
       state: 'stopped',
       endedAt: Date.parse('2026-07-29T00:05:00.000Z'),
     });
