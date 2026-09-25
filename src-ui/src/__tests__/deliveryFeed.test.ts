@@ -153,6 +153,38 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     });
   });
 
+  test('overlapping polls join one read: the entry posts once', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { d, notify, reads } = deps([feed(0), feed(1, [alert(1, 'n-1')])]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    const slowRead = d.readFeed;
+    d.readFeed = async (input) => {
+      await gate;
+      return slowRead(input);
+    };
+    const first = pollDeliveryFeed(A, SCOPE, d);
+    const second = pollDeliveryFeed(A, SCOPE, d);
+    release();
+    expect(await Promise.all([first, second])).toEqual([1, 1]);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(reads).toHaveLength(2);
+  });
+
+  test('a notification id already posted is not posted again, whatever its seq', async () => {
+    const { d, notify } = deps([
+      feed(0),
+      feed(1, [alert(1, 'n-1')]),
+      feed(2, [alert(2, 'n-1')]),
+    ]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(0);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   test('a failed feed read posts nothing and keeps the cursor', async () => {
     const { d, notify, reads } = deps([
       feed(2),

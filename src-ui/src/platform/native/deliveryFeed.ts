@@ -34,6 +34,11 @@ import { notifyNatively } from './notify';
  *   is all new;
  * - keeps one presentation guard: no OS alert while this window is focused
  *   (the entry is consumed, since the in-app toast already shows it);
+ * - reads one at a time: an overlapping poll (a StrictMode double effect, a
+ *   read slower than the interval) joins the read in flight instead of
+ *   applying the same entries twice;
+ * - never posts one notification id twice in a document (a bounded set of
+ *   recently posted ids, behind the cursor as a second line);
  * - drops an alert whose retract arrives in the same read. A retract for an
  *   alert already posted cannot be honoured: the desktop notification plugin
  *   exposes no way to close a delivered notification.
@@ -69,9 +74,15 @@ let state: {
   epoch?: string;
 } | null = null;
 
+let inFlight: Promise<number> | null = null;
+const RECENTLY_POSTED_MAX = 200;
+const recentlyPosted = new Set<string>();
+
 /** Test seam. */
 export function resetDeliveryFeedState(): void {
   state = null;
+  inFlight = null;
+  recentlyPosted.clear();
 }
 
 function defaultDeps(apiBase: string): DeliveryFeedDeps {
@@ -123,11 +134,26 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
   };
 }
 
-/** One read of the feed. Returns how many OS alerts were posted. */
-export async function pollDeliveryFeed(
+/**
+ * One read of the feed. Returns how many OS alerts were posted; a call made
+ * while a read is in flight joins it.
+ */
+export function pollDeliveryFeed(
   apiBase: string,
   scopeKey: string,
   deps: DeliveryFeedDeps = defaultDeps(apiBase),
+): Promise<number> {
+  if (inFlight) return inFlight;
+  const read = readOnce(scopeKey, deps).finally(() => {
+    if (inFlight === read) inFlight = null;
+  });
+  inFlight = read;
+  return read;
+}
+
+async function readOnce(
+  scopeKey: string,
+  deps: DeliveryFeedDeps,
 ): Promise<number> {
   const installationId = await deps.installationId();
   if (state?.scopeKey !== scopeKey) {
@@ -169,6 +195,12 @@ export async function pollDeliveryFeed(
   for (const entry of entries) {
     if (entry.kind !== 'alert') continue;
     if ((retractedAt.get(entry.notificationId) ?? -1) > entry.seq) continue;
+    if (recentlyPosted.has(entry.notificationId)) continue;
+    recentlyPosted.add(entry.notificationId);
+    if (recentlyPosted.size > RECENTLY_POSTED_MAX) {
+      const oldest = recentlyPosted.values().next().value;
+      if (oldest !== undefined) recentlyPosted.delete(oldest);
+    }
     await deps.notify(
       entry.body === undefined
         ? { title: entry.title }

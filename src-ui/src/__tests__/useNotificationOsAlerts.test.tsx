@@ -45,7 +45,11 @@ describe('useNotificationOsAlerts (#2587)', () => {
     platform.current = { isTauri: true, isDesktop: true, isMobile: false };
     notifications.current = undefined;
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    window.history.replaceState(null, '', '/');
+  });
 
   test('keys the blocking channel by endpoint and connection id', async () => {
     notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
@@ -72,6 +76,41 @@ describe('useNotificationOsAlerts (#2587)', () => {
     unmount();
     await vi.advanceTimersByTimeAsync(DELIVERY_FEED_POLL_MS);
     expect(pollFeed).toHaveBeenCalledTimes(2);
+  });
+
+  test('a workspace-pane pop-out window neither polls the feed nor posts blocking alerts', async () => {
+    // Every pop-out renders the whole app; only `main` may alert, or each
+    // window posts the same alert (and an unfocused pop-out alerts while
+    // main is in use).
+    notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
+    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'workspace-pane-pop-out-1' } },
+    };
+    renderHook(() => useNotificationOsAlerts());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(pollFeed).not.toHaveBeenCalled();
+    expect(reconcileBlocking).not.toHaveBeenCalled();
+
+    // Positive control: the same document labelled `main` does both.
+    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' } },
+    };
+    renderHook(() => useNotificationOsAlerts());
+    await waitFor(() => expect(pollFeed).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
+  });
+
+  test('without a window label a pop-out is recognised by its pane route', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/projects/p/layouts/l/panes/pane%3Acode/inst?projectId=x',
+    );
+    notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
+    renderHook(() => useNotificationOsAlerts());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(pollFeed).not.toHaveBeenCalled();
+    expect(reconcileBlocking).not.toHaveBeenCalled();
   });
 
   test('never polls the feed off a desktop native host (browser tabs keep toasts only)', async () => {

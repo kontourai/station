@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { isMainDesktopWindow } from '../platform/native/mainWindow';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 
 /**
@@ -59,7 +60,12 @@ export const DELIVERY_FEED_POLL_MS = 20_000;
 export function useNotificationOsAlerts(): void {
   const { apiBase, connectionId } = useApiBase();
   const profile = usePlatformProfile();
-  const enabled = profile.isTauri && profile.isDesktop && !profile.isMobile;
+  // Once per app, not once per window: pop-out windows render the app too.
+  const enabled =
+    profile.isTauri &&
+    profile.isDesktop &&
+    !profile.isMobile &&
+    isMainDesktopWindow();
   const { data, dataUpdatedAt } = useNotificationsQuery(
     { status: LIVE_NOTIFICATION_STATUSES },
     { refetchInterval: 10_000, enabled },
