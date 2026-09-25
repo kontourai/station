@@ -9,7 +9,12 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import type { NotificationService } from '../../services/notifications/notification-service.js';
+import {
+  NotificationDedupeSourceConflictError,
+  NotificationReservedFieldError,
+  type NotificationService,
+  REST_NOTIFICATION_SOURCE,
+} from '../../services/notifications/notification-service.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
   getBody,
@@ -85,15 +90,66 @@ export function createNotificationRoutes(
     const provisional = {
       ...body,
       id: '',
-      source: body.source ?? 'api',
+      source: REST_NOTIFICATION_SOURCE,
     } as Notification;
     if (!canReadNotification(provisional, c.req.raw)) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
-    const notification = await notificationService.schedule(
-      body.source ?? 'api',
-      body,
-    );
+    // #2597: a request cannot choose its source — a caller-chosen source
+    // relabels (and via a shared tag rewrites) another producer's record.
+    // Every REST record is `api`. The shipped SDK labels its requests
+    // `sdk`; that label is accepted and recorded as `api`. Anything else is
+    // refused rather than silently relabelled.
+    if (
+      body.source !== undefined &&
+      body.source !== REST_NOTIFICATION_SOURCE &&
+      body.source !== 'sdk'
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: 'Notification source is set by the server for API requests',
+        },
+        400,
+      );
+    }
+    let notification: Notification;
+    try {
+      // Hosted: namespace REST dedupe tags by the caller's tenant, so one
+      // tenant's request can never update another tenant's record.
+      const authority = options.readAuthorityForRequest?.(c.req.raw);
+      const tenantId =
+        authority && isHostedSessionReadAuthority(authority)
+          ? authority.tenantExecutionContext?.tenantId
+          : undefined;
+      notification = await notificationService.scheduleFromRequest(
+        body,
+        tenantId === undefined ? {} : { tenantId },
+      );
+    } catch (error) {
+      // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
+      // the trusted enveloped path (#2583); a request body cannot claim them.
+      if (error instanceof NotificationDedupeSourceConflictError) {
+        return c.json(
+          {
+            success: false,
+            error: 'Notification dedupe tag belongs to another source',
+          },
+          409,
+        );
+      }
+      if (error instanceof NotificationReservedFieldError) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Envelopes, metadata.dedupeTag, agent: dedupe tags and agent-* categories are reserved',
+          },
+          400,
+        );
+      }
+      throw error;
+    }
     notificationOps.add(1, { op: 'schedule' });
     return c.json({ success: true, data: notification }, 201);
   });
