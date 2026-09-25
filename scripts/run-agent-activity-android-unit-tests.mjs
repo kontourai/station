@@ -53,11 +53,19 @@ const testSources = join(pluginAndroid, 'src', 'test', 'java');
  * green. opensTheStationsKnownAnswerVector is the phone opening the Station's
  * NATIVE_PUSH_SEALED_TEST_VECTOR, whose Kotlin copy
  * src-server/services/notifications/__tests__/agent-activity-seal.test.ts pins
- * to the contract; without it that pin guards a vector nothing opens.
+ * to the contract; without it that pin guards a vector nothing opens. The same
+ * holds for opensTheStationsNotificationVector and
+ * NATIVE_PUSH_NOTIFICATION_TEST_VECTOR.
  */
 const REQUIRED_TEST_CASES = Object.freeze({
   'io.kontourai.station.agentactivity.AgentSealTest': [
     'opensTheStationsKnownAnswerVector',
+  ],
+  // #2588: the Station notification vector, duplicate drop and retract.
+  'io.kontourai.station.agentactivity.StationNotificationsTest': [
+    'opensTheStationsNotificationVector',
+    'aDuplicateIdIsDropped',
+    'aRetractCancelsAndTheAlertItRetractedCannotComeBack',
   ],
 });
 const testResults = join(
