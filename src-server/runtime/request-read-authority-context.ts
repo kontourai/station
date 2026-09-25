@@ -17,12 +17,16 @@ import {
  * rather than read as the operator.
  */
 const requestAuthorities = new AsyncLocalStorage<SessionReadAuthority>();
+/** See `runAsStationKnowledgeIndexer`. */
+const stationIndexing = new AsyncLocalStorage<true>();
 
 export function runWithRequestReadAuthority<T>(
   authority: SessionReadAuthority,
   run: () => T,
 ): T {
-  return requestAuthorities.run(authority, run);
+  // A request scope always leaves any enclosing indexer context: a request
+  // nested inside a build must never read with the internal scope.
+  return stationIndexing.exit(() => requestAuthorities.run(authority, run));
 }
 
 export function currentRequestReadAuthority():
@@ -32,15 +36,14 @@ export function currentRequestReadAuthority():
 }
 
 /**
- * Station-internal knowledge indexing (index rebuild, pre-index migration,
- * Neo4j sync): the index and graph are shared Station-wide artifacts, so they
- * are built from ALL sessions under the named internal scope, and every read
- * path re-reads each session-backed record as its own caller before showing
- * it. Only the knowledge readers consult this (`currentKnowledgeReadScope`);
- * `currentRequestReadAuthority` never returns it.
+ * Station-internal knowledge indexing (index rebuild, Neo4j sync): the index
+ * and graph are shared Station-wide artifacts, so they are built from ALL
+ * sessions under the named internal scope, and every read path re-reads each
+ * session-backed record as its own caller before showing it. Only the
+ * knowledge readers consult this (`currentKnowledgeReadScope`);
+ * `currentRequestReadAuthority` never returns it, and a request scope nested
+ * inside a build leaves it (`runWithRequestReadAuthority`).
  */
-const stationIndexing = new AsyncLocalStorage<true>();
-
 export function runAsStationKnowledgeIndexer<T>(build: () => T): T {
   return stationIndexing.run(true, build);
 }
