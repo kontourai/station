@@ -39,6 +39,7 @@ import type {
   InvocationContext,
   TokenUsage,
   ToolCallContext,
+  UnattendedGrantResolution,
 } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import { stationDenial } from './denial-message.js';
@@ -82,7 +83,7 @@ export interface AgentHooksDeps {
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
     invocation: InvocationContext,
-  ) => Promise<boolean>;
+  ) => Promise<UnattendedGrantResolution>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   workItemCapture?: WorkItemCapture;
   logger: any;

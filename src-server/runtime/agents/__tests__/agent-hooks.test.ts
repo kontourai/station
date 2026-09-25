@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -9,7 +9,9 @@ import { makeUnattendedGrantResolver } from '../../../services/agents/unattended
 import {
   principalKey,
   UnattendedGrantStore,
+  unattendedGrantStorePath,
 } from '../../../services/agents/unattended-grant-store.js';
+import { ApprovalGuardianService } from '../../../services/approvals/approval-guardian.js';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import {
   type MCPToolNameMappingEntry,
@@ -24,6 +26,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   unattendedGrantStoreUnavailable: { add: vi.fn() },
   unattendedGrantUses: { add: vi.fn() },
   unattendedGrantOperations: { add: vi.fn() },
+  approvalGuardianOps: { add: vi.fn() },
 }));
 
 vi.mock(
@@ -1284,6 +1287,8 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     expect(chat.approvalRegistry.register).toHaveBeenCalledOnce();
   });
 
+  const SCHEDULED_JOB_REASON = `${UNATTENDED_GRANT_REASON} To allow it for this scheduled job alone, an operator can instead record an unattended tool grant for the job through /api/agents/unattended-grants, keyed by the exact tool name above.`;
+
   test('a scheduled-job denial also names the narrower per-job grant', async () => {
     const { hooks } = hooksFor(
       { autoApprove: ['station-control_*'] },
@@ -1295,9 +1300,55 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
         agentSlug: 'planner',
         unattendedPrincipal: { kind: 'scheduled-job', jobId: 'job-1' },
       }),
+    ).resolves.toMatchObject({ allowed: false, reason: SCHEDULED_JOB_REASON });
+  });
+
+  test('only a scheduled job is offered the per-job grant: voice and delegated-child principals are not', async () => {
+    const { hooks } = hooksFor(
+      { autoApprove: ['station-control_*'] },
+      { resolveUnattendedGrant: vi.fn().mockResolvedValue(false) },
+    );
+
+    for (const unattendedPrincipal of [
+      { kind: 'voice' as const, agentSlug: 'planner', sessionId: 'voice-1' },
+      { kind: 'delegated-child' as const, originAgentSlug: 'root' },
+    ]) {
+      await expect(
+        hooks.beforeToolCall!(deleteAgentCall, {
+          agentSlug: 'planner',
+          unattendedPrincipal,
+        }),
+        unattendedPrincipal.kind,
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: UNATTENDED_GRANT_REASON,
+      });
+    }
+  });
+
+  test('a scheduled job whose grant store cannot be read is not told to record a grant', async () => {
+    const home = makeTempDir('agent-hooks-2613-store-');
+    mkdirSync(join(home, 'security'));
+    writeFileSync(unattendedGrantStorePath(home), '{not json');
+    const { deps } = hooksFor({});
+    const { hooks } = hooksFor(
+      {},
+      {
+        resolveUnattendedGrant: makeUnattendedGrantResolver(
+          new UnattendedGrantStore(home),
+          { logger: deps.logger },
+        ),
+      },
+    );
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        unattendedPrincipal: { kind: 'scheduled-job', jobId: 'job-1' },
+      }),
     ).resolves.toMatchObject({
       allowed: false,
-      reason: `${UNATTENDED_GRANT_REASON} To allow it for this scheduled job alone, an operator can record an unattended tool grant for the job instead.`,
+      reason: `${UNATTENDED_GRANT_REASON} The unattended grant store could not be read, so no per-job grant was checked.`,
     });
   });
 
@@ -1335,23 +1386,29 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     });
   });
 
-  test('the guardian is consulted first, and only an enforce-mode deny vetoes the opt-in', async () => {
+  const DEFERRED_REASON = (quoted: string) =>
+    `Tool 'stationControl_deleteAgent' was not run: the approval guardian did not approve it, and nobody is present to decide. Quoted from the approval guardian (not Station's wording): “${quoted}”`;
+
+  function guardian(mode: 'review' | 'enforce', decision: string) {
+    return {
+      isEnabled: () => true,
+      getMode: () => mode,
+      reviewToolCall: vi
+        .fn()
+        .mockResolvedValue({ decision, reason: 'Unsure.' }),
+    };
+  }
+
+  test('the guardian is consulted before the opt-in, and in review mode never blocks it', async () => {
     for (const [mode, decision] of [
       ['review', 'deny'],
-      ['enforce', 'defer'],
+      ['review', 'defer'],
+      ['enforce', 'allow'],
     ] as const) {
-      const reviewToolCall = vi
-        .fn()
-        .mockResolvedValue({ decision, reason: 'Unsure.' });
+      const approvalGuardian = guardian(mode, decision);
       const { hooks } = hooksFor(
         { unattendedAutoApprove: ['station-control_*'] },
-        {
-          approvalGuardian: {
-            isEnabled: () => true,
-            getMode: () => mode,
-            reviewToolCall,
-          },
-        },
+        { approvalGuardian },
       );
 
       await expect(
@@ -1360,10 +1417,132 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
       ).resolves.toBe(true);
       // Reached the guardian before the opt-in allowed the call.
       expect(
-        reviewToolCall,
+        approvalGuardian.reviewToolCall,
         `${mode} mode, ${decision}`,
       ).toHaveBeenCalledOnce();
     }
+  });
+
+  test('an enforce-mode guardian defer refuses an opted-in tool with nobody present, unattended and in a child', async () => {
+    const { hooks } = hooksFor(
+      { unattendedAutoApprove: ['station-control_*'] },
+      { approvalGuardian: guardian('enforce', 'defer') },
+    );
+
+    for (const invocation of [
+      { agentSlug: 'planner' },
+      { agentSlug: 'planner', delegation: childDelegation },
+    ]) {
+      await expect(
+        hooks.beforeToolCall!(deleteAgentCall, invocation),
+      ).resolves.toEqual({
+        allowed: false,
+        reason: DEFERRED_REASON('Unsure.'),
+        stationComposedReason: true,
+        policyDenied: true,
+      });
+    }
+    expect(toolDenials.add).toHaveBeenCalledWith(1, {
+      reason: 'guardian_deferred_unattended',
+    });
+  });
+
+  test('an enforce-mode guardian defer refuses a call a per-job standing grant would allow', async () => {
+    const resolveUnattendedGrant = vi.fn().mockResolvedValue(true);
+    const invocation = {
+      agentSlug: 'planner',
+      unattendedPrincipal: { kind: 'scheduled-job' as const, jobId: 'job-1' },
+    };
+    const enforce = hooksFor(
+      {},
+      {
+        approvalGuardian: guardian('enforce', 'defer'),
+        resolveUnattendedGrant,
+      },
+    );
+    await expect(
+      enforce.hooks.beforeToolCall!(deleteAgentCall, invocation),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: DEFERRED_REASON('Unsure.'),
+    });
+    // Refused before the grant is used, so no grant use is recorded.
+    expect(resolveUnattendedGrant).not.toHaveBeenCalled();
+
+    // Review mode is unchanged: the grant still authorizes.
+    const review = hooksFor(
+      {},
+      { approvalGuardian: guardian('review', 'defer'), resolveUnattendedGrant },
+    );
+    await expect(
+      review.hooks.beforeToolCall!(deleteAgentCall, invocation),
+    ).resolves.toBe(true);
+  });
+
+  test("the real guardian's error and parse-failure defers refuse an opted-in unattended call in enforce mode", async () => {
+    const guardianFor = (framework: Record<string, unknown>) =>
+      new ApprovalGuardianService({
+        appConfig: {
+          defaultModel: 'default-model',
+          invokeModel: 'invoke-model',
+          structureModel: 'structure-model',
+          approvalGuardian: { enabled: true, mode: 'enforce' },
+        },
+        framework: {
+          createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
+          ...framework,
+        } as never,
+        logger: { warn: vi.fn() },
+        projectHomeDir: '/tmp/project',
+      } as never);
+
+    for (const [label, approvalGuardian, quoted] of [
+      [
+        'review failed',
+        guardianFor({
+          createTempAgent: vi.fn().mockRejectedValue(new Error('offline')),
+        }),
+        'Guardian review failed.',
+      ],
+      [
+        'unparseable verdict',
+        guardianFor({
+          createTempAgent: vi.fn().mockResolvedValue({
+            generateObject: vi.fn().mockResolvedValue({ object: {} }),
+          }),
+        }),
+        'Guardian could not parse a confident decision.',
+      ],
+    ] as const) {
+      const { hooks } = hooksFor(
+        { unattendedAutoApprove: ['station-control_*'] },
+        { approvalGuardian },
+      );
+      await expect(
+        hooks.beforeToolCall!(deleteAgentCall, { agentSlug: 'planner' }),
+        label,
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: DEFERRED_REASON(quoted),
+      });
+    }
+  });
+
+  test('attended chat is unchanged: an enforce-mode guardian defer still asks the person', async () => {
+    const { hooks } = hooksFor(
+      { unattendedAutoApprove: ['station-control_*'] },
+      { approvalGuardian: guardian('enforce', 'defer') },
+    );
+    const requester = vi.fn().mockResolvedValue(true);
+    hooks.registerApprovalRequester('conv-1', requester);
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        conversationId: 'conv-1',
+      }),
+    ).resolves.toBe(true);
+    expect(requester).toHaveBeenCalledOnce();
   });
 
   test('an opt-in for one tool does not cover another', async () => {
