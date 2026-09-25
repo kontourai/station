@@ -8103,9 +8103,11 @@ describe('OrchestrationService', () => {
   });
 
   test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
-    const muse = new FakeAdapter('muse');
+    // ACP 1.1.1 has no subagent concept, so its matrix cell stays `none`
+    // (muse's became `declared` with muse serve, #2452).
+    const acp = new FakeAdapter('acp');
     const isolated = new OrchestrationService({
-      adapterRegistry: createRegistry([muse]),
+      adapterRegistry: createRegistry([acp]),
       eventBus,
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
@@ -8113,7 +8115,7 @@ describe('OrchestrationService', () => {
     const threadId = 'matrix-none-child-work';
     await isolated.dispatch({
       type: 'startSession',
-      input: { threadId, provider: 'muse' },
+      input: { threadId, provider: 'acp' },
     });
     const publish = (
       isolated as unknown as {
@@ -8122,7 +8124,7 @@ describe('OrchestrationService', () => {
     ).projectAndPublishEvent.bind(isolated);
     publish({
       eventId: 'matrix-none-child-delta',
-      provider: 'muse',
+      provider: 'acp',
       threadId,
       createdAt: new Date().toISOString(),
       method: 'child-work.updated',
@@ -8143,9 +8145,7 @@ describe('OrchestrationService', () => {
     const childWork = (
       isolated as unknown as { childWork: ChildWorkProjection }
     ).childWork;
-    expect(childWork.read(threadId, 'muse')?.observability).toBe(
-      'not-reported',
-    );
+    expect(childWork.read(threadId, 'acp')?.observability).toBe('not-reported');
     expect(
       (await isolated.readSession(threadId))?.session.conversationActivity
         ?.runningChildWork,
