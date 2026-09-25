@@ -158,7 +158,14 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const { d, notify, reads } = deps([feed(0), feed(1, [alert(1, 'n-1')])]);
+    const { d, notify, reads } = deps([
+      feed(0),
+      feed(1, [alert(1, 'n-1')]),
+      feed(1, [alert(1, 'n-1')]),
+    ]);
+    // The posted-alerts line is off here, so a missing join shows up as a
+    // second OS notification rather than being absorbed by it.
+    d.postedAlerts = { has: () => false, add: () => {} };
     await pollDeliveryFeed(A, SCOPE, d);
     const slowRead = d.readFeed;
     d.readFeed = async (input) => {
@@ -173,7 +180,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(reads).toHaveLength(2);
   });
 
-  test('a notification id already posted is not posted again, whatever its seq', async () => {
+  test('an identical alert re-delivered under a new seq is not posted again', async () => {
     const { d, notify } = deps([
       feed(0),
       feed(1, [alert(1, 'n-1')]),
@@ -183,6 +190,27 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
     expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(0);
     expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  test('a content update under the same notification id alerts again', async () => {
+    // The router re-delivers a dedupe update only when content changed:
+    // an agent's progress card turning into "needs input" must interrupt.
+    const needsInput = {
+      ...alert(2, 'n-1', 'Needs input'),
+      urgency: 'attention',
+    } as SurfaceDeliveryEntry;
+    const { d, notify } = deps([
+      feed(0),
+      feed(1, [alert(1, 'n-1', 'Working')]),
+      feed(2, [needsInput]),
+    ]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(notify.mock.calls.map(([input]) => input.title)).toEqual([
+      'Working',
+      'Needs input',
+    ]);
   });
 
   test('a failed feed read posts nothing and keeps the cursor', async () => {

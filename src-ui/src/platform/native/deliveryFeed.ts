@@ -37,8 +37,11 @@ import { notifyNatively } from './notify';
  * - reads one at a time: an overlapping poll (a StrictMode double effect, a
  *   read slower than the interval) joins the read in flight instead of
  *   applying the same entries twice;
- * - never posts one notification id twice in a document (a bounded set of
- *   recently posted ids, behind the cursor as a second line);
+ * - never posts the same alert twice in a document: a bounded set of
+ *   recently posted (notification id, title, body, urgency), behind the
+ *   cursor as a second line. The router re-delivers a dedupe update only
+ *   when its content changed, so an update under the same id (a progress
+ *   card turning into "needs input") still alerts;
  * - drops an alert whose retract arrives in the same read. A retract for an
  *   alert already posted cannot be honoured: the desktop notification plugin
  *   exposes no way to close a delivered notification.
@@ -55,6 +58,12 @@ export interface DeliveryFeedDeps {
   }): Promise<SurfaceDeliveryFeed | undefined>;
   isWindowFocused(): boolean;
   notify(input: { title: string; body?: string }): Promise<boolean>;
+  /**
+   * Alerts already posted in this document. Optional: defaults to a
+   * module-level bounded set; a test can pass a no-op to observe the cursor
+   * and single-flight lines on their own.
+   */
+  postedAlerts?: PostedAlerts;
   loadCursor(key: string): StoredCursor | undefined;
   saveCursor(key: string, value: StoredCursor): void;
 }
@@ -75,8 +84,23 @@ let state: {
 } | null = null;
 
 let inFlight: Promise<number> | null = null;
+export interface PostedAlerts {
+  has(key: string): boolean;
+  add(key: string): void;
+}
+
 const RECENTLY_POSTED_MAX = 200;
 const recentlyPosted = new Set<string>();
+const boundedPostedAlerts: PostedAlerts = {
+  has: (key) => recentlyPosted.has(key),
+  add: (key) => {
+    recentlyPosted.add(key);
+    if (recentlyPosted.size > RECENTLY_POSTED_MAX) {
+      const oldest = recentlyPosted.values().next().value;
+      if (oldest !== undefined) recentlyPosted.delete(oldest);
+    }
+  },
+};
 
 /** Test seam. */
 export function resetDeliveryFeedState(): void {
@@ -191,24 +215,29 @@ async function readOnce(
     if (entry.kind === 'retract')
       retractedAt.set(entry.notificationId, entry.seq);
   if (deps.isWindowFocused()) return 0;
-  let posted = 0;
+  let count = 0;
   for (const entry of entries) {
     if (entry.kind !== 'alert') continue;
     if ((retractedAt.get(entry.notificationId) ?? -1) > entry.seq) continue;
-    if (recentlyPosted.has(entry.notificationId)) continue;
-    recentlyPosted.add(entry.notificationId);
-    if (recentlyPosted.size > RECENTLY_POSTED_MAX) {
-      const oldest = recentlyPosted.values().next().value;
-      if (oldest !== undefined) recentlyPosted.delete(oldest);
-    }
+    // JSON of the fields keeps the key unambiguous (no separator a title
+    // could contain); entries are bounded by the router's caps.
+    const key = JSON.stringify([
+      entry.notificationId,
+      entry.title,
+      entry.body ?? null,
+      entry.urgency,
+    ]);
+    const posted = deps.postedAlerts ?? boundedPostedAlerts;
+    if (posted.has(key)) continue;
+    posted.add(key);
     await deps.notify(
       entry.body === undefined
         ? { title: entry.title }
         : { title: entry.title, body: entry.body },
     );
-    posted += 1;
+    count += 1;
   }
-  return posted;
+  return count;
 }
 
 function isStoredCursor(value: unknown): value is StoredCursor {
