@@ -123,7 +123,7 @@ export const NOTIFICATION_TTL_MS: Record<NotificationOutcome, number> = {
  * — operational notices, not an "agent work" outcome). Single source of
  * truth for which categories participate in ranking, TTL defaulting
  * (`NotificationService.schedule`), and web-push delivery
- * (`wireWebPushDelivery`).
+ * (`WebPushChannel`, via the delivery router).
  */
 const CATEGORY_OUTCOME: Record<string, NotificationOutcome> = {
   'approval-request': 'needs-input',

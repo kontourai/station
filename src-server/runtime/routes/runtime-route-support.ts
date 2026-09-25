@@ -23,7 +23,6 @@ import { NotificationService } from '../../services/notifications/notification-s
 import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
-import { wireWebPushDelivery } from '../../services/notifications/web-push-delivery.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
@@ -49,6 +48,7 @@ import {
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
 import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
+import { wireNotificationDelivery } from './notification-delivery-wiring.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -382,8 +382,8 @@ export function configureRuntimeSupportServices(
     context.logger,
   );
   // station#1225 (offline slice 3): push-on-completion — schedules a
-  // notification (and, via the existing `wireWebPushDelivery` fan-out
-  // below, a Web Push send) when a turn completes/fails for a session
+  // notification (and, via the notification delivery router's Web Push
+  // channel below, a Web Push send) when a turn completes/fails for a session
   // whose owning user has no live `/events` stream open.
   // `context.orchestrationStreamPresence` is the SAME instance
   // `createOrchestrationRoutes` registers connect/disconnect against
@@ -555,13 +555,25 @@ export function configureRuntimeSupportServices(
     vapidKeyService.loadOrCreate(),
     resolveWebPushSubject(),
   );
-  wireWebPushDelivery(
-    context.eventBus,
-    context.environmentSecurityService.devicePairing,
+  // #2586: every notification past the in-app feed goes through the
+  // delivery router (audience → policy → channels). Off exactly where Web
+  // Push was: hosted paired-device records have no tenant binding.
+  const {
+    preferences: notificationPreferences,
+    router: notificationDeliveryRouter,
+    desktopHostChannel,
+    isFeedDevice: isNotificationFeedDevice,
+  } = wireNotificationDelivery({
+    enabled: webPushEnabled,
+    homeDir: context.configLoader.getProjectHomeDir(),
+    eventBus: context.eventBus,
+    logger: context.logger,
+    devicePairing: context.environmentSecurityService.devicePairing,
     webPushService,
-    context.logger,
-    { enabled: webPushEnabled },
-  );
+    canUserReadSession: (sessionId, authority) =>
+      context.orchestrationService.canUserReadSession(sessionId, authority),
+    listNotifications: () => notificationService.list(),
+  });
 
   // Agent-activity push to registered phones through the Kontour push
   // gateway (docs/design/notification-delivery.md, "Station contract").
@@ -663,6 +675,10 @@ export function configureRuntimeSupportServices(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    notificationPreferences,
+    notificationDeliveryRouter,
+    desktopHostChannel,
+    isNotificationFeedDevice,
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,

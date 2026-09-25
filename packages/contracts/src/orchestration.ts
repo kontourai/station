@@ -601,6 +601,20 @@ export interface TurnProgressObservation {
  */
 export interface ConversationTurnActivity {
   conversationId: string;
+  /** Execution child the server would continue, even when no turn is open. */
+  currentThreadId?: string;
+  /**
+   * Running children reported by the engine across this conversation's
+   * execution lineage. This never implies an open turn and never enables
+   * Stop or Steer. `followUpPending` is a bounded provider observation after
+   * child settlement, and may be present with count zero.
+   */
+  runningChildWork?: {
+    count: number;
+    producers: import('./child-work.js').ChildWorkProducer[];
+    oldestStartedAt?: string;
+    followUpPending?: true;
+  };
   /**
    * The `global_sequence` of the newest committed event folded into this
    * value. Several carriers deliver it (snapshot rows, stream frames, list

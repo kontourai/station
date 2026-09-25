@@ -3504,12 +3504,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           'operator-owned',
         ),
       ).toBeDefined();
-      // Operation account ids exclude `@`, so this stranger's id omits the
-      // host part of their login.
       expect(
         await create(
           'stranger-op',
-          'human:tailscale-serve:stranger',
+          'human:tailscale-serve:stranger@example',
           'stranger-owned',
         ),
       ).toBeDefined();
@@ -3526,6 +3524,64 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect((body.data?.items ?? []).map((item) => item.id)).toEqual([
         'operator-op',
       ]);
+    });
+
+    test('a Tailscale Serve WhoIs caller owns and lists its own action operation (#2578)', async () => {
+      const operations = new ActionOperationService(
+        new FileActionOperationStore(makeTempDir('station-principal-ops-')),
+      );
+      const whoisHeaders = (credential: string) => ({
+        // A phone behind Tailscale Serve presents its paired credential; the
+        // WhoIs identity wins over it (pinned earlier in this file).
+        Authorization: `Bearer ${credential}`,
+        [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+          JSON.stringify({
+            provider: 'tailscale-serve',
+            login: 'owner@github',
+          }),
+        ).toString('base64url'),
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      });
+      // The route lists the account it derives from the caller's principal,
+      // so the operation is created under exactly that id.
+      const accountId = 'human:tailscale-serve:owner@github';
+      for (const [id, owner] of [
+        ['whois-op', accountId],
+        ['operator-op', LOCAL_OPERATOR_PRINCIPAL_ID],
+      ] as const)
+        await operations.create(
+          { accountId: owner, canReadSession: () => true },
+          {
+            id,
+            scope: { accountId: owner, sessionId: 'whois-owned' },
+            title: 'Fork conversation',
+            cancellation: 'unsupported',
+            domain: {
+              kind: 'conversation-fork',
+              sourceConversationId: 'whois-owned',
+              targetConversationId: 'whois-owned-fork',
+            },
+            reentry: {
+              kind: 'conversation',
+              agentId: 'codex',
+              conversationId: 'whois-owned-fork',
+            },
+          },
+        );
+      const { app, paired } = await principalSetup({
+        actionOperations: operations,
+      });
+      const response = await app.request(
+        '/api/action-operations',
+        { headers: whoisHeaders(paired.credential) },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      const body = (await response.json()) as {
+        data?: { items?: Array<{ id: string; scope: { accountId: string } }> };
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect(body.data?.items?.map((item) => item.id)).toEqual(['whois-op']);
+      expect(body.data?.items?.[0]?.scope.accountId).toBe(accountId);
     });
 
     test('monitoring history and the insights rollup keep the account’s session rows and drop a stranger’s', async () => {

@@ -125,6 +125,20 @@ function renderList(session: ChatSession, suppressStreamingRow = false) {
 }
 
 describe('station#3300 — settled turn stays settled on resume', () => {
+  test('a reconnect snapshot with server child work keeps the background banner without a local task list', () => {
+    renderList(
+      managedSession({
+        backgroundTasks: [],
+        conversationActivity: {
+          conversationId: 'stream-honesty-session',
+          asOfSequence: 7,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      }),
+    );
+    expect(screen.getByText('Background agent working')).toBeTruthy();
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+  });
   test('REPRO: a stale "running" orchestrationStatus with the turn fold closed must not reconstruct the streaming row under the settled answer', () => {
     // The exact resume shape: `orchestrationStatus: 'running'` is persisted
     // to sessionStorage and restored on a webview reload; the turn fold

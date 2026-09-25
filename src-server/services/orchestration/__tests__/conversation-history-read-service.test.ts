@@ -553,6 +553,7 @@ describe('ConversationHistoryReadService', () => {
     const projection = new ConversationTurnActivityProjection({
       eventStore,
       readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
       logger: { warn: vi.fn() },
     });
     try {
@@ -631,6 +632,7 @@ describe('ConversationHistoryReadService', () => {
     const projection = new ConversationTurnActivityProjection({
       eventStore,
       readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
       logger: { warn: vi.fn() },
     });
     try {

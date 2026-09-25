@@ -2360,7 +2360,8 @@ export const connectedClientPresenceOps = meter.createCounter(
  * session has no owner who may read it, `error` when the listener's own
  * defensive try/catch caught a throw — see `turn-completion-notifications.ts`).
  * Only a `scheduled` decision ever reaches `NotificationService.schedule`
- * (and, via the existing `wireWebPushDelivery` fan-out, a Web Push send).
+ * (and, via the notification delivery router's Web Push channel, a Web Push
+ * send).
  */
 export const turnCompletionNotificationOps = meter.createCounter(
   'station.orchestration.turn_completion_notification_ops',

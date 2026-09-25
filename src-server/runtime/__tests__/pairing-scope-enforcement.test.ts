@@ -108,7 +108,13 @@ const READ_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
 /** One representative leaf path per mutate-tier rule in the route table. */
 const OPERATE_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
   (rule) => rule.scope === 'orchestration:operate',
-).map((rule) => ({ method: rule.method, path: `${rule.prefix}/probe` }));
+).map((rule) => ({
+  method: rule.method,
+  // Same derivation as the read tier: an exact rule's representative leaf is
+  // the rule's own path, not a synthetic child of it (a child of an exact
+  // leaf only resolved when a family happened to sit above it).
+  path: representativePath(rule),
+}));
 
 describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () => {
   it('the table itself has both a read and a mutate tier to sweep (sanity)', () => {

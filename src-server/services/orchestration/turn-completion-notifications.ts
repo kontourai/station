@@ -4,8 +4,8 @@
  * completes or fails while its owning user is NOT actively connected to
  * `/api/orchestration/events` gets a Web Push notification ("Your agent
  * finished") through the exact SAME pipeline `wireApprovalInboxNotifications`
- * (`../approvals/approval-inbox.ts`) and `wireWebPushDelivery`
- * (`../notifications/web-push-delivery.ts`) already provide for
+ * (`../approvals/approval-inbox.ts`) and the notification delivery router
+ * (`../notifications/delivery/router.ts`, #2586) already provide for
  * approval-request/job-failure notifications — this module only decides
  * WHEN to call `NotificationService.schedule()`, never how a scheduled
  * notification reaches a device.
