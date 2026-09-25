@@ -10,6 +10,7 @@ import {
 import { Hono } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
+  NotificationDedupeSourceConflictError,
   NotificationReservedFieldError,
   type NotificationService,
 } from '../../services/notifications/notification-service.js';
@@ -93,6 +94,22 @@ export function createNotificationRoutes(
     if (!canReadNotification(provisional, c.req.raw)) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
+    // A registered provider's source routes actions and dismissals to that
+    // provider; a request body must not write under it (#2597).
+    if (
+      body.source !== undefined &&
+      notificationService
+        .listProviders()
+        .some((provider) => provider.id === body.source)
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: 'Notification source is reserved to its provider',
+        },
+        400,
+      );
+    }
     let notification: Notification;
     try {
       notification = await notificationService.schedule(
@@ -102,6 +119,15 @@ export function createNotificationRoutes(
     } catch (error) {
       // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
       // the trusted enveloped path (#2583); a request body cannot claim them.
+      if (error instanceof NotificationDedupeSourceConflictError) {
+        return c.json(
+          {
+            success: false,
+            error: 'Notification dedupe tag belongs to another source',
+          },
+          409,
+        );
+      }
       if (error instanceof NotificationReservedFieldError) {
         return c.json(
           {

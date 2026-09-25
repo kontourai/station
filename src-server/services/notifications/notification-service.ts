@@ -131,6 +131,22 @@ export class NotificationEnvelopeValidationError extends Error {
 }
 
 /**
+ * A dedupe tag already names a record written by a DIFFERENT source (#2597).
+ * Tags are global, so without this a writer could rewrite another source's
+ * record — its title and actions — while `source` (which routes the action
+ * to a provider) stayed the victim's. Refused whatever the existing record's
+ * status: a dismissed/expired record of another source still owns its tag,
+ * and creating a second record under it would shadow it (and fail the
+ * store's unique-tag validation).
+ */
+export class NotificationDedupeSourceConflictError extends Error {
+  constructor() {
+    super('Notification dedupe tag belongs to another source');
+    this.name = 'NotificationDedupeSourceConflictError';
+  }
+}
+
+/**
  * The untrusted `schedule()` path (REST `POST /notifications`, providers)
  * tried to write something only `scheduleEnveloped()` may: an envelope, an
  * `agent:` dedupe tag, an `agent-*` category, or an update to an enveloped
@@ -350,6 +366,9 @@ export class NotificationService {
         const existing = all.find(
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
+        if (existing && existing.source !== source) {
+          throw new NotificationDedupeSourceConflictError();
+        }
         // Only the trusted path may rewrite an enveloped record: an untrusted
         // update would replace metadata wholesale and strip its envelope.
         if (
@@ -1203,7 +1222,23 @@ export class NotificationService {
       if (provider.poll) {
         try {
           const items = await provider.poll();
-          for (const opts of items) await this.schedule(provider.id, opts);
+          for (const opts of items) {
+            try {
+              await this.schedule(provider.id, opts);
+            } catch (e) {
+              // One refused item (a tag another source owns, a reserved
+              // field) must not drop the rest of this provider's poll.
+              if (
+                !(e instanceof NotificationDedupeSourceConflictError) &&
+                !(e instanceof NotificationReservedFieldError)
+              )
+                throw e;
+              logger.warn('Notification provider item refused', {
+                provider: provider.id,
+                reason: e.name,
+              });
+            }
+          }
         } catch (e) {
           logger.debug('Failed to poll notification provider', {
             provider: provider.id,

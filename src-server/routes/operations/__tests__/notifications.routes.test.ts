@@ -119,6 +119,46 @@ describe('Notification Routes', () => {
     },
   );
 
+  test('POST / refuses a cross-source dedupe collision with 409 and leaves the record alone (#2597)', async () => {
+    await svc.schedule('scheduler', {
+      title: 'Original',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:nightly',
+    });
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Click me',
+        category: 'job-failure',
+        dedupeTag: 'scheduler:nightly',
+      }),
+    });
+    expect(res.status).toBe(409);
+    const [stored] = await svc.list();
+    expect(stored).toMatchObject({ source: 'scheduler', title: 'Original' });
+  });
+
+  test('POST / refuses to write under a registered provider source (#2597)', async () => {
+    svc.addProvider({
+      id: 'device-pairing',
+      displayName: 'Pairing',
+      categories: ['pairing-request'],
+    });
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Click me',
+        category: 'pairing-request',
+        source: 'device-pairing',
+        dedupeTag: 'device-pairing:r1',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(await svc.list()).toEqual([]);
+  });
+
   test('POST /:id/action/:actionId carries the authenticated request origin through the approval inbox into the registry resolution event (#3830)', async () => {
     const eventBus = new EventBus();
     await svc.shutdown();
