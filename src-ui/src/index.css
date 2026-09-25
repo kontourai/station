@@ -1043,8 +1043,11 @@ button:hover {
     var(--ease-emphasized);
 }
 /* The panel takes focus programmatically (tabindex -1) so the dialog, not a
-   control, is announced first. That is not keyboard focus: Safari would still
-   ring the whole panel on open. Controls inside keep their keyboard rings. */
+   control, is announced first. Under keyboard use every engine then draws its
+   default ring around the whole panel. It is a non-interactive container, so
+   the ring is suppressed deliberately: the first Tab lands on a control with
+   the product's keyboard ring. (A dialog with no controls at all is left with
+   no visible focus.) */
 .responsive-surface-panel:focus {
   outline: none;
 }
@@ -6943,8 +6946,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   padding: 4px 8px;
   overflow-wrap: anywhere;
 }
-/* The transcript's heading scale (.message h1-h3), not browser defaults: a
-   file's "# Title" should read as a heading, not a banner. */
+/* h1-h3 use the transcript's heading scale (.message h1-h3), not browser
+   defaults, so a file's "# Title" reads as a heading, not a banner. h4-h6 sit
+   at body size rather than the defaults' shrinking sizes. */
 .file-preview__markdown h1,
 .file-preview__markdown h2,
 .file-preview__markdown h3,

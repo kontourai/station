@@ -224,7 +224,7 @@
     {
       "path": "src-ui/src/index.css",
       "selector": ".responsive-surface-panel:focus",
-      "reason": "The dialog panel is a programmatic focus target (tabindex -1), not a control, and is already excluded from the global keyboard-focus floor; Safari otherwise rings the whole panel on open. Controls inside keep the floor's ring (tests/pdf-canvas-preview.spec.ts keyboard-open case)."
+      "reason": "Deliberate: the dialog panel is a non-interactive container that takes programmatic focus (tabindex -1) so the dialog is announced first; under keyboard use every engine draws its default ring around the whole panel. The first Tab lands on a control with the global floor's ring. A dialog with no controls is left without visible focus. Pinned by tests/pdf-canvas-preview.spec.ts keyboard-open case."
     }
   ]
 }
