@@ -579,8 +579,10 @@ export async function initializeRuntime(
     // multi-user runtime must migrate them and switch this to `deny`.
     ownerlessSessionAccess: 'single-user-compat',
     // #749: rows written before principal ownership retain this Station
-    // process's former OS alias. SessionAuthorization admits it only for the
-    // request-derived home-possession local-operator principal.
+    // process's former OS alias. SessionAuthorization reads it as the local
+    // operator's history: members of the personal conversation account
+    // (below) read it, and otherwise only the home-possession local operator
+    // does (#2611).
     legacyPersonalOwner: getCachedUser().alias,
     personalConversationAccess: {
       canRead: (requesterId, ownerId) =>

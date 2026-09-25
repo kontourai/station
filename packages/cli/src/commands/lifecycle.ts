@@ -4318,8 +4318,14 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
     // #2612: `station open` mints a replacement and this link then stops
     // working with no other signal.
+    // Same selectors this instance was started with, so the command works as
+    // printed (like the "Stop with" line below).
+    const openHome =
+      homeSource === 'default'
+        ? ''
+        : ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
     console.log(
-      '            (single-use sign-in link; `station open --print` makes a new one)',
+      `            (single-use sign-in link; \`station open --print${openHome} --instance=${instanceId}\` makes a new one)`,
     );
     // station#3677 (owner decision 3): the consent listener fails CLOSED but
     // never fails the START. Review MED 4: the report derives from the

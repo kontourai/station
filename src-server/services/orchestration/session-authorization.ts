@@ -414,10 +414,14 @@ export class SessionAuthorization {
     // Hosted authority returned above and never reaches this policy.
     //
     // Pre-principal rows owned by the released OS alias are the local
-    // operator's history, so the alias is judged as the operator here: a
-    // member of the personal conversation account (an approved device with
-    // orchestration-read) reads them like the operator's other sessions
-    // (#2611). The bridge below is for callers this policy does not admit.
+    // operator's history, so the alias is judged as the operator here: any
+    // member of the personal conversation account reads them like the
+    // operator's other sessions (#2611). Members are the local operator
+    // principal itself, with or without a home-possession fact (so the
+    // operator credential presented from another machine reads them), and
+    // approved devices holding orchestration-read. The bridge below is for
+    // callers this policy does not admit, and is the whole rule only when no
+    // sharing policy is configured.
     if (
       this.deps.personalConversationAccess?.canRead(
         userId,
@@ -446,9 +450,11 @@ export class SessionAuthorization {
    *
    * It is not the only way to those rows: personal conversation sharing, which
    * runs first in `canReadWithOwner`, judges the alias as the local operator,
-   * so an approved device that shares the operator's conversation account
-   * reads them too (#2611). Where no sharing policy is configured, this bridge
-   * is the whole rule.
+   * so every member of the operator's conversation account reads them too
+   * (#2611): the operator principal without home possession (e.g. the
+   * operator credential from another machine) and approved devices with
+   * orchestration-read. The production runtime always configures sharing;
+   * this bridge is the whole rule only where it is not configured.
    */
   private canReadLegacyPersonalOwner(
     ownerUserId: string,
@@ -527,6 +533,9 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
+    // Same sharing judgement as `canReadWithOwner`, alias read as the local
+    // operator (#2611). Unlike that path this one has no provenance bridge and
+    // accepts exact owner equality, including for the legacy alias.
     return (
       ownerUserId === userId ||
       this.deps.personalConversationAccess?.canRead(

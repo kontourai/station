@@ -169,12 +169,15 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
  * fast-checks past its 12-minute budget twice with every selected test
  * passing (#2550). Each module gets the suites that exercise its OWN
  * behaviour: the store's persistence, attachment, quarantine and read paths,
- * the transcript search queries, and the attachment route through the real
- * runtime wiring. Its consumers run in the required merge-queue full
- * regression, as do the store's resource-heavy suites
- * (event-store-batched-projection.large, event-store-wal-preservation.process),
- * which would take most of the fast lane on their own. Tests-only edges,
- * never a lane (see SDK_TRANSPORT_EDGES).
+ * its session work-item, revision-evidence, credential-application and
+ * recovery ledgers, the transcript search queries, and the attachment route
+ * through the real runtime wiring. Its consumers run in the required
+ * merge-queue full regression, as do these store suites, which leave the
+ * fast lane: the resource-heavy event-store-batched-projection.large and
+ * event-store-wal-preservation.process (either would take most of the lane),
+ * and the adoption-ledger, turn-deduplicator and session-attachment-barrier
+ * suites, which exercise modules the store hosts but are reached through
+ * their own files. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
  */
 const ORCHESTRATION_STORE_EDGES = Object.freeze([
   Object.freeze({
@@ -189,6 +192,10 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
       'src-server/services/orchestration/__tests__/event-store.test.ts',
       'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
       'src-server/services/orchestration/__tests__/session-event-reads.test.ts',
+      'src-server/services/orchestration/__tests__/session-work-item-event-store.test.ts',
+      'src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts',
+      'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+      'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
     ]),
     reason:
       'orchestration event store: own-behaviour suites; its import graph is ' +

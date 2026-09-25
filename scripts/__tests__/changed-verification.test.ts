@@ -602,6 +602,10 @@ describe('changed verification selection', () => {
         'src-server/services/orchestration/__tests__/event-store.test.ts',
         'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
         'src-server/services/orchestration/__tests__/session-event-reads.test.ts',
+        'src-server/services/orchestration/__tests__/session-work-item-event-store.test.ts',
+        'src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts',
+        'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+        'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
       ],
     ],
     [

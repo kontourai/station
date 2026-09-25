@@ -131,9 +131,12 @@ test('personal sharing applies consistently to direct reads and transcript owner
 test('personal sharing admits a member to legacy OS-alias sessions as the operator’s history, and nobody else (#2611)', () => {
   // Pinned so the policy and the bridge's doc cannot drift apart again: the
   // sharing check judges the alias as the local operator, before the bridge.
+  // Shaped like the production policy: the operator principal and an
+  // approved device are both members; the owner side is the operator.
   const canRead = vi.fn(
     (requester: string, owner: string) =>
-      requester === 'phone' && owner === LOCAL_OPERATOR_PRINCIPAL_ID,
+      ['phone', LOCAL_OPERATOR_PRINCIPAL_ID].includes(requester) &&
+      owner === LOCAL_OPERATOR_PRINCIPAL_ID,
   );
   const withSharing = new SessionAuthorization({
     eventStore: { findSessionOwnerUserId: () => 'released-os-alias' } as never,
@@ -150,6 +153,15 @@ test('personal sharing admits a member to legacy OS-alias sessions as the operat
   expect(withSharing.canReadSession('released', phone)).toBe(true);
   expect(canRead).toHaveBeenCalledWith('phone', LOCAL_OPERATOR_PRINCIPAL_ID);
   expect(withSharing.canReadSession('released', stranger)).toBe(false);
+  // The operator credential without home possession (e.g. from another
+  // machine) is a member too, so it reads them under sharing, though the
+  // bridge alone refuses it (first test in this file).
+  const remoteOperator = sessionReadAuthorityFromRequest(
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+    undefined,
+    undefined,
+  );
+  expect(withSharing.canReadSession('released', remoteOperator)).toBe(true);
   // Without a sharing policy the bridge is the whole rule: a paired device is
   // refused (see the bridge test above).
   expect(
