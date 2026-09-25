@@ -661,6 +661,15 @@ export async function executeForegroundMessage(
       ? resolved.workspace.workspaceIsolation
       : undefined);
   if (!binding || continuation?.startRequired) {
+    // A fresh or successor session records `userId` as its owner, and a
+    // session with no recorded owner is readable by no caller. Refuse the
+    // start before any side effect (a boundary claim, a worktree) rather than
+    // create a session nobody can open.
+    if (!input.userId?.trim()) {
+      throw new Error(
+        'A session start requires the principal it belongs to (userId).',
+      );
+    }
     // A boundary is claimed at the real cold-start seam, never by a warm turn
     // or ordinary recovery.  Empty policy intentionally has no transcript seed.
     const contextBoundaryStartCommandId = continuation?.contextBoundary
@@ -772,7 +781,7 @@ export async function executeForegroundMessage(
             : binding?.worktree
               ? { worktree: binding.worktree }
               : {}),
-          ...(input.userId ? { userId: input.userId } : {}),
+          userId: input.userId,
           ...(input.delegation ? { delegation: input.delegation } : {}),
           ...(input.ephemeral
             ? { [SESSION_VISIBILITY_METADATA_KEY]: 'ephemeral' }

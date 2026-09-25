@@ -230,6 +230,7 @@ describe('executeForegroundMessage', () => {
     await expect(
       executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -300,6 +301,7 @@ describe('executeForegroundMessage', () => {
     await expect(
       executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -453,6 +455,7 @@ describe('executeForegroundMessage', () => {
       return { turnId: effects.get(key)! };
     });
     const request = {
+      userId: 'test-user',
       target: {
         environment: { kind: 'current' as const },
         agent: agentId('agent-b'),
@@ -480,6 +483,7 @@ describe('executeForegroundMessage', () => {
     await expect(
       executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -505,6 +509,7 @@ describe('executeForegroundMessage', () => {
     };
     const result = await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: {
           environment: { kind: 'current' },
           agent: agentId('station'),
@@ -576,6 +581,7 @@ describe('executeForegroundMessage', () => {
     const deps = dependencies();
     await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: {
           environment: { kind: 'current' },
           agent: agentId('station'),
@@ -704,6 +710,7 @@ describe('executeForegroundMessage', () => {
 
     const result = await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: {
           environment: { kind: 'current' },
           agent: agentId('station'),
@@ -770,6 +777,7 @@ describe('executeForegroundMessage', () => {
       }));
       await executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -790,6 +798,45 @@ describe('executeForegroundMessage', () => {
     },
   );
 
+  // A fresh or successor session records `userId` as its owner; without one
+  // it would be readable by no caller, so the start is refused outright,
+  // before any engine start.
+  test.each([
+    ['a fresh', false],
+    ['a successor', true],
+  ] as const)(
+    '%s start with no userId is refused and starts no session',
+    async (_label, successor) => {
+      const deps = dependencies();
+      if (successor) {
+        deps.readSessionBinding = vi.fn(async () => ({
+          environmentId: 'environment-kontour',
+          agentId: 'station',
+        }));
+        deps.resolveConversationSession = vi.fn(async () => ({
+          sessionId: 'conversation:ownerless:session:1',
+          startRequired: true,
+          resumeCursor: { nativeSession: 'carry' },
+        }));
+      }
+      await expect(
+        executeForegroundMessage(
+          {
+            target: {
+              environment: { kind: 'current' },
+              agent: agentId('station'),
+            },
+            message: 'Nobody owns this',
+            ...(successor ? { conversationId: 'conversation:ownerless' } : {}),
+          },
+          deps,
+        ),
+      ).rejects.toThrow('A session start requires the principal it belongs to');
+      expect(deps.startSession).not.toHaveBeenCalled();
+      expect(deps.sendTurn).not.toHaveBeenCalled();
+    },
+  );
+
   test('uses a server-owned predecessor cursor for same-engine continuation', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({
@@ -804,6 +851,7 @@ describe('executeForegroundMessage', () => {
 
     await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: { environment: { kind: 'current' }, agent: agentId('station') },
         message: 'What was the token?',
         conversationId: 'conversation:cursor',
@@ -838,6 +886,7 @@ describe('executeForegroundMessage', () => {
 
     await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: { environment: { kind: 'current' }, agent: agentId('station') },
         message: 'Repeat the token from the first answer.',
         conversationId: 'conversation:seed',
@@ -891,6 +940,7 @@ describe('executeForegroundMessage', () => {
     try {
       await executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -974,6 +1024,7 @@ describe('executeForegroundMessage', () => {
     try {
       await executeForegroundMessage(
         {
+          userId: 'test-user',
           target: {
             environment: { kind: 'current' },
             agent: agentId('station'),
@@ -1021,6 +1072,7 @@ describe('executeForegroundMessage', () => {
 
     await executeForegroundMessage(
       {
+        userId: 'test-user',
         target: {
           environment: { kind: 'current' },
           agent: agentId('station'),
@@ -1093,6 +1145,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),
@@ -1124,6 +1177,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),
@@ -1157,6 +1211,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),
@@ -1223,6 +1278,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),
@@ -1278,6 +1334,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),
@@ -1329,6 +1386,7 @@ describe('executeForegroundMessage', () => {
       await expect(
         executeForegroundMessage(
           {
+            userId: 'test-user',
             target: {
               environment: { kind: 'current' },
               agent: agentId('station'),

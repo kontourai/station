@@ -765,7 +765,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       };
       if (kind === 'foreground') {
         await executeExecutionTargetMessage(
-          { target, message: 'Use this Project' },
+          { target, message: 'Use this Project', userId: 'test-user' },
           service as never,
         );
       } else {
@@ -1793,6 +1793,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       continueExecutionTargetMessage(
         {
+          userId: 'test-user',
           conversationId: 'conversation:local-directory',
           message: 'Continue where this conversation already lives',
         },
@@ -1835,7 +1836,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       }),
       expect.anything(),
       expect.objectContaining({
-        nativeMemoryReadAuthority: expect.objectContaining({ userId: '' }),
+        nativeMemoryReadAuthority: expect.objectContaining({
+          userId: 'test-user',
+        }),
       }),
     );
   });
@@ -1906,6 +1909,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     const result = await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Inspect this',
         conversationId: 'conversation-local',
@@ -2036,6 +2040,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Webhook delivery',
         conversationId: 'conversation-webhook',
@@ -2061,6 +2066,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Delegated delivery',
         conversationId: 'conversation-delegated',
@@ -2090,6 +2096,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await executeExecutionTargetMessage(
       {
+        userId: 'test-user',
         target: currentTarget(),
         message: 'Queued replay',
         conversationId: 'conversation-background',
@@ -2120,6 +2127,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       executeExecutionTargetMessage(
         {
+          userId: 'test-user',
           target: currentTarget(),
           message: 'Do not dispatch twice',
           conversationId: 'unknown-creation',
@@ -2163,6 +2171,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     await expect(
       executeExecutionTargetMessage(
         {
+          userId: 'test-user',
           target: currentTarget(),
           message: 'Do not dispatch twice',
           conversationId: 'conversation-uncertain',
