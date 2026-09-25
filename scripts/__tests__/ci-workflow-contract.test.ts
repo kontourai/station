@@ -1140,6 +1140,173 @@ describe('CI verification workflow contracts', () => {
     expect(gallery.slice(0, uploadIndex)).not.toContain('continue-on-error');
   });
 
+  it('runs the nightly gallery gate on gallery-relevant PRs in the same pinned renderer (#2428)', () => {
+    type Step = {
+      id?: string;
+      name?: string;
+      uses?: string;
+      run?: string;
+      if?: string;
+      env?: Record<string, unknown>;
+      with?: Record<string, unknown>;
+      'continue-on-error'?: unknown;
+    };
+    type Job = {
+      needs?: unknown;
+      if?: unknown;
+      'runs-on'?: unknown;
+      container?: unknown;
+      env?: unknown;
+      defaults?: unknown;
+      'timeout-minutes'?: unknown;
+      steps: Step[];
+    };
+    type Doc = {
+      on?: Record<string, unknown>;
+      permissions?: unknown;
+      jobs: Record<string, Job>;
+    };
+    const documentFor = (file: string) => {
+      const entry = readWorkflowDocuments().find(
+        (candidate) => candidate.file === `.github/workflows/${file}`,
+      );
+      if (!entry) throw new Error(`Expected the checked-in ${file}.`);
+      return entry.document as Doc;
+    };
+    const pr = documentFor('gallery-pr-check.yml');
+    const nightly = documentFor('nightly-gallery.yml');
+
+    // Trigger: base-controlled pull_request_target only. Not merge_group —
+    // the queue-time combination check is #2428's option 2 — and never the
+    // candidate-controlled pull_request (actionlint-gate refuses it).
+    expect(Object.keys(pr.on ?? {})).toEqual(['pull_request_target']);
+    expect(pr.on?.pull_request_target).toEqual({
+      branches: ['main'],
+      types: ['opened', 'synchronize', 'reopened'],
+    });
+    expect(pr.permissions).toEqual({ contents: 'read' });
+    // The nightly stays a nightly: this check is additive, not a move.
+    expect(Object.keys(nightly.on ?? {}).sort()).toEqual([
+      'schedule',
+      'workflow_dispatch',
+    ]);
+
+    // The path filter is the base commit's classifier, not a `paths:` list: a
+    // candidate cannot edit the rule that decides whether its screens are
+    // photographed, and the scope it asks for is the gallery one.
+    expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
+    const classifyRun =
+      pr.jobs.classify.steps.find((step) => step.id === 'relevance')?.run ?? '';
+    expect(classifyRun).toContain(
+      'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+    );
+    expect(classifyRun).toContain('--scope gallery --mode candidate');
+    const job = pr.jobs['gallery-diff'];
+    expect(job.needs).toBe('classify');
+    expect(job.if).toBe("needs.classify.outputs.relevant == 'true'");
+
+    // Renderer parity. The comparator is exact, so a baseline is a claim about
+    // one renderer; a PR check in any other container would contradict the
+    // nightly on pixels nobody changed. Compare parsed values, so a digest
+    // bump in one file alone fails here.
+    const nightlyJob = nightly.jobs['screenshot-diff'];
+    for (const key of [
+      'runs-on',
+      'container',
+      'env',
+      'defaults',
+      'timeout-minutes',
+    ] as const) {
+      expect(job[key], key).toEqual(nightlyJob[key]);
+    }
+    expect(String((job.container as { image?: unknown })?.image)).toMatch(
+      /@sha256:[0-9a-f]{64}$/,
+    );
+
+    // Setup parity: every shell step the nightly runs before its capture —
+    // toolchain, safe.directory, install, degraded-capture refusal — runs here
+    // verbatim, in the same order. A fix to one copy that skips the other
+    // would photograph two different builds.
+    const nightlyCaptureIndex = nightlyJob.steps.findIndex((step) =>
+      step.run?.includes('npm run test:e2e:screenshot'),
+    );
+    expect(nightlyCaptureIndex).toBeGreaterThan(0);
+    const setupRuns = (steps: Step[]) =>
+      steps
+        .filter((step) => typeof step.run === 'string')
+        .map((step) => ({ name: step.name, run: step.run }));
+    const nightlySetup = setupRuns(
+      nightlyJob.steps.slice(0, nightlyCaptureIndex),
+    );
+    expect(nightlySetup.length).toBeGreaterThanOrEqual(4);
+    const captureIndex = job.steps.findIndex((step) => step.id === 'capture');
+    expect(setupRuns(job.steps.slice(0, captureIndex))).toEqual(nightlySetup);
+    const nightlyUses = nightlyJob.steps
+      .slice(0, nightlyCaptureIndex)
+      .map((step) => step.uses)
+      .filter(Boolean);
+    expect(
+      job.steps
+        .slice(0, captureIndex)
+        .map((step) => step.uses)
+        .filter(Boolean),
+    ).toEqual(nightlyUses);
+
+    // Capture, then the exact diff, as separate steps so a failure names its
+    // half; nothing up to the upload may swallow a failure.
+    const diffIndex = job.steps.findIndex((step) => step.id === 'diff');
+    expect(job.steps[captureIndex]?.run).toBe('npm run test:e2e:screenshot');
+    expect(job.steps[diffIndex]?.run).toBe('npm run screenshot:diff');
+    expect(diffIndex).toBe(captureIndex + 1);
+    const uploadIndex = job.steps.findIndex((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(uploadIndex).toBeGreaterThan(diffIndex);
+    for (const step of job.steps.slice(0, uploadIndex)) {
+      expect(step['continue-on-error'], step.name).toBeUndefined();
+    }
+
+    // The artifact is the ONLY sanctioned baseline source, so it must exist
+    // on failure and carry the gallery directory at its root (capture.json
+    // plus PNGs), which is what `screenshot-diff.mjs baseline --gallery=`
+    // reads. run_attempt keeps a re-run from colliding on the name.
+    const upload = job.steps[uploadIndex];
+    const nightlyUpload = nightlyJob.steps.find((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload.uses).toBe(nightlyUpload?.uses);
+    expect(upload.if).toBe('always()');
+    expect(upload.with?.path).toBe('gallery/');
+    const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
+    expect(upload.with?.name).toBe(artifactName);
+
+    // The refresh instructions name that same artifact and the command that
+    // turns it into a baseline, and appear only when the DIFF failed; a
+    // capture failure gets the opposite advice.
+    const refresh = job.steps.find(
+      (step) => step.name === 'Explain how to refresh the baseline',
+    );
+    expect(refresh?.if).toBe("failure() && steps.diff.outcome == 'failure'");
+    expect(refresh?.env?.ARTIFACT).toBe(artifactName);
+    expect(refresh?.run).toContain(
+      `gh run download \${RUN_ID} --repo \${REPOSITORY} --name \${ARTIFACT}`,
+    );
+    expect(refresh?.run).toContain('npm run screenshot:baseline -- --gallery=');
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['screenshot:baseline']).toBe(
+      'node scripts/screenshot-diff.mjs baseline',
+    );
+    const captureFailed = job.steps.find(
+      (step) => step.name === 'Explain a capture that did not complete',
+    );
+    expect(captureFailed?.if).toBe(
+      "failure() && steps.capture.outcome == 'failure'",
+    );
+    expect(captureFailed?.run).toContain('do NOT re-baseline');
+  });
+
   it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
     // nightly-gallery.yml invokes `test:e2e:screenshot`, but the
     // hermetic-roster flag lives in run-e2e-suite.mjs. Nothing else asserts
@@ -1558,6 +1725,7 @@ describe('CI verification workflow contracts', () => {
       // #1645: the gallery capture belongs on a hosted runner now, because an
       // exact-pixel baseline needs a renderer pinned by digest.
       'nightly-gallery.yml',
+      'gallery-pr-check.yml',
     ];
     for (const name of linuxWorkflows) {
       const source = workflow(name);
@@ -2140,6 +2308,7 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
     ['ci.yml', 'ci-fast-verification'],
     ['ci-extended.yml', 'coverage-verification'],
     ['nightly-gallery.yml', 'nightly-gallery'],
+    ['gallery-pr-check.yml', 'gallery-pr-'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {
     // A diagnostic that cannot be stored is an infrastructure condition, not
     // a verdict on the code. Read backwards from the artifact name to the
