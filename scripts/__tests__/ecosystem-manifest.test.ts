@@ -715,8 +715,10 @@ describe('pinned manifest signing keys', () => {
     ).toBe(true);
     expect(envelope.signature).toBe(GOLDEN_SIGNATURE);
 
-    // Verifier: install.sh accepts the golden signature and proceeds past
-    // verification to the artifact download (which does not exist).
+    // Verifier: install.sh accepts the golden signature. Every verification
+    // failure has its own message; this one is the channel comparison that
+    // runs only after the signature verified (the installer does not install
+    // nightly until the nightly runtime ships).
     envelope.keyId = NIGHTLY_KEY_ID;
     writeFileSync(manifestPath, JSON.stringify(envelope));
     const fixture = makeInstallFixture('station-manifest-golden-install-');
@@ -724,7 +726,7 @@ describe('pinned manifest signing keys', () => {
       STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(publicPath).href,
     });
     expect(result.stderr).toContain(
-      'could not download station-portable.tar.gz',
+      'requested channel does not match public ecosystem manifest',
     );
     expect(result.status).toBe(1);
   });
@@ -1001,5 +1003,54 @@ describe('install.sh public manifest verification', () => {
     expect(replaced.status, replaced.stderr).toBe(0);
     expect(currentRelease(fixture)).not.toBe(installedRelease);
     expect(existsSync(join(currentRelease(fixture), 'variant-B'))).toBe(true);
+  });
+
+  it('treats an unset STATION_CHANNEL as stable when the manifest says preview', {
+    timeout: 120_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-default-channel-');
+    const manifestPath = signManifest(
+      fixture,
+      '1.3.0-preview.1',
+      buildArchive(fixture, '1.3.0-preview.1'),
+    );
+    const refused = runInstaller(fixture, manifestPath);
+    expect(refused.stderr).toContain(
+      'requested channel does not match public ecosystem manifest',
+    );
+    expect(refused.status).toBe(1);
+    expect(
+      existsSync(join(fixture.dir, 'home', '.local', 'bin', 'station-beta')),
+    ).toBe(false);
+    // Control: asking for beta installs the same manifest.
+    const beta = runInstaller(fixture, manifestPath, {
+      STATION_CHANNEL: 'beta',
+    });
+    expect(beta.status, beta.stderr).toBe(0);
+    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.1');
+  });
+
+  it('orders preview builds numerically, not as strings', {
+    timeout: 180_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-preview-order-');
+    const beta = { STATION_CHANNEL: 'beta' };
+    const preview = (build: number) =>
+      signManifest(
+        fixture,
+        `1.3.0-preview.${build}`,
+        buildArchive(fixture, `1.3.0-preview.${build}`),
+      );
+    const tenth = runInstaller(fixture, preview(10), beta);
+    expect(tenth.status, tenth.stderr).toBe(0);
+    // preview.9 < preview.10 numerically; as strings "9" > "10".
+    const ninth = runInstaller(fixture, preview(9), beta);
+    expect(ninth.stderr).toContain(
+      'refusing to downgrade Station from v1.3.0-preview.10 to v1.3.0-preview.9',
+    );
+    expect(ninth.status).toBe(1);
+    const eleventh = runInstaller(fixture, preview(11), beta);
+    expect(eleventh.status, eleventh.stderr).toBe(0);
+    expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.11');
   });
 });

@@ -30,8 +30,6 @@ default_bin_dir() {
   printf '%s/.local/bin\n' "$HOME"
 }
 
-runtime_channel_was_requested=false
-if [ -n "${STATION_CHANNEL+x}" ]; then runtime_channel_was_requested=true; fi
 install_root_was_requested=false
 if [ -n "${STATION_INSTALL_ROOT+x}" ]; then install_root_was_requested=true; fi
 requested_runtime_channel="${STATION_CHANNEL:-stable}"
@@ -636,7 +634,11 @@ if [ -n "$public_manifest_url" ]; then
   asset_url="$(printf '%s\n' "$public_manifest_values" | sed -n '4p')"
   expected_checksum="$(printf '%s\n' "$public_manifest_values" | sed -n '5p')"
   [ "$version" = latest ] || [ "$version" = "$release_tag" ] || fail 'requested version does not match public ecosystem manifest'
-  if [ "$runtime_channel_was_requested" = true ] && [ "$release_channel" != "$runtime_release_channel" ]; then
+  # The signed channel must equal the requested one, and an unset
+  # STATION_CHANNEL requests stable. Otherwise a manifest host could answer a
+  # default `curl | sh` with a (validly signed) preview manifest and install
+  # the beta runtime in its place.
+  if [ "$release_channel" != "$runtime_release_channel" ]; then
     fail 'requested channel does not match public ecosystem manifest'
   fi
   archive="$tmp_root/$ASSET_NAME"
@@ -851,10 +853,8 @@ candidate_identity="$(node -e '
 runtime_channel="$(printf '%s\n' "$candidate_identity" | sed -n '1p')"
 candidate_release_channel="$(printf '%s\n' "$candidate_identity" | sed -n '2p')"
 [ "$candidate_release_channel" = "$release_channel" ] || fail 'release provenance channel does not match the verified release'
-if [ "$runtime_channel_was_requested" = true ] || [ -z "$public_manifest_url" ]; then
-  [ "$runtime_channel" = "$requested_runtime_channel" ] || \
-    fail 'verified release does not match the requested runtime channel'
-fi
+[ "$runtime_channel" = "$requested_runtime_channel" ] || \
+  fail 'verified release does not match the requested runtime channel'
 configure_runtime_paths "$runtime_channel"
 normalize_runtime_paths
 resolve_runtime_flags
