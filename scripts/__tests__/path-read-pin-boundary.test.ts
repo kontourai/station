@@ -355,8 +355,10 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     expect(job).toContain(
       'github.event.pull_request.head.repo.full_name == github.repository',
     );
-    expect(job).toContain(
-      'github.event.pull_request.head.sha || github.sha }}',
+    // The checkout's own `ref:` line, not the concurrency group (which also
+    // names the head sha).
+    expect(job).toMatch(
+      /\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n/,
     );
   });
 });

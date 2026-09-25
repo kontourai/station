@@ -1565,11 +1565,22 @@ function isPinnedPnpmSetup(step) {
 }
 
 /**
- * #2176: `repo-scans` runs the candidate's own tests exactly as fast-checks
- * does, with the same authority — read-only contents, no credentials left in
- * the checkout, same-repository heads only — and exactly two commands: the
- * dependency install and `npm run test:repo-scans`.
+ * #2176: `repo-scans` runs the candidate's own tests, as fast-checks does,
+ * so what it may do is pinned here rather than trusted: the exact
+ * same-repository guard, read-only contents, exactly one checkout — the
+ * pinned action, fetching exactly the pull request's head from its own
+ * repository with no credentials left behind — the pinned setup actions, and
+ * exactly two commands: the dependency install and `npm run test:repo-scans`.
+ * It does not review what those commands run; the candidate's tests are
+ * candidate code, as in fast-checks.
  */
+const REPO_SCANS_CHECKOUT_WITH = Object.freeze({
+  'fetch-depth': 1,
+  'persist-credentials': false,
+  repository: `\${{ github.event.pull_request.head.repo.full_name }}`,
+  ref: `\${{ github.event.pull_request.head.sha }}`,
+});
+
 function repoScansFindings(file, job) {
   const findings = [];
   const jobId = 'repo-scans';
@@ -1586,23 +1597,36 @@ function repoScansFindings(file, job) {
       jobId,
       message: 'repo-scans must declare only permissions: { contents: read }',
     });
+  const checkouts = (job.steps ?? []).filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.startsWith('actions/checkout'),
+  );
+  const [checkout] = checkouts;
   if (
-    (job.steps ?? []).some(
-      (step) =>
-        typeof step?.uses === 'string' &&
-        step.uses.startsWith('actions/checkout@') &&
-        step?.with?.['persist-credentials'] !== false,
-    )
+    checkouts.length !== 1 ||
+    checkout.uses !== CHECKOUT_ACTION ||
+    JSON.stringify(
+      Object.entries(checkout.with ?? {}).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+    ) !==
+      JSON.stringify(
+        Object.entries(REPO_SCANS_CHECKOUT_WITH).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      )
   )
     findings.push({
       file,
       jobId,
-      message: 'repo-scans checkout must set persist-credentials: false',
+      message:
+        'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
     });
   findings.push(
     ...unapprovedActionFindings(file, jobId, job, [
-      'actions/checkout@',
-      'actions/setup-node@',
+      CHECKOUT_ACTION,
+      SETUP_NODE_ACTION,
     ]),
     ...unapprovedShellFindings(file, jobId, job, [
       { name: undefined, run: 'npm run dependencies:ci' },

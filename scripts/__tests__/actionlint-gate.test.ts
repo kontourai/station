@@ -611,6 +611,14 @@ describe('persistent runner policy', () => {
     });
   });
 
+  function repoScansCheckout(job: Record<string, unknown>) {
+    const checkout = (job.steps as Array<Record<string, unknown>>).find(
+      (step) => String(step.uses).startsWith('actions/checkout@'),
+    ) as { uses: string; with: Record<string, unknown> };
+    if (!checkout) throw new Error('Expected the repo-scans checkout.');
+    return checkout;
+  }
+
   test('accepts the checked-in repo-scans job and nothing else in it (#2176)', () => {
     const clean = primaryCiJobFixture('repo-scans', () => {});
     expect(
@@ -638,12 +646,68 @@ describe('persistent runner policy', () => {
     [
       'a checkout that keeps credentials',
       (job: Record<string, unknown>) => {
-        const checkout = (job.steps as Array<Record<string, unknown>>).find(
-          (step) => String(step.uses).startsWith('actions/checkout@'),
-        ) as { with: Record<string, unknown> };
+        const checkout = repoScansCheckout(job);
         checkout.with['persist-credentials'] = true;
       },
-      'repo-scans checkout must set persist-credentials: false',
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of another repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.repository = 'someone/else';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of the base ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.ref = `\${{ github.event.pull_request.base.sha }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.ref;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.repository;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout with a token',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.token = `\${{ secrets.GITHUB_TOKEN }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'an unpinned checkout action',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.uses = 'actions/checkout@main';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a second checkout',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        (job.steps as Array<Record<string, unknown>>).push(
+          structuredClone(checkout),
+        );
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
     ],
     [
       'an extra command',
