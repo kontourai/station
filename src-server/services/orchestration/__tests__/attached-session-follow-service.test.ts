@@ -708,11 +708,12 @@ describe('AttachedSessionFollowService', () => {
         }
         return append(stored);
       });
+    const warn = vi.fn();
     const upgraded = new AttachedSessionFollowService({
       sources: [source],
       eventStore: store,
       eventBus,
-      logger: { warn: vi.fn() },
+      logger: { warn },
       listProjects,
     });
     await upgraded.pollNow();
@@ -723,6 +724,76 @@ describe('AttachedSessionFollowService', () => {
     expect(store.findSessionOwnerUserId(session.threadId)).toBe(
       LOCAL_OPERATOR_PRINCIPAL_ID,
     );
+  });
+
+  // A deterministic refusal keeps being retried, but is logged once per
+  // thread rather than once per poll.
+  test('logs a persistently refused owner record once, while retrying every poll', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacy = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacy.mockRestore();
+
+    let attempts = 0;
+    const refusing = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        ) {
+          attempts += 1;
+          throw new EventStoreIngressError('always refused');
+        }
+        return append(stored);
+      });
+    const warn = vi.fn();
+    const follower = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn },
+      listProjects,
+    });
+    for (let poll = 0; poll < 3; poll++) await follower.pollNow();
+    refusing.mockRestore();
+    expect(attempts).toBe(3);
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).startsWith('Attached-session owner record'),
+      ),
+    ).toHaveLength(1);
   });
 
   test('matches the longest canonical project root and publishes each canonical event once', async () => {

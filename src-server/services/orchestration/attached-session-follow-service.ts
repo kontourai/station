@@ -75,6 +75,8 @@ interface FollowState {
    * explicit owner record it would stay unreadable while still followed.
    */
   ownerRecorded: boolean;
+  /** Whether a refused owner record was already logged for this thread. */
+  ownerRecordRefusalLogged?: boolean;
 }
 
 const ATTACHED_SESSION_CURSOR_KIND = 'station.attached-session-cursor/v1';
@@ -469,10 +471,24 @@ export class AttachedSessionFollowService {
         this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) ===
         undefined
       ) {
-        this.appendIngestibleEvent(
-          state,
-          attachedSessionOwnerRecord(descriptor, state.latestEventAt),
+        const record = attachedSessionOwnerRecord(
+          descriptor,
+          state.latestEventAt,
         );
+        try {
+          this.appendAndPublish(record);
+        } catch (error) {
+          if (!(error instanceof EventStoreIngressError)) throw error;
+          // Retried every poll (below), but a deterministic refusal is
+          // logged once per thread, not once per poll.
+          if (!state.ownerRecordRefusalLogged) {
+            state.ownerRecordRefusalLogged = true;
+            this.options.logger?.warn(
+              'Attached-session owner record cannot be persisted; the session stays unreadable until it can',
+              { threadId: record.threadId, error: error.message },
+            );
+          }
+        }
       }
       // Marked only once the log actually holds an owner: a write the store
       // refused (a skipped ingress error) is retried on the next poll.
