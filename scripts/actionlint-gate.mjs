@@ -1300,15 +1300,6 @@ function uiBundleDeltaJobFindings(file, job) {
         'ui-bundle-delta must check out exactly the pull-request head repository and sha',
       ),
     );
-  // ci.yml is exempt from the generic base-controlled secrets rule, so this
-  // job carries its own: it runs PR head code and needs no credential.
-  if (
-    containsSecretReference(job) ||
-    /\bgithub\.token\b/i.test(JSON.stringify(job))
-  )
-    findings.push(
-      finding('ui-bundle-delta must not reference secrets or the GitHub token'),
-    );
   const report = (job.steps ?? []).find(
     (step) => step?.name === UI_BUNDLE_DELTA_STEP.name,
   );
@@ -1326,6 +1317,34 @@ function uiBundleDeltaJobFindings(file, job) {
     ]),
   );
   return findings;
+}
+
+const PR_HEAD_CREDENTIAL_MESSAGE =
+  'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token';
+
+function checksOutPullRequestHead(job) {
+  return checkoutSteps(job).some((step) =>
+    String(step?.with?.ref ?? '').includes(
+      'github.event.pull_request.head.sha',
+    ),
+  );
+}
+
+/**
+ * `baseControlledPrWorkflowFindings` exempts ci.yml, so its generic "must not
+ * expose secrets" rule never covered the jobs here that run PR head code
+ * under pull_request_target (fast-checks, ui-bundle-delta, fork-smoke). None
+ * needs a credential; a reference to one is a path for head code to reach it.
+ */
+function prHeadCredentialFindings(file, jobs) {
+  return Object.entries(jobs)
+    .filter(
+      ([, job]) =>
+        checksOutPullRequestHead(job) &&
+        (containsSecretReference(job) ||
+          /\bgithub\.token\b/i.test(JSON.stringify(job))),
+    )
+    .map(([jobId]) => ({ file, jobId, message: PR_HEAD_CREDENTIAL_MESSAGE }));
 }
 
 function forkSmokeIsolationFindings(file, job) {
@@ -1969,6 +1988,8 @@ function primaryCiRouterFindings(file, document) {
           'pull_request_target router must not add unreviewed jobs or reusable workflows',
       });
   }
+
+  findings.push(...prHeadCredentialFindings(file, jobs));
 
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];

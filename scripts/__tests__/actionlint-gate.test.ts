@@ -711,6 +711,45 @@ describe('persistent runner policy', () => {
     },
   );
 
+  test.each(['fast-checks', 'ui-bundle-delta', 'fork-smoke'])(
+    'rejects a secrets or GitHub token reference in PR-head job %s',
+    (jobId) => {
+      for (const value of [
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ secrets.NPM_TOKEN }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ github.token }}',
+      ]) {
+        const findings = persistentRunnerPolicyFindings(
+          primaryCiJobFixture(jobId, (job) => {
+            const step = (job.steps as Array<Record<string, unknown>>).find(
+              (candidate) => typeof candidate.run === 'string',
+            );
+            if (!step) throw new Error(`Expected a run step in ${jobId}.`);
+            step.env = { ...(step.env as object), LEAK: value };
+          }),
+        );
+        expect(findings, value).toContainEqual({
+          file: '.github/workflows/ci.yml',
+          jobId,
+          message:
+            'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
+        });
+      }
+    },
+  );
+
+  test('the shipped PR-head jobs reference no credential', () => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('fast-checks', () => {}),
+    );
+    expect(
+      findings.filter(({ message }) =>
+        message.includes('must not reference secrets or the GitHub token'),
+      ),
+    ).toEqual([]);
+  });
+
   describe('ui-bundle-delta report job (#1703)', () => {
     type Step = Record<string, unknown> & {
       name?: string;
@@ -808,7 +847,7 @@ describe('persistent runner policy', () => {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           if (step?.env) step.env.TOKEN = '${{ secrets.NPM_TOKEN }}';
         },
-        'ui-bundle-delta must not reference secrets or the GitHub token',
+        'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
       ],
       [
         'a GitHub token reference',
@@ -817,7 +856,7 @@ describe('persistent runner policy', () => {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           if (step?.env) step.env.GH_TOKEN = '${{ github.token }}';
         },
-        'ui-bundle-delta must not reference secrets or the GitHub token',
+        'ci.yml jobs that check out pull-request head code must not reference secrets or the GitHub token',
       ],
       [
         'an extra shell command',
