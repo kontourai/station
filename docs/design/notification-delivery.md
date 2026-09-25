@@ -569,17 +569,33 @@ runtime and the two can never both alert. A shell without the command answers
   the same surface. No new credential exists; with no authorized Station the
   host reads nothing.
 - **Cursor and epoch** persist per Station origin in the app config directory
-  (`notification-delivery-cursors.json`), tagged with the surface the server
+  (`notification-delivery-cursors.json`, owner-only, least recently used
+  origin evicted past 16), tagged with the surface the server
   echoed; a cursor for another surface is not used, and a different epoch is
   a restarted server whose answer is all new.
+- **Only a definite answer settles the role.** `true`, or `false` / Tauri's
+  "Command … not found" from an older shell (or no Tauri bridge at all), is
+  remembered for the page. Any other failure of the question reads and posts
+  nothing and asks again on the next poll; treating it as "not native" would
+  let both post. A test pins the three command names the webview invokes to
+  the desktop `generate_handler!`.
 - **Handoff across an upgrade.** An older build's webview kept its cursor in
-  localStorage. The new webview hands it to the host once
-  (`notification_feed_adopt_cursor`) and deletes its copy. The host adopts it
-  only when it has no cursor of its own for that Station, so it resumes
-  exactly where the webview stopped: nothing between is lost, nothing before
-  repeats. Without either cursor the host reads without applying for up to 30
-  seconds, then starts from the cursor its first read saw, so entries after
-  that read still alert and an already-alerted backlog is not replayed.
+  localStorage. The new webview offers it to the host once
+  (`notification_feed_adopt_cursor`, main window only, off the main thread)
+  and deletes its copy only if the host took it. The host takes it only when
+  it has no cursor of its own for that Station, and then resumes exactly where
+  the webview stopped. Without either cursor the host reads without applying
+  for up to 30 seconds (monotonic clock), then starts from the cursor its
+  first read saw, so entries after that read still alert and an
+  already-alerted backlog is not replayed. An offer arriving after that is
+  refused, so entries queued between the webview's cursor and the host's
+  first read (while the app was closed for the upgrade) are not alerted.
+- **At-least-once.** A read is decided under the consumer lock, posted with
+  the lock released, and its cursor committed afterwards; a crash between
+  posting and the commit posts those entries again on the next run. A post
+  the OS refuses is not counted or remembered. Each OS call (show, and on
+  Linux close) runs on a helper thread bounded at five seconds, so a stalled
+  notification service never holds the consumer lock or blocks a handover.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the
@@ -592,9 +608,15 @@ runtime and the two can never both alert. A shell without the command answers
   the host keeps it for 60 seconds and emits `station://notification-open`,
   and the webview takes it once (`take_notification_open_link`) and
   navigates. The link must be an in-app path (`/…`, optional query; no
-  scheme, `//host`, backslash, fragment or whitespace), checked natively and
-  again in the webview (`src-ui/src/lib/notificationOpen.ts`). Anything else
-  opens the app where it was; no URL outside the app is ever opened.
+  scheme, `//host`, backslash, fragment, whitespace or control character),
+  and its NORMALIZED path must not be `//host` either (`/..//host`,
+  `/%2e%2e//host`); it is checked natively and again in the webview
+  (`src-ui/src/lib/notificationOpen.ts`), and the normalized path is what
+  navigates. Anything else opens the app where it was; no URL outside the app
+  is ever opened. On macOS a click is observed by a waiting thread per alert
+  (at most 32), and a slot frees only when its notification is clicked,
+  dismissed or cleared from Notification Center; past the cap alerts still
+  show but their clicks open nothing.
 
 The legacy `notification_watch.rs` is not this: it posts raw titles and
 ignores envelopes, `hideContent`, quiet hours and mutes. It stays dormant.

@@ -1,7 +1,10 @@
 /**
  * DesktopHostChannel (#2586): the `desktop-os` DeliveryChannel. The desktop
- * app's webview stops polling while hidden in the tray, so the OS alert has
- * to come from something that keeps running — the native host. This channel
+ * app's webview stops polling while hidden in the tray, so the OS alert
+ * comes from something that keeps running: the native host's feed consumer
+ * (`src-desktop/src/notification_feed.rs`, #2608), which is the feed's only
+ * reader on a desktop host (the webview reads it only on an older shell
+ * without that consumer). This channel
  * queues the router's DECIDED deliveries per surface — this computer's
  * `local:desktop-<installationId>`, or `device:<id>` for a desktop app on a
  * remote Station — and the host reads its own from
@@ -13,7 +16,7 @@
  *   entry never carries the title or body, so nothing downstream can leak it.
  * - Registration is a lease: a host is a delivery target only while it has
  *   read its feed within `leaseMs`. A host that never polls is never
- *   targeted, so the channel is inert until a native consumer exists.
+ *   targeted.
  * - Retract: a read or dismiss elsewhere queues a `retract` entry.
  * - Bounded: surfaces, entries per surface and entry age are all capped;
  *   in memory only (a restart starts every feed empty and the host re-reads
