@@ -414,6 +414,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // #2529: runs the real `fallow audit` binary (single-shot, ~2s) against a
+  // throwaway git repository to prove its base snapshot lands in the Station
+  // temp root rather than the system temp directory.
+  'scripts/__tests__/fallow-base-cache.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download
@@ -950,6 +954,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read cannot see a stacking context introduced on an ancestor of the
   // toolbar, which is one of the regressions this pins.
   'src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx',
+  // Same shape: launches a real Chromium to read what a selection over a
+  // host-badged chat link serialises to. jsdom's selection ignores CSS, so it
+  // cannot see `user-select` keep the screen-reader sentence out of a copy.
+  'src-ui/src/components/chat/__tests__/ChatLinkChip.copy.test.tsx',
   // #1616: same shape again — launches a real Chromium to measure whether the
   // workspace pane picker's overlay is taken out of flow using only the entry
   // stylesheet every route loads. jsdom computes no layout and would report

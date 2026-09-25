@@ -575,10 +575,13 @@ class NavigationStore {
     };
   }
 
-  private runNavigationGuards(
-    continuation: () => void,
-    cancelled?: () => void,
-  ): void {
+  /**
+   * Ask every registered unsaved-changes guard before leaving a surface:
+   * `continuation` runs once all of them allow it, `cancelled` when one
+   * refuses. Public for the phone layer (`RegionModelContext`), whose Back
+   * and "‹ Chat" unmount a pane without a route change the store would see.
+   */
+  runNavigationGuards(continuation: () => void, cancelled?: () => void): void {
     const guards = [...this.navigationGuards.values()];
     const continueAt = (index: number): void => {
       const guard = guards[index];
