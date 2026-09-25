@@ -1,6 +1,12 @@
+import { spawnSync } from 'node:child_process';
+import { symlinkSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { runRepoScans } from '../run-repo-scan-suites.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { isEntrypoint, runRepoScans } from '../run-repo-scan-suites.mjs';
 import { REPO_SCAN_SUITES } from '../test-impact-manifest.mjs';
+
+const makeTempDir = trackTempDirs();
 
 describe('repo-scans runner (#2176)', () => {
   it('hands the focused runner exactly REPO_SCAN_SUITES, once', async () => {
@@ -27,5 +33,28 @@ describe('repo-scans runner (#2176)', () => {
         },
       }),
     ).rejects.toThrow('vitest did not start');
+  });
+
+  it('reaches the runner when invoked through a symlink, not only directly', () => {
+    // Node resolves a symlinked main module to its target, so a plain
+    // argv[1] === import.meta.url guard is false through a link and the CLI
+    // would exit 0 having run nothing. `--list` reaches the same guard
+    // without running Vitest.
+    const runner = resolve(import.meta.dirname, '../run-repo-scan-suites.mjs');
+    const link = join(makeTempDir('station-repo-scans-link-'), 'runner.mjs');
+    symlinkSync(runner, link);
+    for (const entry of [runner, link]) {
+      const result = spawnSync(process.execPath, [entry, '--list'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      expect(result.status, entry).toBe(0);
+      expect(result.stdout.trim().split('\n'), entry).toEqual([
+        ...REPO_SCAN_SUITES,
+      ]);
+    }
+    expect(isEntrypoint(link)).toBe(true);
+    expect(isEntrypoint(join(import.meta.dirname, 'nope.mjs'))).toBe(false);
+    expect(isEntrypoint('')).toBe(false);
   });
 });

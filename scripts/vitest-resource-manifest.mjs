@@ -356,6 +356,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // #2176: spawns the repo-scans runner through a symlink (`--list`, no
+  // Vitest child) to prove its entrypoint guard reaches the runner.
+  'scripts/__tests__/run-repo-scan-suites.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
