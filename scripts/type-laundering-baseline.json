@@ -1,0 +1,2976 @@
+{
+  "version": 1,
+  "description": "Existing laundered casts. Entries may be removed, never added after this introduction. PASS does not qualify these sites.",
+  "entries": [
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "5caffdde3a2885a9a60bce03ac07c5fea2df4c62c21cd0d5d968390ae9e70902",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "b572d68432030531f57fad7099cd6cc1a254dd2b657e0a688b6fa98896313a53",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "297f3f75c1e4cd42f1b23716d1b72dba0796ea5c7d87eb4ad8368ffee2b0451b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "61061d951d0f8fafbc761e50dfbf5e04521c5696642115602af725e8ab94dfae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "7f08a3435257bee548e3edb49d1b1ae642970a7c33a72d00be23da467f69bf9e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "7e4ff4e195510686008f54aa85914d149dca742f508083ab5af3c871dc2ce694",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "8b8ff5d212c7f649c8ac6f16ae919eed9c6209384ed09b1417ffb167d7ff79aa",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "220d64a6a0b288b1233c829d02ae8bb7d5bcda02da8d9323867a1410f95f944f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "af188ea4687fd04bde217bd32bf6e79e207924a02b7694538c327f9f938c42a3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "8bddb26ce271d8bbf473b3cefac942e1667d7bd999c8fd072e8d722e84a8d74a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "70a2ce062e190266e213edd627ee61af74c0e49f52bac34e7deac5d2e8e6685f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "297f3f75c1e4cd42f1b23716d1b72dba0796ea5c7d87eb4ad8368ffee2b0451b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "9cf71606b4f5aa5433ec5fc33d09d331ae8ee2169d69f634d7a707ebc0ff834c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "94b15d9e1dd9f49f65d61c05098e476e7e02b6e87c4ec1ca6f9ffec801a15e2f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "297f3f75c1e4cd42f1b23716d1b72dba0796ea5c7d87eb4ad8368ffee2b0451b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "9cf71606b4f5aa5433ec5fc33d09d331ae8ee2169d69f634d7a707ebc0ff834c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "94b15d9e1dd9f49f65d61c05098e476e7e02b6e87c4ec1ca6f9ffec801a15e2f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "03dd15c7072793c6df51a6d034305923b8f60448f8d921495bea0d9d1011fc9c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "ec8852e68f8b28843edb97518b9b94ef0bd5598d4c61c88c3f0fa95ee82345e4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "164af38662ddfc46e47249df5ea4bd734ed0b28b9de47c8d97abf16be9f6ea05",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "340e199e288cbf32736ad2f9ea01110f6553fceda21811a6d9b5722d7604b939",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "340e199e288cbf32736ad2f9ea01110f6553fceda21811a6d9b5722d7604b939",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "661ed4389336772743d87b2168ec2a12b3a7122edeec645bbf96d8edeeab6b09",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "3a78c8fe4192d28a23e859c765029a4491bd39620016b5043136487eba9b3367",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "495679c71d77b3773207b969d5ce34e18e5bc203907aab5bb48287face7a1260",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "146615e2484a776c5e581d7e5e5021c51dae08ba114017f362a22dab58955033",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "9588e45593901c859e9a184e4beacaa095d348640fa827de4d0c70b160e7618b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "802ee2637a5d8a3665181082a47a6ca95f3076c4ca451f7b8486d7777c3dc11e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "1e6b470f153ce4aa2a7136292187cfb50d7ab46f190488be0e22d37c674fd1ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "76514371301b0391753c8fb9383a86c19e8311d438ab1fd4c7abcc562daf4bd9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "5221a36e1abc061a8df13a3b50c9504ad7216855e63a8fac28a874ee7bf72379",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/Calendar.tsx",
+      "rule": "as-any",
+      "fingerprint": "38ad5409a215953a38fc27e0a1cad77a0753a24526d0a00082d55b88c4ca1b76",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/enterprise-layout/src/data/index.ts",
+      "rule": "as-any",
+      "fingerprint": "fd8f129dca65881d1c41e806d54e9e7d1ce46f4d4172b21a327c2ee40ea0f006",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/meeting-notes/src/AskPane.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "417cd87d4aecd6688e4a82a4ea28f25f7fea4956492961df907271163ac5bc3f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/shared-providers/src/providers/ldap-directory.ts",
+      "rule": "as-any",
+      "fingerprint": "017899b24b4bf0b35ad42be41ba79be12ad815d25d98c26d3a3fff09f98cffcf",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/shared-providers/src/providers/ldap-directory.ts",
+      "rule": "as-any",
+      "fingerprint": "e8a0afa0fd84d2043ceae07a14da013db66007f51ebd247ba94e8477ef6a18ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/shared-providers/src/providers/ldap-user.ts",
+      "rule": "as-any",
+      "fingerprint": "40dd5e562bf284f728aa8dd5ea9af99364d7b67b387f94788897aa94de89f3a3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/shared-providers/src/providers/ldap-user.ts",
+      "rule": "as-any",
+      "fingerprint": "e8a0afa0fd84d2043ceae07a14da013db66007f51ebd247ba94e8477ef6a18ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/survey-review-workbench/src/index.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "fee6ba03cfa345e254e18a92b006518d33f94b3b62f439e66cd0bb5e4a59dd67",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "examples/survey-review-workbench/src/index.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "1b464f3dae3e3c0f7dc833cb5cbc85441f8218f120f6714ccd332a2aae025c96",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/basis-pane/src/session-inventory-mcp-app.browser.ts",
+      "rule": "as-any",
+      "fingerprint": "fda218d4e7eaa66e54f935ebaa9fb79223a85bb08c6f931c9884563e86baa2fc",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/commands/checkpoints.ts",
+      "rule": "as-any",
+      "fingerprint": "05555bf2bfae8952c3cf81b807094c71227c624ebf30d6961589f8cd3d3bb021",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/commands/config.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f6355e9da83bafbd6be418bc8f9567a50b4e6dd17959126ba9342e6c8efd201f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/commands/install-registry.ts",
+      "rule": "as-unknown",
+      "fingerprint": "60b889a1fad76eb059e75f7f64fc130b65766c2631bb0c778e0b04c406982ff1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/dev/http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a66b4f9d4201f4db94802082d479795d0ec436059af441a63d46bf1b2cb63d94",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/dev/registry.ts",
+      "rule": "as-any",
+      "fingerprint": "17a379df3227ea23206d19547e0f4a2d972b8da71c0d41be0bf58a62fa57afe7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/cli/src/dev/registry.ts",
+      "rule": "as-any",
+      "fingerprint": "17a379df3227ea23206d19547e0f4a2d972b8da71c0d41be0bf58a62fa57afe7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/applicationChannelFrames.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d7db23f2b1cbc07e5dae9eb8fa8c080d2f43bc98de796b65f7165d8360cf2dc4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/applicationChannelFrames.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d7db23f2b1cbc07e5dae9eb8fa8c080d2f43bc98de796b65f7165d8360cf2dc4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/applicationChannelFrames.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d7db23f2b1cbc07e5dae9eb8fa8c080d2f43bc98de796b65f7165d8360cf2dc4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/applicationChannelFrames.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d7db23f2b1cbc07e5dae9eb8fa8c080d2f43bc98de796b65f7165d8360cf2dc4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/applicationChannelFrames.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d7db23f2b1cbc07e5dae9eb8fa8c080d2f43bc98de796b65f7165d8360cf2dc4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/brokerRouteEnrollment.ts",
+      "rule": "as-unknown",
+      "fingerprint": "735c6cd297dbf38c0fd41f97da23d92e5b81caed92993770fc604c0aeb3f3b01",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/brokerRouteEnrollment.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8bf759c8e8bce414cef83b8a891fc40f2f3a9e155d0ec2fee73f1b079c8caed8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/browserPionConnection.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c52a4aaad47877936e2a6ff8b0fb5f33e502a78a1a80febc6f83db07c27a7ca0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/connect/src/core/devicePairing.ts",
+      "rule": "as-unknown",
+      "fingerprint": "26f8945514a43c260cc57bf6e936b978ba97f484b1a2dcf8824ecf738d1a8e8f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/answer-share-channel.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ce5b843b8886c236daccc0e6cdbbfd5ea431d1c8d5cda64b97561bfb7cf47b94",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/answer-share-channel.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ce5b843b8886c236daccc0e6cdbbfd5ea431d1c8d5cda64b97561bfb7cf47b94",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1ef1c70d37532b88167df844a9c6441d40470d44818159c366ed12f618aa0646",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cc98ea6e7fc4aa635d76548b714656bb492f189831f4911e0797324ca4d51745",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "9ece44c63e03f25f8f42ddea5887ddc1fa5c504bf4c7557e821b4373ab0e2a96",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d41255da2486551be0b174866bad7b7bb9ec46b6ba3b2b18b75353cf5b52cae4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "30174f99224eaae8c30b4c652086cb76588561b3708c5a45e49524b9350a0889",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8a7d08587f31a92e02863e6670f4a4b5c91a3c0cc8d2b57b5ce17068913a2f0c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "afecbf4b31d449083b64405ad27925fb345902c316e7ac5f5d77fb504a343e6d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3eda16c9034ae1f6bfbf30cbd9307d826a682099e4baab8a1c082ff420448312",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "90df155945b938293052573a26499ff18ed16afc9d9308ed1cbea8ef289bc491",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "adde73ef4cf10b9a39812779f6b2cb653fa7e76dcff21fbd8153e870f75b2469",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/channel-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3439860ac445ef319537c26781f6b7debc5689fba06e94cb41c2629e53643313",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/child-work.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c53ee02c9185fbc583c7009653fb058eacaed185cd1a4fa46fbfadc81b03bc11",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/environment-security.ts",
+      "rule": "as-unknown",
+      "fingerprint": "62d8fd87bad2525bd232928b2676fb2ab6598b28784d26a71d576aa4ac98f561",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/environment-security.ts",
+      "rule": "as-unknown",
+      "fingerprint": "32d4c6f34da5fb6d1e139fab6a21aeb53c7a86dfb549194affaaffc89f0668de",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/project-identity.ts",
+      "rule": "as-unknown",
+      "fingerprint": "9e5fc74982dfbca245570668120a373d964e24fb5a6a9ced3ac41d77651b9b1f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/runtime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a984f66af197d3bdba5b5d0d49acc255ffae39c5c0311b267bcc1f989730faad",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/session-inventory.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7ba892e07cf83a50db344651f51cf61b50a4e6de9f753cff7193cf847154206e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/workspace-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a98689d825abb3b309363add7689e03fa29e3c0cf2ce5129ecfadc1130eb488d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/workspace-pane-layout-adapter-helpers.ts",
+      "rule": "as-unknown",
+      "fingerprint": "4158252d9b8e5f057babb335afe43753dacd0a842fedc324623deebe1a46e1dc",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/contracts/src/workspace-pane-layout-adapter-helpers.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cdc3447380b62a50aaab72aa65050b5c4d9bce9e7b1dab505643b6819b11a1f4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/client/attachment-staging.ts",
+      "rule": "as-unknown",
+      "fingerprint": "139bcbf5e833ac2480bd039cd505315718887de135f838ee97a801cea6a51fab",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/client/learning-source.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2ec4db40598a7473a2cfa98040013cdfd63cde68493a5e8e0ee730dd06b90512",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/components/LayoutHeader.tsx",
+      "rule": "as-any",
+      "fingerprint": "97f2e79a33620cf814fb79b38c47b598df8e31f93f203326bac9e26382dd43c7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/mobile-device.ts",
+      "rule": "as-unknown",
+      "fingerprint": "20003ccba59e5ce188597ca3a6c964150e968e050e5a66a00dac4482cc5a039f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/mobile-device.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f7719b4d77458b61b34f654afdb029a44fdc19a15a5ebb5701d3ceff0f33ca29",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/mobile-device.ts",
+      "rule": "as-unknown",
+      "fingerprint": "08366bee48f7a18b5a41b705e71a99d4562c1c0a94043a7be57273008f03f1b6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/query-domains/uiBlocks.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1c9320a5e40d2ad06483f575df0ef0e90ae87195311a25c0786f2127dbe57c75",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/sdk/src/telemetry.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b062c36701fe35b00a47df64eb27d6da4105e52dfcd7b131922237fa85f73171",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/shared/src/agent-plugin-manifest.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6fc64790d96588b329dc6f15ea70b63af6cda73dc8829107bd84ac62bdcdc348",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/shared/src/build.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3b65d68bb6584f70beed87aa170f3bd9b07e5d42b4b6efb6de57ab82fbd78095",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/shared/src/connection-proof.ts",
+      "rule": "as-unknown",
+      "fingerprint": "885f4510cf715c66eb2c143490a6cf5b7b5ca6bbcb5e6c2729beb8f51459aa75",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "packages/shared/src/workspace-git-pack.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2b714dcfae2c6a719474db197f1ce1c9873fec8ab7f08bd52db40ff96b04715b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c595e1d2c3ec2665efa5c80dcb9120e8f244317771080110eb321211d56bf7b0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d96a73e583b77273eacfb99053e2a727dd09dfa4a5bb83f6f601c8b8e943214e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "9b7b590be18e735d291db773458c60ac21dace1d886ce18daea2bb2f67a1a3ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c595e1d2c3ec2665efa5c80dcb9120e8f244317771080110eb321211d56bf7b0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c595e1d2c3ec2665efa5c80dcb9120e8f244317771080110eb321211d56bf7b0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c595e1d2c3ec2665efa5c80dcb9120e8f244317771080110eb321211d56bf7b0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "98af2a91dcf35f7d6c95c945258a6d291e299b8575416cad5e13a2678220d6e9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/browser-transport-lab.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c595e1d2c3ec2665efa5c80dcb9120e8f244317771080110eb321211d56bf7b0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/lib/browser-account-scenario.ts",
+      "rule": "as-unknown",
+      "fingerprint": "99bb8eb4cd46f35525543d290cebe91d72c9477047e92e0406cc7d9a87210d23",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "scripts/proof-repo-guardrails.mjs",
+      "rule": "as-any",
+      "fingerprint": "380e78d75069e4bb23667ab3ba4102b5f68ebadfe478fe71c45a63ab967e1869",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "3f7083107757d7596f5cb8025f0274ece4d2cb7f6bfd6dff3206fb61855819d7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "80a1db1d83f913df8880fc4701936dc0ecbc76a2d42b263964a12e7cf7737e9e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "8aca9b90ddf562da92f4024128d07eed29b7bdfc280c332462680ee90a443309",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "40830d6bb755103c7592e4ca6ad4589eb52f83b68e1bd7383b8d8b9b1f27b9ca",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "4b8e0e97a16103c88445d2e2f7d9ac98551eeea6837bd3d783f2dbdb1df41024",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "caee3918dbe308e1cebdc2a2362617b22b3d032aa70049474ccc2d8c645591f3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "4989aa0e6d987baba55900b0dd78c12c50cc7f2b4ab012a1e3e6a829031e2c8e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "1914142b43fdc20e1f20590359212debce307b0e3c1aba9bf83b18432d9fef00",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "5b4c58b9c877d401b5e415267c4748ebb8a17025692a9bbe7d7131e57879045d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-any",
+      "fingerprint": "3eae38b1488054d6f52e9b56453e887d13ffa5392e318fcd314665a119b9e0f8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f34e7f13042cc3a605cebd1770c93927757f564a82532a045d1ddcb01aadf270",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/analytics/usage-rollup-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f534fd9415c66ea9660707b7a6994fd5b13c0f6f8320f10c8a29381a0ec462c6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/config-loader-app.ts",
+      "rule": "as-unknown",
+      "fingerprint": "58cdaf7339eeda19eaef3f4c672e8bd78338f9a4c9ce91d90e00a8b941abe941",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/live-work-session.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3fa789d6ac3948125c378cf22b04ec9d54d473854fa47edf7f50d7b31ee73529",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/live-work-session.ts",
+      "rule": "as-unknown",
+      "fingerprint": "743db4212a0591ffc8baa0ec149666c6170f30cb530be669439d6535a850db4b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/live-work-session.ts",
+      "rule": "as-unknown",
+      "fingerprint": "61940f910690e4e162a3703609cb21bf9d2c59ecf033d2c0e1e092834a431c36",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/revision-bound-evidence.ts",
+      "rule": "as-unknown",
+      "fingerprint": "53f76101d0c5fa8435aebb439561f37da78f40f5f7717bfab6f0cf69d2593477",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/domain/settings-effective.ts",
+      "rule": "as-unknown",
+      "fingerprint": "e47c06b370ca7690898b92519dd62bad53894be70385dcbe836df3dc820fc6b6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/knowledge-store/adapters/obsidian-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "13d6bff6659a87045b8906e5b4a3a0cf7603ebb00b68631acbe0926da689835b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/knowledge-store/adapters/shared/record-schema.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0c4064da118df98233ea30b6b969e1c5a4c591ab5c2247a94b43dc2558f70e83",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/knowledge-store/neo4j-graph-provider.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c91e62fc6b2498d53b1118e37ddbeb52a0952b769813c97c6425918006e8263c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/openapi/spec.ts",
+      "rule": "as-unknown",
+      "fingerprint": "faaec94f2c3d0e09d0c96a775e1609d3e1e3338eebc531a84b78a8a312ad8b0d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/acp-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "833c6262a759a0cdfcb39027e080719d4110c1f22575b09c0a8277d5acd14dbf",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/acp-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1d5c75a2a6beb5619ba6c8ccfacb8a2a7ac57808ca2c5405f74cd42f2785a7c3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/claude-adapter-events.ts",
+      "rule": "as-any",
+      "fingerprint": "42f5028a4ce023802731e14c24689eef71e5b501ca0fe8746504aa710426d8e0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/claude-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "efe4adbb8e0b8a28a17773d0ae9baa6e17e7ee5812c5db50180176e554e1b61e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/muse-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f4b6a7d6bee5f7b72e913353030a9519c3c18019ab2fb721cdc2141bf1fc9ec2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/adapters/muse-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "14ca77cc9adc996c48624d5b1c9510f0a0903395ab245bd3b5fa7f3c218e0a71",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7a0b11fd741ff30f1c51de6c12082e62d34328c1e99f977588cc4b242ce1cd03",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "e20134bf9cdbf6ea1d18093c849066dd31750a77c51da766d94732f294155474",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5533553a712122c90525a3521b66dba352007fb7def21b16565c86ede950d212",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "555591f10d2b6e21734333e571c36bfd3300ab2381211853f170c014e314c40c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "644636afaf59581b1239c4fee560476fcf23ecf1b73ab1e29302d5cc5b7b4a98",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/providers/connection-factories.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5fda4247cabb87aa7055b252fa9aebed5fb491cbeec052df0a31a229e4feb83a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/agents/invoke.ts",
+      "rule": "as-unknown",
+      "fingerprint": "559a749db0a458789305c9f83f09ad67636cd8719871e68b08c3a0f836e7175e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/agents/invoke.ts",
+      "rule": "as-unknown",
+      "fingerprint": "af72eb0c6d9f60ce18fb3548274986ffb799073a5a07fdc9b98243967f6147f6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/board.ts",
+      "rule": "as-unknown",
+      "fingerprint": "421fc29a4ce856a9a75cecf14df7d0e6331d5e1895cad04341c746ee51a48ac5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/board.ts",
+      "rule": "as-unknown",
+      "fingerprint": "66e0ce0f68f95a005dd7aef439d64908c74b357e035f3920ecc3ec97413859da",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/chat-model-override.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ff2b562d64a4f85c92b00876be0e6c1f869adeca13067e2c56e1bb609c8705c0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/chat-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "638eae37e8c77a695c797b58510596c45e1ba8c8033989f47fe035d2b107c1ee",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/conversations.ts",
+      "rule": "as-unknown",
+      "fingerprint": "02f115533e20c57159edff43b075973da57ce30e86ce2def1a13f379f9818e07",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/conversations.ts",
+      "rule": "as-any",
+      "fingerprint": "1cb8a531473e8df5270aa4b617b79e551c2cf321e366b48985c851d8424f99ed",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/conversations.ts",
+      "rule": "as-any",
+      "fingerprint": "3bdf42cbf9090e353d4277d1d54721c1b5618242a38fa0cf6c0a7232d3b095a0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/chat/conversations.ts",
+      "rule": "as-any",
+      "fingerprint": "68bb2fdbb9efef02453e8b6119b839ca3fd5babd78c452ccbc282282696e1bdc",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/connections/acp.ts",
+      "rule": "as-any",
+      "fingerprint": "b2e8d4d02dff965324185344f01c6bdb169f606de7601b561b3c0a28dbb4da83",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/connections/acp.ts",
+      "rule": "as-any",
+      "fingerprint": "b2e8d4d02dff965324185344f01c6bdb169f606de7601b561b3c0a28dbb4da83",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/connections/acp.ts",
+      "rule": "as-any",
+      "fingerprint": "1d546de3628c771c6c720285ac1646d8d2a989db8aa2d96f741d67defd92ae8f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/connections/self-hosted-broker.ts",
+      "rule": "as-unknown",
+      "fingerprint": "aaec5f46026b5ec24097d296be54d340536b7dd1a9aa26172849f0fc5ab58c06",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/connections/self-hosted-broker.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5ce6dc7fd5248ab6d90078d19ffcbe60cf37162d1973c5cab6d4324d9be7ae4a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/operations/insights.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6db1d1313688f35f67c0da823190c3879577cdfe25457cbdb471b7ed095de64b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/operations/ssh-environments.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/approval-authority.ts",
+      "rule": "as-unknown",
+      "fingerprint": "042d9e95e34deb31c4ecc7ffba5243575f5e667e95a8ff08b59792c4530956ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/approval-authority.ts",
+      "rule": "as-unknown",
+      "fingerprint": "042d9e95e34deb31c4ecc7ffba5243575f5e667e95a8ff08b59792c4530956ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/events.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b0cfe2765de8069849a5c8719ad3512f3f1c67e91b74212d67a790d5a623e9d7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/events.ts",
+      "rule": "as-unknown",
+      "fingerprint": "07f44d20e98b93584bc7fcf6b5fa81642db228edc49263c4e4284d6c291f4952",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/events.ts",
+      "rule": "as-unknown",
+      "fingerprint": "07f44d20e98b93584bc7fcf6b5fa81642db228edc49263c4e4284d6c291f4952",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/operating-state.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3caadcf595890b2aa48675901cef2e3ab5ac9f6a41b2614481162d47d9573635",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/orchestration.ts",
+      "rule": "as-unknown",
+      "fingerprint": "847a534a9f2f46ff40fa6a6a9cd62d830655ee945f64e2d5d3a101a8218054b7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/orchestration.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8d168ba3471313cddf5f1c1798e91b4d6f1b1c839debb7964e044e78e12ad029",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/orchestration/orchestration.ts",
+      "rule": "as-unknown",
+      "fingerprint": "dc7959c2ba76742a72b992f1a4223c7d3bc821a8624aeeeb9dae8247b8bffda2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/plugins/plugin-home-role-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "4e1090fde5c87dee0639a5e59ab499f9240057a8b70d200b3a492f3f651b1ac9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/coding.ts",
+      "rule": "as-unknown",
+      "fingerprint": "042d9e95e34deb31c4ecc7ffba5243575f5e667e95a8ff08b59792c4530956ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/projects.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/projects.ts",
+      "rule": "as-unknown",
+      "fingerprint": "042d9e95e34deb31c4ecc7ffba5243575f5e667e95a8ff08b59792c4530956ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/projects.ts",
+      "rule": "as-any",
+      "fingerprint": "0add34bd669fbd8cd1315e5e6040a91dcbf00085341bf2fcf8d75a5407aa4dd4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/projects.ts",
+      "rule": "as-any",
+      "fingerprint": "a9a9831b6094e8fccb48ee5cd2e52829e0d56525fc5515781140bc2a76f756e6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/projects/projects.ts",
+      "rule": "as-any",
+      "fingerprint": "69fc02ad480ebceb109a24a38908efae002596a37f481c6012e00071d9a8f78c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/pull-requests/pull-request-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "c18d4239b01505c7ef617be17d8c13fce2cbd577f07539480bf5e7f5919eefd5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/pull-requests/pull-request-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "80b7fa04cec62c0b1202f3ad18b5f86d1f95a0d59cff6e33e6a37d51f41af4ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/pull-requests/pull-request-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "80b7fa04cec62c0b1202f3ad18b5f86d1f95a0d59cff6e33e6a37d51f41af4ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/system/config.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/system/config.ts",
+      "rule": "as-unknown",
+      "fingerprint": "042d9e95e34deb31c4ecc7ffba5243575f5e667e95a8ff08b59792c4530956ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/system/self-update-restart-state.ts",
+      "rule": "as-unknown",
+      "fingerprint": "fedc0213816d77882fb8d17f764a223c1a735380594f9325855fb7bc23adf84d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/system/self-update-restart-state.ts",
+      "rule": "as-unknown",
+      "fingerprint": "fedc0213816d77882fb8d17f764a223c1a735380594f9325855fb7bc23adf84d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/routes/system/self-update-restart-state.ts",
+      "rule": "as-unknown",
+      "fingerprint": "fedc0213816d77882fb8d17f764a223c1a735380594f9325855fb7bc23adf84d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "b90d2a74234c0494497d7e2446a91ac88d2b29efe11d79a6dc6f066389bb737e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "af14b00dec433305bc30bba304721a955ad44f83813056f3e70b2d0e9ba8c634",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "aba3278208261ca8461b316bbc0ed1336d668eeeebb36c3531bf1e656aef2840",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/runtime-agent-builder.ts",
+      "rule": "as-any",
+      "fingerprint": "52c3fb15e8686b17640f3a8783d8a989de6fe1e5506fc17b02e80a3b29f407fe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/runtime-default-agent.ts",
+      "rule": "as-any",
+      "fingerprint": "f854cf18ef3a16bcfb5733e4b87ef73c572d16503a5ac678bb8b61ca2426c697",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/agents/runtime-default-agent.ts",
+      "rule": "as-any",
+      "fingerprint": "59aeb1f7a389527c21f7ff2914448c9a3be73176ce7b5dae3804f69cfbb159e0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0516ecb944e8b6407de5942e3a259983216bed5450d0ff3ea225da307d3cca40",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "994d804193400f76757f452f90449444f668169954dacd48167d149e77eb85d9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-http.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34170209683009e3c2b0530a3cb8c62afaffbdfba0b32a1a01eb3461353123dd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "3ea446e121d9f1da2c1f06a3415058aa8b98ccee2e0f397cabe2d994fdce4347",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "e679e82fbfbb9ee27e780d16833d2c203a3ecd3d08e65418c2a5fa6909f72755",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-unknown",
+      "fingerprint": "481f60abeacd7992f3a7a6c1ab1fbb0ef6f724e600c476186fb88667cd3243da",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "3f802b69246e41787fb4c209718a8541561198645a443fdeaadfbf205e1aeb93",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "3f802b69246e41787fb4c209718a8541561198645a443fdeaadfbf205e1aeb93",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "b9c8162a9d40e6d28105909782634771c9cb7a847bd724b4543a41f990178d94",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "acaf10ea8880beff5d672134fcf22444562d9c5bf25b14da770d362c50a936a3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "e73e294b6c636b9bd698ac749558d603fc43a7bb493bacaac89c99f6772165d5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "a32c7620e85336c2cd4ec143d60e9d9ec2bc7c2ae23d586dd982948b9085e8e8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "97c6ba8064499f4f2408c612addc55aaf993d2bb9020dc3dad2503af61c300ad",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "0b8d9644b5d1e4d6f98c6f1b67b9064a738d52513a43c45060c55b03d54f7c9b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "12b9e554aace088d6050f151b59d236a72a2f2a5ddde21c5e68f48863b280149",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "7f629dfde288aafb0a16c92aca51bc2cbaad538cec73c7336390eb706393733a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "f3f6960c6c82d4502dbedee7452faae381092ba51463fbea2f3b249efade65cb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "a32c7620e85336c2cd4ec143d60e9d9ec2bc7c2ae23d586dd982948b9085e8e8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "12b9e554aace088d6050f151b59d236a72a2f2a5ddde21c5e68f48863b280149",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "2d2db57418353f1d0b598ac70e1b2c82f5901a40e6ec5443293528cb291e6071",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/bootstrap/runtime-initialize.ts",
+      "rule": "as-any",
+      "fingerprint": "3bdf42cbf9090e353d4277d1d54721c1b5618242a38fa0cf6c0a7232d3b095a0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/dispatch-model-policy.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f3ec4e263485ca69ac771ecc0fbed81e3109ca8feda034aee7e3ca89a8da173b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/fleet-routing-receipt-log.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c0ca896fb3bbfd3adc376ec6c1a7afcb08b76caeb1420a1ca06ad3c290121161",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/receipt-chain.ts",
+      "rule": "as-unknown",
+      "fingerprint": "e001520046e74845a346b40af025b875f3d161492f540568b40a1926ef7454e8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/stream-orchestrator.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8a05901749ab266732dfc9cbadbeeaaf197e29e0c588f4a14e4c4d678579476e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/stream-orchestrator.ts",
+      "rule": "as-any",
+      "fingerprint": "a292eda330a10ed9e5049484b4a4ef18ed9154d87495cc0337fbd78b8e9de074",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/conversation/ui-block-provenance.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1c915c64c41cf6bb17d46d0f5c74381038027c54754330e0263a79edd2121fab",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "73bbb2356b9f8959cdd511f288c7f3b802068c9b0ffc98d441ed45b0d5e61222",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "e2aa51fb501c18dc323bb5c1130bc6bf82e7cac9245626cecf64f833e863caee",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "2170f8f3ac23b030287cd9e5fe8b1494faff2be760e429f808b4d502aa0e1661",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "73bbb2356b9f8959cdd511f288c7f3b802068c9b0ffc98d441ed45b0d5e61222",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "457f2d9299263ddb254f89631123f1cb72d9412ee5efdb70c2a50d58ffd34f26",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "239217bace81dfb796b15c210aea6722a1d3a77616c49f4737506337204346dc",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "43303a340153dbee4a840aa7e577e2b227c3724079bba90b5e535e9bc96d32f5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ef0bd1eea28107a583c47a1dcd95b353afbcc45a33f5987b8d39bbcdb2831c32",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "72b7c769ca655b34263fcba78b69a6ad230146ea8af91731a05bd7247a82b2eb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d3a5f83c67cec0148e40d7ee7868844e47ad2d80d3e84497e17b4f9323035218",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "9b57e72cade7bfd484adb5bc3b56a33081a885137f9ef657f3c8850ce4987f98",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "d3b9e01bfdcb76725b1687a09f56bb2487974a4f5150627057e7efceb511d9b5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "febc41048f0a679749a61da7ccabadcf4d5ebb708acc77d828cb8ed846692707",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-agent-hooks.ts",
+      "rule": "as-any",
+      "fingerprint": "41f8e43b23538058f779ac8c181fba883078a0e3e96e8a6d2ef5f5f37a960cb5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-stream-events.ts",
+      "rule": "as-any",
+      "fingerprint": "f8f58b060b77decfb8237f8e75ad4ea5a3297754ac8c043528425da5046ffeb4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-stream-events.ts",
+      "rule": "as-any",
+      "fingerprint": "850f432814d086f14ee1cc15e8390bf13adb5852c591af16b70dacc0f37a690c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-tool-loader.ts",
+      "rule": "as-any",
+      "fingerprint": "212bf2c9ab8945f29ce486dc0b711e0ecb2bb6fbfe248e4bc7b33216d97a6771",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/strands-tool-loader.ts",
+      "rule": "as-any",
+      "fingerprint": "e642260df4b8645d73561e9d27a51a53b256038bb4e5faa6b08c4bde4fa7d6fb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "09a7b325650bc198d3f1a621420cedcdb113b33cf594e1f2e7c39cebf6ecaa14",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "58c2c3a23eaa539af63a513b6208d94e80389adf49e48d55e41caf13447509ad",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "990ca732e907b90712d751b796210654f62e92d6f42025347e88de8b0c6b419e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "d8eb44aed402f8a4d96631fe3e989679ff4cc7972826425d74cba9fa98b3e044",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7fd3d7fd6f090de0fb9a833f54bb13184d0b30da24fff96a60747eba39b8f038",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "69acbe8b4f2af6693a62123e6b1266799ca40ece5bffcc24d3d022cacf027a77",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "8e370358281234d22daccc5a7f26caf91eb8ee12ff651a775ab29cf4da6112ad",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8bc2d4648a0b13bd8c42f138a44e711b51da69e195f31c97bf17bf68a0cf35d8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a411a6549f5120b0e8b7493673988d5246765901f5cd562df75c91d68157360c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "a1fdd655775bb89adc711ebe99da7bb241bdf378cff61238037902bc2364e363",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7540393bcbf411d0127c6dd0e75c8e2b83592546f12a15a2c68aefa60271f315",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/mcp/mcp-manager.ts",
+      "rule": "as-unknown",
+      "fingerprint": "e1a794aea95ce61d7ef2384e2891967d754f1c2050cba0026d422db8dd5c2141",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-route-support.ts",
+      "rule": "as-unknown",
+      "fingerprint": "62a75824f5a6e9c399b67f22f2b7c88e32d6dcfe7adf940b63994e8c7618e865",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2b5642a3ad1cf3fe709dec14f2c70615dc0cd124ee88d67e8bf9cabc73eb3853",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "ed370493dc6df720d66ff507301df4e3c12f2614fb2d29bfa7a8d3b917e5ff97",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-any",
+      "fingerprint": "b60cc91fdb49867e756f239e65644e09c839d446dd239c51a63c21635d49949b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/routes/runtime-routes.ts",
+      "rule": "as-unknown",
+      "fingerprint": "4ddc02ffb15c72f020c43e58b7127c483fc176e6f15fcb34e1cdb24ce0545a8b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/runtime/streaming/handlers/ToolCallHandler.ts",
+      "rule": "as-unknown",
+      "fingerprint": "38968e6d6b355c5ebd6ad2294f8cf6671d2014f979af24d53f1c1b85dae6b901",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/acp/acp-manager-view.ts",
+      "rule": "as-any",
+      "fingerprint": "88e7ea52835fa7b07ad7fea1d3d860a4be9abb71ad7d91f8504cc08717a022e2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/acp/acp-probe.ts",
+      "rule": "as-any",
+      "fingerprint": "cfd8bdc49e3eb4a9d87a8032285d58c8575c373da0f4bde9f1385d8de552b931",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/acp/acp-process.ts",
+      "rule": "as-any",
+      "fingerprint": "86f4028c01f4c13675dade22f43f679741956cbf83d177d1d6c489cf105df156",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/acp/acp-process.ts",
+      "rule": "as-any",
+      "fingerprint": "7536367aae4f8c64118cc2fe5bb34c13d972ff1f93c24810006a3809e2a01a1c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/agent-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "24cd22aa84752ed4236ff50ebf29066f78864c653d3bc3316a7db1ae02dff10e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/agent-service.ts",
+      "rule": "as-any",
+      "fingerprint": "eb4daca9601057efaf82ec70af89bc3b64e79ffe064f1dbc444ff823b40e6273",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/agent-service.ts",
+      "rule": "as-any",
+      "fingerprint": "546983b8a49d5dc48532d922e2c1a60e6e65824dcdd5248cf9bdab69dbec6b9e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/agent-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a92be827434dfc6a82b4cac0d8bfe7815fd1582b272712ebf7ba95c265eb9f31",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/agent-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8676652194b4f901f6161656d7e7af8ef50828c1df8397112344375d25279cba",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/playbook-skill-migration-cli.ts",
+      "rule": "as-unknown",
+      "fingerprint": "d8d31ab1acf1dbed76365e128c18b1b1e86bc41acaadc4d499b57a8f32bf1eab",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/playbook-skill-migration-cli.ts",
+      "rule": "as-unknown",
+      "fingerprint": "11200dd36a0c9ad2186ccc0f349e66579a001ce9311692aba9568420ef2b734b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-metadata.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b280fd45be5a190605e4fd77fa390879a485c08202e5a57691c976f7be5f242d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f2e38ebdcedb3a4b16edcaabff8221a07e6ee680467d3850e916b1bda07f3f8d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-any",
+      "fingerprint": "72d7a8c0e7fc313ab9f2b0b5f64bf1bc5f5b351682b72db11c3aa361fcebb3c9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-any",
+      "fingerprint": "81e46fd7a05b18f4a8557ce8857c9117d684ac4a31fe58b69424bac9484aba72",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-any",
+      "fingerprint": "32cfa8db51981264623fa5594d21d39be5182e2fa465c2c6d1f34d216b3e0129",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f2e38ebdcedb3a4b16edcaabff8221a07e6ee680467d3850e916b1bda07f3f8d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/agents/skill-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f2e38ebdcedb3a4b16edcaabff8221a07e6ee680467d3850e916b1bda07f3f8d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/browser/chromium-acquisition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f79afb9e2784796f0c64b2c7e3411fab059ce52a92301f5a8f5eb9075187b3bf",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/browser/local-port-scanner.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a1197a0814ea20cf1832bc80b28a55a36fd17abd7945fba6fcc4f2b57349df74",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/connections/device-code-login.ts",
+      "rule": "as-unknown",
+      "fingerprint": "077111863885bcd9dad9826e7e61319f19854c5d0fb6c590383b3a4533077d94",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/connections/self-hosted-broker-client.ts",
+      "rule": "as-unknown",
+      "fingerprint": "88057868906599d703bdc035307c6eb73509335e595fbc1a7da741f8d717a571",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/connections/self-hosted-broker-client.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1bb667a8ec0660ba6495d06b201edff4b4411e8c5d894f22e84cf91fea443808",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/devices/device-live-surface-producer.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0327a5cc45f829a71d6218afa68457859440c94d24934a801a47cef5e7f0e064",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/devices/device-live-surface-producer.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0327a5cc45f829a71d6218afa68457859440c94d24934a801a47cef5e7f0e064",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/evidence/assignment-claim-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "da76824fa3575312f34ee5af1ceb59fe28b3acd011538b85028ba7d7e6b7bbc9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/evidence/review-receipt-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cf1aeb478568e9bebd01a2a9f0212c5fa840b390112ee9e7496f04cb7af45bdb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-any",
+      "fingerprint": "6aab944cb55cdfce180154e5609d4369d3d87f984fd270b1391eb57565a90bf9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5395d3b1e410811babea245d9eed7b8c44805360295b1df002bf4fd2c8ce0b14",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5395d3b1e410811babea245d9eed7b8c44805360295b1df002bf4fd2c8ce0b14",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b202da3209727860cc2c9dbbb665266721ad2beab429b9ab69c82ae1b67778e2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a6528eabc7ab4ea82aeb2bc78bfa1513dca57bc67e06587fb51036a18ec478cd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cf9faf9866becb146ec9c86b84f123cb5df9b1fc2dd1d0bd6f140124eb1de87b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cf9faf9866becb146ec9c86b84f123cb5df9b1fc2dd1d0bd6f140124eb1de87b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7a895f92d560ebf2a91873cb8f76792bb2774c508e3f60e728218a84bee90ddf",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-any",
+      "fingerprint": "3ad168d55767ca6d08d370c98e2dd3d13bfe8812c8385d4b1943a78fe7b807f7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/notification-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b9a96261cd12ac68207de2a9f1257f78b71c3c2dcdb84b608cd9eb34a2e69c57",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/notifications/web-push-delivery.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2d6a18a1d8e2d9fa58c43ca090cb841bd5c44923934c6feb7f4afb7a0f807021",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/operations/action-operation-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "135494c8347a2a21bf0446cbd99305364277405e6f20316085250fd2780ec56b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/operations/action-operation-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1222fd39f45f8b95b14713c0181a76d6170de1f88d92a3f95e4765ca74e2e68b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/conversation-fork.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0688f7bc96e4526512872a9c16b40c03e97cd0d9dce2fb97a2a7094ebb49f41a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/delta-coalescer.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8ffdd7b4094778f16d7cedb68c90d4522bb0b521e5e2c206ff82dd55a5549376",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/delta-coalescer.ts",
+      "rule": "as-unknown",
+      "fingerprint": "7e97216ec93a49bd7737cbece4eda5c99ae34fe05520aafd0bcb7dd5f48bb671",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "47b04685272185d4cd9f5fa91c512c8a17e813c17555db03812add73f1adce5f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1942735b721250dbc7c4b8fdaecd7bdf3fc5bc976f283f12802ac6e8a23dc9c7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "d0bc42e83549427aaca506df84c5ac2fbd6c4e7acd56a0fc67cb1d8be787771d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f942974d9fa3fec2b75a143abcfab09a40617a245fd72d26eea2f920445fd2ee",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "077b763677f5a851bc5e77de9a997608d4280bb4919a5ebc3522b0fa9a96ddfe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "077b763677f5a851bc5e77de9a997608d4280bb4919a5ebc3522b0fa9a96ddfe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "bb5a25768feb19495076c5cd4e091d57deaad2889ff1ef8e3e5633447d46f1df",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "a780c2bf48f5c447708973d5d3020ea89cb7a4929657d72b535e376fe516cdfb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "077b763677f5a851bc5e77de9a997608d4280bb4919a5ebc3522b0fa9a96ddfe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "b6ae5dcefcca3ca3228d7fd3547d44584b4c37e6c2f02b2b198ea87bb9f71ef2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "b6ae5dcefcca3ca3228d7fd3547d44584b4c37e6c2f02b2b198ea87bb9f71ef2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "cf32600996af41f2a4f1ea48d4d9277faeaabb4c32c359116f969505b2daa4bd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "b6ae5dcefcca3ca3228d7fd3547d44584b4c37e6c2f02b2b198ea87bb9f71ef2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "cf32600996af41f2a4f1ea48d4d9277faeaabb4c32c359116f969505b2daa4bd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "43b4e28f8038f2b2cc41bf942bbf0c9c15db6310e64f3fc029c211babcc2d403",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "cf32600996af41f2a4f1ea48d4d9277faeaabb4c32c359116f969505b2daa4bd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "8c4cbc5e86872f690aaf1a7f92d1dbdd5ac054f2deafc29fcee29d9f3d48359a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "ae21206c174bae7cd00a0989a049362ccc101e6f9db99b049654221d998ed7df",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "5b2a104434e234f7327b2c65005874176ef24423cae6c5c58a917e06c0900bb1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "5b2a104434e234f7327b2c65005874176ef24423cae6c5c58a917e06c0900bb1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "01352ed45f4a86cf6de15cf0ec0a1523dc4f5584140dc534eb128d5ebd83e030",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "01352ed45f4a86cf6de15cf0ec0a1523dc4f5584140dc534eb128d5ebd83e030",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "b4af15d87a63ded4b504f45bfac9d2d366b642b21d66a7ae00f261d0f0c09714",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "1eef08c775094314d3c529ed9dfcb868c6f7ce7efd7a34ab5a3ea77f77b8f8d4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "1eef08c775094314d3c529ed9dfcb868c6f7ce7efd7a34ab5a3ea77f77b8f8d4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "ea56cd88141fd7814d75cf46137402f752cedf6642fa2a38b75773387b283f0c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "81f710602c5188c294df9c7885fab70f496076aa7355a46a75bc41da75a465e6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "adb182653126d4cc06a07d95649bb64f001876483a8ca7abc4c88fcc5cdaf5df",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "5e3fd0312d777cb3b6b5ab3fa81b2c8a5941a587c8c2b04a5637856584131234",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "afa92fd14c8b808ef1080e056c82154e97946bc67e24684e999c4d36ff166e7a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "afa92fd14c8b808ef1080e056c82154e97946bc67e24684e999c4d36ff166e7a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "077b763677f5a851bc5e77de9a997608d4280bb4919a5ebc3522b0fa9a96ddfe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "7784faafbd3667968c107bf083daa06ae7af6aeb3f2f4ed81f4ae85063155b41",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "9c17435dc51d3f64c2f9a7e6042661afeea864029724296adb9d968a10648c62",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "3cbf9ff62f4b18cbe8c1a1572966da94cefb2f2ee8f02e8a92399fdfba28ced3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "3cbf9ff62f4b18cbe8c1a1572966da94cefb2f2ee8f02e8a92399fdfba28ced3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "9c17435dc51d3f64c2f9a7e6042661afeea864029724296adb9d968a10648c62",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "7619bf5dc3d9f67b59c1a02831a2cd8e1485ba185b653c4e17e4673f20332fb5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "8a9341fbe9d2ba4290f3b064807220c5ce8f89e4edc1ad1d680433107b4b7685",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "c5f1d4552f1c5f77435c0c37cd4bd8159866d09f21cc5ebb95007260f766a21c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "599f880c5ad7c275f205252f7dec887d0ec88d404b940cefcfc3519edf3a2a7d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "353681619e0d0287cb23b6df21035c6d52674328b1013dbdd536bf303de365d2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/event-store.ts",
+      "rule": "as-any",
+      "fingerprint": "353681619e0d0287cb23b6df21035c6d52674328b1013dbdd536bf303de365d2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-live-work-history-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "110821973f092d1a529870a968ac294e15eb98a4e62efb456c2edf8e43aaf5ea",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-live-work-history-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "df873bd67cc278e00696b26bdbf5611335ec653d395b7e8b43325384f7d59fbe",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-live-work-history-adapter.ts",
+      "rule": "as-any",
+      "fingerprint": "913d4753482ab0545d60698a911bfef6b753d7c2a887405601501b44cd5ebc13",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-append-receipt.ts",
+      "rule": "as-unknown",
+      "fingerprint": "077b64eef12162b5691f0b82366f09d5b05fcd4c74daba622f8045ec6baa7dc0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history-worker.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6d38bf8eac1c34adad3ffdd363f39338fd715895a0fca403f5f7ccb8c3cb89ae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "c150e6e8df58acbeb740ffe5af7d578774ec3d1b12b144d9d8fbbcd9e8f88b9b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "29d3197d6ded72224e2e6ca70995a6c18a39c15d9b410939db3220898c39685c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "72748577cffb635bd2f2a02a9d174ee17cd938c35e8d6417a69dbe833422c057",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "2c6f217f3955980a2103a42f21f109cd897e800482c4047ad289273d4180acc5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "69b2a0fcf0386a0dbbaa1d3dcc0ca80224995f2f5d05328691613caea8279cdd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "db1e992c4bec7ae1db3ae4d19ba4b3ddd780f2e245db28a030b979de657c4d47",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "e8d9c74c5f1d100e6b807b4152274e9b874aee6371fae961d73addf7dccf5fc7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "a17cac10d12dd72bbfe734b49ac017e26534c61d9d807ec12e1369b0ce87efc7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "4f4f29d4a92145e2ac28bf003833451af127a314b3cf2137751708045c3bda1a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "4ea2528d9fbcf249bd8fe53122797bde28d025b995196e407f7e8be8dbbc51e3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "457a13e24f01bc70ca7b45a5373f2907f733fe72956e85e9f25cfbf0213bfc4c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "66d637d0f728bc6c9ef9681a0b96a4781aed8c1f5480afe492edf39d393cd46c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "f4ec29d009afc5136c40448e6dddcb8318f35a7e4e0fd48fdf49ff4ba9d0c1c4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "503b07546413336a62437bb252326302ea875bbac875002dcf1bc5da2768feaa",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-history.ts",
+      "rule": "as-any",
+      "fingerprint": "64833706cb23925b76afd11ae9b3c3b257558696622210c656de398a624eb76e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-runtime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "4537ba896db13b6b5e52159852f99407e18d5d7563ff455245b851885c2e4403",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-working-state-worker.ts",
+      "rule": "as-any",
+      "fingerprint": "a899a006c605c4f0640c8f5753b7a497d8ac8c129ec855017e2ed92f4e541db2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/project-task-room-working-state-worker.ts",
+      "rule": "as-any",
+      "fingerprint": "a899a006c605c4f0640c8f5753b7a497d8ac8c129ec855017e2ed92f4e541db2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/session-inventory-app-read-module.ts",
+      "rule": "as-any",
+      "fingerprint": "bc749cabc24dd742ea55ff96ddb2afa7c9224192ebfdb77088bfa666cba8b79a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/session-inventory-app-read-module.ts",
+      "rule": "as-any",
+      "fingerprint": "58ada7c4b34703d80d5942aa3ea206b490aead752d5926daaf7545f5695c120b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/session-inventory-app-read-module.ts",
+      "rule": "as-any",
+      "fingerprint": "1456186a7a2c66849e03d68909c2af6a2fb496544e37218a779dbecd09efa949",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/session-inventory-app-read-module.ts",
+      "rule": "as-any",
+      "fingerprint": "1b3eaf962650d3ec5541ad3f1dfe8a7f4e99f84131a87654f7084d2d59b5a05a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-adoption-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "111d9b876ef2f748521af7517707a81b457c9cff981fd657a14774477d518fba",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "9984b4f1add18513822188c7fa07dbb9d3c39cfd23e57f81c77fd44659c1dec1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "5a65bfd25beeaeda75bd6603375d360532c6a75645ea50b089191bc448839763",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "089f935d8ccfa5a82cb55ceb8a4390b73ea9aeac9320e1d1296a94d26c09678b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "febc91ba627eea43fd5850ad0ec93bebbb90c833e18e1425e0f9d0b76c6a599f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "d5efa93824c9c60793bbd5147cbdbd82e27ad6c26f16c81487292eb8ff68bdb5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "8cf6aab9553cea2bd7df2dbaca388a53c2f3df32399e6af381774341bbba81d5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "5a49cca59bac49ed6aac56f79bf79923634c3760b981509f4e49c37582a7b776",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+      "rule": "as-any",
+      "fingerprint": "d7bd1b65043bda92189f8a294e0828de0c7a16f85794af76f8d1506828c10e7c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/distribution-profile-service.ts",
+      "rule": "as-any",
+      "fingerprint": "168cb857126c84e163e05298c256dfb3a5f3dbd4faf6ed712d1940f0c3e0dd9c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/distribution-profile-service.ts",
+      "rule": "as-any",
+      "fingerprint": "c83b9bffa602592107e294e7719f18d160bd4d3f00b4cdbe89cb0ac9e9f4e255",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/distribution-profile-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cd43ca971486b7bacf010bed7d2bc3befd6af05beac382cf9d3c71a3479c29c9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-activation-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f95e975955e2b93732623cb47af17e068eeabdd68a12ab16512e9c9b26104e95",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-activation-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f838344a807e5d49db46a74ff5612eaa281cc9d5fa8be9da505071defdeb8d59",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-activation-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1840bc36849a49495f9ea997eee8395da4a716678983ce1e5acb8d03eff4c7c5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-activation-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f838344a807e5d49db46a74ff5612eaa281cc9d5fa8be9da505071defdeb8d59",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-activation-composition.ts",
+      "rule": "as-unknown",
+      "fingerprint": "1840bc36849a49495f9ea997eee8395da4a716678983ce1e5acb8d03eff4c7c5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-lifecycle-proposals.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c9d2bf1558f4e1e350bdf6014210b6f6e6b5921b4edd952459f1247e95b26a24",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/plugins/plugin-manifest-loader.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a619086bfcafbf9d33cf327d939d68cdda089a11cef77705fc8ec1bb31fe7fce",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/diff-comment-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "597228b0a4bbdaa06ebd18fc347ec3a66a976ac60ec9cf17137fb5bd48ac71e8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/project-binding-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "aaf187d69d720606696416427e41d33b3b8c2ee4bc1f0c54801ac4c53fd9902e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/project-manifest-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b3aa085d80ed2cae79b93c920374f6c3b4c156d2cb4d655985f34967fbd09bf6",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/proposed-change-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2b145f227b221b63f5037cdbf2556ed194aab708101928f966f30235ed28ef6b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/task-basis-app-read-module.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6769b38b4de9a1e1708531df220f6587275cc223438c4dc26cea175c0fd6d1f5",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/task-graph-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2aa2f5b0f21783fba097438ee281ecfe031b1af8c85a576fe88ad3329bec14b4",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/task-graph-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "4c36fc7f2d4a33f8eea713456666e5c35532cc1f778eb2be855d00c844126ea3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/task-output-module.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6d498e1e73b3356671459655af294fca5875c48e8eef7ae57b61f59267f64520",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/projects/task-output-module.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5d24206b7977b11374d1c00d40a667eb0d4fbe9e7c3a1af99a073cc093da5026",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/relay/relay-enrollment-journal.ts",
+      "rule": "as-unknown",
+      "fingerprint": "58b3b3540635330c8a3280685cb756863529510bdcee4f73fd209f7775328410",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/relay/relay-enrollment-journal.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b38c4bf1448779438acc71b5ee6a0fb462a16418403473c941a6bce5511f892c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/scheduling/scheduler-ledger.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cd3992e0ce39ed1b386793be8cada015c3e95e3f383e3d33538699910cbb4656",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/scheduling/scheduler-ledger.ts",
+      "rule": "as-unknown",
+      "fingerprint": "cd3992e0ce39ed1b386793be8cada015c3e95e3f383e3d33538699910cbb4656",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/task-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "a4b282aeb7e84ba13d9986a38f6b609b690cd0f9865c1bf0d5472653020bf39e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/task-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8376ddd93b4421aa608bbc60c74f2d6a34e2217d261d81cbed33cfb0a62dd0c7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/transcript-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b9312fd93f6a44cd783646197b3ec78bb712284cdbab57ab5fddfde2821da00f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/transcript-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "667f8be8d40e25d1c0cc577afb7971488ce2be3ccb7b41e2e6c818edaab0dbe8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/transcript-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8c65d5317aad89f9c42c0149d4b381ba3f55a5d7e338c4af01c799682ad860f9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/transcript-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "348f8612ceda9ba976d3c404c23382808688ed03b8368f32aea25b47af33d0a3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/search/transcript-search-protocol.ts",
+      "rule": "as-unknown",
+      "fingerprint": "51343409f05cc40413147e7e73bfca0485d3121df47fd5ecc10b3faa240279b1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/ssh/device-pairing-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0991e1963420b63833fd8c3c06ad59097e54a4fe3267e7e01af135c24ce70278",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/ssh/environment-security-service.ts",
+      "rule": "as-unknown",
+      "fingerprint": "76c6a8e78387fbf8e4f6c5e8f0cf3575869d7bf3c56b12f6e82c2e86c2576626",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/ssh/openssh-worker-probe.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3c3a17a76686707296425ea8e406c626e7b0133b2b8989db1c860a5a4d3ce57a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/terminal/terminal-ws-server.ts",
+      "rule": "as-unknown",
+      "fingerprint": "5d68cbf34deb5f5f1809132b66dfa43c18a3c5b8a5e9311c4bf760cf24b26ec9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/services/usage-telemetry-inventory.ts",
+      "rule": "as-unknown",
+      "fingerprint": "0f3961ab077ab80c70fb1ec97e7fdec8a7fe432c244e98044c9925a6ae6ab30f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-delegation.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c2f17f7c0945e044ee46ebf84ddcd55b42abab605fbbe6dbbca71907aac18b8e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-delegation.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2e248a94f63e35aa73fc5c37c6e88bcecc1cd5726ca687439af2469f0e0b962e",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-delegation.ts",
+      "rule": "as-unknown",
+      "fingerprint": "81de65bdff291471fece11b271f418c08763ef1ab027aaf2c5c70a4c73e9ed4f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-delegation.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ce7f144ec453773bf4b7db316d8efb0e046aaf31f775142d9b2660103b12e139",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-mcp-server.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c6bb035984a5a20209ce3742ef4596923ca567898416a00d231681ac7a4e9927",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-mcp-server.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ea63a1a161a2ad6c6f6a98f5c43b89ae53461b2eb9ac34234c9eceead0301f5b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-mcp-server.ts",
+      "rule": "as-unknown",
+      "fingerprint": "50efb204dbf8ba7980b0ccedd9cc875f2ffd94fe775f75e1d471ab2957626999",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/tools/station-control-mcp-server.ts",
+      "rule": "as-unknown",
+      "fingerprint": "ab81b8ffa140ef30fcd12a54a94ffbc495758c62e4059ac0b76c38edb69eaf78",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/utils/bounded-async.ts",
+      "rule": "as-unknown",
+      "fingerprint": "b062c36701fe35b00a47df64eb27d6da4105e52dfcd7b131922237fa85f73171",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/utils/logger.ts",
+      "rule": "as-unknown",
+      "fingerprint": "90390972aae5e0bf3ad06ccc7afbf95ef27097b0846ab8d69de60ea55a6ba17b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/utils/logger.ts",
+      "rule": "as-unknown",
+      "fingerprint": "645c46e1bae499a9ab7eda50bbf61aab23a73117d0b86cd6c0e1d967efc3d3cc",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/voice/providers/nova-sonic.ts",
+      "rule": "as-any",
+      "fingerprint": "89305859057db0cbd887baeed9a60c4798512c8905019dcd3dcb4eb9b4e719f3",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-server/voice/providers/nova-sonic.ts",
+      "rule": "as-any",
+      "fingerprint": "43f962d6347bb5ba2f74dcec2fb122894a8b6c6f72a265e02e1ae8670617d3e2",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-shared/collaborative-editor-pane.ts",
+      "rule": "as-unknown",
+      "fingerprint": "92559dbfbaae333889a30acbff9d8968886c80fb8ca42f2ebc09c08c5d2edf07",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-shared/collaborative-editor-pane.ts",
+      "rule": "as-unknown",
+      "fingerprint": "f71fef8de78d0449b912086e0f6670ba058a43be97a00a93481d0e79218980ba",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-shared/collaborative-editor-pane.ts",
+      "rule": "as-unknown",
+      "fingerprint": "31703e226fa097f8b2b5631ded681c5f58d7639952cf1305b2ba7e7a46814c81",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "b9c895492d1f49431157d886c13ddf7fed82c40d0ddc8dacb3b802c83fcb8a86",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "91adaa86f58a8b0654decfb77a028564187bccf322d538fe1f9ce38a9162487c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "f016a3b50dfdadfbae047786580c452f3ef650f34a451e037044c5ca4cd7316d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "4f792f17fe79c043571a08c2936d5f31f2a8044e9580a91a87a56a1daeb7a52b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "a3529677806b16df6e5eb74f13622324849f3f7fc35b44bd42ad244c15344182",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "c4e6ecae9685854bdde2a349151207f45187efcf9a58ef5b0de8a286bd36efcb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "0da9aef3fae9a0e9ef41b134c52f718efef01aa945a1c6c231d7968ef7c0a9d7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "e33c32f70489f8a8747267112c13f7094179555680c436aa59711a564b8088e9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+      "rule": "as-any",
+      "fingerprint": "efdf83e79fb507af654ff13fa5393e1bf23ebc07a1031aebd4edb394a922e1e8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatMessageList.tsx",
+      "rule": "as-any",
+      "fingerprint": "f914ca0343f6316308ab67b1b29b869acc722d7a37e8f4953757732e4a0adf25",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/ChatMessageList.tsx",
+      "rule": "as-any",
+      "fingerprint": "18df956d1e6c5c6ed09cf43ea1cf343a06a836708ca3f95eddcd117596b24223",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/ToolCallBatch.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "91d91e7e4e6ceac554059985b2800ec316f1308dd322e46fc93194ce5353f947",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/ToolCallBatchBoundary.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "e4850452aefd7e2aef3c4260b5265606df6ef7549953d397a90a30b236b06399",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/markdownLinkTarget.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2cb835501562ad0e223b8097f169acd0f18dc1fdb57630cb639780373a48c0a8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/markdownLinkTarget.ts",
+      "rule": "as-unknown",
+      "fingerprint": "039086ac9c2f360b72f6fb9bb94c946a5fb9eaf29ef5d0f99003fc7de8da61fd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/chat/message-bubble/MessageContent.tsx",
+      "rule": "as-any",
+      "fingerprint": "566a1479175d10228a29927084ad57fe83fb3628ad587d4140d1459ee7249592",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/flow/FlowRunConsole.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "f7f78b16bea50aec427517e863a8dc0bfc0f7904b4fa064efa00c8aece53751b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/flow/WorkflowPlanPanel.tsx",
+      "rule": "as-any",
+      "fingerprint": "b8610b31aabd34a8ff52b3954e17fd299e7d85804fd103a787bc4b79c753c7f9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/components/usage-stats/utils.ts",
+      "rule": "as-any",
+      "fingerprint": "d5b684ad38ce7159f549d5a0e7b84b6729c103a884eeac07138ea555ec54a0a7",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/contexts/AgentsContext.tsx",
+      "rule": "as-unknown",
+      "fingerprint": "9d4841a8bc2ed78020919bb876d6d82acda78c73abf69ed58a9a9cfc7481932b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "7480942b6b03a17b804ed06b51f7b245b731f83f2408305eb0d029d7b1a26bc8",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "ae8b6e4c28dc99f761b6485cba3499d4ea6787d31250b54e02dcdb27fc293c57",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "24bbfd42f1552beccd826cc395527cb9b05f5192c75e5b4ace431471bd2cdd43",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "660b5114c15db521a6bcbdae2a376b08618ef4cbfb25d5b59df8251d5bb38d2c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "319ce6cba28b820b1ba0e50d8fa31703269af98dc89a5ba51c95010480523dae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "cfc5a3c80218cd79287e7bbe7836a91f1a4699dcdf8ccabba93cb47e0726d495",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/PluginRegistry.ts",
+      "rule": "as-any",
+      "fingerprint": "13d57dd2bcd7f650ba59c8fc1b1b333481a9f519fc9081cf0405de7c865e3fc0",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/pluginSharedRuntime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "06951481cc941e5698b16ac6cf20d1ee06d4f21385a341766676f9098e986eae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/core/pluginSharedRuntime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "06951481cc941e5698b16ac6cf20d1ee06d4f21385a341766676f9098e986eae",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/highlight/highlight-worker.ts",
+      "rule": "as-unknown",
+      "fingerprint": "67824d2f0e3e95e7a4c8ab3d185dbcfb16e11cbba10cb258c12a84daeaec565f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/assistantTurn.ts",
+      "rule": "as-any",
+      "fingerprint": "a6582a09fc80b0562335fd257d9ad3d5383884dd1fa8b18be96b49639b0a3d2d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/orchestration/rehydrateChatSession.ts",
+      "rule": "as-any",
+      "fingerprint": "4e153e8fe0e5282d3016da92f8493ca2978b13e1ef3ab021168c3bfb7100a300",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+      "rule": "as-any",
+      "fingerprint": "4e153e8fe0e5282d3016da92f8493ca2978b13e1ef3ab021168c3bfb7100a300",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/useDerivedSessions.ts",
+      "rule": "as-any",
+      "fingerprint": "616c7961c784e16fe3eef8bd92b5f9e5f12c23807ecc39f0cad008b8aa6337ce",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/useMenuFocus.ts",
+      "rule": "as-unknown",
+      "fingerprint": "dffeaee6c7c99691e681a041ff0e33a0b006bd50601697b43a757fd865ede87a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/useSessionManagementViewModel.ts",
+      "rule": "as-any",
+      "fingerprint": "b92e082e79d701132e0c67dc3f8969f934ebbc30e72cfde6add7b2877a9f9519",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/hooks/useSessionManagementViewModel.ts",
+      "rule": "as-any",
+      "fingerprint": "02439ec9213605e29d31e83edce7c7cf4c5a46263651c566ddec6c4b00b9454f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/layouts/index.tsx",
+      "rule": "as-any",
+      "fingerprint": "ea0fd6e84f1f67254e7888fab40f1ce72e5bbb9a964594e0412056076e171400",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/layouts/index.tsx",
+      "rule": "as-any",
+      "fingerprint": "f34ea5384a543838b3cbe42654f5a5df6264703201c651c3b6af80c2f3e54b10",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayEnrollmentController.ts",
+      "rule": "as-unknown",
+      "fingerprint": "2a93ddb3599a44a1d5eb6ff8143df649900eac692552183488dc60fcd17e7dbd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayEnrollmentController.ts",
+      "rule": "as-unknown",
+      "fingerprint": "eec6d092c89e1e437aece01fc77bf6bb0f23ae2e2763aec0382d7bce9b95216c",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayEnrollmentController.ts",
+      "rule": "as-unknown",
+      "fingerprint": "516fb349fca98c94a4edf82430dea8d2071a0beb72ff8b05b341ae2e7b794b68",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayEnrollmentController.ts",
+      "rule": "as-unknown",
+      "fingerprint": "8e4d4f547a4c6e96551f72bbb3b95e51459db2e338b407db1b9ccb35a9a0149b",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayRouteRuntime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "239fbc2954b1e4b05d623dc604b750b1d697aa269646b388747ad871e2931d76",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/browserRelayRouteRuntime.ts",
+      "rule": "as-unknown",
+      "fingerprint": "08166364bf7b0aa45306d0b34f4ab4b71885d97578e302f38914b5bd34614f89",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "9417eb25ee7a4215fbc46279d1a94da080316c87e440e24394c2d14c554d157a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34d3326f9b3fc614f1efa2dec1fcb3a7954165337a906892f5f13fb6be9d982f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c071c6b5199218575371d7283ad37abfddb9290b4bd65104efa84b874b1c6630",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c071c6b5199218575371d7283ad37abfddb9290b4bd65104efa84b874b1c6630",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "c9c921c043faca8e26c958d2628129a3a6bb169627b98a16b84f811eb702493f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "34d3326f9b3fc614f1efa2dec1fcb3a7954165337a906892f5f13fb6be9d982f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/device-settings-store.ts",
+      "rule": "as-unknown",
+      "fingerprint": "3ef78834ee8e3322c3fef9553c2d46cfade6c03ec52b8366d21e08d0b6d90d34",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/lib/outboundQueue.ts",
+      "rule": "as-unknown",
+      "fingerprint": "9d60bb6653476504d3a8877c1816272a2213c0f57d452974ae0a1b96f42cfbeb",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/platform/native/tauri.ts",
+      "rule": "as-unknown",
+      "fingerprint": "6d0894952467aa87dd45e69858b861abfa65069593a14db00b3579b8b6cda3d9",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/providers/voice/WebSpeechSTTProvider.ts",
+      "rule": "as-any",
+      "fingerprint": "99276b2ec426ee27a470484fea228c72288fad5874a91538ac62ef72cfeb855f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/providers/voice/WebSpeechSTTProvider.ts",
+      "rule": "as-any",
+      "fingerprint": "99276b2ec426ee27a470484fea228c72288fad5874a91538ac62ef72cfeb855f",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/providers/voice/WebSpeechSTTProvider.ts",
+      "rule": "as-any",
+      "fingerprint": "fd9dbcf0f1081c575927988bbf6c2edf894b0adab01233714fd15d2ab6eb6955",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/utils/downscaleImage.ts",
+      "rule": "as-unknown",
+      "fingerprint": "758c3cf5ce04dc4af171f4415ff8515367f9ee14aa3f0bab588a21588d835352",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/utils/heif-normalizer-worker.ts",
+      "rule": "as-unknown",
+      "fingerprint": "26c635bf178667b09ef3d39fbd1e0c5ae6fb519df34d9ecaeca2be4ff82b0ade",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/LayoutView.tsx",
+      "rule": "as-any",
+      "fingerprint": "fb4afd2b3627a1fd84b01bd3352e5a77b5091bed989a1d6bf79e1f25c0e85222",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/ProjectPage.tsx",
+      "rule": "as-any",
+      "fingerprint": "48a7c098addcf5179bf2c95c06e4b195b7b33b743107a1d0e17ebf13e73e7189",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/ProjectPage.tsx",
+      "rule": "as-any",
+      "fingerprint": "41b78178d8c4896c1c370a5d7afaf6bbb44ceaa4c5b6623ae8224647a6b94354",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/SkillsView.tsx",
+      "rule": "as-any",
+      "fingerprint": "520cb054279bfcb89ba8a064295fddcb68481287a0c5cadd6e69d7b286a35cb1",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/AgentEditorStateViews.tsx",
+      "rule": "as-any",
+      "fingerprint": "46109da6537786e534b06a008b104327a219bdf3ba3c5ab47f7829ec8217243a",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx",
+      "rule": "as-any",
+      "fingerprint": "d0920d888fa3cc7530589e439baa35ff5ff3fe7f5ad3523ab7ec136eea282dbd",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/agentsViewHelpers.tsx",
+      "rule": "as-any",
+      "fingerprint": "76077e404e4b3294a026f8ba10961a84ba9d0a33835fc411f75f1f816ba87829",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
+      "rule": "as-any",
+      "fingerprint": "91a22185fb6e3edaacc204b819e7c3eccc5bfc811f6b06a3a3fb23f50a8877ec",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/views/project-page/ProjectKnowledgeSection.tsx",
+      "rule": "as-any",
+      "fingerprint": "6f4b910ee36ffe52a3b9ca158af999c71016335cef92dd062c594f2cd575d311",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/workspace-panes/device/deviceToolsApi.ts",
+      "rule": "as-unknown",
+      "fingerprint": "16f732e7f48a87744c7d9cb74f491ca25a1b6c7e79e5e32f91ec46ffa895077d",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/workspace-panes/device/deviceToolsApi.ts",
+      "rule": "as-unknown",
+      "fingerprint": "97e03c5c6cde715ba72947fbb756e3724f90e68cb85f0cc5596c07f839283b22",
+      "reason": "legacy-cast"
+    },
+    {
+      "file": "src-ui/src/workspace-panes/device/deviceToolsApi.ts",
+      "rule": "as-unknown",
+      "fingerprint": "637cc951426265d613d30e1114a72318abec28e1fe7589373cdcdee48949a743",
+      "reason": "legacy-cast"
+    }
+  ]
+}
