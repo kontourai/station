@@ -1042,6 +1042,12 @@ button:hover {
   animation: responsive-surface-panel-enter var(--motion-base)
     var(--ease-emphasized);
 }
+/* The panel takes focus programmatically (tabindex -1) so the dialog, not a
+   control, is announced first. That is not keyboard focus: Safari would still
+   ring the whole panel on open. Controls inside keep their keyboard rings. */
+.responsive-surface-panel:focus {
+  outline: none;
+}
 
 @keyframes responsive-surface-panel-enter {
   from {
@@ -6936,6 +6942,35 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .file-preview__markdown {
   padding: 4px 8px;
   overflow-wrap: anywhere;
+}
+/* The transcript's heading scale (.message h1-h3), not browser defaults: a
+   file's "# Title" should read as a heading, not a banner. */
+.file-preview__markdown h1,
+.file-preview__markdown h2,
+.file-preview__markdown h3,
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.file-preview__markdown > :first-child {
+  margin-top: 0;
+}
+.file-preview__markdown h1 {
+  font-size: 1.5em;
+}
+.file-preview__markdown h2 {
+  font-size: 1.3em;
+}
+.file-preview__markdown h3 {
+  font-size: 1.1em;
+}
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  font-size: 1em;
 }
 .file-preview__markdown ul,
 .file-preview__markdown ol {
