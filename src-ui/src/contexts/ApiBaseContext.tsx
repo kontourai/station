@@ -187,6 +187,20 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
           ? (input) => nativeProfileRepository().updateProfile(input)
           : undefined
       }
+      sharedProfilesVisibleToCli={profile.isTauri && !profile.isMobile}
+      removeSharedProfile={
+        profile.isTauri
+          ? async (input) => {
+              try {
+                await nativeProfileRepository().removeProfile(input);
+              } finally {
+                // Also after a partial failure: the profile may already be
+                // gone, and streams to its origin must not keep its binding.
+                notifyCredentialChanged(new URL(input.expected.url).origin);
+              }
+            }
+          : undefined
+      }
       makeDefaultProfile={
         profile.isTauri
           ? async (connectionId) => {

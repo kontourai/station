@@ -245,6 +245,8 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
  * literal for the ordering-safe "replay/snapshot done, now live" marker.
  */
 export const ORCHESTRATION_STREAM_CAUGHT_UP_EVENT = 'orchestration:caughtUp';
+/** Trailing current activity after a coalesced live burst; carries no cursor. */
+export const ORCHESTRATION_STREAM_ACTIVITY_EVENT = 'orchestration:activity';
 
 export type SessionState =
   | 'created'

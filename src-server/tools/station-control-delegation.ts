@@ -69,6 +69,7 @@ import {
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
@@ -231,6 +232,12 @@ export interface DelegateTaskInput {
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: route-set only, like `ownerAttribution`: the request's proof that
+   * the session this starts may run `host`. Absent (the agent tool, every
+   * in-process caller) starts it confined to its workspace.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -474,6 +481,8 @@ export interface ContinueDelegatedTaskInput
    * owner attribution as a fresh delegation (session-owner-attribution.ts).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /** #2493: route-set only; see `DelegateTaskInput.fullAccessGrant`. */
+  fullAccessGrant?: FullAccessGrant | null;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -1284,12 +1293,16 @@ function dispatchContextForAuthority(
   // The service stamps it on the new session (`prepareStart`), the one
   // place every start passes.
   ownerAttribution?: StartOwnerAttribution,
+  // #2493: the route's full-access grant for a start this dispatch causes.
+  // `prepareStart` reads it (`startConfinement`); absent confines the start.
+  fullAccessGrant?: FullAccessGrant | null,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
+  fullAccessGrant?: FullAccessGrant;
 } {
   return {
     userId: authority.userId,
@@ -1299,6 +1312,7 @@ function dispatchContextForAuthority(
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
+    ...(fullAccessGrant ? { fullAccessGrant } : {}),
   };
 }
 
@@ -3933,6 +3947,9 @@ export async function continueDelegatedTask(
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
         : {}),
+      ...(input.fullAccessGrant
+        ? { fullAccessGrant: input.fullAccessGrant }
+        : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
@@ -4838,6 +4855,7 @@ export async function delegateTask(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           conversationIdentity: {
@@ -5100,11 +5118,36 @@ export async function executeExecutionTargetMessage(
         'Current-host staged attachments cannot be sent to another Station.',
       );
     }
+    // #480 scope correction: the FOREGROUND path has no portable identity
+    // or receiver-offer admission. A non-portable Project workspace
+    // (`kind: 'project'`, sender-local slug) resolved onto a PEER would
+    // execute an unrelated same-slug Project there — refused BEFORE
+    // `postForegroundMessage`, so there is no remote POST and no provider
+    // effect. This covers both the ProjectSettings thread default (a saved
+    // peer default resolved by `projectDefaultEnvironment`) and explicit
+    // peer+Project callers. Verified SSH Project forwarding keeps its
+    // explicit `pinSshDispatchWorkspace` contract, and peer foreground
+    // WITHOUT a Project workspace keeps its prior contract.
+    if (
+      selectedTarget.kind === 'peer' &&
+      input.target.workspace?.kind === 'project'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
+      );
+    }
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,
     );
-    const { automaticBackground: _automaticBackground, ...remoteInput } = input;
+    // #2493: a grant is this Station's proof about this request; the peer
+    // derives its own from the credential that reaches it.
+    const {
+      automaticBackground: _automaticBackground,
+      fullAccessGrant: _fullAccessGrant,
+      ...remoteInput
+    } = input;
     return postForegroundMessage(
       selectedTarget,
       input.delegation
@@ -5454,6 +5497,7 @@ export async function executeExecutionTargetMessage(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

@@ -76,6 +76,7 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../../../runtime/mcp/station-control-caller.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -120,6 +121,7 @@ import { createProjectSessionDirectoryResolver } from '../../projects/project-se
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import type { ChildWorkProjection } from '../child-work-projection.js';
 import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
@@ -1347,7 +1349,11 @@ describe('OrchestrationService', () => {
       currentSessionId: child,
       // #2309: the rebinding frame also carries the conversation's activity
       // (nothing committed on either child yet).
-      activity: { conversationId: root, asOfSequence: 0 },
+      activity: {
+        conversationId: root,
+        currentThreadId: child,
+        asOfSequence: 0,
+      },
     });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(
@@ -8097,6 +8103,75 @@ describe('OrchestrationService', () => {
     );
   });
 
+  test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
+    // ACP 1.1.1 has no subagent concept, so its matrix cell stays `none`
+    // (muse's became `declared` with muse serve, #2452).
+    const acp = new FakeAdapter('acp');
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([acp]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'matrix-none-child-work';
+    await isolated.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'acp' },
+    });
+    const publish = (
+      isolated as unknown as {
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+      }
+    ).projectAndPublishEvent.bind(isolated);
+    publish({
+      eventId: 'matrix-none-child-delta',
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [
+          {
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            childId: 'unexpected-child',
+            status: 'running',
+          },
+        ],
+      },
+    });
+    const childWork = (
+      isolated as unknown as { childWork: ChildWorkProjection }
+    ).childWork;
+    expect(childWork.read(threadId, 'acp')?.observability).toBe('not-reported');
+    expect(
+      (await isolated.readSession(threadId))?.session.conversationActivity
+        ?.runningChildWork,
+    ).toBeUndefined();
+    // Exercise the service's own readRunningChildWork wiring under a
+    // contradictory projection result. The matrix-none read above is real;
+    // this injected extra field proves the service gate still rejects child
+    // rows if a future projection accidentally includes them on that view.
+    vi.spyOn(childWork, 'read').mockReturnValue({
+      observability: 'not-reported',
+      reason: 'The engine does not report subagents.',
+      running: [
+        {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'unexpected-child',
+          status: 'running',
+        },
+      ],
+    } as unknown as ReturnType<ChildWorkProjection['read']>);
+    const session = (await isolated.readSession(threadId))?.session;
+    expect(session?.childWork?.children?.observability).toBe('not-reported');
+    expect(session?.conversationActivity?.runningChildWork).toBeUndefined();
+  });
+
   test('fails closed for hosted starts without a server-owned tenant context', async () => {
     const hosted = new OrchestrationService({
       adapterRegistry: createRegistry([bedrock]),
@@ -11168,7 +11243,13 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         threadId,
         provider: 'claude',
-        metadata: { agentSlug: 'delegated-agent', delegation },
+        // #2493: the restart carries its session's confinement stamp
+        // forward (none here, so the `workspace` it already meant).
+        metadata: {
+          agentSlug: 'delegated-agent',
+          delegation,
+          stationConfinement: 'workspace',
+        },
       }),
       undefined,
     );
@@ -17242,6 +17323,58 @@ describe('OrchestrationService', () => {
       expect.anything(),
     );
   });
+
+  test.each([
+    {
+      label: 'a request that may grant full access',
+      granted: true,
+      expected: 'host',
+    },
+    {
+      label: 'a request that may not (a device without the grant, an agent)',
+      granted: false,
+      expected: 'workspace',
+    },
+  ] as const)(
+    '#2493 Q2: an adoption by $label stamps its child $expected',
+    async ({ granted, expected }) => {
+      const sourceThreadId = `external:claude:confine-${expected}`;
+      const projectRoot = join(tmp, `confine-project-${expected}`);
+      mkdirSync(projectRoot, { recursive: true });
+      configuredProjects.push({
+        slug: `confine-project-${expected}`,
+        workingDirectory: projectRoot,
+      });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: sourceThreadId,
+        status: 'ready',
+        cwd: projectRoot,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: `vendor-confine-${expected}`,
+          affinity: { kind: 'test', ref: 'fixture' },
+        },
+        createdAt: '2026-07-22T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      });
+      await service.dispatch(
+        { type: 'adoptSession', sourceThreadId },
+        granted ? { fullAccessGrant: fullAccessGrantForTesting() } : {},
+      );
+      expect(claude.adoptSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          confinement: expected,
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+            stationConfinement: expected,
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
 
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';

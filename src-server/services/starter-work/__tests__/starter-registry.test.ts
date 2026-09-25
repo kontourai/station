@@ -568,7 +568,9 @@ describe('StarterRegistry', () => {
       operationId: 'continue-op-1',
       sourceSessionId: 'external-session',
     };
-    await expect(registry.launchContinueSession(input)).resolves.toMatchObject({
+    await expect(
+      registry.launchContinueSession(input, null),
+    ).resolves.toMatchObject({
       state: 'continued',
       source: { kind: 'session', id: 'external-session' },
       session: { threadId: 'continued-session', controlMode: 'station-owned' },
@@ -584,6 +586,7 @@ describe('StarterRegistry', () => {
     expect(continueSession).toHaveBeenCalledWith({
       sourceSessionId: 'external-session',
       operationId: 'continue-op-1',
+      fullAccessGrant: null,
     });
     await expect(registry.observe('continue-session')).resolves.toMatchObject({
       starterId: 'continue-session',
@@ -604,11 +607,14 @@ describe('StarterRegistry', () => {
   it('does not continue a missing or Station-owned source Session', async () => {
     const { registry, continueSession } = await fixture();
     await expect(
-      registry.launchContinueSession({
-        starterId: 'continue-session',
-        operationId: 'continue-op-2',
-        sourceSessionId: 'continued-session',
-      }),
+      registry.launchContinueSession(
+        {
+          starterId: 'continue-session',
+          operationId: 'continue-op-2',
+          sourceSessionId: 'continued-session',
+        },
+        null,
+      ),
     ).resolves.toMatchObject({ state: 'unavailable', retrySafe: false });
     expect(continueSession).not.toHaveBeenCalled();
   });

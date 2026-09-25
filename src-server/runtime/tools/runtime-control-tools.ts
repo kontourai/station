@@ -3,9 +3,11 @@
  *
  * Every tool the station-control MCP server registers is classified as
  * either READ-ONLY (list/get/navigate/status — safe for auto-approve, never
- * policy-gated) or MUTATING (platform create/update/delete, installs,
- * scheduler actions, config writes, agent dispatch — subject to the
- * platform-mutation gate in policy-opted workspaces). The classification
+ * policy-gated), BOUNDED-WRITE (writes something bounded and owner-directed —
+ * auto-approved, not a platform mutation; #2584) or MUTATING (platform
+ * create/update/delete, installs, scheduler actions, config writes, agent
+ * dispatch — subject to the platform-mutation gate in policy-opted
+ * workspaces). The classification
  * completeness test in `src-server/tools/__tests__` asserts the union covers
  * the full registered tool surface, so a new tool cannot ship unclassified.
  */
@@ -154,6 +156,22 @@ const SC_MUTATING_TOOL_NAMES = [
   'board_move',
 ];
 
+/**
+ * #2584: tools that DO write, but whose write is bounded and owner-directed,
+ * so they are auto-approved for every agent (authored, default, delegated
+ * and unattended runs alike) and are not platform mutations. They are not
+ * readers, and are not listed as such.
+ *
+ * - `notify_user`: one inbox record addressed to the calling session's own
+ *   readers, redacted, capped and rate-limited per session and per Station
+ *   by its route. An approval prompt would wait for the away user it exists
+ *   to reach.
+ *
+ * (`navigate_to` has a UI side effect too and stays in the read-only list
+ * above; moving it is out of this change's scope.)
+ */
+const SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES = ['notify_user'];
+
 const SC_TOOL_NAME_PREFIXES = ['station-control_', 'stationControl_'];
 
 export const SC_READ_ONLY_TOOLS = SC_READ_ONLY_TOOL_NAMES.map(
@@ -164,8 +182,22 @@ export const SC_MUTATING_TOOLS = SC_MUTATING_TOOL_NAMES.map(
   (toolName) => `station-control_${toolName}`,
 );
 
+export const SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS =
+  SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES.map(
+    (toolName) => `station-control_${toolName}`,
+  );
+
+/** Every station-control tool an agent may call without an approval prompt. */
+export const SC_AUTO_APPROVED_TOOLS = [
+  ...SC_READ_ONLY_TOOLS,
+  ...SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS,
+];
+
 const READ_ONLY_SET: ReadonlySet<string> = new Set(SC_READ_ONLY_TOOL_NAMES);
 const MUTATING_SET: ReadonlySet<string> = new Set(SC_MUTATING_TOOL_NAMES);
+const BOUNDED_WRITE_SET: ReadonlySet<string> = new Set(
+  SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES,
+);
 
 /** Strip the integration prefix a tool loader may have applied. */
 export function bareControlToolName(toolName: string): string {
@@ -175,7 +207,7 @@ export function bareControlToolName(toolName: string): string {
   return toolName;
 }
 
-type ControlToolClass = 'read-only' | 'mutating';
+type ControlToolClass = 'read-only' | 'bounded-write' | 'mutating';
 
 /**
  * Classify a station-control tool name (prefixed or bare). Unknown names
@@ -185,12 +217,17 @@ type ControlToolClass = 'read-only' | 'mutating';
 export function classifyControlTool(toolName: string): ControlToolClass {
   const bare = bareControlToolName(toolName);
   if (READ_ONLY_SET.has(bare)) return 'read-only';
+  if (BOUNDED_WRITE_SET.has(bare)) return 'bounded-write';
   if (MUTATING_SET.has(bare)) return 'mutating';
   return 'mutating';
 }
 
-/** True when the bare name is explicitly classified (read-only OR mutating). */
+/** True when the bare name is explicitly classified in one of the three lists. */
 export function isClassifiedControlTool(toolName: string): boolean {
   const bare = bareControlToolName(toolName);
-  return READ_ONLY_SET.has(bare) || MUTATING_SET.has(bare);
+  return (
+    READ_ONLY_SET.has(bare) ||
+    BOUNDED_WRITE_SET.has(bare) ||
+    MUTATING_SET.has(bare)
+  );
 }

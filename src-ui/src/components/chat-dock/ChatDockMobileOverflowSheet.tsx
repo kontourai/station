@@ -26,8 +26,6 @@ export function ChatDockMobileOverflowSheet({
   overflow: ChatDockMobileOverflowActions;
   showConnection?: boolean;
   onNewChat?: () => void;
-  onOpenActivity?: () => void;
-  activeCount?: number;
   branchLabel?: string | null;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
@@ -87,6 +85,19 @@ export function ChatDockMobileOverflowSheet({
             onClick={() => run(overflow.onOpenConversationHistory!)}
           >
             Conversation history
+          </button>
+        )}
+        {overflow.onOpenBackgroundTasks && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-haspopup="dialog"
+            onClick={() => run(overflow.onOpenBackgroundTasks!)}
+          >
+            {(overflow.backgroundTasksRunningCount ?? 0) > 0
+              ? `Background tasks — ${overflow.backgroundTasksRunningCount} running`
+              : 'Background tasks'}
           </button>
         )}
         {overflow.onOpenProject && (

@@ -280,7 +280,9 @@ const MAX_PHYSICAL_HOST_CAPACITY_JOB_TIMEOUT_MINUTES = Math.floor(
 );
 const DESKTOP_WIN_HOST_ID = 'desktop-win';
 const FAST_FEEDBACK_LEASE_WEIGHT = 1;
-export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 45;
+// Matches ci.yml's fast-checks fence; raised 45 -> 55 with the fifteen-minute
+// ci:fast budget (#2577).
+export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 55;
 const MAX_NON_FAST_DESKTOP_WIN_LEASE_WEIGHT = 9;
 const REQUIRED_CAPACITY_INPUTS = [
   'coordination-root',
@@ -311,10 +313,20 @@ const CI_ROUTER_PR_TARGET_TYPES = [
   'reopened',
   'edited',
 ];
+const UI_BUNDLE_DELTA_JOB = 'ui-bundle-delta';
+const UI_BUNDLE_DELTA_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const UI_BUNDLE_DELTA_STEP = Object.freeze({
+  name: 'Report UI entry bundle delta',
+  run: 'node scripts/ui-bundle-delta-report.mjs',
+  base: `\${{ github.event.pull_request.base.sha }}`,
+});
+const UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
+const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
   'fork-smoke',
+  UI_BUNDLE_DELTA_JOB,
   'full-regression',
   'manual-completion-diagnostics',
 ]);
@@ -1225,6 +1237,141 @@ function isExactWindowsPrEvidenceUpload(file, jobId, step) {
   );
 }
 
+/**
+ * #1703: the report-only bundle delta job runs same-repository PR head code
+ * (the same trust fast-checks already extends) on a hosted runner with
+ * read-only contents and no credentials. It must stay report-only: no
+ * continue-on-error hiding a verdict, and exactly one reviewed command.
+ */
+function uiBundleDeltaJobFindings(file, job) {
+  const jobId = UI_BUNDLE_DELTA_JOB;
+  const finding = (message) => ({ file, jobId, message });
+  const findings = [];
+  if (job.if !== UI_BUNDLE_DELTA_CONDITION)
+    findings.push(
+      finding(
+        'ui-bundle-delta must use the exact same-repository pull_request_target guard (no merge_group)',
+      ),
+    );
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push(
+      finding(
+        'ui-bundle-delta must declare only permissions: { contents: read }',
+      ),
+    );
+  if (job['runs-on'] !== 'ubuntu-22.04')
+    findings.push(
+      finding('ui-bundle-delta must run on a hosted ubuntu-22.04 image'),
+    );
+  if (
+    typeof job.concurrency?.group !== 'string' ||
+    !job.concurrency.group.includes('github.event.pull_request.head.sha')
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta concurrency must key on the pull-request head sha',
+      ),
+    );
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ),
+    );
+  const checkouts = checkoutSteps(job);
+  const checkout = checkouts[0];
+  if (
+    checkouts.length !== 1 ||
+    checkout?.with?.['persist-credentials'] !== false ||
+    checkout?.with?.['fetch-depth'] !== 0
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ),
+    );
+  if (
+    checkout?.with?.repository !== UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY ||
+    checkout?.with?.ref !== UI_BUNDLE_DELTA_CHECKOUT_REF
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ),
+    );
+  const report = (job.steps ?? []).find(
+    (step) => step?.name === UI_BUNDLE_DELTA_STEP.name,
+  );
+  if (report?.env?.STATION_UI_BUNDLE_DELTA_BASE !== UI_BUNDLE_DELTA_STEP.base)
+    findings.push(
+      finding('ui-bundle-delta must measure against the pull-request base sha'),
+    );
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      'actions/checkout@',
+      'actions/setup-node@',
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: UI_BUNDLE_DELTA_STEP.name, run: UI_BUNDLE_DELTA_STEP.run },
+    ]),
+  );
+  return findings;
+}
+
+const CI_CREDENTIAL_MESSAGE =
+  'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
+
+/** Every string value in a parsed workflow node, keys excluded. */
+function workflowStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(workflowStrings);
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(workflowStrings);
+  return [];
+}
+
+/**
+ * A `${{ }}` expression that can yield a credential: `secrets.*`, the token
+ * by dot or index (`github.token`, `github['token']`), or the whole github
+ * context, which contains the token (`toJSON(github)`, any bare `github`
+ * that is not immediately dereferenced with `.` or `[`).
+ */
+export function expressionReadsCredential(expression) {
+  return (
+    /\bsecrets\b/i.test(expression) ||
+    /\bgithub\s*\.\s*token\b/i.test(expression) ||
+    /\bgithub\s*\[\s*['"]\s*token\s*['"]\s*\]/i.test(expression) ||
+    /(?<![\w./'"-])github(?![\w-]|\s*[.[])/i.test(expression)
+  );
+}
+
+function referencesCredential(job) {
+  return (
+    containsSecretReference(job) ||
+    workflowStrings(job).some((text) =>
+      Array.from(text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)).some(([, body]) =>
+        expressionReadsCredential(body),
+      ),
+    )
+  );
+}
+
+/**
+ * `baseControlledPrWorkflowFindings` exempts ci.yml, so its generic "must not
+ * expose secrets" rule never covered this workflow, several of whose jobs run
+ * pull-request head code under pull_request_target. No job here needs a
+ * credential, so the rule applies to every job rather than guessing which
+ * ones run head code.
+ */
+function ciCredentialFindings(file, jobs) {
+  return Object.entries(jobs)
+    .filter(([, job]) => referencesCredential(job))
+    .map(([jobId]) => ({ file, jobId, message: CI_CREDENTIAL_MESSAGE }));
+}
+
 function forkSmokeIsolationFindings(file, job) {
   const findings = [];
   if (job.if !== FORK_SMOKE_CONDITION)
@@ -1867,6 +2014,8 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
+  findings.push(...ciCredentialFindings(file, jobs));
+
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];
   if (fast) {
@@ -1957,6 +2106,8 @@ function primaryCiRouterFindings(file, document) {
       ]),
     );
   }
+  if (jobs[UI_BUNDLE_DELTA_JOB])
+    findings.push(...uiBundleDeltaJobFindings(file, jobs[UI_BUNDLE_DELTA_JOB]));
   if (fork) {
     findings.push(...forkSmokeIsolationFindings(file, fork));
     if (

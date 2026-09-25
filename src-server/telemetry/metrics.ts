@@ -1377,6 +1377,17 @@ export const notificationOps = meter.createCounter(
     description: 'Notification schedule/deliver/dismiss events',
   },
 );
+/**
+ * #2584: `notify_user` outcomes by `result` (the tool's status) and
+ * `urgency`. Never carries session ids, titles or bodies.
+ */
+export const agentNotificationOps = meter.createCounter(
+  'station.notification.agent_operations',
+  {
+    description:
+      'Agent notify_user outcomes by result and urgency; never content or session identity',
+  },
+);
 export const approvalInboxOps = meter.createCounter(
   'station.approval_inbox.operations',
   {
@@ -2348,7 +2359,8 @@ export const connectedClientPresenceOps = meter.createCounter(
  * owning user had a live stream open, `error` when the listener's own
  * defensive try/catch caught a throw — see `turn-completion-notifications.ts`).
  * Only a `scheduled` decision ever reaches `NotificationService.schedule`
- * (and, via the existing `wireWebPushDelivery` fan-out, a Web Push send).
+ * (and, via the notification delivery router's Web Push channel, a Web Push
+ * send).
  */
 export const turnCompletionNotificationOps = meter.createCounter(
   'station.orchestration.turn_completion_notification_ops',

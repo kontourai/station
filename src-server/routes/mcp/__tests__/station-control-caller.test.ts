@@ -42,6 +42,7 @@ import {
   createWorkspacePaneHostActorFor,
   executeWorkspacePaneHostAction,
 } from '../../../runtime/routes/workspace-pane-host-actions.js';
+import { isFullAccessGrant } from '../../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -357,6 +358,7 @@ beforeAll(async () => {
         isRequestPrincipalCurrent: () => true,
         resolveAgentDispatchActor:
           createAgentDispatchActorResolver(resolveRecord),
+        fullAccessGrantFor: () => null,
       }),
     }),
   );
@@ -982,7 +984,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       (tool: { name: string }) => tool.name,
     );
     expect(names).toEqual(
-      expect.arrayContaining(['list_agents', 'delegate_task']),
+      expect.arrayContaining(['list_agents', 'delegate_task', 'notify_user']),
     );
     await instance.close();
   });
@@ -1165,6 +1167,8 @@ describe('/commands adoptSession (review R1)', () => {
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       ownerAttribution: 'unattributed-agent',
     });
+    // #2493 Q2: an agent-capable caller's adoption carries no grant.
+    expect(dispatchContext()).not.toHaveProperty('fullAccessGrant');
   });
 
   test('an operator-credential /commands adoptSession carries no marker', async () => {
@@ -1178,6 +1182,9 @@ describe('/commands adoptSession (review R1)', () => {
     });
     expect(response.status).toBe(200);
     expect(dispatchContext()).not.toHaveProperty('ownerAttribution');
+    // #2493 Q2: the operator's adoption carries the operator's grant, so
+    // the child starts host exactly as before.
+    expect(isFullAccessGrant(dispatchContext().fullAccessGrant)).toBe(true);
   });
 });
 

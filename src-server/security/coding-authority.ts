@@ -18,16 +18,24 @@ import {
 } from './runtime-request-security.js';
 
 /**
- * #2436 review: a request an agent's station-control tool made. Those tools
- * call Station's REST API with the per-boot internal token, which the auth
- * boundary binds as Station's own internal principal with home-possession,
- * so `isOperatorInPerson` reads it as the operator. The tool's origin
- * marker or caller credential tells them apart, and may only RESTRICT
- * (`isAgentOriginatedRequest`): its absence proves nothing, so this refuses
- * more than before and never grants more.
+ * #2436 review, #2493 review F1: a request that may be an agent's. An
+ * agent's station-control tools call Station's REST API with the per-boot
+ * internal token, which the auth boundary binds as Station's own internal
+ * principal with home-possession, so `isOperatorInPerson` reads it as the
+ * operator. The tool's origin marker or caller credential identifies such a
+ * call (`isAgentOriginatedRequest`), but its ABSENCE proves nothing: any
+ * holder of the token can omit it. So every request the internal principal
+ * carries counts, keyed exactly as `createAgentDispatchActorResolver` keys
+ * it. The operator never reaches Station that way: the UI proxy marks its
+ * hop `remote` and needs the browser's own credential, and the token's
+ * other holders (the Station-agent relay, the CLI's readiness probe) send no
+ * approval or command request.
  */
 function actsForAnAgent(request: Request): boolean {
-  return isAgentOriginatedRequest(request);
+  return (
+    isAgentOriginatedRequest(request) ||
+    getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal'
+  );
 }
 
 /**
@@ -39,13 +47,24 @@ function actsForAnAgent(request: Request): boolean {
  * access request, and a collaborator's browser are all NOT in person, and
  * neither is a request no auth boundary saw.
  */
-export function isOperatorInPerson(request: Request): boolean {
+function isOperatorInPerson(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
   return (
     principal.authority === 'operator-credential' ||
     isBoundRuntimeLocalOperator(request)
   );
+}
+
+/**
+ * #2493 delta review: the operator in person AND not a request that may be
+ * an agent's (`actsForAnAgent`). `isOperatorInPerson` alone reads Station's
+ * internal principal as the operator, because the per-boot token is minted
+ * with home-possession; a gate that grants the operator something outside
+ * Project confinement must use this instead.
+ */
+export function isOperatorInPersonNotAgent(request: Request): boolean {
+  return isOperatorInPerson(request) && !actsForAnAgent(request);
 }
 
 /**
@@ -75,7 +94,8 @@ export function mayRunCommandsOnHost(
  * operator in person, or a caller the auth boundary accepted whose granted
  * scope carries `approval:full-access` (a device the operator allowed, once,
  * from its access editor). Tightening, and a Default pick, need neither.
- * Never a request an agent's station-control tool made (`actsForAnAgent`).
+ * Never a request that may be an agent's (`actsForAnAgent`): the internal
+ * principal, with or without the station-control origin marker.
  */
 export function mayGrantFullAccess(
   request: Request,

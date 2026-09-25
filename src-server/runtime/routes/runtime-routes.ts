@@ -130,9 +130,9 @@ import {
   pairingScopeIncludes,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
@@ -244,11 +244,16 @@ import {
 } from '../../routes/mcp/station-control-mcp-route.js';
 import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js';
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
+import { createAgentNotificationRoutes } from '../../routes/operations/agent-notifications.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
+import {
+  createNotificationDeliveryFeedRoutes,
+  createNotificationPreferencesRoutes,
+} from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -256,6 +261,7 @@ import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environm
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
+import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
@@ -431,6 +437,12 @@ import { StationKitObservabilityRegistry } from '../../services/kits/kit-observa
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import {
+  AgentNotificationGate,
+  agentNotificationSessionContext,
+  scheduleAgentNotificationVia,
+} from '../../services/notifications/agent-notification-gate.js';
+import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
@@ -528,6 +540,7 @@ import {
   StarterRegistry,
   type StarterScheduledCheckOwner,
 } from '../../services/starter-work/starter-registry.js';
+import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -600,6 +613,7 @@ import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invo
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
+  isAgentOriginatedRequest,
   resolveStationControlCallerForRequest,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
@@ -820,6 +834,8 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   /** Agent-activity push; the runtime stops it (and its timer) on shutdown. */
   agentActivityPublisher: AgentActivityPublisher;
+  /** #2586: the runtime stops it (and its escalation timers) on shutdown. */
+  notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /**
@@ -1002,6 +1018,42 @@ export {
   type CurrentRuntimeRequestPrincipalSecurity,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+
+/**
+ * Production `projectDefaultEnvironment` composition for foreground routes
+ * (#480/#1964 placement). Returns the saved Project default VERBATIM —
+ * including a paired-peer id or a dangling id — and only maps a missing or
+ * non-saved configuration to `current`. Existence is NOT checked here on
+ * purpose: the old SSH-only check silently turned a valid paired-peer
+ * default AND a dangling default into local execution. The canonical target
+ * resolver downstream validates the saved ref (or raises a named
+ * unavailable outcome); it never executes locally for a saved intent.
+ */
+export function resolveProjectDefaultEnvironmentRef(
+  projectService: {
+    getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
+  },
+  projectSlug: string,
+): EnvironmentRef {
+  const configured = projectService.getProject(projectSlug).defaultEnvironment;
+  if (configured?.kind !== 'saved') return { kind: 'current' };
+  return configured;
+}
+
+/**
+ * The exact `projectDefaultEnvironment` dependency the foreground routes
+ * receive (#480/#1964 placement). The route wiring below and the
+ * composition tests share this factory, so a test that drives
+ * `/chat` through the factory's callback exercises the REAL production
+ * callback — reintroducing the old SSH-only `current` substitution
+ * anywhere on this path fails the composition, not just the unit.
+ */
+export function createProjectDefaultEnvironmentCallback(projectService: {
+  getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
+}): (projectSlug: string) => EnvironmentRef {
+  return (projectSlug: string) =>
+    resolveProjectDefaultEnvironmentRef(projectService, projectSlug);
+}
 
 /**
  * Epic #2323 S2 (owner decision: any Project member may author a plugin).
@@ -3014,65 +3066,7 @@ export function configureRuntimeRoutes(
               ),
             checkScheduled: () => checkStarterAgentReadiness('station'),
           },
-          {
-            read: async (sessionId) => {
-              const detail = await context.orchestrationService.readSession(
-                sessionId,
-                INTERNAL_SESSION_READ_SCOPE,
-              );
-              return detail
-                ? {
-                    threadId: detail.session.threadId,
-                    controlMode: detail.session.controlMode,
-                  }
-                : null;
-            },
-            continue: async ({ sourceSessionId, operationId }) => {
-              try {
-                const outcome =
-                  await context.orchestrationService.dispatchWithReceipt({
-                    type: 'adoptSession',
-                    sourceThreadId: sourceSessionId,
-                    idempotencyKey: operationId,
-                  });
-                const session = outcome.result as
-                  | AdoptedSessionResult
-                  | undefined;
-                if (!session?.threadId)
-                  return {
-                    state: 'unavailable' as const,
-                    reason:
-                      'Station accepted continuation without an exact child Session.',
-                    retrySafe: true,
-                    receiptId: outcome.receipt.commandId,
-                  };
-                return {
-                  state: 'continued' as const,
-                  session,
-                  receiptId: outcome.receipt.commandId,
-                };
-              } catch (error) {
-                const observed = error as {
-                  message?: string;
-                  receipt?: { commandId?: string };
-                  receiptStatus?: 'persisted' | 'unavailable';
-                };
-                return {
-                  state:
-                    observed.receiptStatus === 'persisted'
-                      ? ('failed' as const)
-                      : ('indeterminate' as const),
-                  reason:
-                    observed.message ??
-                    'The Session continuation outcome is unavailable.',
-                  retrySafe: true,
-                  ...(observed.receipt?.commandId
-                    ? { receiptId: observed.receipt.commandId }
-                    : {}),
-                };
-              }
-            },
-          },
+          createStarterSessionOwner(context.orchestrationService),
           context.getLiveAppConfig,
           owners,
           scheduledChecks,
@@ -3366,6 +3360,8 @@ export function configureRuntimeRoutes(
         resolveClientOrigin: resolveClientOriginForRequest,
         isRequestPrincipalCurrent,
         resolveAgentDispatchActor,
+        fullAccessGrantFor: (c) =>
+          fullAccessGrantForRequest(c as unknown as Context),
       }),
     }),
   );
@@ -3563,18 +3559,9 @@ export function configureRuntimeRoutes(
           idempotencyKey,
           authority,
         ),
-      projectDefaultEnvironment: (projectSlug) => {
-        const configured =
-          context.projectService.getProject(projectSlug).defaultEnvironment;
-        if (configured?.kind !== 'saved') return { kind: 'current' };
-        const exists = context.sshEnvironmentService
-          .list()
-          .some(
-            (environment) =>
-              environment.profile.environmentId === configured.id,
-          );
-        return exists ? configured : { kind: 'current' };
-      },
+      projectDefaultEnvironment: createProjectDefaultEnvironmentCallback(
+        context.projectService,
+      ),
       continueForegroundMessage: (input) =>
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
@@ -5303,6 +5290,10 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
+    notificationPreferences,
+    notificationDeliveryRouter,
+    desktopHostChannel,
+    isNotificationFeedDevice,
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
@@ -5620,6 +5611,49 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
+      // #2584: agents use `notify_user`, never this caller-chosen source.
+      isAgentOriginatedRequest,
+    }),
+  );
+  // #2584 `notify_user`'s REST side. The caller is re-derived from the
+  // forwarded credential on every request. Preferences are the owner default
+  // (`all`) until the stored preferences land with the delivery router
+  // (#2586), which passes them to the gate here.
+  context.app.route(
+    '/api/notifications/agent',
+    createAgentNotificationRoutes({
+      isInternalRequest: isStationInternalRequest,
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      gate: new AgentNotificationGate({
+        schedule: scheduleAgentNotificationVia(notificationService),
+        isHosted: () =>
+          hostedTenantRegistry !== undefined ||
+          isHostedTenantExecutionRequired(),
+        sessionContext: (sessionId) =>
+          agentNotificationSessionContext(
+            context.orchestrationService.firstStartedMetadataOfThread(
+              sessionId,
+            ),
+          ),
+        logger: context.logger,
+      }),
+    }),
+  );
+  // #2586: mounted at the two exact leaves; `/api/notifications` itself is
+  // not a route family, so nothing else under it is reachable.
+  context.app.route(
+    '/api/notifications/preferences',
+    createNotificationPreferencesRoutes(notificationPreferences),
+  );
+  context.app.route(
+    '/api/notifications/deliveries',
+    createNotificationDeliveryFeedRoutes({
+      ...(desktopHostChannel ? { desktopHost: desktopHostChannel } : {}),
+      isFeedDevice: isNotificationFeedDevice,
     }),
   );
   context.app.route(
@@ -5737,6 +5771,7 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     agentActivityPublisher,
+    notificationDeliveryRouter,
     kitLifecycleReady,
     projectTaskRoomRuntime,
     liveSurfaceRegistry,

@@ -214,7 +214,7 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (twelve-minute) per-push feedback after focused
+Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
 evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
@@ -947,7 +947,7 @@ set (defined in `scripts/lib/verification-receipt.mjs`): receipt
 See `docs/reference/verification-receipts.md` for the field-by-field table.
 
 `ci:fast` is bounded diagnostic feedback, not completion evidence: it has a
-twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
+fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
 `origin/main`) in its request identity, runs the affected selection before a
 fixed bounded static invariant set. A selector exit 3 is reported as a
 diagnostic defer after those invariants, never completion evidence; the

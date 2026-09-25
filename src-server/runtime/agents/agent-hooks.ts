@@ -29,7 +29,10 @@ import {
 } from '../conversation/usage-stats.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import {
+  isAutoApproved,
+  isIntrinsicStationEngineGrant,
+} from '../tools/tool-executor.js';
 import type {
   IAgentHooks,
   InvocationContext,
@@ -123,7 +126,11 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       : undefined,
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
-    isGranted: (tool) => isAutoApproved(tool.toolName, autoApprove),
+    isGranted: (tool) =>
+      isAutoApproved(tool.toolName, autoApprove) ||
+      // #2584: the built-in's bounded-write tools, for every agent and run
+      // (attended, unattended, delegated), by exact loader identity.
+      isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping),
     logger: deps.logger,
   });
 

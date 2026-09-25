@@ -193,7 +193,7 @@ activity as high-priority messages.
 
 ### Station contract
 
-The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
+The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
 
 - **Push key.** `security/push-signing-key.json` (0600) holds a P-256 key used
   only for gateway requests: domain-separated from the connection signing key,
@@ -236,6 +236,58 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   `station_key`. `NATIVE_PUSH_SEALED_TEST_VECTOR` in
   `@kontourai/station-contracts/native-push` is the known-answer vector for
   the phone's opener.
+- **Opening the session a card names (#2515).** The plaintext may also
+  carry `activity_session_id` / `activity_project_slug` (the session in row 0)
+  and, for a single-session alert, `alert_session_id` / `alert_project_slug`.
+  A grouped alert names none. They travel only inside the seal, and only
+  when the session id (and the project slug, if the session has one) match
+  `NATIVE_PUSH_SESSION_REFERENCE_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`,
+  ASCII); otherwise nothing is sent and a tap opens the app where it was. The
+  reference is a pair of identifiers, not a path, so neither the card nor the
+  phone ever supplies a URL. On the phone, `AgentActivityModel.kt`
+  (`SessionRoute.validOrNull`) checks the same grammar — a server test pins
+  the Kotlin pattern to the contract's — and drops the whole route on any
+  failure; the route's Station is the registration's verified Station id,
+  never a card field. The route never rides on an intent: the tap's
+  launch intent (no data URI or action, which the deep-link plugin would
+  read as a pairing link) carries only a random tap nonce, and
+  `AgentNotifications.openApp` records nonce → route in app-private storage
+  (`TapLedger` in `AgentActivityModel.kt`: one live nonce per card or alert,
+  at most 20, expiring after 24 hours, the longest a card lives). Each card
+  and alert has its own request code and, from API 29, intent identifier, and
+  `FLAG_UPDATE_CURRENT` replaces the extras of the same notification's
+  intent, so a re-posted card carries only its newest nonce.
+  `AgentActivityPlugin` looks at an intent from `load` or `onNewIntent` only
+  if it is shaped like those launch intents (`ACTION_MAIN`, no data, not
+  `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), and adopts a route only by
+  redeeming its nonce, which consumes it. That is what makes the exported
+  launcher activity safe: extras another app supplies name no issued nonce,
+  and the original launch intent Android restores to a recreated activity
+  after process death names a nonce already redeemed (removing the extra
+  only helps within one process). Redeeming always records a fresh nonce for
+  the same card or alert, and writes it into that notification's
+  PendingIntent only if it still exists (`FLAG_NO_CREATE` check, then
+  `FLAG_UPDATE_CURRENT`), so tapping the same ongoing card again works; for
+  a notification already gone the fresh nonce is never carried and simply
+  occupies a ledger slot until it expires. The
+  plugin then holds the route
+  and hands it to the web layer through `take_launch_route` (returns and
+  clears), announced by a `launchRoute` plugin event while the app runs. The
+  web layer (`agentActivitySessionTarget`) validates the grammar a third time
+  and navigates only when the route's Station is the connected one, to the
+  Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
+  or `/?chat=<id>&dock=open` without a project. A route for another Station
+  is dropped; switching Stations from a tap is not attempted. The check is
+  per Station, not per user: with two registrations for different users on
+  one Station, a card may navigate the app while it is connected as the
+  other user. Only navigation follows; the session itself stays behind the
+  server's per-session read checks. The iOS Live Activity receives the same
+  fields inside its seal and ignores them: an iOS tap opens the app without
+  routing.
+  The references count against the 2500-byte plaintext budget and are
+  never cut: the card's reference stays for as long as row 0 does, and an
+  alert's stays with the alert, so under a tight budget they displace tail
+  rows (at most about 310 bytes each for the longest id and slug).
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with
@@ -307,6 +359,122 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   registers, which only happens when its user turns agent activity on; the
   flow is listed in the privacy inventory.
 
+### iOS: Live Activities over broadcast channels
+
+iOS 18 and later get the same card as a Live Activity (the design record for
+issue #2513). The Station side and the gateway's APNs routes are built (the
+gateway ships dark until its APNs secrets are set). The widget extension is
+built but off by default, and enabling it and App Store signing are a
+separate, owner-gated slice, so nothing reaches an iPhone yet (see Delivery
+status).
+
+- **Architecture.** Each Live Activity has its own APNs broadcast channel,
+  created by the gateway inside the start: the Station sends
+  `event: 'start'` with the registration's push-to-start token and no
+  channel, and the gateway creates the channel, sends the push-to-start with
+  it as `input-push-channel`, and answers `{ result: 'sent', channelId,
+  channelAuth }`. `channelAuth` is the gateway's HMAC over the channel and the
+  Station's key; every update and end of that activity, and the channel's
+  deletion, must carry it. Once an ended activity's dismissal time has passed
+  (at once for an immediate end) the Station deletes its channel with
+  `POST /v1/apns/channels`, `{ op: 'delete', bundleId, environment,
+  channelId, channelAuth }`. There is no endpoint that creates a channel on
+  its own: channels are an app-wide quota that never expires, and push keys
+  are free to mint. The phone never reports a per-activity token, so nothing
+  on the phone uses a credential in the background. Registration makes no
+  network call.
+- **Registration.** The same route, with
+  `{ token, packageName, platform: 'ios', apnsEnvironment }`: the token is
+  the ActivityKit push-to-start token (hex, 32 to 100 bytes, stored
+  lowercase), `packageName` one of `NATIVE_PUSH_IOS_BUNDLES`, and
+  `apnsEnvironment` `production` or `sandbox`. The answer is unchanged. iOS
+  records live in their own sidecar, `security/native-push-ios-registrations.json`
+  (0600, schemaVersion 1), with the started `activity` (`startedAt`, a random
+  `runId`, `channelId`, `channelAuth`) and `channelDeletes` (ended
+  activities' channels, with their topic and the time they may be deleted,
+  at most 16) beside the Android fields, so a restart neither starts a second
+  activity nor forgets a channel. A separate file
+  because the Android file is read as strictly as the device registry: one
+  iOS record in it would cost an older Station every Android registration.
+  A device holds one registration; registering on one platform clears the
+  other (best effort: an unreadable file for the other platform does not
+  block this one, and should both ever hold the device the newer one is
+  served; a later re-registration on the stale record's own platform then
+  wins again, and the other record lingers until the device is cleared or
+  revoked), and `DELETE`, revocation and replacement clear both files. A
+  removed iOS record that still has a live activity or queued channels
+  leaves a tombstone in the file (`tombstones`, at most 32, drops logged):
+  the publisher is told at once, ends that activity with an empty card
+  dismissed now, then deletes its channels, so a revoked phone stops
+  showing sessions even when the Station restarted in between. A phone
+  revoked while its start is in flight has that start's activity retired
+  the same way once the start answers; during a rollover that start's
+  activity is the one ended, and the rolled-over one (whose end already
+  went out) only has its channel deleted. A tombstone older than 24 hours is
+  dropped: the activity has ended on the phone, and the sweep reclaims its
+  channels. While one registration file is unreadable, its phones keep
+  their state but are only looked at on the stalled-flush minute. A token
+  for another bundle or APNs environment queues the live activity's channel
+  for deletion under its old topic.
+- **Card.** `content-state` is `{ v: 1, rid, sk, sealed }`: `sealed` is the
+  Android card, sealed with the iOS registration's `payloadKey` and AAD
+  `station-agent-activity:v1:<registrationId>`; `sk` is always stamped by
+  the gateway. The only plaintext APNs carries for display is a fixed alert
+  ("Station" / "Agent activity"), which the gateway builds from fixed
+  vocabulary; the Station sends only `alert: true | false`.
+- **Planner.** `live-activity-planner.ts` decides from the stored activity
+  and the card: no activity and an active card not yet sent → start; an
+  activity and a changed card, or one 30 minutes from going stale → update
+  (stale at the card's expiry); an activity and a finished card → end with
+  that card, dismissed at its expiry but within 4 hours, alerting a pending
+  finish; an empty card or lost read access → end, dismissed now. An
+  activity started 7 h 30 m ago is ended and started again before Apple's
+  8-hour limit, on its own timer: end, delete its channel, and start again
+  on a new one.
+- **Requests.** `POST /v1/apns/live-activity`, signed like the FCM send:
+  `{ bundleId, environment, event, pushToStartToken (start only), channelId
+  and channelAuth (update, end), registrationId, sealed, alert, timestamp,
+  staleAt (start, update) | dismissAt (end) }`, times in Unix seconds. `timestamp` is
+  `max(ceil(now), previous + 1)` per registration, so an end and the start
+  that follows it in one flush are ordered. The per-phone three-second
+  interval, backoff, alert bookkeeping and per-principal read are the
+  Android publisher's. Answers: 200 sent (a fresh `channelAuth` in it, after
+  the gateway rotated its secret, is stored); 410 `{ result: 'unregistered' }`
+  clears the registration (at a start the gateway has already deleted the
+  channel it made); 410 `{ result: 'channel-gone' }` and 403
+  `{ result: 'channel-unauthorized' }` forget the activity, and the retry
+  starts a new one; a 410 naming neither is retried with backoff; 422 is
+  refused for good (a refused end still forgets the activity, which goes
+  stale, and queues its channel); 429, 503, 401 and network errors back off.
+  Deletions back off on their own (so a failing delete never holds back a
+  card) and are dropped after the same eight timed attempts; a gone or
+  refused channel counts as deleted; a given-up channel is logged by a hash
+  of its id. A start that fails after a rollover's end forgets what the
+  phone was sent, so the next attempt starts again rather than waiting on a
+  rollover that already happened. A 200 start that names no channel is
+  retried like a 503; that start may already have put an activity on the
+  phone, so a retry can show a second one while the first, unreachable,
+  goes stale — preferred over a card nothing can update or end. Each activity keeps its last `timestamp` in the file,
+  so a restart never sends it an older one. An unreadable registration file
+  stops only its own platform's cards. A registration pinned to a previous
+  push key cannot have its activity ended (its `channelAuth` is bound to
+  that key): it goes stale, and the gateway's channel ledger and sweep
+  reclaim the channel within about 12 hours and a few sweeps, as they do any channel the
+  Station loses track of.
+- **What differs from Android in the threat model.** A forged or replayed
+  push can blank the card but not inject content: the widget (slice C) is to
+  show a neutral placeholder unless the state's `rid` matches its attributes, `sk` matches
+  the pinned key, the card opens with the registration's key and `user_id`
+  is the Station. Alert text is fixed by the gateway, so no session title
+  ever reaches APNs in clear. Channels are a per-app quota shared by every
+  Station: no request creates a channel except a start, which the gateway
+  rate limits per address, per device, per key and globally, and
+  only the Station whose key the `channelAuth` was minted for can update,
+  end or delete a channel. The Station deletes each activity's channel after
+  it ends. A channel whose registration was cleared (unregistered, revoked,
+  or moved to Android) while the Station was stopped is not deleted: the
+  Station no longer knows it.
+
 ### Provisioning
 
 - Firebase project `kontour-station` under the kontourai.io organization,
@@ -328,7 +496,10 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
 | Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
-| iOS Live Activity (widget extension in `gen/apple/project.yml`) and APNs in the gateway | not started |
+| APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation. The Durable Object is chosen for correctness (a strongly consistent single writer: Workers KV's eventual consistency could let the sweep miss a fresh record and delete a live channel); the sweep's cadence and per-run caps are shaped by the Workers Free plan's 50-subrequest limit, and Free's CPU limit is not yet verified. The ledger also keeps a guard of six accepted starts per device per UTC day against a runaway honest Station (not an abuse bound; the per-key and global limiters are); an end may carry the fixed alert. Ships dark until the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets are set; tested against a fake APNs only |
+| iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
+| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half, and no workflow (TestFlight included) enables it. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
+| iOS enablement and App Store signing (#2513 slice D) | not started; owner-gated: the App ID's push and broadcast capabilities, profiles for the app and `<app id>.AgentActivity`, and the APNs secrets |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at
