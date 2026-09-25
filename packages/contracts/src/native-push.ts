@@ -120,6 +120,25 @@ export const NATIVE_PUSH_SEALED_AAD_PREFIX = 'station-agent-activity:v1:';
 export const NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX = 'station-alert:v1:';
 
 /**
+ * Known-answer vector for a sealed iOS alert (#2590): the card vector's key
+ * and registrationId, its own nonce, AAD
+ * {@link NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX} + registrationId, and a
+ * plaintext in the exact shape the Station's alert composer writes. The
+ * Station's sealer is tested against it, and the Notification Service
+ * Extension's opener (StationNotificationServiceCoreTests/SealedAlertTests.swift)
+ * carries a copy that a Station test pins to this one.
+ */
+export const NATIVE_PUSH_ALERT_SEALED_TEST_VECTOR = {
+  payloadKey: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
+  registrationId: 'AAECAwQFBgcICQoLDA0ODw',
+  nonce: 'AQIDBAUGBwgJCgsM',
+  plaintext:
+    '{"user_id":"11111111-1111-4111-8111-111111111111","notification_id":"notif-0001","urgency":"attention","issued_at":"1800000000000","title":"Approval needed","body":"Fix the flaky login test · Login App"}',
+  sealed:
+    'AQIDBAUGBwgJCgsMfsgvponmr-8ogFllISLbGXNy0M-6XGH0kHLNFa-HW_211aryX4TdroGdi9T06slsvNptjrvtXxdfHm25Bm5aUx4ZKRmdnzKUInSdSssIMoXxEkVahUyQowO0rClBilRG-bIFEtFmIkecpeJQzpJHreymHfrgQaFeQx3B9oyhHQQwRS6HnrAAXI-KeN60rsAzq41d_f6obgf3VAm_Qlo4eJYTF7Mxc0w6tLzn_58A00ZJqz7T67c-sPl6qVy7cHotQU-0-etVBpvrCQG0DjUQtxApwbPd_tZwAPO_Uw',
+} as const;
+
+/**
  * A card as the gateway and FCM carry it: only routing data in clear. The
  * card itself (a JSON object of strings: `user_id`, `updated_at`, `active`,
  * `activity_*`, `alert_*`) is in `sealed` =
