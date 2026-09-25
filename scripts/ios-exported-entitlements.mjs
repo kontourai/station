@@ -55,6 +55,89 @@ export function inspectExportedIosEntitlements(value, { team, bundleId }) {
   };
 }
 
+/**
+ * The Notification Service Extension's exported entitlements (#2590): its
+ * own application identifier (`<app>.NotificationService`) and ONLY the
+ * keychain group the app shares its registrations through — no default
+ * group, no push, no app group.
+ *
+ * @param {unknown} value
+ * @param {{ team: string, appBundleId: string }} options
+ */
+export function inspectExportedIosNotificationServiceEntitlements(
+  value,
+  { team, appBundleId },
+) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Exported iOS entitlements must be a JSON object.');
+  }
+  const expectedApplicationIdentifier = `${team}.${appBundleId}.NotificationService`;
+  const applicationIdentifier = text(
+    value['application-identifier'],
+    'application-identifier',
+  );
+  if (applicationIdentifier !== expectedApplicationIdentifier)
+    throw new Error(
+      `Exported Notification Service application-identifier mismatch: expected ${expectedApplicationIdentifier}, got ${applicationIdentifier}.`,
+    );
+  const teamIdentifier = text(
+    value['com.apple.developer.team-identifier'],
+    'com.apple.developer.team-identifier',
+  );
+  if (teamIdentifier !== team)
+    throw new Error(
+      `Exported Notification Service team identifier mismatch: expected ${team}, got ${teamIdentifier}.`,
+    );
+  const sharedGroup = `${team}.${appBundleId}.agentactivity`;
+  const groups = value['keychain-access-groups'];
+  if (
+    !Array.isArray(groups) ||
+    groups.length !== 1 ||
+    groups[0] !== sharedGroup
+  )
+    throw new Error(
+      `Exported Notification Service keychain access groups must be exactly [${sharedGroup}].`,
+    );
+  if (value['aps-environment'] !== undefined)
+    throw new Error('The Notification Service extension must not carry push.');
+  if (value['com.apple.security.application-groups'] !== undefined)
+    throw new Error(
+      'Exported Notification Service entitlements contain an unexpected shared application group.',
+    );
+  return {
+    applicationIdentifier,
+    teamIdentifier,
+    keychainAccessGroups: [sharedGroup],
+  };
+}
+
+const USAGE =
+  'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID [--notification-service-extension]';
+
+/**
+ * The CLI's verdict for argv (after the script path); throws on refusal.
+ * With `--notification-service-extension`, BUNDLE_ID is the app's.
+ *
+ * @param {string[]} args
+ * @param {(path: string) => string} [read]
+ */
+export function exportedEntitlementsCli(
+  args,
+  read = (path) => readFileSync(path, 'utf8'),
+) {
+  const [path, team, bundleId, mode, ...rest] = args;
+  if (!path || !team || !bundleId || rest.length) throw new Error(USAGE);
+  if (mode !== undefined && mode !== '--notification-service-extension')
+    throw new Error(USAGE);
+  const entitlements = JSON.parse(read(path));
+  return mode === undefined
+    ? inspectExportedIosEntitlements(entitlements, { team, bundleId })
+    : inspectExportedIosNotificationServiceEntitlements(entitlements, {
+        team,
+        appBundleId: bundleId,
+      });
+}
+
 function isMainModule() {
   try {
     return (
@@ -67,14 +150,7 @@ function isMainModule() {
 }
 
 if (isMainModule()) {
-  const [path, team, bundleId] = process.argv.slice(2);
-  if (!path || !team || !bundleId) {
-    throw new Error(
-      'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID',
-    );
-  }
-  const entitlements = JSON.parse(readFileSync(path, 'utf8'));
   process.stdout.write(
-    `${JSON.stringify(inspectExportedIosEntitlements(entitlements, { team, bundleId }), null, 2)}\n`,
+    `${JSON.stringify(exportedEntitlementsCli(process.argv.slice(2)), null, 2)}\n`,
   );
 }

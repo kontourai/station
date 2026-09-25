@@ -18,10 +18,24 @@ import YAML from 'yaml';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ENTITLEMENTS = 'station_iOS/StationSimulator.entitlements';
-// The Live Activity widget extension (#2513), when the spec carries it.
-const EXTENSION_TARGET = 'StationAgentActivity';
-const EXTENSION_ENTITLEMENTS =
-  'station_iOS/StationAgentActivitySimulator.entitlements';
+// The app extensions a spec may carry (ensure-ios-agent-activity-extension
+// .mjs): the Live Activity widget (#2513) and the Notification Service
+// Extension (#2590). Each holds only the keychain group the app shares.
+const EXTENSIONS = [
+  {
+    target: 'StationAgentActivity',
+    suffix: 'AgentActivity',
+    label: 'Live Activity',
+    entitlements: 'station_iOS/StationAgentActivitySimulator.entitlements',
+  },
+  {
+    target: 'StationNotificationService',
+    suffix: 'NotificationService',
+    label: 'Notification Service',
+    entitlements:
+      'station_iOS/StationNotificationServiceSimulator.entitlements',
+  },
+];
 const sectionFlags = (entitlements) => [
   '-Xlinker',
   '-sectcreate',
@@ -64,13 +78,18 @@ export function simulatorEntitlements(
   };
 }
 
-/** The widget extension's rights: only the group the app shares with it. */
-export function simulatorAgentActivityEntitlements(identifier) {
+/** An extension's rights: only the group the app shares with it. */
+export function simulatorExtensionEntitlements(identifier, suffix) {
   const app = simulatorEntitlements(identifier, { agentActivity: true });
   return {
-    'application-identifier': `${identifier}.AgentActivity`,
+    'application-identifier': `${identifier}.${suffix}`,
     'keychain-access-groups': [app['keychain-access-groups'][1]],
   };
+}
+
+/** The widget extension's rights: only the group the app shares with it. */
+export function simulatorAgentActivityEntitlements(identifier) {
+  return simulatorExtensionEntitlements(identifier, 'AgentActivity');
 }
 
 const entitlementsXml = (entitlements) =>
@@ -108,13 +127,14 @@ export function prepareIosSimulator({ root = ROOT, run = runCommand } = {}) {
     !target.settings?.base
   )
     throw new Error('Expected the generated Station iOS application target.');
-  const extension = project.targets?.[EXTENSION_TARGET];
-  const agentActivity = extension !== undefined;
-  if (
-    agentActivity &&
-    (extension?.type !== 'app-extension' || !extension.settings?.base)
-  )
-    throw new Error('Expected the Live Activity app-extension target.');
+  const extensions = EXTENSIONS.flatMap((spec) => {
+    const extension = project.targets?.[spec.target];
+    if (extension === undefined) return [];
+    if (extension?.type !== 'app-extension' || !extension.settings?.base)
+      throw new Error(`Expected the ${spec.label} app-extension target.`);
+    return [{ spec, extension }];
+  });
+  const agentActivity = extensions.length > 0;
   const entitlements = simulatorEntitlements(config.identifier, {
     agentActivity,
   });
@@ -124,13 +144,15 @@ export function prepareIosSimulator({ root = ROOT, run = runCommand } = {}) {
   writeFileSync(join(apple, ENTITLEMENTS), entitlementsXml(entitlements), {
     mode: 0o600,
   });
-  if (agentActivity) {
+  for (const { spec, extension } of extensions) {
     // The extension's bundle id must extend the app's development identity.
     extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER = config.identifier;
-    addSectionFlags(extension, EXTENSION_ENTITLEMENTS);
+    addSectionFlags(extension, spec.entitlements);
     writeFileSync(
-      join(apple, EXTENSION_ENTITLEMENTS),
-      entitlementsXml(simulatorAgentActivityEntitlements(config.identifier)),
+      join(apple, spec.entitlements),
+      entitlementsXml(
+        simulatorExtensionEntitlements(config.identifier, spec.suffix),
+      ),
       { mode: 0o600 },
     );
   }
@@ -262,31 +284,37 @@ export function verifyIosSimulator(
     throw new Error(
       'Simulator pairing association does not match its development identity.',
     );
-  const appex = join(app, 'PlugIns', `${EXTENSION_TARGET}.appex`);
-  const agentActivity = existsSync(appex);
+  const embedded = EXTENSIONS.map((spec) => ({
+    spec,
+    appex: join(app, 'PlugIns', `${spec.target}.appex`),
+  })).filter(({ appex }) => existsSync(appex));
+  const agentActivity = embedded.length > 0;
   verifyEntitlementSection(
     executable,
     simulatorEntitlements(config.identifier, { agentActivity }),
     run,
     'The built simulator app is missing its private keychain identity.',
   );
-  if (agentActivity) {
+  for (const { spec, appex } of embedded) {
     const extensionInfo = JSON.parse(
       run('plutil', ['-convert', 'json', '-o', '-', join(appex, 'Info.plist')]),
     );
-    const expected = simulatorAgentActivityEntitlements(config.identifier);
+    const expected = simulatorExtensionEntitlements(
+      config.identifier,
+      spec.suffix,
+    );
     if (
       extensionInfo.CFBundleIdentifier !== expected['application-identifier'] ||
-      extensionInfo.CFBundleExecutable !== EXTENSION_TARGET
+      extensionInfo.CFBundleExecutable !== spec.target
     )
       throw new Error(
-        'The Live Activity extension does not extend the development identity.',
+        `The ${spec.label} extension does not extend the development identity.`,
       );
     verifyEntitlementSection(
-      join(appex, EXTENSION_TARGET),
+      join(appex, spec.target),
       expected,
       run,
-      'The built Live Activity extension is missing its shared keychain group.',
+      `The built ${spec.label} extension is missing its shared keychain group.`,
     );
     // Nested code is sealed before the app that contains it.
     run('codesign', [

@@ -539,8 +539,22 @@ the route answers 503. The gateway is deployed by hand
   travel in `sealed` under the registration's payload key with AAD
   `station-alert:v1:<registrationId>` (so an alert never opens as a card, or
   a card as an alert), for the Notification Service Extension (#2590) to
-  open; until it exists, the fixed text is what shows. With `hideContent` the
+  open; a build without it shows the fixed text. With `hideContent` the
   sealed payload carries neither title nor body.
+- **Notification Service Extension (#2590).** `StationNotificationService`
+  (`src-desktop/ios/StationNotificationService`, bundle
+  `<app>.NotificationService`) replaces the fixed title and body with the
+  sealed ones only when every check passes: payload `v` 1, a registration in
+  the shared keychain group for `rid`, `sk` equal to that registration's
+  pinned Station key, a seal that opens under its payload key in the alert
+  domain, and `user_id` naming its Station. Anything else, a seal without a
+  title or body (hidden content), and `serviceExtensionTimeWillExpire`
+  deliver the push exactly as it arrived. The logic is
+  `StationNotificationServiceCore` in the agent-activity Swift package,
+  tested on macOS against `NATIVE_PUSH_ALERT_SEALED_TEST_VECTOR`. It opens a
+  replayed genuine alert as readily as a fresh one (nothing checks
+  `issued_at`); APNs drops an undelivered alert after an hour. It cannot
+  suppress a push, only rewrite it.
 - **What stops a stranger.** Nothing binds a device token to the Station that
   registered it (there is no `channelAuth` for a device), so anyone who
   learns a phone's device token can sign alerts to it with a key they minted:
@@ -557,7 +571,7 @@ the route answers 503. The gateway is deployed by hand
   starvation costs only lock-screen alerts (the inbox, the in-app toast and
   the Live Activity card are unaffected) and needs the token, which only
   the phone, its Station and Apple hold. Refusing such alerts on the
-  phone needs the Notification Service Extension (#2590) to check the
+  phone needs the Notification Service Extension (#2590), which checks the
   stamped `sk` against the pinned Station key, plus Apple's notification
   filtering entitlement (`com.apple.developer.usernotifications.filtering`),
   without which an extension cannot suppress a push, only rewrite it.
@@ -673,6 +687,7 @@ the route answers 503. The gateway is deployed by hand
 | iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half, and no workflow (TestFlight included) enables it. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
 | iOS enablement and App Store signing (#2513 slice D) | not started; owner-gated: the App ID's push and broadcast capabilities, profiles for the app and `<app id>.AgentActivity`, and the APNs secrets |
 | iOS notification alerts, fixed text (#2589) | built. The Station side is dormant until a phone sends an alert token. Gateway `/v1/apns/alert` is live on a gateway deployed with the APNs secrets set and the `ALERT_PER_TOKEN_LIMITER` binding (without the binding it answers 503); the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only. Also built: the optional `alertToken` on the iOS registration, `ApnsAlertChannel` in the delivery router, and the plugin's `alert_token` command (off with the rest of the plugin; the delegate hook is tested on macOS only and needs device verification before enabling). See the enablement checklist in "iOS: notification alerts" |
+| iOS Notification Service Extension (#2590) | built, off by default: `scripts/ensure-ios-agent-activity-extension.mjs --notification-service` adds it on top of the Live Activity's project half, a separate switch because it needs a third App ID and profile (`<app>.NotificationService`). The committed project does not carry it, and no workflow enables it yet. The opening logic is tested on macOS only (`swift test`); no simulator or device build has shown a decrypted alert |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at

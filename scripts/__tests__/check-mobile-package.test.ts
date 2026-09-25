@@ -144,6 +144,46 @@ describe('packaged iOS capability audit', () => {
       }),
     ).toThrow(/not in the bundle-relative allowlist/);
   });
+  test('reviews the Notification Service Extension and its executable (#2590)', () => {
+    const nse = {
+      ...base,
+      signedBundles: [
+        ...base.signedBundles,
+        {
+          path: 'PlugIns/StationNotificationService.appex',
+          entitlements:
+            '<key>application-identifier</key><key>com.apple.developer.team-identifier</key><key>keychain-access-groups</key>',
+        },
+      ],
+      dependencies: [
+        ...base.dependencies,
+        {
+          binary:
+            'PlugIns/StationNotificationService.appex/StationNotificationService',
+          output:
+            'StationNotificationService:\n/System/Library/Frameworks/UserNotifications.framework/UserNotifications\n/usr/lib/swift/libswiftCore.dylib',
+        },
+      ],
+    };
+    expect(auditIosInventory(nse)).toEqual({
+      privacyCount: 2,
+      signedBundleCount: 2,
+      binaryCount: 2,
+    });
+    // Another binary inside the extension is still refused.
+    expect(() =>
+      auditIosInventory({
+        ...nse,
+        dependencies: [
+          ...base.dependencies,
+          {
+            binary: 'PlugIns/StationNotificationService.appex/Helper',
+            output: 'Helper:\n/usr/lib/libobjc.A.dylib',
+          },
+        ],
+      }),
+    ).toThrow(/Mach-O PlugIns\/StationNotificationService.appex\/Helper/);
+  });
   test('fails an unreviewed extension entitlement', () =>
     expect(() =>
       auditIosInventory({

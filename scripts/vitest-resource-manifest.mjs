@@ -465,6 +465,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2513: runs the ensure script once as a child process to prove a
   // refusal is a non-zero exit that leaves the spec untouched.
   'scripts/__tests__/ensure-ios-agent-activity-extension.test.ts',
+  // #2590: runs the exported-entitlements check once as a child process to
+  // prove the Notification Service Extension's refusal is a non-zero exit.
+  'scripts/__tests__/ios-exported-entitlements.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this

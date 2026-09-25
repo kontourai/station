@@ -1,6 +1,9 @@
 {
-  "signedBundlePaths": ["."],
-  "machOPaths": ["{executable}"],
+  "signedBundlePaths": [".", "PlugIns/StationNotificationService.appex"],
+  "machOPaths": [
+    "{executable}",
+    "PlugIns/StationNotificationService.appex/StationNotificationService"
+  ],
   "embeddedRpathTargets": [],
   "privacyManifestPaths": [
     "PrivacyInfo.xcprivacy",
