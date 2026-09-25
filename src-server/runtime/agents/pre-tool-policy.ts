@@ -129,6 +129,17 @@ function deny(
 const UNATTENDED_REMEDY =
   "Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
 
+const CHILD_REMEDY =
+  "To allow it here, add it to this agent's tools.unattendedAutoApprove list.";
+
+/**
+ * The narrower remedy a scheduled job also has: the operator's standing
+ * grant for that one job (`/api/agents/unattended-grants`, consulted by
+ * `resolveUnattendedGrant`), which does not widen the agent everywhere.
+ */
+const SCHEDULED_JOB_REMEDY =
+  'To allow it for this scheduled job alone, an operator can record an unattended tool grant for the job instead.';
+
 /** Station's own half of a config-protection denial, always present. */
 const CONFIG_PROTECTION_PREDICATE =
   'was blocked by the config-protection policy.';
@@ -348,7 +359,11 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'delegation_deny_approvals',
         tool.toolName,
-        "requires approval, and delegated child sessions cannot grant approvals. To allow it here, add it to this agent's tools.unattendedAutoApprove list.",
+        // The opt-in is honoured on Station's engine only, so an external
+        // (ACP/Claude) child is not sent to an edit that changes nothing.
+        options.interaction === 'managed'
+          ? `requires approval, and delegated child sessions cannot grant approvals. ${CHILD_REMEDY}`
+          : 'requires approval, and delegated child sessions cannot grant approvals.',
       );
     }
 
@@ -394,7 +409,9 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'unattended_grant_denied',
         tool.toolName,
-        `was denied for this unattended run. ${UNATTENDED_REMEDY}`,
+        invocation.unattendedPrincipal?.kind === 'scheduled-job'
+          ? `was denied for this unattended run. ${UNATTENDED_REMEDY} ${SCHEDULED_JOB_REMEDY}`
+          : `was denied for this unattended run. ${UNATTENDED_REMEDY}`,
       );
     }
     deps.logger.warn('No approval channel; denied tool execution', {

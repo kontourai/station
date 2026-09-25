@@ -1282,6 +1282,92 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     expect(chat.approvalRegistry.register).toHaveBeenCalledOnce();
   });
 
+  test('a scheduled-job denial also names the narrower per-job grant', async () => {
+    const { hooks } = hooksFor(
+      { autoApprove: ['station-control_*'] },
+      { resolveUnattendedGrant: vi.fn().mockResolvedValue(false) },
+    );
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        unattendedPrincipal: { kind: 'scheduled-job', jobId: 'job-1' },
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: `${UNATTENDED_GRANT_REASON} To allow it for this scheduled job alone, an operator can record an unattended tool grant for the job instead.`,
+    });
+  });
+
+  test('config protection still blocks an opted-in tool', async () => {
+    const ws = mkdtempSync(join(tmpdir(), 'agent-hooks-2613-'));
+    try {
+      mkdirSync(join(ws, '.flow-agents'), { recursive: true });
+      const { hooks } = hooksFor(
+        { unattendedAutoApprove: ['fs_write'] },
+        {
+          agentPolicyService: new AgentPolicyService({
+            env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+            logger: { debug: vi.fn(), warn: vi.fn() },
+          }),
+        },
+      );
+      const write = (path: string) =>
+        hooks.beforeToolCall!(
+          {
+            toolName: 'fs_write',
+            toolCallId: 'tool-1',
+            toolArgs: { path, content: '{}' },
+          },
+          { agentSlug: 'planner' },
+        );
+
+      // The opt-in is live for this tool…
+      await expect(write(join(ws, 'notes.md'))).resolves.toBe(true);
+      // …and still loses to config protection.
+      await expect(write(join(ws, 'biome.json'))).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('config-protection'),
+      });
+      expect(toolDenials.add).toHaveBeenCalledWith(1, {
+        reason: 'policy_config_protection',
+      });
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  test('the guardian is consulted first, and only an enforce-mode deny vetoes the opt-in', async () => {
+    for (const [mode, decision] of [
+      ['review', 'deny'],
+      ['enforce', 'defer'],
+    ] as const) {
+      const reviewToolCall = vi
+        .fn()
+        .mockResolvedValue({ decision, reason: 'Unsure.' });
+      const { hooks } = hooksFor(
+        { unattendedAutoApprove: ['station-control_*'] },
+        {
+          approvalGuardian: {
+            isEnabled: () => true,
+            getMode: () => mode,
+            reviewToolCall,
+          },
+        },
+      );
+
+      await expect(
+        hooks.beforeToolCall!(deleteAgentCall, { agentSlug: 'planner' }),
+        `${mode} mode, ${decision}`,
+      ).resolves.toBe(true);
+      // Reached the guardian before the opt-in allowed the call.
+      expect(
+        reviewToolCall,
+        `${mode} mode, ${decision}`,
+      ).toHaveBeenCalledOnce();
+    }
+  });
+
   test('an opt-in for one tool does not cover another', async () => {
     const { hooks } = hooksFor({
       unattendedAutoApprove: ['station-control_list_agents'],

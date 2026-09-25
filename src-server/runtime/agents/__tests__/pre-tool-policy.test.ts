@@ -171,6 +171,45 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     expect(isUnattendedGranted).not.toHaveBeenCalled();
   });
 
+  test('#2613: only a Station-engine denial names the unattended opt-in, the one engine that honours it', async () => {
+    const evaluator = createEvaluator();
+    const child = {
+      ...invocation,
+      delegation: {
+        mode: 'isolated-child' as const,
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('parent'),
+        rootAgentSlug: agentId('root'),
+        denyApprovals: true,
+      },
+    };
+    const reasonOf = async (
+      call: typeof invocation,
+      interaction: 'managed' | 'external',
+    ) => {
+      const decision = await evaluator(tool, call, { interaction });
+      return decision.behavior === 'deny' ? decision.denial.reason : undefined;
+    };
+
+    // External: an unattended call is handed back to the engine (no Station
+    // denial at all), and a delegated child's denial names no remedy.
+    await expect(
+      evaluator(tool, { agentSlug: 'engine-lab' }, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'defer' });
+    expect(await reasonOf(child, 'external')).toBe(
+      "Tool 'mcp__station-control__list_agents' requires approval, and delegated child sessions cannot grant approvals.",
+    );
+
+    // Station's engine: both denials name it.
+    expect(await reasonOf(child, 'managed')).toBe(
+      "Tool 'mcp__station-control__list_agents' requires approval, and delegated child sessions cannot grant approvals. To allow it here, add it to this agent's tools.unattendedAutoApprove list.",
+    );
+    expect(await reasonOf({ ...invocation }, 'managed')).toContain(
+      "add it to this agent's tools.unattendedAutoApprove list.",
+    );
+  });
+
   test('uses the MCP leaf name for config-protection while retaining raw grant provenance', async () => {
     const checkToolCall = vi.fn(() => ({
       decision: 'block',
