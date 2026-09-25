@@ -638,6 +638,7 @@ export function RegionPaneHost({
           layoutTitles.get(surfaceId) ??
           resolveRegionSurface(surfaceId)?.title ??
           surfaceId,
+        ...(pane.tooltip ? { tooltip: pane.tooltip } : {}),
       })),
     [layoutTitles, paneEntries],
   );
