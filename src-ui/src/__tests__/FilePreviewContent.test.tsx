@@ -38,6 +38,8 @@ const createObjectURL = vi.fn((_blob: Blob) => 'blob:minted-pdf');
 const revokeObjectURL = vi.fn();
 const fetchSpy = vi.fn();
 let pdfViewerEnabled: boolean | undefined;
+// jsdom has no touch points; iPadOS detection reads them.
+let maxTouchPoints = 0;
 
 beforeEach(() => {
   Object.assign(URL, { createObjectURL, revokeObjectURL });
@@ -52,11 +54,17 @@ beforeEach(() => {
     configurable: true,
     get: () => pdfViewerEnabled,
   });
+  maxTouchPoints = 0;
+  Object.defineProperty(navigator, 'maxTouchPoints', {
+    configurable: true,
+    get: () => maxTouchPoints,
+  });
 });
 
 afterEach(() => {
   resetAttachmentObjectUrls();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('filePreviewKind', () => {
@@ -82,12 +90,13 @@ describe('FilePreviewContent', () => {
     );
 
     expect(await screen.findByText('hello from the phone')).toBeTruthy();
-    const download = screen.getByRole('link', { name: 'Download' });
+    const download = screen.getByRole('link', { name: 'Download notes.txt' });
     expect(download.getAttribute('href')).toBe(url);
-    // The row is the shared phone-safe action row (wrap, 44px, safe area).
-    expect(
-      download.closest('.responsive-surface-actions')?.className,
-    ).toContain('file-preview__actions');
+    // One slim row naming the type, not a row of its own for the button.
+    const toolbar = download.closest('.file-preview__toolbar');
+    expect(toolbar?.querySelector('.file-preview__kind')?.textContent).toBe(
+      'Text',
+    );
     expect(download.getAttribute('download')).toBe('notes.txt');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -169,6 +178,10 @@ describe('FilePreviewContent', () => {
   });
 
   test('frames a PDF where the engine has a viewer, re-minting inline bytes as a blob URL', () => {
+    // Desktop Mac Safari: a real viewer, and no touch points to mark it iPadOS.
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+    );
     render(
       <FilePreviewContent
         current={{
@@ -202,13 +215,31 @@ describe('FilePreviewContent', () => {
     });
   }
 
+  const DESKTOP_MAC_SAFARI =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+  const IPHONE_SAFARI =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1';
+
   test.each([
-    ['has no PDF viewer (Android WebView)', false],
-    ['does not say whether it has one', undefined],
+    ['has no PDF viewer (Android WebView)', false, undefined, 0],
+    ['does not say whether it has one', undefined, undefined, 0],
+    // iOS claims a viewer, then frames a PDF as an empty white box.
+    [
+      'is iOS, which claims a viewer but frames nothing',
+      true,
+      IPHONE_SAFARI,
+      5,
+    ],
+    // iPadOS reports a desktop Mac agent; touch points give it away.
+    ['is iPadOS behind a desktop Mac agent', true, DESKTOP_MAC_SAFARI, 5],
   ] as const)(
     'draws the PDF with pdf.js where the engine %s',
-    async (_, enabled) => {
+    async (_, enabled, userAgent, touchPoints) => {
       pdfViewerEnabled = enabled;
+      if (userAgent) {
+        vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent);
+        maxTouchPoints = touchPoints;
+      }
       renderablePdf(2);
       const pdfBytes = new TextEncoder().encode('%PDF-1.7 cached bytes');
       storeAttachmentObjectUrl(
@@ -234,9 +265,13 @@ describe('FilePreviewContent', () => {
       const { data } = pdfjs.getDocument.mock.calls[0][0];
       expect(Array.from(data)).toEqual(Array.from(pdfBytes));
       expect(fetchSpy).not.toHaveBeenCalled();
-      expect(
-        screen.getByRole('link', { name: 'Download' }).getAttribute('href'),
-      ).toBe('blob:cached-pdf');
+      const download = screen.getByRole('link', {
+        name: 'Download report.pdf',
+      });
+      expect(download.getAttribute('href')).toBe('blob:cached-pdf');
+      // Download sits at the end of the viewer's own zoom toolbar.
+      expect(download.closest('.pdf-canvas-viewer__toolbar')).not.toBeNull();
+      expect(document.querySelector('.file-preview__toolbar')).toBeNull();
     },
   );
 
@@ -273,7 +308,9 @@ describe('FilePreviewContent', () => {
 
     expect(screen.getByText('Preview unavailable')).toBeTruthy();
     expect(pdfjs.getDocument).not.toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Download stray.pdf' }),
+    ).toBeTruthy();
   });
 
   test('refuses to frame a "PDF" whose URL is not bytes Station holds', () => {
@@ -367,7 +404,90 @@ describe('FilePreviewContent', () => {
     );
 
     expect(screen.getByText("This file type can't be shown here")).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Download a.zip' })).toBeTruthy();
+  });
+
+  test('offers Download while the PDF viewer is still loading', () => {
+    pdfViewerEnabled = false;
+    renderablePdf(1);
+    storeAttachmentObjectUrl(
+      'loading',
+      'blob:loading-pdf',
+      new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    );
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:loading-pdf',
+          mediaType: 'application/pdf',
+          name: 'slow.pdf',
+        }}
+      />,
+    );
+
+    // Synchronously, before the lazy viewer (and its toolbar) exists.
+    expect(screen.getByLabelText('Loading PDF preview')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Download slow.pdf' })
+        .getAttribute('href'),
+    ).toBe('blob:loading-pdf');
+  });
+
+  test('keeps Download reachable when pdf.js cannot open the PDF', async () => {
+    pdfViewerEnabled = false;
+    const locked = Promise.reject(
+      Object.assign(new Error('No password given'), {
+        name: 'PasswordException',
+      }),
+    );
+    // The viewer awaits it; this only keeps the rejection from being reported
+    // as unhandled before it does.
+    locked.catch(() => undefined);
+    pdfjs.getDocument.mockReturnValue({
+      promise: locked,
+      destroy: () => Promise.resolve(),
+    });
+    storeAttachmentObjectUrl(
+      'locked',
+      'blob:locked-pdf',
+      new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    );
+    render(
+      <FilePreviewContent
+        current={{
+          url: 'blob:locked-pdf',
+          mediaType: 'application/pdf',
+          name: 'locked.pdf',
+        }}
+      />,
+    );
+
+    expect(
+      await screen.findByText('This PDF is password-protected'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Download locked.pdf' })
+        .getAttribute('href'),
+    ).toBe('blob:locked-pdf');
+  });
+
+  test('sizes text previews to their content rather than the full panel', async () => {
+    render(
+      <FilePreviewContent
+        current={{
+          url: dataUrl('text/plain', 'short'),
+          mediaType: 'text/plain',
+          name: 'short.txt',
+        }}
+      />,
+    );
+
+    await screen.findByText('short');
+    expect(document.querySelector('.file-preview__body')?.className).toContain(
+      'file-preview__body--fit',
+    );
   });
 });
 

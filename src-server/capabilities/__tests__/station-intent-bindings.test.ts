@@ -11,8 +11,7 @@
  * sidecar-shaped mock paths.
  */
 
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveIntentBinding } from '@kontourai/console-core';
 import type { TaskDispatchResult } from '@kontourai/station-contracts';
@@ -26,6 +25,7 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { STATION_HOST_COMMAND_CATALOG } from '../station-descriptor.js';
@@ -33,6 +33,8 @@ import {
   createStationHostIntentBindings,
   type StationIntent,
 } from '../station-intent-bindings.js';
+
+const makeTempDir = trackTempDirs();
 
 const intentAuthority = () =>
   sessionReadAuthorityFromRequest('intent-test-user', undefined, undefined);
@@ -59,8 +61,8 @@ function hostedAuthority(tenant?: 'alpha' | 'bravo') {
  * cannot create one at all — binding is a precondition, not a decoration.
  */
 function createTempTaskGraphService() {
-  const workspace = mkdtempSync(join(tmpdir(), 'station-caps-workspace-'));
-  return new TaskGraphService(mkdtempSync(join(tmpdir(), 'station-caps-')), {
+  const workspace = makeTempDir('station-caps-workspace-');
+  return new TaskGraphService(makeTempDir('station-caps-'), {
     projectService: {
       getProject: (slug: string) => ({
         id: slug,
@@ -86,7 +88,7 @@ beforeEach(() => {
 });
 
 function createUnsupportedTaskGraphService() {
-  const projectHomeDir = mkdtempSync(join(tmpdir(), 'station-caps-shape-'));
+  const projectHomeDir = makeTempDir('station-caps-shape-');
   const taskGraphPath = join(projectHomeDir, 'task-graph.json');
   writeFileSync(
     taskGraphPath,

@@ -471,7 +471,8 @@ host-action queries as well as plugin inventory; they do not authorize retries.
 
 **Intent and Interface.** `establishInitialSession` records the legacy root,
 `sessionsForConversation` returns immutable ordinal lineage, and
-`reserveNextSession` atomically chooses one child for a stopped predecessor.
+`reserveNextSession` atomically chooses one child when the current session
+cannot take the next turn.
 `backfillLegacySessions` is startup-only composition work. No caller receives a
 table operation, SQL handle, or an ability to select a current session.
 
@@ -486,8 +487,20 @@ with a typed conflict instead of being accepted as an existing mapping. It
 copies only an existing provider-session identity and creation
 time; a history row without a provider session remains intentionally unmapped.
 The unique predecessor index means concurrent continuation attempts receive the
-same reserved child instead of creating sibling execution sessions. A child
-reservation is not an engine start and carries no caller-controlled workspace,
+same reserved child instead of creating sibling execution sessions.
+
+A conversation keeps one live execution session (#2540). An ordinary finished
+turn leaves its session `idle`: at rest and reusable, not the terminal
+`completed`. The next turn runs in that session, with its engine still
+resident, or restarted in place from its resume cursor. A child is reserved
+only when the current session cannot take the turn: it is stopped (`failed`
+or `canceled`), explicitly closed (`completed`), or its engine binding has
+ended (`closed` or `dead`). A model switch the engine cannot apply per turn
+also reserves one. So do an explicit handoff and a context boundary.
+`isSessionLifecycleStateAtRest` answers "is this session doing anything";
+`sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
+
+A child reservation is not an engine start and carries no caller-controlled workspace,
 owner, tenant, cursor, or transcript fact. Those remain composed by the
 foreground/orchestration seam from the immutable predecessor binding.
 Conversation closure and multi-session event/history aggregation remain outside
@@ -496,8 +509,8 @@ this Module.
 **Seam, Implementation, callers, and tests.** `EventStore` composes the
 private SQLite persistence Adapter at startup and while it first persists a
 provider session. `OrchestrationService` uses its intent-shaped EventStore seam
-to reserve one child only after the predecessor's terminal lifecycle has been
-observed; foreground execution starts that child with copied binding/cursor or
+to reserve one child only after it has observed that the predecessor cannot
+take the next turn; foreground execution starts that child with copied binding/cursor or
 a bounded transcript fallback. Real SQLite fresh-store, legacy-backfill,
 rerun, uniqueness, concurrent reservation, and preservation proof lives in
 `conversation-session-lineage.test.ts`; lifecycle-backed service proof lives
