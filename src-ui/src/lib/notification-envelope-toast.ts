@@ -23,17 +23,15 @@ export function showEnvelopeNotificationToast(
   const title = data.title as string;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
-  const notification = data as unknown as Pick<Notification, 'id' | 'metadata'>;
-  const envelope =
-    typeof data.id === 'string'
-      ? readNotificationEnvelope(notification)
-      : undefined;
+  const notification: Pick<Notification, 'id' | 'metadata'> | undefined =
+    typeof data.id === 'string' ? { id: data.id, metadata } : undefined;
+  const envelope = readNotificationEnvelope(notification);
   const source = envelope?.source.kind === 'agent' ? envelope.source : null;
   toastStore.show(
     title + (body ? ` — ${body}` : ''),
     undefined,
     duration,
-    envelope && notificationOpenTarget(envelope)
+    notification && envelope && notificationOpenTarget(envelope)
       ? [
           {
             label: 'Open',
