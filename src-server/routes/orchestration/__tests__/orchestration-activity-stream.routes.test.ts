@@ -393,11 +393,13 @@ describe('conversation activity through GET /events (#2309)', () => {
       payload: { active: [{ taskId: 'task-1' }] },
     } as CanonicalRuntimeEvent);
     await reader.until((wire) => wire.includes('child-work-registry'));
-    const registryFrame = reader.frames().find(
-      (frame) =>
-        frame.event === 'orchestration:event' &&
-        frame.data.includes('child-work-registry'),
-    );
+    const registryFrame = reader
+      .frames()
+      .find(
+        (frame) =>
+          frame.event === 'orchestration:event' &&
+          frame.data.includes('child-work-registry'),
+      );
     await reader.close();
     expect(registryFrame).toBeDefined();
     expect(
