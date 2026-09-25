@@ -150,7 +150,7 @@ class RecordingEngine implements ProviderAdapterShape {
     return session;
   }
 
-  /** When set, every turn completes, so a continuation starts a new child. */
+  /** When set, every turn completes (the session goes idle and is reused, #2540). */
   completeTurns = false;
 
   async sendTurn(input: ProviderSendTurnInput) {
@@ -689,9 +689,16 @@ describe('#2493: who may start a session unconfined', () => {
       expect(decided.body.data.recorded).toBe(true);
     };
 
-    // The operator records never; the phone then continues, and the root's
-    // completed turn makes that continuation start a new child.
+    // The operator records never, and the root's binding is stopped. Since
+    // #2540 an idle session is reused for a follow-up, so only an ended
+    // binding makes the phone's continuation start a new child.
     await decide(f.operator.credential, root, 'never');
+    const stopped = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      { type: 'stopSession', threadId: root },
+    );
+    expect(stopped.status, stopped.text).toBe(200);
     // The child's own turn stays open, so it can still take the last turn.
     f.claude.completeTurns = false;
     const starts = f.claude.starts.length;
@@ -703,9 +710,11 @@ describe('#2493: who may start a session unconfined', () => {
       );
       expect(continued.status, continued.text).toBe(200);
     });
+    // A new engine start. Since #2540 the successor may keep the
+    // conversation's thread id; what matters is that it is a new start,
+    // stamped afresh.
     expect(f.claude.starts.length).toBe(starts + 1);
     const child = f.claude.starts.at(-1)!;
-    expect(child.threadId).not.toBe(root);
     // Host through the recorded never; the stamp is the phone's own grant.
     // Soft, so a wrong stamp also shows its consequence below.
     expect.soft(lastStart(f, 'claude-agent')).toEqual({
