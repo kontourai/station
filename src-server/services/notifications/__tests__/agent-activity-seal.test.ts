@@ -1,4 +1,5 @@
 import { createDecipheriv } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   NATIVE_PUSH_SEALED_AAD_PREFIX,
   NATIVE_PUSH_SEALED_TEST_VECTOR as VECTOR,
@@ -68,6 +69,36 @@ describe('sealAgentActivityCard', () => {
         VECTOR.registrationId,
       ),
     ).toThrow();
+  });
+
+  // The phone's Kotlin test (AgentSealTest.opensTheStationsKnownAnswerVector)
+  // carries its own copy of this vector, because the Gradle test cannot import
+  // TypeScript. CI runs that test (desktop-rust.yml, #2516), but it only proves
+  // the phone opens ITS copy; this pins the copy to the Station's, so changing
+  // either side without the other fails here.
+  test("is the vector the phone's Kotlin test opens", () => {
+    const kotlin = readFileSync(
+      new URL(
+        '../../../../src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/AgentSealTest.kt',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const literal = (pattern: RegExp) => {
+      const match = pattern.exec(kotlin);
+      if (!match?.[1]) throw new Error(`AgentSealTest.kt: no ${pattern}`);
+      return match[1];
+    };
+    const sealedPieces = literal(
+      /val stationSealed =\s*((?:"[^"]*"\s*\+?\s*)+)/,
+    )
+      .match(/"([^"]*)"/g)
+      ?.map((piece) => piece.slice(1, -1));
+    expect(sealedPieces?.join('')).toBe(VECTOR.sealed);
+    expect(literal(/val payloadKey = "([^"]*)"/)).toBe(VECTOR.payloadKey);
+    expect(literal(/unseal\(payloadKey, "([^"]*)", stationSealed\)/)).toBe(
+      VECTOR.registrationId,
+    );
   });
 
   test('refuses a key that is not 32 bytes', () => {

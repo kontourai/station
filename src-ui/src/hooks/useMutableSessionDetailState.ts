@@ -1,6 +1,6 @@
 import {
   foldedSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
   isSessionLifecycleStateTerminal,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type {
@@ -324,7 +324,8 @@ export function useMutableSessionDetailState({
     session.lifecycleState,
   );
   const isTerminal = isSessionLifecycleStateTerminal(foldedLifecycleState);
-  const isStopped = isSessionLifecycleStateStopped(foldedLifecycleState);
+  // #2540: an `idle` session (a finished turn) has nothing to stop.
+  const isStopped = isSessionLifecycleStateAtRest(foldedLifecycleState);
   const isFailed = isFailedSession(session);
   const rows = metadataRows(session);
   const viewportIsCompact =

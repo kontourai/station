@@ -8,7 +8,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PullRequestRepositoryContextResolver } from '../pull-request-repository-context-resolver.js';
+
+const makeTempDir = trackTempDirs();
 
 const remote = async () => ({
   ok: true as const,
@@ -351,16 +354,14 @@ describe('PullRequestRepositoryContextResolver', () => {
    */
   test('an umbrella project resolves to the one child whose remote names the repository', async () => {
     let outside: string | undefined;
-    const umbrella = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
-    );
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
     try {
       // Checkouts carry a `.git` entry; a plain folder is never asked.
       for (const name of ['station', 'flow', 'notes', '.hidden'])
         mkdirSync(join(umbrella, name, '.git'), { recursive: true });
       mkdirSync(join(umbrella, 'plain-folder'));
       // A symlinked child points outside the project and is never followed.
-      outside = realpathSync(mkdtempSync(join(tmpdir(), 'station-outside-')));
+      outside = realpathSync(makeTempDir('station-outside-'));
       mkdirSync(join(outside, '.git'));
       symlinkSync(outside, join(umbrella, 'linked'));
       const asked: string[] = [];
@@ -450,10 +451,52 @@ describe('PullRequestRepositoryContextResolver', () => {
    * SAME repository. Counting remotes rather than repositories made every
    * pull-request read for that project 404 as "ambiguous".
    */
+  test('an umbrella lookup is reused for a short while, then read again', async () => {
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
+    try {
+      mkdirSync(join(umbrella, 'station', '.git'), { recursive: true });
+      let reads = 0;
+      let clock = 1_000;
+      const resolver = new PullRequestRepositoryContextResolver({
+        git: git() as any,
+        now: () => clock,
+        readRemotes: (async (path: string) => {
+          if (path === umbrella) return { ok: true as const, remotes: [] };
+          reads += 1;
+          return {
+            ok: true as const,
+            remotes: [
+              {
+                name: 'origin',
+                url: 'https://github.com/kontourai/station.git',
+              },
+            ],
+          };
+        }) as any,
+      });
+      const ask = () =>
+        resolver.resolve({
+          projectWorkingDirectory: umbrella,
+          requireBranchState: false,
+          repository: {
+            host: 'github.com',
+            owner: 'kontourai',
+            name: 'station',
+          },
+        });
+      await Promise.all([ask(), ask()]);
+      await ask();
+      expect(reads).toBe(1);
+      clock += 30_001;
+      await expect(ask()).resolves.toMatchObject({ available: true });
+      expect(reads).toBe(2);
+    } finally {
+      rmSync(umbrella, { recursive: true, force: true });
+    }
+  });
+
   test('an umbrella lookup runs at most eight git reads at once', async () => {
-    const umbrella = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-umbrella-')),
-    );
+    const umbrella = realpathSync(makeTempDir('station-umbrella-'));
     try {
       for (let index = 0; index < 20; index += 1)
         mkdirSync(join(umbrella, `repo-${index}`, '.git'), { recursive: true });

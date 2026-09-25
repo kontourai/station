@@ -1,11 +1,17 @@
 import { Button } from './Button';
 import { useRetainedAttachmentObjectUrls } from './chat/attachment-object-urls';
 import { ImageInspector } from './ImageInspector';
+import { PreviewDownloadLink } from './PreviewDownloadLink';
 
 export interface PreviewItem {
   url: string;
   mediaType: string;
   name?: string;
+}
+
+function imageExtension(mediaType: string): string {
+  const subtype = mediaType.toLowerCase().split(';')[0].split('/')[1] ?? '';
+  return subtype === 'jpeg' ? 'jpg' : subtype || 'png';
 }
 
 /** Gallery controls and inspection load only when an image preview is opened. */
@@ -58,6 +64,12 @@ export default function ImagePreviewContent({
         src={current.url}
         name={current.name || 'Preview'}
         onNavigate={selectAdjacentImage}
+        actions={
+          <PreviewDownloadLink
+            href={current.url}
+            name={current.name || `image.${imageExtension(current.mediaType)}`}
+          />
+        }
       />
     </>
   );

@@ -1149,6 +1149,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       needs_input: 'needs_input',
       review_pending: 'review_pending',
       blocked: 'blocked',
+      idle: 'idle',
       completed: 'completed',
       failed: 'failed',
       canceled: 'canceled',

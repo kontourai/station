@@ -1,4 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -487,6 +488,7 @@ import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js'
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -2097,6 +2099,28 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Session- and conversation-scoped reads outside `/api/conversations` must
+  // decide with the same principal orchestration owns sessions under — the
+  // OS alias `readAuthorityForRequest` builds never owns a chat created in the
+  // UI (`human:local:operator` does), so those reads refused every real chat.
+  // A `/*` pattern also matches its bare prefix, so one binding covers each.
+  // GET and POST only: these families serve no other method, and an
+  // all-method `use` would register PUT/PATCH/DELETE/HEAD paths the route
+  // coverage table (pairing-route-scopes) does not classify.
+  context.app.on(
+    ['GET', 'POST'],
+    '/api/conversation-pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.on(
+    ['GET', 'POST'],
+    '/api/pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.use(
+    '/api/projects/:slug/file-preview/*',
+    bindConversationReadAuthority,
+  );
   // Attachment bytes authorize through the thread that carried them, so they
   // must resolve the same principal that owns that thread. The OS alias never
   // matches a principal-owned Session, and every stored attachment 404'd.
@@ -3091,14 +3115,7 @@ export function configureRuntimeRoutes(
           session: detail.session,
           events: detail.events,
         });
-        const outcome =
-          lifecycle.lifecycleState === 'completed'
-            ? 'completed'
-            : lifecycle.lifecycleState === 'failed'
-              ? 'failed'
-              : lifecycle.lifecycleState === 'canceled'
-                ? 'cancelled'
-                : undefined;
+        const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
           ...(outcome ? { outcome } : {}),
@@ -4163,7 +4180,7 @@ export function configureRuntimeRoutes(
               canRead: (id) =>
                 context.orchestrationService.canUserReadSession(
                   id,
-                  readAuthorityForRequest(routeContext.req.raw),
+                  conversationReadAuthorityForRequest(routeContext.req.raw),
                 ),
               listSessions: () =>
                 context.orchestrationService.listSessions(
@@ -4382,35 +4399,38 @@ export function configureRuntimeRoutes(
             : undefined;
         },
         canRead: (request, conversationId) =>
-          context.orchestrationService.canUserReadSession(
+          context.orchestrationService.canUserReadConversation(
             conversationId,
-            readAuthorityForRequest(request),
+            conversationReadAuthorityForRequest(request),
           ),
+        lineageSessionIds: (conversationId) =>
+          (
+            context.orchestrationEventStore?.conversationSessions(
+              conversationId,
+            ) ?? []
+          ).map((linked) => linked.sessionId),
         declared: async (request, conversationId) => {
           if (
-            !context.orchestrationService.canUserReadSession(
+            !context.orchestrationService.canUserReadConversation(
               conversationId,
-              readAuthorityForRequest(request),
+              conversationReadAuthorityForRequest(request),
             )
           )
             return [];
-          return context.taskGraphService
-            .listTasks()
-            .flatMap((task) =>
-              context.taskGraphService.listKeptDeclaredPullRequestsForSession(
-                task.id,
-                conversationId,
-              ),
-            )
-            .map((reference) => ({
-              provider: reference.provider,
-              host: reference.host,
-              repository: reference.repository,
-              ref: reference.ref,
-              source: 'task-declared' as const,
-              linkedAt: reference.keptAt,
-              linkedBy: 'station.task-graph',
-            }));
+          return declaredPullRequestsForConversation(
+            {
+              lineageSessionIds: (id) =>
+                (
+                  context.orchestrationEventStore?.conversationSessions(id) ??
+                  []
+                ).map((linked) => linked.sessionId),
+              keptForSessions: (sessionIds) =>
+                context.taskGraphService.listKeptDeclaredPullRequestsForSessions(
+                  sessionIds,
+                ),
+            },
+            conversationId,
+          );
         },
       },
     ),
@@ -4434,7 +4454,7 @@ export function configureRuntimeRoutes(
             canRead: (id) =>
               context.orchestrationService.canUserReadSession(
                 id,
-                readAuthorityForRequest(routeContext.req.raw),
+                conversationReadAuthorityForRequest(routeContext.req.raw),
               ),
             listSessions: () =>
               context.orchestrationService.listSessions(
