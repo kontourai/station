@@ -300,10 +300,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
-  // #3033: runs the pre-push UI-bundle guardrail as a real child process so
-  // its exit STATUS is asserted, not just its pure decision functions — a
-  // rejection path that has never executed is unproven.
-  'scripts/__tests__/prepush-ui-bundle.test.ts',
   // Same shape one gate over: runs the pre-push typecheck scope guard as a
   // real child process — once against a stub `npm` so its REFUSAL exit
   // status is proven, once with an empty scope so the skip path's zero is
@@ -494,9 +490,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/pnpm-lifecycle.test.ts',
   // Real child process proves the fixed installer guard excludes a second owner.
   'scripts/__tests__/dependency-install-retirement.test.ts',
-  // Drives the merge driver's executable entry point as a child process so
-  // the provisional resolution and decline-without-writing are real exits.
+  // Imports the budget gate in a child process to prove the import stays
+  // inert (the delta report imports it for its measurement).
   'scripts/__tests__/ui-bundle-budget.test.ts',
+  // #1703: runs the bundle delta report as a real child against an
+  // unresolvable base to prove its could-not-measure path still exits zero.
+  'scripts/__tests__/ui-bundle-delta-report.test.ts',
   // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
   // its refusal path exits non-zero and names the remedy.
   'scripts/__tests__/starved-pr-report.test.ts',

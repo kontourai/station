@@ -27,7 +27,6 @@ import {
 } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
 import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
-import { decideBundleScope } from './check-prepush-ui-bundle.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
@@ -42,21 +41,13 @@ function resolveBaseSha(base) {
 }
 
 export function gateReport({ changedPaths, baseSha }) {
-  // Each decider names its verdict field differently (`measure` vs `run`);
-  // read the field that decider actually returns rather than normalizing at
-  // the source, so this stays a pure consumer of the hook's own functions.
-  const bundle = decideBundleScope({ baseSha, changedPaths });
+  // A pure consumer of the hook's own scope deciders, so this report cannot
+  // drift from what the hook actually runs.
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
   const typecheck = decideTypecheckScope({ baseSha, changedPaths });
   const scoped = [
-    [
-      'UI entry-bundle ceiling',
-      bundle.measure,
-      bundle.reason,
-      'node scripts/check-prepush-ui-bundle.mjs',
-    ],
     [
       'orchestration transfer budgets',
       transfer.run,
