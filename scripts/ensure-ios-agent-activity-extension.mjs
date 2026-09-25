@@ -234,6 +234,10 @@ function ensureDependency(document, dependencies, key, entry) {
   else dependencies.items[index] = node;
 }
 
+/**
+ * @param {string} project
+ * @param {{ appBundleId?: string, apsEnvironment?: string, notificationService?: boolean }} [options]
+ */
 export function ensureIosAgentActivityExtension(
   project,
   { appBundleId, apsEnvironment, notificationService = false } = {},
