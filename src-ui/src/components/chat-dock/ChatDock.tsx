@@ -2249,13 +2249,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // #2510: the phone's entry to Background tasks, through the
                 // same router as the desktop row. The sheet only mounts for
                 // an active chat, so without one the row is omitted rather
-                // than offered as a tap that opens nothing.
-                onOpenBackgroundTasks: activeSessionId
-                  ? showBackgroundTasks
-                  : undefined,
-                backgroundTasksRunningCount: importedSessionId
-                  ? 0
-                  : backgroundTasksRunningCount,
+                // than offered as a tap that opens nothing. While an imported
+                // session is on screen the sheet would show the chat hidden
+                // behind it, so the row is omitted then too.
+                onOpenBackgroundTasks:
+                  activeSessionId && !importedSessionId
+                    ? showBackgroundTasks
+                    : undefined,
+                backgroundTasksRunningCount,
               }}
             />
           ) : (

@@ -3077,10 +3077,6 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
 
   const menu = page.getByRole('dialog', { name: 'Switch task' });
   await expect(menu).toBeVisible();
-  const showAll = menu.getByRole('button', {
-    name: /Show all chats \(\d+ more\)/,
-  });
-  if (await showAll.count()) await showAll.click();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
   await expect
