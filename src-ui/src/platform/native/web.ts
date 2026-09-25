@@ -303,6 +303,16 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     return this.agentActivityUnsupported('open-live-update-settings');
   }
 
+  async takeAgentActivityLaunchRoute(): Promise<NativeCommandResult<never>> {
+    return this.agentActivityUnsupported('take-agent-activity-launch-route');
+  }
+
+  subscribeToAgentActivityLaunchRoutes(): NativeEventSubscription & {
+    ready: Promise<void>;
+  } {
+    return { dispose() {}, ready: Promise.resolve() };
+  }
+
   private agentActivityUnsupported(
     command: NativeCommandName,
   ): NativeCommandResult<never> {
