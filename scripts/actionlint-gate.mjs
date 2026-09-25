@@ -1569,8 +1569,9 @@ function isPinnedPnpmSetup(step) {
  * so what it may do is pinned here rather than trusted: the exact
  * same-repository guard, read-only contents, exactly one checkout — the
  * pinned action, fetching exactly the pull request's head from its own
- * repository with no credentials left behind — the pinned setup actions, and
- * exactly two commands: the dependency install and `npm run test:repo-scans`.
+ * repository with no credentials left behind — the pinned setup actions,
+ * exactly two commands (the dependency install and `npm run test:repo-scans`)
+ * and no `continue-on-error` anywhere, so a failed scan fails the check.
  * It does not review what those commands run; the candidate's tests are
  * candidate code, as in fast-checks.
  */
@@ -1596,6 +1597,17 @@ function repoScansFindings(file, job) {
       file,
       jobId,
       message: 'repo-scans must declare only permissions: { contents: read }',
+    });
+  // A red scan must be a red check: `continue-on-error` on the job or any
+  // step would report a failed scan as success.
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must not set continue-on-error on the job or a step',
     });
   const checkouts = (job.steps ?? []).filter(
     (step) =>

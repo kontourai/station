@@ -710,6 +710,24 @@ describe('persistent runner policy', () => {
       'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
     ],
     [
+      'continue-on-error on the job',
+      (job: Record<string, unknown>) => {
+        job['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
+      'continue-on-error on the scan step',
+      (job: Record<string, unknown>) => {
+        const scan = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Run repository source scans',
+        );
+        if (!scan) throw new Error('Expected the scan step.');
+        scan['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
       'an extra command',
       (job: Record<string, unknown>) => {
         (job.steps as Array<Record<string, unknown>>).push({
