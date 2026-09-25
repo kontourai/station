@@ -892,20 +892,21 @@ describe('Task routes', () => {
   });
 
   test('creates, dispatches, and reads graph relations', async () => {
+    const seedSessionRecord = vi.fn((input) => ({
+      provider: input.provider,
+      threadId: input.threadId,
+      status: 'ready' as const,
+      createdAt: '2026-05-03T00:00:00.000Z',
+      updatedAt: '2026-05-03T00:00:00.000Z',
+    }));
     const service = createRouteService({
-      orchestrationService: {
-        dispatch: vi.fn(),
-        seedSessionRecord: vi.fn((input) => ({
-          provider: input.provider,
-          threadId: input.threadId,
-          status: 'ready' as const,
-          createdAt: '2026-05-03T00:00:00.000Z',
-          updatedAt: '2026-05-03T00:00:00.000Z',
-        })),
-      },
+      orchestrationService: { dispatch: vi.fn(), seedSessionRecord },
     });
     const app = createTaskRoutes(service, {
       taskDispatcher: composeTaskDispatcher(service),
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      canReadSession: () => true,
     });
 
     const createRes = await app.request('/', {
@@ -930,6 +931,10 @@ describe('Task routes', () => {
     const dispatchBody = await readJson(dispatchRes);
     expect(dispatchBody.success).toBe(true);
     expect(dispatchBody.data.task.status).toBe('ready');
+    // The seeded session is recorded as the requesting principal's.
+    expect(seedSessionRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerUserId: 'owner' }),
+    );
 
     const graphRes = await app.request(`/${taskId}/graph`);
     const graphBody = await readJson(graphRes);
@@ -966,6 +971,12 @@ describe('Task routes', () => {
     });
     const inner = createTaskRoutes(service, {
       taskDispatcher: composeTaskDispatcher(service),
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest(
+          'human:device:authenticated-device-99',
+          undefined,
+          undefined,
+        ),
     });
     const app = new Hono();
     app.use('*', async (c, next) => {
@@ -1032,13 +1043,14 @@ describe('Task routes', () => {
   });
 
   test('validates create and dispatch bodies', async () => {
+    const dispatch = vi.fn(async () => ({
+      kind: 'failed' as const,
+      reason: 'Task not found: missing',
+    }));
     const app = createTaskRoutes(createRouteService(), {
-      taskDispatcher: {
-        dispatch: vi.fn(async () => ({
-          kind: 'failed' as const,
-          reason: 'Task not found: missing',
-        })),
-      },
+      taskDispatcher: { dispatch },
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
     });
 
     const invalidCreate = await app.request('/', {
@@ -1058,6 +1070,23 @@ describe('Task routes', () => {
       success: false,
       error: 'Task not found: missing',
     });
+
+    // With no resolved request principal there is no one to own the
+    // session, so nothing is dispatched.
+    dispatch.mockClear();
+    const unowned = await createTaskRoutes(createRouteService(), {
+      taskDispatcher: { dispatch },
+    }).request('/missing/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(unowned.status).toBe(400);
+    expect(await readJson(unowned)).toEqual({
+      success: false,
+      error: 'Task dispatch requires a resolved request principal',
+    });
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   // Roadmap archive#584, part of epic archive#580, S4, review finding #6.
