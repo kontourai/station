@@ -29,7 +29,7 @@ export const LIVE_ACTIVITY_ROLLOVER_AFTER_MS = 7.5 * 60 * 60 * 1000;
 /** The latest dismissal the gateway accepts, relative to now. */
 export const LIVE_ACTIVITY_MAX_DISMISS_MS = 4 * 60 * 60 * 1000;
 /** Re-send a live card this long before it goes stale on the phone. */
-export const LIVE_ACTIVITY_REFRESH_BEFORE_STALE_MS = 30 * 60 * 1000;
+const LIVE_ACTIVITY_REFRESH_BEFORE_STALE_MS = 30 * 60 * 1000;
 
 export type LiveActivityStep =
   | { event: 'start'; alert: boolean; staleAtMs: number }

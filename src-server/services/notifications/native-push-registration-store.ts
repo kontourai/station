@@ -80,9 +80,9 @@ export const APNS_CHANNEL_ID_PATTERN = /^[A-Za-z0-9+/]{4,128}={0,2}$/;
 export const APNS_CHANNEL_AUTH_PATTERN = /^v\d{1,3}\.[A-Za-z0-9_-]{16,256}$/;
 const ACTIVITY_RUN_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 /** Channels waiting to be deleted, per registration. */
-export const CHANNEL_DELETES_MAX = 16;
+const CHANNEL_DELETES_MAX = 16;
 /** Retired iOS registrations still to be ended and cleaned up. */
-export const TOMBSTONES_MAX = 32;
+const TOMBSTONES_MAX = 32;
 
 interface StoredRegistrationFields {
   /** 128 random bits, base64url; kept across token rotation. */
