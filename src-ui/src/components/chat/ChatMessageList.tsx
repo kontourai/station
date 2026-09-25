@@ -272,9 +272,9 @@ function ChatMessageListComponent({
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
   const turnLive = isTurnStreamLive(activeSession);
-  // Suppression only moves WHERE a live turn renders (into the transcript
-  // window); the turn is still live, so it must not read as "turn over,
-  // background still working" below (#2654).
+  // The background banner below means "turn over, work continues", so it
+  // reads turn liveness, not whether this row renders: suppression moves a
+  // live turn into the transcript window without ending it (#2654).
   const isStreaming = turnLive && !suppressStreamingRow;
   const localBackgroundTasks = activeSession.backgroundTasks ?? [];
   const serverBackgroundCount =
