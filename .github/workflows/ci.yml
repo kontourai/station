@@ -165,24 +165,13 @@ jobs:
         id: fast_ci
         env:
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
-          # station#2621: `STATION_TYPECHECK_SLOTS` default-sizes from RAM
-          # alone (one slot per 8 GiB, rounded) because it exists to guard a
-          # SHARED dev host against several worktrees' `ci:fast` runs piling
-          # up concurrent `tsc` compilers. A `ubuntu-22.04` runner reports
-          # ~15.6 GiB here (confirmed from this job's own verification-receipt
-          # provenance) and rounds to 2 slots -- but it also has 4 vCPUs
-          # (same provenance), so 2 concurrent `tsc` compilers leave half the
-          # machine idle for the entire typecheck-aggregate step. This job is
-          # a single ephemeral VM with no sibling invocation to guard
-          # against, so the shared-host safety margin does not apply here.
-          # Measured fix: raising local concurrency from 2 to 4 cut the
-          # 12-lane aggregate's wall time from 361s to 91s (a contended
-          # sample, but a ~4x drop) with the heaviest lane (typecheck:ui)
-          # using ~2.2 GB RSS -- four concurrent lanes fit comfortably under
-          # 15.6 GB. This is the fix for the 12-minute ci:fast timeouts on
-          # #2617/#2548's merge-queue candidates (36091653389, 36086122830),
-          # where the receipt showed the run dying inside typecheck-aggregate
-          # with every earlier static command already green.
+          # station#2621: the typecheck slot default sizes from RAM alone
+          # (1 per 8 GiB) to protect SHARED dev hosts, so this 4 vCPU /
+          # ~15.6 GiB runner gets 2 slots and leaves half its CPUs idle
+          # through the 12-lane typecheck aggregate. One job per ephemeral VM
+          # has no sibling to protect. The heaviest lane peaks around 2.2 GB
+          # RSS, so 4 lanes fit. This is headroom: it does not explain the
+          # timed-out runs, which stalled inside the aggregate at low load.
           STATION_TYPECHECK_SLOTS: '4'
         run: npm run ci:fast
 
