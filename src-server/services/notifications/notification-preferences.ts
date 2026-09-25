@@ -55,6 +55,13 @@ export interface NotificationMuteReader {
 export interface NotificationPreferencesReader extends NotificationMuteReader {
   /** The preferences delivery applies now (defaults when unreadable). */
   current(): NotificationPreferencesV1;
+  /**
+   * The saved document exists but cannot be read. Delivery then cannot
+   * honour the person's mutes or hidden-content choices, so it fails
+   * closed: content hidden on every surface, agent notifications in-app
+   * only (the defaults `current()` returns are NOT what the person chose).
+   */
+  unreadable(): boolean;
 }
 
 export type NotificationPreferencesReadResult =
@@ -198,6 +205,10 @@ export class NotificationPreferencesStore
       );
     }
     return defaultNotificationPreferences();
+  }
+
+  unreadable(): boolean {
+    return !this.read().ok;
   }
 
   isMuted(source: NotificationSource, urgency?: NotificationUrgency): boolean {

@@ -253,6 +253,7 @@ describe('GET /api/notifications/deliveries (desktop host feed)', () => {
     expect(result.json.data).toEqual({
       entries: [],
       cursor: 0,
+      epoch: expect.any(String),
       leaseMs: 90_000,
     });
     expect(desktopHost.registrations()).toEqual([{ surface, ref: surface }]);
@@ -277,6 +278,7 @@ describe('GET /api/notifications/deliveries (desktop host feed)', () => {
     'surface=local:0b1d2c3e-session&after=0',
     `surface=${surface}&after=-1`,
     `surface=${surface}&after=abc`,
+    `surface=${surface}&after=0&epoch=not%20an%20id`,
   ])('a malformed query is 400 (%s)', async (query) => {
     expect((await feed(query)).status).toBe(400);
   });

@@ -92,6 +92,7 @@ describe('DesktopHostChannel', () => {
     expect(first).toEqual({
       entries: [],
       cursor: 0,
+      epoch: expect.any(String),
       leaseMs: DESKTOP_HOST_LEASE_MS,
     });
     bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
@@ -149,6 +150,51 @@ describe('DesktopHostChannel', () => {
     bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
     await flush();
     expect(channel.read(DESKTOP, 0).entries).toEqual([]);
+  });
+
+  test('after a server restart, a host holding an old cursor gets the new run from the start', () => {
+    // The previous run: the host read up to seq 57.
+    const before = new DesktopHostChannel({ epoch: 'run-1' });
+    before.read(DESKTOP, 0);
+    for (let i = 0; i < 57; i += 1)
+      void before.deliver(
+        approval({ id: `old-${i}` }) as unknown as Notification,
+        {
+          v: 1,
+          source: { kind: 'system', subsystem: 's' },
+          audience: { kind: 'owner' },
+          urgency: 'attention',
+          interrupt: 'default',
+        },
+        [{ surface: DESKTOP, ref: DESKTOP, hideContent: false }],
+      );
+    const old = before.read(DESKTOP, 0);
+    expect(old).toMatchObject({ cursor: 57, epoch: 'run-1' });
+
+    // The new run has one entry, seq 1.
+    const after = new DesktopHostChannel({ epoch: 'run-2' });
+    after.read(DESKTOP, 0, 'run-2');
+    void after.deliver(
+      approval({ id: 'new' }) as unknown as Notification,
+      {
+        v: 1,
+        source: { kind: 'system', subsystem: 's' },
+        audience: { kind: 'owner' },
+        urgency: 'attention',
+        interrupt: 'default',
+      },
+      [{ surface: DESKTOP, ref: DESKTOP, hideContent: false }],
+    );
+    // Stale epoch: answered from the start, with the new epoch.
+    const stale = after.read(DESKTOP, old.cursor, old.epoch);
+    expect(stale.epoch).toBe('run-2');
+    expect(stale.entries.map((e) => e.notificationId)).toEqual(['new']);
+    // No epoch but a cursor past this run's last entry: also from the start.
+    expect(
+      after.read(DESKTOP, 57).entries.map((e) => e.notificationId),
+    ).toEqual(['new']);
+    // Current epoch and cursor: nothing new.
+    expect(after.read(DESKTOP, stale.cursor, 'run-2').entries).toEqual([]);
   });
 
   test('a feed keeps at most 100 entries', async () => {

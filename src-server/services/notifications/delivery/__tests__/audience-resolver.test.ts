@@ -56,10 +56,7 @@ function resolver(
     canPrincipalReadSession,
     resolver: createPairingAudienceResolver({
       listDevices: overrides.listDevices ?? (() => DEVICES),
-      devicePrincipalId: (candidate) =>
-        candidate.id === 'bound-to-operator'
-          ? OPERATOR
-          : `principal:${candidate.id}`,
+      devicePrincipalId: (candidate) => `principal:${candidate.id}`,
       operatorPrincipalId: OPERATOR,
       canPrincipalReadSession,
       logger,
@@ -68,10 +65,19 @@ function resolver(
 }
 
 describe('createPairingAudienceResolver', () => {
-  test("owner: the operator and the operator's devices — unbound, or bound to the operator", () => {
+  test("owner: the operator and the personal family's devices", () => {
     const tailnetBinding = {
       provider: 'tailscale-serve',
-      subject: 'alice@example.com',
+      subject: 'owner@example.com',
+      approvedAt: 1,
+      approvalId: '22222222-2222-4222-8222-222222222222',
+      approvedBy: 'human:local:operator',
+    } as PairedDevice['principalBinding'];
+    const accountBinding = {
+      kind: 'account',
+      issuer: 'https://id.example.test',
+      subject: 'account-1',
+      displayName: 'Account',
       approvedAt: 1,
       approvalId: '22222222-2222-4222-8222-222222222222',
       approvedBy: 'human:local:operator',
@@ -79,21 +85,29 @@ describe('createPairingAudienceResolver', () => {
     const { resolver: subject } = resolver({
       listDevices: () => [
         ...DEVICES,
-        // Bound to another person: nothing proves they are the owner.
-        device({ id: 'alice-phone', principalBinding: tailnetBinding }),
-        // Bound, but the binding resolves to the operator.
-        device({ id: 'bound-to-operator', principalBinding: tailnetBinding }),
+        // The owner's phone paired over the tailnet: reads as the tailnet
+        // person, and is a personal-family member (#1958).
+        device({ id: 'tailnet-phone', principalBinding: tailnetBinding }),
+        // Bound to a deployment account: limited to that account.
+        device({ id: 'account-laptop', principalBinding: accountBinding }),
       ],
     });
     const result = subject.resolve(envelope({ kind: 'owner' }));
     expect([...result.deviceSurfaces].sort()).toEqual([
-      'device:bound-to-operator',
-      'device:delegation',
-      'device:no-read-scope',
+      // unbound, read scope
       'device:other-person',
       'device:reader',
+      'device:tailnet-phone',
     ]);
-    expect(result.deviceSurfaces.has('device:alice-phone')).toBe(false);
+    // A delegated Station, a no-read-scope device, a revoked one and an
+    // account-bound one never receive owner notifications.
+    for (const excluded of [
+      'device:delegation',
+      'device:no-read-scope',
+      'device:revoked',
+      'device:account-laptop',
+    ])
+      expect(result.deviceSurfaces.has(excluded as never)).toBe(false);
     expect(result.includesOperator).toBe(true);
     // One person: focus on any of these may quiet the others.
     expect(result.onePerson).toBe(true);

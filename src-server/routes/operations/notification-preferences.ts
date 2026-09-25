@@ -153,12 +153,17 @@ export function createNotificationPreferencesRoutes(
       );
     const surface = c.req.query('surface');
     const afterText = c.req.query('after') ?? '0';
+    const epoch = c.req.query('epoch');
     const after = Number(afterText);
-    if (!isDesktopHostSurface(surface) || !/^\d{1,15}$/.test(afterText))
+    if (
+      !isDesktopHostSurface(surface) ||
+      !/^\d{1,15}$/.test(afterText) ||
+      (epoch !== undefined && !/^[A-Za-z0-9-]{1,64}$/.test(epoch))
+    )
       return c.json({ success: false, error: 'invalid_request' }, 400);
     return c.json({
       success: true,
-      data: options.desktopHost.read(surface, after),
+      data: options.desktopHost.read(surface, after, epoch),
     });
   });
 
