@@ -23,7 +23,18 @@
  * label.
  */
 
-export type NotificationOutcome = 'needs-input' | 'failed' | 'running' | 'done';
+/**
+ * `info` (#2583) is below `done`: an agent's informational notice
+ * (`agent-info`) that is neither a finished outcome nor something the user
+ * must act on. No pre-existing category maps to it, so adding the tier does
+ * not move any existing category's rank or TTL.
+ */
+export type NotificationOutcome =
+  | 'needs-input'
+  | 'failed'
+  | 'running'
+  | 'done'
+  | 'info';
 
 /** Higher number = more important — leads a composed push or summary. */
 export const NOTIFICATION_OUTCOME_PRIORITY: Record<
@@ -34,6 +45,7 @@ export const NOTIFICATION_OUTCOME_PRIORITY: Record<
   failed: 2,
   running: 1,
   done: 0,
+  info: -1,
 };
 
 export function compareNotificationOutcome(
@@ -93,12 +105,15 @@ function toTimestamp(value: string | number): number {
 export const WAITING_TTL_MS = 24 * 60 * 60 * 1000;
 export const RUNNING_TTL_MS = 2 * 60 * 60 * 1000;
 export const DONE_TTL_MS = 15 * 60 * 1000;
+/** #2583: an agent's informational notice stays useful for an afternoon. */
+export const INFO_TTL_MS = 4 * 60 * 60 * 1000;
 
 export const NOTIFICATION_TTL_MS: Record<NotificationOutcome, number> = {
   'needs-input': WAITING_TTL_MS,
   failed: WAITING_TTL_MS,
   running: RUNNING_TTL_MS,
   done: DONE_TTL_MS,
+  info: INFO_TTL_MS,
 };
 
 /**
@@ -128,6 +143,13 @@ const CATEGORY_OUTCOME: Record<string, NotificationOutcome> = {
   'pairing-request': 'needs-input',
   'job-missed': 'failed',
   'scheduler-unhealthy': 'failed',
+  // #2583: agent-originated notifications (`notify_user`), one category per
+  // envelope urgency (`AGENT_NOTIFICATION_CATEGORIES` in
+  // `@kontourai/station-contracts/notification`).
+  'agent-attention': 'needs-input',
+  'agent-failed': 'failed',
+  'agent-done': 'done',
+  'agent-info': 'info',
 };
 
 export function classifyNotificationCategory(
