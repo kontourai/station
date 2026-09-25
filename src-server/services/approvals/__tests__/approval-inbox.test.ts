@@ -414,7 +414,7 @@ describe('approval inbox notifications', () => {
     ['a Station-agent relay turn', 'thread-7', true],
     ['a plain managed chat', undefined, false],
   ])(
-    'a registry approval from %s is card-alerted: %s',
+    'a registry approval from %s (relay thread %s) is card-alerted: %s',
     async (_label, orchestrationThreadId, cardAlerted) => {
       const elicit = createElicitationCallback(
         { name: 'Reviewer', tools: { autoApprove: [] } } as any,

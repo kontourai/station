@@ -36,9 +36,17 @@ describe('isCardAlerted', () => {
     ['turn-completed', orchestrationTurn],
     ['turn-stopped', orchestrationTurn],
     ['turn-failed', orchestrationTurn],
-    ['approval-request', stationAgentRegistryApproval],
   ])('an orchestration %s is the card’s to announce', (category, metadata) => {
     expect(isCardAlerted({ category, metadata })).toBe(true);
+  });
+
+  test('the registry twin of a Station-agent approval is the card’s too', () => {
+    expect(
+      isCardAlerted({
+        category: 'approval-request',
+        metadata: stationAgentRegistryApproval,
+      }),
+    ).toBe(true);
   });
 
   test.each([
