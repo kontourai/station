@@ -33,6 +33,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
  * VoltAgent runtime integration for Station
@@ -3480,25 +3481,10 @@ export class StationRuntime {
               credentialRecoveryRuntimeConnectionId,
             ),
           usageAggregator: this.usageAggregator,
-          // archive#3245: lifetime analytics reads the orchestration
-          // substrate through the SAME `readSessionUsage` fold the stats
-          // route uses. Resolved per rescan off `this.orchestrationService`,
-          // which a reload replaces underneath a reused aggregator. The
-          // aggregate scope is the deliberate one: `stats.json` is a
-          // home-global lifetime store with no per-user partition, and
-          // `listSessionUsage` refuses the read outright in hosted mode,
-          // where "home-global" would mean "across tenants".
-          orchestrationUsageRef: {
-            get: () =>
-              this.orchestrationService
-                ? {
-                    listSessionUsage: () =>
-                      this.orchestrationService.listSessionUsage(
-                        INTERNAL_SESSION_READ_SCOPE,
-                      ),
-                  }
-                : undefined,
-          },
+          // archive#3245 / #2568: see `orchestrationUsageRefFor`.
+          orchestrationUsageRef: orchestrationUsageRefFor(
+            () => this.orchestrationService,
+          ),
           monitoringEmitter: this.monitoringEmitter,
           activeAgents: this.activeAgents,
           agentMetadataMap: this.agentMetadataMap,

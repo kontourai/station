@@ -1132,8 +1132,8 @@ export function configureRuntimeRoutes(
   // it must never decide a session or conversation read. The callers left
   // read only `.mode` (personal vs hosted, which comes from the tenant context
   // and registry, not the user), except the hosted public share view (see
-  // there), the usage rollup (see there), and the pull-request and
-  // file-preview reads a separate change moves onto the principal. New session reads use
+  // there). With no alias owner bridge, the alias owns no session at all, so
+  // a read made with it sees nothing. New session reads use
   // `conversationReadAuthorityForRequest`.
   const readAuthorityForRequest = (request: Request) =>
     sessionReadAuthorityFromRequest(
@@ -1478,6 +1478,11 @@ export function configureRuntimeRoutes(
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  context.app.on(
+    'GET',
+    '/api/analytics/usage-rollup',
+    bindConversationReadAuthority,
+  );
   context.app.on(
     'POST',
     ['/api/board/pin', '/api/board/unpin', '/api/board/move'],
@@ -1924,10 +1929,11 @@ export function configureRuntimeRoutes(
     createAnalyticsRoutes(
       context.usageAggregator,
       undefined,
-      // Still the alias, deliberately: production's usage source forwards no
-      // receipts, so the rollup is empty for every authority (#2568). Move it
-      // to the principal together with its owner set when that is wired.
-      readAuthorityForRequest,
+      // #2568: the request's own principal. Its receipts are the owner set
+      // it may read (its own, plus its personal conversation account's), so
+      // a paired device or peer Station sees the account's usage only while
+      // it is an approved member with read scope.
+      conversationReadAuthorityForRequest,
       () =>
         peerCredentialStore
           .list()

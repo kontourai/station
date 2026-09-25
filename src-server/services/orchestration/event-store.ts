@@ -460,6 +460,18 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
   resources: ['session.configured', 'token-usage.updated'],
 };
 
+/**
+ * `IN (?, ...)` placeholders for a usage read's owner set. An empty set would
+ * be `IN ()`, which is not SQL and is never a meaningful request: a caller
+ * with no owner reads nothing, so it must say so before reaching the store.
+ */
+function usageOwnerPlaceholders(ownerUserIds: readonly string[]): string {
+  if (ownerUserIds.length === 0) {
+    throw new Error('A usage read requires at least one owner');
+  }
+  return ownerUserIds.map(() => '?').join(', ');
+}
+
 function hasBoundedDescriptorText(
   value: unknown,
   maximum: number,
@@ -4447,7 +4459,8 @@ export class EventStore {
    * belong to SQLite's indexed selection boundary.
    */
   listUsageReceiptEvents(options: {
-    ownerUserId: string;
+    /** The owners whose usage the caller may read; never empty. */
+    ownerUserIds: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
@@ -4460,6 +4473,7 @@ export class EventStore {
     model?: string;
     processEpoch: number;
   }> {
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4491,7 +4505,7 @@ export class EventStore {
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
           WHERE e.method = 'token-usage.updated'
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id = ?
+            AND h.owner_user_id IN (${owners})
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
           ORDER BY e.observed_at ASC, e.id ASC
@@ -4500,7 +4514,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        options.ownerUserId,
+        ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
         options.after?.observedAt ?? null,
@@ -4524,11 +4538,13 @@ export class EventStore {
    * would make an analytics read unbounded and could cross a hosted tenant.
    */
   listUsageCoverageEvents(options: {
-    ownerUserId: string;
+    /** The same owner set as {@link listUsageReceiptEvents}. */
+    ownerUserIds: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
   }): PersistedRuntimeEvent[] {
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4537,7 +4553,7 @@ export class EventStore {
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
           WHERE e.method IN ('turn.completed', 'turn.aborted', 'token-usage.updated', 'session.configured')
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id = ?
+            AND h.owner_user_id IN (${owners})
             AND (? IS NULL OR h.tenant_id = ?)
           ORDER BY e.observed_at ASC, e.id ASC
           LIMIT 1001`,
@@ -4545,7 +4561,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        options.ownerUserId,
+        ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
       ) as any[];

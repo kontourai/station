@@ -42,6 +42,7 @@
  * mocked-away) to assert the exact resolved `principalId` reached the
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -75,6 +76,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
@@ -105,6 +107,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
@@ -359,6 +362,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       personalSharing?: boolean;
       // Extra sessions (thread id, owner) seeded like the fixed ones above.
       extraSessions?: ReadonlyArray<readonly [string, string]>;
+      /**
+       * #2568: a real UsageAggregator over the real orchestration service,
+       * through the production usage ref, behind `/api/analytics`.
+       */
+      usageRollup?: boolean;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -580,6 +588,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           }
         : {}),
       ...(runtimeSearch ? { runtimeSearch } : {}),
+      ...(orchestrationExtras.usageRollup
+        ? {
+            usageAggregator: new UsageAggregator(
+              roomHomeDir,
+              orchestrationUsageRefFor(() => orchestration),
+            ),
+          }
+        : {}),
       ...(taskReferences
         ? {
             orchestrationService: deepStub({
@@ -2505,6 +2521,84 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       Authorization: `Bearer ${OPERATOR_SECRET}`,
       'Content-Type': 'application/json',
     };
+
+    // #2568: the usage rollup reads receipts through the production usage
+    // ref, with the request's own principal and the same personal-account
+    // owner set transcript reads use. A peer Station calls with its device
+    // credential, so it is exactly the paired-device case below.
+    test('the usage rollup reports the account’s token usage to the operator and an approved paired peer, never a stranger’s', async () => {
+      const usage = (threadId: string) => ({
+        eventId: `${threadId}:usage`,
+        threadId,
+        turnId: `${threadId}:turn`,
+        provider: 'claude' as const,
+        method: 'token-usage.updated' as const,
+        createdAt: new Date().toISOString(),
+        promptTokens: 11,
+        completionTokens: 7,
+      });
+      const { app, paired, pairing } = await principalSetup({
+        usageRollup: true,
+        seed: (seedStore) => {
+          for (const threadId of [
+            'operator-owned',
+            'device-owned',
+            'stranger-owned',
+            'alias-owned',
+          ])
+            seedStore.appendEvent(usage(threadId) as never);
+        },
+      });
+      const rollupThreads = async (credential: string) => {
+        const response = await app.request(
+          '/api/analytics/usage-rollup?days=7&localOnly=1&pageSize=100',
+          { headers: { Authorization: `Bearer ${credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: {
+            receipts?: Array<{ threadId: string; inputTokens?: number }>;
+          };
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data?.receipts ?? [])
+          .map((receipt) => `${receipt.threadId}:${receipt.inputTokens}`)
+          .sort();
+      };
+      // The route discloses paired-Station relationships, so it needs
+      // `access:manage` (pairing-route-scopes.ts), which only the default
+      // grant carries: a paired peer Station's credential is exactly that.
+      const peerOffer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const peerRequest = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        deviceName: 'Peer Station',
+      });
+      pairing.confirmRequest(peerRequest.requestId, {
+        kind: 'presented-credential',
+      });
+      const peer = pairing.exchange({
+        offerId: peerOffer.offerId,
+        proof: peerOffer.challenge,
+        requestId: peerRequest.requestId,
+      });
+      // One personal account: the operator's chat and the paired device's
+      // own session. Never the stranger's, and never the OS-alias row: a
+      // rollup read as the alias would have reported exactly that one.
+      const account = ['device-owned:11', 'operator-owned:11'];
+      await expect(rollupThreads(OPERATOR_SECRET)).resolves.toEqual(account);
+      await expect(rollupThreads(peer.credential)).resolves.toEqual(account);
+      // A device without the route's scope is refused outright.
+      const unscoped = await app.request(
+        '/api/analytics/usage-rollup?days=7&localOnly=1',
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(unscoped.status).toBe(403);
+    });
 
     test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {
       const { app, paired } = await operatorSetup();

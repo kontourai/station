@@ -859,7 +859,7 @@ describe('EventStore', () => {
       add('usage-alpha-outside-window', 'alpha', 'reader');
 
       const rows = store.listUsageCoverageEvents({
-        ownerUserId: 'reader',
+        ownerUserIds: ['reader'],
         tenantId: 'alpha',
         from: '2026-08-01',
         to: '2026-08-30',
@@ -868,6 +868,24 @@ describe('EventStore', () => {
       expect(new Set(rows.map((event) => event.threadId))).toEqual(
         new Set(['usage-alpha']),
       );
+      // An owner set reads each named owner's rows, and only theirs.
+      const both = store.listUsageCoverageEvents({
+        ownerUserIds: ['reader', 'other-reader'],
+        tenantId: 'alpha',
+        from: '2026-08-01',
+        to: '2026-08-30',
+      });
+      expect(new Set(both.map((event) => event.threadId))).toEqual(
+        new Set(['usage-alpha', 'usage-alpha-foreign-owner']),
+      );
+      // A read naming no owner is refused, never widened.
+      expect(() =>
+        store.listUsageCoverageEvents({
+          ownerUserIds: [],
+          from: '2026-08-01',
+          to: '2026-08-30',
+        }),
+      ).toThrow('at least one owner');
     } finally {
       vi.useRealTimers();
     }
