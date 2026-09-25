@@ -410,6 +410,11 @@ export function selectChangedVerification(
   const tests = new Map();
   const lanes = new Map();
   const relatedPaths = new Set();
+  // Related paths whose OWN boundary edge also names tests (the
+  // tests-plus-graph supplement form). An empty related discovery for one of
+  // these is covered by those tests; for any other related path it is an
+  // obligation, whatever supplemental tests happen to be selected (#2176).
+  const ownedRelatedPaths = new Set();
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -469,6 +474,11 @@ export function selectChangedVerification(
       for (const lane of edge.lanes ?? [])
         addReason(lanes, lane, `${edge.reason}: ${path}`);
     }
+    if (
+      relatedPaths.has(path) &&
+      boundaryEdges.some((edge) => edge.tests?.length)
+    )
+      ownedRelatedPaths.add(path);
   }
   if (!paths.length || (!tests.size && !lanes.size && !relatedPaths.size))
     addReason(lanes, 'test-full', 'empty executable selection escalated');
@@ -481,6 +491,7 @@ export function selectChangedVerification(
       .sort()
       .map((id) => ({ id, reasons: [...lanes.get(id)].sort() })),
     relatedPaths: [...relatedPaths].sort(),
+    ownedRelatedPaths: [...ownedRelatedPaths].sort(),
     escalated,
   };
 }
@@ -783,9 +794,18 @@ async function runVitest(
   } = {},
 ) {
   let plannedExecutions;
+  // How many suites related discovery named, observed rather than inferred
+  // from the plan: explicit tests in the same plan must not hide an empty
+  // discovery (#2176).
+  let relatedDiscoveryCount;
+  const discover = discoverRelated ?? discoverRelatedTestFiles;
   try {
     plannedExecutions = await planChangedVitestExecutions(root, selection, {
-      ...(discoverRelated ? { discoverRelated } : {}),
+      discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const files = await discover(discoveryRoot, relatedPaths);
+        relatedDiscoveryCount = files.length;
+        return files;
+      },
       ...(partition ? { partition } : {}),
       vitestPath,
     });
@@ -891,6 +911,7 @@ async function runVitest(
   return {
     executions,
     emptySelection: plannedExecutions.length === 0,
+    relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -1403,15 +1424,26 @@ export async function runChangedVerification(
     // Related discovery ran and named no suite. Record the fact durably in
     // the selection artifact so a reader sees a selection decision rather
     // than a silent zero-execution run.
-    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+    //
+    // #2176: an empty discovery escalates even when the plan still holds
+    // explicit tests. A supplemental test (a copy ratchet, a path-read pin)
+    // is additive and says nothing about the changed file's behaviour, so
+    // letting it make the plan non-empty turned "no suite covers this file"
+    // into a completed green. Only a path whose own boundary edge names tests
+    // (`ownedRelatedPaths`) is covered without its graph.
+    const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
+    const uncovered =
+      vitestOutcome.emptySelection === true
+        ? executionSelection.relatedPaths
+        : vitestOutcome.relatedDiscoveryEmpty === true
+          ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
+          : [];
+    if (uncovered.length > 0 && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
-        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
       };
-      selection = escalateEmptyRelatedSelection(
-        selection,
-        executionSelection.relatedPaths,
-      );
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
     }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;

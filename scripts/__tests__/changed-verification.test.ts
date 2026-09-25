@@ -1109,6 +1109,104 @@ describe('changed verification selection', () => {
       '[test:changed] remedy: declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
     );
   });
+  function emptyDiscoveryRun() {
+    // Discovery answers `[]`; every Vitest child passes. So the only thing
+    // that can make the result provisional is the empty-discovery decision.
+    return vi.fn(async (_command: string, args: string[]) => {
+      const ok = {
+        status: 0,
+        signal: null,
+        stderr: '',
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      };
+      if (args.includes('--eval')) return { ...ok, stdout: '[]' };
+      const outputFile = args.find((arg) => arg.startsWith('--outputFile='));
+      if (outputFile)
+        writeFileSync(outputFile.slice('--outputFile='.length), passingReport);
+      return { ...ok, stdout: '' };
+    });
+  }
+  test.each([
+    // The src-ui vocabulary ratchet is supplemental on every UI file.
+    [
+      'src-ui/src/views/settings/utils.ts',
+      'src-ui/src/__tests__/station-vocabulary.test.ts',
+    ],
+    // A server path carrying a supplemental edge (#2176's own).
+    [
+      'src-server/generated/settings-registry.json',
+      'scripts/__tests__/gen-settings-registry.test.ts',
+    ],
+  ])(
+    'a supplemental test does not satisfy an empty related discovery for %s (#2176)',
+    async (path, supplemental) => {
+      // Precondition, so this cannot pass vacuously: the path IS related and
+      // DOES carry a supplemental test that would make the plan non-empty.
+      const selection = selectChangedVerification([path]);
+      expect(selection.relatedPaths).toEqual([path]);
+      expect(selection.ownedRelatedPaths).toEqual([]);
+      expect(selection.tests.map((entry) => entry.path)).toContain(
+        supplemental,
+      );
+      const run = emptyDiscoveryRun();
+      const result = await runChangedVerification(['--base=origin/main'], {
+        root: process.cwd(),
+        run,
+        changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      });
+      // The supplemental suite still runs...
+      expect(
+        result.executed.flatMap((execution) => execution.command),
+      ).toContain(`./${supplemental}`);
+      // ...but the file itself is an open obligation, exactly as it is with
+      // no supplemental edge: exit 3, test-full, provisional. Before the fix
+      // this was exit 0 and a `completed` receipt.
+      expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+      expect(result.receipt.terminal.status).toBe('provisional');
+      expect(result.selection.lanes).toEqual([
+        {
+          id: 'test-full',
+          reasons: [
+            `no related suites for ${path}; declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file`,
+          ],
+        },
+      ]);
+      expect(result.emptyRelatedSelection?.relatedPaths).toEqual([path]);
+    },
+  );
+  test('an empty related discovery still escalates a path with no supplemental test', async () => {
+    const path = 'src-server/routes/chat/chat.ts';
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.selection.lanes.map(({ id }) => id)).toEqual(['test-full']);
+  });
+  test('a path whose own edge names tests is covered by them when its discovery is empty', async () => {
+    // The other direction: a spawned-not-imported script has no importer by
+    // construction, and its own edge's test IS its coverage. Escalating it
+    // would make every such script change provisional.
+    const path = 'scripts/build-desktop.mjs';
+    expect(selectChangedVerification([path]).ownedRelatedPaths).toEqual([path]);
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.emptyRelatedSelection).toBeUndefined();
+  });
   test('keeps discovery output it could not have produced an infrastructure failure', async () => {
     // The fail-closed half of #1757: an empty array is an answer, but output
     // that is not an array of usable paths means discovery could not run.
