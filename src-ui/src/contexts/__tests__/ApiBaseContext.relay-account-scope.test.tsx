@@ -61,6 +61,23 @@ afterEach(() => {
 });
 
 describe('relay account request scope', () => {
+  it('a browser talking to its own Station directly does not require an enrolled credential (#2598)', async () => {
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <ApiBaseProvider>{children}</ApiBaseProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(() => useHostRequestAuthorityScope(), {
+      wrapper,
+    });
+    // Its own Station authenticates it with a session cookie, which the
+    // server enforces; only a relay route or a native transport needs the
+    // SDK-owned credential.
+    await waitFor(() => expect(result.current).toBeDefined());
+    expect(result.current?.requiresEnrolledCredential).toBe(false);
+  });
+
   it('quarantines cache before hydration and changes the real request/query scope from account A to B', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -106,6 +123,8 @@ describe('relay account request scope', () => {
     });
     act(() => publishBrowserRelayAccountScope(scopeKey, 'account-A', 1));
     await waitFor(() => expect(result.current.scope).toBeDefined());
+    // A relay route must carry the SDK-owned credential (#2598).
+    expect(result.current.scope?.requiresEnrolledCredential).toBe(true);
     await waitFor(() =>
       expect(result.current.query.data).toBe(
         `private:${result.current.scope?.authorityKey}`,
