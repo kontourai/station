@@ -13,6 +13,10 @@ import type { ChildWorkRowModel } from '../childWorkSelectors';
 const useOrchestrationSessionQuery = vi.fn();
 const interruptMutate = vi.fn();
 const stopMutate = vi.fn();
+// #2486 review: a configurable mock so a test can drive the mutation's own
+// `.data` (a real `ProviderTaskStopResult`, e.g. `no-active-task`) — every
+// other test relies on the plain default shape set in `beforeEach`.
+const useStopProviderTaskMutation = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionQuery: (...args: unknown[]) =>
@@ -23,12 +27,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: false,
     isError: false,
   }),
-  useStopProviderTaskMutation: () => ({
-    mutate: stopMutate,
-    isPending: false,
-    isSuccess: false,
-    isError: false,
-  }),
+  useStopProviderTaskMutation: (...args: unknown[]) =>
+    useStopProviderTaskMutation(...args),
 }));
 
 import { ChildWorkRow } from '../ChildWorkRow';
@@ -70,6 +70,13 @@ function mount(model: ChildWorkRowModel, now = 100_000) {
 
 beforeEach(() => {
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
+  useStopProviderTaskMutation.mockReturnValue({
+    mutate: stopMutate,
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    data: undefined,
+  });
 });
 
 afterEach(() => {
@@ -162,6 +169,66 @@ test('Stop renders only from the row model, and reaches the matching seam', () =
     taskId: 'task-1',
   });
   expect(interruptMutate).not.toHaveBeenCalled();
+});
+
+test('#2486: Stop says it also ends the parent turn only when the row model says so — never a copy hardcoded for every engine', () => {
+  mount(
+    row(
+      { controls: { stop: 'provider-task-stop' } },
+      { stop: 'provider-task-stop', stopEndsParentTurn: true },
+    ),
+  );
+  expect(screen.getByRole('button', { name: 'Stop' }).title).toBe(
+    'Stop this subagent and the turn that started it',
+  );
+  cleanup();
+  mount(
+    row(
+      { controls: { stop: 'provider-task-stop' } },
+      { stop: 'provider-task-stop' },
+    ),
+  );
+  expect(screen.getByRole('button', { name: 'Stop' }).title).toBe('');
+});
+
+test('#2486 review: a no-active-task response resets the row instead of leaving it stuck on "Stopping…", with an honest note — engine-generic, not Codex-specific copy', () => {
+  useStopProviderTaskMutation.mockReturnValue({
+    mutate: stopMutate,
+    // A mutation that resolved successfully — react-query's own shape for
+    // "the call finished, without error" — but the ENGINE-neutral
+    // `ProviderTaskStopResult` it resolved to says there was nothing to
+    // stop (the child's own turn/started had not arrived yet).
+    isPending: false,
+    isSuccess: true,
+    isError: false,
+    data: { outcome: 'no-active-task', taskId: 'task-1' },
+  });
+  mount(
+    row(
+      { controls: { stop: 'provider-task-stop' } },
+      { stop: 'provider-task-stop' },
+    ),
+  );
+  // Never stuck on the pending label for a call that already finished.
+  expect(screen.queryByText('Stopping…')).toBeNull();
+  const stopButton = screen.getByRole('button', {
+    name: 'Stop',
+  }) as HTMLButtonElement;
+  expect(stopButton.disabled).toBe(false);
+  expect(screen.getByText('Nothing to stop yet — try again.')).toBeTruthy();
+  // A delegate's stop (a different mutation entirely) is unaffected — the
+  // reset is scoped to `provider-task-stop`, never assumed for every kind.
+  cleanup();
+  mount(
+    row(
+      {
+        producer: 'station-delegate',
+        controls: { stop: 'delegate-interrupt' },
+      },
+      { stop: 'delegate-interrupt' },
+    ),
+  );
+  expect(screen.queryByText('Nothing to stop yet — try again.')).toBeNull();
 });
 
 test('a truncated summary says so; a delegate’s usage is read only once the row is opened', () => {

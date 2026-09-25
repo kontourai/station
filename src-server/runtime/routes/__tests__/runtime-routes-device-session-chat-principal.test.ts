@@ -357,6 +357,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // (`runtime-initialize.ts` wires it through EnvironmentSecurityService,
       // which delegates 1:1 to this same DevicePairingService).
       personalSharing?: boolean;
+      // Extra sessions (thread id, owner) seeded like the fixed ones above.
+      extraSessions?: ReadonlyArray<readonly [string, string]>;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -373,6 +375,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
         ...(orchestrationExtras.extraOwners ?? []),
+        ...(orchestrationExtras.extraSessions ?? []),
       ]) {
         if (taskReferences)
           store.upsertSession({
@@ -590,6 +593,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                       orchestration!.listAgentRuns.bind(orchestration),
                   }
                 : {}),
+              canUserReadConversation:
+                orchestration!.canUserReadConversation.bind(orchestration),
+              listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
             }),
@@ -598,6 +604,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskGraphService: taskGraph ?? {
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
+        listKeptDeclaredPullRequestsForSessions: () => [],
       },
       projectService: membershipProjects ?? {
         listProjects: () => [{ id: task.projectId, slug: 'project' }],
@@ -2078,6 +2085,71 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     expect(prepareSpy).toHaveBeenCalledOnce();
     const [owner] = prepareSpy.mock.calls[0]!;
     expect(owner).toMatchObject({ principalId: LOCAL_OPERATOR_PRINCIPAL_ID });
+
+    await roomRuntime.close();
+    store.close();
+  });
+
+  /**
+   * A chat created in the UI is owned by the local-operator principal, while
+   * the conversation-scoped routes decided with the cached OS alias — so a
+   * conversation's linked pull requests answered "Conversation unavailable"
+   * for every real chat. (Ownerless ids stay readable in production's
+   * single-user compat mode; that is policy, not this route's decision.)
+   */
+  test('an operator reads the linked pull requests of the chat it owns', async () => {
+    const { app, store, roomRuntime } = await setup(
+      'operator',
+      true,
+      undefined,
+      false,
+      false,
+      { extraSessions: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]] },
+    );
+    const read = (conversationId: string) =>
+      app.request(
+        `/api/conversation-pull-requests/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      );
+    const owned = await read('operator-owned');
+    expect(owned.status, await owned.clone().text()).toBe(200);
+    expect(((await owned.json()) as { data: unknown }).data).toMatchObject({
+      conversationId: 'operator-owned',
+      links: [],
+    });
+
+    // The other session-scoped reads moved onto the same principal must have
+    // the authority BOUND for their prefixes: an unbound prefix throws
+    // "Conversation request authority was not resolved" (a 500) the moment a
+    // request names a thread.
+    const bound = [
+      await app.request(
+        '/api/pull-requests/context?project=project&thread=operator-owned',
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      ),
+      await app.request(
+        '/api/projects/project/file-preview',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: 'missing.txt',
+            thread: 'operator-owned',
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      ),
+    ];
+    for (const response of bound) {
+      const text = await response.text();
+      expect(response.status, text).not.toBe(500);
+      expect(text).not.toContain('authority was not resolved');
+    }
 
     await roomRuntime.close();
     store.close();

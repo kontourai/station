@@ -156,3 +156,11 @@
   color: var(--error-text, #c62828);
   font-size: var(--text-2xs);
 }
+
+/* #2486 review: honest, not alarming — a normal race (the button was
+   clickable a moment before the target it needed existed), not a failure. */
+.child-work-row__hint {
+  width: 100%;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}

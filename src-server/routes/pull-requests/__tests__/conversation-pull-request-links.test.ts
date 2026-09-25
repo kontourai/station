@@ -18,6 +18,7 @@ const identity = {
 };
 function fixture(
   declared: () => Promise<ConversationPullRequestLink[]> = async () => [],
+  lineageSessionIds?: (conversationId: string) => readonly string[],
 ) {
   const root = mkdtempSync(join(tmpdir(), 'station-pr-link-routes-'));
   roots.push(root);
@@ -50,8 +51,10 @@ function fixture(
         canRead: () => authority.read,
         operator: () => authority.actor,
         declared,
+        ...(lineageSessionIds ? { lineageSessionIds } : {}),
       },
     ),
+    root,
   };
 }
 
@@ -225,4 +228,49 @@ test('refreshes at most four exact links concurrently', async () => {
   );
   releases.splice(0).forEach((release) => release());
   expect((await read).status).toBe(200);
+});
+
+test('a link stored under a successor Session id is read with its conversation', async () => {
+  const x = fixture(
+    async () => [],
+    (id) =>
+      id === 'conversation-1'
+        ? ['conversation-1', 'conversation-1:session:2']
+        : [],
+  );
+  const store = new ConversationPullRequestLinkStore(x.root);
+  // Stored ONLY under the successor's own id (the old session-detail key).
+  await store.link(
+    'conversation-1:session:2',
+    identity,
+    'operator',
+    () => true,
+  );
+  const response = await x.app.request('/conversation-1');
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { data: { links: unknown[] } };
+  expect(body.data.links).toHaveLength(1);
+  expect(body.data.links[0]).toMatchObject({ ref: '17' });
+});
+
+test('the same link stored under the conversation and a successor is read once', async () => {
+  const x = fixture(
+    async () => [],
+    (id) =>
+      id === 'conversation-1'
+        ? ['conversation-1', 'conversation-1:session:2']
+        : [],
+  );
+  const store = new ConversationPullRequestLinkStore(x.root);
+  await store.link(
+    'conversation-1:session:2',
+    identity,
+    'operator',
+    () => true,
+  );
+  await store.link('conversation-1', identity, 'operator', () => true);
+  const body = (await (await x.app.request('/conversation-1')).json()) as {
+    data: { links: unknown[] };
+  };
+  expect(body.data.links).toHaveLength(1);
 });

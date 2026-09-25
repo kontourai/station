@@ -976,7 +976,7 @@ describe.runIf(process.platform !== 'win32')(
       );
       const path = join(root, 'broker.sqlite');
       let service: SelfHostedBrokerService | undefined;
-      let now = 1_000;
+      const now = 1_000;
       try {
         service = new SelfHostedBrokerService(path, () => now);
         const issued = service.provision(scope, 15 * 24 * 60 * 60_000);
