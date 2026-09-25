@@ -936,7 +936,11 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     ).resolves.toMatchObject({ allowed: false });
   });
 
-  test('an authored pattern matches the original MCP name of a normalized runtime tool', async () => {
+  // Pins CURRENT behaviour: an authored pattern is matched against the
+  // runtime (normalized) name only. Matching the original MCP name as well
+  // would newly auto-approve authored station-control patterns in unattended
+  // and delegated runs; that is an owner decision (#2613), not part of #2584.
+  test('an authored pattern written against the original MCP name does not match a normalized runtime tool (#2613, unchanged)', async () => {
     const toolNameMapping = loadedMapping('station-control', true, [
       'station-control_list_agents',
     ]);
@@ -959,7 +963,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
         },
         { agentSlug: 'planner' },
       ),
-    ).resolves.toBe(true);
+    ).resolves.toMatchObject({ allowed: false });
   });
 
   test('an absent resolveUnattendedGrant seam denies (fail-closed seam)', async () => {

@@ -126,19 +126,11 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       : undefined,
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
-    isGranted: (tool) => {
-      // The loader renames MCP tools (`station-control_list_agents` →
-      // `stationControl_listAgents`); authored patterns are written against
-      // the original name, so match both, as the stream path does.
-      const original = deps.toolNameMapping.get(tool.toolName)?.original;
-      return (
-        isAutoApproved(tool.toolName, autoApprove) ||
-        (original !== undefined && isAutoApproved(original, autoApprove)) ||
-        // #2584: the built-in's bounded-write tools, for every agent and run
-        // (attended, unattended, delegated), by exact loader identity.
-        isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping)
-      );
-    },
+    isGranted: (tool) =>
+      isAutoApproved(tool.toolName, autoApprove) ||
+      // #2584: the built-in's bounded-write tools, for every agent and run
+      // (attended, unattended, delegated), by exact loader identity.
+      isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping),
     logger: deps.logger,
   });
 
