@@ -275,6 +275,12 @@ try {
       (entry) => entry.keyId === keyId,
     );
     if (pinned) assertChannelAllowed(pinned, payload);
+    // No installer trusts an unpinned key id, so emitting one is only useful
+    // for fixtures and dry-runs; make that an explicit choice.
+    else if (!process.argv.includes('--allow-unpinned-key'))
+      throw new Error(
+        `signing key id ${keyId} is not pinned; pass --allow-unpinned-key for a test or dry-run manifest`,
+      );
     const privateKey = createPrivateKey(
       readFileSync(resolve(option('--private-key')), 'utf8'),
     );

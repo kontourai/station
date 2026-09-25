@@ -99,6 +99,7 @@ describe('ecosystem manifest', () => {
         privatePath,
         '--key-id',
         'station-ecosystem-v1',
+        '--allow-unpinned-key',
         '--output',
         join(dir, `${channel}.json`),
       ]);
@@ -195,6 +196,7 @@ describe('ecosystem manifest', () => {
         privatePath,
         '--key-id',
         'station-ecosystem-v1',
+        '--allow-unpinned-key',
         '--output',
         manifestPath,
       ]).status,
@@ -584,6 +586,7 @@ function signManifest(
       fixture.privateKeyPath,
       '--key-id',
       'station-fixture-signer',
+      '--allow-unpinned-key',
       '--output',
       manifestPath,
     ],
@@ -751,6 +754,7 @@ describe('pinned manifest signing keys', () => {
         privatePath,
         '--key-id',
         'station-golden-vector',
+        '--allow-unpinned-key',
         '--output',
         manifestPath,
       ],
@@ -1236,5 +1240,31 @@ describe('install.sh public manifest verification', () => {
       'cannot read the installed Station version; replacing it with v1.2.2',
     );
     expect(installedTag(fixture)).toBe('v1.2.2');
+  });
+
+  it('refuses to sign under an unpinned key id without --allow-unpinned-key', () => {
+    const fixture = makeInstallFixture('station-manifest-unpinned-');
+    const payloadPath = join(fixture.dir, 'payload.json');
+    writeFileSync(payloadPath, JSON.stringify(GOLDEN_PAYLOAD));
+    const args = [
+      'create',
+      '--payload',
+      payloadPath,
+      '--private-key',
+      fixture.privateKeyPath,
+      '--key-id',
+      'station-unpinned-signer',
+      '--output',
+      join(fixture.dir, 'out.json'),
+    ];
+    const env = { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' };
+    const refused = run(args, env);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      'signing key id station-unpinned-signer is not pinned',
+    );
+    expect(existsSync(join(fixture.dir, 'out.json'))).toBe(false);
+    const allowed = run([...args, '--allow-unpinned-key'], env);
+    expect(allowed.status, allowed.stderr).toBe(0);
   });
 });
