@@ -39,7 +39,13 @@ import type {
 } from './channel.js';
 
 export const DESKTOP_HOST_LEASE_MS = 90_000;
-const MAX_SURFACES = 16;
+/**
+ * Separate bounds per kind, so churn in one never evicts the other: any
+ * local-operator caller can name a fresh `local:desktop-<uuid>`, and must
+ * not be able to push a paired device's feed out (or the reverse).
+ */
+export const MAX_DESKTOP_HOST_FEEDS = 4;
+export const MAX_DEVICE_FEEDS = 16;
 const MAX_ENTRIES_PER_SURFACE = 100;
 const MAX_ENTRY_AGE_MS = 60 * 60 * 1000;
 const HIDDEN_TITLE = 'Station';
@@ -143,7 +149,7 @@ export class DesktopHostChannel implements DeliveryChannel {
     if (!feed) {
       feed = { lastReadAt: now, entries: [] };
       this.#feeds.set(surface, feed);
-      this.#evictSurfaces();
+      this.#evictSurfaces(surface.startsWith('local:'));
     }
     feed.lastReadAt = now;
     this.#prune(feed, now);
@@ -170,12 +176,16 @@ export class DesktopHostChannel implements DeliveryChannel {
       .slice(-MAX_ENTRIES_PER_SURFACE);
   }
 
-  #evictSurfaces(): void {
-    while (this.#feeds.size > MAX_SURFACES) {
+  /** Least recently read first, within the kind that just grew. */
+  #evictSurfaces(local: boolean): void {
+    const ofKind = (surface: SurfaceId) =>
+      surface.startsWith('local:') === local;
+    const cap = local ? MAX_DESKTOP_HOST_FEEDS : MAX_DEVICE_FEEDS;
+    while ([...this.#feeds.keys()].filter(ofKind).length > cap) {
       let oldest: SurfaceId | undefined;
       let oldestAt = Number.POSITIVE_INFINITY;
       for (const [surface, feed] of this.#feeds)
-        if (feed.lastReadAt < oldestAt) {
+        if (ofKind(surface) && feed.lastReadAt < oldestAt) {
           oldest = surface;
           oldestAt = feed.lastReadAt;
         }

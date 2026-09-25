@@ -23,9 +23,12 @@
  * Whatever the audience, a record that NAMES a session (legacy approvals
  * and turn completions carry `metadata.sessionId`; an envelope may name one
  * too — `notificationSessionIdentity`) reaches only surfaces whose principal
- * can read that session, and local surfaces only if the operator can. The
- * in-app list applies the same check to the same record; delivery must not
- * show a lock screen what the inbox would hide.
+ * can read that session, and local surfaces only if the operator can. For
+ * a session named in metadata the in-app list applies the same check to
+ * the same record. For an enveloped record whose only session is its
+ * TARGET, delivery is stricter than the inbox (which gates on metadata
+ * only): delivery must never show a lock screen what the inbox would hide,
+ * and may hide more.
  *
  * Fail closed: a device whose read check throws is left out.
  */
@@ -49,11 +52,12 @@ export interface AudienceResolution {
   operatorPrincipalId?: string;
   /**
    * Principals that are the owner themselves even though their ids differ:
-   * the operator (local tabs, the desktop host), each unbound paired device
-   * (it reads as its own device identity), and any device whose binding
-   * resolves to the operator. Focus on any of these may quiet the others.
-   * A tailnet-bound device of another person (a housemate) is NOT here: it
-   * is its own person for focus, so their focus never quiets the owner.
+   * the operator (local tabs, the desktop host) and each unbound paired
+   * device (it reads as its own device identity). Focus on any of these may
+   * quiet the others. A tailnet-bound device is NOT here — a housemate's,
+   * and for now also the owner's own tailnet phone: it is its own person
+   * for focus, so its focus never quiets the owner (more alerts, never
+   * fewer) until accounts link identities.
    */
   ownerPrincipals?: ReadonlySet<string>;
 }
@@ -145,10 +149,12 @@ export function createPairingAudienceResolver(
       const surface = deviceSurfaceId(device.id);
       surfaces.add(surface);
       principalOf.set(surface, principalId);
-      if (
-        device.principalBinding === undefined ||
-        principalId === deps.operatorPrincipalId
-      )
+      // Unbound devices read as their own device identity and are the
+      // owner's. A tailnet-bound device is its own person for focus — even
+      // the owner's own phone, since nothing links its tailnet identity to
+      // the operator yet. That errs toward more alerts (its focus never
+      // quiets the owner's other surfaces) until accounts link identities.
+      if (device.principalBinding === undefined)
         ownerPrincipals.add(principalId);
     }
     return {
