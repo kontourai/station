@@ -521,9 +521,11 @@ revealed where it is (`focusExisting`, default on) rather than opened twice —
 unless a DIFFERENT region is named, which moves it there: the default reveals,
 it does not override an explicit target; a refusal — `no-surface`,
 `unsupported-placement` (`split`: a region holds one tab group),
-`region-unavailable` (a side region on a bottom-only device), `refused` (an
+`region-unavailable` (a side region on a bottom-only device — since the phone
+layer, only for a surface that cannot occupy Chat's region), `refused` (an
 undeclared region) — is a typed outcome that writes nothing and navigates
-nowhere; no open pushes history or a `?pane=`. The instance-keyed half lives
+nowhere; no open pushes history or a `?pane=` — except the phone layer's one
+entry, below. The instance-keyed half lives
 outside the provider on purpose: the pane contracts are not in the entry
 chunk, and importing them there measured +1,820 B gzip against the ceiling's
 headroom.
@@ -563,23 +565,121 @@ and every anchor outside a conversation. The CONVERSATION's project resolves
 a path, not the dock's binding; where they differ the link keeps the
 `setLayout` route it had, because a dock pane binds the DOCK's project and
 rebinding would name a file in a checkout the conversation never mentioned.
-Bottom-only devices keep that route too. A path with NEITHER a dock pane nor
-that route is refused rather than followed, on both hosts: a repo-relative
-href resolved against Station's own origin is a route Station does not have,
-which on Tauri replaces the running application and on the web is a
-same-origin route-miss that drops the conversation pointer.
+(Bottom-only devices used to keep that route too; since the phone layer they
+open the pane like any other device — see below.) A path with NEITHER a dock
+pane nor that route is refused rather than followed, on both hosts: a
+repo-relative href resolved against Station's own origin is a route Station
+does not have, which on Tauri replaces the running application and on the
+web is a same-origin route-miss that drops the conversation pointer.
 
 External links open in the host's browser ON TAURI, where a plain anchor
 navigated the webview away from the running application — that is the fix
-this carries. **On the web they keep the anchor's default and replace the
-Station tab.** #2049's plan asked for a new tab there; this does not do it,
-and the deviation is deliberate rather than overlooked: the extracted helper
-is the NATIVE half only (`openNativeExternalLink`, `null` = "no native
-host"), so the MCP frame keeps its own `location.assign` byte for byte and
-the chat anchor keeps the web default. Giving chat anchors
-`target="_blank" rel="noopener noreferrer"` is a separate change with its
-own question (whether a model's link should be able to open a tab at all)
-and is not made here.
+this carries. On the web a chat link that leaves Station (an external site,
+a forge file, a pull request with no dock to hold it) now opens a NEW TAB
+(`target="_blank" rel="noopener noreferrer"`, `ChatMarkdownAnchor`), as
+#2049's plan specified; the earlier note here that it replaced the Station
+tab described the first cut and is superseded. The MCP frame keeps its own
+`location.assign`.
+
+### The phone layer: a pane opens over Chat, and Back returns to it
+
+**Supersedes #2049 B5** ("bottom-only: paths keep the main route, PR links
+open externally; a folded PR pane is a later choice") and the "bottom-only
+devices keep that route" note above. On a bottom-only device, a pane opened
+with no explicit region — or with a side region the fold does not offer,
+which used to be refused `region-unavailable` — opens OVER Chat
+(`openPhonePaneLayer`, region-model.ts): a selected tab of the folded region
+that holds Chat (`chatRegion`, else the folded region, else `bottom`),
+maximized on a phone-sized viewport (`useIsMobile`) so it reads full screen.
+Chat's region is never hidden and Chat's tab stays in it. `main` keeps its
+own rule, and so does an explicit `bottom` (the user placing a pane, #2158).
+Chat links follow: `MarkdownLinkContext` no longer carries the fold, so a
+pull request or path link on a phone opens its pane, and `openPathInMain` is
+only the fallback when the model refuses.
+
+The layer is provider state (`RegionModelContext.phoneLayer`), transient and
+never persisted — the record is written as if the layer were closed. While it
+is open the provider holds ONE `registerDialogHistory` entry per layer (id
+`phone-pane-layer:<n>`, fresh for each layer so a marker orphaned by an
+earlier Back can never skip a later layer's live entry), so the device's
+Back — and the visible "‹ Chat" control the region chrome shows while a
+layer is open (`RegionChromeBar` `onBackToChat`; the iOS app has no
+swipe-back) — returns to Chat: Chat reselected, its maximize and visibility
+restored, and the tab the layer minted removed (a phone has no tab strip, so
+a tab left behind Chat would be one nobody can see or close;
+`restorePhonePaneLayer`). A minted pane the layer moved out of another
+(hidden) dock region goes back to its tab slot there on Back, "‹ Chat" or a
+dismissal. (A pane held in `main` never opens a layer, so a layer pane's
+origin is always a dock region.) Opening another pane while a layer is open
+replaces the layer's pane and keeps the ORIGINAL previous state, so one Back
+always returns to Chat. Anything else that takes the pane off screen — "Show
+Chat" in the folded menu, closing the tab, hiding the region — dismisses the
+layer the same way and consumes its entry; "Hide <pane>" for the layer's own
+pane is the way back to Chat rather than a hide of Chat's region. A
+chat-focus intent (`focusSession`, `openChatForAgent`, opening a
+conversation) dismisses the layer through `useDismissPhoneLayer`. When the
+fold opens (a narrow window widened) the layer ends in place
+(`endPhonePaneLayerInPlace`): its pane stays where it is — visible, selected
+and mounted as an ordinary tab of Chat's region — and only its maximize is
+undone. That live arrangement is exactly what is saved, so a reload finds
+the pane as a tab there too. A pane the layer had moved out of another
+region is NOT returned to it, live or in the record: moving it would remount
+it (dropping an unguarded draft) and hide what the user was reading, and the
+user can move it. Every exit leaves `lastDockMaximized` as the layer found
+it.
+
+Back, "‹ Chat" (`closePhoneLayer`), the folded menu's hide of the layer's
+own pane, and a chat-focus intent ask the unsaved-changes guards first
+(`navigationStore.runNavigationGuards`) — only while a layer is open; with
+no layer `closePhoneLayer` returns before asking, so a chat click never
+prompts about an unrelated form. The restore unmounts the pane, and a pull
+request review's typed comment is component state behind `useUnsavedGuard`.
+"‹ Chat" simply waits for the answer. Back has already left the layer's
+entry when it asks, so the layer is reinstated at once — shown, selected,
+maximized, under a fresh entry — and stays that way until the answer:
+Discard is the in-app restore, Cancel changes nothing, and a second Back
+while the prompt is up lands on the layer's own entry, so repeated
+Back→Cancel neither grows the history nor leaves the page. The entry is
+registered before the `?maximize` mirror writes (effect declaration order),
+so Back travels to the pre-layer URL and an in-app close travels back over
+the entry rather than collapsing it.
+
+Known limitations, disclosed rather than designed here:
+
+- **Guards are app-wide.** The guards asked are the navigation store's whole
+  registered set, not the layer pane's. An unrelated dirty form mounted
+  elsewhere (under the layer, in `main`) also asks when the layer closes,
+  and its answer decides whether the layer closes. Scoping guards to a
+  surface is design work (review M-a).
+- **A reload while layered keeps Chat maximized.** The layer's maximize is
+  Chat's region's, mirrored into the URL's `?maximize=true`, and a reload
+  has no layer to undo it: Chat comes back Full rather than at the size it
+  had before the layer. Telling a layer's maximize from the user's at load
+  would need the layer's state to survive the reload, which it deliberately
+  does not.
+- **Two Backs in the same tick can pass the layer.** While the
+  unsaved-changes prompt is up, the layer's entry is re-pushed from the
+  popstate that asked; two `history.back()` calls issued in the same tick
+  (script, not a person — presses 20–150 ms apart are fine) can travel past
+  that entry to the page before the layer before it is re-pushed.
+
+**Owner decision 2026-09-24 (#928 comment).** This supersedes #928's
+2026-09-03 phone decision in one respect: showing Activity (or any pane) on
+a phone no longer takes the folded region from Chat and swaps Chat back from
+the toolbar; it opens over Chat, and Back or "‹ Chat" returns.
+
+The pull request pane's "Open on GitHub" ("Open on GitLab" for gitlab.com,
+"Open in browser" otherwise) opens the PR's URL outside Station
+(`openExternalLink`): a new tab on the web, for http(s) URLs only. In the
+Station app the host's `open_external_link` opens what its policy admits —
+the owner's #2480 decision (2026-09-24) widens it to any https link the user
+clicks, landing separately; before that it is a narrower allowlist that does
+not include pull requests. Whichever policy is running, every refusal or
+host error, from this button or a chat link, is shown as a notice with the
+link and a Copy action (`reportUnopenedExternalLink`) rather than being a
+click that does nothing. One notice is live per link however often it is
+clicked; a long link is shortened on screen while Copy copies the whole, and
+a copy that worked says "Link copied".
 
 **Implemented by #2050 (slice 6: the Agents pane), 2026-09-14.** The
 background work of the conversation on screen — tool calls, delegated

@@ -4,7 +4,7 @@ import {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   foldedSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sdk';
@@ -166,7 +166,7 @@ export function ConversationContextResetDialog({
       const refreshed = await onStoppedSessionRefreshed();
       if (
         !refreshed ||
-        !isSessionLifecycleStateStopped(
+        !isSessionLifecycleStateAtRest(
           foldedSessionLifecycleState(refreshed.lifecycleState),
         ) ||
         refreshed.hasActiveTurn

@@ -336,7 +336,11 @@ export interface ExecutionTargetExecutionDependencies
   resolveConversationSession?: (
     access: EnvironmentAccess,
     conversationId: string,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ) => Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -594,6 +598,9 @@ export async function executeForegroundMessage(
             provider: resolved.provider,
             ...(resolved.engine.kind === 'connection'
               ? { connectionId: resolved.engine.connectionId }
+              : {}),
+            ...(input.target.model?.override
+              ? { modelOverride: input.target.model.override }
               : {}),
           },
         )

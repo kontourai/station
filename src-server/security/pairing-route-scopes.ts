@@ -166,6 +166,8 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // only what that credential's own person stored and the mutate tier changes
   // only their own records — no leaf here reaches another principal.
   '/api/me',
+  // #2585: focus presence. The one leaf is an explicit read-tier rule below.
+  '/api/presence',
   '/api/mobile-devices',
   // #2586: notification delivery preferences. Both leaves are explicit
   // operate-tier rules below.
@@ -394,14 +396,25 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   ),
   // The caller's own decided-alert feed carries notification content. The
   // route further derives the surface from the caller: a personal-family
-  // paired device reads only device:<its id>; the local operator names its
-  // local:desktop-<id>. Anyone else is refused.
+  // paired device reads only device:<its id>; the local operator reads the
+  // local:desktop-<id> its installation header names. Anyone else is refused.
   {
     id: '/api/notifications/deliveries:get',
     method: 'GET',
     prefix: '/api/notifications/deliveries',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // #2585: a client reporting its OWN document focus. The route derives the
+  // surface from this credential and writes nothing else, so a read-only
+  // paired device — which still receives notifications — must reach it.
+  {
+    id: '/api/presence/focus:report',
+    method: 'POST',
+    prefix: '/api/presence/focus',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
