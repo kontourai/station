@@ -335,6 +335,9 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   Object.freeze({
     pattern: '.github/workflows/**',
     tests: Object.freeze([
+      // Reads three workflows through a templated URL the path-read scan
+      // cannot resolve, so it had no edge from them (#2176).
+      'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
@@ -495,6 +498,36 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       reason:
         'settings registry artifact is generated from this input outside ' +
         'the import graph (#2176)',
+    }),
+  ),
+  // The rest read one named file each, by a path the scan cannot resolve (a
+  // `test.each` parameter, a cwd-relative literal, a directory copied into a
+  // temp plugin), and import nothing that reaches it.
+  ...[
+    // Generation must run where its readers run: `build:basis-pane` and the
+    // ci:fast static list are asserted by text.
+    ['package.json', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    ['scripts/run-ci-fast.mjs', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    // Its SHELL_FILES, scanned for hand-rolled chrome alert markup.
+    [
+      'src-ui/src/App.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    [
+      'src-ui/src/main.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    // Installs the example plugin's files and exercises them.
+    [
+      'examples/smart-routing/**',
+      'src-server/routes/__tests__/smart-routing-plugin.test.ts',
+    ],
+  ].map(([pattern, test]) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([test]),
+      reason: 'suite reads this file by path, outside the import graph (#2176)',
     }),
   ),
 ]);

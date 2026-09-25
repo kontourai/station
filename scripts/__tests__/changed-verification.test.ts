@@ -92,6 +92,7 @@ const skippedReport = readFileSync(
 // the production mapping, not another projection of that mapping.
 const EXPECTED_GOVERNED_READERS = {
   '.github/workflows/**': [
+    'scripts/__tests__/android-network-policy.test.ts',
     'scripts/__tests__/backlog-priority-policy.test.ts',
     'scripts/__tests__/ci-workflow-contract.test.ts',
     'scripts/__tests__/ci-workflow-governance.test.ts',
@@ -190,24 +191,25 @@ describe('changed verification selection', () => {
    * dropping `supplemental` loses the lane, and dropping the edge loses the
    * named test.
    */
-  test('the settings-registry input edges only add the generator suite (#2176)', () => {
-    // Each input is compared against the same manifest WITHOUT these edges:
-    // the related paths, lanes and escalation must be identical and the
-    // tests a strict superset, so the edge cannot trade the import graph (or
-    // a contracts escalation) for one named suite.
+  test('the unmodelled-input edges only add their suites (#2176)', () => {
+    // Each edge's path is compared against the same manifest WITHOUT these
+    // edges: related paths, lanes and escalation must be identical and the
+    // tests exactly the old tests plus the edge's own, so no edge can trade
+    // the import graph (or a contracts escalation) for one named suite.
     const without = TEST_IMPACT_MANIFEST.filter(
       (edge) => !UNMODELLED_INPUT_EDGES.includes(edge),
     );
     expect(without).toHaveLength(
       TEST_IMPACT_MANIFEST.length - UNMODELLED_INPUT_EDGES.length,
     );
-    for (const path of [
-      'src-ui/src/views/settings/settings-catalog.ts',
-      'src-ui/src/views/settings/settings-deep-link.ts',
-      'packages/contracts/src/settings-registry.ts',
-      'packages/contracts/src/device-settings.ts',
-      'src-server/generated/settings-registry.json',
-    ]) {
+    // Pinned by count, independently: the loop below is satisfied by an
+    // empty list.
+    expect(UNMODELLED_INPUT_EDGES).toHaveLength(10);
+    for (const edge of UNMODELLED_INPUT_EDGES) {
+      expect(edge.supplemental, edge.pattern).toBe(true);
+      const path = edge.pattern.endsWith('/**')
+        ? `${edge.pattern.slice(0, -2)}plugin.json`
+        : edge.pattern;
       const before = selectChangedVerification([path], without);
       const after = selectChangedVerification([path]);
       expect(after.relatedPaths, path).toEqual(before.relatedPaths);
@@ -218,11 +220,26 @@ describe('changed verification selection', () => {
         path,
       ).toEqual(
         [
-          ...before.tests.map((entry) => entry.path),
-          'scripts/__tests__/gen-settings-registry.test.ts',
+          ...new Set([
+            ...before.tests.map((entry) => entry.path),
+            ...(edge.tests ?? []),
+          ]),
         ].sort(),
       );
     }
+    // And the settings generator's inputs, named independently of the
+    // manifest, each reach its suite.
+    for (const path of [
+      'src-ui/src/views/settings/settings-catalog.ts',
+      'src-ui/src/views/settings/settings-deep-link.ts',
+      'packages/contracts/src/settings-registry.ts',
+      'packages/contracts/src/device-settings.ts',
+      'src-server/generated/settings-registry.json',
+    ])
+      expect(
+        selectChangedVerification([path]).tests.map((entry) => entry.path),
+        path,
+      ).toContain('scripts/__tests__/gen-settings-registry.test.ts');
   });
   test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
     const selection = selectChangedVerification([
@@ -255,7 +272,25 @@ describe('changed verification selection', () => {
           },
         ]
       : [];
-    expect(selection.tests).toEqual(supplementalVocabulary);
+    // The shell files are also read by path by the chrome-notice scan
+    // (#2176); the UI fixture is one of them.
+    const supplementalShellChrome = [
+      'src-ui/src/App.tsx',
+      'src-ui/src/main.tsx',
+    ].includes(path)
+      ? [
+          {
+            path: 'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+            reasons: [
+              `suite reads this file by path, outside the import graph (#2176): ${path}`,
+            ],
+          },
+        ]
+      : [];
+    expect(selection.tests).toEqual([
+      ...supplementalShellChrome,
+      ...supplementalVocabulary,
+    ]);
     expect(selection.lanes).toEqual([]);
     expect(selection.escalated, reason).toBe(false);
   });
