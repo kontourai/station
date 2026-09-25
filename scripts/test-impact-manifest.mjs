@@ -615,6 +615,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/docs-snippets.test.ts',
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
+  'scripts/__tests__/ios-agent-activity-assets.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
@@ -630,6 +631,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
   'src-server/services/devices/__tests__/device-host-resolver.test.ts',
   'src-server/services/infra/__tests__/resource-posture.test.ts',
+  'src-server/services/notifications/__tests__/notification-service.scan.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
   'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
@@ -654,7 +656,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/undefined-css-custom-properties.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/__tests__/PageCallout.test.tsx',
-  'src-server/services/notifications/__tests__/notification-service.scan.test.ts',
 ]);
 
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([

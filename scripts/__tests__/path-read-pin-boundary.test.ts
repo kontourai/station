@@ -491,6 +491,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
+  'scripts/__tests__/desktop-runtime-port-lease.test.ts':
+    'its rmSync mock walks whatever the code under test deletes, a temporary lock directory',
   'scripts/__tests__/generate-app-icons.test.ts':
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
