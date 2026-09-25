@@ -111,7 +111,6 @@ async function setup(
       ...scope,
       channelId,
       stationKeyHash: 'k',
-      deviceHash: 'd',
       createdAt: now,
     });
   return { ...upstream, ledger, run, record, clock: () => now };
@@ -261,7 +260,28 @@ test('a run stays within its subrequest and delete caps and leaves the rest', as
     tight.ledger.state.requests -
     beforeTight;
   assert.equal(tightSpent, 5);
-  assert.equal(report.deleted, 3);
+  // One purge, one list and one triage, then two deletes.
+  assert.equal(report.deleted, 2);
+});
+
+test('purges expired records once per run, not once per scope', async () => {
+  const { ledger, run } = await setup(
+    {
+      [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A],
+      [`sandbox:${OTHER_BUNDLE}`]: [ORPHAN_B],
+    },
+    [sandbox(), sandbox(OTHER_BUNDLE)],
+  );
+  let purges = 0;
+  const purge = ledger.purge;
+  ledger.purge = async (now) => {
+    purges += 1;
+    return purge(now);
+  };
+  await run();
+  assert.equal(purges, 1);
+  await run();
+  assert.equal(purges, 2);
 });
 
 test('one failing scope does not stop the others', async () => {

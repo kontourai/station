@@ -114,31 +114,37 @@ npx tsc -p deploy/push-gateway/tsconfig.json
 
 ## Deploy
 
-The **Workers Free plan is sufficient**. What the gateway uses of it:
+The Workers Free plan is expected to be enough (see the CPU caveat below).
+Two kinds of choice are involved, and they are kept apart here.
 
-- **Durable Objects (SQLite):** one `ChannelLedger` object. Free allows 100,000
-  requests, 100,000 row writes and 5 million row reads a day. A start costs
-  two requests (read the device's daily count, then record) and about three
-  row writes (the channel, the daily count, and later its expiry purge); a
-  channel delete costs one request; a sweep run costs one request per scope.
-  At the global create ceiling (10 a minute, 14,400 a day) that is about
-  30,000 requests and 45,000 row writes a day, plus a first sighting per leaked
-  channel; normal use is far below. Reads are dominated by the sweep, which
-  reads a scope's rows once per run (at most about 3.5 million a day at the
-  ceiling).
-- **50 subrequests per invocation:** every Apple call and every ledger call is
-  one. A request makes at most six (a start: the daily count, create, record,
-  push, and on refusal the compensating delete and its record removal); a sweep run spends at most 45 (a list and
-  a ledger call per scope, then at most 40 deletes) and leaves the rest for
-  the next run.
-- **Cron triggers:** Free allows five; the gateway uses one (`*/3 * * * *`).
-- **Workers KV** is not used: its Free allowance (1,000 writes a day) would be
-  gone within hours.
+**Plan-shaped choices** (made to fit Workers Free; on Workers Paid, with
+1,000 subrequests per invocation, they could be relaxed):
 
-The abuse ceiling is `CHANNEL_GLOBAL_LIMITER`: 10 channel-creating starts a
-minute is the most the daily Durable Object allowances have to absorb, and
-the sweep (40 deletes every three minutes, 800 an hour) outpaces it (600 an
-hour) even if no Station ever deletes.
+- The sweep runs every three minutes (`*/3 * * * *`, one of Free's five cron
+  triggers) and spends at most 45 subrequests per run, at most 40 of them
+  deletes, because Free allows 50 subrequests per invocation and every Apple
+  call and every ledger call is one. At 800 deletes an hour it outpaces the
+  global create ceiling (600 an hour) even if no Station ever deletes.
+- A request makes at most six subrequests (a start: the daily count, create,
+  record and push, then either the accepted-start count or, on refusal, the
+  compensating delete and its record removal).
+- Durable Object allowances on Free: 100,000 requests, 100,000 row writes and
+  5 million row reads a day. An accepted start costs three ledger requests
+  (the daily count, the record, the accepted-start count) and about three row
+  writes; at the global create ceiling (10 a minute) that is about
+  45,000 requests and 45,000 row writes a day, plus one row per leaked channel
+  sighted; normal use is far below. Reads are dominated by the sweep, which
+  reads each swept scope's live records once per run (every statement uses an
+  index: `SEARCH`, never `SCAN`, in `EXPLAIN QUERY PLAN`).
+- **Unverified:** Free allows about 10 ms of CPU per request. The first APNs
+  provider-token signature in a Worker isolate is pure-JavaScript ES256
+  (later ones are cached for 45 minutes), and a large channel list costs CPU
+  in the sweep. If a real deploy exceeds the CPU limit, the fix is Workers
+  Paid, not a redesign.
+
+**Correctness choices** (would be the same on any plan) are described under
+"Channel ledger and sweep" below: the ledger is a Durable Object because it
+is a strongly consistent single writer, not because of Free's limits.
 
 ```sh
 cd deploy/push-gateway
@@ -160,16 +166,21 @@ APNs team and key ids (`APNS_TEAM_ID`, `APNS_KEY_ID`), and the rate limits.
 | `GLOBAL_LIMITER` | one bucket | FCM sends, updates, ends |
 | `CHANNEL_PER_IP_LIMITER` | client address (IPv6: its /64) | starts (each creates a channel) |
 | `CHANNEL_PER_DEVICE_LIMITER` | hash of the push-to-start token | starts |
-| daily device ceiling (ledger) | hash of the push-to-start token, per UTC day | starts: 6 channels a day |
+| daily device guard (ledger) | hash of the push-to-start token, per UTC day | starts: 6 accepted a day |
 | `CHANNEL_PER_KEY_LIMITER` | Station key thumbprint | starts |
 | `CHANNEL_GLOBAL_LIMITER` | one bucket, 10/min | starts |
 | `CHANNEL_DELETE_LIMITER` | Station key thumbprint | channel deletes |
 
-Rows are listed in the order each route checks them. Workers rate-limit
-bindings only offer 10 s and 60 s periods, so the per-day device ceiling is
-kept in the channel ledger instead: reading it spends nothing, and the count
-rises only when a channel is actually created (a created channel counts even
-if Apple then refuses the start). An IPv6
+Rows are listed in the order each route checks them. The per-key and global
+limiters are the abuse bounds. The daily device guard is not: its key is a
+hash of a token the Station supplies, so a hostile caller simply varies it.
+It protects the phone from an honest Station that has gone wrong, starting
+activity after activity all day. It lives in the channel ledger (rate-limit
+bindings only offer 10 s and 60 s periods); reading it spends nothing, and the
+count rises only when Apple accepts a start, so refusals and the Station's
+retries never lock a phone out. The check and the count are separate ledger
+requests, so two starts for one device at the same moment can both pass and
+overshoot by one; the per-minute device limiter makes that rare. An IPv6
 subscriber usually holds a whole /64, so IPv6 addresses are limited per /64
 prefix; IPv4 addresses as they are.
 
@@ -186,14 +197,29 @@ no-op while APNs is dark.
 
 ### Channel ledger and sweep
 
+**Why a Durable Object.** Correctness: the sweep deletes channels the ledger
+does not record, so a record must be visible the instant it is written, and
+the daily device count must increment atomically. A Durable Object is a
+single, strongly consistent writer and gives both. Workers KV is eventually
+consistent (a write can take a minute to be seen elsewhere), which opens a
+window where the sweep misses a fresh record and deletes a live channel, and
+it has no atomic counters. D1 was considered; it is also strongly consistent
+but adds a database to provision and migrate for three small tables that one
+object holds. The trade-offs, accepted: every create and delete takes an
+extra hop to the object's location; one object is a single point of
+contention for the whole gateway (fine at the 10-a-minute create ceiling; if
+that ever binds, shard the ledger by scope, one object per environment and
+bundle, since nothing crosses scopes); and while the object is unreachable
+starts are refused with 503.
+
 Apple lets an app hold a finite number of broadcast channels per environment
 and never expires them, so a channel nobody deletes is quota lost for good.
 Every channel the gateway creates is recorded in the `ChannelLedger` Durable
 Object (`src/channel-ledger.ts`: one SQLite-backed object for the whole
-gateway) the moment Apple creates it, with its environment, bundle, creation
+gateway, addressed by a fixed name) the moment Apple creates it, with its environment, bundle, creation
 time and a hash of the Station key. A record counts for 12 hours (an activity
 lasts at most eight and stays dismissible for four more); older rows are
-purged. A start whose channel cannot be recorded does not go ahead and gives
+purged by the sweep once per run. A start whose channel cannot be recorded does not go ahead and gives
 the channel back, and a start is refused (503) while the ledger is
 unreachable. A successful delete, explicit or compensating, removes the
 record. The compensating delete after a refused start runs through
@@ -291,8 +317,8 @@ Apple limits how many broadcast channels an app may hold per environment
 (about 10,000; not yet verified live), channels do not expire, and anyone can
 mint a Station key, so channel creation is the resource worth defending. It
 happens only inside a start, which must name a real push-to-start token; the
-start limits (per address, per device per minute and per UTC day, per key,
-global) bound the rate, and
+start limits bound the rate (per address and per device per minute; the
+abuse bounds are per key and global), and
 the ledger sweep bounds the lifetime. At `CHANNEL_GLOBAL_LIMITER`'s 10 per
 minute, even a caller who never deletes can hold at most 7,200 channels (12
 hours of ledger) in an environment, under the quota.
@@ -316,8 +342,9 @@ looks low:
    (`GET https://api-manage-broadcast.push.apple.com:2196/1/apps/<bundle>/all-channels`)
    and delete stale ones. A Station whose channel was deleted gets 410
    `channel-gone` on its next update and starts a fresh activity.
-4. If it recurs, lower the daily device ceiling (`DAILY_STARTS_PER_DEVICE`
-   in `src/channel-ledger.ts`) rather than asking for a larger quota.
+4. If it recurs, lower `CHANNEL_PER_KEY_LIMITER` and `CHANNEL_GLOBAL_LIMITER`
+   rather than asking for a larger quota. (The daily device guard does not
+   help here: a hostile caller varies the device token.)
 
 **After a bad secret deploy.** If `APNS_AUTH_KEY` is wrong or revoked, every
 Apple call answers 403: starts, pushes and deletes all fail with 503 and the

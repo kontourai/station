@@ -89,6 +89,16 @@ export async function sweepChannels(input: {
     deferred: 0,
     skipped: [],
   };
+  // Expired records and old day counts, once per run (an indexed delete).
+  if (scopes.length > 0 && budget > 0) {
+    budget -= 1;
+    await ledger.purge(nowSeconds).catch((error: unknown) => {
+      console.error(
+        'apns channel ledger purge failed:',
+        error instanceof Error ? error.message : 'unknown error',
+      );
+    });
+  }
   for (const { bundleId, environment } of scopes) {
     const label = `${environment}:${bundleId}`;
     // Listing and triage are two subrequests; without them a scope is left

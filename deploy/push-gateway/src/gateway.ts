@@ -334,9 +334,10 @@ async function liveActivity(
       ]))
     )
       return RATE_LIMITED();
-    // The device's daily ceiling sits between its per-minute limit and the
-    // wider ones. Reading it spends nothing; the count rises only when a
-    // channel is actually created and recorded.
+    // The device's daily ceiling (a guard against an honest Station running
+    // away, not an abuse bound: the device key is caller-supplied) sits
+    // between its per-minute limit and the wider ones. Reading it spends
+    // nothing; the count rises only when Apple accepts a start.
     let startsToday: number;
     try {
       startsToday = await apns.ledger.startsToday(
@@ -378,7 +379,6 @@ async function liveActivity(
           apns.ledger.record({
             ...channelOf(channelId),
             stationKeyHash,
-            deviceHash,
             createdAt: signed.nowSeconds,
           }),
         forget: (channelId) => apns.ledger.forget(channelOf(channelId)),
@@ -391,6 +391,10 @@ async function liveActivity(
     );
     await Promise.all(pending);
     if (outcome.kind !== 'started') return apnsResponse(outcome);
+    // Best effort: an uncounted start only loosens the guard by one.
+    await apns.ledger
+      .countStart(deviceHash, signed.nowSeconds)
+      .catch(() => console.error('apns channel ledger count failed'));
     const channelAuth = await signChannelAuth(apns.channelAuth, {
       bundleId: request.bundleId,
       environment: request.environment,

@@ -885,7 +885,6 @@ test('a channel given back or deleted leaves the ledger', async () => {
       bundleId: IOS_BUNDLE,
       channelId: CHANNEL_ID,
       stationKeyHash: 'k',
-      deviceHash: 'd',
       createdAt: NOW,
     });
   const { fetchImpl } = upstream();
@@ -968,21 +967,44 @@ test('each device may create a limited number of channels per UTC day', async ()
   assert.equal(await ledgerOf(cfg).startsToday(deviceHash, tomorrow), 0);
 });
 
-test('a refused daily cap spends no wider budget, and a refused start still counts', async () => {
-  const log: string[] = [];
-  const refusedStart = upstream({
-    start: () => Response.json({ reason: 'BadDate' }, { status: 400 }),
+test('starts Apple refuses do not use up the daily cap', async () => {
+  let refuse = true;
+  const { apple, fetchImpl } = upstream({
+    start: () =>
+      refuse
+        ? Response.json({ reason: 'BadDate' }, { status: 400 })
+        : new Response(null, { status: 200 }),
   });
+  const cfg = await config({ fetchImpl });
+  const deviceHash = await bodyHash(
+    new TextEncoder().encode(PUSH_TO_START_TOKEN),
+  );
+  // A Station retrying a refused start (or several) must not lock the phone
+  // out for the day.
+  for (let index = 0; index < DAILY_STARTS_PER_DEVICE; index += 1)
+    assert.equal((await live(cfg, 'start')).status, 422);
+  assert.equal(await ledgerOf(cfg).startsToday(deviceHash, NOW), 0);
+  refuse = false;
+  assert.equal((await live(cfg, 'start')).status, 200);
+  assert.equal(await ledgerOf(cfg).startsToday(deviceHash, NOW), 1);
+  assert.equal(
+    apple().filter((call) => kindOf(call) === 'create').length,
+    DAILY_STARTS_PER_DEVICE + 1,
+  );
+});
+
+test('a refused daily cap spends no wider budget', async () => {
+  const log: string[] = [];
+  const { fetchImpl } = upstream();
   const cfg = await config(
-    { fetchImpl: refusedStart.fetchImpl },
+    { fetchImpl },
     {
       channelPerKeyLimiter: recording(log, 'key'),
       channelGlobalLimiter: recording(log, 'global'),
     },
   );
-  // Every created channel counts, even when Apple then refuses the start.
   for (let index = 0; index < DAILY_STARTS_PER_DEVICE; index += 1)
-    assert.equal((await live(cfg, 'start')).status, 422);
+    assert.equal((await live(cfg, 'start')).status, 200);
   log.length = 0;
   assert.equal((await live(cfg, 'start')).status, 429);
   assert.deepEqual(log, [], 'refused at the device before key or global');
