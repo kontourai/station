@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { NATIVE_PUSH_SESSION_REFERENCE_PATTERN } from '@kontourai/station-contracts/native-push';
 import { describe, expect, test } from 'vitest';
 import { parseSendRequest } from '../../../../deploy/push-gateway/src/send-request.js';
 import {
@@ -262,11 +264,20 @@ describe('buildAgentActivityCard', () => {
 
   test('a sealed card of long multibyte titles and a full alert still fits what the gateway forwards', () => {
     const wide = '界'.repeat(400);
+    // Longest session references the contract allows (#2515), on the hero
+    // and on a single-session alert (so the alert carries its own
+    // reference), are inside the same budget.
     const sessions = Array.from({ length: 8 }, (_, i) =>
-      snapshot(`s${i}`, 'waiting_for_approval', i * MINUTE, {
-        title: wide,
-        project: wide,
-      }),
+      snapshot(
+        `${i}${'s'.repeat(127)}`,
+        i === 0 ? 'waiting_for_approval' : 'running',
+        i * MINUTE,
+        {
+          title: wide,
+          project: wide,
+          projectSlug: `${i}${'p'.repeat(127)}`,
+        },
+      ),
     );
     const built = card(sessions);
     const plaintext = composeAgentActivityPlaintext(
@@ -303,8 +314,103 @@ describe('buildAgentActivityCard', () => {
     ).toBeLessThan(3800);
     const fields = JSON.parse(plaintext) as Record<string, string>;
     expect(rows(fields).length).toBeGreaterThan(0);
+    expect(fields.activity_session_id).toBe(`0${'s'.repeat(127)}`);
+    expect(fields.activity_project_slug).toBe(`0${'p'.repeat(127)}`);
+    expect(fields.alert_session_id).toBe(`0${'s'.repeat(127)}`);
+    expect(fields.alert_project_slug).toBe(`0${'p'.repeat(127)}`);
     // Counts still describe all eight, not just the rows that fit.
-    expect(fields.activity_attention_count).toBe('8');
+    expect(fields.activity_active_count).toBe('8');
+    expect(fields.activity_attention_count).toBe('1');
+  });
+});
+
+describe('session references (#2515)', () => {
+  test('the card names its first row’s session and project slug, inside the plaintext', () => {
+    const fields = plaintextFor([
+      snapshot('run-1', 'running', 0, { projectSlug: 'login-app' }),
+      snapshot('approve-1', 'waiting_for_approval', 5 * MINUTE, {
+        projectSlug: 'station',
+      }),
+    ]);
+    // Row 0 is the approval (attention ranks first), so the tap opens it.
+    expect(rows(fields)[0]).toBe('Approval\tTitle approve-1\tStation');
+    expect(fields.activity_session_id).toBe('approve-1');
+    expect(fields.activity_project_slug).toBe('station');
+    // The single alert names the same session.
+    expect(fields.alert_session_id).toBe('approve-1');
+    expect(fields.alert_project_slug).toBe('station');
+  });
+
+  test('a session with no project is referenced by id alone', () => {
+    const fields = plaintextFor([
+      snapshot('solo', 'waiting_for_input', 0, { projectSlug: undefined }),
+    ]);
+    expect(fields.activity_session_id).toBe('solo');
+    expect(fields).not.toHaveProperty('activity_project_slug');
+    expect(fields.alert_session_id).toBe('solo');
+    expect(fields).not.toHaveProperty('alert_project_slug');
+  });
+
+  test('ids outside the contract grammar are not sent, so the tap opens the app where it was', () => {
+    for (const [sessionId, projectSlug] of [
+      ['../etc', undefined],
+      ['s/1', undefined],
+      ['-leading-dash', undefined],
+      ['s'.repeat(129), undefined],
+      ['ok', 'has space'],
+      ['ok', 'https://evil.example'],
+    ] as const) {
+      const fields = plaintextFor([
+        snapshot(sessionId, 'waiting_for_approval', 0, {
+          ...(projectSlug ? { projectSlug } : {}),
+        }),
+      ]);
+      expect(fields.alert_id).toBeDefined();
+      expect(fields).not.toHaveProperty('activity_session_id');
+      expect(fields).not.toHaveProperty('activity_project_slug');
+      expect(fields).not.toHaveProperty('alert_session_id');
+      expect(fields).not.toHaveProperty('alert_project_slug');
+    }
+  });
+
+  test('a grouped alert names no session; the card still names its first row', () => {
+    const fields = plaintextFor([
+      snapshot('a', 'waiting_for_approval', 0),
+      snapshot('b', 'waiting_for_input', MINUTE),
+    ]);
+    expect(fields.alert_title).toBe('2 agents need you');
+    expect(fields).not.toHaveProperty('alert_session_id');
+    expect(fields.activity_session_id).toBe('a');
+  });
+
+  test('a card with no rows names no session', () => {
+    const built = card([snapshot('a', 'waiting_for_approval', 0)]);
+    const fields = JSON.parse(
+      composeAgentActivityPlaintext({ ...built, rows: [] }, {}, NOW),
+    ) as Record<string, string>;
+    expect(fields).not.toHaveProperty('activity_session_id');
+  });
+
+  test('the phone refuses exactly what the Station does not send: one grammar on both sides', () => {
+    const model = readFileSync(
+      new URL(
+        '../../../../src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityModel.kt',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const kotlin = model.match(
+      /internal val SESSION_REFERENCE = Regex\("([^"]+)"\)/,
+    )?.[1];
+    expect(kotlin).toBe(NATIVE_PUSH_SESSION_REFERENCE_PATTERN.source);
+    expect(NATIVE_PUSH_SESSION_REFERENCE_PATTERN.flags).toBe('');
+  });
+
+  test('the content key changes when the first row names a different session with the same text', () => {
+    const one = card([snapshot('a', 'running', 0, { title: 'Same' })]);
+    const other = card([snapshot('b', 'running', 0, { title: 'Same' })]);
+    expect(one.rows).toEqual(other.rows);
+    expect(one.contentKey).not.toBe(other.contentKey);
   });
 });
 

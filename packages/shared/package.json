@@ -72,6 +72,7 @@
     "./sqlite-integrity": "./src/sqlite-integrity.ts",
     "./instance-registry": "./src/instance-registry.ts",
     "./notification-priority": "./src/notification-priority.ts",
+    "./notification-envelope": "./src/notification-envelope.ts",
     "./native-shell-origin": "./src/native-shell-origin.ts",
     "./answer-share-projection": "./src/answer-share-projection.ts",
     "./thread-projection": "./src/thread-projection.ts",

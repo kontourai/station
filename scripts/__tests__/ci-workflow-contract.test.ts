@@ -10,6 +10,7 @@ import {
   ANDROID_BUILD_TOOLS_VERSION,
   ANDROID_NDK_VERSION,
   CHECKOUT_ACTION,
+  FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
@@ -26,9 +27,13 @@ import {
   sanitizeLookupDiagnostic,
   validateAndroidBuildRun,
 } from '../resolve-android-build-run.mjs';
+import {
+  COVERAGE_SLICE_TIMEOUT_SCALE,
+  coverageShardIds,
+} from '../run-coverage-corpus.mjs';
 import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
 import {
-  COVERAGE_LANE_TIMEOUT_MS,
+  CI_FAST_TIMEOUT_MS,
   FULL_REGRESSION_PHASES,
 } from '../verification-lanes.mjs';
 import { QUARANTINED_VITEST_FILES } from '../vitest-resource-manifest.mjs';
@@ -890,11 +895,14 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
+    // Only playwright-full holds the physical-host lease now (#2416):
+    // coverage moved to hosted coverage-shard/coverage-merge jobs, which
+    // need nothing from the fleet host.
     expect(
       workflow('ci-extended.yml').match(
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     for (const name of [
       'android-test.yml',
       'build-android.yml',
@@ -924,8 +932,12 @@ describe('CI verification workflow contracts', () => {
   it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
-    const coverage = extended.slice(
-      extended.indexOf('  coverage:'),
+    const coverageShard = extended.slice(
+      extended.indexOf('  coverage-shard:'),
+      extended.indexOf('  coverage-merge:'),
+    );
+    const coverageMerge = extended.slice(
+      extended.indexOf('  coverage-merge:'),
       extended.indexOf('  playwright-full:'),
     );
     const playwrightFull = extended.slice(
@@ -936,84 +948,181 @@ describe('CI verification workflow contracts', () => {
     // The PR smoke lives in fast-checks; the post-completion duplicate that
     // could only ever run on dispatch is gone (200 of 200 push runs skipped).
     expect(ci).not.toContain('  browser-smoke:');
-    expect(extended).toContain('coverage:');
+    expect(extended).toContain('coverage-shard:');
+    expect(extended).toContain('coverage-merge:');
     expect(extended).toContain('playwright-full:');
     expect(extended).not.toContain('run: npm run ci:extended');
     expect(extended).not.toContain('run: npm run ci:fast');
-    expect(extended).toContain('run: npm run test:coverage');
+    // #2416: coverage-shard runs one slice directly (never the coordinated
+    // `npm run test:coverage` lane, which assumes one process owns the whole
+    // corpus); coverage-merge applies the same fail-closed merge and
+    // thresholds through its own thin wrapper.
+    expect(extended).not.toContain('run: npm run test:coverage\n');
+    expect(coverageShard).toContain('node scripts/run-vitest-corpus.mjs');
+    expect(coverageShard).toContain('--coverage-root=coverage/shards');
+    expect(coverageMerge).toContain('run: npm run test:coverage:merge');
     expect(extended).toContain('run: npm run verify:e2e:full');
     // Dispatch only until a run is green; a scheduled red nobody acts on is noise.
     expect(extended).not.toContain('schedule:');
     expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
-    expect(coverage).toContain('needs: playwright-full');
-    expect(coverage).toContain(
-      "always() && !cancelled() && github.event_name != 'pull_request'",
-    );
+
+    // Hosted, not fleet: neither coverage job holds the physical-host lease,
+    // so nothing forces them to wait for playwright-full to free it (#2416).
+    for (const job of [coverageShard, coverageMerge]) {
+      expect(job).toContain('runs-on: ubuntu-22.04');
+      expect(job).not.toContain('runner-preflight@');
+      expect(job).not.toContain('physical-host-capacity@');
+      expect(job).not.toContain('self-hosted');
+    }
+    expect(coverageShard).not.toContain('needs:');
+    expect(coverageMerge).toContain('needs: coverage-shard');
     expect(playwrightFull).not.toContain('needs: coverage');
-    expect(coverage).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
-    );
+
     expect(playwrightFull).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
-    for (const job of [coverage, playwrightFull]) {
-      expect(job).toContain("github.event_name != 'pull_request'");
-      expect(job).toContain('runner-preflight@');
-      expect(job).toContain('physical-host-capacity@');
-      expect(job).toContain('owner-lifetime-seconds: "7800"');
-    }
+    expect(playwrightFull).toContain("github.event_name != 'pull_request'");
+    expect(playwrightFull).toContain('runner-preflight@');
+    expect(playwrightFull).toContain('physical-host-capacity@');
+    expect(playwrightFull).toContain('owner-lifetime-seconds: "7800"');
   });
 
-  it('runs sharded coverage sequentially in one capacity-leased job whose deadline holds the lane', () => {
-    const entry = readWorkflowDocuments().find(
-      ({ file }) => file === '.github/workflows/ci-extended.yml',
-    );
-    if (!entry)
-      throw new Error('Expected the checked-in ci-extended workflow.');
-    const job = (
-      entry.document as {
-        jobs: Record<
-          string,
-          {
-            'timeout-minutes'?: number;
-            strategy?: unknown;
-            steps: Array<{
-              name?: string;
-              uses?: string;
-              run?: string;
-              with?: Record<string, unknown>;
-            }>;
-          }
-        >;
+  describe('parallel hosted coverage shards (#2416)', () => {
+    type Step = {
+      name?: string;
+      uses?: string;
+      run?: string;
+      with?: Record<string, unknown>;
+    };
+    type MatrixEntry = { id?: string; args?: string; timeoutMinutes?: number };
+    type Job = {
+      needs?: string | string[];
+      if?: string;
+      'runs-on'?: unknown;
+      'timeout-minutes'?: unknown;
+      strategy?: {
+        'fail-fast'?: boolean;
+        matrix?: { include?: MatrixEntry[] };
+      };
+      steps: Step[];
+    };
+    function jobs() {
+      const entry = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/ci-extended.yml',
+      );
+      if (!entry)
+        throw new Error('Expected the checked-in ci-extended workflow.');
+      return (entry.document as { jobs: Record<string, Job> }).jobs;
+    }
+
+    // The coverage plan's own source of truth, not a hand list here: a slice
+    // added to or removed from corpusDescriptors() (run-vitest-corpus.mjs)
+    // changes this without anyone touching the workflow.
+    const expectedSliceIds = coverageShardIds();
+
+    it('names every plan slice exactly once, deriving the expected set from the corpus plan', () => {
+      const shard = jobs()['coverage-shard'];
+      expect(shard.strategy?.['fail-fast']).toBe(false);
+      const include = shard.strategy?.matrix?.include ?? [];
+      const ids = include.map((entry) => entry.id);
+      expect(ids, 'a matrix id is missing or duplicated').toHaveLength(
+        new Set(ids).size,
+      );
+      // Fault injection: drop one entry from ci-extended.yml's matrix (or add
+      // an id `coverageShardIds()` does not plan for) and this goes red.
+      expect([...ids].sort()).toEqual([...expectedSliceIds].sort());
+    });
+
+    it("encodes each matrix entry's own slice in its --group/--shard args", () => {
+      const include = jobs()['coverage-shard'].strategy?.matrix?.include ?? [];
+      for (const entry of include) {
+        const match = /^--group=(\S+)(?: --shard=(\S+))?$/.exec(
+          entry.args ?? '',
+        );
+        expect(match, `unparseable args for ${entry.id}`).not.toBeNull();
+        const [, group, shard] = match ?? [];
+        const impliedId =
+          group === 'ordinary'
+            ? `ordinary-${shard?.replace('/', '-of-')}`
+            : group;
+        expect(impliedId, entry.id).toBe(entry.id);
       }
-    ).jobs.coverage;
-    // One job, no matrix: every fleet runner shares the one physical host, so
-    // legs would queue on the lease and repeat all of the setup.
-    expect(job.strategy).toBeUndefined();
-    const capacity = job.steps.find(({ uses }) =>
-      uses?.startsWith('kontourai/.github/actions/physical-host-capacity@'),
-    );
-    expect(String(capacity?.with?.['lease-weight'])).toBe('9');
-    // The coordinated lane must be able to reach its own deadline (and write
-    // its receipt) before the job is killed, leaving room for setup.
-    const jobTimeoutMs = (job['timeout-minutes'] ?? 0) * 60_000;
-    expect(jobTimeoutMs - COVERAGE_LANE_TIMEOUT_MS).toBeGreaterThanOrEqual(
-      20 * 60_000,
-    );
-    const runs = job.steps.map(({ run }) => run ?? '');
-    const lane = runs.findIndex(
-      (run) => run.trim() === 'npm run test:coverage',
-    );
-    const prepare = runs.findIndex((run) =>
-      run.includes('--phase=browser-prerequisite --phase=sdk-builds'),
-    );
-    const prepareStatic = runs.findIndex((run) =>
-      run.includes('npm run prepare:verify-static'),
-    );
-    expect(lane).toBeGreaterThan(0);
-    expect(prepare).toBeGreaterThan(0);
-    expect(prepare).toBeLessThan(lane);
-    expect(prepareStatic).toBe(prepare);
+    });
+
+    it("sizes each matrix leg's timeout from the canonical phase fence, not a bare number", () => {
+      // ceil(phase.timeoutMs / 60000 * COVERAGE_SLICE_TIMEOUT_SCALE) + a flat
+      // setup allowance for checkout/deps/Chromium/SDK builds, shared with
+      // merge-queue-regression's hosted corpus jobs.
+      const SETUP_BUFFER_MINUTES = 15;
+      const include = jobs()['coverage-shard'].strategy?.matrix?.include ?? [];
+      expect(include.length).toBe(expectedSliceIds.length);
+      for (const entry of include) {
+        const phase = FULL_REGRESSION_PHASES.find(
+          ({ id }) => id === `test-full-${entry.id}`,
+        );
+        expect(phase, `no canonical phase for slice ${entry.id}`).toBeDefined();
+        const expectedMinutes =
+          Math.ceil(
+            ((phase?.timeoutMs ?? 0) / 60_000) * COVERAGE_SLICE_TIMEOUT_SCALE,
+          ) + SETUP_BUFFER_MINUTES;
+        expect(entry.timeoutMinutes, entry.id).toBe(expectedMinutes);
+      }
+      const shard = jobs()['coverage-shard'];
+      expect(shard['timeout-minutes']).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ matrix.timeoutMinutes }}',
+      );
+    });
+
+    it('needs every shard and fails closed rather than merging a partial set', () => {
+      const merge = jobs()['coverage-merge'];
+      // Fault injection: this needs relationship is what makes "drop a shard
+      // from the matrix" structurally unable to produce a green merge on its
+      // own — the merge job cannot even start without coverage-shard.
+      expect(merge.needs).toBe('coverage-shard');
+      expect(merge.if).toContain('always()');
+      expect(merge.if).toContain('!cancelled()');
+      const runs = merge.steps.map(({ run }) => run ?? '');
+      expect(runs).toContain('npm run test:coverage:merge');
+      // The merge step runs no corpus of its own: it must never spell the
+      // full local diagnostic lane, which would re-run every slice serially
+      // and defeat the entire point of parallelizing them.
+      expect(runs.join('\n')).not.toContain('npm run test:coverage:raw');
+      expect(runs.join('\n')).not.toMatch(/\bnpm run test:coverage\b(?!:)/);
+    });
+
+    it('installs Chromium and prepares SDK builds before running each slice', () => {
+      const shard = jobs()['coverage-shard'];
+      const runs = shard.steps.map(({ run }) => run ?? '');
+      const chromium = runs.findIndex((run) =>
+        run.includes('npx playwright install chromium'),
+      );
+      const prepare = runs.findIndex((run) =>
+        run.includes('--phase=browser-prerequisite --phase=sdk-builds'),
+      );
+      const prepareStatic = runs.findIndex((run) =>
+        run.includes('npm run prepare:verify-static'),
+      );
+      const slice = runs.findIndex((run) =>
+        run.includes('run-vitest-corpus.mjs'),
+      );
+      expect(chromium).toBeGreaterThan(-1);
+      expect(prepare).toBeGreaterThan(chromium);
+      expect(prepareStatic).toBe(prepare);
+      expect(slice).toBeGreaterThan(prepare);
+      // Each leg uploads only its own slice's report, named by its matrix id.
+      const upload = shard.steps.find(
+        (step) => step.name === 'Upload coverage shard report',
+      );
+      expect(upload?.with?.name).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        'coverage-shard-${{ matrix.id }}',
+      );
+      expect(upload?.with?.path).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        'coverage/shards/${{ matrix.id }}/',
+      );
+    });
   });
 
   it('runs only the exact screenshot bucket nightly and fails on baseline drift (#518, #875)', () => {
@@ -1140,6 +1249,173 @@ describe('CI verification workflow contracts', () => {
     expect(gallery.slice(0, uploadIndex)).not.toContain('continue-on-error');
   });
 
+  it('runs the nightly gallery gate on gallery-relevant PRs in the same pinned renderer (#2428)', () => {
+    type Step = {
+      id?: string;
+      name?: string;
+      uses?: string;
+      run?: string;
+      if?: string;
+      env?: Record<string, unknown>;
+      with?: Record<string, unknown>;
+      'continue-on-error'?: unknown;
+    };
+    type Job = {
+      needs?: unknown;
+      if?: unknown;
+      'runs-on'?: unknown;
+      container?: unknown;
+      env?: unknown;
+      defaults?: unknown;
+      'timeout-minutes'?: unknown;
+      steps: Step[];
+    };
+    type Doc = {
+      on?: Record<string, unknown>;
+      permissions?: unknown;
+      jobs: Record<string, Job>;
+    };
+    const documentFor = (file: string) => {
+      const entry = readWorkflowDocuments().find(
+        (candidate) => candidate.file === `.github/workflows/${file}`,
+      );
+      if (!entry) throw new Error(`Expected the checked-in ${file}.`);
+      return entry.document as Doc;
+    };
+    const pr = documentFor('gallery-pr-check.yml');
+    const nightly = documentFor('nightly-gallery.yml');
+
+    // Trigger: base-controlled pull_request_target only. Not merge_group —
+    // the queue-time combination check is #2428's option 2 — and never the
+    // candidate-controlled pull_request (actionlint-gate refuses it).
+    expect(Object.keys(pr.on ?? {})).toEqual(['pull_request_target']);
+    expect(pr.on?.pull_request_target).toEqual({
+      branches: ['main'],
+      types: ['opened', 'synchronize', 'reopened'],
+    });
+    expect(pr.permissions).toEqual({ contents: 'read' });
+    // The nightly stays a nightly: this check is additive, not a move.
+    expect(Object.keys(nightly.on ?? {}).sort()).toEqual([
+      'schedule',
+      'workflow_dispatch',
+    ]);
+
+    // The path filter is the base commit's classifier, not a `paths:` list: a
+    // candidate cannot edit the rule that decides whether its screens are
+    // photographed, and the scope it asks for is the gallery one.
+    expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
+    const classifyRun =
+      pr.jobs.classify.steps.find((step) => step.id === 'relevance')?.run ?? '';
+    expect(classifyRun).toContain(
+      'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+    );
+    expect(classifyRun).toContain('--scope gallery --mode candidate');
+    const job = pr.jobs['gallery-diff'];
+    expect(job.needs).toBe('classify');
+    expect(job.if).toBe("needs.classify.outputs.relevant == 'true'");
+
+    // Renderer parity. The comparator is exact, so a baseline is a claim about
+    // one renderer; a PR check in any other container would contradict the
+    // nightly on pixels nobody changed. Compare parsed values, so a digest
+    // bump in one file alone fails here.
+    const nightlyJob = nightly.jobs['screenshot-diff'];
+    for (const key of [
+      'runs-on',
+      'container',
+      'env',
+      'defaults',
+      'timeout-minutes',
+    ] as const) {
+      expect(job[key], key).toEqual(nightlyJob[key]);
+    }
+    expect(String((job.container as { image?: unknown })?.image)).toMatch(
+      /@sha256:[0-9a-f]{64}$/,
+    );
+
+    // Setup parity: every shell step the nightly runs before its capture —
+    // toolchain, safe.directory, install, degraded-capture refusal — runs here
+    // verbatim, in the same order. A fix to one copy that skips the other
+    // would photograph two different builds.
+    const nightlyCaptureIndex = nightlyJob.steps.findIndex((step) =>
+      step.run?.includes('npm run test:e2e:screenshot'),
+    );
+    expect(nightlyCaptureIndex).toBeGreaterThan(0);
+    const setupRuns = (steps: Step[]) =>
+      steps
+        .filter((step) => typeof step.run === 'string')
+        .map((step) => ({ name: step.name, run: step.run }));
+    const nightlySetup = setupRuns(
+      nightlyJob.steps.slice(0, nightlyCaptureIndex),
+    );
+    expect(nightlySetup.length).toBeGreaterThanOrEqual(4);
+    const captureIndex = job.steps.findIndex((step) => step.id === 'capture');
+    expect(setupRuns(job.steps.slice(0, captureIndex))).toEqual(nightlySetup);
+    const nightlyUses = nightlyJob.steps
+      .slice(0, nightlyCaptureIndex)
+      .map((step) => step.uses)
+      .filter(Boolean);
+    expect(
+      job.steps
+        .slice(0, captureIndex)
+        .map((step) => step.uses)
+        .filter(Boolean),
+    ).toEqual(nightlyUses);
+
+    // Capture, then the exact diff, as separate steps so a failure names its
+    // half; nothing up to the upload may swallow a failure.
+    const diffIndex = job.steps.findIndex((step) => step.id === 'diff');
+    expect(job.steps[captureIndex]?.run).toBe('npm run test:e2e:screenshot');
+    expect(job.steps[diffIndex]?.run).toBe('npm run screenshot:diff');
+    expect(diffIndex).toBe(captureIndex + 1);
+    const uploadIndex = job.steps.findIndex((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(uploadIndex).toBeGreaterThan(diffIndex);
+    for (const step of job.steps.slice(0, uploadIndex)) {
+      expect(step['continue-on-error'], step.name).toBeUndefined();
+    }
+
+    // The artifact is the ONLY sanctioned baseline source, so it must exist
+    // on failure and carry the gallery directory at its root (capture.json
+    // plus PNGs), which is what `screenshot-diff.mjs baseline --gallery=`
+    // reads. run_attempt keeps a re-run from colliding on the name.
+    const upload = job.steps[uploadIndex];
+    const nightlyUpload = nightlyJob.steps.find((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload.uses).toBe(nightlyUpload?.uses);
+    expect(upload.if).toBe('always()');
+    expect(upload.with?.path).toBe('gallery/');
+    const artifactName = `gallery-pr-\${{ github.run_id }}-\${{ github.run_attempt }}`;
+    expect(upload.with?.name).toBe(artifactName);
+
+    // The refresh instructions name that same artifact and the command that
+    // turns it into a baseline, and appear only when the DIFF failed; a
+    // capture failure gets the opposite advice.
+    const refresh = job.steps.find(
+      (step) => step.name === 'Explain how to refresh the baseline',
+    );
+    expect(refresh?.if).toBe("failure() && steps.diff.outcome == 'failure'");
+    expect(refresh?.env?.ARTIFACT).toBe(artifactName);
+    expect(refresh?.run).toContain(
+      `gh run download \${RUN_ID} --repo \${REPOSITORY} --name \${ARTIFACT}`,
+    );
+    expect(refresh?.run).toContain('npm run screenshot:baseline -- --gallery=');
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['screenshot:baseline']).toBe(
+      'node scripts/screenshot-diff.mjs baseline',
+    );
+    const captureFailed = job.steps.find(
+      (step) => step.name === 'Explain a capture that did not complete',
+    );
+    expect(captureFailed?.if).toBe(
+      "failure() && steps.capture.outcome == 'failure'",
+    );
+    expect(captureFailed?.run).toContain('do NOT re-baseline');
+  });
+
   it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
     // nightly-gallery.yml invokes `test:e2e:screenshot`, but the
     // hermetic-roster flag lives in run-e2e-suite.mjs. Nothing else asserts
@@ -1181,6 +1457,50 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
+    // #2577: the lane budget and each job fence are separate literals. Raising
+    // the lane alone lets a job be killed before the coordinator's own
+    // deadline fires and writes its receipt, so each fence must contain the
+    // lane's budget, every other step's own bound, and the unbounded
+    // setup/post steps (checkout, dependencies:ci, build:ui, ...; ~2 minutes
+    // observed across 88 hosted fast-checks runs, budgeted at three). Jobs
+    // are found by what they run, not by name, so a new caller (fork-smoke
+    // was the one first missed) is covered without editing this test.
+    type Step = { run?: string; 'timeout-minutes'?: number };
+    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    const runsCiFast = (step: Step) =>
+      typeof step.run === 'string' &&
+      /(^|[\s;&|])npm run ci:fast(?![\w:-])/.test(step.run);
+    const callers = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        ((document as { jobs?: Record<string, Job> } | null)?.jobs ??
+          {}) as Record<string, Job>,
+      )
+        .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
+        .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
+    );
+    expect(callers.map(({ id }) => id).sort()).toEqual([
+      '.github/workflows/ci.yml#fast-checks',
+      '.github/workflows/ci.yml#fork-smoke',
+    ]);
+    const unboundedAllowanceMs = 3 * 60_000;
+    for (const { id, job } of callers) {
+      const steps = job.steps ?? [];
+      const lane = steps.filter(runsCiFast);
+      expect(lane, id).toHaveLength(1);
+      // The lane step is bounded by its coordinator deadline, not a step
+      // timeout; a step timeout below it would kill it first.
+      expect(lane[0]['timeout-minutes'], id).toBeUndefined();
+      const boundedStepsMs = steps.reduce(
+        (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+        0,
+      );
+      expect((job['timeout-minutes'] ?? 0) * 60_000, id).toBeGreaterThanOrEqual(
+        CI_FAST_TIMEOUT_MS + boundedStepsMs + unboundedAllowanceMs,
+      );
+    }
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
@@ -1192,7 +1512,9 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
-    expect(fastChecks).toContain('timeout-minutes: 45');
+    expect(fastChecks).toContain(
+      `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
+    );
     expect(fastChecks).toContain('timeout-minutes: 20');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
@@ -1372,9 +1694,9 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  fork-smoke:'),
     );
     const extended = workflow('ci-extended.yml');
-    const coverage = extended.slice(
-      extended.indexOf('  coverage:'),
-      extended.indexOf('  playwright-full:'),
+    const coverageShard = extended.slice(
+      extended.indexOf('  coverage-shard:'),
+      extended.indexOf('  coverage-merge:'),
     );
     const playwrightFull = extended.slice(
       extended.indexOf('  playwright-full:'),
@@ -1382,8 +1704,8 @@ describe('CI verification workflow contracts', () => {
 
     // `npm run dependencies:ci` deletes and reinstalls all of `node_modules`, taking
     // `node_modules/playwright-core/.local-browsers` with it — but never
-    // touches `$HOME`. Both jobs below export `PLAYWRIGHT_BROWSERS_PATH` to
-    // a `$HOME`-rooted path job-wide (via `$GITHUB_ENV`) and call
+    // touches `$HOME`. Every job below exports `PLAYWRIGHT_BROWSERS_PATH` to
+    // a `$HOME`-rooted path job-wide (via `$GITHUB_ENV`) and calls
     // `playwright install` directly, never through `npm run
     // install:playwright[:ci]` — those scripts hardcode
     // `PLAYWRIGHT_BROWSERS_PATH=0` (in-node_modules) as a package.json
@@ -1396,12 +1718,10 @@ describe('CI verification workflow contracts', () => {
         'node scripts/install-playwright-browsers.mjs chromium',
       ],
       // The coverage corpus includes real-Chromium geometry tests, and its
-      // lane checks for the pinned browser before any slice runs.
-      [
-        coverage,
-        'coverage',
-        'node scripts/install-playwright-browsers.mjs chromium',
-      ],
+      // lane checks for the pinned browser before any slice runs. Hosted, so
+      // it follows merge-queue-regression.yml's retry-and-cap convention
+      // rather than playwright-full's fleet-runner script (#2416).
+      [coverageShard, 'coverage-shard', 'npx playwright install chromium'],
     ] as const) {
       const jobRunBody = extractRunBodies(job);
       // Both jobs' install steps are `run: |` block scalars — proven by
@@ -1474,12 +1794,12 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecksRunBody).toContain(envExport);
     expect(fastChecks).toContain(envExport);
     expect(fastChecksRunBody).not.toMatch(inNodeModulesPathZero);
-    // The browser must be installed before the lane that requires it runs.
-    const coverageRunBody = extractRunBodies(coverage);
-    expect(coverageRunBody.indexOf('npm run test:coverage')).toBeGreaterThan(
-      coverageRunBody.indexOf(
-        'node scripts/install-playwright-browsers.mjs chromium',
-      ),
+    // The browser must be installed before the slice that requires it runs.
+    const coverageShardRunBody = extractRunBodies(coverageShard);
+    expect(
+      coverageShardRunBody.indexOf('run-vitest-corpus.mjs'),
+    ).toBeGreaterThan(
+      coverageShardRunBody.indexOf('npx playwright install chromium'),
     );
   });
 
@@ -1558,6 +1878,7 @@ describe('CI verification workflow contracts', () => {
       // #1645: the gallery capture belongs on a hosted runner now, because an
       // exact-pixel baseline needs a renderer pinned by digest.
       'nightly-gallery.yml',
+      'gallery-pr-check.yml',
     ];
     for (const name of linuxWorkflows) {
       const source = workflow(name);
@@ -2140,6 +2461,7 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
     ['ci.yml', 'ci-fast-verification'],
     ['ci-extended.yml', 'coverage-verification'],
     ['nightly-gallery.yml', 'nightly-gallery'],
+    ['gallery-pr-check.yml', 'gallery-pr-'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {
     // A diagnostic that cannot be stored is an infrastructure condition, not
     // a verdict on the code. Read backwards from the artifact name to the

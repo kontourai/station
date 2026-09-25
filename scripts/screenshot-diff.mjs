@@ -42,9 +42,12 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PNG } from 'pngjs';
+
+/** A gallery screen name is a slug; it becomes `<name>.png` in the baseline. */
+const SCREEN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
 export const DEFAULT_GALLERY_DIR = 'gallery';
 export const DEFAULT_BASELINE_PATH = 'tests/screenshots.baseline.json';
@@ -341,6 +344,25 @@ export function runBaseline(options, { log = console.log } = {}) {
   const nextByName = shouldReplace ? new Map() : new Map(existingByName);
   let updated = 0;
   let preservedVolatile = 0;
+
+  // The gallery can come from a downloaded CI artifact -- for a fork pull
+  // request, one produced entirely by the fork's code. Its capture.json names
+  // the files read here and, through `name`, the files written into the
+  // baseline, so refuse anything that could reach outside either directory
+  // before touching disk.
+  const galleryRoot = resolve(galleryDir);
+  for (const screen of capture.screens) {
+    if (!screen.ok) continue;
+    if (typeof screen.name !== 'string' || !SCREEN_NAME.test(screen.name))
+      throw new Error(
+        `refusing capture screen name ${JSON.stringify(screen.name)}: expected ${SCREEN_NAME}`,
+      );
+    const source = resolve(galleryRoot, String(screen.file));
+    if (!source.startsWith(`${galleryRoot}${sep}`))
+      throw new Error(
+        `refusing capture file ${JSON.stringify(screen.file)}: it resolves outside the gallery directory`,
+      );
+  }
 
   for (const screen of capture.screens) {
     if (!screen.ok) continue; // never clobber with a broken/absent tile
