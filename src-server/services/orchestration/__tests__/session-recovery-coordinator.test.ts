@@ -1882,6 +1882,18 @@ describe('SessionRecoveryCoordinator', () => {
       },
       expected: { approvalMode: 'ask' },
     },
+    {
+      provider: 'codex' as const,
+      metadata: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
+      expected: { approvalMode: 'never' },
+    },
+    // #2493: a confined session's never. Its confinement is restored from
+    // the session's start stamp, never from this pair.
+    {
+      provider: 'codex' as const,
+      metadata: { approvalPolicy: 'never', sandbox: 'workspace-write' },
+      expected: { approvalMode: 'never' },
+    },
   ])(
     'reconstructs $provider raw approval posture when normalized approvalMode is absent',
     async ({ provider, metadata, expected }) => {

@@ -15,6 +15,12 @@ export type AdvertisedAcpMode = {
 export type AdvertisedAcpModeCatalog = {
   currentModeId?: string;
   modes: AdvertisedAcpMode[];
+  /**
+   * #2569: ids of advertised modes the agent itself declared as full access
+   * (`_meta.kind: "full_access"`, as claude-code-acp does). Kept apart from
+   * `modes`, which is reported to clients as advertised.
+   */
+  fullAccessModeIds?: string[];
   /** Present when the engine advertised a config option with category "mode". */
   configOptionId?: string;
 };
@@ -23,6 +29,97 @@ type AcpModeProcess = {
   setConfigOption(configId: string, value: string): Promise<unknown>;
   setMode(modeId: string): Promise<void>;
 };
+
+/**
+ * #2569: advertised mode ids known to skip the agent's own permission
+ * prompts. ACP's `SessionMode` carries no semantics of its own, so this is an
+ * explicit list of what real agents advertise, checked against their source:
+ *
+ * - `bypassPermissions`: claude-code-acp (`src/session-mode.ts`, "Accepts all
+ *   permissions"; it also declares `_meta.kind: "full_access"`).
+ * - `full-access`: codex-acp (`src/thread.rs`, the no-sandbox
+ *   `PermissionProfile::Disabled` preset).
+ * - `yolo`: gemini-cli (`packages/cli/src/acp/acpUtils.ts`, "Auto-approves
+ *   all tools").
+ *
+ * Deliberately not guessed from other names; an agent that declares
+ * `_meta.kind: "full_access"` on a mode is classified by that instead.
+ */
+const KNOWN_FULL_ACCESS_ACP_MODE_IDS: readonly string[] = [
+  'bypassPermissions',
+  'full-access',
+  'yolo',
+];
+
+/** Whether `value` names a mode on the known full-access list. */
+export function isKnownFullAccessAcpModeId(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    KNOWN_FULL_ACCESS_ACP_MODE_IDS.includes(value.trim())
+  );
+}
+
+function declaresFullAccess(entry: unknown): boolean {
+  if (!entry || typeof entry !== 'object') return false;
+  const meta = (entry as { _meta?: unknown })._meta;
+  return (
+    !!meta &&
+    typeof meta === 'object' &&
+    (meta as { kind?: unknown }).kind === 'full_access'
+  );
+}
+
+function modeIdOf(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object') return undefined;
+  const record = entry as Record<string, unknown>;
+  const id =
+    typeof record.value === 'string'
+      ? record.value
+      : typeof record.id === 'string'
+        ? record.id
+        : undefined;
+  return id?.trim() ? id : undefined;
+}
+
+function declaredFullAccessIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    const id = modeIdOf(entry);
+    return id && declaresFullAccess(entry) ? [id] : [];
+  });
+}
+
+/** Whether selecting `modeId` in this catalog skips the agent's prompts. */
+function isFullAccessAcpMode(
+  catalog: AdvertisedAcpModeCatalog,
+  modeId: string,
+): boolean {
+  return (
+    isKnownFullAccessAcpModeId(modeId) ||
+    (catalog.fullAccessModeIds ?? []).includes(modeId)
+  );
+}
+
+/**
+ * #2569: the requested mode this session may apply. A full-access mode is
+ * the ACP equivalent of approval `never`, so only a `host` session applies
+ * it; anything else keeps the connection's current mode.
+ */
+export function permittedAcpSessionMode(
+  catalog: AdvertisedAcpModeCatalog,
+  requestedModeId: string | undefined,
+  confinement: 'host' | 'workspace' | undefined,
+): string | undefined {
+  if (!requestedModeId) return undefined;
+  // A mode the agent did not advertise is returned as asked, so it is
+  // refused as unsupported rather than silently dropped.
+  const advertised = catalog.modes.some((mode) => mode.id === requestedModeId);
+  return advertised &&
+    confinement !== 'host' &&
+    isFullAccessAcpMode(catalog, requestedModeId)
+    ? undefined
+    : requestedModeId;
+}
 
 function selectOptions(raw: unknown): AdvertisedAcpMode[] {
   if (!Array.isArray(raw)) return [];
@@ -59,6 +156,7 @@ function findModeConfigOption(configOptions: unknown):
       id: string;
       currentValue?: string;
       options: AdvertisedAcpMode[];
+      fullAccessModeIds: string[];
     }
   | undefined {
   if (!Array.isArray(configOptions)) return undefined;
@@ -76,6 +174,7 @@ function findModeConfigOption(configOptions: unknown):
     if (options.length === 0) continue;
     return {
       id: candidate.id,
+      fullAccessModeIds: declaredFullAccessIds(candidate.options),
       ...(typeof candidate.currentValue === 'string'
         ? { currentValue: candidate.currentValue }
         : {}),
@@ -101,6 +200,9 @@ export function advertisedAcpSessionModes(input: {
     return {
       modes: fromConfig.options,
       configOptionId: fromConfig.id,
+      ...(fromConfig.fullAccessModeIds.length > 0
+        ? { fullAccessModeIds: fromConfig.fullAccessModeIds }
+        : {}),
       ...(fromConfig.currentValue
         ? { currentModeId: fromConfig.currentValue }
         : {}),
@@ -123,8 +225,10 @@ export function advertisedAcpSessionModes(input: {
         ];
       })
     : [];
+  const declared = declaredFullAccessIds(input.modes?.availableModes);
   return {
     modes: available,
+    ...(declared.length > 0 ? { fullAccessModeIds: declared } : {}),
     ...(typeof input.modes?.currentModeId === 'string' &&
     input.modes.currentModeId.trim()
       ? { currentModeId: input.modes.currentModeId }

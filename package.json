@@ -382,6 +382,8 @@
     "@changesets/cli": "^3.0.1",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@kontourai/console": "^2.8.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "@playwright/test": "^1.62.1",
     "@shikijs/types": "^4.4.3",
     "@tailwindcss/vite": "^4.3.3",

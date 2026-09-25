@@ -49,6 +49,7 @@ import {
   createWslQuarantinedTest,
   WSL_QUARANTINE_REASON,
 } from '../lib/wsl-host-class.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
@@ -751,7 +752,7 @@ describe('verification coordinator', () => {
         ],
       })}\n`,
     );
-    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
     try {
       const killed = await coordinateVerification({
         laneId: 'ci-fast',
@@ -3282,7 +3283,7 @@ setInterval(() => {
     },
   );
 
-  test('uses ci:fast lane’s twelve-minute deadline when no override is supplied', async () => {
+  test('uses ci:fast lane’s fifteen-minute deadline when no override is supplied', async () => {
     const temp = fixture();
     const worktree = join(temp.root, 'fast');
     mkdirSync(worktree);
@@ -3307,7 +3308,7 @@ setInterval(() => {
       // `passed` is not earnable here — see the note on the first ci:fast
       // admission assertion in this file (#1727 / station#1738).
       expect(result.disposition).toBe('executed');
-      expect(deadlines).toContain(12 * 60_000);
+      expect(deadlines).toContain(15 * 60_000);
     } finally {
       timer.mockRestore();
       temp.remove();

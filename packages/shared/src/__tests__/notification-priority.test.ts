@@ -3,6 +3,7 @@ import {
   classifyNotificationCategory,
   compareNotificationOutcome,
   DONE_TTL_MS,
+  INFO_TTL_MS,
   NOTIFICATION_OUTCOME_PRIORITY,
   NOTIFICATION_TTL_MS,
   outcomeFirstAllQuietHeadline,
@@ -25,6 +26,17 @@ describe('notification-priority (station#1100 AC1 ranking)', () => {
         NOTIFICATION_OUTCOME_PRIORITY[left],
     );
     expect(ordered).toEqual(['needs-input', 'failed', 'running', 'done']);
+  });
+
+  test('the #2583 info tier ranks below done without moving any existing tier', () => {
+    expect(NOTIFICATION_OUTCOME_PRIORITY).toEqual({
+      'needs-input': 3,
+      failed: 2,
+      running: 1,
+      done: 0,
+      info: -1,
+    });
+    expect(compareNotificationOutcome('done', 'info')).toBeLessThan(0);
   });
 
   test('compareNotificationOutcome sorts descending by importance', () => {
@@ -118,6 +130,8 @@ describe('notification-priority (station#1100 AC2 per-state TTLs)', () => {
     expect(NOTIFICATION_TTL_MS.failed).toBe(WAITING_TTL_MS);
     expect(NOTIFICATION_TTL_MS.running).toBe(RUNNING_TTL_MS);
     expect(NOTIFICATION_TTL_MS.done).toBe(DONE_TTL_MS);
+    expect(NOTIFICATION_TTL_MS.info).toBe(INFO_TTL_MS);
+    expect(INFO_TTL_MS).toBe(4 * 60 * 60 * 1000);
   });
 
   test('waiting survives at least 24h, running is far shorter, done is shortest', () => {
@@ -142,6 +156,28 @@ describe('notification-priority classifyNotificationCategory', () => {
     expect(classifyNotificationCategory('turn-completed')).toBe('done');
     expect(classifyNotificationCategory('turn-stopped')).toBe('done');
     expect(classifyNotificationCategory('turn-failed')).toBe('failed');
+  });
+
+  test('classifies the agent notification categories (#2583)', () => {
+    expect(classifyNotificationCategory('agent-attention')).toBe('needs-input');
+    expect(classifyNotificationCategory('agent-failed')).toBe('failed');
+    expect(classifyNotificationCategory('agent-done')).toBe('done');
+    expect(classifyNotificationCategory('agent-info')).toBe('info');
+  });
+
+  test('no category that existed before #2583 is classified as info', () => {
+    for (const category of [
+      'approval-request',
+      'job-failure',
+      'turn-completed',
+      'turn-stopped',
+      'turn-failed',
+      'pairing-request',
+      'job-missed',
+      'scheduler-unhealthy',
+    ]) {
+      expect(classifyNotificationCategory(category)).not.toBe('info');
+    }
   });
 
   test('returns undefined for categories outside this ranking', () => {
