@@ -102,10 +102,10 @@ const loadOutboundQueueFlushMount = () =>
     default: module.OutboundQueueFlushMount,
   }));
 
-import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
+import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';

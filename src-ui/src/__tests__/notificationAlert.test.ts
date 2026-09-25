@@ -73,7 +73,7 @@ function agentNotification(
 }
 
 function deps(
-  overrides: Partial<NotificationAlertDeps> & {
+  overrides: Partial<Omit<NotificationAlertDeps, 'notify'>> & {
     preferences?: Partial<ClientNotificationPreferences>;
   } = {},
 ) {
@@ -82,7 +82,6 @@ function deps(
   );
   const { preferences, ...rest } = overrides;
   return {
-    notify,
     isWindowFocused: () => false,
     readPreferences: async () => ({
       ...DEFAULT_CLIENT_NOTIFICATION_PREFERENCES,
@@ -90,6 +89,7 @@ function deps(
     }),
     now: () => new Date(2026, 8, 24, 12, 0),
     ...rest,
+    notify,
   } satisfies NotificationAlertDeps;
 }
 
