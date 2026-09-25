@@ -92,7 +92,7 @@ Codex loads this root file when launched here; it does not automatically load ne
 | `packages/sdk/**` | [packages/sdk/AGENTS.md](packages/sdk/AGENTS.md) |
 | `tests/**` | [tests/AGENTS.md](tests/AGENTS.md) |
 
-Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [docs/architecture/module-map.md](docs/architecture/module-map.md) only when their topic is in scope. Station consumes sibling Kontour products through published contracts, never their internals. `docs/strategy/roadmap.md` is historical, not live authority.
+Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [docs/architecture/module-map.md](docs/architecture/module-map.md) only when their topic is in scope. Station consumes sibling Kontour products through published contracts, never their internals.
 
 <!-- veritas:governance-block:start -->
 This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
