@@ -128,7 +128,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
     const sign = indexOf(
       text,
-      'node ../scripts/ios-store-signing-config.mjs agent-activity --profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision"',
+      'node ../scripts/ios-store-signing-config.mjs agent-activity --extension-profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision"',
     );
     const xcodegen = indexOf(
       text,

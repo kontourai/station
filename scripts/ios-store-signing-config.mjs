@@ -32,7 +32,7 @@ const AGENT_ACTIVITY_BUNDLE_IDS = new Map(
     .map((channel) => [channel.bundleId, channel.agentActivityBundleId]),
 );
 const AGENT_ACTIVITY_REQUIRED = [
-  'profile',
+  'extension-profile',
   'app-profile',
   'identity',
   'team',
@@ -396,7 +396,7 @@ function isMainModule() {
 if (isMainModule() && process.argv[2] === 'agent-activity') {
   const values = parseAgentActivityOptions(process.argv.slice(3));
   const { app, extension } = writeIosAgentActivitySigning({
-    profile: values.profile,
+    profile: values['extension-profile'],
     appProfile: values['app-profile'],
     identity: values.identity,
     team: values.team,

@@ -345,7 +345,7 @@ jobs:
             # and diff-checked below before this copy replaces it.
             ditto "$preserved/station_iOS/Info.plist" "$live_info_plist"
             node ../scripts/ensure-ios-agent-activity-extension.mjs gen/apple/project.yml --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --info-plist "$live_info_plist"
-            node ../scripts/ios-store-signing-config.mjs agent-activity --profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --project gen/apple/project.yml --export-options-output "$live_export_options"
+            node ../scripts/ios-store-signing-config.mjs agent-activity --extension-profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --project gen/apple/project.yml --export-options-output "$live_export_options"
           fi
           # Every source directory the spec names exists now, so regenerate
           # the Xcode project from the amended spec and prove the manifest

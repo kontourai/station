@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import YAML from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { inspectAppStoreDistributionProfile } from '../check-ios-store-profile.mjs';
 import {
   EXTENSION_TARGET,
@@ -348,6 +349,7 @@ describe('iOS App Store signing config', () => {
   });
 });
 
+const makeTempDir = trackTempDirs();
 const TEAM = 'U7KHF2QAC4';
 const IDENTITY = `Apple Distribution: Example (${TEAM})`;
 const APP_UUID = '11111111-2222-3333-4444-555555555555';
@@ -535,7 +537,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
   });
 
   test('validates both profiles, requiring push on the app, before writing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ios-agent-activity-signing-'));
+    const root = makeTempDir('ios-agent-activity-signing-');
     const project = join(root, 'project.yml');
     const exportOptions = join(root, 'ExportOptions.plist');
     writeFileSync(project, betaSpecWithExtension());
@@ -593,7 +595,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
   });
 
   test('a refused app profile leaves the project and export options untouched', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ios-agent-activity-refusal-'));
+    const root = makeTempDir('ios-agent-activity-refusal-');
     const project = join(root, 'project.yml');
     const exportOptions = join(root, 'ExportOptions.plist');
     const spec = betaSpecWithExtension();
@@ -651,7 +653,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
 
   test('requires every agent-activity option exactly once', () => {
     const args = [
-      '--profile',
+      '--extension-profile',
       'e',
       '--app-profile',
       'a',
@@ -676,7 +678,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       /Missing/,
     );
     expect(() =>
-      parseAgentActivityOptions([...args.slice(0, -2), '--profile', 'x']),
+      parseAgentActivityOptions([...args.slice(0, -2), '--team', 'x']),
     ).toThrow(/exactly once/);
   });
 
