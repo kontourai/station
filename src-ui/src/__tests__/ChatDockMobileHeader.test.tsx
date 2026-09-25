@@ -125,7 +125,6 @@ function renderHeader(
       activeCount={0}
       unreadCount={0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
-      activityTriggerRef={createRef<HTMLButtonElement>()}
       onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
       onToggleSidebar={vi.fn()}
       onDragPointerDown={vi.fn()}

@@ -46,8 +46,8 @@ export interface ChatDockMobileOverflowActions {
    * #2510: the sheet's entry to the dock's Background tasks surface, routed
    * by ChatDock's `showBackgroundTasks` (the sheet on a bottom-only device,
    * the Agents pane where a side region exists). It OPENS rather than
-   * toggles, like the task switcher's row: the overflow sheet dismisses
-   * itself on the tap, so there is no open state for it to toggle against.
+   * toggles: the overflow sheet dismisses itself on the tap, so there is no
+   * open state for it to toggle against.
    * Absent: no row (ChatDock omits it when there is no chat for the sheet to
    * read).
    */
@@ -80,7 +80,6 @@ interface ChatDockMobileHeaderProps {
   activeCount: number;
   unreadCount: number;
   taskSwitcherTriggerRef: RefObject<HTMLButtonElement | null>;
-  activityTriggerRef: RefObject<HTMLButtonElement | null>;
   onOpenTaskSwitcher: () => void;
   onToggleSidebar: (trigger: HTMLElement) => void;
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -102,7 +101,6 @@ export function ChatDockMobileHeader({
   activeCount,
   unreadCount,
   taskSwitcherTriggerRef,
-  activityTriggerRef,
   onOpenTaskSwitcher,
   onToggleSidebar,
   onDragPointerDown,
@@ -215,10 +213,7 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <button
-        ref={(node) => {
-          chatActionsTriggerRef.current = node;
-          activityTriggerRef.current = node;
-        }}
+        ref={chatActionsTriggerRef}
         type="button"
         className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
         aria-haspopup="dialog"
