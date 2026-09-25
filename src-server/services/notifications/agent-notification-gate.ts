@@ -333,18 +333,16 @@ export type ScheduleAgentNotification = (
 }>;
 
 /**
- * The ONE place an agent notification's envelope meets the store. It rides
- * in `metadata.envelope` today; when the store gains a trusted envelope
- * write path (the #2583 security fix), only this adapter changes.
+ * The ONE place an agent notification's envelope meets the store: the
+ * trusted enveloped write (#2583). The store derives `metadata.sessionId`
+ * and `conversationId` from the envelope, so the notification routes' read
+ * check follows the envelope's session.
  */
 export function scheduleAgentNotificationVia(
-  service: Pick<NotificationService, 'scheduleWithOutcome'>,
+  service: Pick<NotificationService, 'scheduleEnveloped'>,
 ): ScheduleAgentNotification {
   return ({ opts, envelope }) =>
-    service.scheduleWithOutcome(AGENT_NOTIFICATION_SOURCE, {
-      ...opts,
-      metadata: { ...opts.metadata, envelope },
-    });
+    service.scheduleEnveloped(AGENT_NOTIFICATION_SOURCE, opts, envelope);
 }
 
 export interface AgentNotificationGateDeps {
@@ -470,9 +468,6 @@ export class AgentNotificationGate {
             }
           : {}),
         metadata: {
-          // `sessionId` is what the notification routes' read check keys on,
-          // so only readers of the calling session see it in the inbox.
-          sessionId: caller.sessionId,
           ...(caller.projectSlug ? { projectSlug: caller.projectSlug } : {}),
           ...(link ? { link } : {}),
         },

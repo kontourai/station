@@ -8,8 +8,10 @@ import { describe, expect, test } from 'vitest';
 import {
   agentNotificationCategory,
   agentNotificationDedupeTag,
+  isSurfaceId,
   notificationPriorityForUrgency,
   parseNotificationEnvelope,
+  parseNotificationEnvelopeForWrite,
   readNotificationEnvelope,
 } from '../notification-envelope.js';
 import { classifyNotificationCategory } from '../notification-priority.js';
@@ -152,12 +154,6 @@ describe('readNotificationEnvelope', () => {
   // Each row breaks exactly one field of an otherwise valid envelope.
   test.each<[string, (e: Record<string, any>) => void]>([
     [
-      'unknown top-level key',
-      (e) => {
-        e.extra = true;
-      },
-    ],
-    [
       'missing v',
       (e) => {
         delete e.v;
@@ -185,12 +181,6 @@ describe('readNotificationEnvelope', () => {
       'source not an object',
       (e) => {
         e.source = 'agent';
-      },
-    ],
-    [
-      'unknown source kind',
-      (e) => {
-        e.source = { kind: 'user', id: 'x' };
       },
     ],
     [
@@ -242,21 +232,9 @@ describe('readNotificationEnvelope', () => {
       },
     ],
     [
-      'agent source unknown key',
-      (e) => {
-        e.source.principal = 'p';
-      },
-    ],
-    [
       'system source missing subsystem',
       (e) => {
         e.source = { kind: 'system' };
-      },
-    ],
-    [
-      'system source unknown key',
-      (e) => {
-        e.source = { kind: 'system', subsystem: 'x', sessionId: 's' };
       },
     ],
     [
@@ -269,18 +247,6 @@ describe('readNotificationEnvelope', () => {
       'missing audience',
       (e) => {
         delete e.audience;
-      },
-    ],
-    [
-      'unknown audience kind',
-      (e) => {
-        e.audience = { kind: 'everyone' };
-      },
-    ],
-    [
-      'owner audience with extra key',
-      (e) => {
-        e.audience = { kind: 'owner', sessionId: 's' };
       },
     ],
     [
@@ -338,12 +304,6 @@ describe('readNotificationEnvelope', () => {
       },
     ],
     [
-      'unknown target kind',
-      (e) => {
-        e.target = { kind: 'url', url: 'https://x' };
-      },
-    ],
-    [
       'session target missing sessionId',
       (e) => {
         e.target = { kind: 'session' };
@@ -386,12 +346,6 @@ describe('readNotificationEnvelope', () => {
       },
     ],
     [
-      'path target unknown key',
-      (e) => {
-        e.target.sessionId = 's';
-      },
-    ],
-    [
       'readAt not canonical ISO',
       (e) => {
         e.readAt = '2026-09-24';
@@ -407,6 +361,24 @@ describe('readNotificationEnvelope', () => {
       'readBy without readAt',
       (e) => {
         delete e.readAt;
+      },
+    ],
+    [
+      'readBy not a surface id',
+      (e) => {
+        e.readBy = 'phone';
+      },
+    ],
+    [
+      'source kind not a string',
+      (e) => {
+        e.source = { kind: 7, sessionId: 's' };
+      },
+    ],
+    [
+      'known source kind with an invalid known field',
+      (e) => {
+        e.source = { kind: 'system', subsystem: 5, extra: 'ignored' };
       },
     ],
     [
@@ -435,6 +407,60 @@ describe('readNotificationEnvelope', () => {
     ).toBeUndefined();
   });
 
+  describe('forward compatibility (a newer v1 writer)', () => {
+    test('unknown keys are ignored at the top level and inside known kinds', () => {
+      const envelope = mutated((e) => {
+        e.priorityHint = 'x';
+        e.source.model = 'opus';
+        e.audience.note = 'n';
+        e.target.fragment = 'f';
+      });
+      expect(parseNotificationEnvelope(envelope)).toEqual(fullEnvelope());
+    });
+
+    test('an unknown source kind reads as unknown and forces in-app only', () => {
+      const envelope = mutated((e) => {
+        e.source = { kind: 'workflow', runId: 'r' };
+      });
+      expect(parseNotificationEnvelope(envelope)).toMatchObject({
+        source: { kind: 'unknown', observedKind: 'workflow' },
+        interrupt: 'silent',
+        urgency: 'attention',
+      });
+    });
+
+    test('an unknown audience kind reads as owner and forces in-app only', () => {
+      const envelope = mutated((e) => {
+        e.audience = { kind: 'team', teamId: 't' };
+      });
+      expect(parseNotificationEnvelope(envelope)).toMatchObject({
+        audience: { kind: 'owner' },
+        interrupt: 'silent',
+      });
+    });
+
+    test('an unknown target kind is dropped (no target)', () => {
+      const parsed = parseNotificationEnvelope(
+        mutated((e) => {
+          e.target = { kind: 'artifact', artifactId: 'a' };
+        }),
+      );
+      expect(parsed).toBeDefined();
+      expect(Object.hasOwn(parsed!, 'target')).toBe(false);
+      expect(parsed?.interrupt).toBe('default');
+    });
+
+    test('an unknown v reads as legacy', () => {
+      expect(
+        parseNotificationEnvelope(
+          mutated((e) => {
+            e.v = 2;
+          }),
+        ),
+      ).toBeUndefined();
+    });
+  });
+
   test('rejects non-object and non-plain envelopes', () => {
     for (const value of [1, 'x', true, [], new Date(), new Map()]) {
       expect(parseNotificationEnvelope(value)).toBeUndefined();
@@ -461,6 +487,83 @@ describe('readNotificationEnvelope', () => {
       },
     };
     expect(readNotificationEnvelope({ metadata })).toBeUndefined();
+  });
+});
+
+describe('parseNotificationEnvelopeForWrite', () => {
+  /** A producer's envelope: no read/dismiss markers. */
+  function producerEnvelope(): Record<string, any> {
+    const {
+      readAt: _ra,
+      readBy: _rb,
+      dismissedAt: _da,
+      dismissedBy: _db,
+      ...rest
+    } = fullEnvelope();
+    return structuredClone(rest);
+  }
+
+  test('accepts a well-formed producer envelope', () => {
+    expect(parseNotificationEnvelopeForWrite(producerEnvelope())).toEqual(
+      producerEnvelope(),
+    );
+  });
+
+  test.each<[string, (e: Record<string, any>) => void]>([
+    ['an unknown top-level key', (e) => Object.assign(e, { extra: 1 })],
+    ['an unknown source key', (e) => Object.assign(e.source, { model: 'x' })],
+    ['an unknown audience key', (e) => Object.assign(e.audience, { n: 1 })],
+    ['an unknown target key', (e) => Object.assign(e.target, { f: 'x' })],
+    [
+      'an unknown source kind',
+      (e) => Object.assign(e, { source: { kind: 'workflow' } }),
+    ],
+    [
+      'the read-side unknown source',
+      (e) =>
+        Object.assign(e, { source: { kind: 'unknown', observedKind: 'x' } }),
+    ],
+    [
+      'an unknown audience kind',
+      (e) => Object.assign(e, { audience: { kind: 'team' } }),
+    ],
+    [
+      'a principal audience (no resolver yet)',
+      (e) =>
+        Object.assign(e, { audience: { kind: 'principal', principalId: 'p' } }),
+    ],
+    [
+      'an unknown target kind',
+      (e) => Object.assign(e, { target: { kind: 'artifact' } }),
+    ],
+    [
+      'a pre-set read marker',
+      (e) => Object.assign(e, { readAt: READ_AT, readBy: 'device:a' }),
+    ],
+    [
+      'a pre-set dismiss marker',
+      (e) =>
+        Object.assign(e, { dismissedAt: READ_AT, dismissedBy: 'device:a' }),
+    ],
+  ])('refuses %s', (_label, mutate) => {
+    const envelope = producerEnvelope();
+    mutate(envelope);
+    expect(parseNotificationEnvelopeForWrite(envelope)).toBeUndefined();
+  });
+
+  test('surface ids are device: or local: prefixed', () => {
+    expect(isSurfaceId('device:abc')).toBe(true);
+    expect(isSurfaceId('local:tab-1')).toBe(true);
+    for (const value of [
+      'abc',
+      'device:',
+      'user:x',
+      ' device:a',
+      'device:a b',
+      7,
+    ]) {
+      expect(isSurfaceId(value)).toBe(false);
+    }
   });
 });
 

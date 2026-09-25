@@ -31,8 +31,8 @@ import type {
   ServerEventName,
   WebPushSubscription,
 } from '@kontourai/station-contracts';
-import { AGENT_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -48,10 +48,6 @@ export interface WebPushDeliveryDevicePairing {
   }>;
   clearPushSubscription(deviceId: string): unknown;
 }
-
-const AGENT_NOTIFICATION_CATEGORY_SET: ReadonlySet<string> = new Set(
-  Object.values(AGENT_NOTIFICATION_CATEGORIES),
-);
 
 interface WebPushDeliveryLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
@@ -139,12 +135,10 @@ export function wireWebPushDelivery(
       if (
         !notification ||
         !classifyNotificationCategory(notification.category) ||
-        // #2584: agent notifications (`notify_user`) classify, but must not
-        // reach this legacy fan-out, which pushes to every subscribed device
-        // with no audience, preference, quiet-hours or focus policy. They
-        // are delivered in-app (SSE) until the delivery router applies that
-        // policy and replaces this listener (#2586).
-        AGENT_NOTIFICATION_CATEGORY_SET.has(notification.category)
+        // #2583: an enveloped record belongs to the delivery router, which
+        // applies audience, focus, quiet hours and `interrupt: 'silent'`.
+        // This legacy fan-out knows none of those, so it must not send it.
+        readNotificationEnvelope(notification) !== undefined
       ) {
         return;
       }

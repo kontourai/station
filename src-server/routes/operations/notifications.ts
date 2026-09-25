@@ -9,7 +9,10 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import type { NotificationService } from '../../services/notifications/notification-service.js';
+import {
+  NotificationReservedFieldError,
+  type NotificationService,
+} from '../../services/notifications/notification-service.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
   getBody,
@@ -90,10 +93,11 @@ export function createNotificationRoutes(
   app.post(
     '/',
     async (c, next) => {
-      // Before body validation, so an agent is pointed at the tool whatever
-      // it sent. The declaration may only restrict: its absence proves
-      // nothing (see `isAgentOriginatedRequest`), so this closes the
-      // documented path, not every path an agent with a shell could take.
+      // Before body validation and the reserved-field refusal, so an agent
+      // is pointed at the tool whatever it sent. The declaration may only
+      // restrict: its absence proves nothing (see `isAgentOriginatedRequest`),
+      // so this closes the documented path, not every path an agent with a
+      // shell could take.
       if (options.isAgentOriginatedRequest?.(c.req.raw)) {
         return c.json(
           {
@@ -118,10 +122,27 @@ export function createNotificationRoutes(
       if (!canReadNotification(provisional, c.req.raw)) {
         return c.json({ success: false, error: 'Notification not found' }, 404);
       }
-      const notification = await notificationService.schedule(
-        body.source ?? 'api',
-        body,
-      );
+      let notification: Notification;
+      try {
+        notification = await notificationService.schedule(
+          body.source ?? 'api',
+          body,
+        );
+      } catch (error) {
+        // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
+        // the trusted enveloped path (#2583); a request body cannot claim them.
+        if (error instanceof NotificationReservedFieldError) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Envelopes, agent: dedupe tags and agent-* categories are reserved to agent notifications',
+            },
+            400,
+          );
+        }
+        throw error;
+      }
       notificationOps.add(1, { op: 'schedule' });
       return c.json({ success: true, data: notification }, 201);
     },

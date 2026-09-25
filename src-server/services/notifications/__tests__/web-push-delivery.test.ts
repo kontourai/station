@@ -112,39 +112,6 @@ describe('wireWebPushDelivery', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  test('#2584: agent-* notifications classify but never reach the legacy fan-out (the delivery router owns them, #2586)', async () => {
-    const eventBus = new EventBus();
-    const send = vi
-      .fn<WebPushService['send']>()
-      .mockResolvedValue('sent' as WebPushSendResult);
-    const devicePairing = fakeDevicePairing([
-      { deviceId: 'device-1', subscription: subscription('a') },
-    ]);
-    wireWebPushDelivery(eventBus, devicePairing, { send }, quietLogger());
-
-    for (const category of [
-      'agent-info',
-      'agent-attention',
-      'agent-done',
-      'agent-failed',
-    ]) {
-      eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
-        ...APPROVAL_NOTIFICATION,
-        id: category,
-        source: 'agent',
-        category,
-      });
-    }
-    // The same listener still pushes a classified system category.
-    eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, APPROVAL_NOTIFICATION);
-    await flushMicrotasks();
-
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][1]).toMatchObject({
-      category: 'approval-request',
-    });
-  });
-
   test('fan-out: sends to every subscribed device for one approval-request delivery', async () => {
     const eventBus = new EventBus();
     const send = vi
@@ -345,5 +312,54 @@ describe('wireWebPushDelivery', () => {
     expect(payload).toMatchObject({
       url: activityDeepLink({ sessionId: 'thread-1' }),
     });
+  });
+});
+
+describe('wireWebPushDelivery and enveloped notifications (#2583)', () => {
+  const AGENT_INFO_NOTIFICATION = {
+    ...APPROVAL_NOTIFICATION,
+    id: 'notification-agent-1',
+    source: 'agent',
+    category: 'agent-info',
+    title: 'Tests pass on fix-login',
+    priority: 'normal' as const,
+    metadata: {
+      sessionId: 'session-1',
+      envelope: {
+        v: 1,
+        source: { kind: 'agent', sessionId: 'session-1', assurance: 'bound' },
+        audience: { kind: 'session-readers', sessionId: 'session-1' },
+        urgency: 'info',
+        interrupt: 'silent',
+      },
+    },
+  };
+
+  async function sendsFor(notification: Record<string, unknown>) {
+    const eventBus = new EventBus();
+    const send = vi
+      .fn<WebPushService['send']>()
+      .mockResolvedValue('sent' as WebPushSendResult);
+    wireWebPushDelivery(
+      eventBus,
+      fakeDevicePairing([
+        { deviceId: 'device-1', subscription: subscription('a') },
+      ]),
+      { send },
+      quietLogger(),
+    );
+    eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification);
+    await flushMicrotasks();
+    return send.mock.calls.length;
+  }
+
+  test('an enveloped record is left to the delivery router: no legacy push, even for a classified category', async () => {
+    expect(await sendsFor(AGENT_INFO_NOTIFICATION)).toBe(0);
+  });
+
+  test('control: the same record without its envelope is pushed, so the skip is the envelope', async () => {
+    const { envelope: _envelope, ...metadata } =
+      AGENT_INFO_NOTIFICATION.metadata;
+    expect(await sendsFor({ ...AGENT_INFO_NOTIFICATION, metadata })).toBe(1);
   });
 });

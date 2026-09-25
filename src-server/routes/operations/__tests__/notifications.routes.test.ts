@@ -89,6 +89,36 @@ describe('Notification Routes', () => {
     expect(body.data.title).toBe('Test');
   });
 
+  test.each([
+    [
+      'a forged envelope',
+      {
+        metadata: {
+          envelope: {
+            v: 1,
+            source: { kind: 'agent', sessionId: 'victim', assurance: 'bound' },
+            audience: { kind: 'owner' },
+            urgency: 'attention',
+            interrupt: 'default',
+          },
+        },
+      },
+    ],
+    ['an agent: dedupe tag', { dedupeTag: 'agent:victim-root:build' }],
+    ['an agent-* category', { category: 'agent-attention' }],
+  ])(
+    'POST / refuses %s with 400 and stores nothing (#2583)',
+    async (_label, extra) => {
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Forged', category: 'test', ...extra }),
+      });
+      expect(res.status).toBe(400);
+      expect(await svc.list()).toEqual([]);
+    },
+  );
+
   test('POST /:id/action/:actionId carries the authenticated request origin through the approval inbox into the registry resolution event (#3830)', async () => {
     const eventBus = new EventBus();
     await svc.shutdown();
