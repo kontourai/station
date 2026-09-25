@@ -553,9 +553,9 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       },
       {
         decode: (path: string) => path,
-        inspect: (path: string, options: Record<string, unknown>) => {
+        inspect: (path: unknown, options = {}): DistributionProfile => {
           inspections.push({ path, ...options });
-          return path.endsWith('extension.mobileprovision')
+          return String(path).endsWith('extension.mobileprovision')
             ? extensionProfile()
             : {
                 ...extensionProfile(),
@@ -612,8 +612,8 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
         },
         {
           decode: (path: string) => path,
-          inspect: (path: string) => {
-            if (path.endsWith('app.mobileprovision'))
+          inspect: (path: unknown): DistributionProfile => {
+            if (String(path).endsWith('app.mobileprovision'))
               throw new Error('aps-environment (absent) does not match');
             return extensionProfile();
           },

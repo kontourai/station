@@ -161,8 +161,16 @@ function isMainModule() {
 const USAGE =
   'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID [--live-activity APS_ENVIRONMENT | --agent-activity-extension]';
 
-/** The CLI's verdict for argv (after the script path); throws on refusal. */
-export function exportedEntitlementsCli(args, read = readFileSync) {
+/**
+ * The CLI's verdict for argv (after the script path); throws on refusal.
+ *
+ * @param {string[]} args
+ * @param {(path: string, encoding: 'utf8') => string} [read]
+ */
+export function exportedEntitlementsCli(
+  args,
+  read = (path, encoding) => readFileSync(path, encoding),
+) {
   const [path, team, bundleId, mode, apsEnvironment, ...rest] = args;
   if (!path || !team || !bundleId || rest.length) throw new Error(USAGE);
   const entitlements = JSON.parse(read(path, 'utf8'));
