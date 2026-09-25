@@ -378,6 +378,20 @@ const { notify } = useNotifications();
 notify('Saved!', { type: 'success' });
 ```
 
+#### `useNotificationPreferencesQuery(apiBase?: string): NotificationPreferencesV1`
+
+Reads `GET /api/notifications/preferences`: how far notifications may
+interrupt beyond the inbox (agent notification level, quiet hours,
+per-surface minimum urgency and hidden content, escalation delay). Operate
+tier; Station's own agent tools and delegated Stations are refused. A saved
+document the server cannot read is a query error, not the defaults.
+
+#### `useUpdateNotificationPreferencesMutation(apiBase?: string)`
+
+`PUT`s a complete `NotificationPreferencesV1`; the server refuses a partial or
+unknown-key document. Shapes and defaults come from
+`@kontourai/station-contracts/notification-preferences`.
+
 ---
 
 ### Slash Command Hooks
