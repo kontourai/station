@@ -19,7 +19,8 @@
  * agent learns what to do without a round trip; it can never widen anything.
  *
  * Dependency-free on purpose: the stdio station-control child bundles this
- * file, so it imports nothing (not even types from a service).
+ * file, so it imports no service — only the reserved operator-id constants
+ * from the contracts package, which import nothing themselves.
  *
  * What slice A enforces centrally, and what it only records:
  *  - enforced: caller presence (decision 4: a caller-less internal request
@@ -30,6 +31,20 @@
  *    (`tightenedBy`); the classification test refuses an unenforced role
  *    without one, so the table cannot carry a label nothing computes.
  */
+
+import {
+  LOCAL_OPERATOR_PROVIDER,
+  LOCAL_OPERATOR_SUBJECT,
+} from '@kontourai/station-contracts/principal';
+
+/**
+ * The Station operator's principal id on a personal host — the same
+ * derivation as `LOCAL_OPERATOR_PRINCIPAL_ID` (`principal-resolver.ts`), from
+ * the same reserved contract constants, so the tool side can tell the
+ * operator from another person without importing a service. A test pins the
+ * two equal.
+ */
+export const STATION_CONTROL_OPERATOR_PRINCIPAL_ID = `human:${LOCAL_OPERATOR_PROVIDER}:${LOCAL_OPERATOR_SUBJECT}`;
 
 /** Decision 1 / 3 vocabulary: the weakest caller credential a tool accepts. */
 export type StationControlAssuranceRequirement =
@@ -708,9 +723,9 @@ export interface StationControlPolicyContext {
   /** `null` when the request carried no verified caller. */
   readonly caller: StationControlPolicyCaller | null;
   /**
-   * Whether this principal is the Station operator. Absent on the tool side
-   * (a stdio child cannot know); there only `elevationEligible` is checked,
-   * and the server, which always supplies this, decides.
+   * Whether this principal is the Station operator. Defaults to the personal
+   * host's operator id ({@link STATION_CONTROL_OPERATOR_PRINCIPAL_ID}); the
+   * server guard injects its own composition.
    */
   readonly isOperatorPrincipal?: (principalId: string) => boolean;
   /** The parsed JSON request body, for body-dependent person-only rules. */
@@ -767,11 +782,10 @@ export function evaluateStationControlPolicy(
     return stationControlRefusal('station_control_assurance_insufficient');
   if (policy.role === 'operator') {
     const principal = caller.principal;
-    if (
-      !principal?.elevationEligible ||
-      (context.isOperatorPrincipal &&
-        !context.isOperatorPrincipal(principal.id))
-    )
+    const isOperator =
+      context.isOperatorPrincipal ??
+      ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
+    if (!principal?.elevationEligible || !isOperator(principal.id))
       return stationControlRefusal('station_control_role_required');
   }
   return undefined;

@@ -5,11 +5,13 @@
  */
 import { describe, expect, test } from 'vitest';
 
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   authorizeStationControlRequest,
   evaluateStationControlPolicy,
   matchStationControlRoute,
   STATION_CONTROL_INFRASTRUCTURE_POLICY,
+  STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
   STATION_CONTROL_TOOL_POLICY,
   type StationControlPolicyCaller,
   type StationControlPolicyContext,
@@ -311,6 +313,24 @@ describe('station-control authority table: shared leaves', () => {
 });
 
 describe('station-control authority: route matching and refusals', () => {
+  test('the tool side names the same operator the server does', () => {
+    expect(STATION_CONTROL_OPERATOR_PRINCIPAL_ID).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    // Without an injected predicate the default is that operator id.
+    const decide = (id: string) =>
+      authorizeStationControlRequest('PUT', '/config/app', {
+        caller: {
+          assurance: 'bound',
+          principal: { id, elevationEligible: true },
+        },
+      })?.code;
+    expect(decide(LOCAL_OPERATOR_PRINCIPAL_ID)).toBeUndefined();
+    expect(decide('human:local:someone-else')).toBe(
+      'station_control_role_required',
+    );
+  });
+
   test('HEAD is GET, the method is part of the leaf, and an unknown leaf is unmapped', () => {
     expect(matchStationControlRoute('HEAD', '/config/app')?.owners).toEqual([
       'get_config',
