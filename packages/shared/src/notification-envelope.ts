@@ -13,6 +13,9 @@
  *   in-app only). A known field with an invalid value rejects the whole
  *   envelope — a reader that kept the valid fields would present a label next
  *   to data it could not vouch for. Neither ever throws.
+ *   Consumers (the delivery router) must treat an unknown audience as the
+ *   owner's in-app view only — never push — since nothing resolved who it
+ *   was meant for; the forced `silent` carries that.
  * - `parseNotificationEnvelopeForWrite` is what a producer's envelope must
  *   pass: exact keys, known kinds only, no `principal` audience (no resolver
  *   exists yet), and no read/dismiss markers (only the service sets those).

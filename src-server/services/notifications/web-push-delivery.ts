@@ -32,7 +32,6 @@ import type {
   WebPushSubscription,
 } from '@kontourai/station-contracts';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -137,8 +136,10 @@ export function wireWebPushDelivery(
         !classifyNotificationCategory(notification.category) ||
         // #2583: an enveloped record belongs to the delivery router, which
         // applies audience, focus, quiet hours and `interrupt: 'silent'`.
-        // This legacy fan-out knows none of those, so it must not send it.
-        readNotificationEnvelope(notification) !== undefined
+        // This legacy fan-out knows none of those, so it must not send it —
+        // including an envelope this build cannot read (a newer `v`, or
+        // malformed): presence, not parse success, decides.
+        hasEnvelope(notification)
       ) {
         return;
       }
@@ -153,4 +154,13 @@ export function wireWebPushDelivery(
       });
     }
   });
+}
+
+function hasEnvelope(notification: Notification): boolean {
+  const metadata = notification.metadata;
+  return (
+    typeof metadata === 'object' &&
+    metadata !== null &&
+    Object.hasOwn(metadata, 'envelope')
+  );
 }
