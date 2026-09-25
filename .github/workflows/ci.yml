@@ -235,8 +235,9 @@ jobs:
       group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
-    # 46 suites measured at 98-125s wall on a dev host at load ~160-200 (a
-    # cold transform cache is most of it); unmeasured on a hosted runner.
+    # 53 suites measured at 73s wall on a dev host at load ~30 (82-125s at
+    # load ~110-200; transform and import are most of it); unmeasured on a
+    # hosted runner.
     # The rest of the budget is install.
     timeout-minutes: 20
     steps:
