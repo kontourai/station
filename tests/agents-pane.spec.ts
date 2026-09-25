@@ -230,4 +230,63 @@ test.describe('Agents pane child work (#2459)', () => {
       page.getByRole('button', { name: 'All', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
   });
+  /**
+   * #2510: a phone has no side region and no desktop More menu, so the
+   * header's ⋯ sheet carries the Background tasks row, and on a bottom-only
+   * device it opens the Background tasks sheet rather than the Agents pane.
+   */
+  test.describe('on a phone (#2510)', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('the ⋯ sheet opens the Background tasks sheet with the running task', async ({
+      page,
+    }, testInfo) => {
+      await page.goto(
+        `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
+      );
+      await dismissSetupLauncher(page);
+      await waitForMockOrchestrationSse(page);
+
+      await emit(page, {
+        provider: 'claude',
+        threadId: SESSION_ID,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'task/registry',
+        payload: {
+          active: [
+            {
+              taskId: 'task-1',
+              description: 'Investigate flaky test',
+              backgrounded: true,
+            },
+          ],
+        },
+      });
+
+      await page
+        .getByRole('button', { name: 'Chat actions', exact: true })
+        .click();
+      const actions = page.getByRole('menu', { name: 'Chat actions' });
+      await expect(actions).toBeVisible();
+      const row = actions.getByRole('menuitem', {
+        name: 'Background tasks — 1 running',
+      });
+      const box = await row.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await row.click();
+
+      await expect(actions).toBeHidden();
+      const sheet = page.getByRole('dialog', { name: 'Background tasks' });
+      await expect(sheet).toBeVisible();
+      await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
+      // Bottom-only: the sheet, never the Agents pane's scope controls.
+      await expect(
+        page.getByRole('button', { name: 'This conversation' }),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath('mobile-background-tasks-390.png'),
+      });
+    });
+  });
 });

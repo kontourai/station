@@ -2258,6 +2258,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // the region model this renderer may not read.
                 regionPanes: chrome.regionPanes,
                 onSelectRegionPane: chrome.selectRegionPane,
+                // #2510: the phone's entry to Background tasks, through the
+                // same router as the desktop row. The sheet only mounts for
+                // an active chat, so without one the row is omitted rather
+                // than offered as a tap that opens nothing.
+                onOpenBackgroundTasks: activeSessionId
+                  ? showBackgroundTasks
+                  : undefined,
+                backgroundTasksRunningCount: importedSessionId
+                  ? 0
+                  : backgroundTasksRunningCount,
               }}
             />
           ) : (

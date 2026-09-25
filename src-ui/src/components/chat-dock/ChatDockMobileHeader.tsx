@@ -42,6 +42,18 @@ export interface ChatDockMobileOverflowActions {
    */
   regionPanes?: readonly { id: string; title: string; selected: boolean }[];
   onSelectRegionPane?: (surfaceId: string) => void;
+  /**
+   * #2510: the sheet's entry to the dock's Background tasks surface, routed
+   * by ChatDock's `showBackgroundTasks` (the sheet on a bottom-only device,
+   * the Agents pane where a side region exists). It OPENS rather than
+   * toggles, like the task switcher's row: the overflow sheet dismisses
+   * itself on the tap, so there is no open state for it to toggle against.
+   * Absent: no row (ChatDock omits it when there is no chat for the sheet to
+   * read). Not `onOpenActivity`, which opens the task switcher's Activity
+   * mode — a different surface that merely contains another route here.
+   */
+  onOpenBackgroundTasks?: () => void;
+  backgroundTasksRunningCount?: number;
 }
 
 export interface ChatDockMobileProjectSwitcher {

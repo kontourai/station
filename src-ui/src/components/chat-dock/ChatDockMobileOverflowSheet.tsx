@@ -89,6 +89,19 @@ export function ChatDockMobileOverflowSheet({
             Conversation history
           </button>
         )}
+        {overflow.onOpenBackgroundTasks && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-haspopup="dialog"
+            onClick={() => run(overflow.onOpenBackgroundTasks!)}
+          >
+            {(overflow.backgroundTasksRunningCount ?? 0) > 0
+              ? `Background tasks — ${overflow.backgroundTasksRunningCount} running`
+              : 'Background tasks'}
+          </button>
+        )}
         {overflow.onOpenProject && (
           <button
             type="button"
