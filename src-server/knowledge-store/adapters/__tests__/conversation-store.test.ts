@@ -4,7 +4,7 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import type { SessionQueryModule } from '../../../services/orchestration/session-query-module.js';
 import { ReadOnlyStoreError } from '../../errors.js';
@@ -490,5 +490,48 @@ describe('conversation-store adapter (station#1879)', () => {
 
     expect(await adapter.listByType('raw', {})).toEqual([]);
     expect(await adapter.get(bravoId)).toBeNull();
+  });
+});
+
+describe('ConversationStoreAdapter.readableIds (cheap readability)', () => {
+  test('decides session ids through the authorizer and file ids through one listing, loading no transcript', async () => {
+    const read = vi.fn();
+    const getMessages = vi.fn();
+    const getConversations = vi.fn(async () => [
+      {
+        id: 'file-conversation',
+        resourceId: 'agent',
+        userId: 'alias',
+        title: 'file',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    const descriptor = createConversationStoreAdapterDescriptor({
+      sessionReader: {
+        listSessionReadModel: async () => [],
+        sessionQueries: { read } as unknown as SessionQueryModule,
+        canReadConversation: (id) => id === 'mine',
+      },
+      fileStores: new Map([['agent', { getConversations, getMessages }]]),
+      getUserId: () => 'user-1',
+    });
+    const adapter = (await descriptor.create({
+      storeRoot: '/unused',
+    })) as unknown as {
+      readableIds(ids: readonly string[]): Promise<Set<string>>;
+    };
+    expect(
+      [
+        ...(await adapter.readableIds([
+          'mine',
+          'someone-else',
+          'file-conversation',
+        ])),
+      ].sort(),
+    ).toEqual(['file-conversation', 'mine']);
+    expect(read).not.toHaveBeenCalled();
+    expect(getMessages).not.toHaveBeenCalled();
+    expect(getConversations).toHaveBeenCalledTimes(1);
   });
 });

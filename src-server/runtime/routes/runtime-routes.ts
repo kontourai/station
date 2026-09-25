@@ -89,6 +89,7 @@ import { ProjectSharedTaskService } from '../../services/projects/project-shared
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import {
   currentRequestReadAuthority,
+  runAsStationKnowledgeIndexer,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
 
@@ -5029,19 +5030,16 @@ export function configureRuntimeRoutes(
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
-  // M2: the knowledge index and the Neo4j projection are shared, Station-wide
-  // artifacts, so they are BUILT as the Station's own background reader (its
-  // local operator), never as the caller who triggered the build: a
-  // delegation peer's rebuild must not drop the operator's conversation hits.
-  // Every read path re-reads each session-backed record as its own caller.
-  // Named and passed in explicitly; it is not the absence of a request.
-  const knowledgeIndexerAuthority = sessionReadAuthorityFromRequest(
-    LOCAL_OPERATOR_PRINCIPAL_ID,
-    undefined,
-    hostedTenantRegistry,
-  );
+  // The knowledge index and the Neo4j projection are shared, Station-wide
+  // artifacts, built by the Station indexer from ALL sessions (the named
+  // internal scope); every read path re-reads each session-backed record as
+  // its own caller before showing it. Building a session-backed root is the
+  // local operator's alone: a partial build by anyone else would drop other
+  // principals' entries, and its counts would disclose them.
   const runAsKnowledgeIndexer = <T>(build: () => Promise<T>): Promise<T> =>
-    runWithRequestReadAuthority(knowledgeIndexerAuthority, build);
+    runAsStationKnowledgeIndexer(build);
+  const mayBuildSessionBackedRoot = () =>
+    currentRequestReadAuthority()?.userId === LOCAL_OPERATOR_PRINCIPAL_ID;
   context.app.route(
     '/api/knowledge',
     createCrossProjectKnowledgeRoutes(
@@ -5066,6 +5064,7 @@ export function configureRuntimeRoutes(
     createKnowledgeIndexRoutes({
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
+      mayBuildSessionBackedRoot,
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -5116,6 +5115,7 @@ export function configureRuntimeRoutes(
     createNeo4jGraphRoutes({
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
+      mayBuildSessionBackedRoot,
     }),
   );
   // #2363: commit and push are operator-only and act on a Project's own

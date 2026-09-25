@@ -67,6 +67,8 @@ import type {
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
 import {
+  type InternalSessionReadScope,
+  isSessionReadAuthority,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -82,6 +84,13 @@ export const CONVERSATION_ROOT_ID = 'root:conversations';
 /** Every derived record lands under this single, flat category — conversations
  * have no natural subcategory hierarchy the way meeting-notes' `cooking.baking`
  * style categories do, so `listByCategory`'s `prefix` option is a no-op here. */
+/** A caller's authority, or the Station indexer's named internal scope. */
+type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
+
+function isHostedScope(scope: SessionReadScope | undefined): boolean {
+  return isSessionReadAuthority(scope) && scope.mode === 'hosted';
+}
+
 const CONVERSATION_CATEGORY = 'conversation';
 
 /** `KitProvenance.agent` for every record this adapter derives — identifies the
@@ -98,9 +107,18 @@ const CONVERSATION_PROVENANCE_AGENT = 'station.conversation-store';
 export interface ConversationSessionReader {
   /** Uncapped by contract — see the module doc's R3 note. */
   listSessionReadModel(
-    authority: SessionReadAuthority,
+    authority: SessionReadScope,
   ): Promise<Array<{ threadId: string; assignedAgentSlug?: string }>>;
   sessionQueries: SessionQueryModule;
+  /**
+   * A cheap readability decision for a conversation id (the session
+   * authorizer, no transcript load). Optional: without it
+   * {@link ConversationStoreAdapter.readableIds} falls back to full reads.
+   */
+  canReadConversation?(
+    conversationId: string,
+    scope: SessionReadScope,
+  ): boolean;
 }
 
 /** One file-store conversation record — field-for-field the same shape
@@ -141,12 +159,12 @@ interface ConversationStoreAdapterDeps {
    * construction: adapter descriptors are process singletons. When wired,
    * it is the ONLY session authority: `undefined` (no request in scope)
    * reads no session at all. */
-  getReadAuthority?: () => SessionReadAuthority | undefined;
+  getReadAuthority?: () => SessionReadScope | undefined;
 }
 
 function readAuthority(
   deps: ConversationStoreAdapterDeps,
-): SessionReadAuthority | undefined {
+): SessionReadScope | undefined {
   if (deps.getReadAuthority) return deps.getReadAuthority();
   return sessionReadAuthorityFromRequest(
     deps.getUserId() ?? '',
@@ -241,7 +259,7 @@ function toKitRecord(input: {
 
 async function sessionLegRecords(
   sessionReader: ConversationSessionReader,
-  authority: SessionReadAuthority,
+  authority: SessionReadScope,
 ): Promise<KitRecord[]> {
   const summaries = await sessionReader.listSessionReadModel(authority);
   const records: KitRecord[] = [];
@@ -308,13 +326,14 @@ async function allConversationRecords(
   const authority = readAuthority(deps);
   // File-memory conversations do not carry a trusted tenant binding. They
   // remain local-first data, but are never an implicit hosted authorization.
-  const fileRecords =
-    authority?.mode === 'hosted' ? [] : await fileLegRecords(deps.fileStores);
+  const fileRecords = isHostedScope(authority)
+    ? []
+    : await fileLegRecords(deps.fileStores);
   // No request authority: no session is anyone's to read here.
   const sessionRecords = authority
     ? await sessionLegRecords(deps.sessionReader, authority)
     : [];
-  if (authority?.mode !== 'hosted') {
+  if (!isHostedScope(authority)) {
     conversationStoreReadOps.add(1, { op: 'list', leg: 'file' });
   }
   if (authority)
@@ -360,7 +379,7 @@ async function getConversationRecord(
 
   // A direct id must not probe an unbound file-memory conversation in hosted
   // mode. The session leg above already returns null non-enumeratingly.
-  if (authority?.mode === 'hosted') {
+  if (isHostedScope(authority)) {
     conversationStoreReadOps.add(1, { op: 'get', leg: 'none' });
     return null;
   }
@@ -396,6 +415,36 @@ function rejectMutation(op: string): never {
 
 class ConversationStoreAdapter implements KnowledgeStoreAdapter {
   constructor(private readonly deps: ConversationStoreAdapterDeps) {}
+
+  /**
+   * Which of `ids` the current caller may read, without loading a transcript
+   * where the session authorizer can decide: session-backed ids through
+   * `canReadConversation`, and the rest through ONE listing of the
+   * file-memory conversations (not a scan per id). Same answer as
+   * `get(id) !== null` for each id.
+   */
+  async readableIds(ids: readonly string[]): Promise<Set<string>> {
+    const readable = new Set<string>();
+    const canRead = this.deps.sessionReader.canReadConversation;
+    if (!canRead) {
+      for (const id of ids) if (await this.get(id)) readable.add(id);
+      return readable;
+    }
+    const authority = readAuthority(this.deps);
+    if (authority) {
+      for (const id of ids) if (canRead(id, authority)) readable.add(id);
+    }
+    const pending = ids.filter((id) => !readable.has(id));
+    if (pending.length > 0 && !isHostedScope(authority)) {
+      const fileIds = new Set<string>();
+      for (const [slug, adapter] of this.deps.fileStores) {
+        for (const conversation of await adapter.getConversations(slug))
+          fileIds.add(conversation.id);
+      }
+      for (const id of pending) if (fileIds.has(id)) readable.add(id);
+    }
+    return readable;
+  }
 
   async create(_record: CreateInput): Promise<string> {
     return rejectMutation('create');

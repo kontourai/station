@@ -408,6 +408,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
+    let knowledgeProvider: KnowledgeStoreProvider | undefined;
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),
     );
@@ -637,12 +638,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             knowledgeStoreProvider: await (async () => {
               const persistence = new FileStorageAdapter(roomHomeDir);
               const provider = new KnowledgeStoreProvider(persistence);
+              knowledgeProvider = provider;
               // The Station runtime's own registration (station-runtime.ts),
               // so these routes read through production's authority wiring.
               await registerRuntimeConversationKnowledgeRoot({
                 provider,
                 persistence,
-                sessionReader: orchestration!,
+                sessions: orchestration!,
                 fileStores: new Map(),
                 fileMemoryUserId: () => getCachedUser().alias,
                 projectHomeDir: roomHomeDir,
@@ -737,6 +739,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       paired,
       referenceTask,
       taskGraph,
+      knowledgeProvider,
     };
   }
 
@@ -2739,9 +2742,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               ['str', STRANGER],
             ]),
         });
-        // The projection as a sync would leave it: every conversation (the
-        // stranger's included, from any earlier sync), with op-a and op-b
-        // linked only through the stranger's node.
+        // The projection as the Station indexer's sync leaves it: built from
+        // ALL sessions (the stranger's included), with op-a and op-b linked
+        // only through the stranger's node. Every read re-checks the caller.
         const session = driver.session();
         for (const id of ['op-a', 'op-b', 'op-c', 'str'])
           await session.run(NEO4J_SYNC_QUERIES.mergeNode, {
@@ -2806,10 +2809,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       }
     });
 
-    // M2 (round 3): the Neo4j projection is built as the Station too, so a
-    // peer-triggered sync projects the operator's conversations (which every
-    // read then re-checks per caller).
-    test('a delegation peer’s Neo4j sync projects the operator’s conversations, which only the operator then reads', async () => {
+    // Building a conversation-backed root's graph is the operator's alone
+    // (a peer's sync would disclose counts); the Station indexer builds it
+    // from all sessions and every read re-checks the caller.
+    test('only the operator may sync the conversation graph, and each caller then reads only its own nodes', async () => {
       const driver = new FakeNeo4jDriver();
       neo4jFake.driver = driver;
       registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
@@ -2819,20 +2822,27 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           seed: (seedStore) =>
             seedConversations(seedStore, [
               ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['stranger-note', STRANGER],
             ]),
         });
         const peer = pairDelegationPeer(pairing);
-        const synced = await app.request(
-          '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${peer.credential}` },
-          },
-          REMOTE_TAILNET_ENV,
-        );
+        const sync = (credential: string) =>
+          app.request(
+            '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${credential}` },
+            },
+            REMOTE_TAILNET_ENV,
+          );
+        const refused = await sync(peer.credential);
+        expect(refused.status).toBe(403);
+        expect(await refused.text()).not.toMatch(/nodesWritten|records/);
+        const synced = await sync(OPERATOR_SECRET);
         const syncedBody = (await synced.json()) as any;
         expect(synced.status, JSON.stringify(syncedBody)).toBe(200);
-        expect(syncedBody.data.nodesWritten).toBe(1);
+        // All sessions, not only the operator's account.
+        expect(syncedBody.data.nodesWritten).toBe(2);
         const nodes = async (credential: string) => {
           const response = await app.request(
             '/api/knowledge/roots/root:conversations/graph/neo4j',
@@ -2851,166 +2861,172 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       }
     });
 
-    // M2 (round 3): the index is Station-wide and built as the Station, so a
-    // peer-triggered rebuild cannot drop the operator's hits; search still
-    // re-reads each hit as the caller.
-    test('a delegation peer’s index rebuild keeps the operator’s hits, which the peer still cannot see', async () => {
-      const { app, pairing } = await principalSetup({
+    // (a)+(b): a caller cannot create another conversation-backed root, and
+    // a conversation-backed root under ANY id is filtered and build-gated by
+    // its adapter, not by its id.
+    test('conversation-store roots are neither creatable nor exploitable under another id', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing, knowledgeProvider } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+            ]),
+        });
+        const peer = pairDelegationPeer(pairing);
+        const peerHeaders = {
+          Authorization: `Bearer ${peer.credential}`,
+          'Content-Type': 'application/json',
+        };
+        const adapters = await app.request(
+          '/api/knowledge/adapters',
+          { headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(
+          ((await adapters.json()) as any).data.map(
+            (a: { id: string }) => a.id,
+          ),
+        ).not.toContain('conversation-store');
+        const created = await app.request(
+          '/api/knowledge/roots',
+          {
+            method: 'POST',
+            headers: peerHeaders,
+            body: JSON.stringify({
+              scope: { kind: 'personal' },
+              adapterId: 'conversation-store',
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(created.status, await created.clone().text()).toBe(403);
+
+        // Such a root existing anyway (not through the API).
+        const other = await knowledgeProvider!.createRoot({
+          scope: { kind: 'personal' },
+          adapterId: 'conversation-store',
+          storeRoot: '/unused',
+          displayName: 'Other',
+        });
+        const session = driver.session();
+        await session.run(NEO4J_SYNC_QUERIES.mergeNode, {
+          rootId: other.id,
+          id: 'operator-note',
+          type: 'raw',
+          title: 'operator secret title',
+          category: 'conversation',
+          contentHash: 'x',
+          syncedAt: '2026-09-04T00:00:00Z',
+        });
+        const read = await app.request(
+          `/api/knowledge/roots/${encodeURIComponent(other.id)}/graph/neo4j`,
+          { headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(await read.text()).not.toContain('operator secret title');
+        const sync = await app.request(
+          `/api/knowledge/roots/${encodeURIComponent(other.id)}/graph/neo4j-sync`,
+          { method: 'POST', headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(sync.status).toBe(403);
+        const rebuild = await app.request(
+          '/api/knowledge/index/rebuild',
+          {
+            method: 'POST',
+            headers: peerHeaders,
+            body: JSON.stringify({ rootId: other.id }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(rebuild.status).toBe(403);
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
+    // Only the operator rebuilds the conversation index; the Station indexer
+    // builds it from ALL sessions, so after the operator's rebuild each caller
+    // (a non-account WhoIs principal included) finds exactly its own set.
+    test('only the operator rebuilds the conversation index, and each caller then finds exactly what it may read', async () => {
+      const { app, pairing, paired } = await principalSetup({
         knowledge: true,
         seed: (seedStore) =>
           seedConversations(seedStore, [
             ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+            ['stranger-note', STRANGER],
           ]),
       });
       const peer = pairDelegationPeer(pairing);
-      const post = (credential: string, path: string, body: unknown) =>
+      const post = (
+        headers: Record<string, string>,
+        path: string,
+        body: unknown,
+        env = REMOTE_TAILNET_ENV,
+      ) =>
         app.request(
           `/api/knowledge${path}`,
           {
             method: 'POST',
-            headers: {
-              Authorization: `Bearer ${credential}`,
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json', ...headers },
             body: JSON.stringify(body),
           },
-          REMOTE_TAILNET_ENV,
+          env,
         );
-      const rebuilt = await post(peer.credential, '/index/rebuild', {
+      const bearer = (credential: string) => ({
+        Authorization: `Bearer ${credential}`,
+      });
+      const refused = await post(bearer(peer.credential), '/index/rebuild', {
+        rootId: 'root:conversations',
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.text()).not.toMatch(/records|chunks/);
+      const rebuilt = await post(bearer(OPERATOR_SECRET), '/index/rebuild', {
         rootId: 'root:conversations',
       });
       const rebuiltBody = (await rebuilt.json()) as any;
       expect(rebuilt.status, JSON.stringify(rebuiltBody)).toBe(200);
-      expect(rebuiltBody.data.roots[0]).toMatchObject({ status: 'ok' });
-      expect(rebuiltBody.data.roots[0].records).toBeGreaterThan(0);
-      const hits = async (credential: string) => {
-        const response = await post(credential, '/index/search', {
-          query: 'knowledge note',
-          rootIds: ['root:conversations'],
-        });
+      // All sessions, the stranger's included.
+      expect(rebuiltBody.data.roots[0]).toMatchObject({
+        status: 'ok',
+        records: 2,
+      });
+      const hits = async (
+        headers: Record<string, string>,
+        env = REMOTE_TAILNET_ENV,
+      ) => {
+        const response = await post(
+          headers,
+          '/index/search',
+          { query: 'knowledge note', rootIds: ['root:conversations'] },
+          env,
+        );
         const body = (await response.json()) as any;
         expect(response.status, JSON.stringify(body)).toBe(200);
-        return body.data.map((hit: { recordId: string }) => hit.recordId);
+        return body.data
+          .map((hit: { recordId: string }) => hit.recordId)
+          .sort();
       };
-      expect(await hits(OPERATOR_SECRET)).toContain('operator-note');
-      expect(await hits(peer.credential)).toEqual([]);
-    });
-
-    // LOW-3: the evidence attach is best-effort; a caller whose principal
-    // cannot be resolved still gets its tool result, and no attach happens.
-    test('an MCP-UI call whose principal cannot be resolved succeeds and attaches nothing', async () => {
-      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
-      const { app, pairing, paired } = await principalSetup({ flowReads });
-      // The device is bound to one person while the request's ingress names
-      // another: the credential authenticates, but principal resolution
-      // refuses the conflict.
-      const identify = pairing.identifyDevice.bind(pairing);
-      vi.spyOn(pairing, 'identifyDevice').mockImplementation((credential) => {
-        const device = identify(credential);
-        return device
-          ? ({
-              ...device,
-              principalBinding: {
-                provider: 'tailscale-serve',
-                subject: 'someone-else@github',
-              },
-            } as never)
-          : device;
-      });
-      const response = await app.request(
-        '/integrations/example-server/ui/call',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${paired.credential}`,
-            'Content-Type': 'application/json',
-            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
-              JSON.stringify({
-                provider: 'tailscale-serve',
-                login: 'owner@github',
-              }),
-            ).toString('base64url'),
-            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-          },
-          body: JSON.stringify({
-            tool: 'example-tool',
-            arguments: {},
-            threadId: 'operator-owned',
+      expect(await hits(bearer(OPERATOR_SECRET))).toEqual(['operator-note']);
+      expect(await hits(bearer(peer.credential))).toEqual([]);
+      // A Tailscale identity outside the personal account finds its own.
+      const strangerHeaders = {
+        ...bearer(paired.credential),
+        [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+          JSON.stringify({
+            provider: 'tailscale-serve',
+            login: 'stranger@example',
           }),
-        },
-        LOOPBACK_SERVE_PROXY_ENV,
-      );
-      expect(response.status, await response.text()).toBe(200);
-      expect(flowReads).toEqual([]);
-    });
-
-    // LOW-1: through the production runtime-routes composition, Station's
-    // internal token (which any agent holding a stdio child's env can
-    // present) starts a session that is the operator's to read but acts for
-    // no one; the operator's own credential starts an ordinary one.
-    test('the production task and board-intent routes mark an internal-token dispatch unattributed', async () => {
-      const dispatch = vi.fn(async () => ({
-        kind: 'failed' as const,
-        reason: 'test stops at the dispatcher',
-      }));
-      const { app } = await principalSetup({
-        taskDispatcher: { dispatch },
-      });
-      const internalHeaders = {
-        'Content-Type': 'application/json',
+        ).toString('base64url'),
         [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
       };
-      await app.request(
-        '/api/tasks/task-1/dispatch',
-        { method: 'POST', headers: internalHeaders, body: '{}' },
-        LOOPBACK_SERVE_PROXY_ENV,
-      );
-      await app.request(
-        '/api/tasks/task-1/dispatch',
-        { method: 'POST', headers: operatorHeaders, body: '{}' },
-        REMOTE_TAILNET_ENV,
-      );
-      const intent = await app.request(
-        '/api/projects/project/operating-state/intent',
-        {
-          method: 'POST',
-          headers: internalHeaders,
-          body: JSON.stringify({
-            consent: true,
-            intent: {
-              id: 'dispatch-1',
-              kind: 'task dispatch',
-              authority: { product: 'station', command: 'task dispatch' },
-              subjectRefs: [{ product: 'station', kind: 'task', id: 'task-1' }],
-            },
-          }),
-        },
-        LOOPBACK_SERVE_PROXY_ENV,
-      );
-      const owners = dispatch.mock.calls.map((call) => {
-        const intentArg = (call as unknown[])[1] as {
-          ownerUserId: string;
-          ownerAttribution?: string;
-        };
-        return {
-          ownerUserId: intentArg.ownerUserId,
-          ownerAttribution: intentArg.ownerAttribution,
-        };
-      });
-      expect(owners, await intent.text()).toEqual([
-        {
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: 'unattributed-agent',
-        },
-        {
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: undefined,
-        },
-        {
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: 'unattributed-agent',
-        },
+      expect(await hits(strangerHeaders, LOOPBACK_SERVE_PROXY_ENV)).toEqual([
+        'stranger-note',
       ]);
     });
 

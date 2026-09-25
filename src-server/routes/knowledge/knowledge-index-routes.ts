@@ -54,6 +54,10 @@ import { Hono } from 'hono';
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
+import {
+  isSessionBackedRoot,
+  SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
+} from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
@@ -73,6 +77,12 @@ interface KnowledgeIndexRouteDeps {
    * Defaults to running as-is.
    */
   runAsIndexer?: <T>(build: () => Promise<T>) => Promise<T>;
+  /**
+   * Whether this request may build a session-backed (conversation-store)
+   * root's index: only the local operator. Absent, no request may. Other
+   * roots are unaffected.
+   */
+  mayBuildSessionBackedRoot?: (request: Request) => boolean;
 }
 
 interface RebuildRootReport {
@@ -158,6 +168,19 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       const rootIds = requestedRootId
         ? [requestedRootId]
         : (await deps.store.listRoots()).map((root) => root.id);
+
+      // Operator-only for a session-backed root, refused before any rebuild:
+      // a partial rebuild (or its record counts) is itself a disclosure.
+      if (!(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false)) {
+        for (const rootId of rootIds) {
+          if (await isSessionBackedRoot(deps.store, rootId)) {
+            return c.json(
+              { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+              403,
+            );
+          }
+        }
+      }
 
       const roots: RebuildRootReport[] = [];
       for (const rootId of rootIds) {
@@ -327,16 +350,17 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           ? body.projectSlug
           : undefined;
 
-      const result = await runAsIndexer(() =>
-        migratePreIndexKnowledge(
-          {
-            dataDir: deps.dataDir,
-            store: deps.store,
-            indexProvider: deps.indexProvider,
-            embedder,
-          },
-          { projectSlug },
-        ),
+      // Migration only ever builds the kit-default-store roots it creates
+      // for pre-index namespaces (`ensureMigrationRoot`), never a
+      // session-backed root, so it runs as the caller, not the indexer.
+      const result = await migratePreIndexKnowledge(
+        {
+          dataDir: deps.dataDir,
+          store: deps.store,
+          indexProvider: deps.indexProvider,
+          embedder,
+        },
+        { projectSlug },
       );
 
       // Partial-failure honesty (code-review MED-3): a wholly-failed migration (at

@@ -3610,11 +3610,7 @@ export class StationRuntime {
             await registerRuntimeConversationKnowledgeRoot({
               provider: this.knowledgeStoreProvider,
               persistence: this.storageAdapter,
-              sessionReader: {
-                listSessionReadModel: (authority) =>
-                  this.orchestrationService.listSessionReadModel(authority),
-                sessionQueries: this.orchestrationService.sessionQueries,
-              },
+              sessions: this.orchestrationService,
               fileStores: this.memoryAdapters,
               // Legacy file-memory conversations are keyed by the OS alias.
               fileMemoryUserId: () => getCachedUser().alias,

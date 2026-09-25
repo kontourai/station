@@ -42,9 +42,9 @@
  * as a defense-in-depth consistency measure, matching every other route file's
  * treatment of an id-shaped value in this plan.
  */
+
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
-import { CONVERSATION_ROOT_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import {
   getNeo4jGraphViewConnection,
@@ -59,6 +59,10 @@ import {
   shortestPath,
 } from '../../knowledge-store/neo4j-graph-provider.js';
 import { syncRootToNeo4j } from '../../knowledge-store/neo4j-graph-sync.js';
+import {
+  isSessionBackedRoot,
+  SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
+} from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
 
 interface Neo4jGraphRouteDeps {
@@ -79,17 +83,23 @@ interface Neo4jGraphRouteDeps {
    * session-backed node for its own caller. Defaults to running as-is.
    */
   runAsIndexer?: <T>(build: () => Promise<T>) => Promise<T>;
+  /**
+   * Whether this request may sync a session-backed (conversation-store)
+   * root: only the local operator. Absent, no request may.
+   */
+  mayBuildSessionBackedRoot?: (request: Request) => boolean;
 }
 
 /** Most hops a shortest path may take; the same bound the Cypher query uses. */
 const MAX_PATH_HOPS = 15;
 
 /**
- * The part of a synced graph this request may see. Conversation-root nodes
- * are session-backed, and the graph was projected by the Station, not by
- * this caller: each node is re-read through its adapter under the request's
- * authority (as `/index/search` re-reads every hit), and a node the caller
- * cannot read is dropped along with every edge touching it. Other roots'
+ * The part of a synced graph this request may see. A session-backed root's
+ * projection was built by the Station indexer from ALL sessions, so each node
+ * is re-checked for this caller before it is shown (as `/index/search`
+ * re-reads every hit), and a node the caller cannot read is dropped along
+ * with every edge touching it. The adapter answers readability cheaply when
+ * it can (no transcript load); otherwise each node is read. Other roots'
  * records are not per-caller, so their graphs pass through unchanged.
  */
 async function readableGraph(
@@ -97,11 +107,17 @@ async function readableGraph(
   rootId: string,
   graph: ReadGraphResult,
 ): Promise<ReadGraphResult> {
-  if (rootId !== CONVERSATION_ROOT_ID) return graph;
-  const adapter = await store.adapterFor(rootId);
-  const readable = new Set<string>();
-  for (const node of graph.nodes) {
-    if (await adapter.get(node.id)) readable.add(node.id);
+  if (!(await isSessionBackedRoot(store, rootId))) return graph;
+  const adapter = (await store.adapterFor(rootId)) as Awaited<
+    ReturnType<KnowledgeStoreProvider['adapterFor']>
+  > & { readableIds?: (ids: readonly string[]) => Promise<Set<string>> };
+  const ids = graph.nodes.map((node) => node.id);
+  let readable: Set<string>;
+  if (adapter.readableIds) {
+    readable = await adapter.readableIds(ids);
+  } else {
+    readable = new Set<string>();
+    for (const id of ids) if (await adapter.get(id)) readable.add(id);
   }
   return {
     nodes: graph.nodes.filter((node) => readable.has(node.id)),
@@ -124,15 +140,14 @@ function shortestReadablePath(
   const ids = new Set(graph.nodes.map((node) => node.id));
   if (!ids.has(fromId) || !ids.has(toId)) return null;
   const neighbours = new Map<string, string[]>();
+  const link = (from: string, to: string) => {
+    const list = neighbours.get(from);
+    if (list) list.push(to);
+    else neighbours.set(from, [to]);
+  };
   for (const edge of graph.edges) {
-    neighbours.set(edge.source, [
-      ...(neighbours.get(edge.source) ?? []),
-      edge.target,
-    ]);
-    neighbours.set(edge.target, [
-      ...(neighbours.get(edge.target) ?? []),
-      edge.source,
-    ]);
+    link(edge.source, edge.target);
+    link(edge.target, edge.source);
   }
   const previous = new Map<string, string | null>([[fromId, null]]);
   let frontier = [fromId];
@@ -203,6 +218,15 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         );
       }
 
+      if (
+        !(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false) &&
+        (await isSessionBackedRoot(deps.store, rootId))
+      ) {
+        return c.json(
+          { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+          403,
+        );
+      }
       const driver = driverResult.driver;
       const stats = await runAsIndexer(() =>
         syncRootToNeo4j({
@@ -286,22 +310,21 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         );
       }
 
-      const path =
-        rootId === CONVERSATION_ROOT_ID
-          ? shortestReadablePath(
-              await readableGraph(
-                deps.store,
-                rootId,
-                await readGraph(driverResult.driver, rootId, {
-                  database: config.database,
-                }),
-              ),
-              fromId,
-              toId,
-            )
-          : await shortestPath(driverResult.driver, rootId, fromId, toId, {
-              database: config.database,
-            });
+      const path = (await isSessionBackedRoot(deps.store, rootId))
+        ? shortestReadablePath(
+            await readableGraph(
+              deps.store,
+              rootId,
+              await readGraph(driverResult.driver, rootId, {
+                database: config.database,
+              }),
+            ),
+            fromId,
+            toId,
+          )
+        : await shortestPath(driverResult.driver, rootId, fromId, toId, {
+            database: config.database,
+          });
       return c.json({ success: true, data: path });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);

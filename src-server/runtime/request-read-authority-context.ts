@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  type InternalSessionReadScope,
+  type SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 
 /**
  * The session-read authority of the HTTP request a process-singleton reader
@@ -25,4 +29,31 @@ export function currentRequestReadAuthority():
   | SessionReadAuthority
   | undefined {
   return requestAuthorities.getStore();
+}
+
+/**
+ * Station-internal knowledge indexing (index rebuild, pre-index migration,
+ * Neo4j sync): the index and graph are shared Station-wide artifacts, so they
+ * are built from ALL sessions under the named internal scope, and every read
+ * path re-reads each session-backed record as its own caller before showing
+ * it. Only the knowledge readers consult this (`currentKnowledgeReadScope`);
+ * `currentRequestReadAuthority` never returns it.
+ */
+const stationIndexing = new AsyncLocalStorage<true>();
+
+export function runAsStationKnowledgeIndexer<T>(build: () => T): T {
+  return stationIndexing.run(true, build);
+}
+
+/**
+ * The scope a knowledge adapter reads sessions with: all sessions while the
+ * Station indexer builds, otherwise the request's own principal (or none).
+ */
+export function currentKnowledgeReadScope():
+  | SessionReadAuthority
+  | InternalSessionReadScope
+  | undefined {
+  return stationIndexing.getStore()
+    ? INTERNAL_SESSION_READ_SCOPE
+    : requestAuthorities.getStore();
 }
