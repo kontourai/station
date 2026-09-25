@@ -15,9 +15,15 @@
  *   `NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX` + registrationId) for the
  *   Notification Service Extension (#2590) to open. Until that extension
  *   exists the fixed text is what shows.
- * - hideContent: `kind: 'hidden'` (generic text) and the sealed payload
- *   carries no title or body either, so a future extension cannot reveal
- *   what the surface asked to hide.
+ * - hideContent: `kind: 'hidden'` or, for attention and failures,
+ *   `'hidden-urgent'`: the same generic text either way, and the sealed
+ *   payload carries no title or body, so a future extension cannot reveal
+ *   what the surface asked to hide. Urgency (sound, priority) is decided by
+ *   the notification's urgency alone; hiding content never quiets it.
+ * - Categories the Live Activity card already alerts on
+ *   (`CARD_ALERTED_CATEGORIES`: approvals, finished, stopped and failed
+ *   turns) are not carried, unconditionally: with Live Activities off on
+ *   the phone they raise no alert (the inbox keeps them).
  * - Retract: not supported (`capabilities.retract: false`). APNs has no call
  *   that removes a delivered notification; only code on the phone can
  *   (`removeDeliveredNotifications`), which needs the app to run: a
@@ -29,7 +35,7 @@
  *   one instead of stacking. Replacing a read notification with a quiet
  *   "handled" push was rejected: it re-posts to the lock screen to say
  *   there is nothing to see.
- * - Only info-level notifications are not carried: fixed text for them
+ * - Info-level notifications are not carried either: fixed text for them
  *   would say nothing, and the policy's per-surface `minUrgency` still
  *   applies to the rest.
  * - A 410 `unregistered` drops the alert token only (the registration and
@@ -50,6 +56,7 @@ import type {
   NativePushRegistration,
 } from '../native-push-registration-store.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
+import { CARD_ALERTED_CATEGORIES } from './card-alerted-categories.js';
 import {
   type ChannelTarget,
   type DeliveryChannel,
@@ -59,7 +66,18 @@ import {
 } from './channel.js';
 
 /** The gateway's fixed-text vocabulary (deploy/push-gateway apns-request.ts). */
-export type ApnsAlertKind = 'attention' | 'failed' | 'done' | 'hidden';
+export type ApnsAlertKind =
+  | 'attention'
+  | 'failed'
+  | 'done'
+  | 'hidden'
+  | 'hidden-urgent';
+
+/** What sounds and goes out at once; the gateway derives both from `kind`. */
+const URGENT: ReadonlySet<NotificationUrgency> = new Set([
+  'attention',
+  'failed',
+]);
 
 const KIND_BY_URGENCY: Partial<Record<NotificationUrgency, ApnsAlertKind>> = {
   attention: 'attention',
@@ -130,8 +148,11 @@ export class ApnsAlertChannel implements DeliveryChannel {
     this.#now = options.now ?? Date.now;
   }
 
-  accepts(_notification: Notification, envelope: NotificationEnvelopeV1) {
-    return KIND_BY_URGENCY[envelope.urgency] !== undefined;
+  accepts(notification: Notification, envelope: NotificationEnvelopeV1) {
+    return (
+      KIND_BY_URGENCY[envelope.urgency] !== undefined &&
+      !CARD_ALERTED_CATEGORIES.has(notification.category)
+    );
   }
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
@@ -200,8 +221,8 @@ export class ApnsAlertChannel implements DeliveryChannel {
     const { ref } = target;
     const registration = this.#registrations.get(ref);
     if (!registration) return { ref, result: 'gone' };
-    const urgencyKind = KIND_BY_URGENCY[envelope.urgency];
-    if (!urgencyKind) return { ref, result: 'rejected' };
+    const kind = apnsAlertKind(envelope.urgency, target.hideContent);
+    if (!kind) return { ref, result: 'rejected' };
     // The phone pins the key it was registered under; a push signed by
     // another would fail its check. The publisher drops such registrations.
     if (registration.stationKey !== key.thumbprint)
@@ -213,7 +234,7 @@ export class ApnsAlertChannel implements DeliveryChannel {
         environment: registration.apnsEnvironment,
         deviceToken: registration.alertToken,
         registrationId: registration.registrationId,
-        kind: target.hideContent ? 'hidden' : urgencyKind,
+        kind,
         collapseId: apnsAlertCollapseId(stationId, notification.id),
         sealed: sealAgentActivityCard({
           plaintext: composeApnsAlertPlaintext({
@@ -292,6 +313,20 @@ export class ApnsAlertChannel implements DeliveryChannel {
       return { ref: deviceId, result: 'retry' };
     return { ref: deviceId, result: 'rejected' };
   }
+}
+
+/**
+ * The gateway kind for a notification: its urgency's own kind, or with
+ * hideContent the neutral text at the same urgency. Undefined for urgencies
+ * this channel does not carry.
+ */
+export function apnsAlertKind(
+  urgency: NotificationUrgency,
+  hideContent: boolean,
+): ApnsAlertKind | undefined {
+  const kind = KIND_BY_URGENCY[urgency];
+  if (!kind || !hideContent) return kind;
+  return URGENT.has(urgency) ? 'hidden-urgent' : 'hidden';
 }
 
 /**

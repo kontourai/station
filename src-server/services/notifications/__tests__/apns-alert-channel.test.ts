@@ -66,8 +66,9 @@ interface AppleCall {
 function approval(overrides: Partial<Notification> = {}): Notification {
   return {
     id: 'n-approval',
-    source: 'approval-inbox',
-    category: 'approval-request',
+    // An attention notification the Live Activity card does not announce.
+    source: 'device-pairing',
+    category: 'pairing-request',
     title: SECRET_TITLE,
     body: SECRET_BODY,
     priority: 'high',
@@ -175,6 +176,7 @@ async function harness(
       channelGlobalLimiter: allow,
       channelDeleteLimiter: allow,
       ledger: fakeLedger(),
+      alertPerTokenLimiter: allow,
     },
     fetchImpl: appleFetch,
     nowSeconds: () => Math.floor(NOW / 1000),
@@ -320,9 +322,11 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
       await h.emit(approval(), 1);
       expect(h.appleCalls).toHaveLength(1);
       const payload = JSON.parse(h.appleCalls[0]?.body ?? '{}');
+      // Hidden, but still urgent: the privacy setting never quiets it.
+      expect(payload.aps.alert).toEqual(APNS_ALERT_TEXT['hidden-urgent']);
       expect(payload.aps.alert).toEqual(APNS_ALERT_TEXT.hidden);
-      expect(payload.aps.sound).toBeUndefined();
-      expect(h.appleCalls[0]?.headers['apns-priority']).toBe('5');
+      expect(payload.aps.sound).toBe('default');
+      expect(h.appleCalls[0]?.headers['apns-priority']).toBe('10');
       expect(
         open(
           payload.station.sealed,
@@ -348,6 +352,70 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
     expect(h.stationFetch).not.toHaveBeenCalled();
     expect(h.appleCalls).toEqual([]);
   });
+
+  test('hideContent keeps each urgency: failed stays loud, done stays quiet', async () => {
+    const h = await harness();
+    h.wiring.preferences.patch({
+      perSurface: {
+        [`device:${h.deviceId}`]: { minUrgency: 'info', hideContent: true },
+      },
+    });
+    const withUrgency = (id: string, urgency: 'failed' | 'done') =>
+      approval({
+        id,
+        category: 'agent-notice',
+        metadata: {
+          envelope: {
+            v: 1,
+            source: { kind: 'system', subsystem: 'test' },
+            audience: { kind: 'owner' },
+            urgency,
+            interrupt: 'default',
+          },
+        },
+      });
+    await h.emit(withUrgency('n-failed', 'failed'), 1);
+    await h.emit(withUrgency('n-done', 'done'), 2);
+    const sent = h.appleCalls.map((call) => ({
+      aps: JSON.parse(call.body).aps,
+      priority: call.headers['apns-priority'],
+    }));
+    expect(sent).toEqual([
+      {
+        aps: {
+          alert: APNS_ALERT_TEXT['hidden-urgent'],
+          sound: 'default',
+          'mutable-content': 1,
+        },
+        priority: '10',
+      },
+      {
+        aps: { alert: APNS_ALERT_TEXT.hidden, 'mutable-content': 1 },
+        priority: '5',
+      },
+    ]);
+  });
+
+  test.each([
+    'approval-request',
+    'turn-completed',
+    'turn-stopped',
+    'turn-failed',
+  ])(
+    '%s is left to the Live Activity card: no alert push',
+    async (category) => {
+      const h = await harness();
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        approval({ id: `n-${category}`, category }) as never,
+      );
+      await settle();
+      expect(h.stationFetch).not.toHaveBeenCalled();
+      // The same notification in any other category does go out.
+      await h.emit(approval({ id: 'n-other' }), 1);
+      expect(h.appleCalls).toHaveLength(1);
+    },
+  );
 
   test('a failure notification uses the failed text; a done one is quiet; info is not carried', async () => {
     const h = await harness();
