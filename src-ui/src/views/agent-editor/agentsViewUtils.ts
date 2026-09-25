@@ -101,7 +101,13 @@ export function createEmptyAgentForm(
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
+    tools: {
+      mcpServers: [],
+      available: [],
+      autoApprove: [],
+      unattendedAutoApprove: [],
+      browser: true,
+    },
     toolsOriginal: undefined,
     execution: {
       agentConnectionId: defaultRuntimeConnectionId,
@@ -147,6 +153,9 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       mcpServers: agent.toolsConfig?.mcpServers || [],
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
+      // #2613: carried through, not yet editable here (#2658). Modelled so a
+      // save writes back exactly what was loaded; absent stays absent.
+      unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
       browser: agent.toolsConfig?.browser !== false,
     },
     toolsOriginal: agent.toolsConfig,
@@ -197,6 +206,9 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       mcpServers: [...(agent.toolsConfig?.mcpServers || [])],
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
+      unattendedAutoApprove: [
+        ...(agent.toolsConfig?.unattendedAutoApprove || []),
+      ],
       browser: agent.toolsConfig?.browser !== false,
     },
     execution: {
@@ -305,6 +317,7 @@ function buildToolsPayload(
   put('mcpServers', form.tools.mcpServers);
   put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
+  put('unattendedAutoApprove', form.tools.unattendedAutoApprove);
   // #90 D14: the browser tools are on unless switched off, so only an
   // explicit `false` (or a value the agent already had) is written.
   if (form.tools.browser === false) next.browser = false;
