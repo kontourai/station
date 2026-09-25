@@ -13,6 +13,9 @@ const makeTempDir = trackTempDirs();
 let competitor: { staged: string; path: string; claimed?: boolean } | null =
   null;
 
+/** Runs just before the owner retires the lock: a misjudged reclaim. */
+let beforeRetire: (() => void) | null = null;
+
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>();
   // Model a recursive delete the way it actually runs: children first, then
@@ -33,11 +36,25 @@ vi.mock('node:fs', async (importOriginal) => {
     }
     real.rmSync(target, options);
   };
-  return { ...real, default: { ...real, rmSync }, rmSync };
+  const renameSync: typeof real.renameSync = (from, to) => {
+    if (beforeRetire && String(to).includes('.retired-')) {
+      const hook = beforeRetire;
+      beforeRetire = null;
+      hook();
+    }
+    real.renameSync(from, to);
+  };
+  return {
+    ...real,
+    default: { ...real, rmSync, renameSync },
+    rmSync,
+    renameSync,
+  };
 });
 
 afterEach(() => {
   competitor = null;
+  beforeRetire = null;
 });
 
 describe('desktop runtime listener lease', () => {
@@ -69,5 +86,46 @@ describe('desktop runtime listener lease', () => {
     expect(
       JSON.parse(fs.readFileSync(join(path, 'lease.json'), 'utf8')).owner.nonce,
     ).toBe('competitor');
+    // And the owner's retired copy is gone, not left beside the lock.
+    expect(
+      fs.readdirSync(root).filter((name) => name.includes('.retired-')),
+    ).toEqual([]);
+  });
+  it('returns the work result when the lock is already gone at release', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const root = makeTempDir('station-lease-gone-');
+    const path = join(root, 'listeners.lock');
+    await expect(
+      withDesktopRuntimeListenerLease(
+        async () => {
+          fs.rmSync(path, { recursive: true, force: true });
+          return 'done';
+        },
+        { path },
+      ),
+    ).resolves.toBe('done');
+    expect(fs.existsSync(path)).toBe(false);
+  });
+
+  it('never deletes a lock another owner took between the read and the retire', async () => {
+    const { withDesktopRuntimeListenerLease } = await import(
+      '../lib/desktop-runtime-port-lease.mjs'
+    );
+    const root = makeTempDir('station-lease-replaced-');
+    const path = join(root, 'listeners.lock');
+    const other = JSON.stringify({ owner: { nonce: 'other' } });
+    await expect(
+      withDesktopRuntimeListenerLease(
+        async () => {
+          beforeRetire = () =>
+            fs.writeFileSync(join(path, 'lease.json'), other);
+          return 'done';
+        },
+        { path },
+      ),
+    ).resolves.toBe('done');
+    expect(fs.readFileSync(join(path, 'lease.json'), 'utf8')).toBe(other);
   });
 });

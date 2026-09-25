@@ -78,6 +78,37 @@ function reclaimDeadOwner(path, lease) {
   return true;
 }
 
+function releaseLease(path, lease) {
+  const current = readLease(path);
+  if (current?.owner?.nonce === lease.owner.nonce) {
+    // Retire the directory with one atomic rename before deleting it.
+    // Deleting in place empties `path` before removing it, and a rename
+    // onto an EMPTY directory succeeds: a waiter would claim the lease
+    // inside that window and the owner's final rmdir would then fail with
+    // ENOTEMPTY (#2648). While it still holds our lease.json, `path`
+    // cannot be claimed (non-empty) or reclaimed (we are alive), so the
+    // rename moves our own directory and nothing else.
+    const retired = `${path}.retired-${lease.owner.nonce}`;
+    try {
+      renameSync(path, retired);
+    } catch (error) {
+      // Already gone: nothing of ours is left to release.
+      if (error?.code === 'ENOENT') return;
+      throw error;
+    }
+    // Only a misjudged reclaim could have replaced `path` between the read
+    // and the rename; as in reclaimDeadOwner, never delete another owner's
+    // directory — put it back if the destination is still vacant.
+    if (readLease(retired)?.owner?.nonce !== lease.owner.nonce) {
+      try {
+        renameSync(retired, path);
+      } catch {}
+      return;
+    }
+    rmSync(retired, { recursive: true, force: true });
+  }
+}
+
 /**
  * Serialize cooperating packaged-runtime fixtures until the runtime reports
  * all of its listeners ready. The owner record is published atomically, and a
@@ -128,18 +159,6 @@ export async function withDesktopRuntimeListenerLease(work, options = {}) {
   try {
     return await work();
   } finally {
-    const current = readLease(path);
-    if (current?.owner?.nonce === lease.owner.nonce) {
-      // Retire the directory with one atomic rename before deleting it.
-      // Deleting in place empties `path` before removing it, and a rename
-      // onto an EMPTY directory succeeds: a waiter would claim the lease
-      // inside that window and the owner's final rmdir would then fail with
-      // ENOTEMPTY (#2648). While it still holds our lease.json, `path`
-      // cannot be claimed (non-empty) or reclaimed (we are alive), so the
-      // rename moves our own directory and nothing else.
-      const retired = `${path}.retired-${lease.owner.nonce}`;
-      renameSync(path, retired);
-      rmSync(retired, { recursive: true, force: true });
-    }
+    releaseLease(path, lease);
   }
 }
