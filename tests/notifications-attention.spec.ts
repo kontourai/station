@@ -131,8 +131,11 @@ function bulkDismiss(page: Page) {
  * what this spec is reading, so it must read it off the one control that
  * renders it.
  */
+// The header toolbar's bell. The sidebar footer has carried a second
+// `title="Notifications"` button with the same label since #2080, so the
+// unscoped locator matched two elements.
 function bell(page: Page) {
-  return page.locator('button[title="Notifications"]');
+  return page.getByRole('banner').locator('button[title="Notifications"]');
 }
 
 test.describe('Notifications: attention queue and activity log', () => {
