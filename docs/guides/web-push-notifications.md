@@ -48,7 +48,12 @@ paired phone gets a push, and tapping it lands on the attention inbox
   subscribes to `NOTIFICATION_DELIVERED`, resolves the audience (the owner's
   personal-family devices, or the devices that can read the session for an
   agent notification), applies the delivery policy (focus, quiet hours,
-  per-device minimum urgency, mutes) and hands the channel its targets. The
+  per-device minimum urgency, mutes) and hands the channel its targets.
+  Focus quiets the person's other surfaces only while the focused surface
+  holds a live event stream (`src-server/runtime/routes/client-stream-presence.ts`,
+  #2620), so a focused tab whose stream closed, or whose keepalive writes
+  stopped succeeding for 90 s, quiets nothing. A live focused surface skips `info`/`done` elsewhere and
+  only delays `attention`/`failed`, which still reach the phone if unread. The
   channel carries only categories the attention-ranked outcome model
   classifies (`classifyNotificationCategory`,
   `@kontourai/station-shared/notification-priority`), sends a generic title

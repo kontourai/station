@@ -18,6 +18,10 @@ import {
   resolvePushGatewayConfig,
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
+import type {
+  FocusSource,
+  InAppLiveness,
+} from '../../services/notifications/delivery/router.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
@@ -327,6 +331,12 @@ export function configureRuntimeSupportServices(
      * reads). Absent means gate-review attention is simply unavailable.
      */
     listGateReviews?: () => Promise<PausedGateReviewAggregate>;
+    /**
+     * #2620: focus presence and which focused surfaces can show the in-app
+     * toast. Absent: delivery treats nothing as focused (interrupt all).
+     */
+    focus?: FocusSource;
+    inAppLiveness?: InAppLiveness;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -565,6 +575,8 @@ export function configureRuntimeSupportServices(
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     listNotifications: () => notificationService.list(),
+    ...(options.focus ? { focus: options.focus } : {}),
+    ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
   });
 
   // Agent-activity push to registered phones through the Kontour push
