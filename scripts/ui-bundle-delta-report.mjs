@@ -9,7 +9,8 @@
  * `::notice` annotation on the pull request.
  *
  * It runs as its own non-required CI job (`ui-bundle-delta` in ci.yml), off
- * the critical path of the required `fast-checks`, and must never fail. The
+ * the critical path of the required `fast-checks`, and exits zero once
+ * started (the job's own timeout is the one thing it cannot outrun). The
  * ceiling is enforced by fast-checks' `npm run build:ui` and the merge-queue
  * candidate, not here. Scoping runs first and needs no installed
  * dependencies, so a pull request that touches no UI build input finishes in
@@ -193,8 +194,13 @@ function git(args, options = {}) {
   }).trim();
 }
 
-/** Fifteen minutes is far above the measured cost; it bounds a hang only. */
-const STEP_TIMEOUT_MS = 15 * 60 * 1000;
+/**
+ * Bounds a hang, not the measured cost (hosted runners: ~48s install, ~19s
+ * build per side). Four npm steps at this bound must fit inside the job's
+ * 30-minute timeout, so a hang ends in this script's notice rather than in
+ * the job being killed red with nothing said.
+ */
+const STEP_TIMEOUT_MS = 6 * 60 * 1000;
 
 function runNpm(args, cwd, env) {
   const npm = npmInvocation(args);
@@ -240,6 +246,9 @@ function measureMergeBase(baseSha) {
     `station-ui-bundle-base-${baseSha.slice(0, 12)}`,
   );
   rmSync(root, { recursive: true, force: true });
+  // A previous run's removed directory can leave a stale registration that
+  // makes `worktree add` refuse the path.
+  git(['worktree', 'prune']);
   git(['worktree', 'add', '--detach', root, baseSha]);
   try {
     return installBuildAndMeasure(root);
@@ -291,6 +300,6 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
     };
   }
   report(outcome);
-  // Reporting only: whatever happened above, this step does not fail.
+  // Reporting only: once started, this step does not fail.
   process.exitCode = 0;
 }

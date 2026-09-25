@@ -764,6 +764,7 @@ describe('persistent runner policy', () => {
         'a concurrency group without the head sha',
         (job: Record<string, unknown>) => {
           job.concurrency = {
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
             group: 'ui-bundle-delta-${{ github.event.pull_request.number }}',
             'cancel-in-progress': true,
           };
@@ -779,6 +780,44 @@ describe('persistent runner policy', () => {
           if (checkout?.with) checkout.with['persist-credentials'] = true;
         },
         'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ],
+      [
+        'a checkout of another repository',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with.repository = 'evil/repo';
+        },
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ],
+      [
+        'a checkout of another ref',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with.ref = 'refs/heads/attacker';
+        },
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ],
+      [
+        'a secrets reference',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (step?.env) step.env.TOKEN = '${{ secrets.NPM_TOKEN }}';
+        },
+        'ui-bundle-delta must not reference secrets or the GitHub token',
+      ],
+      [
+        'a GitHub token reference',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (step?.env) step.env.GH_TOKEN = '${{ github.token }}';
+        },
+        'ui-bundle-delta must not reference secrets or the GitHub token',
       ],
       [
         'an extra shell command',

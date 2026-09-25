@@ -227,8 +227,8 @@ jobs:
     # for a report. Same-repository PRs only; merge_group is skipped because
     # a queue candidate's share is not useful to a PR author and costs queue
     # minutes. Not a required check. The script scopes itself first (a PR
-    # that touches no UI build input ends in seconds) and exits zero on every
-    # path, naming the reason in a notice when it cannot measure.
+    # that touches no UI build input ends in seconds) and exits zero once
+    # started, naming the reason in a notice when it cannot measure.
     if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read

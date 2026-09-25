@@ -51,8 +51,9 @@ export function resolveNpmCli(env = process.env, node = process.execPath) {
  * correctly and has always done so here, so it keeps spawning `npm`
  * verbatim: rewriting a working invocation on every platform would be a
  * behaviour change nobody asked for, and callers can legitimately depend on
- * the exact spawn -- a test can stub `npm` on PATH to prove a script
- * delegates to an npm script rather than reimplementing it. This mirrors `npmBuildInvocation`, which already
+ * the exact spawn -- `ui-bundle-delta-report.test.ts` stubs `npm` on PATH
+ * to prove the delta report delegates to `npm run build:ui` rather than
+ * calling vite itself. This mirrors `npmBuildInvocation`, which already
  * branches the same way.
  *
  * @param {readonly string[]} npmArgs arguments after `npm`, e.g. ['run', 'build']

@@ -1,6 +1,12 @@
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -198,3 +204,162 @@ describe('entry point (executed, not inspected)', () => {
     );
   });
 });
+
+/**
+ * The real dependencies, executed: a throwaway git repository with a base
+ * commit and a head commit that changes a UI input, and a stub `npm` on PATH
+ * that logs each call and writes a deterministic `index.html` plus assets
+ * whose size is the content of `src-ui/app.js` in whichever tree it runs.
+ * That proves the install/build commands, observe mode and the delta build
+ * directory on BOTH sides, that the base builds in its own worktree, and that
+ * the worktree is removed afterwards, including when the base build fails.
+ */
+describe.skipIf(process.platform === 'win32')(
+  'real dependencies (stubbed npm, executed)',
+  () => {
+    const makeTempDir = trackTempDirs();
+    const script = resolve(
+      import.meta.dirname,
+      '../ui-bundle-delta-report.mjs',
+    );
+
+    function git(cwd: string, args: string[]) {
+      return execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Fixture',
+          GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+          GIT_COMMITTER_NAME: 'Fixture',
+          GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+        },
+      }).trim();
+    }
+
+    function fixture({ failBaseBuild = false } = {}) {
+      const root = realpathSync(makeTempDir('station-ui-delta-real-'));
+      const repo = join(root, 'repo');
+      const bin = join(root, 'bin');
+      const runnerTemp = join(root, 'runner-temp');
+      const log = join(root, 'npm-calls.log');
+      mkdirSync(join(repo, 'src-ui'), { recursive: true });
+      mkdirSync(bin);
+      mkdirSync(runnerTemp);
+      git(repo, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(repo, 'src-ui/app.js'), 'x'.repeat(10));
+      git(repo, ['add', '.']);
+      git(repo, ['commit', '-q', '-m', 'base']);
+      const baseSha = git(repo, ['rev-parse', 'HEAD']);
+      // Incompressible growth so the gzip delta is non-zero and signed +.
+      writeFileSync(
+        join(repo, 'src-ui/app.js'),
+        Array.from({ length: 400 }, (_, index) =>
+          ((index * 2654435761) >>> 0).toString(36),
+        ).join(''),
+      );
+      git(repo, ['commit', '-q', '-am', 'head']);
+      writeFileSync(
+        join(bin, 'npm'),
+        [
+          '#!/bin/sh',
+          `printf '%s|%s|%s|%s\\n' "$(pwd -P)" "$STATION_UI_BUNDLE_BUDGET" "$STATION_BUILD_UI_DIR" "$*" >> ${JSON.stringify(log)}`,
+          'case "$*" in',
+          '  *build:ui*)',
+          ...(failBaseBuild
+            ? [
+                `    if [ "$(pwd -P)" != ${JSON.stringify(repo)} ]; then exit 7; fi`,
+              ]
+            : []),
+          '    mkdir -p "$STATION_BUILD_UI_DIR/assets"',
+          `    printf '%s' '<script type="module" src="/assets/app.js"></script><link rel="stylesheet" href="/assets/app.css">' > "$STATION_BUILD_UI_DIR/index.html"`,
+          '    cp src-ui/app.js "$STATION_BUILD_UI_DIR/assets/app.js"',
+          `    printf 'body{}' > "$STATION_BUILD_UI_DIR/assets/app.css"`,
+          '    ;;',
+          'esac',
+          'exit 0',
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      );
+      const result = spawnSync(process.execPath, [script], {
+        cwd: repo,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          RUNNER_TEMP: runnerTemp,
+          STATION_UI_BUNDLE_DELTA_BASE: baseSha,
+          GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
+          STATION_UI_BUNDLE_BUDGET: 'enforce',
+          STATION_BUILD_UI_DIR: 'dist-ui',
+        },
+      });
+      const calls = readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => {
+          const [cwd, budget, dir, args] = line.split('|');
+          return { cwd, budget, dir, args };
+        });
+      const baseRoot = join(
+        runnerTemp,
+        `station-ui-bundle-base-${baseSha.slice(0, 12)}`,
+      );
+      return { repo, result, calls, baseRoot, baseSha };
+    }
+
+    it('installs and builds both sides with build:ui in observe mode, base in its own worktree', () => {
+      const { repo, result, calls, baseRoot } = fixture();
+      expect(result.status, result.stderr).toBe(0);
+      expect(calls).toEqual([
+        {
+          cwd: repo,
+          budget: 'observe',
+          dir: 'dist-ui-delta',
+          args: 'run dependencies:ci',
+        },
+        {
+          cwd: repo,
+          budget: 'observe',
+          dir: 'dist-ui-delta',
+          args: 'run --silent build:ui',
+        },
+        {
+          cwd: baseRoot,
+          budget: 'observe',
+          dir: 'dist-ui-delta',
+          args: 'run dependencies:ci',
+        },
+        {
+          cwd: baseRoot,
+          budget: 'observe',
+          dir: 'dist-ui-delta',
+          args: 'run --silent build:ui',
+        },
+      ]);
+      expect(result.stdout).toMatch(
+        /::notice title=UI entry bundle::UI entry bundle: JS \+[1-9][\d,]* B \([\d,]+ → [\d,]+\), CSS \+0 B/,
+      );
+      expect(existsSync(baseRoot)).toBe(false);
+      expect(git(repo, ['worktree', 'list', '--porcelain'])).not.toContain(
+        baseRoot,
+      );
+    });
+
+    it('removes the base worktree and reports why when the base build fails', () => {
+      const { repo, result, baseRoot, baseSha } = fixture({
+        failBaseBuild: true,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        `UI entry bundle delta could not be measured: merge-base ${baseSha.slice(0, 12)} could not be built and measured`,
+      );
+      expect(result.stdout).toContain('exited 7');
+      expect(existsSync(baseRoot)).toBe(false);
+      expect(git(repo, ['worktree', 'list', '--porcelain'])).not.toContain(
+        baseRoot,
+      );
+    });
+  },
+);

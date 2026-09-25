@@ -318,6 +318,8 @@ const UI_BUNDLE_DELTA_STEP = Object.freeze({
   run: 'node scripts/ui-bundle-delta-report.mjs',
   base: `\${{ github.event.pull_request.base.sha }}`,
 });
+const UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
+const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
@@ -1288,6 +1290,24 @@ function uiBundleDeltaJobFindings(file, job) {
       finding(
         'ui-bundle-delta must check out once, with full history and persist-credentials: false',
       ),
+    );
+  if (
+    checkout?.with?.repository !== UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY ||
+    checkout?.with?.ref !== UI_BUNDLE_DELTA_CHECKOUT_REF
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ),
+    );
+  // ci.yml is exempt from the generic base-controlled secrets rule, so this
+  // job carries its own: it runs PR head code and needs no credential.
+  if (
+    containsSecretReference(job) ||
+    /\bgithub\.token\b/i.test(JSON.stringify(job))
+  )
+    findings.push(
+      finding('ui-bundle-delta must not reference secrets or the GitHub token'),
     );
   const report = (job.steps ?? []).find(
     (step) => step?.name === UI_BUNDLE_DELTA_STEP.name,

@@ -71,8 +71,9 @@ enforcement is sufficient: `fast-checks` builds the candidate and fails over
 the ceiling, and the merge queue does the same on latest `main` plus the
 change. A separate, non-required `ui-bundle-delta` job reports each
 same-repository pull request's entry-bundle delta against its merge base,
-in parallel with `fast-checks` and never failing, so growth stays attributed
-to the change that added it. It does not run in the merge queue.
+in parallel with `fast-checks` and exiting zero once started, so growth
+stays attributed to the change that added it. It does not run in the merge
+queue.
 
 ### What the entry-bundle ceiling is for
 
@@ -119,8 +120,10 @@ the `packages/{sdk,connect,contracts}/src/` sources the Vite aliases resolve,
 touching a source file), `patches/`, or the budget script and its ceiling.
 It builds both trees in observe mode, so an over-ceiling tree still yields a
 number. When it cannot measure, it says so and why in a notice rather than
-skipping silently. To measure your share locally, `npm run build:ui` on your branch and
-on the merge base, each in a worktree with its own `node_modules`.
+skipping silently. To measure your share locally, run
+`STATION_UI_BUNDLE_DELTA_BASE=origin/main node scripts/ui-bundle-delta-report.mjs`
+in your worktree: it installs and builds your branch there and the merge base
+in a temporary worktree with its own `node_modules`, both in observe mode.
 
 A conflict on `scripts/ui-bundle-budget.json` is resolved by hand: keep the
 higher of each field. There is deliberately no escape hatch for the ceiling
