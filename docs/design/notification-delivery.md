@@ -594,7 +594,8 @@ runtime and the two can never both alert. A shell without the command answers
   not alerted.
 - **One attempt per entry.** A read is decided under the consumer lock, its
   OS calls are made with the lock released, in order, and the cursor is
-  committed as far as the outcomes allow. Shown, refused by the OS, or timed
+  committed as far as the outcomes allow: saved past each consumed entry
+  before the next call, and through the whole read when the poll ends. Shown, refused by the OS, or timed
   out (the call was made and did not answer within five seconds): the entry
   is consumed, the cursor passes it, and it is never tried again. Refusals
   and timeouts are logged at most once a minute. A show that answers late
@@ -602,9 +603,14 @@ runtime and the two can never both alert. A shell without the command answers
 - **Only a call not made is retried.** When the breaker is open or the gate
   is disabled, no call is made: the poll stops before that entry, the cursor
   does not pass it, and nothing after it is posted in that poll.
-- **Stale entries.** An alert created more than 15 minutes ago (the entry's
-  `at`) is consumed without posting, so the backlog after the gate re-enables
-  or after a restart is not replayed.
+- **Stale entries.** An alert queued more than 15 minutes before the server
+  answered is consumed without posting, so the backlog after the gate
+  re-enables or after a restart is not replayed. Both times are the
+  server's: the entry's `at` against the feed's `now`. The desktop's own
+  clock is never used, so a remote Station whose clock differs from this
+  computer's neither drops fresh alerts nor keeps stale ones. A server too
+  old to send `now` has nothing stale. Stale drops are logged at most once a
+  minute.
 - **Stuck notification service.** zbus has no method timeout, so each OS
   call runs on a helper thread bounded at five seconds, and while four calls
   are still stuck no new call is made. After 15 polls in a row (about five
@@ -613,17 +619,22 @@ runtime and the two can never both alert. A shell without the command answers
   Station makes no OS notification call again and **desktop alerts stop until
   the app restarts** (logged as an error). The consumer lock is never held
   across an OS call, so none of this blocks a handover.
-- **Duplicates.** The dedupe of shown content is in memory and bounded.
-  Nothing past the committed cursor has been posted, so a restart repeats
-  nothing; the one exception is a crash between posting and the commit,
-  which posts those entries again.
+- **Duplicates.** The dedupe of shown content is in memory and bounded. The
+  poll thread is not joined on quit, so a crash or quit while a poll is
+  posting reposts, on the next launch, the entry whose call was in progress
+  or had just returned (the cursor is saved before each next call, not
+  inside one). A cursor file that fails to save (logged once per failure
+  streak) replays from the last saved cursor on the next launch, bounded by
+  the 15-minute staleness and the server's 60-minute retention.
 - **Focus.** No OS alert while the main window is focused and visible (the
   in-app toast shows it); the entry is consumed.
 - **Retract** closes the OS notification the host posted for that id where the
   pinned backend can: Linux (D-Bus `CloseNotification`). A retract that
   arrives before its alert's late answer leaves a bounded tombstone, and the
   late notification is closed as soon as it answers; an older post's late
-  answer never replaces a newer post's handle. notify-rust 4.18's
+  answer never replaces a newer post's handle, and that superseded
+  notification stays on screen with no handle, so a retract of its id closes
+  only the newer one. notify-rust 4.18's
   macOS (NSUserNotificationCenter) and Windows handles expose no close, so
   there a retract only stops an alert not yet posted (a retract later in the
   same read). tauri-plugin-notification 2.4.0 cannot remove a delivered

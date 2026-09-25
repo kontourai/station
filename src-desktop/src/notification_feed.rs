@@ -28,7 +28,8 @@
 //!
 //! **One attempt per entry.** A read is decided under the consumer lock, its
 //! OS calls are made with the lock released, in order, and the cursor is
-//! then committed as far as the outcomes allow:
+//! committed as far as the outcomes allow: saved past each consumed entry
+//! before the next call, and through the whole read when the poll ends:
 //! - shown, refused by the OS, or timed out (the call was made and did not
 //!   answer within 5 s): consumed. The cursor passes it and it is never tried
 //!   again. A refusal or timeout is logged, at most once a minute. A show
@@ -36,16 +37,21 @@
 //! - not called (the gate's breaker is open, or the gate is disabled): the
 //!   ONLY retried outcome. The poll stops before it, the cursor does not pass
 //!   it, and nothing after it is posted in that poll;
-//! - an alert created more than [`STALE_AFTER_MS`] ago (the entry's `at`) is
-//!   consumed without posting: the backlog after the gate re-enables or
-//!   after a restart is not replayed.
+//! - an alert queued more than [`STALE_AFTER_MS`] before the server answered
+//!   is consumed without posting: the backlog after the gate re-enables or
+//!   after a restart is not replayed. Both times are the SERVER's (the
+//!   entry's `at` against the feed's `now`); this computer's clock is never
+//!   used. A server that sends no `now` has nothing stale. Logged at most
+//!   once a minute.
 //!
 //! [`OsCallGate`] bounds each call, writes stuck calls off after 15
 //! saturated polls and resumes; once 16 calls have been written off, no OS
 //! notification call is made until restart. The dedupe of shown content is
-//! in memory and bounded. Nothing past the cursor has been posted, so a
-//! restart repeats nothing; the one exception is a crash between posting and
-//! the commit, which posts those entries again on the next run.
+//! in memory and bounded. The poll thread is not joined on quit, so a crash
+//! or quit while a poll is posting reposts, on the next launch, the entry
+//! whose call was in progress or had just returned. A cursor that fails to
+//! save replays from the last saved cursor on the next launch, bounded by
+//! the staleness and the server's 60-minute retention.
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -159,6 +165,11 @@ pub(crate) struct Feed {
     pub entries: Vec<FeedEntry>,
     pub cursor: u64,
     pub epoch: String,
+    /// The server's clock when it answered (ISO 8601, UTC). Entry ages are
+    /// measured against it, never against this computer's clock: a remote
+    /// Station's clock may differ from ours. Absent from older servers.
+    #[serde(default)]
+    pub now: Option<String>,
 }
 
 /// One alert to show. `link` is already validated as an in-app path.
@@ -385,7 +396,9 @@ pub(crate) struct HeldHandles<H> {
 pub(crate) enum Kept {
     /// Held for a retract.
     Held,
-    /// A newer post's handle is held for this id; this one is not.
+    /// A newer post's handle is held for this id; this one is not. The
+    /// superseded notification stays on screen with no handle, so a retract
+    /// of its id closes only the newer one; it goes when dismissed.
     Superseded,
     /// Retracted before it answered: close it now.
     Retracted,
@@ -453,17 +466,19 @@ impl<H> HeldHandles<H> {
     }
 
     /// Record that `id` is retracted: any post of it started so far that
-    /// answers later is closed on arrival.
+    /// answers later is closed on arrival. A re-retract refreshes the
+    /// tombstone and makes it the newest (the last evicted).
     pub(crate) fn tombstone(&mut self, id: &str) {
         let before = self.next_generation;
-        if self.retracted.insert(id.to_string(), before).is_none() {
-            self.retracted_order.push_back(id.to_string());
-            while self.retracted.len() > self.cap {
-                let Some(oldest) = self.retracted_order.pop_front() else {
-                    break;
-                };
-                self.retracted.remove(&oldest);
-            }
+        if self.retracted.insert(id.to_string(), before).is_some() {
+            self.retracted_order.retain(|retracted| retracted != id);
+        }
+        self.retracted_order.push_back(id.to_string());
+        while self.retracted.len() > self.cap {
+            let Some(oldest) = self.retracted_order.pop_front() else {
+                break;
+            };
+            self.retracted.remove(&oldest);
         }
     }
 
@@ -602,6 +617,14 @@ pub(crate) enum Action {
     Close { seq: u64, notification_id: String },
 }
 
+impl Action {
+    fn seq(&self) -> u64 {
+        match self {
+            Action::Post { seq, .. } | Action::Close { seq, .. } => *seq,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Plan {
     pub actions: Vec<Action>,
@@ -629,10 +652,22 @@ pub(crate) struct Executed {
 
 /// Carry out a plan's OS calls in order, one attempt per entry. Every
 /// outcome consumes the entry except `NotCalled`, which stops the poll
-/// before it (see the module comment).
-pub(crate) fn execute(plan: &mut Plan, sink: &mut dyn AlertSink) -> Executed {
+/// before it (see the module comment). After each consumed entry that has
+/// another call after it, `consumed` gets the position just before that
+/// next call, so the cursor can be saved as the poll goes and a quit or
+/// crash mid-poll reposts at most the entry whose call was in progress.
+/// The position through the last call is the plan's own commit.
+pub(crate) fn execute(
+    plan: &mut Plan,
+    sink: &mut dyn AlertSink,
+    consumed: &mut dyn FnMut(StoredCursor),
+) -> Executed {
     let mut executed = Executed::default();
-    for action in std::mem::take(&mut plan.actions) {
+    let actions = std::mem::take(&mut plan.actions);
+    let next_seqs: Vec<Option<u64>> = (0..actions.len())
+        .map(|index| actions.get(index + 1).map(Action::seq))
+        .collect();
+    for (action, next_seq) in actions.into_iter().zip(next_seqs) {
         let (seq, outcome) = match action {
             Action::Post { seq, alert, key } => {
                 let outcome = sink.post(&alert);
@@ -664,6 +699,12 @@ pub(crate) fn execute(plan: &mut Plan, sink: &mut dyn AlertSink) -> Executed {
         if outcome == OsOutcome::NotCalled {
             executed.limit = Some(seq.saturating_sub(1));
             break;
+        }
+        if let (Some(next_seq), Some(commit)) = (next_seq, plan.commit.as_ref()) {
+            consumed(StoredCursor {
+                cursor: next_seq.saturating_sub(1).min(commit.cursor),
+                ..commit.clone()
+            });
         }
     }
     executed
@@ -727,20 +768,23 @@ pub(crate) fn iso_utc_ms(at: &str) -> Option<u64> {
     Some(((days * 24 + hour) * 60 + minute) * 60_000 + second * 1000 + millis)
 }
 
-/// Whether an alert created at `at` is older than [`STALE_AFTER_MS`] at
-/// `wall_ms`. An unreadable time, or one ahead of this clock, is not stale.
-fn is_stale(at: Option<&str>, wall_ms: u64) -> bool {
-    at.and_then(iso_utc_ms)
-        .is_some_and(|created| wall_ms.saturating_sub(created) > STALE_AFTER_MS)
+/// Whether an alert created at `at` was older than [`STALE_AFTER_MS`] when
+/// the server answered at `server_now`. Both times are the SERVER's; this
+/// computer's clock is never used, so a skewed clock on either side cannot
+/// drop fresh alerts or keep stale ones. A missing or unreadable time on
+/// either side, or an `at` after `server_now`, is not stale.
+fn is_stale(at: Option<&str>, server_now: Option<&str>) -> bool {
+    match (at.and_then(iso_utc_ms), server_now.and_then(iso_utc_ms)) {
+        (Some(created), Some(now)) => now.saturating_sub(created) > STALE_AFTER_MS,
+        _ => false,
+    }
 }
 
-/// The caller's clocks for one read.
+/// The caller's clock for one read.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Now {
-    /// A MONOTONIC millisecond clock (the adoption grace, log rate limit).
+    /// A MONOTONIC millisecond clock (the adoption grace, log rate limits).
     pub monotonic_ms: u64,
-    /// Wall-clock milliseconds since the Unix epoch (staleness).
-    pub wall_ms: u64,
 }
 
 /// The consumer's decisions, free of HTTP and OS calls so they can be tested.
@@ -759,6 +803,8 @@ pub(crate) struct FeedConsumer {
     posted_set: HashSet<String>,
     /// When "not shown" was last logged, on the monotonic clock.
     logged_not_shown_at: Option<u64>,
+    /// When a stale drop was last logged, on the monotonic clock.
+    logged_stale_at: Option<u64>,
     /// Origins with a planned read whose outcome is not committed yet.
     pending: HashSet<String>,
 }
@@ -853,6 +899,7 @@ impl FeedConsumer {
         }
         let mut planned_keys = HashSet::new();
         let mut actions = Vec::new();
+        let mut stale = 0usize;
         for entry in entries {
             match entry {
                 FeedEntry::Retract {
@@ -879,9 +926,13 @@ impl FeedConsumer {
                     // under the same id with new content alerts again.
                     let key = serde_json::to_string(&(notification_id, title, body, urgency))
                         .unwrap_or_default();
+                    let too_old = is_stale(at.as_deref(), feed.now.as_deref());
+                    if too_old && !retracted_later {
+                        stale += 1;
+                    }
                     if !retracted_later
                         && !focused
-                        && !is_stale(at.as_deref(), now.wall_ms)
+                        && !too_old
                         && !self.posted_set.contains(&key)
                         && planned_keys.insert(key.clone())
                     {
@@ -899,6 +950,17 @@ impl FeedConsumer {
                 }
             }
         }
+        if stale > 0
+            && self
+                .logged_stale_at
+                .is_none_or(|at| now.monotonic_ms.saturating_sub(at) >= LOG_EVERY_MS)
+        {
+            self.logged_stale_at = Some(now.monotonic_ms);
+            log::info!(
+                "{stale} notification(s) not shown: queued more than {} minutes before the server answered",
+                STALE_AFTER_MS / 60_000
+            );
+        }
         self.pending.insert(origin.to_string());
         Plan {
             actions,
@@ -912,8 +974,8 @@ impl FeedConsumer {
 
     /// Record a plan's outcome: remember the alerts shown (or called and
     /// timed out), log what was not shown, and commit the cursor up to what
-    /// the outcome allows. Committing after the OS calls means a crash
-    /// between posting and this save posts those entries again.
+    /// the outcome allows (the cursor was already saved past each consumed
+    /// entry but the last; see [`execute`]).
     pub(crate) fn finish(
         &mut self,
         origin: &str,
@@ -960,7 +1022,9 @@ impl FeedConsumer {
     ) -> Applied {
         let mut plan = self.plan(origin, feed, focused, now, store);
         let waiting = plan.waiting();
-        let mut executed = execute(&mut plan, sink);
+        let mut executed = execute(&mut plan, sink, &mut |next| {
+            self.commit(origin, next, store);
+        });
         sink.end_poll();
         let mut applied = std::mem::take(&mut executed.applied);
         self.finish(origin, plan.commit, executed, now, store);
@@ -1100,8 +1164,14 @@ impl<C: CursorStore> SharedConsumer<C> {
             consumer.plan(origin, feed, focused, now, store)
         })?;
         let waiting = plan.waiting();
-        // No consumer lock from here until the outcome is committed.
-        let mut executed = execute(&mut plan, sink);
+        // No consumer lock across an OS call: it is taken between calls only
+        // to save the cursor past each consumed entry.
+        let mut executed = execute(&mut plan, sink, &mut |next| {
+            self.with(
+                || None,
+                |consumer, store| consumer.commit(origin, next, store),
+            );
+        });
         sink.end_poll();
         let mut applied = std::mem::take(&mut executed.applied);
         self.with(
@@ -1238,13 +1308,6 @@ mod host {
         START.get_or_init(Instant::now).elapsed().as_millis() as u64
     }
 
-    /// Wall-clock milliseconds since the Unix epoch: an entry's age.
-    fn wall_ms() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_millis() as u64)
-    }
-
     fn config_dir(app: &AppHandle) -> Option<PathBuf> {
         app.path().app_config_dir().ok()
     }
@@ -1311,7 +1374,6 @@ mod host {
             focused,
             Now {
                 monotonic_ms: monotonic_ms(),
-                wall_ms: wall_ms(),
             },
             sink,
         );
@@ -1696,19 +1758,18 @@ mod tests {
     /// When the fixtures' entries were queued, as the server writes it.
     const T0_ISO: &str = "2026-09-25T12:00:00.000Z";
     const T0_MS: u64 = 1_790_337_600_000;
-    /// A read at `monotonic_ms`, right when the fixtures were queued.
+    /// A read at `monotonic_ms`.
     fn mono(monotonic_ms: u64) -> Now {
-        Now {
-            monotonic_ms,
-            wall_ms: T0_MS,
-        }
+        Now { monotonic_ms }
     }
+    /// A feed the server answered right when the fixtures were queued.
     fn feed(cursor: u64, entries: Vec<FeedEntry>, epoch: &str) -> Feed {
         Feed {
             surface: SURFACE.into(),
             entries,
             cursor,
             epoch: epoch.into(),
+            now: Some(T0_ISO.into()),
         }
     }
     fn stored(cursor: u64, epoch: &str) -> StoredCursor {
@@ -2068,6 +2129,16 @@ mod tests {
         let parsed = parse_feed_response(&body).unwrap();
         assert_eq!(parsed.entries.len(), 2);
         assert_eq!(parsed.entries[1], retract(2, "n-1"));
+        // An older server sends no `now`.
+        assert_eq!(parsed.now, None);
+        let with_now = body.replace(
+            r#""leaseMs":90000"#,
+            &format!(r#""leaseMs":90000,"now":"{T0_ISO}""#),
+        );
+        assert_eq!(
+            parse_feed_response(&with_now).unwrap().now.as_deref(),
+            Some(T0_ISO)
+        );
         assert!(
             parse_feed_response(r#"{"success":false,"error":"installation_required"}"#).is_none()
         );
@@ -2209,44 +2280,88 @@ mod tests {
         assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
     }
 
+    fn queued(seq: u64, id: &str, at: &str) -> FeedEntry {
+        let mut entry = alert(seq, id);
+        if let FeedEntry::Alert { at: when, .. } = &mut entry {
+            *when = Some(at.into());
+        }
+        entry
+    }
+
     #[test]
     fn stale_entries_are_consumed_without_posting() {
         // Pinned beside the constant: 15 minutes.
         assert_eq!(STALE_AFTER_MS, 900_000);
         let mut consumer = started(0, "run-1");
         let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
-        let queued = |seq: u64, id: &str, at: &str| {
-            let mut entry = alert(seq, id);
-            if let FeedEntry::Alert { at: when, .. } = &mut entry {
-                *when = Some(at.into());
-            }
-            entry
-        };
-        // Read at 12:20:00.000Z.
-        let now = Now {
-            monotonic_ms: 0,
-            wall_ms: T0_MS + 20 * 60 * 1000,
-        };
-        let applied = consumer.apply(
-            ORIGIN,
-            &feed(
-                4,
-                vec![
-                    queued(1, "old", "2026-09-25T12:00:00.000Z"),
-                    queued(2, "edge-stale", "2026-09-25T12:04:59.999Z"),
-                    queued(3, "edge-fresh", "2026-09-25T12:05:00.000Z"),
-                    queued(4, "new", "2026-09-25T12:19:00.000Z"),
-                ],
-                "run-1",
-            ),
-            false,
-            now,
-            &mut sink,
-            &mut store,
+        // The server answered at 12:20:00.000Z by its own clock.
+        let mut answered = feed(
+            4,
+            vec![
+                queued(1, "old", "2026-09-25T12:00:00.000Z"),
+                queued(2, "edge-stale", "2026-09-25T12:04:59.999Z"),
+                queued(3, "edge-fresh", "2026-09-25T12:05:00.000Z"),
+                queued(4, "new", "2026-09-25T12:19:00.000Z"),
+            ],
+            "run-1",
         );
+        answered.now = Some("2026-09-25T12:20:00.000Z".into());
+        let applied = consumer.apply(ORIGIN, &answered, false, mono(0), &mut sink, &mut store);
         assert_eq!(ids(&sink), ["edge-fresh", "new"]);
         assert_eq!(applied.posted, 2);
+        // The stale ones are consumed: the cursor passes them.
         assert_eq!(consumer.request(ORIGIN), (4, Some("run-1".into())));
+    }
+
+    #[test]
+    fn age_is_measured_on_the_servers_clock_not_this_computers() {
+        // A Station whose clock is years behind this computer's: by its own
+        // clock the entries are a minute old, so they are posted. Measured
+        // against this computer's clock they would all be dropped.
+        let mut consumer = started(0, "run-1");
+        let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
+        let mut behind = feed(
+            2,
+            vec![
+                queued(1, "fresh-1", "2001-01-01T00:00:00.000Z"),
+                queued(2, "fresh-2", "2001-01-01T00:00:30.000Z"),
+            ],
+            "run-1",
+        );
+        behind.now = Some("2001-01-01T00:01:00.000Z".into());
+        let applied = consumer.apply(ORIGIN, &behind, false, mono(0), &mut sink, &mut store);
+        assert_eq!(ids(&sink), ["fresh-1", "fresh-2"]);
+        assert_eq!(applied.posted, 2);
+
+        // A Station whose clock is years AHEAD of this computer's: an entry
+        // an hour old by its clock is stale, though "in the future" here.
+        let mut ahead = feed(
+            3,
+            vec![queued(3, "stale", "2099-01-01T00:00:00.000Z")],
+            "run-1",
+        );
+        ahead.now = Some("2099-01-01T01:00:00.000Z".into());
+        let applied = consumer.apply(ORIGIN, &ahead, false, mono(1), &mut sink, &mut store);
+        assert_eq!(applied.posted, 0);
+        assert_eq!(ids(&sink), ["fresh-1", "fresh-2"]);
+        assert_eq!(consumer.request(ORIGIN), (3, Some("run-1".into())));
+    }
+
+    #[test]
+    fn without_the_servers_clock_nothing_is_stale() {
+        // An older server sends no `now`: its entries are posted however
+        // old they look, rather than judged by this computer's clock.
+        let mut consumer = started(0, "run-1");
+        let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
+        let mut older = feed(
+            1,
+            vec![queued(1, "ancient", "1999-01-01T00:00:00.000Z")],
+            "run-1",
+        );
+        older.now = None;
+        let applied = consumer.apply(ORIGIN, &older, false, mono(0), &mut sink, &mut store);
+        assert_eq!(ids(&sink), ["ancient"]);
+        assert_eq!(applied.posted, 1);
     }
 
     #[test]
@@ -2270,10 +2385,15 @@ mod tests {
         ] {
             assert_eq!(iso_utc_ms(bad), None, "{bad:?}");
         }
-        // Unreadable, missing, or ahead of this clock: posted, not dropped.
-        assert!(!is_stale(Some("garbage"), T0_MS + STALE_AFTER_MS * 10));
-        assert!(!is_stale(None, T0_MS + STALE_AFTER_MS * 10));
-        assert!(!is_stale(Some(T0_ISO), T0_MS - 1));
+        // Unreadable or missing on either side, or after the server's now:
+        // posted, not dropped.
+        let late = "2026-09-25T15:00:00.000Z";
+        assert!(is_stale(Some(T0_ISO), Some(late)));
+        assert!(!is_stale(Some("garbage"), Some(late)));
+        assert!(!is_stale(None, Some(late)));
+        assert!(!is_stale(Some(T0_ISO), None));
+        assert!(!is_stale(Some(T0_ISO), Some("garbage")));
+        assert!(!is_stale(Some(late), Some(T0_ISO)));
     }
 
     /// Wait until `done` holds, or fail after a deadline (hosts here run at
@@ -2522,16 +2642,92 @@ mod tests {
             OsOutcome::Unknown
         );
         assert!(held.lock().unwrap().get("n-1").is_none());
-        // Answered: closed.
+        // Answered: closed. A long timeout, so a descheduled helper thread
+        // on a loaded host still answers in time.
+        let answering = OsCallGate::new(4, Duration::from_secs(5), 100, 100);
         hold("n-2", 2);
-        assert_eq!(close_held(&held, &slow, "n-2", |_| {}), OsOutcome::Done);
+        assert_eq!(
+            close_held(&held, &answering, "n-2", |_| {}),
+            OsOutcome::Done
+        );
         assert!(held.lock().unwrap().get("n-2").is_none());
         assert_eq!(
-            close_held(&held, &slow, "missing", |_| {}),
+            close_held(&held, &answering, "missing", |_| {}),
             OsOutcome::NotDone
         );
         release.send(()).unwrap();
         close_release.send(()).unwrap();
+    }
+
+    #[test]
+    fn a_re_retract_refreshes_the_tombstones_eviction_order() {
+        let mut held: HeldHandles<&'static str> = HeldHandles::new(2);
+        let generation = held.begin_post();
+        held.tombstone("a");
+        held.tombstone("b");
+        held.tombstone("a");
+        // Past the cap: the least recently retracted ("b") goes, not "a".
+        held.tombstone("c");
+        assert_eq!(
+            held.insert("a".into(), generation, std::sync::Arc::new("a")),
+            Kept::Retracted
+        );
+        assert_eq!(
+            held.insert("b".into(), generation, std::sync::Arc::new("b")),
+            Kept::Held
+        );
+    }
+
+    #[test]
+    fn the_cursor_is_saved_after_each_consumed_entry() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        /// The saved cursor for ORIGIN, visible to the sink.
+        struct SharedStore(Rc<RefCell<Option<u64>>>);
+        impl CursorStore for SharedStore {
+            fn save(&mut self, cursors: &HashMap<String, StoredCursor>) {
+                *self.0.borrow_mut() = cursors.get(ORIGIN).map(|stored| stored.cursor);
+            }
+        }
+        /// Records the saved cursor as each OS call starts: what a quit or
+        /// crash during that call would resume from.
+        struct Recorder {
+            saved: Rc<RefCell<Option<u64>>>,
+            seen: Vec<Option<u64>>,
+        }
+        impl AlertSink for Recorder {
+            fn post(&mut self, _: &Alert) -> OsOutcome {
+                self.seen.push(*self.saved.borrow());
+                OsOutcome::Done
+            }
+            fn close(&mut self, _: &str) -> OsOutcome {
+                self.seen.push(*self.saved.borrow());
+                OsOutcome::NotDone
+            }
+        }
+        let saved = Rc::new(RefCell::new(None));
+        let shared: SharedConsumer<SharedStore> = SharedConsumer::new();
+        let mut sink = Recorder {
+            saved: Rc::clone(&saved),
+            seen: Vec::new(),
+        };
+        let init = || Some((started(1, "run-1"), SharedStore(Rc::clone(&saved))));
+        shared.apply(
+            init,
+            ORIGIN,
+            &feed(
+                7,
+                vec![alert(2, "n-2"), retract(4, "other"), alert(6, "n-6")],
+                "run-1",
+            ),
+            false,
+            mono(0),
+            &mut sink,
+        );
+        // Nothing saved before the first call; then the position just
+        // before each next call; the whole read once the poll ends.
+        assert_eq!(sink.seen, [None, Some(3), Some(5)]);
+        assert_eq!(*saved.borrow(), Some(7));
     }
 
     #[test]
