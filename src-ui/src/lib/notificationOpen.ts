@@ -9,7 +9,9 @@
  *
  * The link is accepted only as an in-app path, checked here as well as
  * natively: `/…` with an optional query, never a scheme, `//host`,
- * backslash, fragment, whitespace or control character. Anything else is
+ * backslash, fragment, whitespace or control character (C0 or C1), and the
+ * NORMALIZED path must not be `//host` either (`/..//host` and
+ * `/%2e%2e//host` collapse to it). Anything else is
  * dropped — the click has already brought the app forward, and nothing
  * outside the app is ever opened.
  */
@@ -35,7 +37,7 @@ export function notificationOpenTarget(
     link.includes('\\') ||
     link.includes('#') ||
     // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point.
-    /[\s\u0000-\u001f\u007f]/.test(link)
+    /[\s\u0000-\u001f\u007f-\u009f]/.test(link)
   )
     return null;
   let url: URL;
@@ -44,7 +46,7 @@ export function notificationOpenTarget(
   } catch {
     return null;
   }
-  if (url.origin !== BASE) return null;
+  if (url.origin !== BASE || url.pathname.startsWith('//')) return null;
   return {
     pathname: url.pathname,
     params: Object.fromEntries(url.searchParams),

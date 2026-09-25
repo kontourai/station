@@ -9,7 +9,7 @@
  */
 
 import type { SurfaceDeliveryFeed } from '@kontourai/station-contracts/notification-preferences';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const notifyNatively = vi.fn(async (_input: unknown) => true);
 vi.mock('../platform/native/notify', () => ({
@@ -24,14 +24,21 @@ vi.mock('../platform/native/installationId', () => ({
   desktopInstallationId: async () => INSTALLATION,
 }));
 const host = {
-  /** What `notification_feed_native_consumer` answers; `undefined` = no such command. */
-  consumer: undefined as boolean | undefined,
+  /**
+   * What `notification_feed_native_consumer` answers: a boolean, `'missing'`
+   * (Tauri's own rejection for an unregistered command) or `'ipc-error'`
+   * (any other failure).
+   */
+  consumer: 'missing' as boolean | 'missing' | 'ipc-error',
   adopt: true,
 };
 const invokeTauri = vi.fn(
   async (command: string, _args?: Record<string, unknown>) => {
     if (command === 'notification_feed_native_consumer') {
-      if (host.consumer === undefined) throw new Error('unknown command');
+      if (host.consumer === 'missing')
+        // What tauri 2 rejects with (`webview/mod.rs`, run_invoke_handler).
+        throw 'Command notification_feed_native_consumer not found';
+      if (host.consumer === 'ipc-error') throw new Error('IPC channel closed');
       return host.consumer;
     }
     if (command === 'notification_feed_adopt_cursor') return host.adopt;
@@ -81,9 +88,14 @@ describe('the webview defers to a native feed consumer (#2608)', () => {
     notifyNatively.mockClear();
     authenticatedFetch.mockReset();
     invokeTauri.mockClear();
-    host.consumer = undefined;
+    host.consumer = 'missing';
     host.adopt = true;
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    // A Tauri webview: the bridge exists, so the host must be asked.
+    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+  });
+  afterEach(() => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
   test('never reads or posts while the host consumes the feed', async () => {
@@ -102,7 +114,7 @@ describe('the webview defers to a native feed consumer (#2608)', () => {
   });
 
   test('stays the consumer, and posts, on a host without the command', async () => {
-    host.consumer = undefined;
+    host.consumer = 'missing';
     authenticatedFetch
       .mockResolvedValueOnce(answer(feed(1, [])))
       .mockResolvedValueOnce(answer(feed(2, ['n-1'])));
@@ -118,6 +130,37 @@ describe('the webview defers to a native feed consumer (#2608)', () => {
       .mockResolvedValueOnce(answer(feed(2, ['n-1'])));
     await pollDeliveryFeed(API, SCOPE);
     expect(await pollDeliveryFeed(API, SCOPE)).toBe(1);
+  });
+
+  test('an IPC failure reads and posts nothing, and the host is asked again', async () => {
+    host.consumer = 'ipc-error';
+    authenticatedFetch.mockResolvedValue(answer(feed(2, ['n-1', 'n-2'])));
+    expect(await pollDeliveryFeed(API, SCOPE)).toBe(0);
+    expect(await pollDeliveryFeed(API, SCOPE)).toBe(0);
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(notifyNatively).not.toHaveBeenCalled();
+    const asked = () =>
+      invokeTauri.mock.calls.filter(
+        ([command]) => command === 'notification_feed_native_consumer',
+      ).length;
+    // Not cached: a failure is not an answer.
+    expect(asked()).toBe(2);
+    // The host recovers and says it consumes: still nothing posted here.
+    host.consumer = true;
+    await pollDeliveryFeed(API, SCOPE);
+    await pollDeliveryFeed(API, SCOPE);
+    expect(asked()).toBe(3);
+    expect(notifyNatively).not.toHaveBeenCalled();
+  });
+
+  test('without a Tauri bridge it stays the consumer without asking', async () => {
+    delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    authenticatedFetch
+      .mockResolvedValueOnce(answer(feed(1, [])))
+      .mockResolvedValueOnce(answer(feed(2, ['n-1'])));
+    await pollDeliveryFeed(API, SCOPE);
+    expect(await pollDeliveryFeed(API, SCOPE)).toBe(1);
+    expect(invokeTauri).not.toHaveBeenCalled();
   });
 
   test('hands its stored cursor to the host once, then forgets it', async () => {

@@ -62,11 +62,19 @@ import { invokeTauri } from './tauriInvoke';
  * alert. The native consumer keeps reading while the window is hidden in the
  * tray, which this document cannot. The answer is fixed for the process, so
  * the role never changes hands at runtime. The one handoff is a cursor this
- * module stored under an older build: it is handed to the host once
- * (`notification_feed_adopt_cursor`) and deleted here, and the host resumes
- * from it — nothing between the two is lost, and nothing before it repeats.
- * A host without the command (an older shell) answers `false`, and this
- * module stays the consumer as before.
+ * module stored under an older build: it is offered to the host once
+ * (`notification_feed_adopt_cursor`) and deleted here only if the host took
+ * it. A host that takes it resumes from it, so nothing before it repeats; an
+ * offer the host refuses (it already started from its own first read) means
+ * entries queued between that cursor and the host's first read are not
+ * alerted.
+ *
+ * Only a definite answer settles the role, and only a definite answer is
+ * remembered: `true`; or `false` / "Command … not found" from a shell that
+ * predates the command (or no Tauri bridge at all), where this module stays
+ * the consumer as before. Any other failure (an IPC error) reads and posts
+ * nothing and asks again on the next poll — guessing "not native" there is
+ * how both would post.
  */
 export interface DeliveryFeedDeps {
   installationId(): Promise<string | undefined>;
@@ -86,10 +94,11 @@ export interface DeliveryFeedDeps {
   loadCursor(key: string): StoredCursor | undefined;
   saveCursor(key: string, value: StoredCursor): void;
   /**
-   * Whether the native host consumes this feed itself (#2608). Absent means
-   * it does not.
+   * Whether the native host consumes this feed itself (#2608): `true`,
+   * `false`, or `undefined` when the host could not be asked (read and post
+   * nothing, ask again). Absent means it does not.
    */
-  nativeConsumer?(): Promise<boolean>;
+  nativeConsumer?(): Promise<boolean | undefined>;
   /** Hand a stored cursor to the native consumer; `true` once it owns it. */
   handOffCursor?(input: {
     origin: string;
@@ -120,7 +129,37 @@ export const FEED_READ_DEADLINE_MS = 15_000;
 
 let inFlight: { scopeKey: string; promise: Promise<number> } | null = null;
 /** The host's answer, asked once per document: it cannot change. */
-let nativeConsumerAnswer: Promise<boolean> | null = null;
+let nativeConsumerAnswer: boolean | null = null;
+
+const NATIVE_CONSUMER_COMMAND = 'notification_feed_native_consumer';
+
+/** Tauri's rejection for a command the host does not register. */
+function isUnknownCommand(error: unknown, command: string): boolean {
+  const message = error instanceof Error ? error.message : error;
+  return message === `Command ${command} not found`;
+}
+
+function hasTauriBridge(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+async function askNativeConsumer(): Promise<boolean | undefined> {
+  if (nativeConsumerAnswer !== null) return nativeConsumerAnswer;
+  if (!hasTauriBridge()) {
+    nativeConsumerAnswer = false;
+    return false;
+  }
+  try {
+    const value = await invokeTauri<unknown>(NATIVE_CONSUMER_COMMAND);
+    if (typeof value !== 'boolean') return undefined;
+    nativeConsumerAnswer = value;
+    return value;
+  } catch (error) {
+    if (!isUnknownCommand(error, NATIVE_CONSUMER_COMMAND)) return undefined;
+    nativeConsumerAnswer = false;
+    return false;
+  }
+}
 /** Connections whose stored cursor was already offered to the host. */
 const handedOff = new Set<string>();
 /** The connection the latest poll was for; older reads stop applying. */
@@ -202,15 +241,7 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
         /* Storage full or unavailable: the next reload seeds instead. */
       }
     },
-    nativeConsumer: () => {
-      nativeConsumerAnswer ??= invokeTauri<unknown>(
-        'notification_feed_native_consumer',
-      ).then(
-        (value) => value === true,
-        () => false,
-      );
-      return nativeConsumerAnswer;
-    },
+    nativeConsumer: askNativeConsumer,
     handOffCursor: async ({ origin, cursor }) =>
       (await invokeTauri<unknown>('notification_feed_adopt_cursor', {
         origin,
@@ -220,7 +251,7 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
       try {
         localStorage.removeItem(`${CURSOR_STORAGE_PREFIX}${key}`);
       } catch {
-        /* Unavailable storage: the host ignores a second offer anyway. */
+        /* Unavailable storage: the host refuses a second offer anyway. */
       }
     },
   };
@@ -262,8 +293,8 @@ export function pollDeliveryFeed(
 
 /**
  * Asked before any read, inside the single flight: when the host consumes
- * the feed, this document never reads it, so it cannot post an entry the
- * host also posts.
+ * the feed — or cannot say whether it does — this document does not read
+ * it, so it cannot post an entry the host also posts.
  */
 async function consumeOnce(
   apiBase: string,
@@ -271,9 +302,13 @@ async function consumeOnce(
   deps: DeliveryFeedDeps,
   live: () => boolean,
 ): Promise<number> {
-  if (deps.nativeConsumer && (await deps.nativeConsumer())) {
-    if (live()) await handOffStoredCursor(apiBase, scopeKey, deps);
-    return 0;
+  if (deps.nativeConsumer) {
+    const native = await deps.nativeConsumer();
+    if (native !== false) {
+      if (native === true && live())
+        await handOffStoredCursor(apiBase, scopeKey, deps);
+      return 0;
+    }
   }
   return readOnce(scopeKey, deps, live);
 }

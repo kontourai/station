@@ -12,6 +12,11 @@ describe('notificationOpenTarget (#2608)', () => {
       pathname: '/',
       params: { surface: 'activity', session: 's-1' },
     });
+    // The normalized path is what navigates.
+    expect(notificationOpenTarget('/a/../b?x=1')).toEqual({
+      pathname: '/b',
+      params: { x: '1' },
+    });
     expect(notificationOpenTarget('/notifications')).toEqual({
       pathname: '/notifications',
       params: {},
@@ -27,6 +32,12 @@ describe('notificationOpenTarget (#2608)', () => {
     '/a#frag',
     '/a b',
     '/a\nb',
+    '/a\u0085b',
+    '/a\u009fb',
+    '/..//evil.example',
+    '/.//evil.example',
+    '/%2e%2e//evil.example',
+    '/%2E%2E//evil.example/x?y=1',
     '',
     `/${'a'.repeat(2048)}`,
     42,
