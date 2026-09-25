@@ -7,6 +7,17 @@
   gap: 8px;
   color: var(--text-primary);
 }
+.pdf-canvas-viewer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pdf-canvas-viewer__toolbar--end {
+  justify-content: flex-end;
+}
 .pdf-canvas-viewer__controls {
   border: 0;
   padding: 0;

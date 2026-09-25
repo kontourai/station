@@ -283,11 +283,16 @@ describe('MuseAdapter', () => {
       'external-process',
       'image-input',
     ]);
-    // Slice 1 proves none of these; declaring one would be a label with
+    // Exec alone proves none of these; declaring one would be a label with
     // nothing deriving it.
     for (const unclaimed of ['resume', 'approvals', 'tool-calls']) {
       expect([...adapter.metadata.capabilities]).not.toContain(unclaimed);
     }
+    // #2452: `approvals` is claimed only when sessions run through `muse
+    // serve`, the channel that carries them (the Station runtime opts in).
+    expect([...new MuseAdapter({ serve: {} }).metadata.capabilities]).toContain(
+      'approvals',
+    );
     // Fail-closed chat readiness (`system-status-routes.ts`) skips any adapter
     // that cannot be verified, so this must be a real function.
     expect(typeof adapter.getPrerequisites).toBe('function');
@@ -1941,15 +1946,16 @@ describe('Muse registration', () => {
   });
 
   // Absent from `PROVIDER_MODEL_OPTION_SUPPORT` means "no known restriction",
-  // so a caller's options were accepted and then silently ignored — the
-  // adapter reads `modelOptions` nowhere at all.
+  // so a caller's options were accepted and then silently ignored. #2452:
+  // `approvalMode` is read (serve applies it; exec reports what applied);
+  // nothing else is.
   test('rejects modelOptions muse cannot apply instead of accepting them silently', () => {
     expect(
       unsupportedModelOptionKeys('muse', {
         approvalMode: 'ask',
         effort: 'high',
       }),
-    ).toEqual(['approvalMode', 'effort']);
+    ).toEqual(['effort']);
     expect(unsupportedModelOptionKeys('muse', {})).toEqual([]);
   });
 });

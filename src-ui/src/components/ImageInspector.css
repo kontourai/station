@@ -8,6 +8,14 @@
   gap: 8px;
   color: var(--text-primary);
 }
+.image-inspector__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .image-inspector__controls {
   border: 0;
   padding: 0;
