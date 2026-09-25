@@ -113,7 +113,6 @@ export type StationControlCallerAssurance =
  */
 const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
   'session-owner',
-  'legacy-personal-owner',
   'ownerless-single-operator',
 ] as const;
 export type StationControlCallerPrincipalSource =

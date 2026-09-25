@@ -38,9 +38,12 @@ const CALLERS: Record<string, StationControlCaller> = {
   'beta-admin': bound('human:deployment:beta-admin'),
   'bearer-exposed': bound(OPERATOR, { assurance: 'bearer-exposed' }),
   'delegated-custody': bound(OPERATOR, { assurance: 'delegated-custody' }),
-  'legacy-owner': {
+  'inferred-owner': {
     ...bound(OPERATOR),
-    principal: stationControlCallerPrincipal(OPERATOR, 'legacy-personal-owner'),
+    principal: stationControlCallerPrincipal(
+      OPERATOR,
+      'ownerless-single-operator',
+    ),
   },
   'slug-lookup': bound(OPERATOR, { projectIdSource: 'slug-lookup' }),
   'no-project': {
@@ -153,7 +156,7 @@ describe('browser-agent routes: the authority chain', () => {
     [undefined, 'caller-required'],
     ['bearer-exposed', 'caller-not-bound'],
     ['delegated-custody', 'caller-not-bound'],
-    ['legacy-owner', 'principal-unverified'],
+    ['inferred-owner', 'principal-unverified'],
     ['slug-lookup', 'project-unverified'],
     ['no-project', 'project-unverified'],
     ['contributor', 'not-authorized'],

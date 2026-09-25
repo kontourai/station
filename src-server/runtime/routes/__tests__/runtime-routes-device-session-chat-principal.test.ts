@@ -373,7 +373,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       for (const [threadId, userId] of [
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
-        ['legacy-owned', getCachedUser().alias],
+        // A row whose recorded owner is this Station's OS display alias:
+        // it names no principal, so no caller may read it.
+        ['alias-owned', getCachedUser().alias],
         ...(orchestrationExtras.extraOwners ?? []),
         ...(orchestrationExtras.extraSessions ?? []),
       ]) {
@@ -439,7 +441,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           list: () => [],
         },
         logger: { debug() {}, warn() {} },
-        legacyPersonalOwner: getCachedUser().alias,
       });
       orchestration.initialize();
       // Registered BEFORE the barrier is awaited. The barrier resolves only
@@ -651,7 +652,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     };
     for (const [sessionId, expected] of [
       ['device-owned', 201],
-      ['legacy-owned', 404],
+      ['alias-owned', 404],
       ['whois-owned', 404],
     ] as const) {
       const answer = await app.request(
@@ -684,7 +685,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   test.each(['device', 'whois', 'home', 'operator'] as const)(
     'search and exact open use actual %s ingress ownership, not the OS alias',
     async (mode) => {
-      const { app, roomRuntime, paired } = await setup(mode);
+      const { app, roomRuntime, paired } = await setup(
+        mode,
+        false,
+        undefined,
+        false,
+        false,
+        { extraOwners: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]] },
+      );
       searchCleanup.unshift(async () => {
         await roomRuntime.close();
       });
@@ -716,9 +724,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       );
       const body = (await response.json()) as any;
       expect(response.status, JSON.stringify(body)).toBe(200);
+      // The operator's principal owns `operator-owned` whether or not the
+      // request also holds the Station home; nobody reads `alias-owned`.
       const expected =
         mode === 'home' || mode === 'operator'
-          ? 'legacy-owned'
+          ? 'operator-owned'
           : `${mode}-owned`;
       // The source states ride in the failure message: a provider that timed
       // out or a read the attachment gate refused answers 200 with an empty
@@ -726,7 +736,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         body.data.results.map((row: any) => row.scope.sessionId),
         JSON.stringify(body.data.sources),
-      ).toEqual(mode === 'operator' ? [] : [expected]);
+      ).toEqual([expected]);
       const opened = await app.request(
         '/api/search/resolve-open',
         {
@@ -740,19 +750,33 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
         environment,
       );
-      expect(await opened.json()).toMatchObject(
-        mode === 'operator'
-          ? { data: { state: 'not-found' } }
-          : {
-              data: {
-                state: 'resolved',
-                target: {
-                  sessionId: expected,
-                  matchedEventId: `${expected}:exact`,
-                },
-              },
-            },
+      expect(await opened.json()).toMatchObject({
+        data: {
+          state: 'resolved',
+          target: {
+            sessionId: expected,
+            matchedEventId: `${expected}:exact`,
+          },
+        },
+      });
+      // The alias-owned row is invisible to every caller, including the
+      // home-possession operator that the removed OS-alias bridge admitted.
+      const aliasOpen = await app.request(
+        '/api/search/resolve-open',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            kind: 'session-message',
+            sessionId: 'alias-owned',
+            matchedEventId: 'alias-owned:exact',
+          }),
+        },
+        environment,
       );
+      expect(await aliasOpen.json()).toMatchObject({
+        data: { state: 'not-found' },
+      });
     },
   );
 
@@ -2433,14 +2457,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         return (body.data ?? []).map((run) => run.sourceId).sort();
       };
       // One personal account: the operator, the approved device and the
-      // person who requested it read each other's sessions, and the
-      // pre-principal (OS alias) session maps to the operator.
-      const account = [
-        'device-owned',
-        'legacy-owned',
-        'operator-owned',
-        'whois-owned',
-      ];
+      // person who requested it read each other's sessions. An OS-alias
+      // owned row belongs to no one in it.
+      const account = ['device-owned', 'operator-owned', 'whois-owned'];
       await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual(account);
       await expect(runsFor(paired.credential)).resolves.toEqual(account);
     });
@@ -2734,8 +2753,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
   // alias (`getCachedUser().alias`) while Sessions are owned by the resolved
   // principal (`human:local:operator` here), so every stored attachment
   // answered 404 on every device; then it narrowed to the caller's own id,
-  // which dropped threads the read policy admits through personal sharing or
-  // the legacy OS-alias bridge. The factory test
+  // which dropped threads the read policy admits through personal sharing.
+  // The factory test
   // (`routes/orchestration/__tests__/attachments.routes.test.ts`) injects its
   // own deps and could not see either; these go through the production
   // `configureRuntimeRoutes` wiring and the real credential pipeline.
@@ -2793,8 +2812,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const ownerlessBytes = Buffer.from(
       'attachment bytes on an ownerless thread',
     );
-    const legacyBytes = Buffer.from(
-      'attachment bytes on a pre-principal alias thread',
+    const aliasBytes = Buffer.from(
+      'attachment bytes on a thread whose owner is the OS alias',
     );
 
     test('the chat principal that owns the thread reads its bytes; a device the policy does not admit gets 404', async () => {
@@ -2867,8 +2886,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(refused.body.byteLength).toBe(0);
     });
 
-    test('a pre-principal thread owned by the OS alias stays readable by the home-possession local operator, and only by it', async () => {
-      let legacyRef = '';
+    test('a thread owned by the OS alias is readable by no caller, not even the home-possession local operator', async () => {
+      let aliasRef = '';
       const { app, roomRuntime, paired } = await setup(
         'home',
         true,
@@ -2877,11 +2896,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         false,
         {
           seed: (seedStore) => {
-            legacyRef = attachmentTurn(
+            aliasRef = attachmentTurn(
               seedStore,
               'alias-attachment-owned',
               getCachedUser().alias,
-              legacyBytes,
+              aliasBytes,
             );
           },
         },
@@ -2890,17 +2909,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         await roomRuntime.close();
       });
       // `setup('home')` mints a home-possession device credential, which
-      // resolves to the local operator WITH the home-possession fact — the
-      // only authority the legacy bridge admits.
-      const home = await fetchAttachment(app, legacyRef, paired.credential);
-      expect(home.status, home.body.toString()).toBe(200);
-      expect(home.body).toEqual(legacyBytes);
-
-      // The operator secret over a remote peer is the same principal with no
-      // home-possession fact: the bridge must not admit it.
+      // resolves to the local operator WITH the home-possession fact: the
+      // exact authority the removed OS-alias bridge used to admit.
+      const home = await fetchAttachment(app, aliasRef, paired.credential);
+      expect(home.status, home.body.toString()).toBe(404);
+      expect(home.body.byteLength).toBe(0);
       const remoteOperator = await fetchAttachment(
         app,
-        legacyRef,
+        aliasRef,
         OPERATOR_SECRET,
       );
       expect(remoteOperator.status, remoteOperator.body.toString()).toBe(404);

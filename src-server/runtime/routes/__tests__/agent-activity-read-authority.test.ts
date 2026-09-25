@@ -162,7 +162,6 @@ async function fixture() {
     logger: { debug() {}, warn() {} },
     // The runtime's personal-mode policy (runtime-initialize.ts).
     ownerlessSessionAccess: 'single-user-compat',
-    legacyPersonalOwner: getCachedUser().alias,
     personalConversationAccess: {
       canRead: (requester: string, owner: string) =>
         pairing.canSharePersonalConversation(requester, owner),

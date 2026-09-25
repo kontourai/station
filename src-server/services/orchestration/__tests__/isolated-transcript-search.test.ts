@@ -641,7 +641,7 @@ describe('isolated transcript read owner and existing session policy', () => {
     syncOwner.mockRestore();
   }, 15_000);
 
-  test('async cold-cache policy preserves personal legacy bridge, ownerless, and hosted decisions', async () => {
+  test('async cold-cache policy matches the synchronous one for alias-owned, owned, ownerless, and hosted sessions', async () => {
     const store = storeAt();
     populate(store, 'legacy', 'released-alias');
     populate(store, 'ordinary');
@@ -684,7 +684,6 @@ describe('isolated transcript read owner and existing session policy', () => {
     for (const item of cases) {
       const options = {
         eventStore: store,
-        legacyPersonalOwner: 'released-alias',
         ownerlessSessionAccess: item.allowOwnerless
           ? ('single-user-compat' as const)
           : ('deny' as const),

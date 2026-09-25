@@ -754,8 +754,6 @@ interface OrchestrationServiceOptions {
    * migrate or quarantine ownerless rows before exposing them.
    */
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /** Exact legacy OS-alias owner for the local-home principal migration only. */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
@@ -1876,9 +1874,6 @@ export class OrchestrationService {
         : {}),
       ...(options.ownerlessSessionAccess !== undefined
         ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
-        : {}),
-      ...(options.legacyPersonalOwner !== undefined
-        ? { legacyPersonalOwner: options.legacyPersonalOwner }
         : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
@@ -4713,11 +4708,7 @@ export class OrchestrationService {
     this.initialize();
     const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
     return [
-      ...new Set([
-        constraint.ownerUserId,
-        ...(constraint.ownerUserIds ?? []),
-        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
-      ]),
+      ...new Set([constraint.ownerUserId, ...(constraint.ownerUserIds ?? [])]),
     ];
   }
 

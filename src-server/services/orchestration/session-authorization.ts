@@ -30,9 +30,6 @@ const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
  *
  * - `session-owner` — the session's recorded `metadata.userId`, stamped
  *   server-side from the authenticated caller that started it.
- * - `legacy-personal-owner` — a pre-ownership row carrying this Station's
- *   former OS alias (#749); it maps to the local operator, the same mapping
- *   `canReadSessionForCommand` applies.
  * - `ownerless-single-operator` — a personal host in `single-user-compat`
  *   mode, where a session with no recorded owner is the local operator's
  *   (the only account such a host has). Hosted or `deny` hosts never
@@ -40,8 +37,8 @@ const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
  *
  * Only `session-owner` is eligible for elevation (a consumer granting a
  * Project role must require it; see `StationControlCallerPrincipal
- * .elevationEligible`). The two operator mappings name the operator by
- * inference, not from an authenticated start, and grant nothing beyond what
+ * .elevationEligible`). The ownerless mapping names the operator by
+ * inference, not from an authenticated start, and grants nothing beyond what
  * the session already had.
  */
 export interface SessionActingPrincipal {
@@ -66,12 +63,6 @@ interface SessionAuthorizationDeps {
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /**
-   * One Station-home migration bridge for records written before principal
-   * ownership existed. This is intentionally a single exact OS alias, not an
-   * alias set and not a general personal-mode fallback.
-   */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   sessionOwnerCacheMaxEntries?: number;
 }
@@ -168,15 +159,18 @@ export class SessionAuthorization {
     this.readGeneration = {};
   }
 
-  /** Fixed read-owner constraints use precisely the existing legacy bridge policy. */
+  /**
+   * The fixed owner set an owner-narrowed store read may match: the caller's
+   * own principal, plus every owner of the personal conversation account the
+   * caller belongs to (personal mode only). The same policy as
+   * {@link canReadSession}, expressed as owner ids.
+   */
   transcriptOwnerConstraint(
     authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
   ): {
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
   } {
-    const legacy = this.deps.legacyPersonalOwner;
     const personalOwners =
       this.deps.requireTenantExecutionContext?.() !== true &&
       authority.mode === 'personal' &&
@@ -184,16 +178,8 @@ export class SessionAuthorization {
         ? this.deps.personalConversationAccess?.ownerIds(authority.userId)
         : undefined;
     return {
-      ...(personalOwners
-        ? { ownerUserIds: [...personalOwners, ...(legacy ? [legacy] : [])] }
-        : {}),
+      ...(personalOwners ? { ownerUserIds: [...personalOwners] } : {}),
       ownerUserId: authority.userId,
-      ...(this.deps.requireTenantExecutionContext?.() !== true &&
-      isSessionReadAuthority(authority) &&
-      legacy &&
-      this.canReadLegacyPersonalOwner(legacy, authority)
-        ? { legacyOwnerUserId: legacy }
-        : {}),
     };
   }
 
@@ -305,20 +291,7 @@ export class SessionAuthorization {
     if (!attribution || attribution.unattributedAgent) return undefined;
     const hosted = this.deps.requireTenantExecutionContext?.() === true;
     const owner = attribution.ownerUserId;
-    if (owner !== undefined) {
-      if (
-        this.deps.legacyPersonalOwner !== undefined &&
-        owner === this.deps.legacyPersonalOwner
-      ) {
-        return hosted
-          ? undefined
-          : {
-              id: LOCAL_OPERATOR_PRINCIPAL_ID,
-              source: 'legacy-personal-owner',
-            };
-      }
-      return { id: owner, source: 'session-owner' };
-    }
+    if (owner !== undefined) return { id: owner, source: 'session-owner' };
     if (hosted || this.deps.ownerlessSessionAccess !== 'single-user-compat')
       return undefined;
     return {
@@ -412,43 +385,11 @@ export class SessionAuthorization {
     // A personal Station's approved devices belong to one conversation
     // account. Device principals remain unchanged for action attribution.
     // Hosted authority returned above and never reaches this policy.
-    if (
-      this.deps.personalConversationAccess?.canRead(
-        userId,
-        ownerUserId === this.deps.legacyPersonalOwner
-          ? LOCAL_OPERATOR_PRINCIPAL_ID
-          : ownerUserId,
-      )
-    )
+    if (this.deps.personalConversationAccess?.canRead(userId, ownerUserId))
       return true;
-    // The released OS alias must never pass the ordinary equality path: any
-    // caller can guess a display alias. It is readable only through the
-    // narrowly provenance-bound migration bridge below. All other principal
-    // owners retain exact-id equality.
-    if (ownerUserId === this.deps.legacyPersonalOwner) {
-      return this.canReadLegacyPersonalOwner(ownerUserId, authority);
-    }
+    // Every other owner is exact principal-id equality. An owner that names
+    // no principal (a display alias, say) is readable by no one.
     return userId === ownerUserId;
-  }
-
-  /**
-   * The released pre-principal rows contain the OS alias as owner.  Only a
-   * request that has both the contract-defined local-operator identity and a
-   * home-possession fact may read that exact alias.  In particular this never
-   * admits paired devices, WhoIs identities, hosted callers, operator-secret
-   * callers without home possession, or an arbitrary same-name principal.
-   */
-  private canReadLegacyPersonalOwner(
-    ownerUserId: string,
-    authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
-  ): boolean {
-    return (
-      authority.mode === 'personal' &&
-      authority.localHomePossession === true &&
-      authority.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
-      this.deps.legacyPersonalOwner !== undefined &&
-      ownerUserId === this.deps.legacyPersonalOwner
-    );
   }
 
   /** Validate the persisted binding with the runtime's trusted registry seam. */
@@ -517,12 +458,8 @@ export class SessionAuthorization {
     }
     return (
       ownerUserId === userId ||
-      this.deps.personalConversationAccess?.canRead(
-        userId,
-        ownerUserId === this.deps.legacyPersonalOwner
-          ? LOCAL_OPERATOR_PRINCIPAL_ID
-          : ownerUserId,
-      ) === true
+      this.deps.personalConversationAccess?.canRead(userId, ownerUserId) ===
+        true
     );
   }
 
