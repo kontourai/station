@@ -178,6 +178,12 @@ export interface RegionSurfacePane {
    * instance, always show.
    */
   title?: string;
+  /**
+   * What the tab's tooltip says where the short title abbreviates something
+   * a reader needs to tell two tabs apart (a file preview's full path and
+   * which directory it reads). Absent: no tooltip.
+   */
+  tooltip?: string;
   /** The descriptor the pane is an occurrence of (`pane:builtin:<surface>`). */
   descriptorId: string;
   /**
@@ -367,10 +373,24 @@ function filePreviewStorage(): FilePreviewPaneStateStorage | null {
   return typeof window === 'undefined' ? null : window.localStorage;
 }
 
-/** The last segment of a preview's path — the tab's name for the file. */
+/**
+ * The last segment of a preview's path — the tab's name for the file. A
+ * preview read through a session's thread (#2476: a session running outside
+ * the checkout, in a worktree or a subdirectory) names a file in THAT
+ * directory, which the checkout's same-named file need not match, so its tab
+ * says so; a checkout preview keeps the bare name.
+ */
 function filePreviewTitle(state: WorkspaceFilePreviewPaneState): string {
   const segments = state.path.split('/');
-  return segments[segments.length - 1] || state.path;
+  const name = segments[segments.length - 1] || state.path;
+  return state.thread ? `${name} · session` : name;
+}
+
+/** The full distinction the tab's short title abbreviates. */
+function filePreviewTooltip(state: WorkspaceFilePreviewPaneState): string {
+  return state.thread
+    ? `${state.path} — read through the session's directory`
+    : `${state.path} — from the project checkout`;
 }
 
 /**
@@ -416,7 +436,9 @@ function filePreviewSurfacePane(
     surfaceId,
     descriptorId: WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR.id,
     instanceId: toWorkspacePaneInstanceId(surfaceId),
-    ...(state ? { title: filePreviewTitle(state) } : {}),
+    ...(state
+      ? { title: filePreviewTitle(state), tooltip: filePreviewTooltip(state) }
+      : {}),
     instance: ({ projectId, projectSlug }) =>
       state && projectId !== null && state.projectSlug === projectSlug
         ? createFilePreviewPaneInstance(state, projectId, nonce)

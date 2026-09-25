@@ -638,6 +638,7 @@ export function RegionPaneHost({
           layoutTitles.get(surfaceId) ??
           resolveRegionSurface(surfaceId)?.title ??
           surfaceId,
+        ...(pane.tooltip ? { tooltip: pane.tooltip } : {}),
       })),
     [layoutTitles, paneEntries],
   );
@@ -759,6 +760,11 @@ export function RegionPaneHost({
             addPaneOpen={chooserAnchor !== null}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
+            onBackToChat={
+              model?.phoneLayer && model.phoneLayer.region === regionId
+                ? model.closePhoneLayer
+                : undefined
+            }
           />
           {chooserAnchor && chooserRegion ? (
             <RegionEmptyChooser
