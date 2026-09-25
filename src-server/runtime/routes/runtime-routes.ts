@@ -5216,6 +5216,7 @@ export function configureRuntimeRoutes(
     notificationPreferences,
     notificationDeliveryRouter,
     desktopHostChannel,
+    isNotificationFeedDevice,
     pushSigningKeyStore,
     pushGatewayAvailable,
     agentActivityPublisher,
@@ -5525,6 +5526,7 @@ export function configureRuntimeRoutes(
     '/api/notifications',
     createNotificationPreferencesRoutes(notificationPreferences, {
       ...(desktopHostChannel ? { desktopHost: desktopHostChannel } : {}),
+      isFeedDevice: isNotificationFeedDevice,
     }),
   );
   context.app.route(

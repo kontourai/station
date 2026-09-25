@@ -15,6 +15,7 @@ import {
   type NotificationService,
   REST_NOTIFICATION_SOURCE,
 } from '../../services/notifications/notification-service.js';
+import { notificationMetadataSessionId } from '../../services/notifications/notification-session.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
   getBody,
@@ -42,7 +43,7 @@ export function createNotificationRoutes(
     notification: Notification,
     request: Request,
   ): boolean => {
-    const sessionId = notificationSessionId(notification);
+    const sessionId = notificationMetadataSessionId(notification);
     // Existing personal-only constructors omit both hooks.  A partial hosted
     // composition, on the other hand, cannot make a session row public.
     if (!options.readAuthorityForRequest && !options.canReadSession)
@@ -235,22 +236,4 @@ export function createNotificationRoutes(
   });
 
   return app;
-}
-
-function notificationSessionId(
-  notification: Pick<Notification, 'metadata'>,
-): string | undefined {
-  const metadata = notification.metadata;
-  if (!metadata) return undefined;
-  for (const key of [
-    'sessionId',
-    'conversationId',
-    'threadId',
-    'gen_ai.conversation.id',
-    'station.agent_telemetry.session_id',
-  ]) {
-    const value = metadata[key];
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return undefined;
 }

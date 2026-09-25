@@ -48,6 +48,8 @@ beforeEach(() => {
       new NotificationPreferencesStore(home),
       {
         desktopHost,
+        // Only the family phone may hold a feed.
+        isFeedDevice: (deviceId) => deviceId === 'phone',
       },
     ),
   );
@@ -331,6 +333,21 @@ describe('GET /api/notifications/deliveries (desktop host feed)', () => {
       expect(desktopHost.registrations()).toEqual([]);
     },
   );
+
+  test('a paired device outside the family (e.g. a delegated Station) gets no feed', async () => {
+    const outsider = {
+      ...PERSON,
+      deviceId: 'no-read-scope',
+      deviceKind: 'device' as const,
+    };
+    const refused = await call('GET', undefined, outsider, {
+      path: `${NOTIFICATION_DELIVERIES_PATH}?after=0`,
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.json.error).toBe('device_not_eligible');
+    // It never occupies a feed slot.
+    expect(desktopHost.registrations()).toEqual([]);
+  });
 
   test('a remote person (not this machine) is refused', async () => {
     const result = await feed(`surface=${surface}&after=0`, PERSON);

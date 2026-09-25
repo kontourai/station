@@ -35,22 +35,25 @@ export class NotificationPreferencesRequestError extends Error {
 }
 
 /**
- * The ETag of the last document read or written, per API base. Every write
- * sends it as If-Match, so a write based on a stale read is refused (412)
- * instead of overwriting someone else's change.
+ * The ETag of the last document read or written, per API base. A PUT sends
+ * it as If-Match, so a whole-document write based on a stale read is
+ * refused (412) instead of overwriting someone else's change. A PATCH does
+ * not: it is the server-side merge of only the named fields, so a change
+ * made elsewhere to another field is not a conflict and must not refuse it.
  */
 const lastRevision = new Map<string, string>();
 
 async function request(
   apiBase: string | undefined,
-  init?: RequestInit,
+  init?: RequestInit & { compareAndSwap?: boolean },
 ): Promise<NotificationPreferencesV1> {
   const base = await resolveApiBase(apiBase);
-  const revision = lastRevision.get(base);
+  const revision = init?.compareAndSwap ? lastRevision.get(base) : undefined;
   const response = await authenticatedFetch(
     `${base}${NOTIFICATION_PREFERENCES_PATH}`,
     init && {
-      ...init,
+      method: init.method,
+      body: init.body,
       headers: {
         'Content-Type': 'application/json',
         ...(revision ? { 'If-Match': revision } : {}),
@@ -94,6 +97,7 @@ export function updateNotificationPreferences(
   return request(apiBase, {
     method: 'PUT',
     body: JSON.stringify(preferences),
+    compareAndSwap: true,
   });
 }
 

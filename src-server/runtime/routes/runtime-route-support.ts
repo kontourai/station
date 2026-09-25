@@ -551,6 +551,7 @@ export function configureRuntimeSupportServices(
     preferences: notificationPreferences,
     router: notificationDeliveryRouter,
     desktopHostChannel,
+    isFeedDevice: isNotificationFeedDevice,
   } = wireNotificationDelivery({
     enabled: webPushEnabled,
     homeDir: context.configLoader.getProjectHomeDir(),
@@ -661,6 +662,7 @@ export function configureRuntimeSupportServices(
     notificationPreferences,
     notificationDeliveryRouter,
     desktopHostChannel,
+    isNotificationFeedDevice,
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,

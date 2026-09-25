@@ -45,7 +45,17 @@ export function createNotificationPreferencesRoutes(
     NotificationPreferencesStore,
     'read' | 'write' | 'patch' | 'revision'
   >,
-  options: { desktopHost?: Pick<DesktopHostChannel, 'read'> } = {},
+  options: {
+    desktopHost?: Pick<DesktopHostChannel, 'read'>;
+    /**
+     * Whether a paired device may hold a delivery feed: a personal-family
+     * device (the ones any audience can include). Anything else — a
+     * delegated Station, a no-read-scope or account-bound device — is
+     * refused before it can occupy one of the bounded feed slots. Absent
+     * means no device may.
+     */
+    isFeedDevice?: (deviceId: string) => boolean;
+  } = {},
 ) {
   const app = new Hono();
 
@@ -178,6 +188,16 @@ export function createNotificationPreferencesRoutes(
     )?.deviceId;
     let surface: SurfaceId;
     if (deviceId !== undefined) {
+      if (options.isFeedDevice?.(deviceId) !== true)
+        return c.json(
+          {
+            success: false,
+            error: 'device_not_eligible',
+            message:
+              "This device cannot receive Station's notifications, so it has no delivery feed.",
+          },
+          403,
+        );
       surface = deviceSurfaceId(deviceId);
       if (requested !== undefined && requested !== surface)
         return c.json(

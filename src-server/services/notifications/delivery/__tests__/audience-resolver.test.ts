@@ -109,8 +109,39 @@ describe('createPairingAudienceResolver', () => {
     ])
       expect(result.deviceSurfaces.has(excluded as never)).toBe(false);
     expect(result.includesOperator).toBe(true);
-    // One person: focus on any of these may quiet the others.
-    expect(result.onePerson).toBe(true);
+    // The owner for focus: the operator and unbound devices. The tailnet
+    // phone is its own person (it could be a housemate).
+    expect([...(result.ownerPrincipals ?? [])].sort()).toEqual([
+      OPERATOR,
+      'principal:other-person',
+      'principal:reader',
+    ]);
+  });
+
+  test('an owner notification that names a session reaches only surfaces that can read it', () => {
+    const { resolver: subject } = resolver({
+      canPrincipalReadSession: (sessionId, principalId) =>
+        sessionId === 'secret-session' && principalId === 'principal:reader',
+    });
+    const result = subject.resolve(envelope({ kind: 'owner' }), {
+      sessionId: 'secret-session',
+    });
+    expect([...result.deviceSurfaces]).toEqual(['device:reader']);
+    // The operator cannot read it either, so no local surface.
+    expect(result.includesOperator).toBe(false);
+  });
+
+  test('a session-readers notification must also pass the session the record names', () => {
+    const { resolver: subject } = resolver({
+      canPrincipalReadSession: (sessionId, principalId) =>
+        principalId === 'principal:reader' ||
+        (principalId === 'principal:other-person' && sessionId === 'session-1'),
+    });
+    const result = subject.resolve(
+      envelope({ kind: 'session-readers', sessionId: 'session-1' }),
+      { sessionId: 'other-session' },
+    );
+    expect([...result.deviceSurfaces]).toEqual(['device:reader']);
   });
 
   test('session-readers: only devices whose own credential can read that session', () => {

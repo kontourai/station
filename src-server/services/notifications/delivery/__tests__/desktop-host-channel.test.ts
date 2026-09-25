@@ -50,7 +50,6 @@ function wired(hideContent = false) {
         deviceSurfaces: new Set(),
         includesOperator: true,
         operatorPrincipalId: 'human:local:operator',
-        onePerson: true,
       }),
     },
     preferences: { current: () => prefs },
