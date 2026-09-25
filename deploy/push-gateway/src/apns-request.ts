@@ -27,7 +27,7 @@ export const APNS_ALERT_TEXT = {
 export type ApnsAlertKind = keyof typeof APNS_ALERT_TEXT;
 const ALERT_KINDS = Object.keys(APNS_ALERT_TEXT) as ApnsAlertKind[];
 /** The custom key the sealed notification travels under. */
-export const APNS_ALERT_PAYLOAD_KEY = 'station';
+const APNS_ALERT_PAYLOAD_KEY = 'station';
 const ALERT_PAYLOAD_VERSION = 1;
 /** Kinds that sound and go out at once; the rest are quiet and may wait. */
 const URGENT_ALERT_KINDS: ReadonlySet<ApnsAlertKind> = new Set([
