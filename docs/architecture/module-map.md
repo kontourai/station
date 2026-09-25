@@ -488,14 +488,22 @@ time; a history row without a provider session remains intentionally unmapped.
 The unique predecessor index means concurrent continuation attempts receive the
 same reserved child instead of creating sibling execution sessions.
 
-A conversation keeps one live execution session (#2540). An ordinary finished
-turn leaves its session `idle`: at rest and reusable, not the terminal
-`completed`. The next turn runs in that session, with its engine still
-resident, or restarted in place from its resume cursor. A child is reserved
-only when the current session cannot take the turn: it is stopped (`failed`
-or `canceled`), explicitly closed (`completed`), or its engine binding has
-ended (`closed` or `dead`). A model switch the engine cannot apply per turn
-also reserves one. So do an explicit handoff and a context boundary.
+A conversation keeps one live execution session (#2540). A turn's outcome
+never ends its session. A finished turn rests it `idle` (at rest and reusable,
+not the terminal `completed`), and a failed or stopped turn rests it `failed`
+or `canceled`. Either way the next turn runs in that session, with its engine
+still resident, or restarted in place from its resume cursor. A child is
+reserved only when the current session cannot take the turn:
+- it was explicitly closed (terminal `completed`);
+- its engine binding has ended (`closed` or `dead`);
+- the engine cannot apply a requested model switch per turn;
+- an explicit handoff or a context boundary asks for one.
+
+`OrchestrationService` parks an at-rest engine left unused past
+`idleSessionParkAfterMs`, provided it holds no open request and can resume.
+Parking stops the process but absorbs its exit, so the session stays dormant
+rather than ending: the next turn restarts it in place. No worktree, claim or
+room effect fires.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 

@@ -85,6 +85,7 @@ import {
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   foldedSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
   SESSION_ENDED_REJECTION_CODE,
   SESSION_LIFECYCLE_TRANSITIONS,
 } from '@kontourai/station-contracts/session-lifecycle';
@@ -586,6 +587,23 @@ class DraftDiscardRefusedError extends Error {
 
 /** #2312 verifier M2: cap on waiting for a discarded engine's exit. */
 const DRAFT_DISCARD_EXIT_WAIT_MS = 2_000;
+/** #2540: a park stopped the engine a send resolved; restart and retry once. */
+class EngineParkedDuringDispatchError extends Error {
+  constructor() {
+    super('The session engine was parked while this turn waited to start.');
+    this.name = 'EngineParkedDuringDispatchError';
+  }
+}
+/** #2540: an idle session's engine is parked after this long unused. */
+const IDLE_SESSION_PARK_AFTER_MS = 30 * 60_000;
+/** #2540: how often idle sessions are checked for parking. */
+const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
+/**
+ * How long a park waits, holding the session's lifecycle lock, for the
+ * stopped engine's own exit to arrive and be absorbed. Adapters publish it
+ * from `stopSession` itself, so this bounds only the event-stream hop.
+ */
+const PARKED_EXIT_WAIT_MS = 10_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
 
@@ -704,6 +722,20 @@ interface OrchestrationServiceOptions {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #2540: an `idle` session whose engine has been unused this long is
+   * parked — its engine process stops, the session stays dormant and
+   * restarts in place on its next turn. `0` disables parking. Default
+   * {@link IDLE_SESSION_PARK_AFTER_MS}.
+   */
+  idleSessionParkAfterMs?: number;
+  /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
+  idleSessionSweepMs?: number;
+  /**
+   * How long a park holds the session's lifecycle lock waiting for the
+   * stopped engine's exit. Default {@link PARKED_EXIT_WAIT_MS}.
+   */
+  idleSessionParkExitWaitMs?: number;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   /** Hosted deployments fail closed for direct/internal starts without a server binding. */
@@ -1719,6 +1751,23 @@ export class OrchestrationService {
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
   private started = false;
   /**
+   * #2540: threads whose engine this service is parking. Their engine's
+   * `session.exited` is absorbed, not projected: a park is resource
+   * management, not an ending — no listener may finalize a worktree, release
+   * a claim, or announce the agent finished, and the row must stay dormant
+   * (not `closed`) so the next turn restarts it in place.
+   */
+  private readonly parkingThreads = new Set<string>();
+  private readonly parkedExitWaiters = new Map<string, () => void>();
+  /**
+   * Threads parked since their engine last started. A send that resolved its
+   * adapter before a park took the lifecycle lock re-checks this under the
+   * turn lock and restarts the engine in place instead of dispatching into
+   * the stopped one.
+   */
+  private readonly parkedThreads = new Set<string>();
+  private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
+  /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
    * — not whether it succeeded.
    *
@@ -2535,6 +2584,18 @@ export class OrchestrationService {
     if (this.started) return;
     this.started = true;
     this.adoption.registerOwner();
+    const parkAfterMs =
+      this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
+    if (parkAfterMs > 0) {
+      this.idleSweepTimer = setInterval(() => {
+        void this.sweepIdleSessions().catch((error) => {
+          this.options.logger.warn('Idle session sweep failed', {
+            error: errorMessage(error),
+          });
+        });
+      }, this.options.idleSessionSweepMs ?? IDLE_SESSION_SWEEP_MS);
+      this.idleSweepTimer.unref?.();
+    }
 
     this.consumeCurrentAdapterEvents();
     this.adapterRegistryUnsubscribe = this.options.adapterRegistry.onChange?.(
@@ -3215,6 +3276,8 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
+    this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
@@ -5982,148 +6045,200 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
-              result = await this.sessionExecutionCoordinator.runTurnStart(
-                turnInput.threadId,
-                async (boundary) => {
-                  const current = await this.readSession(
-                    turnInput.threadId,
-                    INTERNAL_SESSION_READ_SCOPE,
-                  );
-                  // #2312 verifier H1: this send resolved its adapter before a
-                  // discard took the lifecycle lock, and queued behind it.
-                  // The Draft is gone and its engine stopped: refuse before
-                  // any invocation is recorded.
-                  if (this.discardedDraftThreads.has(turnInput.threadId))
-                    throw new DraftDiscardedError();
-                  if (
-                    current &&
-                    foldedSessionLifecycleState(
-                      current.session.lifecycleState,
-                    ) === 'completed'
-                  ) {
-                    throw new SessionEndedError();
-                  }
-                  const invoke = async () => {
-                    const assertInputRequestCurrent = () => {
-                      const expected = command.input.expectedInputRequest;
-                      if (
-                        expected &&
-                        (expected.threadId !== turnInput.threadId ||
-                          !readCurrentInputRequest(
-                            this.options.eventStore,
-                            expected,
-                            adapter.provider,
-                          ))
-                      ) {
-                        throw new RequestEventGuardError(
-                          'request_event_changed',
-                          'The input request could not be verified immediately before sending. Inspect the current request before retrying.',
-                        );
-                      }
-                    };
-                    assertInputRequestCurrent();
-                    const begun = boundary.beginInvocation(
-                      new Date().toISOString(),
+              const startTurn = async () =>
+                this.sessionExecutionCoordinator.runTurnStart(
+                  turnInput.threadId,
+                  async (boundary) => {
+                    const current = await this.readSession(
+                      turnInput.threadId,
+                      INTERNAL_SESSION_READ_SCOPE,
                     );
-                    if (begun.kind !== 'applied') {
-                      claimOutcome = 'retain';
-                      boundary.indeterminate(new Date().toISOString());
-                      throw new SessionTurnStartIndeterminateError();
+                    // #2312 verifier H1: this send resolved its adapter before a
+                    // discard took the lifecycle lock, and queued behind it.
+                    // The Draft is gone and its engine stopped: refuse before
+                    // any invocation is recorded.
+                    if (this.discardedDraftThreads.has(turnInput.threadId))
+                      throw new DraftDiscardedError();
+                    if (
+                      current &&
+                      foldedSessionLifecycleState(
+                        current.session.lifecycleState,
+                      ) === 'completed'
+                    ) {
+                      throw new SessionEndedError();
                     }
-                    let providerAccepted = false;
-                    let providerInvoked = false;
-                    let turnCorrelation:
-                      | ReturnType<typeof createAuthorizedTurnCorrelation>
-                      | undefined;
-                    let nativeMemory: NativeMemoryHistoryCompanion | undefined;
-                    let nativeOutputRelay:
-                      | ReturnType<typeof createNativeOutputRelayCompanion>
-                      | undefined;
-                    try {
-                      // SessionExecutionCoordinator serializes this callback per
-                      // thread, so one bounded in-flight origin is sufficient.
-                      this.clientOriginTurns.begin(
-                        turnInput.threadId,
-                        context?.clientOrigin,
-                        context?.principal,
+                    // #2540: likewise an idle-engine park that took the
+                    // lifecycle lock first stopped the engine this send
+                    // resolved. Never dispatch into the stopped one: leave the
+                    // lock (nothing was invoked) and restart it in place.
+                    if (this.parkedThreads.has(turnInput.threadId))
+                      throw new EngineParkedDuringDispatchError();
+                    const invoke = async () => {
+                      const assertInputRequestCurrent = () => {
+                        const expected = command.input.expectedInputRequest;
+                        if (
+                          expected &&
+                          (expected.threadId !== turnInput.threadId ||
+                            !readCurrentInputRequest(
+                              this.options.eventStore,
+                              expected,
+                              adapter.provider,
+                            ))
+                        ) {
+                          throw new RequestEventGuardError(
+                            'request_event_changed',
+                            'The input request could not be verified immediately before sending. Inspect the current request before retrying.',
+                          );
+                        }
+                      };
+                      assertInputRequestCurrent();
+                      const begun = boundary.beginInvocation(
+                        new Date().toISOString(),
                       );
-                      // The Station-agent adapter owns the canonical provider
-                      // turn id for this engine, so mint it before crossing its
-                      // internal HTTP relay. The resulting ALS scope is only
-                      // available to that relay's model invocation; external
-                      // adapters ignore it and no caller can supply it through
-                      // the public command schema. An ownerless/internal turn
-                      // deliberately receives no correlation rather than an
-                      // invented account join.
-                      const accountId =
-                        adapter.provider === 'station-agent'
-                          ? (this.sessionAuthz.sessionOwnerUserId(
+                      if (begun.kind !== 'applied') {
+                        claimOutcome = 'retain';
+                        boundary.indeterminate(new Date().toISOString());
+                        throw new SessionTurnStartIndeterminateError();
+                      }
+                      let providerAccepted = false;
+                      let providerInvoked = false;
+                      let turnCorrelation:
+                        | ReturnType<typeof createAuthorizedTurnCorrelation>
+                        | undefined;
+                      let nativeMemory:
+                        | NativeMemoryHistoryCompanion
+                        | undefined;
+                      let nativeOutputRelay:
+                        | ReturnType<typeof createNativeOutputRelayCompanion>
+                        | undefined;
+                      try {
+                        // SessionExecutionCoordinator serializes this callback per
+                        // thread, so one bounded in-flight origin is sufficient.
+                        this.clientOriginTurns.begin(
+                          turnInput.threadId,
+                          context?.clientOrigin,
+                          context?.principal,
+                        );
+                        // The Station-agent adapter owns the canonical provider
+                        // turn id for this engine, so mint it before crossing its
+                        // internal HTTP relay. The resulting ALS scope is only
+                        // available to that relay's model invocation; external
+                        // adapters ignore it and no caller can supply it through
+                        // the public command schema. An ownerless/internal turn
+                        // deliberately receives no correlation rather than an
+                        // invented account join.
+                        const accountId =
+                          adapter.provider === 'station-agent'
+                            ? (this.sessionAuthz.sessionOwnerUserId(
+                                turnInput.threadId,
+                              ) ?? context?.userId)
+                            : undefined;
+                        turnCorrelation =
+                          typeof accountId === 'string' &&
+                          accountId.trim() !== ''
+                            ? createAuthorizedTurnCorrelation({
+                                accountId,
+                                sessionId: turnInput.threadId,
+                                ...(turnInput.clientTurnId
+                                  ? { clientTurnId: turnInput.clientTurnId }
+                                  : {}),
+                                ...((context?.tenantExecutionContext ??
+                                boundTenant)
+                                  ? {
+                                      tenantId: String(
+                                        (context?.tenantExecutionContext ??
+                                          boundTenant)!.tenantId,
+                                      ),
+                                    }
+                                  : {}),
+                              })
+                            : undefined;
+                        // The native-output companion is composed only after the
+                        // command's normal read authorization gate above. Its
+                        // PrincipalRef is attribution; this live lease repeats
+                        // authorization, adapter identity, quarantine, and exact
+                        // turn generation on every native-call admission.
+                        const nativeTurn = turnCorrelation;
+                        if (
+                          adapter.provider === 'station-agent' &&
+                          nativeTurn &&
+                          context?.principal &&
+                          typeof context.userId === 'string' &&
+                          context.userId.trim() !== ''
+                        ) {
+                          const nativeTurnId = nativeTurn.turnId;
+                          const nativeWorkspaceIsolation =
+                            this.readLatestSessionStartMetadata(
                               turnInput.threadId,
-                            ) ?? context?.userId)
-                          : undefined;
-                      turnCorrelation =
-                        typeof accountId === 'string' && accountId.trim() !== ''
-                          ? createAuthorizedTurnCorrelation({
-                              accountId,
-                              sessionId: turnInput.threadId,
-                              ...(turnInput.clientTurnId
-                                ? { clientTurnId: turnInput.clientTurnId }
-                                : {}),
-                              ...((context?.tenantExecutionContext ??
+                            )?.workspaceIsolation;
+                          nativeOutputRelay = createNativeOutputRelayCompanion({
+                            workspaceRequired:
+                              !!nativeWorkspaceIsolation &&
+                              typeof nativeWorkspaceIsolation === 'object' &&
+                              'mode' in nativeWorkspaceIsolation &&
+                              nativeWorkspaceIsolation.mode === 'worktree',
+                            authority: this.nativeOutputGrants,
+                            facts: {
+                              threadId: turnInput.threadId,
+                              turnId: nativeTurnId,
+                              principal: context.principal,
+                              ...((context.tenantExecutionContext ??
                               boundTenant)
                                 ? {
                                     tenantId: String(
-                                      (context?.tenantExecutionContext ??
+                                      (context.tenantExecutionContext ??
                                         boundTenant)!.tenantId,
                                     ),
                                   }
                                 : {}),
-                            })
-                          : undefined;
-                      // The native-output companion is composed only after the
-                      // command's normal read authorization gate above. Its
-                      // PrincipalRef is attribution; this live lease repeats
-                      // authorization, adapter identity, quarantine, and exact
-                      // turn generation on every native-call admission.
-                      const nativeTurn = turnCorrelation;
-                      if (
-                        adapter.provider === 'station-agent' &&
-                        nativeTurn &&
-                        context?.principal &&
-                        typeof context.userId === 'string' &&
-                        context.userId.trim() !== ''
-                      ) {
-                        const nativeTurnId = nativeTurn.turnId;
-                        const nativeWorkspaceIsolation =
-                          this.readLatestSessionStartMetadata(
-                            turnInput.threadId,
-                          )?.workspaceIsolation;
-                        nativeOutputRelay = createNativeOutputRelayCompanion({
-                          workspaceRequired:
-                            !!nativeWorkspaceIsolation &&
-                            typeof nativeWorkspaceIsolation === 'object' &&
-                            'mode' in nativeWorkspaceIsolation &&
-                            nativeWorkspaceIsolation.mode === 'worktree',
-                          authority: this.nativeOutputGrants,
-                          facts: {
-                            threadId: turnInput.threadId,
-                            turnId: nativeTurnId,
-                            principal: context.principal,
-                            ...((context.tenantExecutionContext ?? boundTenant)
-                              ? {
-                                  tenantId: String(
-                                    (context.tenantExecutionContext ??
-                                      boundTenant)!.tenantId,
-                                  ),
-                                }
-                              : {}),
-                            adapterId: adapter.provider,
-                            ...((this.sessionReadModel.get(turnInput.threadId)
-                              ?.cwd ??
-                            this.options.eventStore?.readSessionByThread(
+                              adapterId: adapter.provider,
+                              ...((this.sessionReadModel.get(turnInput.threadId)
+                                ?.cwd ??
+                              this.options.eventStore?.readSessionByThread(
+                                turnInput.threadId,
+                              )?.cwd)
+                                ? {
+                                    workspaceRoot:
+                                      this.sessionReadModel.get(
+                                        turnInput.threadId,
+                                      )?.cwd ??
+                                      this.options.eventStore?.readSessionByThread(
+                                        turnInput.threadId,
+                                      )?.cwd,
+                                  }
+                                : {}),
+                            },
+                            sourceLease: {
+                              isCurrent: () =>
+                                this.nativeTurnGenerations.get(
+                                  turnInput.threadId,
+                                ) === nativeTurnId &&
+                                !this.quarantinedThreads.has(
+                                  turnInput.threadId,
+                                ) &&
+                                this.isAdapterCurrent(adapter) &&
+                                this.sessionAuthz.canReadSessionForCommand(
+                                  turnInput.threadId,
+                                  context.userId,
+                                  context.tenantExecutionContext ?? boundTenant,
+                                ),
+                            },
+                            declarationOperation: this.nativeOutputDeclarations,
+                          });
+                          if (nativeOutputRelay) {
+                            this.nativeTurnGenerations.set(
                               turnInput.threadId,
-                            )?.cwd)
-                              ? {
+                              nativeTurnId,
+                            );
+                          }
+                        }
+                        const nativeForeground =
+                          adapter.provider === 'station-agent' &&
+                          internal?.foregroundInvocationAdmission
+                            ? createNativeForegroundRelay(
+                                internal.foregroundInvocationAdmission,
+                                {
+                                  threadId: turnInput.threadId,
                                   workspaceRoot:
                                     this.sessionReadModel.get(
                                       turnInput.threadId,
@@ -6131,358 +6246,351 @@ export class OrchestrationService {
                                     this.options.eventStore?.readSessionByThread(
                                       turnInput.threadId,
                                     )?.cwd,
-                                }
-                              : {}),
-                          },
-                          sourceLease: {
-                            isCurrent: () =>
+                                  userId: accountId!,
+                                  modelId: turnInput.modelId,
+                                  clientTurnId: turnInput.clientTurnId,
+                                  ambientContext: turnInput.ambientContext,
+                                },
+                              )
+                            : undefined;
+                        if (nativeForeground && !turnCorrelation)
+                          throw new ForegroundInvocationUnavailableError();
+                        const sendAdapter = () => {
+                          assertInputRequestCurrent();
+                          providerInvoked = true;
+                          return nativeForeground
+                            ? runWithNativeForegroundRelay(
+                                nativeForeground,
+                                () => adapter.sendTurn(turnInput),
+                              )
+                            : adapter.sendTurn(turnInput);
+                        };
+                        if (
+                          nativeTurn &&
+                          internal?.nativeMemoryReadAuthority &&
+                          this.options.eventStore
+                        ) {
+                          this.nativeTurnGenerations.set(
+                            turnInput.threadId,
+                            nativeTurn.turnId,
+                          );
+                          nativeMemory = await this.captureNativeMemoryHistory(
+                            turnInput.threadId,
+                            internal.nativeMemoryReadAuthority,
+                            () =>
                               this.nativeTurnGenerations.get(
                                 turnInput.threadId,
-                              ) === nativeTurnId &&
+                              ) === nativeTurn.turnId &&
                               !this.quarantinedThreads.has(
                                 turnInput.threadId,
                               ) &&
                               this.isAdapterCurrent(adapter) &&
-                              this.sessionAuthz.canReadSessionForCommand(
-                                turnInput.threadId,
-                                context.userId,
-                                context.tenantExecutionContext ?? boundTenant,
-                              ),
-                          },
-                          declarationOperation: this.nativeOutputDeclarations,
-                        });
-                        if (nativeOutputRelay) {
-                          this.nativeTurnGenerations.set(
-                            turnInput.threadId,
-                            nativeTurnId,
+                              context?.requestCurrent?.() !== false,
                           );
                         }
-                      }
-                      const nativeForeground =
-                        adapter.provider === 'station-agent' &&
-                        internal?.foregroundInvocationAdmission
-                          ? createNativeForegroundRelay(
-                              internal.foregroundInvocationAdmission,
-                              {
-                                threadId: turnInput.threadId,
-                                workspaceRoot:
-                                  this.sessionReadModel.get(turnInput.threadId)
-                                    ?.cwd ??
-                                  this.options.eventStore?.readSessionByThread(
-                                    turnInput.threadId,
-                                  )?.cwd,
-                                userId: accountId!,
-                                modelId: turnInput.modelId,
-                                clientTurnId: turnInput.clientTurnId,
-                                ambientContext: turnInput.ambientContext,
-                              },
-                            )
-                          : undefined;
-                      if (nativeForeground && !turnCorrelation)
-                        throw new ForegroundInvocationUnavailableError();
-                      const sendAdapter = () => {
-                        assertInputRequestCurrent();
-                        providerInvoked = true;
-                        return nativeForeground
-                          ? runWithNativeForegroundRelay(nativeForeground, () =>
-                              adapter.sendTurn(turnInput),
-                            )
-                          : adapter.sendTurn(turnInput);
-                      };
-                      if (
-                        nativeTurn &&
-                        internal?.nativeMemoryReadAuthority &&
-                        this.options.eventStore
-                      ) {
-                        this.nativeTurnGenerations.set(
-                          turnInput.threadId,
-                          nativeTurn.turnId,
-                        );
-                        nativeMemory = await this.captureNativeMemoryHistory(
-                          turnInput.threadId,
-                          internal.nativeMemoryReadAuthority,
+                        // #484 continuation: the preparation above awaited
+                        // (native-memory history capture, model-selector
+                        // validation). Re-verify the captured offer/binding
+                        // AFTER those awaits and immediately before the
+                        // provider effect — a withdrawal, rebind, incarnation
+                        // replacement, policy change, or caller revocation
+                        // that landed during preparation refuses here. The
+                        // recheck compares freshly-read state against the
+                        // ORIGINAL admission baseline (and re-probes caller
+                        // currency), so it answers for the association the
+                        // effect was admitted for.
+                        if (internal?.receiverExecutionAdmission)
+                          await internal.receiverExecutionAdmission.recheck();
+                        const accepted = await withTenantExecutionContext(
+                          context?.tenantExecutionContext ?? boundTenant,
                           () =>
-                            this.nativeTurnGenerations.get(
-                              turnInput.threadId,
-                            ) === nativeTurn.turnId &&
-                            !this.quarantinedThreads.has(turnInput.threadId) &&
-                            this.isAdapterCurrent(adapter) &&
-                            context?.requestCurrent?.() !== false,
+                            turnCorrelation
+                              ? runWithAuthorizedTurnCorrelation(
+                                  turnCorrelation,
+                                  () =>
+                                    nativeOutputRelay
+                                      ? runWithNativeOutputRelayCompanion(
+                                          nativeOutputRelay,
+                                          sendAdapter,
+                                        )
+                                      : sendAdapter(),
+                                  nativeMemory,
+                                )
+                              : sendAdapter(),
                         );
-                      }
-                      // #484 continuation: the preparation above awaited
-                      // (native-memory history capture, model-selector
-                      // validation). Re-verify the captured offer/binding
-                      // AFTER those awaits and immediately before the
-                      // provider effect — a withdrawal, rebind, incarnation
-                      // replacement, policy change, or caller revocation
-                      // that landed during preparation refuses here. The
-                      // recheck compares freshly-read state against the
-                      // ORIGINAL admission baseline (and re-probes caller
-                      // currency), so it answers for the association the
-                      // effect was admitted for.
-                      if (internal?.receiverExecutionAdmission)
-                        await internal.receiverExecutionAdmission.recheck();
-                      const accepted = await withTenantExecutionContext(
-                        context?.tenantExecutionContext ?? boundTenant,
-                        () =>
-                          turnCorrelation
-                            ? runWithAuthorizedTurnCorrelation(
-                                turnCorrelation,
-                                () =>
-                                  nativeOutputRelay
-                                    ? runWithNativeOutputRelayCompanion(
-                                        nativeOutputRelay,
-                                        sendAdapter,
-                                      )
-                                    : sendAdapter(),
-                                nativeMemory,
-                              )
-                            : sendAdapter(),
-                      );
-                      providerAccepted = true;
-                      // The provider has now named the exact turn. Publish a
-                      // buffered early start before local settlement can turn
-                      // the command indeterminate; receipt state cannot erase
-                      // an already-observed canonical runtime fact.
-                      const earlyOriginEvent = this.clientOriginTurns.settle(
-                        turnInput.threadId,
-                        accepted.turnId,
-                        context?.clientOrigin,
-                        context?.principal,
-                      );
-                      if (earlyOriginEvent) {
-                        this.projectAndPublishEvent(earlyOriginEvent);
-                      }
-                      if (
-                        !this.sessionExecutionCoordinator.markTurnAccepted(
+                        providerAccepted = true;
+                        // The provider has now named the exact turn. Publish a
+                        // buffered early start before local settlement can turn
+                        // the command indeterminate; receipt state cannot erase
+                        // an already-observed canonical runtime fact.
+                        const earlyOriginEvent = this.clientOriginTurns.settle(
                           turnInput.threadId,
                           accepted.turnId,
-                        )
-                      ) {
-                        const settled = boundary.terminalObserved(
+                          context?.clientOrigin,
+                          context?.principal,
+                        );
+                        if (earlyOriginEvent) {
+                          this.projectAndPublishEvent(earlyOriginEvent);
+                        }
+                        if (
+                          !this.sessionExecutionCoordinator.markTurnAccepted(
+                            turnInput.threadId,
+                            accepted.turnId,
+                          )
+                        ) {
+                          const settled = boundary.terminalObserved(
+                            accepted.turnId,
+                          );
+                          if (settled.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          return accepted;
+                        }
+                        const settled = boundary.accepted(
                           accepted.turnId,
+                          new Date().toISOString(),
                         );
                         if (settled.kind !== 'applied') {
                           claimOutcome = 'retain';
                           throw new SessionTurnStartIndeterminateError();
                         }
                         return accepted;
-                      }
-                      const settled = boundary.accepted(
-                        accepted.turnId,
-                        new Date().toISOString(),
-                      );
-                      if (settled.kind !== 'applied') {
+                      } catch (error) {
+                        if (!providerAccepted) {
+                          this.clientOriginTurns.cancel(turnInput.threadId);
+                          if (
+                            (nativeOutputRelay ||
+                              internal?.nativeMemoryReadAuthority) &&
+                            turnCorrelation
+                          ) {
+                            this.nativeTurnGenerations.delete(
+                              turnInput.threadId,
+                            );
+                            this.nativeOutputGrants.retireTerminal(
+                              turnInput.threadId,
+                              turnCorrelation.turnId,
+                            );
+                          }
+                        }
+                        if (
+                          error instanceof SessionTurnStartIndeterminateError
+                        ) {
+                          throw error;
+                        }
+                        if (
+                          !providerInvoked &&
+                          error instanceof ReceiverExecutionRefusal
+                        ) {
+                          // The post-preparation offer/binding recheck refused
+                          // BEFORE the provider effect ran (`providerInvoked`
+                          // is still false — this fires before `sendAdapter`,
+                          // so no engine start is claimed and the dispatch
+                          // receipt stays `rejected` with the closed code).
+                          // This is a clean refusal, not an ambiguous accepted
+                          // effect, so it must NOT convert below: that would
+                          // retain the client-turn claim AND leave an
+                          // `indeterminate` boundary row behind — and BOTH
+                          // coordinators treat a lingering indeterminate row
+                          // as an in-flight turn, bricking the thread for
+                          // every subsequent explicit continuation.
+                          // `terminalObserved` retires THIS dispatch's own
+                          // boundary-claim row (per-dispatch rows;
+                          // `notInvoked()` is stale once `beginInvocation`
+                          // ran). The id names the refused dispatch's turn
+                          // for intent-idempotence only — no provider turn
+                          // exists to name, so it carries the authorized
+                          // correlation id, else the caller's client turn id,
+                          // else the thread; the row is removed either way
+                          // and nothing about the provider is claimed. The
+                          // client-turn claim is released exactly like the
+                          // pre-effect refusal. If the retirement itself
+                          // fails the coordinator is genuinely troubled, and
+                          // only then do we fall back to indeterminate.
+                          claimOutcome = 'release';
+                          const retired = boundary.terminalObserved(
+                            turnCorrelation?.turnId ??
+                              turnInput.clientTurnId ??
+                              turnInput.threadId,
+                          );
+                          if (retired.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            boundary.indeterminate(new Date().toISOString());
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          throw error;
+                        }
+                        if (error instanceof SendTurnRefusedError) {
+                          // The adapter refused the turn BEFORE its first
+                          // provider-visible effect, so no engine was invoked
+                          // and no `turn.started` was published even though
+                          // `providerInvoked` is already set (it flips before
+                          // `adapter.sendTurn` runs). Sources: pre-effect input
+                          // validation (unsupported attachments, unadvertised
+                          // capabilities); a send racing the session's running
+                          // turn, which every adapter with such a guard refuses
+                          // with this type (#2415); and a send while the engine
+                          // runs a turn it opened itself, whose retryable code
+                          // the dispatch error forwards (#2324).
+                          // Same clean-refusal shape as above: retire this
+                          // dispatch's boundary row and release the
+                          // client-turn claim so the thread stays usable, and
+                          // rethrow honestly instead of converting to
+                          // indeterminate. Only a failed retirement itself
+                          // falls back to indeterminate.
+                          claimOutcome = 'release';
+                          const retired = boundary.terminalObserved(
+                            turnCorrelation?.turnId ??
+                              turnInput.clientTurnId ??
+                              turnInput.threadId,
+                          );
+                          if (retired.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            boundary.indeterminate(new Date().toISOString());
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          throw error;
+                        }
                         claimOutcome = 'retain';
+                        boundary.indeterminate(new Date().toISOString());
                         throw new SessionTurnStartIndeterminateError();
                       }
-                      return accepted;
-                    } catch (error) {
-                      if (!providerAccepted) {
-                        this.clientOriginTurns.cancel(turnInput.threadId);
-                        if (
-                          (nativeOutputRelay ||
-                            internal?.nativeMemoryReadAuthority) &&
-                          turnCorrelation
-                        ) {
-                          this.nativeTurnGenerations.delete(turnInput.threadId);
-                          this.nativeOutputGrants.retireTerminal(
-                            turnInput.threadId,
-                            turnCorrelation.turnId,
-                          );
-                        }
-                      }
-                      if (error instanceof SessionTurnStartIndeterminateError) {
-                        throw error;
-                      }
-                      if (
-                        !providerInvoked &&
-                        error instanceof ReceiverExecutionRefusal
-                      ) {
-                        // The post-preparation offer/binding recheck refused
-                        // BEFORE the provider effect ran (`providerInvoked`
-                        // is still false — this fires before `sendAdapter`,
-                        // so no engine start is claimed and the dispatch
-                        // receipt stays `rejected` with the closed code).
-                        // This is a clean refusal, not an ambiguous accepted
-                        // effect, so it must NOT convert below: that would
-                        // retain the client-turn claim AND leave an
-                        // `indeterminate` boundary row behind — and BOTH
-                        // coordinators treat a lingering indeterminate row
-                        // as an in-flight turn, bricking the thread for
-                        // every subsequent explicit continuation.
-                        // `terminalObserved` retires THIS dispatch's own
-                        // boundary-claim row (per-dispatch rows;
-                        // `notInvoked()` is stale once `beginInvocation`
-                        // ran). The id names the refused dispatch's turn
-                        // for intent-idempotence only — no provider turn
-                        // exists to name, so it carries the authorized
-                        // correlation id, else the caller's client turn id,
-                        // else the thread; the row is removed either way
-                        // and nothing about the provider is claimed. The
-                        // client-turn claim is released exactly like the
-                        // pre-effect refusal. If the retirement itself
-                        // fails the coordinator is genuinely troubled, and
-                        // only then do we fall back to indeterminate.
-                        claimOutcome = 'release';
-                        const retired = boundary.terminalObserved(
-                          turnCorrelation?.turnId ??
-                            turnInput.clientTurnId ??
-                            turnInput.threadId,
-                        );
-                        if (retired.kind !== 'applied') {
-                          claimOutcome = 'retain';
-                          boundary.indeterminate(new Date().toISOString());
-                          throw new SessionTurnStartIndeterminateError();
-                        }
-                        throw error;
-                      }
-                      if (error instanceof SendTurnRefusedError) {
-                        // The adapter refused the turn BEFORE its first
-                        // provider-visible effect, so no engine was invoked
-                        // and no `turn.started` was published even though
-                        // `providerInvoked` is already set (it flips before
-                        // `adapter.sendTurn` runs). Sources: pre-effect input
-                        // validation (unsupported attachments, unadvertised
-                        // capabilities); a send racing the session's running
-                        // turn, which every adapter with such a guard refuses
-                        // with this type (#2415); and a send while the engine
-                        // runs a turn it opened itself, whose retryable code
-                        // the dispatch error forwards (#2324).
-                        // Same clean-refusal shape as above: retire this
-                        // dispatch's boundary row and release the
-                        // client-turn claim so the thread stays usable, and
-                        // rethrow honestly instead of converting to
-                        // indeterminate. Only a failed retirement itself
-                        // falls back to indeterminate.
-                        claimOutcome = 'release';
-                        const retired = boundary.terminalObserved(
-                          turnCorrelation?.turnId ??
-                            turnInput.clientTurnId ??
-                            turnInput.threadId,
-                        );
-                        if (retired.kind !== 'applied') {
-                          claimOutcome = 'retain';
-                          boundary.indeterminate(new Date().toISOString());
-                          throw new SessionTurnStartIndeterminateError();
-                        }
-                        throw error;
-                      }
-                      claimOutcome = 'retain';
-                      boundary.indeterminate(new Date().toISOString());
-                      throw new SessionTurnStartIndeterminateError();
-                    }
-                  };
-                  // #484 phase A follow-up: the receiver-owned offer/binding
-                  // recheck runs INSIDE the turn-effect path, adjacent to
-                  // the adapter sendTurn invocation — a revocation that
-                  // lands after the session start still refuses before the
-                  // provider effect. The admitted coordinate is OWNED
-                  // (snapshotted) before the recheck await, and the
-                  // post-await verify answers against the ACTUAL
-                  // persisted/runtime session — never the turn input's
-                  // bare thread id, which cannot prove provider state.
-                  // Without admission (ordinary dispatch, interrupted-turn
-                  // recovery, credential redispatch — none carry admission
-                  // context) the CENTRAL fail-closed applies: a thread
-                  // whose persisted binding carries portable consent
-                  // refuses here instead of executing a portable session
-                  // the current offer never authorized.
-                  const invokeWithReceiverAdmission = () => {
-                    const turnAdmission = internal?.receiverExecutionAdmission;
-                    const admittedSnapshot = turnAdmission?.admitted
-                      ? { ...turnAdmission.admitted }
-                      : undefined;
-                    if (!turnAdmission) {
-                      const unadmittedConsent =
-                        this.persistedPortableConsentOfThread(
-                          turnInput.threadId,
-                        );
-                      if (unadmittedConsent)
-                        throw portableRefusalForUnadmittedThread(
-                          unadmittedConsent,
-                        );
-                      return invoke();
-                    }
-                    if (
-                      admittedSnapshot &&
-                      turnInput.threadId !== admittedSnapshot.threadId
-                    )
-                      throw new ReceiverExecutionRefusal(
-                        'receiver_execution_unavailable',
-                        'The offered Project resource is unavailable.',
-                      );
-                    if (!admittedSnapshot)
-                      return turnAdmission.recheck().then(invoke);
-                    return turnAdmission
-                      .recheck()
-                      .then(() => {
-                        const live = this.sessionReadModel.get(
-                          turnInput.threadId,
-                        );
-                        const persisted =
-                          live ??
-                          this.options.eventStore?.readSessionByThread(
-                            turnInput.threadId,
-                          );
-                        verifyReceiverTurnEffect(
-                          admittedSnapshot,
-                          persisted
-                            ? {
-                                threadId: persisted.threadId,
-                                cwd: persisted.cwd,
-                              }
-                            : undefined,
-                          this.latestStartedMetadataOfThread(
-                            turnInput.threadId,
-                          ),
+                    };
+                    // #484 phase A follow-up: the receiver-owned offer/binding
+                    // recheck runs INSIDE the turn-effect path, adjacent to
+                    // the adapter sendTurn invocation — a revocation that
+                    // lands after the session start still refuses before the
+                    // provider effect. The admitted coordinate is OWNED
+                    // (snapshotted) before the recheck await, and the
+                    // post-await verify answers against the ACTUAL
+                    // persisted/runtime session — never the turn input's
+                    // bare thread id, which cannot prove provider state.
+                    // Without admission (ordinary dispatch, interrupted-turn
+                    // recovery, credential redispatch — none carry admission
+                    // context) the CENTRAL fail-closed applies: a thread
+                    // whose persisted binding carries portable consent
+                    // refuses here instead of executing a portable session
+                    // the current offer never authorized.
+                    const invokeWithReceiverAdmission = () => {
+                      const turnAdmission =
+                        internal?.receiverExecutionAdmission;
+                      const admittedSnapshot = turnAdmission?.admitted
+                        ? { ...turnAdmission.admitted }
+                        : undefined;
+                      if (!turnAdmission) {
+                        const unadmittedConsent =
                           this.persistedPortableConsentOfThread(
                             turnInput.threadId,
-                          ),
-                        );
-                      })
-                      .then(invoke);
-                  };
-                  return internal?.foregroundInvocationAdmission
-                    ? internal.foregroundInvocationAdmission.invoke(
-                        adapter.provider === 'station-agent'
-                          ? 'native-relay'
-                          : 'turn',
-                        {
-                          threadId: turnInput.threadId,
-                          // `sendTurn` carries no Agent/Project fields. The
-                          // capability bound this exact thread at guarded
-                          // start, so its captured identities are the only
-                          // non-inferred facts available here.
-                          agentId:
-                            internal.foregroundInvocationAdmission.agentId,
-                          projectSlug:
-                            internal.foregroundInvocationAdmission.project.slug,
-                          message: turnInput.displayInput ?? turnInput.input,
-                        },
-                        invokeWithReceiverAdmission,
+                          );
+                        if (unadmittedConsent)
+                          throw portableRefusalForUnadmittedThread(
+                            unadmittedConsent,
+                          );
+                        return invoke();
+                      }
+                      if (
+                        admittedSnapshot &&
+                        turnInput.threadId !== admittedSnapshot.threadId
                       )
-                    : invokeWithReceiverAdmission();
-                },
-                await (async () => {
-                  const persisted =
-                    this.options.eventStore?.readSessionByThread(
-                      turnInput.threadId,
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_unavailable',
+                          'The offered Project resource is unavailable.',
+                        );
+                      if (!admittedSnapshot)
+                        return turnAdmission.recheck().then(invoke);
+                      return turnAdmission
+                        .recheck()
+                        .then(() => {
+                          const live = this.sessionReadModel.get(
+                            turnInput.threadId,
+                          );
+                          const persisted =
+                            live ??
+                            this.options.eventStore?.readSessionByThread(
+                              turnInput.threadId,
+                            );
+                          verifyReceiverTurnEffect(
+                            admittedSnapshot,
+                            persisted
+                              ? {
+                                  threadId: persisted.threadId,
+                                  cwd: persisted.cwd,
+                                }
+                              : undefined,
+                            this.latestStartedMetadataOfThread(
+                              turnInput.threadId,
+                            ),
+                            this.persistedPortableConsentOfThread(
+                              turnInput.threadId,
+                            ),
+                          );
+                        })
+                        .then(invoke);
+                    };
+                    return internal?.foregroundInvocationAdmission
+                      ? internal.foregroundInvocationAdmission.invoke(
+                          adapter.provider === 'station-agent'
+                            ? 'native-relay'
+                            : 'turn',
+                          {
+                            threadId: turnInput.threadId,
+                            // `sendTurn` carries no Agent/Project fields. The
+                            // capability bound this exact thread at guarded
+                            // start, so its captured identities are the only
+                            // non-inferred facts available here.
+                            agentId:
+                              internal.foregroundInvocationAdmission.agentId,
+                            projectSlug:
+                              internal.foregroundInvocationAdmission.project
+                                .slug,
+                            message: turnInput.displayInput ?? turnInput.input,
+                          },
+                          invokeWithReceiverAdmission,
+                        )
+                      : invokeWithReceiverAdmission();
+                  },
+                  await (async () => {
+                    const persisted =
+                      this.options.eventStore?.readSessionByThread(
+                        turnInput.threadId,
+                      );
+                    const cwd =
+                      this.sessionReadModel.get(turnInput.threadId)?.cwd ??
+                      persisted?.cwd;
+                    if (!cwd) return undefined;
+                    const identity = await resolveWorkspaceIdentity(
+                      cwd,
+                      persisted?.controlMode === 'read-only-attached'
+                        ? 'remote'
+                        : 'local',
                     );
-                  const cwd =
-                    this.sessionReadModel.get(turnInput.threadId)?.cwd ??
-                    persisted?.cwd;
-                  if (!cwd) return undefined;
-                  const identity = await resolveWorkspaceIdentity(
-                    cwd,
-                    persisted?.controlMode === 'read-only-attached'
-                      ? 'remote'
-                      : 'local',
+                    return identity.kind === 'remote'
+                      ? undefined
+                      : identity.key;
+                  })(),
+                );
+              try {
+                result = await startTurn();
+              } catch (error) {
+                // #2540: a park stopped this send's engine while it waited for the
+                // turn lock. Restart the engine in place outside the lock (a start
+                // cannot run under this thread's turn claim), then start the turn.
+                if (!(error instanceof EngineParkedDuringDispatchError))
+                  throw error;
+                if (
+                  !(await this.materializeRecoveredSession(
+                    turnInput.threadId,
+                    undefined,
+                    internal?.receiverExecutionAdmission,
+                  ))
+                )
+                  throw new Error(
+                    `No provider session found for thread: ${turnInput.threadId}`,
                   );
-                  return identity.kind === 'remote' ? undefined : identity.key;
-                })(),
-              );
+                // The restart took real time; honour an abort sent meanwhile.
+                throwIfAborted(turnInput.signal);
+                result = await startTurn();
+              }
             } catch (error) {
               if (!(error instanceof SessionTurnStartIndeterminateError)) {
                 this.options.eventStore?.releaseAttachmentCapacity(
@@ -7807,6 +7915,22 @@ export class OrchestrationService {
           previousState,
           turnIdentityAnchor,
         );
+        // #2540: the exit of an engine this service parked is absorbed — see
+        // `parkingThreads`. The session stays dormant and restarts in place.
+        // A parked engine's exit is absorbed while the park waits for it, and
+        // also if it arrives later but before anything restarted the engine
+        // (`parkedThreads` clears on restart, so a new engine's exits are its
+        // own and are never swallowed).
+        if (
+          normalized.method === 'session.exited' &&
+          (this.parkingThreads.delete(normalized.threadId) ||
+            this.parkedThreads.has(normalized.threadId))
+        ) {
+          this.sessionAdapters.delete(normalized.threadId);
+          this.parkedExitWaiters.get(normalized.threadId)?.();
+          this.parkedExitWaiters.delete(normalized.threadId);
+          continue;
+        }
         if (!this.quarantinedThreads.has(normalized.threadId)) {
           this.sessionAdapters.set(normalized.threadId, adapter);
         }
@@ -8793,6 +8917,131 @@ export class OrchestrationService {
   // source of a stale terminal from the same bounded set this method reads,
   // so this call site is a beneficiary of that fix, not a second place that
   // needed its own change.
+  /**
+   * #2540: park every `idle` session whose engine has been unused for
+   * `idleSessionParkAfterMs`. Parking stops the engine process and leaves
+   * the session dormant — its next turn restarts it in place from its resume
+   * cursor — so an unused conversation holds no process, and a used one never
+   * holds more than one. Returns the parked thread ids.
+   */
+  async sweepIdleSessions(now = Date.now()): Promise<string[]> {
+    const parkAfterMs =
+      this.options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS;
+    if (parkAfterMs <= 0) return [];
+    const parked: string[] = [];
+    for (const [threadId, adapter] of [...this.sessionAdapters]) {
+      if (!this.isParkableIdleSession(threadId, now, parkAfterMs)) continue;
+      try {
+        if (await this.parkIdleSession(threadId, adapter, now, parkAfterMs))
+          parked.push(threadId);
+      } catch (error) {
+        this.options.logger.warn('Idle session was not parked', {
+          threadId,
+          error: errorMessage(error),
+        });
+      }
+    }
+    return parked;
+  }
+
+  private isParkableIdleSession(
+    threadId: string,
+    now: number,
+    parkAfterMs: number,
+  ): boolean {
+    if (
+      this.parkingThreads.has(threadId) ||
+      this.materializingSessions.has(threadId) ||
+      this.quarantinedThreads.has(threadId) ||
+      this.isReadOnlyAttachedSession(threadId) ||
+      this.isPeerDelegationActivityRecord(threadId) ||
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+    )
+      return false;
+    const session = this.sessionReadModel.get(threadId);
+    if (!session || session.status === 'closed' || session.status === 'dead')
+      return false;
+    const lastActivity = Date.parse(session.updatedAt);
+    if (!Number.isFinite(lastActivity) || now - lastActivity < parkAfterMs)
+      return false;
+    // Only an engine that can pick the conversation back up is parked: the
+    // in-place restart resumes from this cursor, and without one (or on an
+    // engine observed unable to resume) it would restart without the
+    // conversation's context.
+    if (session.resumeCursor === undefined || session.resumeCursor === null)
+      return false;
+    const connectionId =
+      this.latestStartedMetadataOfThread(threadId)?.connectionId;
+    if (
+      this.options.resumeCursorSupport?.({
+        provider: session.provider,
+        ...(typeof connectionId === 'string' ? { connectionId } : {}),
+      }) === false
+    )
+      return false;
+    // Work the engine still runs past its turn — subagents, backgrounded
+    // tasks — dies with its process: such a session is not idle.
+    const children = this.childWork.read(threadId, session.provider);
+    if (children?.observability === 'reported' && children.running.length > 0)
+      return false;
+    // At rest only — a session waiting on the user (an open request) keeps
+    // its engine, which is what holds that request.
+    const lifecycle = this.readCurrentLifecycleState(threadId);
+    return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
+  }
+
+  private parkIdleSession(
+    threadId: string,
+    adapter: ProviderAdapterShape,
+    now: number,
+    parkAfterMs: number,
+  ): Promise<boolean> {
+    // Serialized with turn starts: a send that arrives first wins, and the
+    // park re-checks everything under the lock before touching the engine.
+    return this.sessionExecutionCoordinator.runLifecycleTransition(
+      threadId,
+      async () => {
+        if (
+          this.sessionAdapters.get(threadId) !== adapter ||
+          !this.isParkableIdleSession(threadId, now, parkAfterMs)
+        )
+          return false;
+        const exited = new Promise<void>((resolve) =>
+          this.parkedExitWaiters.set(threadId, resolve),
+        );
+        this.parkingThreads.add(threadId);
+        try {
+          await adapter.stopSession(threadId);
+          // Still under the lock: no turn can restart this engine until its
+          // own exit has been absorbed, so that exit can never be mistaken
+          // for (or land on) the engine that replaces it.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            exited,
+            new Promise<void>((resolve) => {
+              timer = setTimeout(
+                resolve,
+                this.options.idleSessionParkExitWaitMs ?? PARKED_EXIT_WAIT_MS,
+              );
+            }),
+          ]);
+          if (timer) clearTimeout(timer);
+        } finally {
+          this.parkingThreads.delete(threadId);
+          this.parkedExitWaiters.delete(threadId);
+        }
+        this.sessionAdapters.delete(threadId);
+        this.parkedThreads.add(threadId);
+        // What the absorbed exit would have cleared: a respawned engine
+        // starts at whatever its own start resolves.
+        this.clientOriginTurns.clearThread(threadId);
+        this.approvalPosture.forgetThread(threadId);
+        this.options.logger.debug('Parked idle session engine', { threadId });
+        return true;
+      },
+    );
+  }
+
   private readCurrentLifecycleState(
     threadId: string,
   ): SessionLifecycleState | undefined {
@@ -8972,6 +9221,7 @@ export class OrchestrationService {
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
+    this.parkedThreads.delete(threadId);
     const started = this.materializeRecoveredSessionOnce(
       threadId,
       admission,
