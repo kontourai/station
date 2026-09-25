@@ -183,6 +183,28 @@ function policyBlockQuotation(verdict: {
 }
 
 /**
+ * #2613: `tools.autoApprove` is matched on this path against the runtime name
+ * only, while attended chat's requester also matches the original MCP name —
+ * so an authored `station-control_*` covers attended chat and nothing else.
+ * Unattended use is this separate, explicit opt-in, matched in the attended
+ * form, for a Station-engine call nobody can consent to. Attended calls never
+ * reach it (they `ask`), and neither do external engines, whose unattended
+ * chain is undelivered (see the KNOWN GAP in the evaluator).
+ */
+function unattendedOptInAllows(
+  deps: StagedPreToolPolicyDeps,
+  tool: ToolCallContext,
+  invocation: InvocationContext,
+  options: Parameters<StagedPreToolPolicyEvaluator>[2],
+): boolean {
+  if (options.interaction !== 'managed') return false;
+  const nobodyToAsk =
+    invocation.delegation?.denyApprovals === true ||
+    !options.hasInteractiveApproval;
+  return nobodyToAsk && deps.isUnattendedGranted?.(tool) === true;
+}
+
+/**
  * The one Station-owned sequence of pre-tool blocking and grant stages.
  * Engine adapters only translate its final decision into their native hook
  * contract; they must not reproduce a policy stage.
@@ -308,21 +330,7 @@ export function createStagedPreToolPolicyEvaluator(
       }
     }
 
-    // #2613: `tools.autoApprove` is matched above against the runtime name
-    // only, while attended chat's requester also matches the original MCP
-    // name — so an authored `station-control_*` covers attended chat and
-    // nothing else. Unattended use is this separate, explicit opt-in, matched
-    // in the attended form. Attended calls never reach it (they `ask`), and
-    // neither do external engines, whose unattended chain is undelivered (see
-    // the KNOWN GAP below).
-    const nobodyToAsk =
-      invocation.delegation?.denyApprovals === true ||
-      !options.hasInteractiveApproval;
-    if (
-      options.interaction === 'managed' &&
-      nobodyToAsk &&
-      deps.isUnattendedGranted?.(tool) === true
-    ) {
+    if (unattendedOptInAllows(deps, tool, invocation, options)) {
       deps.logger.info('Unattended auto-approval allowed tool execution', {
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
