@@ -315,15 +315,23 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   (`delivery/fcm-alert-channel.ts`) shares the per-phone three-second send
   floor with the card (`native-push-send-floor.ts`): each phone has one
   queue of waiting notification sends, drained a slot at a time, and the
-  card waits for the slot after the one a notification holds. A message is
-  composed (`created_at` and `expires_at` stamped) only when its slot comes;
-  a newer send for the same id replaces the waiting one in place, so a read
-  or dismiss while an alert waits sends the retract instead of the stale
-  alert. At most eight sends wait per phone: past that the oldest waiting
-  `info` alert is dropped and logged, and attention, failed and done alerts
-  and retracts are never dropped. Each time a notification's slot holds the
-  card back the card counts it, and after two the queue leaves the next slot
-  free for the card, so a burst cannot starve it.
+  card waits for the slot after the one a notification holds. What a send
+  says (title and body after the hide-content choice, urgency, session
+  reference) is fixed when it is queued; the push key and registration are
+  read, `created_at` and `expires_at` stamped and the message sealed only
+  when its slot comes, and a slot is taken only for a phone that can be sent
+  to. A newer send for the same id replaces the waiting one in place. At
+  most eight sends wait per phone: past that the oldest waiting `info` alert
+  is dropped and logged, and attention, failed and done alerts and retracts
+  are never dropped. A retract goes only for an id the channel actually took
+  for sending to that phone (the last 256 per phone): the router records a
+  delivery when it plans it, so without this a read of alerts the queue
+  dropped would send retracts the phone has no use for; a retract for an
+  alert still waiting just removes it. Each time a notification's slot
+  holds back a card update that is still waiting, the card counts it; after
+  two the queue leaves the next slot free for the card, so a burst cannot
+  starve it, and the count is cleared when the card sends or has nothing
+  left to send.
   It does not retry a failed send (like Web Push); a 410 clears the
   registration. It does not carry `approval-request`, `turn-completed`,
   `turn-stopped` or `turn-failed`, which the card already alerts for. On the

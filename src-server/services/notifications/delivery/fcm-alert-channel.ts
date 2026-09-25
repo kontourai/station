@@ -16,26 +16,37 @@
  *   `station-notification:v1:<registrationId>`: the gateway and Google see
  *   only routing data and a priority. No collapse key: FCM keeps only four
  *   per offline or dozing device and silently drops the rest, which would
- *   lose alerts and retracts; the phone orders deliveries itself. `hideContent` replaces the title and body with generic copy
- *   before sealing, so the notification's own text is never sent at all.
+ *   lose alerts and retracts; the phone orders deliveries itself.
+ *   `hideContent` replaces the title and body with generic copy before
+ *   sealing, so the notification's own text is never sent at all.
  * - Retract: a read or dismiss elsewhere sends a `retract` for the same id,
  *   which cancels the phone's notification. If FCM delivers the alert after
- *   its retract, the phone drops it (`created_at` history).
+ *   its retract, the phone drops it (`created_at` history). Only an id this
+ *   channel actually sent to that phone is retracted (the router records a
+ *   delivery when it plans it, not when a send happens): the last
+ *   {@link SENT_IDS_PER_PHONE} ids taken for sending are remembered per
+ *   phone, and a retract for any other id is not sent. A retract for an
+ *   alert still waiting in the queue just removes it.
  * - Paced: shares the per-phone send floor with the agent-activity card
  *   (`native-push-send-floor.ts`). Each phone has one queue of waiting
  *   sends, drained one floor slot at a time:
- *   - the message is composed (and `created_at` / `expires_at` stamped)
- *     only when its slot comes, from the newest pending send for its id: a
- *     newer send for an id replaces the pending one in its place in the
- *     queue, so a read or dismiss while an alert waits (the router's
- *     retract) sends the retract instead of the stale alert;
+ *   - what a send says is fixed when it is queued: the title and body (after
+ *     the hide-content choice), the urgency, and the session reference. The
+ *     rest happens when its slot comes: the push key and registration are
+ *     read, `created_at` / `expires_at` are stamped, and it is sealed. A
+ *     newer send for an id replaces the waiting one in its place in the
+ *     queue;
+ *   - a floor slot is taken only for a phone that can be sent to (a
+ *     registration pinned to the current push key), so a phone that cannot
+ *     receive is never paced;
  *   - at most {@link MAX_PENDING_PER_PHONE} sends wait; past that the
  *     oldest waiting `info` alert is dropped and logged. Attention, failed
  *     and done alerts and retracts are never dropped (the router only
  *     sends those as people's own notifications arrive, so they stay
  *     bounded by what happened);
- *   - once the card has been held back by these slots
- *     `CARD_YIELD_AFTER` times, the queue leaves the next slot free for it.
+ *   - once the card, with an update still waiting, has been held back by
+ *     these slots `CARD_YIELD_AFTER` times, the queue leaves the next slot
+ *     free for it.
  * - No retry: a retryable gateway answer is reported as `retry` and logged,
  *   like Web Push. A 410 clears the registration, as the publisher does.
  * - Session lifecycle categories the card already alerts for (an approval,
@@ -74,6 +85,8 @@ import {
   type SurfaceId,
 } from './channel.js';
 
+/** Notification ids remembered per phone as sent, for retracts. */
+const SENT_IDS_PER_PHONE = 256;
 /** Waiting sends per phone before `info` alerts are dropped. */
 const MAX_PENDING_PER_PHONE = 8;
 /** How long a sent alert may still be shown; the gateway's FCM TTL matches. */
@@ -160,6 +173,8 @@ export class FcmAlertChannel implements DeliveryChannel {
   readonly #sleep: (ms: number) => Promise<void>;
   /** Waiting sends per phone; present while that phone's queue drains. */
   readonly #queues = new Map<string, PendingSend[]>();
+  /** Per phone: ids taken for sending, oldest first (a bounded LRU). */
+  readonly #sentIds = new Map<string, Set<string>>();
 
   constructor(options: FcmAlertChannelOptions) {
     this.#options = options;
@@ -228,13 +243,26 @@ export class FcmAlertChannel implements DeliveryChannel {
   }
 
   #enqueue(deviceId: string, send: PendingSend): void {
-    let queue = this.#queues.get(deviceId);
+    const existing = this.#queues.get(deviceId);
+    const index =
+      existing?.findIndex((pending) => pending.id === send.id) ?? -1;
+    const waitingAlert =
+      index >= 0 && existing?.[index]?.content.kind === 'alert';
+    if (send.content.kind === 'retract' && !this.#wasSent(deviceId, send.id)) {
+      // The phone never got this id: nothing to take back. An alert for it
+      // still waiting is simply not sent.
+      if (existing && waitingAlert) {
+        existing.splice(index, 1)[0]?.resolve('suppressed');
+      }
+      send.resolve('suppressed');
+      return;
+    }
+    let queue = existing;
     const draining = queue !== undefined;
     if (!queue) {
       queue = [];
       this.#queues.set(deviceId, queue);
     }
-    const index = queue.findIndex((pending) => pending.id === send.id);
     if (index >= 0) {
       // The newer send for this id takes the older one's place.
       queue[index]?.resolve('suppressed');
@@ -254,14 +282,46 @@ export class FcmAlertChannel implements DeliveryChannel {
         { pending: queue.length },
       );
     }
-    if (!draining) void this.#drain(deviceId, queue);
+    if (!draining)
+      this.#drain(deviceId, queue).catch((error) => {
+        this.#options.logger.warn('fcm-alert: a send queue failed', {
+          error: errorMessage(error),
+        });
+      });
   }
 
-  /** Sends a phone's queue one floor slot at a time; never throws. */
+  #wasSent(deviceId: string, id: string): boolean {
+    return this.#sentIds.get(deviceId)?.has(id) === true;
+  }
+
+  /** An alert taken for sending is remembered; a retract forgets its id. */
+  #markTaken(deviceId: string, send: PendingSend): void {
+    let ids = this.#sentIds.get(deviceId);
+    if (!ids) {
+      ids = new Set();
+      this.#sentIds.set(deviceId, ids);
+    }
+    ids.delete(send.id);
+    if (send.content.kind === 'retract') return;
+    ids.add(send.id);
+    while (ids.size > SENT_IDS_PER_PHONE) {
+      const oldest = ids.values().next().value;
+      if (oldest === undefined) break;
+      ids.delete(oldest);
+    }
+  }
+
+  /** Sends a phone's queue one floor slot at a time. */
   async #drain(deviceId: string, queue: PendingSend[]): Promise<void> {
     try {
       while (queue.length > 0) {
         const floor = this.#options.sendFloor;
+        // A phone that cannot be sent to takes no slot.
+        const refused = this.#sendability(deviceId);
+        if (refused) {
+          queue.shift()?.resolve(refused);
+          continue;
+        }
         if (floor.takeCardYield(deviceId)) {
           // Leave the next slot to the card: wait one interval past it.
           const last = floor.lastSendAt(deviceId) ?? this.#now();
@@ -275,6 +335,7 @@ export class FcmAlertChannel implements DeliveryChannel {
         // Taken only now: a newer send for the same id may have replaced it.
         const next = queue.shift();
         if (!next) break;
+        this.#markTaken(deviceId, next);
         let result: SendResult;
         try {
           result = await this.#sendNow(deviceId, next);
@@ -286,10 +347,36 @@ export class FcmAlertChannel implements DeliveryChannel {
         }
         next.resolve(result);
       }
+    } catch (error) {
+      this.#options.logger.warn('fcm-alert: a send queue failed', {
+        error: errorMessage(error),
+      });
     } finally {
       this.#queues.delete(deviceId);
-      for (const left of queue.splice(0)) left.resolve('suppressed');
+      const left = queue.splice(0);
+      if (left.length > 0)
+        this.#options.logger.warn(
+          'fcm-alert: dropped waiting notifications after a queue failure',
+          { dropped: left.length },
+        );
+      for (const send of left) send.resolve('suppressed');
     }
+  }
+
+  /** Why a phone cannot be sent to now, or undefined when it can. */
+  #sendability(deviceId: string): SendResult | undefined {
+    let key: PushSigningKey | null;
+    try {
+      key = this.#options.signingKey.read();
+    } catch {
+      return 'retry';
+    }
+    const registration = this.#android().find(
+      (candidate) => candidate.deviceId === deviceId,
+    )?.registration;
+    return key && registration && registration.stationKey === key.thumbprint
+      ? undefined
+      : 'suppressed';
   }
 
   async #sendNow(deviceId: string, send: PendingSend): Promise<SendResult> {

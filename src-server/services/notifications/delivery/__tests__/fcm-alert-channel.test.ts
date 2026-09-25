@@ -23,7 +23,10 @@ import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { wireNotificationDelivery } from '../../../../runtime/routes/notification-delivery-wiring.js';
 import { EventBus } from '../../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../../ssh/device-pairing-service.js';
-import { resolvePushGatewayConfig } from '../../agent-activity-publisher.js';
+import {
+  resolvePushGatewayConfig,
+  wireAgentActivityPublisher,
+} from '../../agent-activity-publisher.js';
 import type { NativePushRegistration } from '../../native-push-registration-store.js';
 import {
   createNativePushSendFloor,
@@ -31,7 +34,10 @@ import {
 } from '../../native-push-send-floor.js';
 import { NOTIFICATION_PREFERENCES_FILE } from '../../notification-preferences.js';
 import { PushSigningKeyStore } from '../../push-signing-key-store.js';
-import { FCM_ALERT_LIFETIME_MS } from '../fcm-alert-channel.js';
+import {
+  FCM_ALERT_LIFETIME_MS,
+  FcmAlertChannel,
+} from '../fcm-alert-channel.js';
 
 const makeTempDir = trackTempDirs();
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -41,6 +47,8 @@ const NOW = Date.parse('2026-09-24T12:00:00.000Z');
 
 interface Sent {
   deviceId: string;
+  /** The clock when the gateway received it. */
+  at: number;
   collapseKey?: string;
   priority?: string;
   data: Record<string, string>;
@@ -129,10 +137,16 @@ async function harness(
     if (!deviceId || !registration) throw new Error('unknown registration');
     sent.push({
       deviceId,
+      at: clock.now,
       ...(collapseKey ? { collapseKey } : {}),
       ...(priority ? { priority } : {}),
       data,
-      plaintext: open(data.sealed ?? '', registration),
+      // A card (from the publisher in the shared-floor test) is sealed
+      // under the card's AAD; only its routing is looked at here.
+      plaintext:
+        data.station_kind === 'agent_activity'
+          ? {}
+          : open(data.sealed ?? '', registration),
     });
     return new Response('{}', { status: options.answer ?? 200 });
   };
@@ -216,6 +230,7 @@ async function harness(
   });
   return {
     pairing,
+    keys,
     eventBus,
     clock,
     sent,
@@ -487,7 +502,7 @@ describe('FcmAlertChannel through the delivery router', () => {
         category: 'agent-info',
         metadata: { envelope: envelope({ urgency: 'info' }) },
       });
-    test('an alert read while it waits for its slot is never sent; the retract goes instead', async () => {
+    test('an alert read while it waits for its slot is never sent, and neither is a retract for it', async () => {
       const h = await harness({ manualSleep: true });
       // The card just went to both phones.
       h.sendFloor.record(h.phone, h.clock.now);
@@ -510,12 +525,8 @@ describe('FcmAlertChannel through the delivery router', () => {
       await h.settle();
       await h.releaseSleep();
       await h.releaseSleep();
-      expect(h.sent.map((s) => [s.deviceId, s.plaintext.kind]).sort()).toEqual(
-        [
-          [h.phone, 'retract'],
-          [h.tablet, 'retract'],
-        ].sort(),
-      );
+      // The phone never saw it, so there is nothing to take back.
+      expect(h.sent).toEqual([]);
     });
 
     test('created_at and expires_at are stamped when the slot comes, not when it was queued', async () => {
@@ -627,5 +638,182 @@ describe('FcmAlertChannel through the delivery router', () => {
       // It yields once per deferral count, not on every send after.
       expect(h.sendFloor.takeCardYield(h.phone)).toBe(false);
     });
+
+    test('reading alerts the queue dropped sends no retract, and a following attention alert is not delayed (#2588 probe)', async () => {
+      const h = await harness({ manualSleep: true });
+      const start = h.clock.now;
+      h.sendFloor.record(h.phone, start);
+      h.sendFloor.record(h.tablet, start);
+      const records = Array.from({ length: 20 }, (_, i) => info(`i-${i}`));
+      for (const record of records)
+        h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      // Read all twenty elsewhere.
+      for (const record of records)
+        h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, {
+          ...record,
+          metadata: {
+            envelope: {
+              ...envelope({ urgency: 'info' }),
+              readAt: new Date(h.clock.now).toISOString(),
+              readBy: 'local:desk-tab',
+            },
+          },
+        } as never);
+      await h.settle();
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        attention('a-after') as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      const toPhone = h.sent.filter((s) => s.deviceId === h.phone);
+      expect(toPhone.map((s) => [s.plaintext.kind, s.plaintext.id])).toEqual([
+        ['alert', 'a-after'],
+      ]);
+      // It takes the very next slot.
+      expect(toPhone[0]?.at).toBe(start + NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
+    });
+
+    test('a retract goes to a phone the alert was actually sent to', async () => {
+      const h = await harness({ manualSleep: true });
+      const record = info('i-sent');
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DISMISSED, {
+        ...record,
+        status: 'dismissed',
+      } as never);
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(
+        h.sent
+          .filter((s) => s.deviceId === h.phone)
+          .map((s) => s.plaintext.kind),
+      ).toEqual(['alert', 'retract']);
+    });
+
+    test('the card and the channel over one floor never send to a phone less than an interval apart', async () => {
+      const h = await harness({ manualSleep: true });
+      const start = h.clock.now;
+      const timers: Array<{ fn: () => void; at: number; live: boolean }> = [];
+      let phase: 'running' | 'review_pending' = 'running';
+      const publisher = wireAgentActivityPublisher({
+        eventBus: h.eventBus,
+        devicePairing: h.pairing,
+        signingKey: h.keys,
+        sendFloor: h.sendFloor,
+        sessionReaderFor: () => ({
+          principalId: 'reader',
+          listSessions: async () => [
+            {
+              sessionId: 'session-1',
+              title: 'Migration',
+              lifecycleState: phase,
+              status: 'running',
+              isLoaded: true,
+              hasActiveTurn: true,
+              ...(phase === 'review_pending' ? { pendingReview: true } : {}),
+            } as never,
+          ],
+        }),
+        gateway: GATEWAY,
+        logger: { warn: vi.fn() },
+        fetchImpl: h.fetchImpl as unknown as typeof fetch,
+        now: () => h.clock.now,
+        windowMs: 1,
+        setTimer: (fn, delayMs) => {
+          const timer = { fn, at: h.clock.now + delayMs, live: true };
+          timers.push(timer);
+          return () => {
+            timer.live = false;
+          };
+        },
+      });
+      const lifecycle = () =>
+        h.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+          event: { method: 'session.state-changed', threadId: 'session-1' },
+        } as never);
+      const flush = async () => {
+        await publisher.drain();
+        await h.settle();
+      };
+      // The card goes first.
+      lifecycle();
+      await flush();
+      // A notification comes at once, and waits for the phone's next slot.
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification() as never,
+      );
+      await h.settle();
+      await h.releaseSleep();
+      // The card changes while that slot is still the phone's latest.
+      phase = 'review_pending';
+      lifecycle();
+      await flush();
+      // Its retry fires when its slot comes.
+      while (
+        !h.sent.some((s) => s.deviceId === h.phone && s.at > start + 3_000)
+      ) {
+        const next = timers
+          .filter((timer) => timer.live)
+          .sort((a, b) => a.at - b.at)[0];
+        if (!next) throw new Error('no publisher timer armed');
+        h.clock.now = Math.max(h.clock.now, next.at);
+        next.live = false;
+        next.fn();
+        await flush();
+      }
+      const toPhone = h.sent.filter((s) => s.deviceId === h.phone);
+      expect(toPhone.map((s) => [s.data.station_kind, s.at - start])).toEqual([
+        ['agent_activity', 0],
+        ['station_notification', NATIVE_PUSH_MIN_SEND_INTERVAL_MS],
+        ['agent_activity', 2 * NATIVE_PUSH_MIN_SEND_INTERVAL_MS],
+      ]);
+      await publisher.stop();
+    });
+  });
+});
+
+describe('FcmAlertChannel without a sendable registration', () => {
+  test('takes no floor slot for a phone it cannot send to', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const sleep = vi.fn(async () => {});
+    const fetchImpl = vi.fn();
+    const channel = new FcmAlertChannel({
+      devicePairing: {
+        listNativePushRegistrationsByPlatform: () => ({
+          registrations: [],
+          unreadable: [],
+        }),
+        clearNativePush: vi.fn(),
+        environmentId: () => ENVIRONMENT_ID,
+      },
+      signingKey: { read: () => null },
+      gateway: GATEWAY,
+      sendFloor,
+      logger: { warn: vi.fn() },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      now: () => NOW,
+      sleep,
+    });
+    sendFloor.record('gone-phone', NOW);
+    const target = {
+      surface: 'device:gone-phone' as const,
+      ref: 'gone-phone',
+      hideContent: false,
+    };
+    const outcomes = await Promise.all([
+      channel.deliver(notification({ id: 'n-1' }), envelope(), [target]),
+      channel.deliver(notification({ id: 'n-2' }), envelope(), [target]),
+    ]);
+    expect(outcomes.flat().map((o) => o.result)).toEqual([
+      'suppressed',
+      'suppressed',
+    ]);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(sendFloor.lastSendAt('gone-phone')).toBe(NOW);
   });
 });
