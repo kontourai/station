@@ -12,13 +12,66 @@ function authorization(owner: string | undefined) {
     eventStore: {
       findSessionOwnerUserId: () => owner,
     } as never,
-    legacyPersonalOwner: 'released-os-alias',
-    ownerlessSessionAccess: 'deny',
+    personalConversationAccess: {
+      // Every member of the personal account may read the operator's rows.
+      canRead: (_requester, ownerId) => ownerId === LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerIds: () => [LOCAL_OPERATOR_PRINCIPAL_ID],
+    },
   });
 }
 
-describe('SessionAuthorization legacy personal-owner bridge (#749)', () => {
-  test('admits only the local operator with Station-home possession', () => {
+describe('SessionAuthorization refuses every ownerless session (#2567)', () => {
+  // No owner is recorded for an unknown or made-up id either, so this is
+  // also the refusal of a guessed id.
+  test.each([
+    ['the local operator', LOCAL_OPERATOR_PRINCIPAL_ID, { localHome: true }],
+    ['the operator credential', LOCAL_OPERATOR_PRINCIPAL_ID, {}],
+    ['a paired device', 'human:device:phone', {}],
+    ['a WhoIs identity', 'human:tailscale-serve:owner@github', {}],
+  ] as const)('%s cannot read or command it', (_label, userId, options) => {
+    const authz = authorization(undefined);
+    const authority = sessionReadAuthorityFromRequest(
+      userId,
+      undefined,
+      undefined,
+      'localHome' in options ? { localHomePossession: true } : undefined,
+    );
+    expect(authz.canReadSession('made-up-id', authority)).toBe(false);
+    expect(
+      authz.canReadSessionForCommand('made-up-id', userId, undefined),
+    ).toBe(false);
+    // It has no one to notify, either.
+    expect(authz.resolveSessionPresenceSubject('made-up-id')).toBeUndefined();
+  });
+
+  test('an internal command (no caller) keeps its reach', () => {
+    expect(
+      authorization(undefined).canReadSessionForCommand(
+        'made-up-id',
+        undefined,
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
+  test('an owned session is still read by its owner and account members', () => {
+    const authz = authorization(LOCAL_OPERATOR_PRINCIPAL_ID);
+    for (const userId of [LOCAL_OPERATOR_PRINCIPAL_ID, 'human:device:phone']) {
+      expect(
+        authz.canReadSession(
+          'owned',
+          sessionReadAuthorityFromRequest(userId, undefined, undefined),
+        ),
+      ).toBe(true);
+    }
+  });
+});
+
+describe('SessionAuthorization has no OS-alias owner bridge', () => {
+  // A row whose recorded owner is this Station's former OS alias names no
+  // principal. It used to be readable by a home-possession operator (#749);
+  // with the bridge gone it is readable by no caller, however local.
+  test('an alias-owned row is unreadable even by the home-possession operator', () => {
     const authz = authorization('released-os-alias');
     const localHome = sessionReadAuthorityFromRequest(
       LOCAL_OPERATOR_PRINCIPAL_ID,
@@ -26,45 +79,30 @@ describe('SessionAuthorization legacy personal-owner bridge (#749)', () => {
       undefined,
       { localHomePossession: true },
     );
-
-    expect(authz.canReadSession('released', localHome)).toBe(true);
-    // An operator credential is not evidence that this request owns this
-    // Station home, and a paired/WhoIs identity never gets that provenance.
+    expect(authz.canReadSession('released', localHome)).toBe(false);
     expect(
-      authz.canReadSession(
+      authz.canReadSessionForCommand(
         'released',
-        sessionReadAuthorityFromRequest(
-          LOCAL_OPERATOR_PRINCIPAL_ID,
-          undefined,
-          undefined,
-        ),
+        LOCAL_OPERATOR_PRINCIPAL_ID,
+        undefined,
       ),
     ).toBe(false);
+    // An alias is only its own literal id: a caller naming it is not a
+    // principal the store could have recorded, and it gains nothing either.
     expect(
       authz.canReadSession(
         'released',
         sessionReadAuthorityFromRequest('paired-device', undefined, undefined),
       ),
     ).toBe(false);
-    expect(
-      authz.canReadSession(
-        'released',
-        sessionReadAuthorityFromRequest('whois:operator', undefined, undefined),
-      ),
-    ).toBe(false);
-    expect(
-      authz.canReadSession(
-        'released',
-        sessionReadAuthorityFromRequest(
-          'released-os-alias',
-          undefined,
-          undefined,
-        ),
-      ),
-    ).toBe(false);
+    // The owner-narrowed store reads carry no alias either.
+    expect(authz.transcriptOwnerConstraint(localHome)).toEqual({
+      ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerUserIds: [LOCAL_OPERATOR_PRINCIPAL_ID],
+    });
   });
 
-  test('does not leak legacy or ownerless sessions across hosted/guessed callers', () => {
+  test('does not leak ownerless sessions across hosted callers', () => {
     const registry = parseHostedTenantRegistry({
       schemaVersion: 1,
       tenants: [{ id: tenantId('tenant'), authority: 'tenant.example.test' }],
@@ -74,8 +112,9 @@ describe('SessionAuthorization legacy personal-owner bridge (#749)', () => {
       { tenantId: tenantId('tenant') },
       registry,
     );
-    const legacy = authorization('released-os-alias');
-    expect(legacy.canReadSession('released', hosted)).toBe(false);
+    expect(authorization('released-os-alias').canReadSession('x', hosted)).toBe(
+      false,
+    );
     expect(authorization(undefined).canReadSession('ownerless', hosted)).toBe(
       false,
     );
@@ -90,8 +129,6 @@ test('personal sharing applies consistently to direct reads and transcript owner
   );
   const authz = new SessionAuthorization({
     eventStore: { findSessionOwnerUserId: () => 'desktop' } as never,
-    ownerlessSessionAccess: 'deny',
-    legacyPersonalOwner: 'old-owner',
     personalConversationAccess: {
       canRead,
       ownerIds: (id) =>
@@ -112,7 +149,6 @@ test('personal sharing applies consistently to direct reads and transcript owner
     'phone',
     'desktop',
     LOCAL_OPERATOR_PRINCIPAL_ID,
-    'old-owner',
   ]);
   expect(
     authz.canReadSession('conversation', {
@@ -128,11 +164,12 @@ test('personal sharing applies consistently to direct reads and transcript owner
   ).toBeUndefined();
 });
 
-test('personal sharing admits a member to legacy OS-alias sessions as the operator’s history, and nobody else (#2611)', () => {
-  // Pinned so the policy and the bridge's doc cannot drift apart again: the
-  // sharing check judges the alias as the local operator, before the bridge.
-  // Shaped like the production policy: the operator principal and an
-  // approved device are both members; the owner side is the operator.
+test('personal sharing does not map a legacy OS-alias owner to the operator: no member reads alias-owned sessions', () => {
+  // #2611 documented that sharing judged the alias as the local operator, so
+  // every member of the operator's account read alias-owned rows. With the
+  // alias bridge removed the alias is compared as the literal owner it is:
+  // the production-shaped sharing policy (members read the operator's
+  // sessions) admits nobody to it.
   const canRead = vi.fn(
     (requester: string, owner: string) =>
       ['phone', LOCAL_OPERATOR_PRINCIPAL_ID].includes(requester) &&
@@ -140,33 +177,31 @@ test('personal sharing admits a member to legacy OS-alias sessions as the operat
   );
   const withSharing = new SessionAuthorization({
     eventStore: { findSessionOwnerUserId: () => 'released-os-alias' } as never,
-    ownerlessSessionAccess: 'deny',
-    legacyPersonalOwner: 'released-os-alias',
     personalConversationAccess: { canRead, ownerIds: () => undefined },
   });
-  const phone = sessionReadAuthorityFromRequest('phone', undefined, undefined);
-  const stranger = sessionReadAuthorityFromRequest(
-    'stranger',
-    undefined,
-    undefined,
-  );
-  expect(withSharing.canReadSession('released', phone)).toBe(true);
-  expect(canRead).toHaveBeenCalledWith('phone', LOCAL_OPERATOR_PRINCIPAL_ID);
-  expect(withSharing.canReadSession('released', stranger)).toBe(false);
-  // The operator credential without home possession (e.g. from another
-  // machine) is a member too, so it reads them under sharing, though the
-  // bridge alone refuses it (first test in this file).
-  const remoteOperator = sessionReadAuthorityFromRequest(
+  for (const [userId, options] of [
+    ['phone', undefined],
+    ['stranger', undefined],
+    [LOCAL_OPERATOR_PRINCIPAL_ID, undefined],
+    [LOCAL_OPERATOR_PRINCIPAL_ID, { localHomePossession: true as const }],
+  ] as const) {
+    expect(
+      withSharing.canReadSession(
+        'released',
+        sessionReadAuthorityFromRequest(userId, undefined, undefined, options),
+      ),
+      userId,
+    ).toBe(false);
+    expect(
+      withSharing.canReadSessionForCommand('released', userId, undefined),
+    ).toBe(false);
+  }
+  // The sharing policy was asked about the alias itself, never the operator.
+  expect(canRead).toHaveBeenCalledWith('phone', 'released-os-alias');
+  expect(canRead).not.toHaveBeenCalledWith(
+    expect.anything(),
     LOCAL_OPERATOR_PRINCIPAL_ID,
-    undefined,
-    undefined,
   );
-  expect(withSharing.canReadSession('released', remoteOperator)).toBe(true);
-  // Without a sharing policy the bridge is the whole rule: a paired device is
-  // refused (see the bridge test above).
-  expect(
-    authorization('released-os-alias').canReadSession('released', phone),
-  ).toBe(false);
 });
 
 test('hosted reads never consult the personal sharing policy', () => {
@@ -203,10 +238,7 @@ test('hosted reads never consult the personal sharing policy', () => {
 describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () => {
   function actingPrincipal(
     owner: string | undefined,
-    options: {
-      ownerless?: 'deny' | 'single-user-compat';
-      hosted?: boolean;
-    } = {},
+    options: { hosted?: boolean } = {},
   ) {
     return new SessionAuthorization({
       eventStore: {
@@ -215,25 +247,24 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
           unattributedAgent: false,
         }),
       } as never,
-      legacyPersonalOwner: 'released-os-alias',
-      ownerlessSessionAccess: options.ownerless ?? 'single-user-compat',
       requireTenantExecutionContext: () => options.hosted === true,
     }).sessionActingPrincipal('thread');
   }
 
-  test('reads the recorded owner, and names how an operator mapping was derived', () => {
+  test('reads the recorded owner, and never infers one', () => {
     expect(actingPrincipal('human:test:alice')).toEqual({
       id: 'human:test:alice',
       source: 'session-owner',
     });
+    // No alias bridge: an alias-owned row acts for its literal owner, which
+    // is not the local operator.
     expect(actingPrincipal('released-os-alias')).toEqual({
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'legacy-personal-owner',
+      id: 'released-os-alias',
+      source: 'session-owner',
     });
-    expect(actingPrincipal(undefined)).toEqual({
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'ownerless-single-operator',
-    });
+    // An ownerless session acts for no one: nothing maps it to the local
+    // operator any more.
+    expect(actingPrincipal(undefined)).toBeUndefined();
   });
 
   test('a session an agent started without a verified principal acts for no one, whatever owner it records (B2)', () => {
@@ -245,7 +276,6 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
             unattributedAgent,
           }),
         } as never,
-        ownerlessSessionAccess: 'single-user-compat',
       }).sessionActingPrincipal('child');
     expect(authz(true)).toBeUndefined();
     expect(authz(false)).toEqual({
@@ -254,12 +284,8 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
     });
   });
 
-  test('an ownerless session acts for no one on a deny or hosted host, and a legacy alias never maps in hosted mode', () => {
-    expect(actingPrincipal(undefined, { ownerless: 'deny' })).toBeUndefined();
+  test('an ownerless session acts for no one on a hosted host either', () => {
     expect(actingPrincipal(undefined, { hosted: true })).toBeUndefined();
-    expect(
-      actingPrincipal('released-os-alias', { hosted: true }),
-    ).toBeUndefined();
     expect(actingPrincipal('human:test:alice', { hosted: true })).toEqual({
       id: 'human:test:alice',
       source: 'session-owner',

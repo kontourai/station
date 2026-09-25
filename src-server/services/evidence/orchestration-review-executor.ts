@@ -33,6 +33,7 @@ interface ReviewOrchestrationPort {
 
 interface ReviewOrchestrationContext {
   userId?: string;
+  ownerAttribution?: ReviewExecutionInput['context']['ownerAttribution'];
   tenantExecutionContext?: ReviewExecutionInput['context']['tenantExecutionContext'];
 }
 
@@ -105,6 +106,9 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
           agentSlug: input.reviewer.executorAgentSlug,
           reviewEvidenceRequestId: input.requestId,
           reviewEvidenceReviewerId: input.reviewer.reviewerId,
+          // The requesting principal owns the reviewer session; its turn is
+          // then authorized against that owner like any other session's.
+          ...(input.context.userId ? { userId: input.context.userId } : {}),
         },
         signal: input.signal,
       };
@@ -247,6 +251,9 @@ function orchestrationContext(
 ): ReviewOrchestrationContext {
   return {
     ...(input.context.userId ? { userId: input.context.userId } : {}),
+    ...(input.context.ownerAttribution
+      ? { ownerAttribution: input.context.ownerAttribution }
+      : {}),
     ...(input.context.tenantExecutionContext
       ? { tenantExecutionContext: input.context.tenantExecutionContext }
       : {}),

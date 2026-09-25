@@ -243,6 +243,8 @@ function installCurrentStationFetch(): void {
   });
 }
 
+const OWNER = 'human:test:delegator';
+
 describe('station#4543: delegate create -> status/events binding survives for an ACP target', () => {
   let tmp: string;
   let eventStore: EventStore;
@@ -263,11 +265,6 @@ describe('station#4543: delegate create -> status/events binding survives for an
       eventStore,
       adoptionLedger: eventStore.createAdoptionLedger(),
       sessionOwnerCacheMaxEntries: 2,
-      // Personal-mode default (runtime-initialize.ts): a delegated task
-      // created with no explicit userId is still an ownerless session for
-      // authorization purposes, and dispatch's `canReadSessionForCommand`
-      // check requires this to read/act on it.
-      ownerlessSessionAccess: 'single-user-compat',
       flowRunService: new FlowRunService(),
       listProjects: () => [],
       agentPolicyService: new AgentPolicyService({
@@ -312,6 +309,9 @@ describe('station#4543: delegate create -> status/events binding survives for an
     const handle = await delegateTask(
       {
         prompt: 'Write the requested file',
+        // The delegating principal owns the task session; every later read
+        // below is that principal's.
+        userId: OWNER,
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -343,13 +343,13 @@ describe('station#4543: delegate create -> status/events binding survives for an
     // requested task does not match a delegated-task binding in the
     // selected environment" for a task the create call just produced.
     await expect(
-      observeDelegatedTask({ taskId }, service),
+      observeDelegatedTask({ taskId, userId: OWNER }, service),
     ).resolves.toMatchObject({
       taskId,
       target: { kind: 'agent', id: 'opencode-agent' },
     });
     await expect(
-      observeDelegatedTaskEvents({ taskId }, service),
+      observeDelegatedTaskEvents({ taskId, userId: OWNER }, service),
     ).resolves.toMatchObject({ taskId });
 
     // archive#4543 MED-1 (issue-author ruling): both id forms RESOLVE — the
@@ -360,13 +360,13 @@ describe('station#4543: delegate create -> status/events binding survives for an
     // from the bound metadata, never the caller's input string).
     const bareUuid = taskId.slice('task:'.length);
     await expect(
-      observeDelegatedTask({ taskId: bareUuid }, service),
+      observeDelegatedTask({ taskId: bareUuid, userId: OWNER }, service),
     ).resolves.toMatchObject({
       taskId,
       target: { kind: 'agent', id: 'opencode-agent' },
     });
     await expect(
-      observeDelegatedTaskEvents({ taskId: bareUuid }, service),
+      observeDelegatedTaskEvents({ taskId: bareUuid, userId: OWNER }, service),
     ).resolves.toMatchObject({ taskId });
 
     // archive#4543 LOW-5: `continueDelegatedTask` loads the same binding
@@ -375,7 +375,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
     // fix transitively repairs it. Pin that half of the verb surface too.
     await expect(
       continueDelegatedTask(
-        { taskId, message: 'Now also write a second file' },
+        { taskId, message: 'Now also write a second file', userId: OWNER },
         service,
       ),
     ).resolves.toMatchObject({ taskId });
@@ -389,6 +389,9 @@ describe('station#4543: delegate create -> status/events binding survives for an
     const handle = await delegateTask(
       {
         prompt: 'Write the requested file',
+        // The delegating principal owns the task session; every later read
+        // below is that principal's.
+        userId: OWNER,
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -479,7 +482,10 @@ describe('station#4543: delegate create -> status/events binding survives for an
     // returned invalid task event state" for a perfectly healthy task. Both
     // the resolution and the reported count must reflect the thread's real
     // event total, not the projection fold's size.
-    const page = await observeDelegatedTaskEvents({ taskId }, service);
+    const page = await observeDelegatedTaskEvents(
+      { taskId, userId: OWNER },
+      service,
+    );
     expect(page.taskId).toBe(taskId);
     expect(page.eventCount).toBe(trueEventCount);
   });

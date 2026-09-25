@@ -63,6 +63,20 @@ describe('FocusPresence', () => {
     expect(presence.isAnyFocused(['device:phone'])).toBe(false);
   });
 
+  test('focusedSessions names the focused documents of a surface, and none once they lapse', () => {
+    const time = clock();
+    const presence = new FocusPresence({ now: time.now });
+    expect(presence.focusedSessions('device:phone')).toEqual([]);
+    send(presence, phone, TAB_A, 'focused');
+    send(presence, phone, TAB_B, 'hidden');
+    expect(presence.focusedSessions('device:phone')).toEqual([TAB_A]);
+    send(presence, phone, TAB_A, 'hidden');
+    send(presence, phone, TAB_B, 'focused');
+    expect(presence.focusedSessions('device:phone')).toEqual([TAB_B]);
+    time.advance(120_001);
+    expect(presence.focusedSessions('device:phone')).toEqual([]);
+  });
+
   test('a heartbeat renews the lease', () => {
     const time = clock();
     const presence = new FocusPresence({ now: time.now });

@@ -41,6 +41,7 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -55,6 +56,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
+import { createWebhookTurnStarter } from '../../webhooks/webhook-turn-starter.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const CURRENT_API = 'http://confinement.test';
@@ -280,7 +282,6 @@ async function fixture(
       agent: { slug: String(input.metadata?.agentSlug ?? 'agent') },
     }),
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   } as never);
   cleanups.push(async () => {
     await service.shutdown();
@@ -586,6 +587,40 @@ describe('#2493: who may start a session unconfined', () => {
       confinement: 'workspace',
       approvalMode: 'auto',
     });
+  });
+
+  test("a webhook turn's session is readable by the operator only and acts for no one", async () => {
+    const f = await fixture();
+    const startTurn = createWebhookTurnStarter({
+      readAuthorityFor: f.readAuthority,
+      orchestrationService: f.service,
+    });
+    const started = await startTurn({
+      target: {
+        environment: { kind: 'current' },
+        agent: agentId('claude-agent'),
+      },
+      message: 'from a webhook',
+      ephemeral: true,
+      webhookTokenId: 'token-1',
+    });
+    const sessionId = f.claude.starts.at(-1)!.threadId;
+    expect(started.conversationId).toEqual(expect.any(String));
+    expect(f.store.findSessionOwnerUserId(sessionId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    expect(
+      f.service.canUserReadSession(
+        sessionId,
+        f.readAuthority(LOCAL_OPERATOR_PRINCIPAL_ID),
+      ),
+    ).toBe(true);
+    expect(
+      f.service.canUserReadSession(sessionId, f.readAuthority('stranger')),
+    ).toBe(false);
+    // An external sender drives it: it must never act (or elevate) as the
+    // operator.
+    expect(f.service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
   });
 
   test('a caller-supplied confinement, stamp or grant in the body is ignored', async () => {

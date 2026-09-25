@@ -2356,7 +2356,8 @@ export const connectedClientPresenceOps = meter.createCounter(
  * A turn's completion/abort notification-scheduling decision, by outcome
  * (`done`/`failed`, omitted for an `error` result) and gate result
  * (`scheduled` when nobody was watching, `skipped_connected` when the
- * owning user had a live stream open, `error` when the listener's own
+ * owning user had a live stream open, `skipped_no_recipient` when the
+ * session has no owner who may read it, `error` when the listener's own
  * defensive try/catch caught a throw — see `turn-completion-notifications.ts`).
  * Only a `scheduled` decision ever reaches `NotificationService.schedule`
  * (and, via the notification delivery router's Web Push channel, a Web Push

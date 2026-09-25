@@ -223,6 +223,21 @@ export class FocusPresence {
     return this.snapshot(ids);
   }
 
+  /**
+   * The client sessions (documents) whose unexpired report on `surfaceId` is
+   * `focused`. A device surface reconciles several documents into one state;
+   * this names which of them the focus actually belongs to, so a caller can
+   * check THAT document rather than the device as a whole (#2620).
+   */
+  focusedSessions(surfaceId: SurfaceId): string[] {
+    this.#expire(this.#now());
+    const sessions = this.#surfaces.get(surfaceId)?.sessions;
+    if (!sessions) return [];
+    return [...sessions]
+      .filter(([, report]) => report.state === 'focused')
+      .map(([sessionId]) => sessionId);
+  }
+
   isAnyFocused(surfaceIds: readonly SurfaceId[]): boolean {
     for (const entry of this.snapshot(surfaceIds).values()) {
       if (entry.state === 'focused') return true;
