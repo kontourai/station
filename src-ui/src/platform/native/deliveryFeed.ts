@@ -35,12 +35,17 @@ export interface DeliveryFeedDeps {
   readFeed(
     surface: string,
     after: number,
+    epoch: string | undefined,
   ): Promise<SurfaceDeliveryFeed | undefined>;
   isWindowFocused(): boolean;
   notify(input: { title: string; body?: string }): Promise<boolean>;
 }
 
-let state: { scopeKey: string; cursor: number | null } | null = null;
+let state: {
+  scopeKey: string;
+  cursor: number | null;
+  epoch?: string;
+} | null = null;
 
 /** Test seam. */
 export function resetDeliveryFeedState(): void {
@@ -50,10 +55,12 @@ export function resetDeliveryFeedState(): void {
 function defaultDeps(apiBase: string): DeliveryFeedDeps {
   return {
     installationId: () => desktopInstallationId(),
-    readFeed: async (surface, after) => {
+    readFeed: async (surface, after, epoch) => {
       try {
+        const query = new URLSearchParams({ surface, after: String(after) });
+        if (epoch !== undefined) query.set('epoch', epoch);
         const response = await authenticatedFetch(
-          `${apiBase}${NOTIFICATION_DELIVERIES_PATH}?surface=${encodeURIComponent(surface)}&after=${after}`,
+          `${apiBase}${NOTIFICATION_DELIVERIES_PATH}?${query}`,
         );
         if (!response.ok) return undefined;
         const body = (await response.json()) as {
@@ -82,23 +89,24 @@ export async function pollDeliveryFeed(
   if (state?.scopeKey !== scopeKey) state = { scopeKey, cursor: null };
   const current = state;
   const after = current.cursor ?? 0;
-  const feed = await deps.readFeed(desktopHostSurfaceId(installationId), after);
+  const feed = await deps.readFeed(
+    desktopHostSurfaceId(installationId),
+    after,
+    current.epoch,
+  );
   // A connection switch while the read was in flight: this answer belongs
   // to the previous connection.
   if (state !== current || !feed) return 0;
-  if (current.cursor === null) {
-    current.cursor = feed.cursor;
-    return 0;
-  }
-  if (feed.cursor < after) {
-    // The server restarted and its sequence began again. Everything it now
-    // holds is newer than what this document has seen: read it next time.
-    current.cursor = 0;
-    return 0;
-  }
+  const seeding = current.cursor === null;
+  // A different epoch is a restarted server: its sequence began again and
+  // it answered from the start of its feed, all of it newer than this
+  // document has seen.
+  const from = feed.epoch === current.epoch ? after : 0;
   current.cursor = feed.cursor;
+  current.epoch = feed.epoch;
+  if (seeding) return 0;
   const entries = [...feed.entries]
-    .filter((entry) => entry.seq > after)
+    .filter((entry) => entry.seq > from)
     .sort((a, b) => a.seq - b.seq);
   const retractedAt = new Map<string, number>();
   for (const entry of entries)
@@ -124,6 +132,7 @@ function isFeed(value: unknown): value is SurfaceDeliveryFeed {
   const feed = value as Partial<SurfaceDeliveryFeed>;
   return (
     Number.isSafeInteger(feed.cursor) &&
+    typeof feed.epoch === 'string' &&
     Array.isArray(feed.entries) &&
     feed.entries.every(isEntry)
   );

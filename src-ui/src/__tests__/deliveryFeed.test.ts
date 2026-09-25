@@ -57,14 +57,14 @@ function deps(
   answers: Array<SurfaceDeliveryFeed | undefined>,
   focused = false,
 ) {
-  const reads: Array<{ surface: string; after: number }> = [];
+  const reads: Array<{ surface: string; after: number; epoch?: string }> = [];
   const notify = vi.fn(
     async (_input: { title: string; body?: string }) => true,
   );
   const d: DeliveryFeedDeps = {
     installationId: async () => '6f1c2d3e-aaaa-4bbb-8ccc-111122223333',
-    readFeed: async (surface, after) => {
-      reads.push({ surface, after });
+    readFeed: async (surface, after, epoch) => {
+      reads.push({ surface, after, ...(epoch ? { epoch } : {}) });
       return answers.shift();
     },
     isWindowFocused: () => focused,
@@ -73,8 +73,12 @@ function deps(
   return { d, reads, notify };
 }
 
-function feed(cursor: number, entries: SurfaceDeliveryEntry[] = []) {
-  return { cursor, entries, leaseMs: 90_000 };
+function feed(
+  cursor: number,
+  entries: SurfaceDeliveryEntry[] = [],
+  epoch = 'run-1',
+) {
+  return { cursor, entries, epoch, leaseMs: 90_000 };
 }
 
 describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
@@ -94,7 +98,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
     expect(reads).toEqual([
       { surface: SURFACE, after: 0 },
-      { surface: SURFACE, after: 4 },
+      { surface: SURFACE, after: 4, epoch: 'run-1' },
     ]);
     // Title/body are taken as-is: the server already redacted per hideContent.
     expect(notify).toHaveBeenCalledWith({ title: 'Station', body: 'Body n-1' });
@@ -147,16 +151,19 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     expect(notify).toHaveBeenCalledTimes(1);
   });
 
-  test('a restarted server’s lower cursor is re-read from zero', async () => {
+  test('a restarted server (new epoch) answers from its start, and those entries post', async () => {
     const { d, notify, reads } = deps([
       feed(40),
-      feed(2),
-      feed(2, [alert(1, 'n-1'), alert(2, 'n-2')]),
+      feed(2, [alert(1, 'n-1'), alert(2, 'n-2')], 'run-2'),
+      feed(2, [], 'run-2'),
     ]);
     await pollDeliveryFeed(A, SCOPE, d);
-    await pollDeliveryFeed(A, SCOPE, d);
     expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(2);
-    expect(reads.map((read) => read.after)).toEqual([0, 40, 0]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(reads.slice(1)).toEqual([
+      { surface: SURFACE, after: 40, epoch: 'run-1' },
+      { surface: SURFACE, after: 2, epoch: 'run-2' },
+    ]);
     expect(notify).toHaveBeenCalledTimes(2);
   });
 
@@ -201,7 +208,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s desktop host feed)', () => {
     await pollDeliveryFeed(A, SCOPE);
     expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
-      `${A}/api/notifications/deliveries?surface=${encodeURIComponent(SURFACE)}&after=7`,
+      `${A}/api/notifications/deliveries?surface=${encodeURIComponent(SURFACE)}&after=7&epoch=run-1`,
     );
     expect(notifyNatively).toHaveBeenCalledWith({
       title: 'Alert n-1',
