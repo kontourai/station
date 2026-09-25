@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { AgentPolicyService } from '../../../services/agents/agent-policy-service.js';
 import { makeUnattendedGrantResolver } from '../../../services/agents/unattended-grant-resolver.js';
 import {
@@ -1022,6 +1023,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
  * `chat-primary-stream.ts` registers it.
  */
 describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)', () => {
+  const makeTempDir = trackTempDirs();
   const DELETE_AGENT = 'stationControl_deleteAgent';
   const deleteAgentCall = {
     toolName: DELETE_AGENT,
@@ -1300,41 +1302,37 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
   });
 
   test('config protection still blocks an opted-in tool', async () => {
-    const ws = mkdtempSync(join(tmpdir(), 'agent-hooks-2613-'));
-    try {
-      mkdirSync(join(ws, '.flow-agents'), { recursive: true });
-      const { hooks } = hooksFor(
-        { unattendedAutoApprove: ['fs_write'] },
+    const ws = makeTempDir('agent-hooks-2613-');
+    mkdirSync(join(ws, '.flow-agents'), { recursive: true });
+    const { hooks } = hooksFor(
+      { unattendedAutoApprove: ['fs_write'] },
+      {
+        agentPolicyService: new AgentPolicyService({
+          env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+          logger: { debug: vi.fn(), warn: vi.fn() },
+        }),
+      },
+    );
+    const write = (path: string) =>
+      hooks.beforeToolCall!(
         {
-          agentPolicyService: new AgentPolicyService({
-            env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
-            logger: { debug: vi.fn(), warn: vi.fn() },
-          }),
+          toolName: 'fs_write',
+          toolCallId: 'tool-1',
+          toolArgs: { path, content: '{}' },
         },
+        { agentSlug: 'planner' },
       );
-      const write = (path: string) =>
-        hooks.beforeToolCall!(
-          {
-            toolName: 'fs_write',
-            toolCallId: 'tool-1',
-            toolArgs: { path, content: '{}' },
-          },
-          { agentSlug: 'planner' },
-        );
 
-      // The opt-in is live for this tool…
-      await expect(write(join(ws, 'notes.md'))).resolves.toBe(true);
-      // …and still loses to config protection.
-      await expect(write(join(ws, 'biome.json'))).resolves.toMatchObject({
-        allowed: false,
-        reason: expect.stringContaining('config-protection'),
-      });
-      expect(toolDenials.add).toHaveBeenCalledWith(1, {
-        reason: 'policy_config_protection',
-      });
-    } finally {
-      rmSync(ws, { recursive: true, force: true });
-    }
+    // The opt-in is live for this tool…
+    await expect(write(join(ws, 'notes.md'))).resolves.toBe(true);
+    // …and still loses to config protection.
+    await expect(write(join(ws, 'biome.json'))).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('config-protection'),
+    });
+    expect(toolDenials.add).toHaveBeenCalledWith(1, {
+      reason: 'policy_config_protection',
+    });
   });
 
   test('the guardian is consulted first, and only an enforce-mode deny vetoes the opt-in', async () => {

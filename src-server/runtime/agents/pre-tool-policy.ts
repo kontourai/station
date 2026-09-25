@@ -140,6 +140,23 @@ const CHILD_REMEDY =
 const SCHEDULED_JOB_REMEDY =
   'To allow it for this scheduled job alone, an operator can record an unattended tool grant for the job instead.';
 
+/**
+ * The opt-in is honoured on Station's engine only, so an external (ACP or
+ * Claude) child is not sent to an edit that changes nothing there.
+ */
+function childDenialPredicate(interaction: 'managed' | 'external'): string {
+  const predicate =
+    'requires approval, and delegated child sessions cannot grant approvals.';
+  return interaction === 'managed' ? `${predicate} ${CHILD_REMEDY}` : predicate;
+}
+
+function unattendedGrantDenialPredicate(invocation: InvocationContext): string {
+  const predicate = `was denied for this unattended run. ${UNATTENDED_REMEDY}`;
+  return invocation.unattendedPrincipal?.kind === 'scheduled-job'
+    ? `${predicate} ${SCHEDULED_JOB_REMEDY}`
+    : predicate;
+}
+
 /** Station's own half of a config-protection denial, always present. */
 const CONFIG_PROTECTION_PREDICATE =
   'was blocked by the config-protection policy.';
@@ -359,11 +376,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'delegation_deny_approvals',
         tool.toolName,
-        // The opt-in is honoured on Station's engine only, so an external
-        // (ACP/Claude) child is not sent to an edit that changes nothing.
-        options.interaction === 'managed'
-          ? `requires approval, and delegated child sessions cannot grant approvals. ${CHILD_REMEDY}`
-          : 'requires approval, and delegated child sessions cannot grant approvals.',
+        childDenialPredicate(options.interaction),
       );
     }
 
@@ -409,9 +422,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'unattended_grant_denied',
         tool.toolName,
-        invocation.unattendedPrincipal?.kind === 'scheduled-job'
-          ? `was denied for this unattended run. ${UNATTENDED_REMEDY} ${SCHEDULED_JOB_REMEDY}`
-          : `was denied for this unattended run. ${UNATTENDED_REMEDY}`,
+        unattendedGrantDenialPredicate(invocation),
       );
     }
     deps.logger.warn('No approval channel; denied tool execution', {
