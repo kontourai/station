@@ -66,6 +66,16 @@ export function serverTurnLive(
   );
 }
 
+/** Display-only work liveness. Child work and a pending provider reply never
+ * grant turn controls; those continue to use `serverTurnLive`. */
+export function serverWorkLive(
+  session: ConversationActivityCarrier | null | undefined,
+): boolean | undefined {
+  const turn = serverTurnLive(session);
+  if (turn === undefined) return undefined;
+  return turn || session?.conversationActivity?.runningChildWork !== undefined;
+}
+
 /**
  * Where Stop and steer are addressed. The server's open turn names the exact
  * execution child running it, which after a continuation or handoff is not

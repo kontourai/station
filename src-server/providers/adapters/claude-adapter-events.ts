@@ -42,6 +42,7 @@ import {
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
   ensureClaudeTurnStartPublished,
+  observeClaudeBackgroundChildSettling,
   observeClaudeCommandLifecycle,
   observeClaudeEmptyResult,
   observeClaudeInit,
@@ -413,6 +414,8 @@ export function mapClaudeSdkMessage({
     record,
     publish,
     createdAt,
+    onBackgroundChildSettling: () =>
+      observeClaudeBackgroundChildSettling(turnContext),
   };
 
   if (message.type === 'system' && message.subtype === 'init') {

@@ -4283,6 +4283,8 @@ export function createOrchestrationRoutes(
                     threadId?: string;
                     eventId?: string;
                     method?: string;
+                    namespace?: string;
+                    type?: string;
                   };
                 }
               | undefined
@@ -4299,6 +4301,8 @@ export function createOrchestrationRoutes(
           const conversation = orchestrationService.conversationStreamBinding({
             threadId: eventThreadId,
             method: eventPayload?.method,
+            namespace: eventPayload?.namespace,
+            type: eventPayload?.type,
           });
           if (globalSequence !== undefined && eventPayload?.method)
             noteActivity(eventThreadId, conversation !== undefined);

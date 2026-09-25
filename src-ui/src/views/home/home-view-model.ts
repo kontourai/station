@@ -12,7 +12,7 @@ import {
   type ChatUIState,
 } from '../../contexts/active-chats-state';
 import type { AgentSummary } from '../../types';
-import { serverTurnLive } from '../../utils/conversation-activity';
+import { serverWorkLive } from '../../utils/conversation-activity';
 import type { HomeLifecycleLabel } from '../../utils/lifecycle-priority';
 import {
   LIFECYCLE_PRIORITY,
@@ -60,6 +60,8 @@ export interface HomeWorkItem {
   turnProgress?: OrchestrationSessionSummary['turnProgress'];
   updatedAt: number;
   lifecycleLabel: HomeLifecycleLabel;
+  /** Reason for a Running label; background work never grants turn controls. */
+  activeReason?: 'turn' | 'background';
   /**
    * archive#1783: the observation behind an `'Unanswerable'` lifecycle
    * label — which arm fired, which process observed it, and when. Set only
@@ -408,6 +410,15 @@ function buildSessionWorkItem(
     // of one decoration.
     ...(unanswerableNotice ? { unanswerableNotice } : {}),
     ...(failureNotice ? { failureNotice } : {}),
+    ...(lifecycleLabel === 'Running'
+      ? {
+          activeReason: session.conversationActivity?.openTurn
+            ? ('turn' as const)
+            : session.conversationActivity?.runningChildWork
+              ? ('background' as const)
+              : ('turn' as const),
+        }
+      : {}),
     // Deliberately NOT set for a remote item: `orchestrationThreadId` here
     // is the same raw `session.threadId` a LOCAL orchestration item also
     // uses as an identity key (see `home-lane-model.ts`'s
@@ -606,6 +617,10 @@ function mergeHomeWorkItems(
       ...(chat ? { chatSessionId: chat.chatSessionId } : {}),
       updatedAt: Math.max(existing.updatedAt, item.updatedAt),
       lifecycleLabel: mergedLifecycleLabel,
+      activeReason:
+        mergedLifecycleLabel === 'Running'
+          ? (orchestration?.activeReason ?? chat?.activeReason)
+          : undefined,
       failureNotice: mergedFailureNotice,
       orchestrationThreadId: orchestration?.orchestrationThreadId,
       ...(lineage.length > 0 ? { orchestrationThreadIds: lineage } : {}),
@@ -830,6 +845,7 @@ function chatFailureNotice(chat: ChatUIState): string | null {
  */
 interface ChatSessionCorrelation {
   hasActiveTurn: boolean;
+  hasActiveWork?: boolean;
   failed: boolean;
   /** #2310: the server's lineage-aware Draft fold for this conversation. */
   draft: boolean;
@@ -839,15 +855,8 @@ interface ChatSessionCorrelation {
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
-  turnByThread: Map<string, ChatSessionCorrelation>,
+  correlated: ChatSessionCorrelation | undefined,
 ): HomeWorkItem['lifecycleLabel'] {
-  // Mirrors mergeHomeWorkItems' own key (`chat.conversationId || id`) exactly:
-  // the store key is a fallback for a MISSING conversationId, never a second
-  // guess when a present one simply doesn't correlate. Retrying the store key
-  // there could borrow an unrelated session's fold for a chat the merge would
-  // never pair with it (archive#1075).
-  const correlationKey = chat.conversationId || sessionId;
-  const correlated = turnByThread.get(correlationKey);
   if (chat.status === 'error' || chat.orchestrationStatus === 'failed') {
     return 'Failed';
   }
@@ -863,7 +872,13 @@ function chatLifecycleLabel(
   // #2309: the conversation's server record, when there is one, is THE
   // running answer — the same record every device reads. A local `status:
   // 'sending'` counts only inside this composer's unacknowledged send.
-  const serverLive = serverTurnLive(chat);
+  const activity = chat.conversationActivity;
+  const childWorkOnOtherExecution =
+    activity?.runningChildWork !== undefined &&
+    chat.conversationId !== activity.conversationId &&
+    activity.currentThreadId !== sessionId &&
+    activity.openTurn === undefined;
+  const serverLive = childWorkOnOtherExecution ? false : serverWorkLive(chat);
   if (serverLive === true) return 'Running';
   if (serverLive === undefined && chat.status === 'sending') return 'Running';
   // #765 A2: the server recorded this conversation's current session as
@@ -882,7 +897,9 @@ function chatLifecycleLabel(
   // No correlated session means no better signal than the chat store itself —
   // notably chats on non-orchestration send paths, which never have one.
   if (!correlated) return 'Running';
-  return correlated.hasActiveTurn ? 'Running' : 'Recent';
+  return correlated.hasActiveWork || correlated.hasActiveTurn
+    ? 'Running'
+    : 'Recent';
 }
 
 export function buildActiveChatTaskItems({
@@ -917,6 +934,7 @@ export function buildActiveChatTaskItems({
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
   const turnByThread = new Map<string, ChatSessionCorrelation>();
+  const turnByConversation = new Map<string, ChatSessionCorrelation>();
   const sessionByThread = new Map(
     sessions.map((session) => [session.threadId, session]),
   );
@@ -926,10 +944,14 @@ export function buildActiveChatTaskItems({
       // this row's own fold is the older-server path. The entry is keyed
       // below by both this row's thread and its conversation, so the record
       // is read per thread (its open turn is on THIS thread) for the first
-      // and per conversation for the second.
+      // and per conversation for the second. Keep those maps separate: the
+      // root execution's thread id is also the conversation id.
       hasActiveTurn: session.conversationActivity
         ? session.conversationActivity.openTurn?.threadId === session.threadId
         : session.hasActiveTurn === true,
+      hasActiveWork:
+        session.conversationActivity?.currentThreadId === session.threadId &&
+        session.conversationActivity.runningChildWork !== undefined,
       failed:
         session.lifecycleState === 'failed' || isFirstSendFailure(session),
       draft: session.draft === true,
@@ -941,16 +963,27 @@ export function buildActiveChatTaskItems({
     // execution session — long stopped once continuation children exist.
     // Key the conversation to its newest child so the chip reflects the
     // session actually running (or actually failed) now.
-    if (session.conversationId) {
-      const current = turnByThread.get(session.conversationId);
-      if (!current || session.updatedAt.localeCompare(current.updatedAt) >= 0) {
-        turnByThread.set(
-          session.conversationId,
+    const conversationId =
+      session.conversationId ??
+      session.conversationActivity?.conversationId ??
+      session.threadId;
+    if (conversationId) {
+      const current = turnByConversation.get(conversationId);
+      if (
+        !current ||
+        session.conversationActivity?.currentThreadId === session.threadId ||
+        (session.conversationActivity?.currentThreadId === undefined &&
+          session.updatedAt.localeCompare(current.updatedAt) >= 0)
+      ) {
+        turnByConversation.set(
+          conversationId,
           session.conversationActivity
             ? {
                 ...entry,
                 hasActiveTurn:
                   session.conversationActivity.openTurn !== undefined,
+                hasActiveWork:
+                  session.conversationActivity.runningChildWork !== undefined,
               }
             : entry,
         );
@@ -974,6 +1007,13 @@ export function buildActiveChatTaskItems({
         currentExecution?.model ??
         currentExecution?.appliedModel;
       const model = observedModel ?? chat.orchestrationModel ?? chat.model;
+      // A present conversation id is authoritative. A thread-only chat must
+      // keep its own execution fold, even when its id equals the root's
+      // conversation id (archive#1075).
+      const correlated = chat.conversationId
+        ? turnByConversation.get(chat.conversationId)
+        : turnByThread.get(id);
+      const lifecycleLabel = chatLifecycleLabel(chat, id, correlated);
       return {
         id: chat.conversationId || id,
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
@@ -993,12 +1033,24 @@ export function buildActiveChatTaskItems({
         // must not have to parse a display string back into one.
         model,
         updatedAt: latestChatTimestamp(chat),
-        lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
+        lifecycleLabel,
+        ...(lifecycleLabel === 'Running'
+          ? {
+              activeReason:
+                chat.conversationActivity?.runningChildWork &&
+                !chat.conversationActivity.openTurn
+                  ? ('background' as const)
+                  : !chat.conversationActivity &&
+                      correlated?.hasActiveWork &&
+                      !correlated.hasActiveTurn
+                    ? ('background' as const)
+                    : ('turn' as const),
+            }
+          : {}),
         // Bound to the label in both directions, like unanswerableNotice: a
         // notice may exist only under a 'Failed' chip, and a 'Failed' chip
         // shows its reason whenever one was recorded.
-        ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
-        chatFailureNotice(chat)
+        ...(lifecycleLabel === 'Failed' && chatFailureNotice(chat)
           ? { failureNotice: chatFailureNotice(chat) as string }
           : {}),
         chatSessionId: id,
