@@ -17,7 +17,7 @@
  */
 
 /** Deferrals after which notifications leave the card the next slot. */
-export const CARD_YIELD_AFTER = 2;
+const CARD_YIELD_AFTER = 2;
 
 /** Never send to one phone more often than this. */
 export const NATIVE_PUSH_MIN_SEND_INTERVAL_MS = 3_000;

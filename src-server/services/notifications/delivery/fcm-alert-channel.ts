@@ -75,7 +75,7 @@ import {
 } from './channel.js';
 
 /** Waiting sends per phone before `info` alerts are dropped. */
-export const MAX_PENDING_PER_PHONE = 8;
+const MAX_PENDING_PER_PHONE = 8;
 /** How long a sent alert may still be shown; the gateway's FCM TTL matches. */
 export const FCM_ALERT_LIFETIME_MS = 60 * 60_000;
 /**
