@@ -320,7 +320,7 @@ export class ApnsAlertChannel implements DeliveryChannel {
  * hideContent the neutral text at the same urgency. Undefined for urgencies
  * this channel does not carry.
  */
-export function apnsAlertKind(
+function apnsAlertKind(
   urgency: NotificationUrgency,
   hideContent: boolean,
 ): ApnsAlertKind | undefined {
