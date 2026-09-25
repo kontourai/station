@@ -30,6 +30,7 @@ import { readNotificationEnvelope } from '@kontourai/station-shared/notification
 import { errorMessage } from '../../../utils/error-message.js';
 import type { EventBus } from '../../orchestration/event-bus.js';
 import type { NotificationPreferencesReader } from '../notification-preferences.js';
+import { notificationSessionIdentity } from '../notification-session.js';
 import type {
   AudienceResolution,
   AudienceResolver,
@@ -160,10 +161,15 @@ export function wireNotificationDeliveryRouter(
   }
 
   function resolveAudience(
+    notification: Notification,
     envelope: NotificationEnvelopeV1,
   ): AudienceResolution | undefined {
     try {
-      return resolver.resolve(envelope);
+      const sessionId = notificationSessionIdentity(notification, envelope);
+      return resolver.resolve(
+        envelope,
+        sessionId === undefined ? {} : { sessionId },
+      );
     } catch (error) {
       logger.warn('notification-delivery: audience resolution failed', {
         error: errorMessage(error),
@@ -353,7 +359,7 @@ export function wireNotificationDeliveryRouter(
     // A fresh delivery (first, or after a snooze) starts a fresh record:
     // "once per surface" is per delivery, as Web Push has always behaved.
     forget(notification.id);
-    const audience = resolveAudience(envelope);
+    const audience = resolveAudience(notification, envelope);
     if (!audience) return;
     const { surfaces, refs } = collectSurfaces(
       notification,
@@ -437,7 +443,7 @@ export function wireNotificationDeliveryRouter(
     // The record may have been read or dismissed while it was being read back.
     if (tracked.get(id) !== entry) return;
     const { envelope } = deliveryEnvelopeFor(current);
-    const audience = resolveAudience(envelope);
+    const audience = resolveAudience(current, envelope);
     if (!audience) {
       if (!hasRetractable(entry)) tracked.delete(id);
       return;
@@ -577,13 +583,13 @@ function resolvedPrincipal(
     : audience.principalOf?.get(surface);
 }
 
-/** The focus grouping key: one key for a one-person audience. */
-const ONE_PERSON = 'audience:one-person';
+/** The focus grouping key shared by every principal that is the owner. */
+const ONE_PERSON = 'audience:owner';
 function groupPrincipal(
   principalId: string,
   audience: AudienceResolution,
 ): string {
-  return audience.onePerson ? ONE_PERSON : principalId;
+  return audience.ownerPrincipals?.has(principalId) ? ONE_PERSON : principalId;
 }
 
 /** The surface's focus group for the policy; absent when unresolved. */

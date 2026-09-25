@@ -17,6 +17,10 @@
  * delegated Stations are refused everywhere here: an agent that could write
  * the preferences could unmute itself.
  */
+import {
+  DESKTOP_INSTALLATION_HEADER,
+  desktopHostSurfaceId,
+} from '@kontourai/station-contracts/notification-preferences';
 import { type Context, Hono } from 'hono';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -45,7 +49,17 @@ export function createNotificationPreferencesRoutes(
     NotificationPreferencesStore,
     'read' | 'write' | 'patch' | 'revision'
   >,
-  options: { desktopHost?: Pick<DesktopHostChannel, 'read'> } = {},
+  options: {
+    desktopHost?: Pick<DesktopHostChannel, 'read'>;
+    /**
+     * Whether a paired device may hold a delivery feed: a personal-family
+     * device (the ones any audience can include). Anything else — a
+     * delegated Station, a no-read-scope or account-bound device — is
+     * refused before it can occupy one of the bounded feed slots. Absent
+     * means no device may.
+     */
+    isFeedDevice?: (deviceId: string) => boolean;
+  } = {},
 ) {
   const app = new Hono();
 
@@ -156,11 +170,17 @@ export function createNotificationPreferencesRoutes(
   });
 
   /**
-   * The CALLER'S OWN feed. A paired device (remote desktop app) reads
-   * `device:<its id>`, derived from its credential; a `surface` naming
-   * anything else is refused. The local operator reads the
-   * `local:desktop-<installationId>` surface it names. No caller can read
-   * another surface's feed.
+   * The CALLER'S OWN feed; the server derives which, the client never
+   * guesses:
+   * - a paired device (a desktop app on a remote Station) → `device:<its
+   *   id>` from its credential (the installation header is ignored);
+   * - the local operator (this computer's desktop app) →
+   *   `local:desktop-<X-Station-Desktop-Installation>`; 400
+   *   `installation_required` when the header is missing or malformed;
+   * - anyone else → 403.
+   * An explicit `surface` query param is accepted only when it equals the
+   * derived surface (older clients); anything else is 403. The response
+   * echoes `surface` so the client keys its cursor by the real id.
    */
   app.get('/deliveries', (c) => {
     if (!options.desktopHost)
@@ -178,20 +198,33 @@ export function createNotificationPreferencesRoutes(
     )?.deviceId;
     let surface: SurfaceId;
     if (deviceId !== undefined) {
-      surface = deviceSurfaceId(deviceId);
-      if (requested !== undefined && requested !== surface)
+      if (options.isFeedDevice?.(deviceId) !== true)
         return c.json(
           {
             success: false,
-            error: 'surface_not_yours',
-            message: 'A device reads only its own delivery feed.',
+            error: 'device_not_eligible',
+            message:
+              "This device cannot receive Station's notifications, so it has no delivery feed.",
           },
           403,
         );
+      surface = deviceSurfaceId(deviceId);
     } else if (isBoundRuntimeLocalOperator(c.req.raw)) {
-      if (!isDesktopHostSurface(requested))
-        return c.json({ success: false, error: 'invalid_request' }, 400);
-      surface = requested;
+      const installation = c.req.header(DESKTOP_INSTALLATION_HEADER);
+      const derived =
+        installation === undefined
+          ? undefined
+          : desktopHostSurfaceId(installation);
+      if (!isDesktopHostSurface(derived))
+        return c.json(
+          {
+            success: false,
+            error: 'installation_required',
+            message: `This computer's desktop app names its installation in ${DESKTOP_INSTALLATION_HEADER}.`,
+          },
+          400,
+        );
+      surface = derived;
     } else {
       return c.json(
         {
@@ -203,6 +236,15 @@ export function createNotificationPreferencesRoutes(
         403,
       );
     }
+    if (requested !== undefined && requested !== surface)
+      return c.json(
+        {
+          success: false,
+          error: 'surface_not_yours',
+          message: 'A caller reads only its own delivery feed.',
+        },
+        403,
+      );
     return c.json({
       success: true,
       data: options.desktopHost.read(surface, Number(afterText), epoch),

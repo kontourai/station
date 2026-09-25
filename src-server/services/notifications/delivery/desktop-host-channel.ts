@@ -148,6 +148,7 @@ export class DesktopHostChannel implements DeliveryChannel {
     feed.lastReadAt = now;
     this.#prune(feed, now);
     return {
+      surface,
       entries: feed.entries
         .filter((entry) => entry.seq > since)
         .map(({ queuedAt: _queuedAt, ...entry }) => entry),

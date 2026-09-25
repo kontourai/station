@@ -35,22 +35,25 @@ export class NotificationPreferencesRequestError extends Error {
 }
 
 /**
- * The ETag of the last document read or written, per API base. Every write
- * sends it as If-Match, so a write based on a stale read is refused (412)
- * instead of overwriting someone else's change.
+ * The ETag of the last document read or written, per API base. A PUT sends
+ * it as If-Match, so a whole-document write based on a stale read is
+ * refused (412) instead of overwriting someone else's change. A PATCH does
+ * not: it is the server-side merge of only the named fields, so a change
+ * made elsewhere to another field is not a conflict and must not refuse it.
  */
 const lastRevision = new Map<string, string>();
 
 async function request(
   apiBase: string | undefined,
-  init?: RequestInit,
+  init?: RequestInit & { compareAndSwap?: boolean },
 ): Promise<NotificationPreferencesV1> {
   const base = await resolveApiBase(apiBase);
-  const revision = lastRevision.get(base);
+  const revision = init?.compareAndSwap ? lastRevision.get(base) : undefined;
   const response = await authenticatedFetch(
     `${base}${NOTIFICATION_PREFERENCES_PATH}`,
     init && {
-      ...init,
+      method: init.method,
+      body: init.body,
       headers: {
         'Content-Type': 'application/json',
         ...(revision ? { 'If-Match': revision } : {}),
@@ -60,17 +63,29 @@ async function request(
   const etag = response.headers.get('etag');
   if (etag) lastRevision.set(base, etag);
   else if (response.status === 412) lastRevision.delete(base);
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: NotificationPreferencesV1;
-    error?: string;
-    message?: string;
-  };
-  if (!response.ok || !result.success || !result.data) {
+  // Status first: an older Station answers this path with a plain-text
+  // 404, which must surface as a typed error, not a JSON parse failure.
+  let result:
+    | {
+        success?: boolean;
+        data?: NotificationPreferencesV1;
+        error?: string;
+        message?: string;
+      }
+    | undefined;
+  try {
+    result = (await response.json()) as typeof result;
+  } catch {
+    result = undefined;
+  }
+  if (!response.ok || !result?.success || !result.data) {
     throw new NotificationPreferencesRequestError(
-      result.message ?? apiErrorMessage(result, `HTTP ${response.status}`),
+      result?.message ??
+        (result
+          ? apiErrorMessage(result, `HTTP ${response.status}`)
+          : `HTTP ${response.status}`),
       response.status,
-      result.error,
+      result?.error,
     );
   }
   return result.data;
@@ -94,6 +109,7 @@ export function updateNotificationPreferences(
   return request(apiBase, {
     method: 'PUT',
     body: JSON.stringify(preferences),
+    compareAndSwap: true,
   });
 }
 

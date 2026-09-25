@@ -50,7 +50,6 @@ function wired(hideContent = false) {
         deviceSurfaces: new Set(),
         includesOperator: true,
         operatorPrincipalId: 'human:local:operator',
-        onePerson: true,
       }),
     },
     preferences: { current: () => prefs },
@@ -90,6 +89,7 @@ describe('DesktopHostChannel', () => {
     const { channel, bus } = wired();
     const first = channel.read(DESKTOP, 0);
     expect(first).toEqual({
+      surface: DESKTOP,
       entries: [],
       cursor: 0,
       epoch: expect.any(String),

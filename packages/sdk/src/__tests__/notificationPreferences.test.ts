@@ -18,6 +18,7 @@ const {
   fetchNotificationPreferences,
   NotificationPreferencesRequestError,
   patchNotificationPreferences,
+  updateNotificationPreferences,
 } = await import('../query-domains/notificationPreferences');
 
 const DOC = {
@@ -48,14 +49,15 @@ function ifMatchOf(call: number): string | undefined {
 describe('notification preferences writes are compare-and-swap', () => {
   beforeEach(() => authenticatedFetch.mockReset());
 
-  test("a PATCH sends the last GET's ETag, and the next write the PATCH's", async () => {
+  test("a PUT sends the last response's ETag; a PATCH (the server-side merge) never does", async () => {
     respond(200, { success: true, data: DOC }, '"rev-1"');
     await fetchNotificationPreferences();
     respond(200, { success: true, data: DOC }, '"rev-2"');
     await patchNotificationPreferences({ perAgent: { builder: 'off' } });
     respond(200, { success: true, data: DOC }, '"rev-3"');
-    await patchNotificationPreferences({ perAgent: { reviewer: 'off' } });
-    expect(ifMatchOf(1)).toBe('"rev-1"');
+    await updateNotificationPreferences(DOC as never);
+    expect(ifMatchOf(1)).toBeUndefined();
+    // The PATCH's response revision is what the PUT carries.
     expect(ifMatchOf(2)).toBe('"rev-2"');
   });
 
@@ -63,13 +65,13 @@ describe('notification preferences writes are compare-and-swap', () => {
     respond(200, { success: true, data: DOC }, '"rev-1"');
     await fetchNotificationPreferences();
     respond(412, { success: false, error: 'preferences_changed' });
-    const error = await patchNotificationPreferences({
-      agentNotifications: 'off',
-    }).catch((caught: unknown) => caught);
+    const error = await updateNotificationPreferences(DOC as never).catch(
+      (caught: unknown) => caught,
+    );
     expect(error).toBeInstanceOf(NotificationPreferencesRequestError);
     expect(error).toMatchObject({ status: 412, code: 'preferences_changed' });
     respond(200, { success: true, data: DOC });
-    await patchNotificationPreferences({ agentNotifications: 'off' });
+    await updateNotificationPreferences(DOC as never);
     expect(ifMatchOf(2)).toBeUndefined();
   });
 
@@ -87,9 +89,23 @@ describe('notification preferences writes are compare-and-swap', () => {
       code: 'preferences_unreadable',
     });
     respond(200, { success: true, data: DOC }, '"rev-9"');
-    await patchNotificationPreferences({ agentNotifications: 'all' }).catch(
-      () => undefined,
-    );
+    await updateNotificationPreferences(DOC as never);
     expect(ifMatchOf(1)).toBe('"unreadable"');
+  });
+
+  test("an older Station's plain-text 404 is a typed error with the status", async () => {
+    authenticatedFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: new Headers(),
+      json: async () => {
+        throw new SyntaxError('Unexpected token N in JSON');
+      },
+    });
+    const error = await fetchNotificationPreferences().catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(NotificationPreferencesRequestError);
+    expect(error).toMatchObject({ status: 404, code: undefined });
   });
 });

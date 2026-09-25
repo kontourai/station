@@ -476,7 +476,10 @@ describe('NotificationDeliveryRouter', () => {
             ]),
             operatorPrincipalId: 'human:local:operator',
             // ...but the resolver vouches they are one person.
-            onePerson: true,
+            ownerPrincipals: new Set([
+              'device-identity:phone',
+              'human:local:operator',
+            ]),
           }),
         },
         focus: focusOn(LAPTOP, 'human:local:operator'),
@@ -484,6 +487,34 @@ describe('NotificationDeliveryRouter', () => {
       bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification());
       expect(plain.deliveries).toHaveLength(0);
       expect(timers).toHaveLength(1);
+    });
+
+    test("a housemate's focus (a tailnet-bound device) never quiets the owner's phone", () => {
+      const HOUSEMATE = 'human:tailscale-serve:housemate@example.com';
+      const { bus, plain, timers } = setup({
+        resolver: {
+          resolve: () => ({
+            deviceSurfaces: new Set([PHONE, LAPTOP]),
+            includesOperator: true,
+            principalOf: new Map([
+              [PHONE, 'device-identity:phone'],
+              [LAPTOP, HOUSEMATE],
+            ]),
+            operatorPrincipalId: 'human:local:operator',
+            // The housemate is in the audience (family read access) but is
+            // not the owner.
+            ownerPrincipals: new Set([
+              'device-identity:phone',
+              'human:local:operator',
+            ]),
+          }),
+        },
+        focus: focusOn(LAPTOP, HOUSEMATE),
+      });
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification());
+      expect(timers).toHaveLength(0);
+      // The phone is interrupted; the housemate's focused laptop is not.
+      expect(plain.deliveries[0]?.to.map((t) => t.surface)).toEqual([PHONE]);
     });
 
     test('with no liveness wired, focus is inert (the safe side)', () => {

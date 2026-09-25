@@ -219,6 +219,90 @@ describe('wireNotificationDelivery (production composition)', () => {
     }
   });
 
+  describe('a record that names a session reaches only surfaces that can read it', () => {
+    const secretApproval = () =>
+      approval({
+        id: 'n-secret',
+        title: 'Approve running `rm -rf /secret-project`',
+        // The legacy approval producer's shape: no envelope, a session.
+        metadata: { sessionId: 'secret-session', sessionKind: 'runtime' },
+      });
+    const enveloped = () =>
+      approval({
+        id: 'n-secret-enveloped',
+        title: 'Approve running `rm -rf /secret-project`',
+        metadata: {
+          envelope: {
+            v: 1,
+            source: { kind: 'system', subsystem: 'approvals' },
+            audience: { kind: 'owner' },
+            urgency: 'attention',
+            interrupt: 'default',
+            target: { kind: 'session', sessionId: 'secret-session' },
+          },
+        },
+      });
+
+    test.each([
+      ['a legacy approval', secretApproval],
+      ['an enveloped owner notification with a session target', enveloped],
+    ])(
+      '%s: no push and no feed entry for a device that cannot read the session',
+      async (_label, record) => {
+        const { eventBus, pushedTo, wiring } = wire({
+          canUserReadSession: vi.fn(() => false),
+        });
+        const feed = wiring.desktopHostChannel!;
+        const desktop =
+          'local:desktop-7c9e6679-7425-40de-944b-e07fc1f90ae7' as const;
+        feed.read('device:phone', 0);
+        feed.read(desktop, 0);
+        eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record() as never);
+        await flush();
+        expect(pushedTo()).toEqual([]);
+        expect(feed.read('device:phone', 0).entries).toEqual([]);
+        expect(feed.read(desktop, 0).entries).toEqual([]);
+      },
+    );
+
+    test.each([
+      ['a legacy approval', secretApproval],
+      ['an enveloped owner notification with a session target', enveloped],
+    ])(
+      '%s: a device that can read it still gets it',
+      async (_label, record) => {
+        const tabletAuthority = JSON.stringify(
+          sessionReadAuthorityFromRequest(
+            pairedDevicePrincipal(DEVICES[1]!).id,
+            undefined,
+            undefined,
+          ),
+        );
+        const { eventBus, pushedTo, wiring } = wire({
+          canUserReadSession: vi.fn(
+            (sessionId: string, authority: SessionReadAuthority) =>
+              sessionId === 'secret-session' &&
+              JSON.stringify(authority) === tabletAuthority,
+          ),
+        });
+        wiring.desktopHostChannel!.read('device:tablet', 0);
+        eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record() as never);
+        await flush();
+        expect(pushedTo()).toEqual(['tablet']);
+        expect(
+          wiring.desktopHostChannel!.read('device:tablet', 0).entries,
+        ).toHaveLength(1);
+      },
+    );
+  });
+
+  test('a paired device may hold a feed only if it is in the family', () => {
+    const { wiring } = wire();
+    expect(wiring.isFeedDevice('phone')).toBe(true);
+    expect(wiring.isFeedDevice('delegate')).toBe(false);
+    expect(wiring.isFeedDevice('unknown')).toBe(false);
+  });
+
   test('disabled (hosted): nothing subscribes and no desktop feed exists', async () => {
     const { eventBus, send, wiring } = wire({ enabled: false });
     eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval() as never);

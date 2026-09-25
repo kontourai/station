@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import {
+  DESKTOP_INSTALLATION_HEADER,
   defaultNotificationPreferences,
   desktopHostSurfaceId,
   NOTIFICATION_DELIVERIES_PATH,
@@ -48,6 +49,8 @@ beforeEach(() => {
       new NotificationPreferencesStore(home),
       {
         desktopHost,
+        // Only the family phone may hold a feed.
+        isFeedDevice: (deviceId) => deviceId === 'phone',
       },
     ),
   );
@@ -260,15 +263,29 @@ describe('compare-and-swap and PATCH', () => {
   });
 });
 
-describe('GET /api/notifications/deliveries (desktop host feed)', () => {
-  const surface = desktopHostSurfaceId('7c9e6679-7425-40de-944b-e07fc1f90ae7');
+describe("GET /api/notifications/deliveries (the caller's own feed)", () => {
+  const INSTALLATION = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const desktop = desktopHostSurfaceId(INSTALLATION);
   const LOCAL: RuntimeAuthenticatedRequestPrincipal = {
     ...PERSON,
     locality: 'home-possession',
   };
-  const feed = (query: string, principal = LOCAL) =>
+  const PHONE: RuntimeAuthenticatedRequestPrincipal = {
+    ...PERSON,
+    deviceId: 'phone',
+    deviceKind: 'device',
+  };
+  const feed = (
+    query: string,
+    principal: RuntimeAuthenticatedRequestPrincipal,
+    installation?: string,
+  ) =>
     call('GET', undefined, principal, {
       path: `${NOTIFICATION_DELIVERIES_PATH}?${query}`,
+      headers:
+        installation === undefined
+          ? {}
+          : { [DESKTOP_INSTALLATION_HEADER]: installation },
     });
 
   test('operate tier by an explicit rule', () => {
@@ -277,82 +294,109 @@ describe('GET /api/notifications/deliveries (desktop host feed)', () => {
     );
   });
 
-  test('the local operator reads its feed and registers the host', async () => {
-    const result = await feed(`surface=${surface}&after=0`);
+  test('the local operator: surface derived from the installation header, and echoed', async () => {
+    const result = await feed('after=0', LOCAL, INSTALLATION);
     expect(result.status).toBe(200);
     expect(result.json.data).toEqual({
+      surface: desktop,
       entries: [],
       cursor: 0,
       epoch: expect.any(String),
       leaseMs: 90_000,
     });
-    expect(desktopHost.registrations()).toEqual([{ surface, ref: surface }]);
+    expect(desktopHost.registrations()).toEqual([
+      { surface: desktop, ref: desktop },
+    ]);
   });
 
-  test('a paired device reads its OWN feed, derived from its credential', async () => {
-    const phone = {
-      ...PERSON,
-      deviceId: 'phone',
-      deviceKind: 'device' as const,
-    };
-    const own = await call('GET', undefined, phone, {
-      path: `${NOTIFICATION_DELIVERIES_PATH}?after=0`,
-    });
-    expect(own.status).toBe(200);
-    // Naming its own surface explicitly is fine too.
-    expect(
-      (
-        await call('GET', undefined, phone, {
-          path: `${NOTIFICATION_DELIVERIES_PATH}?surface=device:phone&after=0`,
-        })
-      ).status,
-    ).toBe(200);
+  test.each([
+    ['missing', undefined],
+    ['malformed', 'not an id!'],
+    ['too short', 'abc'],
+  ])(
+    'the local operator with the installation header %s → 400 installation_required',
+    async (_label, installation) => {
+      const result = await feed('after=0', LOCAL, installation);
+      expect(result.status).toBe(400);
+      expect(result.json.error).toBe('installation_required');
+      expect(desktopHost.registrations()).toEqual([]);
+    },
+  );
+
+  test('a paired device: surface from its credential, the installation header ignored', async () => {
+    const result = await feed('after=0', PHONE, INSTALLATION);
+    expect(result.status).toBe(200);
+    expect((result.json.data as { surface: string }).surface).toBe(
+      'device:phone',
+    );
     expect(desktopHost.registrations()).toEqual([
       { surface: 'device:phone', ref: 'device:phone' },
     ]);
   });
 
-  test.each([
-    'surface=device:tablet',
-    `surface=${desktopHostSurfaceId('7c9e6679-7425-40de-944b-e07fc1f90ae7')}`,
-  ])(
-    'a paired device naming another surface is refused 403 (%s)',
-    async (query) => {
-      const phone = {
-        ...PERSON,
-        deviceId: 'phone',
-        deviceKind: 'device' as const,
-      };
-      const other = await call('GET', undefined, phone, {
-        path: `${NOTIFICATION_DELIVERIES_PATH}?${query}&after=0`,
-      });
-      expect(other.status).toBe(403);
-      expect(other.json.error).toBe('surface_not_yours');
-      expect(desktopHost.registrations()).toEqual([]);
-    },
-  );
+  test('an explicit surface equal to the derived one is accepted (older clients)', async () => {
+    expect(
+      (await feed(`surface=${desktop}&after=0`, LOCAL, INSTALLATION)).status,
+    ).toBe(200);
+    expect((await feed('surface=device:phone&after=0', PHONE)).status).toBe(
+      200,
+    );
+  });
 
-  test('a remote person (not this machine) is refused', async () => {
-    const result = await feed(`surface=${surface}&after=0`, PERSON);
+  test.each<[string, RuntimeAuthenticatedRequestPrincipal, string | undefined]>(
+    [
+      ['a device naming another device', PHONE, 'device:tablet'],
+      ['a device naming a desktop surface', PHONE, undefined],
+      ['the operator naming a device', LOCAL, 'device:phone'],
+      [
+        'the operator naming another installation',
+        LOCAL,
+        desktopHostSurfaceId('11111111-2222-4333-8444-555555555555'),
+      ],
+    ],
+  )('%s → 403 surface_not_yours', async (_label, principal, named) => {
+    const result = await feed(
+      `surface=${named ?? desktop}&after=0`,
+      principal,
+      INSTALLATION,
+    );
+    expect(result.status).toBe(403);
+    expect(result.json.error).toBe('surface_not_yours');
+    expect(desktopHost.registrations()).toEqual([]);
+  });
+
+  test('a paired device outside the family (e.g. a delegated Station) gets no feed', async () => {
+    const outsider = {
+      ...PERSON,
+      deviceId: 'no-read-scope',
+      deviceKind: 'device' as const,
+    };
+    const refused = await feed('after=0', outsider);
+    expect(refused.status).toBe(403);
+    expect(refused.json.error).toBe('device_not_eligible');
+    // It never occupies a feed slot.
+    expect(desktopHost.registrations()).toEqual([]);
+  });
+
+  test('a remote person (not this machine, not a device) is refused', async () => {
+    const result = await feed('after=0', PERSON, INSTALLATION);
     expect(result.status).toBe(403);
     expect(desktopHost.registrations()).toEqual([]);
   });
 
   test('an internal agent caller is refused', async () => {
-    const result = await feed(`surface=${surface}&after=0`, {
-      ...LOCAL,
-      kind: 'internal',
-    });
+    const result = await feed(
+      'after=0',
+      { ...LOCAL, kind: 'internal' },
+      INSTALLATION,
+    );
     expect(result.status).toBe(403);
   });
 
-  test.each([
-    'surface=device:phone&after=0',
-    'surface=local:0b1d2c3e-session&after=0',
-    `surface=${surface}&after=-1`,
-    `surface=${surface}&after=abc`,
-    `surface=${surface}&after=0&epoch=not%20an%20id`,
-  ])('a malformed query is 400 (%s)', async (query) => {
-    expect((await feed(query)).status).toBe(400);
-  });
+  test.each(['after=-1', 'after=abc', 'after=0&epoch=not%20an%20id'])(
+    'a malformed query is 400 (%s)',
+    async (query) => {
+      expect((await feed(query, LOCAL, INSTALLATION)).status).toBe(400);
+    },
+  );
 });

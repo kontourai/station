@@ -9,12 +9,8 @@
  *   active person's device (not a delegation grant, not pending enrollment)
  *   holding `orchestration:read`, unbound or bound to a tailnet person.
  *   Account-bound devices are out: their requests read as that deployment
- *   account, and what they may see is limited to that account. This is the
- *   predicate the agent-activity card already uses for "may this device
- *   read the owner's sessions" (`canReadAgentActivity`), so there is one
- *   definition, not a second one. A delegated Station or a no-read-scope
- *   device never receives approvals, pairing requests or failures. (The
- *   pre-#2586 Web Push fan-out sent them to every subscribed device.)
+ *   account, limited to that account. This is the agent-activity card's
+ *   read eligibility (`canReadAgentActivity`) — one definition, not two.
  * - `session-readers`: devices that can read the session by their OWN
  *   credential — the same authority the agent-activity card reads with
  *   (`canReadAgentActivity` + `pairedDevicePrincipal` +
@@ -23,6 +19,13 @@
  *   session must not be shown its text on a lock screen.
  * - `principal`: reserved for accounts. Nothing resolves it yet, so it
  *   reaches no surface (the in-app feed still carries it) and says so once.
+ *
+ * Whatever the audience, a record that NAMES a session (legacy approvals
+ * and turn completions carry `metadata.sessionId`; an envelope may name one
+ * too — `notificationSessionIdentity`) reaches only surfaces whose principal
+ * can read that session, and local surfaces only if the operator can. The
+ * in-app list applies the same check to the same record; delivery must not
+ * show a lock screen what the inbox would hide.
  *
  * Fail closed: a device whose read check throws is left out.
  */
@@ -45,16 +48,28 @@ export interface AudienceResolution {
   principalOf?: ReadonlyMap<SurfaceId, string>;
   operatorPrincipalId?: string;
   /**
-   * Every surface here belongs to one person even though their principal
-   * ids differ (an unbound paired device reads as its own device identity,
-   * the operator's tabs as the operator). Focus on any of them may quiet the
-   * others. Set only for `owner`.
+   * Principals that are the owner themselves even though their ids differ:
+   * the operator (local tabs, the desktop host), each unbound paired device
+   * (it reads as its own device identity), and any device whose binding
+   * resolves to the operator. Focus on any of these may quiet the others.
+   * A tailnet-bound device of another person (a housemate) is NOT here: it
+   * is its own person for focus, so their focus never quiets the owner.
    */
-  onePerson?: boolean;
+  ownerPrincipals?: ReadonlySet<string>;
 }
 
 export interface AudienceResolver {
-  resolve(envelope: NotificationEnvelopeV1): AudienceResolution;
+  /**
+   * `sessionId`: the session the record names (metadata for legacy
+   * producers, else the envelope's — `notificationSessionIdentity`). When
+   * present, every surface must also be able to read that session,
+   * whatever the audience: the in-app list filters the same record the
+   * same way.
+   */
+  resolve(
+    envelope: NotificationEnvelopeV1,
+    context?: { sessionId?: string },
+  ): AudienceResolution;
 }
 
 export interface PairingAudienceResolverDeps {
@@ -116,49 +131,44 @@ export function createPairingAudienceResolver(
     }
   };
 
+  /** Family devices whose principal passes every named session's check. */
+  const readers = (sessionIds: readonly string[]) => {
+    const surfaces = new Set<SurfaceId>();
+    const principalOf = new Map<SurfaceId, string>();
+    const ownerPrincipals = new Set<string>([deps.operatorPrincipalId]);
+    for (const device of activeDevices()) {
+      if (!isPersonalFamilyDevice(device)) continue;
+      const principalId = principalOrUndefined(deps, device);
+      if (!principalId) continue;
+      if (!sessionIds.every((sessionId) => canRead(sessionId, principalId)))
+        continue;
+      const surface = deviceSurfaceId(device.id);
+      surfaces.add(surface);
+      principalOf.set(surface, principalId);
+      if (
+        device.principalBinding === undefined ||
+        principalId === deps.operatorPrincipalId
+      )
+        ownerPrincipals.add(principalId);
+    }
+    return {
+      deviceSurfaces: surfaces,
+      includesOperator: sessionIds.every((sessionId) =>
+        canRead(sessionId, deps.operatorPrincipalId),
+      ),
+      principalOf,
+      operatorPrincipalId: deps.operatorPrincipalId,
+      ownerPrincipals,
+    };
+  };
+
   return {
-    resolve(envelope) {
+    resolve(envelope, context = {}) {
       const audience = envelope.audience;
-      if (audience.kind === 'owner') {
-        const principalOf = new Map<SurfaceId, string>();
-        const surfaces = new Set<SurfaceId>();
-        for (const device of activeDevices()) {
-          if (!isPersonalFamilyDevice(device)) continue;
-          const principalId = principalOrUndefined(deps, device);
-          const surface = deviceSurfaceId(device.id);
-          surfaces.add(surface);
-          if (principalId) principalOf.set(surface, principalId);
-        }
-        return {
-          deviceSurfaces: surfaces,
-          includesOperator: true,
-          principalOf,
-          operatorPrincipalId: deps.operatorPrincipalId,
-          onePerson: true,
-        };
-      }
-      if (audience.kind === 'session-readers') {
-        const surfaces = new Set<SurfaceId>();
-        const principalOf = new Map<SurfaceId, string>();
-        for (const device of activeDevices()) {
-          if (!canReadAgentActivity(device)) continue;
-          const principalId = principalOrUndefined(deps, device);
-          if (!principalId || !canRead(audience.sessionId, principalId))
-            continue;
-          const surface = deviceSurfaceId(device.id);
-          surfaces.add(surface);
-          principalOf.set(surface, principalId);
-        }
-        return {
-          deviceSurfaces: surfaces,
-          includesOperator: canRead(
-            audience.sessionId,
-            deps.operatorPrincipalId,
-          ),
-          principalOf,
-          operatorPrincipalId: deps.operatorPrincipalId,
-        };
-      }
+      const named = context.sessionId === undefined ? [] : [context.sessionId];
+      if (audience.kind === 'owner') return readers(named);
+      if (audience.kind === 'session-readers')
+        return readers([...new Set([audience.sessionId, ...named])]);
       if (!warnedPrincipal) {
         warnedPrincipal = true;
         deps.logger.warn(

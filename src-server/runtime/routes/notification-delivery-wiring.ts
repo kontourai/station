@@ -13,7 +13,10 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
-import { createPairingAudienceResolver } from '../../services/notifications/delivery/audience-resolver.js';
+import {
+  createPairingAudienceResolver,
+  isPersonalFamilyDevice,
+} from '../../services/notifications/delivery/audience-resolver.js';
 import { DesktopHostChannel } from '../../services/notifications/delivery/desktop-host-channel.js';
 import {
   type FocusSource,
@@ -56,6 +59,8 @@ export interface NotificationDeliveryWiring {
   router: NotificationDeliveryRouter;
   /** Absent when delivery is off. */
   desktopHostChannel?: DesktopHostChannel;
+  /** Whether a paired device may hold a delivery feed (personal family). */
+  isFeedDevice(deviceId: string): boolean;
 }
 
 export function wireNotificationDelivery(
@@ -65,10 +70,17 @@ export function wireNotificationDelivery(
     deps.homeDir,
     deps.logger,
   );
+  const isFeedDevice = (deviceId: string) => {
+    const device = deps.devicePairing
+      .listDevices()
+      .find((candidate) => candidate.id === deviceId);
+    return device !== undefined && isPersonalFamilyDevice(device);
+  };
   if (!deps.enabled)
     return {
       preferences,
       router: { stop: () => {}, pendingEscalations: () => [] },
+      isFeedDevice,
     };
   // The desktop app's native host reads its decided alerts from a feed;
   // inert until a host polls it.
@@ -103,5 +115,5 @@ export function wireNotificationDelivery(
         (notification) => notification.id === id,
       ),
   });
-  return { preferences, router, desktopHostChannel };
+  return { preferences, router, desktopHostChannel, isFeedDevice };
 }

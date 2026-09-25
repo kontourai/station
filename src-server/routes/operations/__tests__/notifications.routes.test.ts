@@ -214,6 +214,45 @@ describe('Notification Routes', () => {
     );
   });
 
+  test('hosted POST / namespaces REST dedupe tags by tenant', async () => {
+    const hostedApp = createNotificationRoutes(svc, {
+      readAuthorityForRequest: (request) =>
+        hostedAuthority(
+          request.headers.get('x-test-tenant') as 'alpha' | 'bravo',
+        ),
+      canReadSession: (sessionId, authority) =>
+        sessionId === `${authority.tenantExecutionContext?.tenantId}-session`,
+    });
+    const postAs = (tenant: 'alpha' | 'bravo', title: string) =>
+      hostedApp.request('/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-tenant': tenant,
+        },
+        body: JSON.stringify({
+          title,
+          category: 'test',
+          dedupeTag: 'x',
+          metadata: { sessionId: `${tenant}-session` },
+        }),
+      });
+    const alpha = await json(await postAs('alpha', 'Alpha'));
+    const bravo = await json(await postAs('bravo', 'Bravo'));
+    const alphaAgain = await json(await postAs('alpha', 'Alpha 2'));
+
+    expect(alpha.data.metadata.dedupeTag).toBe('api:alpha:x');
+    expect(bravo.data.metadata.dedupeTag).toBe('api:bravo:x');
+    expect(bravo.data.id).not.toBe(alpha.data.id);
+    expect(alphaAgain.data).toMatchObject({
+      id: alpha.data.id,
+      title: 'Alpha 2',
+    });
+    expect((await svc.list()).find((n) => n.id === bravo.data.id)?.title).toBe(
+      'Bravo',
+    );
+  });
+
   test('POST / same-tag dedupe still works for REST callers (#2597)', async () => {
     const first = await json(
       await post({ title: 'v1', category: 'test', dedupeTag: 'mine' }),

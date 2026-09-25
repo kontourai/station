@@ -19,6 +19,7 @@ import {
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
+import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
@@ -367,9 +368,11 @@ export function configureRuntimeSupportServices(
   notificationService.addProvider(
     new DevicePairingNotificationProvider(resolveDevicePairing),
   );
-  for (const { provider } of getNotificationProviders()) {
-    notificationService.addProvider(provider);
-  }
+  registerPluginNotificationProviders(
+    notificationService,
+    getNotificationProviders(),
+    context.logger,
+  );
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -551,6 +554,7 @@ export function configureRuntimeSupportServices(
     preferences: notificationPreferences,
     router: notificationDeliveryRouter,
     desktopHostChannel,
+    isFeedDevice: isNotificationFeedDevice,
   } = wireNotificationDelivery({
     enabled: webPushEnabled,
     homeDir: context.configLoader.getProjectHomeDir(),
@@ -661,6 +665,7 @@ export function configureRuntimeSupportServices(
     notificationPreferences,
     notificationDeliveryRouter,
     desktopHostChannel,
+    isNotificationFeedDevice,
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,

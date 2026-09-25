@@ -392,8 +392,10 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
-  // The desktop host's decided-alert feed carries notification content; the
-  // route further requires the local operator.
+  // The caller's own decided-alert feed carries notification content. The
+  // route further derives the surface from the caller: a personal-family
+  // paired device reads only device:<its id>; the local operator names its
+  // local:desktop-<id>. Anyone else is refused.
   {
     id: '/api/notifications/deliveries:get',
     method: 'GET',
