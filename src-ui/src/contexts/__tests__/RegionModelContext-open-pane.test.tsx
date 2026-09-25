@@ -227,19 +227,22 @@ describe('opening an instance-keyed pane in a region (#2049)', () => {
   });
 
   test('a refused open leaves no preview state behind', async () => {
-    // Bottom-only: a side region is not available on this device, so the
-    // model refuses — and the state written a moment earlier must not
-    // survive a click that placed nothing.
+    // A split is refused on every device — and the state written a moment
+    // earlier must not survive a click that placed nothing. (This used to
+    // drive the refusal with a side region on a bottom-only device; since
+    // the phone layer that open SUCCEEDS, over Chat, so it can no longer
+    // stand in for a refusal. Still on a bottom-only width, so the phone
+    // layer is proven not to swallow the refusal.)
     await mount(600);
     const before = current().model.regions;
     let outcome: unknown;
     act(() => {
       outcome = current().panes.openFilePreview(
         { ...PROJECT, path: 'src/app.ts' },
-        { region: 'right' },
+        { region: 'right', placement: 'split' },
       );
     });
-    expect(outcome).toEqual({ ok: false, reason: 'region-unavailable' });
+    expect(outcome).toEqual({ ok: false, reason: 'unsupported-placement' });
     expect(current().model.regions).toBe(before);
     expect(previewStateKeys()).toEqual([]);
   });

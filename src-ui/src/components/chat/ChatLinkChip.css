@@ -73,3 +73,17 @@
 .chat-link-chip__state--closed::before {
   background: var(--error-text);
 }
+
+/* The host a link really goes to, when its text names another one. */
+.chat-link-host {
+  font-size: 0.85em;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+/* The badge's screen-reader sentence stays out of a copied selection: the
+   visible "(host)" already carries the fact. */
+.chat-link-host__sr {
+  -webkit-user-select: none;
+  user-select: none;
+}
