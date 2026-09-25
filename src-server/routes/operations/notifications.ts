@@ -13,6 +13,7 @@ import {
   NotificationDedupeSourceConflictError,
   NotificationReservedFieldError,
   type NotificationService,
+  REST_NOTIFICATION_SOURCE,
 } from '../../services/notifications/notification-service.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
@@ -89,33 +90,32 @@ export function createNotificationRoutes(
     const provisional = {
       ...body,
       id: '',
-      source: body.source ?? 'api',
+      source: REST_NOTIFICATION_SOURCE,
     } as Notification;
     if (!canReadNotification(provisional, c.req.raw)) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
-    // A registered provider's source routes actions and dismissals to that
-    // provider; a request body must not write under it (#2597).
+    // #2597: a request cannot choose its source — a caller-chosen source
+    // relabels (and via a shared tag rewrites) another producer's record.
+    // Every REST record is `api`. The shipped SDK labels its requests
+    // `sdk`; that label is accepted and recorded as `api`. Anything else is
+    // refused rather than silently relabelled.
     if (
       body.source !== undefined &&
-      notificationService
-        .listProviders()
-        .some((provider) => provider.id === body.source)
+      body.source !== REST_NOTIFICATION_SOURCE &&
+      body.source !== 'sdk'
     ) {
       return c.json(
         {
           success: false,
-          error: 'Notification source is reserved to its provider',
+          error: 'Notification source is set by the server for API requests',
         },
         400,
       );
     }
     let notification: Notification;
     try {
-      notification = await notificationService.schedule(
-        body.source ?? 'api',
-        body,
-      );
+      notification = await notificationService.scheduleFromRequest(body);
     } catch (error) {
       // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
       // the trusted enveloped path (#2583); a request body cannot claim them.
@@ -133,7 +133,7 @@ export function createNotificationRoutes(
           {
             success: false,
             error:
-              'Envelopes, agent: dedupe tags and agent-* categories are reserved to agent notifications',
+              'Envelopes, metadata.dedupeTag, agent: dedupe tags and agent-* categories are reserved',
           },
           400,
         );

@@ -1638,6 +1638,49 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
     },
   );
 
+  test.each(['delivered', 'dismissed'])(
+    'an internal writer takes over a pre-upgrade REST squat (%s) of its tag',
+    async (status) => {
+      // Pre-#2597 REST records were stored under the caller's raw tag.
+      const squat = await svc.schedule('api', {
+        title: 'Squat',
+        category: 'test',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      if (status === 'dismissed') await svc.dismiss(squat.id);
+      const internal = await svc.schedule('scheduler', {
+        title: 'Heartbeat stale',
+        category: 'scheduler-unhealthy',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      expect(internal).toMatchObject({
+        source: 'scheduler',
+        status: 'delivered',
+      });
+      expect(internal.id).not.toBe(squat.id);
+      expect(await svc.list()).toEqual([internal]);
+    },
+  );
+
+  test('only the REST path may write an api: tag', async () => {
+    await expect(
+      svc.schedule('scheduler', {
+        title: 'x',
+        category: 'test',
+        dedupeTag: 'api:mine',
+      }),
+    ).rejects.toThrow(/reserved/);
+    const created = await svc.scheduleFromRequest({
+      title: 'x',
+      category: 'test',
+      dedupeTag: 'mine',
+    });
+    expect(created).toMatchObject({
+      source: 'api',
+      metadata: { dedupeTag: 'api:mine' },
+    });
+  });
+
   test('same-source dedupe still updates', async () => {
     const first = await svc.schedule('device-pairing', pairingItem('v1'));
     const second = await svc.schedule('device-pairing', pairingItem('v2'));
