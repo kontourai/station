@@ -2851,6 +2851,54 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(await hits(peer.credential)).toEqual([]);
     });
 
+    // LOW-3: the evidence attach is best-effort; a caller whose principal
+    // cannot be resolved still gets its tool result, and no attach happens.
+    test('an MCP-UI call whose principal cannot be resolved succeeds and attaches nothing', async () => {
+      const flowReads: Array<{ threadId: string; readable: boolean }> = [];
+      const { app, pairing, paired } = await principalSetup({ flowReads });
+      // The device is bound to one person while the request's ingress names
+      // another: the credential authenticates, but principal resolution
+      // refuses the conflict.
+      const identify = pairing.identifyDevice.bind(pairing);
+      vi.spyOn(pairing, 'identifyDevice').mockImplementation((credential) => {
+        const device = identify(credential);
+        return device
+          ? ({
+              ...device,
+              principalBinding: {
+                provider: 'tailscale-serve',
+                subject: 'someone-else@github',
+              },
+            } as never)
+          : device;
+      });
+      const response = await app.request(
+        '/integrations/example-server/ui/call',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${paired.credential}`,
+            'Content-Type': 'application/json',
+            [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+              JSON.stringify({
+                provider: 'tailscale-serve',
+                login: 'owner@github',
+              }),
+            ).toString('base64url'),
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          },
+          body: JSON.stringify({
+            tool: 'example-tool',
+            arguments: {},
+            threadId: 'operator-owned',
+          }),
+        },
+        LOOPBACK_SERVE_PROXY_ENV,
+      );
+      expect(response.status, await response.text()).toBe(200);
+      expect(flowReads).toEqual([]);
+    });
+
     // LOW-1: through the production runtime-routes composition, Station's
     // internal token (which any agent holding a stdio child's env can
     // present) starts a session that is the operator's to read but acts for

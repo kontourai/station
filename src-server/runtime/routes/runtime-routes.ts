@@ -1213,27 +1213,35 @@ export function configureRuntimeRoutes(
   // alias principal — a caller locked out of the very session they just
   // created.
   //
-  // The no-argument default is left with exactly two callers, neither of
-  // which reads a session for an HTTP request: the approval registry's
-  // hosted tenant resolution (it returns nothing unless the authority is
-  // hosted), and the board-intent bindings' construction-time default, which
-  // the operating-state route replaces with the request's own authority for
-  // every intent it executes. Request-reachable readers (spatial board,
-  // MCP-UI evidence attach, Starter Work owners, knowledge) use the request
-  // principal instead. On a personal Station the default names the local
-  // operator; a hosted Station keeps the alias, which names no hosted user,
-  // so a hosted default authority reads nothing.
-  const readAuthorityForExecution = (resolvedUserId?: string) => {
+  // Every execution-time caller now names its user id (the type requires
+  // it, so an absent id cannot fall into a default). The request-less
+  // default is `stationDefaultReadAuthority` below, with exactly two callers,
+  // neither of which reads a session for an HTTP request: the approval
+  // registry's hosted tenant resolution (it returns nothing unless the
+  // authority is hosted), and the board-intent bindings' construction-time
+  // default, which the operating-state route replaces with the request's own
+  // authority for every intent it executes. Request-reachable readers
+  // (spatial board, MCP-UI evidence attach, Starter Work owners, knowledge)
+  // use the request principal. On a personal Station the default names the
+  // local operator; a hosted Station keeps the alias, which names no hosted
+  // user, so a hosted default authority reads nothing.
+  const readAuthorityForExecution = (resolvedUserId: string) => {
     const execution = currentTenantExecutionContext();
     return sessionReadAuthorityFromRequest(
-      resolvedUserId ??
-        (hostedTenantRegistry === undefined
-          ? LOCAL_OPERATOR_PRINCIPAL_ID
-          : getCachedUser().alias),
+      resolvedUserId,
       execution ? { tenantId: execution.tenantId } : undefined,
       hostedTenantRegistry,
     );
   };
+  // The execution-time default for a caller with no principal at all. Kept
+  // separate from `readAuthorityForExecution`, whose user id is required, so
+  // a caller cannot fall into this default by passing an absent user id.
+  const stationDefaultReadAuthority = () =>
+    readAuthorityForExecution(
+      hostedTenantRegistry === undefined
+        ? LOCAL_OPERATOR_PRINCIPAL_ID
+        : getCachedUser().alias,
+    );
   // station#4518: a device session paired through the pairing flow (bearer
   // or HttpOnly cookie, verified by `runtime-http.ts`'s auth middleware
   // BEFORE this resolver ever runs) has no `VerifiedIdentity` — the only
@@ -1463,7 +1471,7 @@ export function configureRuntimeRoutes(
   context.approvalRegistry.setHostedAuthorization({
     isHosted: () => hostedTenantRegistry !== undefined,
     resolveSessionTenant: (sessionId) => {
-      const authority = readAuthorityForExecution();
+      const authority = stationDefaultReadAuthority();
       if (
         authority.mode !== 'hosted' ||
         !authority.tenantExecutionContext ||
@@ -1543,10 +1551,14 @@ export function configureRuntimeRoutes(
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
   context.app.on('GET', '/api/board', bindConversationReadAuthority);
+  // Tolerant binding: the MCP-UI call itself does not depend on the
+  // caller's principal, and its evidence attach is best-effort, so an
+  // unresolvable principal binds nothing (and skips the attach) rather than
+  // failing the tool call.
   context.app.on(
     'POST',
     '/integrations/:serverId/ui/call',
-    bindConversationReadAuthority,
+    bindRequestReadAuthority,
   );
   context.app.on(
     'GET',
@@ -2932,10 +2944,14 @@ export function configureRuntimeRoutes(
       // bound to a run (threadId present + flow binding); otherwise audit-only.
       // M1: the caller names the thread, so it is read (and evidence
       // attached to its run) only as the calling request's principal.
-      attachMcpUiEvidence: async ({ request, threadId, ...call }) => {
+      attachMcpUiEvidence: async ({ threadId, ...call }) => {
+        // Bound around this request by `bindRequestReadAuthority`; absent when
+        // the principal could not be resolved, which skips the attach.
+        const authority = currentRequestReadAuthority();
+        if (!authority) return;
         const bound = await context.orchestrationService.readSessionFlowRun(
           threadId,
-          conversationReadAuthorityForRequest(request),
+          authority,
         );
         if (!bound) return;
         await mcpUiEvidenceBridge.attach(bound, call);
@@ -4925,7 +4941,7 @@ export function configureRuntimeRoutes(
         taskGraphService: context.taskGraphService,
         taskDispatcher: context.taskDispatcher,
         orchestrationService: context.orchestrationService,
-        getSessionReadAuthority: readAuthorityForExecution,
+        getSessionReadAuthority: stationDefaultReadAuthority,
         isHostedExecution: () => hostedTenantRegistry !== undefined,
       },
     }),

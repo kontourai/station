@@ -64,12 +64,12 @@ export interface McpUiCallDeps {
   /**
    * Attach an approved MCP-UI tool call's result as Flow evidence when the
    * call's session is bound to a run. Best-effort: never blocks the result.
-   * `request` is the call's own request: the session is read (and so the
-   * evidence attached) only as that request's principal, since the thread
-   * id comes from the caller.
+   * The composition must read the session (and so attach evidence) only as
+   * the calling request's principal, since the thread id comes from the
+   * caller, and must skip the attach rather than fail when that principal
+   * cannot be resolved.
    */
   attachMcpUiEvidence?: (input: {
-    request: Request;
     threadId: string;
     serverId: string;
     toolName: string;
@@ -507,7 +507,6 @@ export function createToolRoutes(
       if (threadId && mcpUiCallDeps.attachMcpUiEvidence) {
         try {
           await mcpUiCallDeps.attachMcpUiEvidence({
-            request: c.req.raw,
             threadId,
             serverId,
             toolName,
