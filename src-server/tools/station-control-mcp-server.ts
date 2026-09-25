@@ -13,6 +13,7 @@ import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
+import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
@@ -134,5 +135,6 @@ export function createStationControlMcpServer(): McpServer {
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerNotifyTools(registry);
   return server;
 }

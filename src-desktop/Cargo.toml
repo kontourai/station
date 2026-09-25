@@ -129,15 +129,17 @@ zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-ru
 # no guest-JavaScript permissions are granted, so bearer values cannot cross
 # into the WebView. iOS writes are configured ThisDeviceOnly in `run()`.
 tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
+# Agent-activity cards: Android 16 Live Updates rendered natively from FCM
+# data messages, and iOS 18 Live Activities fed by APNs
+# (docs/design/notification-delivery.md). The iOS native half is compiled
+# only with STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs).
+tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
 
 [target."cfg(target_os = \"android\")".dependencies]
 # Android's per-UID resolver is the authority for VPN DNS (including
 # Tailscale MagicDNS); std::net::ToSocketAddrs bypasses that resolver.
 jni = "0.21"
 ndk-context = "0.1"
-# Agent-activity cards and Android 16 Live Updates, rendered natively from
-# FCM data messages (docs/design/notification-delivery.md).
-tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"
