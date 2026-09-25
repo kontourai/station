@@ -305,7 +305,13 @@ internal val TAP_NONCE = Regex("^[0-9a-f]{32}$")
 /** Card taps are valid at most as long as a card can live. */
 internal const val TAP_LIFETIME_MS = 24 * 60 * 60 * 1000L
 
-/** One live nonce per card/alert identity, so this bounds cards plus recent alerts. */
+/**
+ * One live nonce per card/alert identity, so this bounds cards plus recent
+ * alerts. The ledger is shared with Station notifications
+ * (StationNotifications.kt): each one naming a session holds a slot too, so a
+ * burst of them can evict an older card's or alert's nonce (whose tap then
+ * opens the app where it was).
+ */
 internal const val MAX_TAPS = 20
 
 /** A nonce a posted card or alert carries, and what a tap on it opens. */
