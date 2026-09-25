@@ -557,11 +557,21 @@ fi
 
 if [ -n "$public_manifest_url" ]; then
   # Trust comes from the signing keys pinned above plus the sha256 that the
-  # signed payload carries for the archive. The manifest, key, and archive
-  # hosts are only transport: a hostile host can withhold or corrupt bytes but
-  # cannot make them verify. That is why this path no longer requires the
-  # manifest, key, and archive to live on distinct origins, and why it no
-  # longer downloads its verification key.
+  # signed payload carries for the archive. A valid signature proves WHO
+  # published a manifest (a holder of a pinned key, for a channel that key is
+  # allowed to sign) and that the archive bytes are the ones they named. It
+  # does NOT prove that this is the release you should get now: a host can
+  # withhold updates or replay any older manifest that was ever signed. The
+  # checks below bind the requested channel and refuse to move an existing
+  # install backwards, but nothing bounds how stale a manifest may be, so a
+  # fresh install (no current release) can still be served an old one.
+  # Because origins add nothing to that, this path neither requires the
+  # manifest, key, and archive to live on distinct origins nor downloads its
+  # verification key.
+  #
+  # TODO(#2675, default-flip PR): decide on freshness before this path becomes
+  # the default: enforce a maximum age on the signed publishedAt (which means
+  # periodically re-signing stable) or record why not.
   #
   # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a TEST-ONLY override for
   # fixtures that cannot hold a pinned private key. It is refused unless
