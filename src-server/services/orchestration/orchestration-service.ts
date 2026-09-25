@@ -3695,6 +3695,14 @@ export class OrchestrationService {
     // above for the same reason — one query for the whole list.
     const conversationDraftFactsByThread =
       eventStore?.conversationDraftFactsForThreads(readableThreadIds);
+    // A continuation child learns its conversation from `session.started`
+    // metadata, which a child whose start failed never emits — it then had no
+    // `conversationId`, and every inbox listed it as its own conversation
+    // ("No project · Model not reported · Stopped" beside the real row). The
+    // lineage row is written before the start, so it names the conversation
+    // either way.
+    const lineageByThread =
+      eventStore?.conversationLineageForThreads(readableThreadIds);
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -3720,7 +3728,7 @@ export class OrchestrationService {
           : undefined;
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
-        return buildOrchestrationSessionSummary({
+        const summary = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -3744,6 +3752,11 @@ export class OrchestrationService {
             observedAt,
           ),
         });
+        const lineageConversationId =
+          lineageByThread?.get(threadId)?.conversationId;
+        return !summary.conversationId && lineageConversationId
+          ? { ...summary, conversationId: lineageConversationId }
+          : summary;
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }

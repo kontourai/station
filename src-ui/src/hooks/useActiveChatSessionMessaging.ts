@@ -39,6 +39,7 @@ import {
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
+  SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
@@ -709,14 +710,30 @@ export function useSendMessage(
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `${translated.title}: ${translated.body}${
+          // Title on its own line, as `formatChatErrorDisplay` shapes the
+          // transcript's error markers: "Error: thread … Provider session…"
+          // ran the label into the engine's text.
+          content: `**${translated.title}**\n\n${translated.body}${
             translated.hint ? `\n\n${translated.hint}` : ''
+          }${
+            // Said only when the rollback put the draft back: a user who
+            // typed during the send keeps what they typed instead.
+            err.code === SESSION_START_INDETERMINATE_CODE &&
+            'input' in rollbackComposer
+              ? ' Your message is back in the composer.'
+              : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
           // failures retry with the same id and latest conversation id.
+          // A start the server could not confirm either way may have
+          // created the session (Codex then refuses a resend: "thread …
+          // already has an active writer"), so it gets no blind Retry.
           action:
-            terminalSession || foregroundIndeterminate || dispatchClaim
+            terminalSession ||
+            foregroundIndeterminate ||
+            dispatchClaim ||
+            err.code === SESSION_START_INDETERMINATE_CODE
               ? undefined
               : {
                   label: 'Retry',

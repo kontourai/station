@@ -575,6 +575,21 @@ function mergeHomeWorkItems(
         : undefined;
     const lineage = mergedExecutionLineage(existing, item);
     const display = orchestration ?? chat ?? newest;
+    // A continuation whose start failed reported no project, agent or model
+    // (they arrive with `session.started`). Its STATUS is still the
+    // conversation's latest fact, but blank identity is only absence: keep
+    // what the earlier execution of this same conversation reported rather
+    // than rendering "No project · Model not reported".
+    const earlier = [existing, item].find(
+      (candidate) =>
+        candidate !== orchestration &&
+        (candidate.kind === 'orchestration' ||
+          Boolean(candidate.orchestrationThreadId)),
+    );
+    const identity =
+      orchestration && !orchestration.model && !orchestration.projectSlug
+        ? earlier
+        : undefined;
     combined.set(key, {
       ...display,
       id: key,
@@ -599,7 +614,7 @@ function mergeHomeWorkItems(
       // copy remains for focus/open continuity, not as a competing executor.
       agentSlug:
         lineage.length > 1
-          ? (orchestration?.agentSlug ?? chat?.agentSlug)
+          ? (orchestration?.agentSlug ?? identity?.agentSlug ?? chat?.agentSlug)
           : mergeSingleExecutionAgentSlug(chat, orchestration),
       agentLabel:
         lineage.length > 1
@@ -607,11 +622,18 @@ function mergeHomeWorkItems(
             chat?.agentLabel ??
             display.agentLabel)
           : display.agentLabel,
-      model: orchestration?.model ?? chat?.model,
+      model: orchestration?.model ?? identity?.model ?? chat?.model,
       modelLabel:
-        orchestration?.modelLabel ?? chat?.modelLabel ?? display.modelLabel,
-      projectSlug: orchestration?.projectSlug ?? chat?.projectSlug,
+        (identity?.model ? identity.modelLabel : undefined) ??
+        orchestration?.modelLabel ??
+        chat?.modelLabel ??
+        display.modelLabel,
+      projectSlug:
+        orchestration?.projectSlug ??
+        identity?.projectSlug ??
+        chat?.projectSlug,
       projectLabel:
+        (identity?.projectSlug ? identity.projectLabel : undefined) ??
         orchestration?.projectLabel ??
         chat?.projectLabel ??
         display.projectLabel,

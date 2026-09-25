@@ -43,6 +43,7 @@ import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
+  SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
 import { queueSendNowOffered } from '../../utils/conversation-activity';
@@ -823,7 +824,11 @@ export function ChatDockBody({
         const retryTurn = chatErrorMatch
           ? findPrecedingUserTurn(activeSession.messages, idx)
           : null;
+        // A start Station could not confirm may have created the session;
+        // a resend then collides with it ("thread … already has an active
+        // writer"). No blind Send again — the hint says to check first.
         const canRetry =
+          chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
           translation?.retryable !== false &&
           !!retryTurn &&
           (!!retryTurn.text.trim() || retryTurn.attachments.length > 0);
@@ -836,7 +841,9 @@ export function ChatDockBody({
             action={
               activeSession.replay
                 ? undefined
-                : translation?.retryable === false && onNewChat
+                : translation?.retryable === false &&
+                    chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                    onNewChat
                   ? {
                       label: 'Switch agent',
                       onClick: () =>
