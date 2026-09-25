@@ -113,6 +113,7 @@ import {
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
 import {
   findSupervisingServices,
+  IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
 
@@ -4854,16 +4855,36 @@ function runServiceProbe(
  * installer's swap). Refuse before touching anything and name the sequence
  * that is safe; orchestrating stop/upgrade/start is deliberately not done here.
  */
-function assertNoSupervisingService(stationHome: string, repoPath?: string) {
+function assertNoSupervisingService(
+  stationHome: string,
+  options: { ignoreUnknownServiceState?: boolean; repoPath?: string },
+) {
   const supervising = findSupervisingServices(stationHome, {
     fs: { existsSync, readFileSync, readdirSync, realpathSync },
     platform: process.platform,
     run: runServiceProbe,
-    ...(repoPath === undefined ? {} : { repoPath }),
+    ...(options.repoPath === undefined ? {} : { repoPath: options.repoPath }),
   });
-  if (supervising.length > 0) {
-    throw new Error(renderSupervisingServiceRefusal(supervising));
+  if (supervising.length === 0) return;
+  // The override is for a probe that cannot answer (a broken backend, a
+  // stale manifest whose unit is gone) — never for a unit reported running.
+  if (
+    options.ignoreUnknownServiceState &&
+    supervising.every((service) => service.state === 'unknown')
+  ) {
+    console.warn(
+      [
+        `WARNING: ${IGNORE_SERVICE_STATE_FLAG}: proceeding although Station could not determine whether these installed services are running:`,
+        ...supervising.map(
+          (service) =>
+            `  - ${service.instanceId} (${service.detail ?? 'state unknown'}; manifest ${service.manifestPath})`,
+        ),
+        'If one of them is in fact supervising this Station, it will restart the server mid-upgrade.',
+      ].join('\n'),
+    );
+    return;
   }
+  throw new Error(renderSupervisingServiceRefusal(supervising));
 }
 
 function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
@@ -4998,11 +5019,20 @@ function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
   return null;
 }
 
-export async function upgrade(options: BuildOptions = {}): Promise<void> {
+export interface UpgradeOptions extends BuildOptions {
+  /**
+   * Proceed past installed services whose running state could not be
+   * determined (`--ignore-service-state`). Never overrides a running one.
+   */
+  ignoreUnknownServiceState?: boolean;
+}
+
+export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  const { ignoreUnknownServiceState, ...buildOptions } = options;
   // A packaged install proves its provenance first; the service check runs on
   // the home that provenance names, before the installer swaps anything.
   const packagedStationHome = delegatePackagedUpgradeIfPresent((home) =>
-    assertNoSupervisingService(home),
+    assertNoSupervisingService(home, { ignoreUnknownServiceState }),
   );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
@@ -5012,7 +5042,7 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   // its rebuild (`service install` records the checkout as `repoPath`).
   assertNoSupervisingService(
     resolveLifecycleHomeTarget({ baseDir: options.baseDir }).projectHome,
-    CWD,
+    { ignoreUnknownServiceState, repoPath: CWD },
   );
   const liveInstances = listRunningInstances();
   if (liveInstances.length > 1) {
@@ -5091,7 +5121,7 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   // buildApplication() resolves the default instance's build paths
   // (dist-server/dist-ui), writes the manifest, and validates+promotes
   // atomically, keeping the manifest sha and the baked sha in lockstep.
-  await buildApplication(options);
+  await buildApplication(buildOptions);
 
   console.log('\n  ✓ Upgraded');
   console.log('  Plugins unchanged. Run "station start" to launch.');

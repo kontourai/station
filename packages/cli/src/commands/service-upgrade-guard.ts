@@ -5,6 +5,7 @@ import type {
   ServiceRegistration,
 } from './service.js';
 import { launchdStatus } from './service-launchd.js';
+import { renderServiceStatusCommand } from './service-remedy.js';
 import { systemdStatus } from './service-systemd.js';
 import { windowsServiceStatus } from './service-windows.js';
 
@@ -14,6 +15,10 @@ import { windowsServiceStatus } from './service-windows.js';
  */
 export interface SupervisingService {
   instanceId: string;
+  /** The manifest this finding came from — the file an operator can remove. */
+  manifestPath: string;
+  /** The home the service belongs to, for the follow-up commands. */
+  baseDir: string;
   /** `unknown`: the backend probe could not say, so it is not ruled out. */
   state: 'active' | 'unknown';
   detail: string | null;
@@ -98,6 +103,7 @@ function probeUnit(
 
 /** One manifest's verdict: `null` when it rules itself out. */
 function inspectManifest(
+  stationHome: string,
   path: string,
   fallbackId: string,
   platform: ServicePlatform,
@@ -106,12 +112,23 @@ function inspectManifest(
 ): SupervisingService | null {
   const manifest = readManifestObject(dependencies.fs, path);
   if (typeof manifest === 'string') {
-    return { instanceId: fallbackId, state: 'unknown', detail: manifest };
+    return {
+      instanceId: fallbackId,
+      manifestPath: path,
+      baseDir: stationHome,
+      state: 'unknown',
+      detail: manifest,
+    };
   }
   // Another platform's registration (a synced home) supervises nothing here.
   if (manifest.platform !== platform) return null;
   const instanceId =
     typeof manifest.instanceId === 'string' ? manifest.instanceId : fallbackId;
+  const where = {
+    manifestPath: path,
+    baseDir:
+      typeof manifest.baseDir === 'string' ? manifest.baseDir : stationHome,
+  };
   if (
     repoPath !== undefined &&
     typeof manifest.repoPath === 'string' &&
@@ -122,6 +139,7 @@ function inspectManifest(
   if (typeof manifest.unitPath !== 'string') {
     return {
       instanceId,
+      ...where,
       state: 'unknown',
       detail: 'service manifest records no unit path',
     };
@@ -132,10 +150,11 @@ function inspectManifest(
   );
   if (unit.active === false) return null;
   if (unit.active === true) {
-    return { instanceId, state: 'active', detail: null };
+    return { instanceId, ...where, state: 'active', detail: null };
   }
   return {
     instanceId,
+    ...where,
     state: 'unknown',
     detail:
       typeof unit.error === 'string'
@@ -174,6 +193,7 @@ export function findSupervisingServices(
     const entry = String(name);
     if (!entry.endsWith('.json')) continue;
     const finding = inspectManifest(
+      stationHome,
       join(serviceDirectory, entry),
       entry.slice(0, -'.json'.length),
       platform,
@@ -185,17 +205,46 @@ export function findSupervisingServices(
   return findings;
 }
 
+/** The flag that lets `station upgrade` past services it could not probe. */
+export const IGNORE_SERVICE_STATE_FLAG = '--ignore-service-state';
+
+function describeFinding(service: SupervisingService): string[] {
+  if (service.state === 'active') {
+    return [`  - ${service.instanceId}: running`];
+  }
+  const status = renderServiceStatusCommand(
+    { instanceId: service.instanceId, baseDir: service.baseDir },
+    service.baseDir,
+  );
+  return [
+    `  - ${service.instanceId}: state unknown${service.detail ? ` (${service.detail})` : ''}`,
+    `    manifest: ${service.manifestPath}`,
+    ...(status
+      ? [
+          `    inspect it with "${status}"; if that unit no longer exists,`,
+          // Same targeting flags as the status command, so both name one unit.
+          `    "${status.replace(/^station service status/u, 'station service uninstall')}" or removing the manifest above clears it.`,
+        ]
+      : [
+          '    if that unit no longer exists, removing the manifest above clears it.',
+        ]),
+  ];
+}
+
 /** The refusal `station upgrade` raises instead of stopping a supervised child. */
 export function renderSupervisingServiceRefusal(
   services: SupervisingService[],
 ): string {
+  const onlyUnknown = services.every((service) => service.state === 'unknown');
   return [
     'station upgrade is blocked because an installed Station service supervises this Station.',
     "Upgrading now would stop the service-managed server, which the service restarts at once — racing this upgrade's own pull and rebuild in the same checkout.",
-    ...services.map(
-      (service) =>
-        `  - ${service.instanceId}: ${service.state === 'active' ? 'running' : `state unknown${service.detail ? ` (${service.detail})` : ''}`}`,
-    ),
+    ...services.flatMap(describeFinding),
     'Stop the service with "station service stop", run "station upgrade", then start it again with "station service start" (pass the same --instance/--base options the service was installed with).',
+    ...(onlyUnknown
+      ? [
+          `If you have confirmed no service is running this Station, rerun with ${IGNORE_SERVICE_STATE_FLAG} to upgrade anyway (it never overrides a service reported as running).`,
+        ]
+      : []),
   ].join('\n');
 }

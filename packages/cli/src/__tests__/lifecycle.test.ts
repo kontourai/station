@@ -3940,9 +3940,115 @@ describe('upgrade', () => {
       childProcessMock: { execSync, spawnSync },
     });
 
-    await expect(lifecycle.upgrade()).rejects.toThrow(
+    const refusal = lifecycle.upgrade().then(
+      () => null,
+      (error: Error) => error.message,
+    );
+    const message = await refusal;
+    expect(message).toMatch(
       /service-unknown: state unknown \(.*backend unavailable/,
     );
+    // Actionable (review M2): the manifest file, the status command for this
+    // unit, the uninstall that clears a gone unit, and the override flag.
+    expect(message).toContain(
+      `manifest: ${join(TEST_DEFAULT_HOME, 'service', 'service-unknown.json')}`,
+    );
+    expect(message).toContain(
+      `"station service status --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+    );
+    expect(message).toContain(
+      `"station service uninstall --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+    );
+    expect(message).toContain('--ignore-service-state');
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  /** A backend that cannot answer any running-state probe. */
+  function brokenBackendSpawnSync(unitPath: string): Mock {
+    const fallback = staleSchedulingSpawnSync(unitPath);
+    return vi.fn((command: string, args: string[]) =>
+      command === 'launchctl' ||
+      (command === 'systemctl' && !args.includes('cat')) ||
+      /schtasks/i.test(command)
+        ? { error: new Error('backend unavailable'), status: null }
+        : fallback(command, args),
+    );
+  }
+
+  it('--ignore-service-state proceeds past an undeterminable service, loudly', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-unknown-ignored',
+    );
+    const execSync = vi.fn(
+      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+        if (command === 'npm run build:server') {
+          const serverDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_SERVER_DIR),
+          );
+          ensureDir(serverDir);
+          writeFileSync(join(serverDir, 'command-station.js'), 'server');
+        }
+        if (command === 'npm run build:ui') {
+          const uiDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_UI_DIR),
+          );
+          ensureDir(uiDir);
+          writeFileSync(join(uiDir, 'index.html'), '<!doctype html>');
+        }
+        if (command === 'git rev-parse HEAD')
+          return '0123456789abcdef0123456789abcdef01234567\n';
+        return 'origin/main\n';
+      },
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: {
+        execSync,
+        spawnSync: brokenBackendSpawnSync(unitPath),
+      },
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await lifecycle.upgrade({ ignoreUnknownServiceState: true });
+      expect(execSync.mock.calls.map(([command]) => command)).toContain(
+        'git pull',
+      );
+      expect(warn.mock.calls.flat().join('\n')).toMatch(
+        /WARNING: --ignore-service-state[\s\S]*service-unknown-ignored \(.*backend unavailable/,
+      );
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('--ignore-service-state never overrides a service reported running', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-running-ignored',
+    );
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: {
+        execSync,
+        spawnSync: runningServiceSpawnSync(unitPath),
+      },
+    });
+
+    await expect(
+      lifecycle.upgrade({ ignoreUnknownServiceState: true }),
+    ).rejects.toThrow(/service-running-ignored: running/);
     expect(execSync).not.toHaveBeenCalled();
   });
 
