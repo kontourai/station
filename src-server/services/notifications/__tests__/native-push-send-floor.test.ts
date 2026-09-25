@@ -46,4 +46,19 @@ describe('native push send floor', () => {
     expect(floor.takeCardYield('a')).toBe(false);
     expect(floor.lastSendAt('a')).toBe(NOW);
   });
+
+  test('a released slot gives the phone back its previous send, unless something was recorded after it', () => {
+    const floor = createNativePushSendFloor();
+    floor.record('a', NOW);
+    const slot = floor.reserve('a', NOW);
+    floor.release('a', slot, NOW);
+    expect(floor.lastSendAt('a')).toBe(NOW);
+    const fresh = floor.reserve('b', NOW);
+    floor.release('b', fresh);
+    expect(floor.lastSendAt('b')).toBeUndefined();
+    const held = floor.reserve('a', NOW);
+    floor.recordCard('a', held + 1);
+    floor.release('a', held, NOW);
+    expect(floor.lastSendAt('a')).toBe(held + 1);
+  });
 });

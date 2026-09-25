@@ -251,6 +251,7 @@ async function harness(
     tablet,
     wiring,
     fetchImpl,
+    registrations,
     /**
      * Until every gateway request (including any a floor wait started late)
      * has answered and the channel has handled the answer. The gateway
@@ -637,6 +638,182 @@ describe('FcmAlertChannel through the delivery router', () => {
       );
       // It yields once per deferral count, not on every send after.
       expect(h.sendFloor.takeCardYield(h.phone)).toBe(false);
+    });
+
+    /** A channel over the harness's phones, as a restarted Station builds it. */
+    const freshChannel = (
+      h: Awaited<ReturnType<typeof harness>>,
+      options: { sleep?: (ms: number) => Promise<void> } = {},
+    ) =>
+      new FcmAlertChannel({
+        devicePairing: h.pairing,
+        signingKey: h.keys,
+        gateway: GATEWAY,
+        sendFloor: h.sendFloor,
+        logger: { warn: vi.fn() },
+        fetchImpl: h.fetchImpl as unknown as typeof fetch,
+        now: () => h.clock.now,
+        sleep: options.sleep ?? (async () => {}),
+      });
+    const onPhone = (h: Awaited<ReturnType<typeof harness>>) => ({
+      surface: `device:${h.phone}` as const,
+      ref: h.phone,
+      hideContent: false,
+    });
+    const readOf = (record: Notification): Notification => ({
+      ...record,
+      metadata: {
+        ...record.metadata,
+        envelope: {
+          ...(record.metadata?.envelope as NotificationEnvelopeV1),
+          readAt: new Date(NOW).toISOString(),
+          readBy: 'local:desk-tab',
+        },
+      },
+    });
+
+    test('after a restart an id it has never seen is still retracted', async () => {
+      const h = await harness();
+      // Alert Z went out before the restart; the new process knows nothing.
+      const outcomes = await freshChannel(h).retract('Z', [onPhone(h)]);
+      await h.settle();
+      expect(outcomes).toBeUndefined();
+      expect(
+        h.sent.map((s) => [s.deviceId, s.plaintext.kind, s.plaintext.id]),
+      ).toEqual([[h.phone, 'retract', 'Z']]);
+    });
+
+    test('a waiting re-show of an id already sent is removed by a read, and the retract still goes', async () => {
+      const h = await harness({ manualSleep: true });
+      const record = notification({ title: 'First version' });
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      // Edited while unread: a second version waits for the next slot.
+      const edited = { ...record, title: 'Edited version' };
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, edited as never);
+      await h.settle();
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        readOf(edited) as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(
+        h.sent
+          .filter((s) => s.deviceId === h.phone)
+          .map((s) => [s.plaintext.kind, s.plaintext.title]),
+      ).toEqual([
+        ['alert', 'First version'],
+        ['retract', undefined],
+      ]);
+    });
+
+    test('an id the queue dropped is retracted again once a later version of it was sent', async () => {
+      const h = await harness({ manualSleep: true });
+      h.sendFloor.record(h.phone, h.clock.now);
+      h.sendFloor.record(h.tablet, h.clock.now);
+      const records = Array.from({ length: 9 }, (_, i) => info(`i-${i}`));
+      for (const record of records)
+        h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      // i-0 was dropped at the cap. Delivered again, it is sent this time.
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        records[0] as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(
+        h.sent.some((s) => s.deviceId === h.phone && s.plaintext.id === 'i-0'),
+      ).toBe(true);
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        readOf(records[0] as Notification) as never,
+      );
+      await h.settle();
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(
+        h.sent
+          .filter((s) => s.deviceId === h.phone && s.plaintext.id === 'i-0')
+          .map((s) => s.plaintext.kind),
+      ).toEqual(['alert', 'retract']);
+    });
+
+    test('a retract that empties the queue gives the reserved slot back', async () => {
+      const h = await harness({ manualSleep: true });
+      const start = h.clock.now;
+      h.sendFloor.record(h.phone, start);
+      h.sendFloor.record(h.tablet, start);
+      const record = info('i-only');
+      h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
+      await h.settle();
+      expect(h.sendFloor.lastSendAt(h.phone)).toBe(
+        start + NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+      );
+      h.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        readOf(record) as never,
+      );
+      await h.settle();
+      // The card is no longer held back by a send that will not happen.
+      expect(h.sendFloor.lastSendAt(h.phone)).toBe(start);
+      while (h.heldSleeps.length > 0) await h.releaseSleep();
+      expect(h.sent).toEqual([]);
+    });
+
+    test('a phone that unregistered forgets what was dropped for it', async () => {
+      const h = await harness();
+      const held: Array<() => void> = [];
+      let holding = true;
+      const channel = freshChannel(h, {
+        sleep: () =>
+          holding
+            ? new Promise<void>((resolve) => held.push(resolve))
+            : Promise.resolve(),
+      });
+      h.sendFloor.record(h.phone, h.clock.now);
+      // Nine info alerts to a phone its floor holds: the first is dropped.
+      const waiting = Array.from({ length: 9 }, (_, i) =>
+        channel.deliver(info(`i-${i}`), envelope({ urgency: 'info' }), [
+          onPhone(h),
+        ]),
+      );
+      expect((await waiting[0])?.[0]?.result).toBe('suppressed');
+      // Without unregistering, its retract is not sent.
+      await channel.retract('i-0', [onPhone(h)]);
+      expect(h.fetchImpl).not.toHaveBeenCalled();
+      // The phone turns agent activity off and on again.
+      const previous = h.registrations.get(h.phone)!;
+      h.pairing.clearNativePush(h.phone);
+      channel.registrations();
+      expect(
+        h.pairing
+          .listNativePushRegistrations()
+          .some(({ deviceId }) => deviceId === h.phone),
+      ).toBe(false);
+      // Its waiting sends end unsent.
+      holding = false;
+      for (const resolve of held.splice(0)) resolve();
+      await Promise.all(waiting);
+      const key = await h.keys.loadOrCreate();
+      h.registrations.set(
+        h.phone,
+        h.pairing.setNativePush(
+          h.phone,
+          {
+            token: previous.token,
+            packageName: 'io.kontourai.station',
+            platform: 'android',
+          },
+          key.thumbprint,
+        ),
+      );
+      channel.registrations();
+      await channel.retract('i-0', [onPhone(h)]);
+      await h.settle();
+      expect(
+        h.sent.map((s) => [s.plaintext.kind, s.plaintext.id]),
+      ).toContainEqual(['retract', 'i-0']);
     });
 
     test('reading alerts the queue dropped sends no retract, and a following attention alert is not delayed (#2588 probe)', async () => {

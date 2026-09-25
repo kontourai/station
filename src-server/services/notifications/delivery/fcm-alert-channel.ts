@@ -21,12 +21,21 @@
  *   sealing, so the notification's own text is never sent at all.
  * - Retract: a read or dismiss elsewhere sends a `retract` for the same id,
  *   which cancels the phone's notification. If FCM delivers the alert after
- *   its retract, the phone drops it (`created_at` history). Only an id this
- *   channel actually sent to that phone is retracted (the router records a
- *   delivery when it plans it, not when a send happens): the last
- *   {@link SENT_IDS_PER_PHONE} ids taken for sending are remembered per
- *   phone, and a retract for any other id is not sent. A retract for an
- *   alert still waiting in the queue just removes it.
+ *   its retract, the phone drops it (`created_at` history). The router
+ *   records a delivery when it plans it, not when a send happens, so the
+ *   channel keeps, per phone, the ids it DROPPED without ever taking a
+ *   version of them for sending in this process: an `info` alert dropped at
+ *   the queue cap, or a waiting alert a retract removed. A retract for such
+ *   an id is not sent (the phone never got it). Every other retract is
+ *   sent, including one for an id this process has never seen (after a
+ *   restart). An id leaves the set when a version of it is taken for
+ *   sending. Per phone, at most {@link TRACKED_IDS_PER_PHONE} dropped ids
+ *   and as many ids taken for sending are kept (oldest forgotten first); a
+ *   phone's sets are forgotten the next time registrations are listed (on
+ *   every routed notification) after it has no Android registration. A
+ *   retract for an alert still waiting removes that alert; it is still sent
+ *   when an earlier version of the id was taken for sending. A retract that
+ *   empties the queue gives the floor slot its drain was waiting for back.
  * - Paced: shares the per-phone send floor with the agent-activity card
  *   (`native-push-send-floor.ts`). Each phone has one queue of waiting
  *   sends, drained one floor slot at a time:
@@ -85,8 +94,8 @@ import {
   type SurfaceId,
 } from './channel.js';
 
-/** Notification ids remembered per phone as sent, for retracts. */
-const SENT_IDS_PER_PHONE = 256;
+/** Ids remembered per phone as dropped, and as taken for sending. */
+const TRACKED_IDS_PER_PHONE = 256;
 /** Waiting sends per phone before `info` alerts are dropped. */
 const MAX_PENDING_PER_PHONE = 8;
 /** How long a sent alert may still be shown; the gateway's FCM TTL matches. */
@@ -173,8 +182,12 @@ export class FcmAlertChannel implements DeliveryChannel {
   readonly #sleep: (ms: number) => Promise<void>;
   /** Waiting sends per phone; present while that phone's queue drains. */
   readonly #queues = new Map<string, PendingSend[]>();
-  /** Per phone: ids taken for sending, oldest first (a bounded LRU). */
-  readonly #sentIds = new Map<string, Set<string>>();
+  /** Per phone: ids dropped with no version ever taken for sending. */
+  readonly #dropped = new Map<string, Set<string>>();
+  /** Per phone: ids a version of which was taken for sending. */
+  readonly #taken = new Map<string, Set<string>>();
+  /** Per phone: the floor slot its drain holds while it waits for it. */
+  readonly #reserved = new Map<string, { slot: number; before?: number }>();
 
   constructor(options: FcmAlertChannelOptions) {
     this.#options = options;
@@ -192,7 +205,13 @@ export class FcmAlertChannel implements DeliveryChannel {
   }
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
-    return this.#android().map(({ deviceId }) => ({
+    const android = this.#android();
+    // A phone no longer registered keeps no bookkeeping (unpaired, cleared).
+    const live = new Set(android.map(({ deviceId }) => deviceId));
+    for (const sets of [this.#dropped, this.#taken])
+      for (const deviceId of [...sets.keys()])
+        if (!live.has(deviceId)) sets.delete(deviceId);
+    return android.map(({ deviceId }) => ({
       surface: deviceSurfaceId(deviceId),
       ref: deviceId,
     }));
@@ -246,27 +265,33 @@ export class FcmAlertChannel implements DeliveryChannel {
     const existing = this.#queues.get(deviceId);
     const index =
       existing?.findIndex((pending) => pending.id === send.id) ?? -1;
-    const waitingAlert =
-      index >= 0 && existing?.[index]?.content.kind === 'alert';
-    if (send.content.kind === 'retract' && !this.#wasSent(deviceId, send.id)) {
-      // The phone never got this id: nothing to take back. An alert for it
-      // still waiting is simply not sent.
-      if (existing && waitingAlert) {
-        existing.splice(index, 1)[0]?.resolve('suppressed');
+    if (send.content.kind === 'retract') {
+      const waiting = index >= 0 ? existing?.[index] : undefined;
+      if (existing && waiting?.content.kind === 'alert') {
+        // The waiting alert is not sent.
+        existing.splice(index, 1);
+        waiting.resolve('suppressed');
+        if (!this.#has(this.#taken, deviceId, send.id))
+          this.#remember(this.#dropped, deviceId, send.id);
+        if (existing.length === 0) this.#releaseSlot(deviceId);
       }
-      send.resolve('suppressed');
-      return;
+      if (this.#has(this.#dropped, deviceId, send.id)) {
+        // No version of it ever reached the phone: nothing to take back.
+        send.resolve('suppressed');
+        return;
+      }
     }
-    let queue = existing;
+    let queue = this.#queues.get(deviceId);
     const draining = queue !== undefined;
     if (!queue) {
       queue = [];
       this.#queues.set(deviceId, queue);
     }
-    if (index >= 0) {
+    const at = queue.findIndex((pending) => pending.id === send.id);
+    if (at >= 0) {
       // The newer send for this id takes the older one's place.
-      queue[index]?.resolve('suppressed');
-      queue[index] = send;
+      queue[at]?.resolve('suppressed');
+      queue[at] = send;
     } else queue.push(send);
     while (queue.length > MAX_PENDING_PER_PHONE) {
       const oldestInfo = queue.findIndex(
@@ -276,7 +301,10 @@ export class FcmAlertChannel implements DeliveryChannel {
       );
       if (oldestInfo < 0) break;
       const [dropped] = queue.splice(oldestInfo, 1);
-      dropped?.resolve('suppressed');
+      if (!dropped) break;
+      dropped.resolve('suppressed');
+      if (!this.#has(this.#taken, deviceId, dropped.id))
+        this.#remember(this.#dropped, deviceId, dropped.id);
       this.#options.logger.warn(
         'fcm-alert: dropped a waiting info notification (too many queued for one phone)',
         { pending: queue.length },
@@ -290,25 +318,42 @@ export class FcmAlertChannel implements DeliveryChannel {
       });
   }
 
-  #wasSent(deviceId: string, id: string): boolean {
-    return this.#sentIds.get(deviceId)?.has(id) === true;
+  #has(sets: Map<string, Set<string>>, deviceId: string, id: string) {
+    return sets.get(deviceId)?.has(id) === true;
   }
 
-  /** An alert taken for sending is remembered; a retract forgets its id. */
-  #markTaken(deviceId: string, send: PendingSend): void {
-    let ids = this.#sentIds.get(deviceId);
+  /** Adds an id to a phone's bounded set, newest last. */
+  #remember(sets: Map<string, Set<string>>, deviceId: string, id: string) {
+    let ids = sets.get(deviceId);
     if (!ids) {
       ids = new Set();
-      this.#sentIds.set(deviceId, ids);
+      sets.set(deviceId, ids);
     }
-    ids.delete(send.id);
-    if (send.content.kind === 'retract') return;
-    ids.add(send.id);
-    while (ids.size > SENT_IDS_PER_PHONE) {
+    ids.delete(id);
+    ids.add(id);
+    while (ids.size > TRACKED_IDS_PER_PHONE) {
       const oldest = ids.values().next().value;
       if (oldest === undefined) break;
       ids.delete(oldest);
     }
+  }
+
+  /** A version of this id is going to the phone: a retract for it is due. */
+  #markTaken(deviceId: string, send: PendingSend): void {
+    this.#dropped.get(deviceId)?.delete(send.id);
+    if (send.content.kind === 'alert')
+      this.#remember(this.#taken, deviceId, send.id);
+  }
+
+  /**
+   * Nothing is left to send: give back the slot the drain is waiting for,
+   * so the card is not held back by a send that will not happen.
+   */
+  #releaseSlot(deviceId: string): void {
+    const held = this.#reserved.get(deviceId);
+    if (!held) return;
+    this.#reserved.delete(deviceId);
+    this.#options.sendFloor.release(deviceId, held.slot, held.before);
   }
 
   /** Sends a phone's queue one floor slot at a time. */
@@ -328,10 +373,21 @@ export class FcmAlertChannel implements DeliveryChannel {
           const skip =
             last + 2 * NATIVE_PUSH_MIN_SEND_INTERVAL_MS - this.#now();
           if (skip > 0) await this.#sleep(skip);
+          // A retract may have emptied the queue meanwhile.
+          if (queue.length === 0) break;
         }
+        const before = floor.lastSendAt(deviceId);
         const slot = floor.reserve(deviceId, this.#now());
+        this.#reserved.set(deviceId, {
+          slot,
+          ...(before === undefined ? {} : { before }),
+        });
         const wait = slot - this.#now();
         if (wait > 0) await this.#sleep(wait);
+        // Released while waiting (the queue emptied): reserve afresh for
+        // anything queued since.
+        if (this.#reserved.get(deviceId)?.slot !== slot) continue;
+        this.#reserved.delete(deviceId);
         // Taken only now: a newer send for the same id may have replaced it.
         const next = queue.shift();
         if (!next) break;
@@ -352,6 +408,7 @@ export class FcmAlertChannel implements DeliveryChannel {
         error: errorMessage(error),
       });
     } finally {
+      this.#reserved.delete(deviceId);
       this.#queues.delete(deviceId);
       const left = queue.splice(0);
       if (left.length > 0)
@@ -368,7 +425,11 @@ export class FcmAlertChannel implements DeliveryChannel {
     let key: PushSigningKey | null;
     try {
       key = this.#options.signingKey.read();
-    } catch {
+    } catch (error) {
+      this.#options.logger.warn(
+        'fcm-alert: push key unavailable; not sending',
+        { error: errorMessage(error) },
+      );
       return 'retry';
     }
     const registration = this.#android().find(

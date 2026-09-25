@@ -323,11 +323,18 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   to. A newer send for the same id replaces the waiting one in place. At
   most eight sends wait per phone: past that the oldest waiting `info` alert
   is dropped and logged, and attention, failed and done alerts and retracts
-  are never dropped. A retract goes only for an id the channel actually took
-  for sending to that phone (the last 256 per phone): the router records a
-  delivery when it plans it, so without this a read of alerts the queue
-  dropped would send retracts the phone has no use for; a retract for an
-  alert still waiting just removes it. Each time a notification's slot
+  are never dropped. The router records a delivery when it plans it, so the
+  channel keeps, per phone, the ids it dropped without ever taking a version
+  of them for sending in this process (an `info` alert dropped at the cap,
+  or a waiting alert a retract removed), and sends no retract for those. Any
+  other retract is sent, including one for an id a restarted process has
+  never seen. An id leaves that set when a version of it is taken for
+  sending, and a waiting alert a retract removes is not sent while the
+  retract still is if an earlier version was taken. Both sets hold at most
+  256 ids per phone and are forgotten when the phone has no Android
+  registration. A retract that empties the queue gives its reserved floor
+  slot back (hold-backs the card counted while that alert was waiting stay
+  counted). Each time a notification's slot
   holds back a card update that is still waiting, the card counts it; after
   two the queue leaves the next slot free for the card, so a burst cannot
   starve it, and the count is cleared when the card sends or has nothing

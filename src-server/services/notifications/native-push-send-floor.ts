@@ -34,6 +34,11 @@ export interface NativePushSendFloor {
    * records it, and returns it.
    */
   reserve(deviceId: string, at: number): number;
+  /**
+   * Gives back a reserved slot nothing will use: the phone's latest send
+   * goes back to `before`, unless something was recorded after the slot.
+   */
+  release(deviceId: string, slot: number, before?: number): void;
   /** The card's send: recorded like any other, and its deferrals cleared. */
   recordCard(deviceId: string, at: number): void;
   /** The card was held back by a slot a notification holds. */
@@ -71,6 +76,11 @@ export function createNativePushSendFloor(): NativePushSendFloor {
   return {
     lastSendAt: (deviceId) => last.get(deviceId),
     record,
+    release(deviceId, slot, before) {
+      if (last.get(deviceId) !== slot) return;
+      if (before === undefined) last.delete(deviceId);
+      else last.set(deviceId, before);
+    },
     recordCard(deviceId, at) {
       record(deviceId, at);
       cardDeferrals.delete(deviceId);
