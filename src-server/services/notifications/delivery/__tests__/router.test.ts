@@ -316,6 +316,31 @@ describe('NotificationDeliveryRouter', () => {
     });
   });
 
+  test.each([
+    ['a newer envelope version', { v: 2 }],
+    ['a malformed envelope', 'not-an-object'],
+  ])(
+    "%s is the owner's in-app view only: nothing is pushed",
+    (_label, envelope) => {
+      const { bus, plain, retracting } = setup();
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+        ...notification({ category: 'approval-request' }),
+        metadata: { envelope },
+      });
+      expect(plain.deliveries).toHaveLength(0);
+      expect(retracting.deliveries).toHaveLength(0);
+    },
+  );
+
+  test('control: the same record with no envelope at all is legacy and is pushed', () => {
+    const { bus, plain } = setup();
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+      ...notification({ category: 'approval-request' }),
+      metadata: {},
+    });
+    expect(plain.deliveries).toHaveLength(1);
+  });
+
   describe('focus', () => {
     test("is asked only for the audience's principals", () => {
       const focus = focusOn(LAPTOP);
