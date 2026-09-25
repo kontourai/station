@@ -66,6 +66,9 @@ export function sessionLifecycleLabel(
       return 'Review pending';
     case 'blocked':
       return 'Blocked';
+    // #2540: a finished turn on a live session reads as done, exactly as the
+    // terminal `completed` did before ordinary turns stopped ending sessions.
+    case 'idle':
     case 'completed':
       return 'Completed';
     case 'failed':

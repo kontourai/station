@@ -237,6 +237,36 @@ const OWNER_AUTHORITY = sessionReadAuthorityFromRequest(
   undefined,
 );
 
+/**
+ * #2540: the engine reports its session ended (an explicit stop, a restart),
+ * through the same event path a real adapter uses — so the next turn needs a
+ * successor, the start these tests fail.
+ */
+async function closeBinding(
+  service: OrchestrationService,
+  adapter: SlowCatalogClaudeAdapter,
+  threadId: string,
+) {
+  adapter.events.push({
+    eventId: `${threadId}:exited`,
+    method: 'session.exited',
+    provider: adapter.provider,
+    threadId,
+    sessionId: threadId,
+    reason: 'stopped',
+    createdAt: new Date().toISOString(),
+  } as CanonicalRuntimeEvent);
+  await eventually(async () => {
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session.status).toBe('closed');
+    // The exit records no new outcome for the finished turn.
+    expect(detail?.session.lifecycleState).toBe('idle');
+  });
+}
+
 test('a first send succeeds when the model catalog misses its deadline', async () => {
   const { adapter, service, send, store } = fixture();
   service.initialize();
@@ -255,16 +285,21 @@ test('a first send succeeds when the model catalog misses its deadline', async (
 }, 30_000);
 
 test('a continuation whose start failed before launch stays openable and writable, and the next send reuses its reservation', async () => {
-  const { service, send, store, failNextStartBeforeLaunch } = fixture();
+  const { adapter, service, send, store, failNextStartBeforeLaunch } =
+    fixture();
   service.initialize();
   await send('conv-continued');
   await eventually(async () => {
     expect(
       (await service.readSession('conv-continued', INTERNAL_SESSION_READ_SCOPE))
         ?.session.lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
 
+  // #2540: a finished turn leaves the root idle and reusable; only an engine
+  // binding that ended (a stop, a restart) sends the next turn to a
+  // successor — the start this test fails.
+  await closeBinding(service, adapter, 'conv-continued');
   failNextStartBeforeLaunch();
   await expect(send('conv-continued')).rejects.toThrow(
     'agent resolution unavailable',
@@ -313,15 +348,20 @@ test('a continuation whose start failed before launch stays openable and writabl
 }, 30_000);
 
 test('another user still cannot open the reserved-tail conversation', async () => {
-  const { service, send, store, failNextStartBeforeLaunch } = fixture();
+  const { adapter, service, send, store, failNextStartBeforeLaunch } =
+    fixture();
   service.initialize();
   await send('conv-private');
   await eventually(async () => {
     expect(
       (await service.readSession('conv-private', INTERNAL_SESSION_READ_SCOPE))
         ?.session.lifecycleState,
-    ).toBe('completed');
+    ).toBe('idle');
   });
+  // #2540: a finished turn leaves the root idle and reusable; only an engine
+  // binding that ended (a stop, a restart) sends the next turn to a
+  // successor — the start this test fails.
+  await closeBinding(service, adapter, 'conv-private');
   failNextStartBeforeLaunch();
   await expect(send('conv-private')).rejects.toThrow();
 
@@ -356,7 +396,7 @@ describe('non-plain reserved tails are not opened through their predecessor', ()
             INTERNAL_SESSION_READ_SCOPE,
           )
         )?.session.lifecycleState,
-      ).toBe('completed');
+      ).toBe('idle');
     });
     return harness;
   }

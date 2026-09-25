@@ -25,7 +25,7 @@ import {
 } from '@kontourai/station-contracts/session-attention';
 import {
   foldedSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
@@ -502,7 +502,7 @@ export class AttentionProjectionService {
     try {
       const scannable = sessions.filter(
         (session) =>
-          !isSessionLifecycleStateStopped(
+          !isSessionLifecycleStateAtRest(
             foldedSessionLifecycleState(session.lifecycleState),
           ),
       );

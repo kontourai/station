@@ -16,6 +16,12 @@
  *
  * Every file is read by a LITERAL module-anchored URL (the path-read pin
  * boundary cannot see a read through a helper parameter).
+ *
+ * #2486 added two more: `codex-0.155.1-collab-v1-client-interrupt-
+ * unblocks-parent.jsonl` (a client child interrupt followed by a client
+ * PARENT interrupt, which unblocks it in ~4ms) and `codex-0.155.1-collab-
+ * v1-parent-stop-cascades-children.jsonl` (two children interrupted before
+ * the parent).
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -131,6 +137,45 @@ export const CODEX_COLLAB_V2_SPAWN_REJECTED = lines(
   ),
 );
 
+/**
+ * #2486: one child, running a real command. Captures the CLIENT interrupting
+ * the child, then ALSO interrupting the PARENT's own active turn right
+ * after — the mechanism research proved unblocks it. The parent's own
+ * `turn/completed{interrupted}` arrives ~4ms after the parent interrupt
+ * request, instead of the 100s+ (or never, within the capture window) the
+ * "wait" collabAgentToolCall takes to notice on its own (see
+ * `CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT` above).
+ */
+export const CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT = lines(
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        './fixtures/codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  ),
+);
+
+/**
+ * #2486: two children running concurrently. Captures the CLIENT interrupting
+ * both children FIRST, then the parent — both children's own
+ * `turn/completed{interrupted}` land before the parent's own does, ~19ms
+ * after the parent interrupt request.
+ */
+export const CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN = lines(
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        './fixtures/codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  ),
+);
+
 export const CODEX_COLLAB_STATION_THREAD = 'thread-codex';
 
 interface CaptureLine {
@@ -160,6 +205,27 @@ export function codexCaptureIds(capture: readonly string[]): {
     throw new Error('capture names no parent thread/turn');
   }
   return { parentThreadId, parentTurnId };
+}
+
+/**
+ * #2486: every server->client message in `capture`, up to (not including)
+ * the first `client->server turn/interrupt` line. Past that point the
+ * ORIGINAL capture driver's own interrupt requests (and the request ids
+ * they used) stop being something a different adapter instance under test
+ * would ever generate itself — a test replays this PREFIX through the real
+ * adapter to reach "the child is running", then drives its own stop/
+ * interrupt calls and asserts what the adapter itself sends.
+ */
+export function codexCaptureServerMessagesBeforeClientInterrupt(
+  capture: readonly string[],
+): Record<string, unknown>[] {
+  const messages: Record<string, unknown>[] = [];
+  for (const line of capture) {
+    const { dir, msg } = parse(line);
+    if (dir === 'client->server' && msg.method === 'turn/interrupt') break;
+    if (dir === 'server->client') messages.push(msg);
+  }
+  return messages;
 }
 
 /** A process double that does nothing; replays feed lines directly. */

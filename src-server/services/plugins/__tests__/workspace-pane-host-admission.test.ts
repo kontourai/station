@@ -781,7 +781,7 @@ describe('Workspace Pane host invocation admission', () => {
         result.sessionId,
         INTERNAL_SESSION_READ_SCOPE,
       );
-      expect(archived?.session.lifecycleState).toBe('completed');
+      expect(archived?.session.lifecycleState).toBe('idle');
       expect(
         archived?.events.find((event) => event.method === 'session.started')
           ?.metadata?.workspacePaneHostAction,
@@ -1378,7 +1378,7 @@ describe('Workspace Pane host invocation admission', () => {
             )
           )?.session.lifecycleState,
       )
-      .toBe('completed');
+      .toBe('idle');
     const forged = await service.sessionCommands.execute(
       {
         type: 'start-session',
@@ -1473,7 +1473,9 @@ describe('Workspace Pane host invocation admission', () => {
         service,
       );
       await expect.poll(() => observed.length).toBe(2);
-      expect(continued.sessionId).not.toBe(result.sessionId);
+      // #2540: an ordinary follow-up runs in the same live Session — and so
+      // in the same owned worktree, with nothing new registered.
+      expect(continued.sessionId).toBe(result.sessionId);
       expect(
         (
           await service.readSession(
@@ -1503,7 +1505,7 @@ describe('Workspace Pane host invocation admission', () => {
               )
             )?.session.lifecycleState,
         )
-        .toBe('completed');
+        .toBe('idle');
       const third = await executeExecutionTargetMessage(
         {
           conversationId: result.conversationId,
@@ -1520,8 +1522,7 @@ describe('Workspace Pane host invocation admission', () => {
         service,
       );
       await expect.poll(() => observed.length).toBe(3);
-      expect(third.sessionId).not.toBe(continued.sessionId);
-      expect(third.sessionId).not.toBe(result.sessionId);
+      expect(third.sessionId).toBe(result.sessionId);
       expect(observed[2]).toMatchObject({
         output: realpathSync(session!.session.cwd!),
       });
@@ -1549,7 +1550,7 @@ describe('Workspace Pane host invocation admission', () => {
               )
             )?.session.lifecycleState,
         )
-        .toBe('completed');
+        .toBe('idle');
       proofOptions.dropWorkspaceMarker = true;
       await expect(
         executeExecutionTargetMessage(

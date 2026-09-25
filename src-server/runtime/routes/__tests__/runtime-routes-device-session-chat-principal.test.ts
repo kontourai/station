@@ -42,10 +42,11 @@
  * mocked-away) to assert the exact resolved `principalId` reached the
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
@@ -62,6 +63,7 @@ import type {
   ProjectAccessAdministrationView,
   ProjectInvitationView,
 } from '@kontourai/station-contracts/project-membership';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import {
@@ -72,6 +74,7 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
@@ -79,6 +82,10 @@ import type { LoadedDeploymentAuthentication } from '../../../services/identity/
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import {
+  ActionOperationService,
+  FileActionOperationStore,
+} from '../../../services/operations/action-operation-service.js';
 import { attachmentBlobRefFor } from '../../../services/orchestration/attachment-blob-store.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -325,7 +332,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     deploymentAuthentication?: LoadedDeploymentAuthentication,
     withMembership = false,
     withLocalAccounts = false,
+    /**
+     * #2561: extra seeded sessions (`[threadId, ownerUserId]`), and whether
+     * the runtime's orchestration service exposes the session reads the
+     * formerly alias-decided routes call (`readSessionMessages`,
+     * `listAgentRuns`) on the real service rather than an inert stub.
+     */
     orchestrationExtras: {
+      extraOwners?: ReadonlyArray<readonly [string, string]>;
+      /** Receives every runtime log call, so a masked 500 stays visible. */
+      onLog?: (entry: string) => void;
+      /** The monitoring event directory `/api/insights` reads. */
+      eventLogPath?: string;
+      /** A real event bus, so the `/events` relay can be observed. */
+      eventBus?: EventBus;
+      /** A real action-operation service behind `/api/action-operations`. */
+      actionOperations?: unknown;
+      /** Rows `/monitoring/events?start=` reads, before its authorization. */
+      monitoringRows?: unknown[];
       // Extra rows written before the orchestration runtime starts. Writing
       // after it starts races its own connections for the SQLite write lock.
       seed?: (store: EventStore) => void;
@@ -333,6 +357,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       // (`runtime-initialize.ts` wires it through EnvironmentSecurityService,
       // which delegates 1:1 to this same DevicePairingService).
       personalSharing?: boolean;
+      // Extra sessions (thread id, owner) seeded like the fixed ones above.
+      extraSessions?: ReadonlyArray<readonly [string, string]>;
     } = {},
   ) {
     const { pairing, paired } = pairRealDevice(searchMode === 'home');
@@ -348,6 +374,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ['device-owned', `human:device:${paired.device.id}`],
         ['whois-owned', 'human:tailscale-serve:owner@github'],
         ['legacy-owned', getCachedUser().alias],
+        ...(orchestrationExtras.extraOwners ?? []),
+        ...(orchestrationExtras.extraSessions ?? []),
       ]) {
         if (taskReferences)
           store.upsertSession({
@@ -512,7 +540,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         getProjectHomeDir: () => roomHomeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger: orchestrationExtras.onLog
+        ? Object.fromEntries(
+            ['debug', 'info', 'warn', 'error', 'fatal'].map((level) => [
+              level,
+              (...args: unknown[]) =>
+                orchestrationExtras.onLog?.(JSON.stringify(args)),
+            ]),
+          )
+        : { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
@@ -524,6 +560,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
+      ...(orchestrationExtras.eventBus
+        ? { eventBus: orchestrationExtras.eventBus }
+        : {}),
+      ...(orchestrationExtras.actionOperations
+        ? { actionOperations: orchestrationExtras.actionOperations }
+        : {}),
+      ...(orchestrationExtras.monitoringRows
+        ? {
+            queryEventsFromDisk: async () => orchestrationExtras.monitoringRows,
+          }
+        : {}),
+      ...(orchestrationExtras.eventLogPath
+        ? {
+            eventLogPath: orchestrationExtras.eventLogPath,
+            // The live relay's first frame reports ACP status.
+            acpBridge: deepStub({ getStatus: () => ({ connections: [] }) }),
+          }
+        : {}),
       ...(runtimeSearch ? { runtimeSearch } : {}),
       ...(taskReferences
         ? {
@@ -531,6 +585,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               sessionQueries: orchestration!.sessionQueries,
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
+              ...(orchestrationExtras.extraOwners
+                ? {
+                    readSessionMessages:
+                      orchestration!.readSessionMessages.bind(orchestration),
+                    listAgentRuns:
+                      orchestration!.listAgentRuns.bind(orchestration),
+                  }
+                : {}),
+              canUserReadConversation:
+                orchestration!.canUserReadConversation.bind(orchestration),
+              listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
             }),
@@ -539,6 +604,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskGraphService: taskGraph ?? {
         readTaskView: (id: string) => (id === task.id ? task : null),
         listTasks: () => [],
+        listKeptDeclaredPullRequestsForSessions: () => [],
       },
       projectService: membershipProjects ?? {
         listProjects: () => [{ id: task.projectId, slug: 'project' }],
@@ -2024,6 +2090,71 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     store.close();
   });
 
+  /**
+   * A chat created in the UI is owned by the local-operator principal, while
+   * the conversation-scoped routes decided with the cached OS alias — so a
+   * conversation's linked pull requests answered "Conversation unavailable"
+   * for every real chat. (Ownerless ids stay readable in production's
+   * single-user compat mode; that is policy, not this route's decision.)
+   */
+  test('an operator reads the linked pull requests of the chat it owns', async () => {
+    const { app, store, roomRuntime } = await setup(
+      'operator',
+      true,
+      undefined,
+      false,
+      false,
+      { extraSessions: [['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID]] },
+    );
+    const read = (conversationId: string) =>
+      app.request(
+        `/api/conversation-pull-requests/${encodeURIComponent(conversationId)}`,
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      );
+    const owned = await read('operator-owned');
+    expect(owned.status, await owned.clone().text()).toBe(200);
+    expect(((await owned.json()) as { data: unknown }).data).toMatchObject({
+      conversationId: 'operator-owned',
+      links: [],
+    });
+
+    // The other session-scoped reads moved onto the same principal must have
+    // the authority BOUND for their prefixes: an unbound prefix throws
+    // "Conversation request authority was not resolved" (a 500) the moment a
+    // request names a thread.
+    const bound = [
+      await app.request(
+        '/api/pull-requests/context?project=project&thread=operator-owned',
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      ),
+      await app.request(
+        '/api/projects/project/file-preview',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            path: 'missing.txt',
+            thread: 'operator-owned',
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      ),
+    ];
+    for (const response of bound) {
+      const text = await response.text();
+      expect(response.status, text).not.toBe(500);
+      expect(text).not.toContain('authority was not resolved');
+    }
+
+    await roomRuntime.close();
+    store.close();
+  });
+
   test('an unauthenticated remote request still fails closed, never admitted', async () => {
     const { app, store, roomRuntime } = await setup();
     const prepareSpy = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
@@ -2243,6 +2374,358 @@ describe('device-session chat principal resolution over the REAL auth path (stat
 
     await roomRuntime.close();
     store.close();
+  });
+
+  /**
+   * #2561: these routes used to decide session reads with the cached OS
+   * alias, which owns no UI-created chat (those are owned by the local
+   * operator principal). The operator's own bearer must now read the
+   * operator-owned session, still not read another person's, and a made-up
+   * id must stay unreadable.
+   */
+  describe('formerly OS-alias session reads decide with the request principal (#2561)', () => {
+    const makeTempDir = trackTempDirs();
+    // Production shares one personal conversation account across the
+    // operator and approved devices (`personalConversationAccess`), so these
+    // setups wire the real pairing store's membership. `stranger-owned`
+    // belongs to someone who is neither the operator nor a paired device.
+    type PrincipalReads = NonNullable<Parameters<typeof setup>[5]>;
+    async function principalSetup(
+      extra: PrincipalReads = {},
+      mode: 'operator' | 'home' = 'operator',
+    ) {
+      const h = await setup(mode, true, undefined, false, false, {
+        ...extra,
+        extraOwners: [
+          ['operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID],
+          ['stranger-owned', 'human:tailscale-serve:stranger@example'],
+        ],
+        personalSharing: true,
+      });
+      searchCleanup.unshift(async () => {
+        await h.roomRuntime.close();
+      });
+      return h;
+    }
+    const operatorSetup = () => principalSetup();
+    const operatorHeaders = {
+      Authorization: `Bearer ${OPERATOR_SECRET}`,
+      'Content-Type': 'application/json',
+    };
+
+    test('run inventory lists the personal account’s sessions for the operator and the paired device, never a stranger’s', async () => {
+      const { app, paired } = await operatorSetup();
+      const runsFor = async (credential: string) => {
+        const response = await app.request(
+          '/api/runs?source=orchestration',
+          {
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: Array<{ sourceId?: string }>;
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        return (body.data ?? []).map((run) => run.sourceId).sort();
+      };
+      // One personal account: the operator, the approved device and the
+      // person who requested it read each other's sessions, and the
+      // pre-principal (OS alias) session maps to the operator.
+      const account = [
+        'device-owned',
+        'legacy-owned',
+        'operator-owned',
+        'whois-owned',
+      ];
+      await expect(runsFor(OPERATOR_SECRET)).resolves.toEqual(account);
+      await expect(runsFor(paired.credential)).resolves.toEqual(account);
+    });
+
+    test('every moved route family resolves the principal before its handler reads it', async () => {
+      const logs: string[] = [];
+      const { app } = await principalSetup({
+        onLog: (entry) => logs.push(entry),
+        eventLogPath: makeTempDir('station-principal-events-'),
+      });
+      // A route that reads the principal authority without the binding
+      // middleware throws `Conversation request authority was not resolved`.
+      // The handlers behind these requests run on inert stubs here, and the
+      // runtime masks an unexpected throw as `internal_error`, so the check
+      // reads both the response and every log line rather than each route's
+      // answer.
+      const requests: ReadonlyArray<readonly [string, string, unknown?]> = [
+        ['GET', '/api/runs'],
+        ['GET', '/api/runs/made-up-run'],
+        ['GET', '/notifications'],
+        ['POST', '/notifications', { title: 'Probe' }],
+        ['GET', '/api/attention'],
+        ['POST', '/api/attention/made-up/ack'],
+        ['GET', '/api/action-operations'],
+        ['GET', '/api/insights'],
+        ['GET', '/monitoring/stats'],
+        ['GET', '/monitoring/metrics'],
+        ['GET', `/api/attachments/sha256-${'0'.repeat(64)}`],
+        ['GET', '/api/board?kind=session&id=operator-owned'],
+        [
+          'POST',
+          '/api/board/unpin',
+          { reference: { kind: 'session', id: 'operator-owned' }, name: 'x' },
+        ],
+        ['POST', '/tool-approval/made-up', { approved: true }],
+        [
+          'POST',
+          '/api/projects/project-1/operating-state/intent',
+          { intent: { id: 'made-up', kind: 'made-up' } },
+        ],
+        ['GET', '/api/shares'],
+      ];
+      for (const [method, path, body] of requests) {
+        const response = await app.request(
+          path,
+          {
+            method,
+            headers: operatorHeaders,
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const text = await response.text();
+        expect(
+          `${text}\n${logs.join('\n')}`,
+          `${method} ${path}`,
+        ).not.toContain('Conversation request authority was not resolved');
+      }
+      // The live relay reads the authority inside its stream, so read its
+      // first frame and hang up rather than waiting for the stream to end.
+      const abort = new AbortController();
+      const stream = await app.request(
+        '/events',
+        { headers: operatorHeaders, signal: abort.signal },
+        REMOTE_TAILNET_ENV,
+      );
+      const reader = stream.body!.getReader();
+      const first = await reader.read();
+      abort.abort();
+      await reader.cancel().catch(() => undefined);
+      const frame = new TextDecoder().decode(first.value ?? new Uint8Array());
+      expect(stream.status).toBe(200);
+      expect(frame).toContain('data:');
+      expect(`${frame}\n${logs.join('\n')}`).not.toContain(
+        'Conversation request authority was not resolved',
+      );
+    });
+
+    test('action operations list the operator’s own operations for the operator bearer', async () => {
+      const operations = new ActionOperationService(
+        new FileActionOperationStore(makeTempDir('station-principal-ops-')),
+      );
+      const create = (id: string, accountId: string, sessionId: string) =>
+        operations.create(
+          { accountId, canReadSession: () => true },
+          {
+            id,
+            scope: { accountId, sessionId },
+            title: 'Fork conversation',
+            cancellation: 'unsupported',
+            domain: {
+              kind: 'conversation-fork',
+              sourceConversationId: sessionId,
+              targetConversationId: `${sessionId}-fork`,
+            },
+            reentry: {
+              kind: 'conversation',
+              agentId: 'codex',
+              conversationId: `${sessionId}-fork`,
+            },
+          },
+        );
+      expect(
+        await create(
+          'operator-op',
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          'operator-owned',
+        ),
+      ).toBeDefined();
+      // Operation account ids exclude `@`, so this stranger's id omits the
+      // host part of their login.
+      expect(
+        await create(
+          'stranger-op',
+          'human:tailscale-serve:stranger',
+          'stranger-owned',
+        ),
+      ).toBeDefined();
+      const { app } = await principalSetup({ actionOperations: operations });
+      const response = await app.request(
+        '/api/action-operations',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const body = (await response.json()) as {
+        data?: { items?: Array<{ id: string }> };
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect((body.data?.items ?? []).map((item) => item.id)).toEqual([
+        'operator-op',
+      ]);
+    });
+
+    test('monitoring history and the insights rollup keep the account’s session rows and drop a stranger’s', async () => {
+      // Both rows carry the OS alias as `userId`: the routes' separate
+      // per-user row filter still defaults to it, and this test is about the
+      // session predicate that runs after it.
+      const now = Date.now();
+      const row = (sessionId: string) => ({
+        timestamp: new Date(now).toISOString(),
+        'timestamp.ms': now,
+        'gen_ai.operation.name': 'invoke_agent',
+        'gen_ai.conversation.id': sessionId,
+        userId: getCachedUser().alias,
+      });
+      const rows = [row('operator-owned'), row('stranger-owned')];
+      const eventLogPath = makeTempDir('station-principal-insights-');
+      writeFileSync(
+        join(
+          eventLogPath,
+          `events-${new Date(now).toISOString().slice(0, 10)}.ndjson`,
+        ),
+        `${rows.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+      );
+      const { app } = await principalSetup({
+        eventLogPath,
+        monitoringRows: rows,
+      });
+
+      const history = await app.request(
+        '/monitoring/events?start=0',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const historyBody = (await history.json()) as {
+        data?: Array<Record<string, unknown>>;
+      };
+      expect(history.status, JSON.stringify(historyBody)).toBe(200);
+      expect(
+        (historyBody.data ?? []).map(
+          (event) => event['gen_ai.conversation.id'],
+        ),
+      ).toEqual(['operator-owned']);
+
+      const insights = await app.request(
+        '/api/insights',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const insightsBody = (await insights.json()) as {
+        data?: { hourlyActivity?: number[] };
+      };
+      expect(insights.status, JSON.stringify(insightsBody)).toBe(200);
+      expect(
+        (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
+      ).toBe(1);
+    });
+
+    test('the live relay delivers an answer update for the account’s session and not for a stranger’s', async () => {
+      const eventBus = new EventBus();
+      const { app } = await principalSetup({
+        eventBus,
+        eventLogPath: makeTempDir('station-principal-relay-'),
+      });
+      const abort = new AbortController();
+      const stream = await app.request(
+        '/events',
+        { headers: operatorHeaders, signal: abort.signal },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(stream.status).toBe(200);
+      const reader = stream.body!.getReader();
+      const decoder = new TextDecoder();
+      // The first frame is written after the relay subscribed.
+      let received = decoder.decode((await reader.read()).value);
+      eventBus.emit(SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED, {
+        sessionId: 'stranger-owned',
+      });
+      eventBus.emit(SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED, {
+        sessionId: 'operator-owned',
+      });
+      const deadline = Date.now() + 5_000;
+      while (!received.includes('operator-owned') && Date.now() < deadline) {
+        const next = await Promise.race([
+          reader.read(),
+          new Promise<{ value?: undefined }>((resolve) =>
+            setTimeout(() => resolve({}), 250),
+          ),
+        ]);
+        if (next.value) received += decoder.decode(next.value);
+      }
+      abort.abort();
+      await reader.cancel().catch(() => undefined);
+      expect(received).toContain('operator-owned');
+      expect(received).not.toContain('stranger-owned');
+    });
+
+    test('an answer share mints, lists and opens for the operator-owned session, never for a made-up or foreign one', async () => {
+      const { app } = await operatorSetup();
+      const mint = await app.request(
+        '/api/shares',
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            sessionId: 'operator-owned',
+            turnId: 'operator-owned:turn',
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      const minted = (await mint.json()) as {
+        data?: { token?: string; share?: { id?: string } };
+      };
+      expect(mint.status, JSON.stringify(minted)).toBe(201);
+
+      const list = await app.request(
+        '/api/shares',
+        { headers: operatorHeaders },
+        REMOTE_TAILNET_ENV,
+      );
+      const listed = (await list.json()) as { data?: Array<{ id?: string }> };
+      expect(list.status, JSON.stringify(listed)).toBe(200);
+      expect((listed.data ?? []).map((share) => share.id)).toEqual([
+        minted.data?.share?.id,
+      ]);
+
+      // The public view is anonymous: the token is the capability, and the
+      // answer is read as the sharer recorded at mint.
+      const view = await app.request(
+        PUBLIC_ANSWER_SHARE_VIEW_PATH,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: minted.data?.token }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      const viewed = (await view.json()) as { state?: string };
+      expect(view.status, JSON.stringify(viewed)).toBe(200);
+      expect(viewed.state, JSON.stringify(viewed)).toBe('ok');
+
+      for (const sessionId of ['made-up-session', 'stranger-owned']) {
+        const refused = await app.request(
+          '/api/shares',
+          {
+            method: 'POST',
+            headers: operatorHeaders,
+            body: JSON.stringify({ sessionId, turnId: `${sessionId}:turn` }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(refused.status, sessionId).toBe(404);
+      }
+    });
   });
 
   // A stored attachment's bytes authorize through the thread that carried

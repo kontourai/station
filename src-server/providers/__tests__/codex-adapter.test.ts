@@ -19,7 +19,13 @@ import {
   CodexAdapterTransport,
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
+import { markCodexTurnTerminal } from '../adapters/codex-adapter-types.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
+import {
+  CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+  CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+  codexCaptureServerMessagesBeforeClientInterrupt,
+} from './codex-collab-fixtures.js';
 
 const {
   mockProviderOpsAdd,
@@ -254,6 +260,88 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
       ),
     ),
   ]);
+}
+
+/**
+ * #2486: drives a real `CodexAdapter` through `startSession` + `sendTurn`,
+ * replaying a real codex-cli 0.155.1 capture's server->client messages (up
+ * to, not including, the point where the ORIGINAL capture driver sent its
+ * own interrupts — see `codexCaptureServerMessagesBeforeClientInterrupt`) as
+ * the responses/notifications. The two request-response pairs
+ * (`initialize`, `thread/start`, `turn/start`) get their own await point so
+ * `writeServerMessage` always finds a pending request id to answer; every
+ * other message in the capture is a pure notification (no `id`) and needs
+ * none. Leaves the adapter exactly where the interrupted child (and its own
+ * `turn/started`) is registered as running, ready for the test to drive its
+ * OWN stop/interrupt call.
+ */
+async function replayCodexCollabPrefix(
+  adapter: CodexAdapter,
+  threadId: string,
+  capture: readonly string[],
+): Promise<void> {
+  const messages = codexCaptureServerMessagesBeforeClientInterrupt(capture);
+  let index = 0;
+  const replayNotificationsUntilNextResult = () => {
+    while (
+      index < messages.length &&
+      (messages[index] as { id?: unknown }).id === undefined
+    ) {
+      writeServerMessage(adapter, threadId, messages[index]);
+      index++;
+    }
+  };
+
+  const startSessionPromise = adapter.startSession({
+    provider: 'codex',
+    threadId,
+    cwd: '/workspace/repo',
+    modelId: 'gpt-5.5',
+  });
+  await flushIo();
+  replayNotificationsUntilNextResult();
+  writeServerMessage(adapter, threadId, messages[index++]); // initialize result
+  await flushIo();
+  replayNotificationsUntilNextResult();
+  writeServerMessage(adapter, threadId, messages[index++]); // thread/start result
+  await withTimeout(startSessionPromise, 'startSession (replay)');
+  await flushIo();
+
+  const sendTurnPromise = adapter.sendTurn({ threadId, input: 'go' });
+  await flushIo();
+  replayNotificationsUntilNextResult();
+  writeServerMessage(adapter, threadId, messages[index++]); // turn/start result
+  await withTimeout(sendTurnPromise, 'sendTurn (replay)');
+  await flushIo();
+
+  for (; index < messages.length; index++) {
+    writeServerMessage(adapter, threadId, messages[index]);
+  }
+  await flushIo();
+}
+
+/**
+ * Responds to the request `sendRequest` most recently registered as pending
+ * on `record` — the harness pattern every existing `interruptTurn` test uses
+ * (`pendingRpcRequests` keys are the adapter's OWN ids, never the ids a
+ * replayed capture happened to use).
+ */
+async function respondToLatestPendingRequest(
+  adapter: CodexAdapter,
+  threadId: string,
+  result: unknown,
+): Promise<void> {
+  await flushIo();
+  const record = (adapter as any).transport.requireSession(threadId);
+  const pendingIds = [
+    ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+  ];
+  expect(pendingIds.length).toBeGreaterThan(0);
+  writeServerMessage(adapter, threadId, {
+    id: pendingIds.at(-1),
+    result,
+  });
+  await flushIo();
 }
 
 describe('CodexAdapter', () => {
@@ -2157,6 +2245,545 @@ describe('CodexAdapter', () => {
     expect(turnOneOrphaned).toHaveLength(0);
   });
 
+  /**
+   * #2486: per-child stop and the cascading parent stop, replayed from real
+   * codex-cli 0.155.1 captures
+   * (`codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl`,
+   * `codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl`) through
+   * the real adapter. The captured child (and parent) thread/turn ids are
+   * fixed by the fixture's own scrubbing (`00000000-0000-7000-8000-…N`).
+   */
+  describe('stop and interrupt reach the child before the parent (#2486)', () => {
+    // codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl:
+    // parent 001/002, its one child 004/005.
+    const PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
+    const CHILD_ID = '00000000-0000-7000-8000-000000000004';
+    const CHILD_TURN_ID = '00000000-0000-7000-8000-000000000005';
+    // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl: same
+    // parent ids, two children — registered in this order (004 spawned
+    // before 006 in the capture's own collabAgentToolCall spawnAgent items).
+    const CASCADE_PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
+    const CASCADE_CHILD_A_ID = '00000000-0000-7000-8000-000000000004';
+    const CASCADE_CHILD_A_TURN_ID = '00000000-0000-7000-8000-000000000005';
+    const CASCADE_CHILD_B_ID = '00000000-0000-7000-8000-000000000006';
+    const CASCADE_CHILD_B_TURN_ID = '00000000-0000-7000-8000-000000000007';
+
+    function interruptRpcCalls(lines: readonly string[]): unknown[] {
+      return lines
+        .map((line) => parseLine(line))
+        .filter((msg) => msg.method === 'turn/interrupt');
+    }
+
+    /** Polls until `predicate` is true, or fails with a clear message. */
+    async function waitFor(
+      predicate: () => boolean,
+      { timeoutMs = 8_000, intervalMs = 50 } = {},
+    ): Promise<void> {
+      const deadline = Date.now() + timeoutMs;
+      while (!predicate()) {
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `Timed out after ${timeoutMs}ms waiting for condition`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+
+    test('per-child stop sends exactly two interrupts — the child, then the parent — and both settle cancelled', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = 'thread-per-child-stop';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      expect(record.activeTurnId).toBe(PARENT_TURN_ID);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      const stopPromise = adapter.stopProviderTask(threadId, CHILD_ID);
+      // The child's own interrupt RPC, then the parent's — each awaited in
+      // turn, exactly as `interruptCodexChild`/`performCodexParentTurnInterrupt`
+      // send them one at a time.
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      const result = await withTimeout(stopPromise, 'stopProviderTask');
+      expect(result).toEqual({ outcome: 'stopped', taskId: CHILD_ID });
+
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      );
+      expect(interrupts).toEqual([
+        {
+          jsonrpc: '2.0',
+          id: expect.any(String),
+          method: 'turn/interrupt',
+          params: { threadId: CHILD_ID, turnId: CHILD_TURN_ID },
+        },
+        {
+          jsonrpc: '2.0',
+          id: expect.any(String),
+          method: 'turn/interrupt',
+          params: {
+            threadId: record.codexThreadId,
+            turnId: PARENT_TURN_ID,
+          },
+        },
+      ]);
+
+      // The parent's turn ended immediately (code-side, on RPC success) —
+      // never waiting on the child's own stream.
+      expect(record.activeTurnId).toBeUndefined();
+
+      // The child's terminal is DERIVED, never defaulted: only its own
+      // `turn/completed` (fed here as codex would actually send it, some
+      // time later) settles it `cancelled` — never assumed from the stop
+      // request alone.
+      writeServerMessage(adapter, threadId, {
+        method: 'turn/completed',
+        params: {
+          threadId: CHILD_ID,
+          turn: { id: CHILD_TURN_ID, status: 'interrupted', items: [] },
+        },
+      });
+      await flushIo();
+
+      // ONE drain, at the end: `drainEvents` races a real (possibly
+      // abandoned) `iterator.next()` against a timeout, so a SECOND call
+      // can lose an event to the first call's orphaned pending read (the
+      // queue delivers to whichever waiter is registered first). Every
+      // other test in this file drains exactly once for the same reason.
+      const events = await drainEvents(iterator);
+      const parentAborted = events.find(
+        (event) =>
+          event.method === 'turn.aborted' && event.turnId === PARENT_TURN_ID,
+      );
+      expect(parentAborted).toMatchObject({ reason: 'interrupted' });
+
+      // Immediate feedback once the stop request is sent: NOT `cancelled`
+      // (nothing had confirmed the child actually stopped yet) — the same
+      // `stopped-unconfirmed` the MODEL-initiated closeAgent/interruptAgent
+      // paths already give — THEN, once the child's own `turn/completed`
+      // arrives, `cancelled`. Order matters: this is the sequence, not just
+      // the final state.
+      const childSettles = events
+        .filter(
+          (event) =>
+            event.method === 'child-work.updated' &&
+            event.delta.kind === 'settle' &&
+            event.delta.childId === CHILD_ID,
+        )
+        .map((event) => event.delta.status);
+      expect(childSettles).toEqual(['stopped-unconfirmed', 'cancelled']);
+    });
+
+    test('a failed child interrupt still interrupts the parent', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-interrupt-fails';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      const stopPromise = adapter.stopProviderTask(threadId, CHILD_ID);
+      // The child's OWN interrupt RPC fails (a JSON-RPC error, not a
+      // result) — `interruptCodexChild` must swallow it and the parent step
+      // must still run.
+      await flushIo();
+      const pendingIds = [
+        ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+      ];
+      writeServerMessage(adapter, threadId, {
+        id: pendingIds.at(-1),
+        error: { code: -32000, message: 'boom' },
+      });
+      await flushIo();
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      const result = await withTimeout(stopPromise, 'stopProviderTask');
+      expect(result).toEqual({ outcome: 'stopped', taskId: CHILD_ID });
+
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      );
+      expect(interrupts).toHaveLength(2);
+      expect((interrupts[1] as any).params).toEqual({
+        threadId: record.codexThreadId,
+        turnId: PARENT_TURN_ID,
+      });
+      expect(record.activeTurnId).toBeUndefined();
+    });
+
+    test('stopping a task no longer tracked as running is a normal race, not an error, and sends no RPC', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-no-active-task';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const linesBefore = processHandle.stdin.lines.length;
+      const result = await adapter.stopProviderTask(threadId, 'not-a-child');
+      expect(result).toEqual({
+        outcome: 'no-active-task',
+        taskId: 'not-a-child',
+      });
+      expect(processHandle.stdin.lines.slice(linesBefore)).toEqual([]);
+    });
+
+    test('a plain (parent) stop interrupts every live tracked child before the parent', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-cascade-stop';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      expect(record.activeTurnId).toBe(CASCADE_PARENT_TURN_ID);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      const interruptPromise = adapter.interruptTurn(threadId);
+      // Three interrupts, one at a time: child A, child B, the parent.
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      const result = await withTimeout(interruptPromise, 'interruptTurn');
+      expect(result).toEqual({
+        outcome: 'cancelled',
+        turnId: CASCADE_PARENT_TURN_ID,
+      });
+
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      ) as { params: { threadId: string; turnId: string } }[];
+      expect(interrupts).toHaveLength(3);
+      // Both children precede the parent; their relative order to each
+      // other is not asserted (the capture's own client interrupted them
+      // in a different order than registration).
+      const childTargets = interrupts
+        .slice(0, 2)
+        .map((call) => call.params.threadId)
+        .sort();
+      expect(childTargets).toEqual(
+        [CASCADE_CHILD_A_ID, CASCADE_CHILD_B_ID].sort(),
+      );
+      expect(interrupts[2].params).toEqual({
+        threadId: record.codexThreadId,
+        turnId: CASCADE_PARENT_TURN_ID,
+      });
+      expect(record.activeTurnId).toBeUndefined();
+    });
+
+    // #2486 review (HIGH): a hung child `turn/interrupt` must never re-hang
+    // the parent step — the exact path this feature exists to unblock.
+    test('a child interrupt RPC that never answers still produces the parent interrupt within the bound, and the call still resolves once the parent answers', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-hung-child-interrupt';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      const stopPromise = adapter.stopProviderTask(threadId, CHILD_ID);
+      // The child's own interrupt RPC is sent but deliberately NEVER
+      // answered — simulating a hung app-server round-trip for that one
+      // request.
+      await flushIo();
+      expect(
+        interruptRpcCalls(processHandle.stdin.lines.slice(linesBefore)),
+      ).toHaveLength(1);
+
+      // Within the bound (never waiting on the hung RPC), the parent's
+      // own turn/interrupt must still be sent.
+      await waitFor(
+        () =>
+          interruptRpcCalls(processHandle!.stdin.lines.slice(linesBefore))
+            .length >= 2,
+      );
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      ) as { params: { threadId: string; turnId: string } }[];
+      expect(interrupts).toHaveLength(2);
+      expect(interrupts[1].params).toEqual({
+        threadId: record.codexThreadId,
+        turnId: PARENT_TURN_ID,
+      });
+
+      // Answering the parent's RPC resolves the whole call — the still-
+      // hung child RPC never blocked it.
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      const result = await withTimeout(
+        stopPromise,
+        'stopProviderTask (hung child interrupt)',
+      );
+      expect(result).toEqual({ outcome: 'stopped', taskId: CHILD_ID });
+    }, 15_000);
+
+    // #2486 review (MEDIUM/HIGH): `record.activeTurnId` can change while the
+    // cascade awaits real RPCs — a new turn starting must never be aborted
+    // or have its own bookkeeping stamped by an interrupt that predates it.
+    test('a new turn starting during the cascade is not aborted or stamped — the stale interrupt reports target-mismatch instead', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = 'thread-stale-cascade-target';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      expect(record.activeTurnId).toBe(PARENT_TURN_ID);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      // A plain Stop starts the cascade — its ONE child's interrupt RPC is
+      // sent but deliberately left unanswered for now.
+      const interruptPromise = adapter.interruptTurn(threadId);
+      await flushIo();
+
+      // WHILE the cascade is still in flight, a NEW turn starts on the same
+      // record (mirrors a user sending another message mid-Stop).
+      const sendTurnPromise = adapter.sendTurn({
+        threadId,
+        input: 'a second message, sent while Stop is still cascading',
+      });
+      await respondToLatestPendingRequest(adapter, threadId, {
+        turn: { id: 'new-turn-id' },
+      });
+      await withTimeout(sendTurnPromise, 'sendTurn (during cascade)');
+      expect(record.activeTurnId).toBe('new-turn-id');
+
+      // NOW let the child's own (still-pending) interrupt resolve, which is
+      // what finally lets the cascade — and interruptTurn's post-cascade
+      // re-check — proceed.
+      await respondToLatestPendingRequest(adapter, threadId, {});
+      const result = await withTimeout(
+        interruptPromise,
+        'interruptTurn (stale target)',
+      );
+      expect(result).toEqual({
+        outcome: 'target-mismatch',
+        activeTurnId: 'new-turn-id',
+      });
+
+      // The new turn's own bookkeeping is untouched, and no parent
+      // turn/interrupt was ever sent for the stale (old) turn.
+      expect(record.activeTurnId).toBe('new-turn-id');
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      );
+      expect(interrupts).toHaveLength(1); // only the child's
+      const events = await drainEvents(iterator);
+      expect(
+        events.some(
+          (event) =>
+            event.method === 'turn.aborted' && event.turnId === PARENT_TURN_ID,
+        ),
+      ).toBe(false);
+    });
+
+    // #2486 review (MEDIUM/HIGH): two concurrent per-child stops for
+    // different children of the SAME parent must share one parent
+    // interrupt, never send two.
+    test('two concurrent per-child stops for different children of the same parent send exactly one parent interrupt', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-single-flight-parent-interrupt';
+
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      expect(record.activeTurnId).toBe(CASCADE_PARENT_TURN_ID);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      const stopA = adapter.stopProviderTask(threadId, CASCADE_CHILD_A_ID);
+      const stopB = adapter.stopProviderTask(threadId, CASCADE_CHILD_B_ID);
+      await flushIo();
+
+      // Both children's own interrupt RPCs, answered together (before
+      // either's continuation runs) so neither's parent step can race ahead
+      // of the other's child RPC still being dispatched.
+      const childPendingIds = [
+        ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+      ];
+      expect(childPendingIds).toHaveLength(2);
+      for (const id of childPendingIds) {
+        writeServerMessage(adapter, threadId, { id, result: {} });
+      }
+      await flushIo();
+
+      // Single-flight: exactly ONE parent interrupt pending now, not two.
+      const parentPendingIds = [
+        ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+      ];
+      expect(parentPendingIds).toHaveLength(1);
+      writeServerMessage(adapter, threadId, {
+        id: parentPendingIds[0],
+        result: {},
+      });
+      await flushIo();
+
+      const [resultA, resultB] = await Promise.all([
+        withTimeout(stopA, 'stopProviderTask A'),
+        withTimeout(stopB, 'stopProviderTask B'),
+      ]);
+      expect(resultA).toEqual({
+        outcome: 'stopped',
+        taskId: CASCADE_CHILD_A_ID,
+      });
+      expect(resultB).toEqual({
+        outcome: 'stopped',
+        taskId: CASCADE_CHILD_B_ID,
+      });
+
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      ) as { params: { threadId: string; turnId: string } }[];
+      expect(interrupts).toHaveLength(3); // child A, child B, ONE parent
+      const parentInterrupts = interrupts.filter(
+        (call) => call.params.threadId === record.codexThreadId,
+      );
+      expect(parentInterrupts).toHaveLength(1);
+      expect(parentInterrupts[0].params).toEqual({
+        threadId: record.codexThreadId,
+        turnId: CASCADE_PARENT_TURN_ID,
+      });
+      const childInterrupts = interrupts.filter(
+        (call) => call.params.threadId !== record.codexThreadId,
+      );
+      expect(
+        childInterrupts
+          .map((call) => call.params)
+          .sort((a, b) => a.threadId.localeCompare(b.threadId)),
+      ).toEqual(
+        [
+          { threadId: CASCADE_CHILD_A_ID, turnId: CASCADE_CHILD_A_TURN_ID },
+          { threadId: CASCADE_CHILD_B_ID, turnId: CASCADE_CHILD_B_TURN_ID },
+        ].sort((a, b) => a.threadId.localeCompare(b.threadId)),
+      );
+    });
+
+    test("a parent interrupt for a NEW turn never joins an earlier turn's in-flight interrupt (#2486 delta review)", async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-single-flight-keyed-by-turn';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      const linesBefore = processHandle.stdin.lines.length;
+
+      // An interrupt for the current turn is still out when a NEW turn starts.
+      const first = (adapter as any).requestCodexParentTurnInterrupt(
+        record,
+        threadId,
+        CASCADE_PARENT_TURN_ID,
+      );
+      first.catch(() => undefined);
+      await flushIo();
+      record.activeTurnId = 'turn-started-while-the-first-interrupt-was-out';
+      const second = (adapter as any).requestCodexParentTurnInterrupt(
+        record,
+        threadId,
+        'turn-started-while-the-first-interrupt-was-out',
+      );
+      second.catch(() => undefined);
+      await flushIo();
+
+      const interrupts = interruptRpcCalls(
+        processHandle.stdin.lines.slice(linesBefore),
+      ) as { params: { threadId: string; turnId: string } }[];
+      // Two RPCs, one per turn: the new turn is really interrupted, never
+      // reported stopped by riding the earlier turn's flight.
+      expect(interrupts.map((call) => call.params.turnId)).toEqual([
+        CASCADE_PARENT_TURN_ID,
+        'turn-started-while-the-first-interrupt-was-out',
+      ]);
+    });
+
+    test('an interrupt that resolves after its turn ended AND a newer turn started publishes no second terminal (#2486 delta review)', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-no-duplicate-terminal';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+      );
+      const record = (adapter as any).transport.requireSession(threadId);
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      const pending = (adapter as any).performCodexParentTurnInterrupt(
+        record,
+        threadId,
+        CASCADE_PARENT_TURN_ID,
+      );
+      await flushIo();
+      // The turn reached its own terminal while the interrupt RPC was out,
+      // then a NEW turn started: `sendTurn` resets the per-turn scalar and
+      // moves `activeTurnId`, exactly as codex-adapter.ts does on a send.
+      markCodexTurnTerminal(record, CASCADE_PARENT_TURN_ID);
+      record.terminalPublishedForTurnId = undefined;
+      record.activeTurnId = 'turn-started-after-the-first-one-ended';
+      const [rpcId] = [
+        ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+      ];
+      writeServerMessage(adapter, threadId, { id: rpcId, result: {} });
+      await withTimeout(pending, 'performCodexParentTurnInterrupt');
+
+      const events = await drainEvents(iterator);
+      expect(
+        events.filter(
+          (event) =>
+            event.method === 'turn.aborted' &&
+            event.turnId === CASCADE_PARENT_TURN_ID,
+        ),
+      ).toHaveLength(0);
+    });
+  });
+
   test('sendTurn keeps the typed displayInput in turn.started while turn/start carries the composed model input (#685)', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -3790,10 +4417,14 @@ describe('CodexAdapter', () => {
     expect(turnStartCalls).toHaveLength(2);
     expect(turnStartCalls[0].params).not.toHaveProperty('approvalPolicy');
     expect(turnStartCalls[0].params).not.toHaveProperty('sandbox');
+    expect(turnStartCalls[0].params).not.toHaveProperty('sandboxPolicy');
     expect(turnStartCalls[1].params).toMatchObject({
       approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
     });
+    // #2559: turn/start takes no sandbox mode string, and Ask and Auto share
+    // the thread's workspace-write sandbox, so no sandboxPolicy is sent.
+    expect(turnStartCalls[1].params).not.toHaveProperty('sandbox');
+    expect(turnStartCalls[1].params).not.toHaveProperty('sandboxPolicy');
 
     await adapter.stopAll();
   });
@@ -3877,12 +4508,12 @@ describe('CodexAdapter', () => {
       approvalPolicy: 'never',
       sandbox: 'read-only',
     });
-    expect(
-      calls.find((line) => line.method === 'turn/start')?.params,
-    ).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'read-only',
-    });
+    const turnStart = calls.find((line) => line.method === 'turn/start');
+    expect(turnStart?.params).toMatchObject({ approvalPolicy: 'never' });
+    // #2559: the thread is already read-only; nothing loosens it, and the
+    // ignored sandbox mode string is no longer sent.
+    expect(turnStart?.params).not.toHaveProperty('sandbox');
+    expect(turnStart?.params).not.toHaveProperty('sandboxPolicy');
 
     await adapter.stopAll();
   });
@@ -3948,6 +4579,430 @@ describe('CodexAdapter', () => {
     });
 
     await adapter.stopAll();
+  });
+
+  describe('#2493: never reaches danger-full-access only in a host session', () => {
+    /** The next event with `method`, skipping the ones before it. */
+    async function nextOf(
+      iterator: AsyncIterator<any>,
+      method: string,
+    ): Promise<any> {
+      for (let seen = 0; seen < 20; seen += 1) {
+        const event = await nextEvent(iterator, method);
+        if (event?.method === method) return event;
+      }
+      throw new Error(`No ${method} event`);
+    }
+
+    async function startWith(
+      threadId: string,
+      confinement: 'host' | 'workspace' | undefined,
+      resume: boolean,
+    ) {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        modelOptions: { approvalMode: 'never' },
+        ...(resume
+          ? { resumeCursor: { codexThreadId: `codex-${threadId}` } }
+          : {}),
+        ...(confinement ? { confinement } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: {
+          thread: { id: `codex-${threadId}` },
+          model: 'gpt-5-codex',
+        },
+      });
+      await withTimeout(sessionPromise, `startSession ${threadId}`);
+      await flushIo();
+      const request = processHandle.stdin.lines
+        .map(parseLine)
+        .find(
+          (line) => line.method === (resume ? 'thread/resume' : 'thread/start'),
+        );
+      const configured = await nextOf(iterator, 'session.configured');
+      return { adapter, iterator, request, configured };
+    }
+
+    test.each([
+      ['thread/start', false],
+      ['thread/resume', true],
+    ] as const)(
+      'a host session sends exactly the historical pair on %s',
+      async (_method, resume) => {
+        const { adapter, request, configured } = await startWith(
+          `host-${String(resume)}`,
+          'host',
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+        });
+        expect(configured.metadata).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+          approvalMode: 'never',
+          confinement: 'host',
+        });
+        await adapter.stopAll();
+      },
+    );
+
+    test.each([
+      ['thread/start', 'workspace', false],
+      ['thread/resume', 'workspace', true],
+      ['thread/start (no confinement at all)', undefined, false],
+    ] as const)(
+      'a confined session keeps never but sandboxes %s to the workspace',
+      async (_method, confinement, resume) => {
+        const { adapter, iterator, request, configured } = await startWith(
+          `confined-${String(resume)}-${String(confinement)}`,
+          confinement,
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'workspace-write',
+        });
+        expect(configured.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+
+        const threadId = `confined-${String(resume)}-${String(confinement)}`;
+        const turnPromise = adapter.sendTurn({
+          threadId,
+          input: 'go',
+          modelOptions: { approvalMode: 'never' },
+          ...(confinement ? { confinement } : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, threadId, {
+          id: '3',
+          result: { turn: { id: `turn-${threadId}` } },
+        });
+        await withTimeout(turnPromise, `sendTurn ${threadId}`);
+        const turnStarted = await nextOf(iterator, 'turn.started');
+        expect(turnStarted.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+        await adapter.stopAll();
+      },
+    );
+  });
+
+  describe('#2559: a turn changes the thread sandbox only with sandboxPolicy, never looser than confinement', () => {
+    type Posture = {
+      approvalMode?: 'ask' | 'auto' | 'never';
+      confinement?: 'host' | 'workspace';
+    };
+
+    async function nextOf(
+      iterator: AsyncIterator<any>,
+      method: string,
+    ): Promise<any> {
+      for (let seen = 0; seen < 20; seen += 1) {
+        const event = await nextEvent(iterator, method);
+        if (event?.method === method) return event;
+      }
+      throw new Error(`No ${method} event`);
+    }
+
+    /**
+     * Starts a thread in `start`, with Codex reporting `reported` as its
+     * sandbox, then runs one turn per posture in `turns`. Returns each
+     * turn/start request's params and each turn.started's metadata.
+     */
+    async function run(
+      threadId: string,
+      start: Posture,
+      reported: unknown,
+      turns: Posture[],
+    ) {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const started = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        ...(start.approvalMode
+          ? { modelOptions: { approvalMode: start.approvalMode } }
+          : {}),
+        ...(start.confinement ? { confinement: start.confinement } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: {
+          thread: { id: `codex-${threadId}` },
+          model: 'gpt-5-codex',
+          ...(reported ? { sandbox: reported } : {}),
+        },
+      });
+      await withTimeout(started, `startSession ${threadId}`);
+      await flushIo();
+      // Published only when the start carried a posture.
+      const configured = start.approvalMode
+        ? (await nextOf(iterator, 'session.configured')).metadata
+        : undefined;
+      const metadata: Array<Record<string, unknown>> = [];
+      let id = 3;
+      for (const turn of turns) {
+        const sent = adapter.sendTurn({
+          threadId,
+          input: 'go',
+          ...(turn.approvalMode
+            ? { modelOptions: { approvalMode: turn.approvalMode } }
+            : {}),
+          ...(turn.confinement ? { confinement: turn.confinement } : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, threadId, {
+          id: String(id),
+          result: { turn: { id: `turn-${threadId}-${id}` } },
+        });
+        id += 1;
+        await withTimeout(sent, `sendTurn ${threadId}`);
+        metadata.push((await nextOf(iterator, 'turn.started')).metadata);
+      }
+      const params = processHandle.stdin.lines
+        .map(parseLine)
+        .filter((line) => line.method === 'turn/start')
+        .map((line) => line.params);
+      await adapter.stopAll();
+      return { params, metadata, configured };
+    }
+
+    const FULL = { type: 'dangerFullAccess' };
+    const WORKSPACE = {
+      type: 'workspaceWrite',
+      writableRoots: ['/tmp/extra'],
+      networkAccess: false,
+      excludeTmpdirEnvVar: true,
+      excludeSlashTmp: false,
+    };
+
+    const NO_BASELINE = {
+      type: 'workspaceWrite',
+      writableRoots: [],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    };
+
+    test('a host thread at full access tightens to workspace-write when Ask is picked, without gaining network', async () => {
+      const { params, metadata } = await run(
+        'tighten',
+        { approvalMode: 'never', confinement: 'host' },
+        FULL,
+        [
+          { approvalMode: 'ask', confinement: 'host' },
+          { approvalMode: 'ask', confinement: 'host' },
+        ],
+      );
+      // Codex never reported a workspace-write config for this thread, so
+      // there is no baseline to restore: no network, no extra roots.
+      expect(params[0].sandboxPolicy).toEqual(NO_BASELINE);
+      expect(params[0]).not.toHaveProperty('sandbox');
+      expect(metadata[0]).toMatchObject({
+        approvalPolicy: 'untrusted',
+        sandbox: 'workspace-write',
+        approvalMode: 'ask',
+      });
+      // Already tightened: the next Ask turn changes nothing.
+      expect(params[1]).not.toHaveProperty('sandboxPolicy');
+      expect(metadata[1]).toMatchObject({ sandbox: 'workspace-write' });
+    });
+
+    test("tightening back restores the thread's own workspace-write config exactly (R2 round trip)", async () => {
+      const { params, metadata } = await run(
+        'round-trip',
+        { approvalMode: 'ask', confinement: 'host' },
+        WORKSPACE,
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { approvalMode: 'ask', confinement: 'host' },
+        ],
+      );
+      expect(params[0].sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+      expect(metadata[0]).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+        confinement: 'host',
+      });
+      // Back to the config Codex reported: network still off, its roots and
+      // exclude flags intact.
+      expect(params[1].sandboxPolicy).toEqual(WORKSPACE);
+      expect(metadata[1]).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'ask',
+      });
+    });
+
+    test.each([
+      ['a workspace session', 'workspace'],
+      ['a turn naming no confinement at all', undefined],
+    ] as const)(
+      'never is never full access for %s, whatever the thread started as',
+      async (_label, confinement) => {
+        const fromWorkspace = await run(
+          `confined-ws-${String(confinement)}`,
+          { approvalMode: 'ask', ...(confinement ? { confinement } : {}) },
+          WORKSPACE,
+          [{ approvalMode: 'never', ...(confinement ? { confinement } : {}) }],
+        );
+        // Already workspace-write: nothing to send.
+        expect(fromWorkspace.params[0]).not.toHaveProperty('sandboxPolicy');
+        expect(fromWorkspace.metadata[0]).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+
+        // A thread the user's own Codex config left unconfined is pulled
+        // into the workspace, not left at (or given) full access.
+        const fromFull = await run(
+          `confined-full-${String(confinement)}`,
+          {},
+          FULL,
+          [{ approvalMode: 'never', ...(confinement ? { confinement } : {}) }],
+        );
+        expect(fromFull.params[0].sandboxPolicy).toEqual(NO_BASELINE);
+        expect(fromFull.metadata[0]).toMatchObject({
+          sandbox: 'workspace-write',
+        });
+      },
+    );
+
+    test('R1: a confined thread at full access is pulled into the workspace even on a turn that carries no posture', async () => {
+      // The user's own Codex config (or an adopted session's source)
+      // started the thread unconfined; nothing on the turn asks for a mode.
+      const confined = await run('no-posture-ws', {}, FULL, [
+        { confinement: 'workspace' },
+        { confinement: 'workspace' },
+      ]);
+      expect(confined.params[0].sandboxPolicy).toEqual(NO_BASELINE);
+      expect(confined.params[1]).not.toHaveProperty('sandboxPolicy');
+
+      // A host session keeps what its own config gave it.
+      const host = await run('no-posture-host', {}, FULL, [
+        { confinement: 'host' },
+      ]);
+      expect(host.params[0]).not.toHaveProperty('sandboxPolicy');
+    });
+
+    test('a thread whose posture does not change sends no sandboxPolicy, so its own sandbox keeps governing', async () => {
+      const { params, metadata } = await run(
+        'unchanged',
+        { approvalMode: 'never', confinement: 'host' },
+        FULL,
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { confinement: 'host' },
+        ],
+      );
+      for (const turn of params) {
+        expect(turn).not.toHaveProperty('sandboxPolicy');
+        expect(turn).not.toHaveProperty('sandbox');
+      }
+      expect(metadata[0]).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+      });
+    });
+
+    test('R3: a thread Codex reports read-only is a floor Station never loosens', async () => {
+      // Station asked for workspace-write; Codex's own config (or a managed
+      // requirement) put the thread at read-only. Neither Ask nor full
+      // access moves it.
+      const { params, metadata, configured } = await run(
+        'read-only-floor',
+        { approvalMode: 'auto', confinement: 'host' },
+        { type: 'readOnly', networkAccess: false },
+        [
+          { approvalMode: 'ask', confinement: 'host' },
+          { approvalMode: 'never', confinement: 'host' },
+        ],
+      );
+      for (const turn of params)
+        expect(turn).not.toHaveProperty('sandboxPolicy');
+      expect(metadata[0]).toMatchObject({ sandbox: 'read-only' });
+      expect(metadata[1]).toMatchObject({ sandbox: 'read-only' });
+      // R5: session.configured reports the sandbox Codex reported, not the
+      // one requested, and no Station mode claims it (untrusted/on-request
+      // over read-only is none of Ask, Auto or Full access).
+      expect(configured).toMatchObject({
+        approvalPolicy: 'on-request',
+        sandbox: 'read-only',
+        approvalMode: 'connection-default',
+      });
+    });
+
+    test('R5: an external sandbox report claims no Station sandbox mode in session.configured', async () => {
+      // Codex says the thread runs inside an outer sandbox, which is none of
+      // read-only, workspace-write or full access. Reporting the requested
+      // mode would claim one the thread is not in.
+      const { configured } = await run(
+        'configured-external',
+        { approvalMode: 'never', confinement: 'host' },
+        { type: 'externalSandbox', networkAccess: 'restricted' },
+        [],
+      );
+      expect(configured).toMatchObject({ approvalPolicy: 'never' });
+      expect(configured).not.toHaveProperty('sandbox');
+      expect(configured).not.toHaveProperty('approvalMode');
+    });
+
+    test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
+      const reported = await run(
+        'configured-reported',
+        { approvalMode: 'never', confinement: 'host' },
+        WORKSPACE,
+        [],
+      );
+      expect(reported.configured).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'never',
+      });
+      const silent = await run(
+        'configured-silent',
+        { approvalMode: 'never', confinement: 'host' },
+        undefined,
+        [],
+      );
+      expect(silent.configured).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+      });
+    });
   });
 
   describe('#896 wave 2: app-home profile env layering', () => {

@@ -424,6 +424,15 @@ export type SubagentActionCell =
       /** Whether the action reaches one subagent, its turn, or the whole session. */
       scope: 'per-task' | 'turn' | 'session';
       evidence: string;
+      /**
+       * #2486: this action has no softer path — invoking it also ends the
+       * reporting session's own active turn (the engine offers nothing that
+       * stops one subagent while leaving the turn running). Absent/false
+       * means the action is scoped exactly to what `scope` says. A client
+       * rendering this control's copy reads this flag rather than assuming
+       * every engine's stop behaves the same way.
+       */
+      endsParentTurn?: boolean;
     };
 
 /**
@@ -875,13 +884,33 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
         'collabAgentToolCall spawnAgent/wait and subAgentActivity ThreadItems; child-thread turn/completed and thread/tokenUsage/updated',
       adapterModule: 'codex-adapter-child-work.ts',
     },
+    // #2486: a client `turn/interrupt {threadId: child, turnId}` stops a
+    // child, but the parent is never told — its own `wait` collabAgentToolCall
+    // takes 100s+ to notice, or never resolves within any bounded window
+    // (live captures: codex-0.155.1-collab-v1-client-turn-interrupt.jsonl).
+    // The only mechanism that unblocks the parent promptly is interrupting
+    // the parent's OWN active turn too, proven live
+    // (codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl: the
+    // parent's turn/completed arrives ~4ms after its own interrupt request,
+    // vs never within the capture window otherwise). Codex offers no softer
+    // path, so `stopProviderTask` (codex-adapter.ts) always ends the
+    // parent's turn too — `endsParentTurn: true` below. Resume has no wire
+    // mechanism at all (no client method reactivates an interrupted child),
+    // so it stays unsupported.
     subagentControl: {
-      state: 'none',
-      // Observed, not controlled. A client `turn/interrupt {threadId: child,
-      // turnId}` does stop a child, but the parent is never told: a v1
-      // parent re-waited on it and hung (captured). No per-child stop is
-      // wired until that is solved.
-      reason: 'No per-child stop is wired.',
+      state: 'wired',
+      stop: {
+        state: 'available',
+        invocation: 'client-request',
+        scope: 'per-task',
+        endsParentTurn: true,
+        evidence:
+          'codex-adapter.ts stopProviderTask: turn/interrupt on the child, then on the parent (proven live in codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl and codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl)',
+      },
+      resume: {
+        state: 'unsupported',
+        reason: 'No client method reactivates an interrupted child.',
+      },
     },
     builtInTools: {
       state: 'documented',
@@ -936,21 +965,41 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     },
     // One prompt is bound to one muse process; there is no live input channel.
     midTurnSteer: false,
-    // Muse demonstrably RUNS tools — its JSONL stream emits tool.completed
-    // with a toolName (muse-adapter-events.ts) — but nothing enumerates
-    // WHICH tools the CLI ships, so this stays unenumerated rather than
-    // guessing categories from observed names in one stream.
+    // #2452, live `muse serve` (MSP) captures against Muse Code
+    // 1.3.0-R3401.1 (committed as
+    // `src-server/providers/__tests__/fixtures/muse-serve-1.3.0-*`). A
+    // workflow's children appear ONLY as `children[]` on the parent's
+    // `workflow` item, restated whole each revision: scheduled → started →
+    // usage (token counts) → completed (durationMs, resultRef) → terminal.
+    // The one result text is the workflow's reconciliation message
+    // (`final_summary.summary`). There is no child item stream, so no
+    // progress line or output; no depth either. Declared for serve: a
+    // session on the `muse exec` fallback names no subagent and reports its
+    // child work `not-reported`.
     subagentObservability: {
-      state: 'none',
-      // The muse JSONL stream reports tool activity but names no subagent:
-      // there is no task or child-agent identity on the wire
-      // (muse-adapter-events.ts).
-      reason: 'The engine reports no subagent identity.',
+      state: 'declared',
+      signals: ['lifecycle', 'usage', 'result'],
+      evidence:
+        'workflow item children[] (scheduled/started/usage/completed/terminal) and its workflow-launch-reconciled final_summary',
+      adapterModule: 'muse-serve-child-work.ts',
     },
     subagentControl: {
-      state: 'none',
-      // Nothing to control: the engine reports no subagent identity.
-      reason: 'Nothing to control.',
+      state: 'wired',
+      // `subagent/stop {subagentId}` (a client request) cancelled the child
+      // within ~35 ms in the capture `muse-serve-1.3.0-workflow-child-stop`;
+      // `MuseAdapter.stopProviderTask` sends it and the child reads
+      // stopped-unconfirmed until its own `terminal: cancelled`.
+      stop: {
+        state: 'available',
+        invocation: 'client-request',
+        scope: 'per-task',
+        evidence:
+          'subagent/stop → workflow child terminal cancelled (muse-serve-1.3.0-workflow-child-stop)',
+      },
+      resume: {
+        state: 'unsupported',
+        reason: 'No subagent resume is wired.',
+      },
     },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
