@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-25T22:16:16Z | nightly-npm | 0.6.0-nightly.2459.36191456945 | `a279a57` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36191456945) |
 | 2026-09-25T18:47:12Z | nightly-desktop | 0.1.11-nightly.2459.2 | `20c6e65` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36164412979) |
 | 2026-09-25T18:47:08Z | nightly-android | 0.1.11-nightly.2459.2 | `20c6e65` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36164412979) |
 | 2026-09-25T18:06:31Z | nightly-npm | 0.6.0-nightly.2459.36164412979 | `20c6e65` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36164412979) |
@@ -153,6 +154,29 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-25T22:16:16Z · nightly-npm · 0.6.0-nightly.2459.36191456945
+
+- Ship SHA: `a279a57fe966178b1fa26419fdc6a6fc4b6c35f7`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2459.36191456945 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `20c6e65` ([full sha](https://github.com/kontourai/station/commit/20c6e651f7b7403fbbbf46f10400f627a9dba95b)):
+
+**Features**
+
+- [#2630](https://github.com/kontourai/station/pull/2630) feat(governance): adopt remaining OpenClaw practices (todo sweep, duplicate sweep, type gate)
+
+**Fixes**
+
+- [#2655](https://github.com/kontourai/station/pull/2655) fix(chat): child-work banner reads turn liveness; pin the route's child-work binding (#2654)
+
+**Other**
+
+- [#2665](https://github.com/kontourai/station/pull/2665) test(gallery): re-baseline overlay-mobile-sheet for the current main render
 
 ## 2026-09-25T18:47:12Z · nightly-desktop · 0.1.11-nightly.2459.2
 
