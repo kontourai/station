@@ -123,17 +123,23 @@ Two kinds of choice are involved, and they are kept apart here.
 - The sweep runs every three minutes (`*/3 * * * *`, one of Free's five cron
   triggers) and spends at most 45 subrequests per run, at most 40 of them
   deletes, because Free allows 50 subrequests per invocation and every Apple
-  call and every ledger call is one. At 800 deletes an hour it outpaces the
+  call and every ledger call is one. The once-per-run purge and each scope's
+  listing and triage come out of the same budget, so 40 is an upper bound.
+  With two swept scopes that is about 800 deletes an hour, which outpaces the
   global create ceiling (600 an hour) even if no Station ever deletes.
 - A request makes at most six subrequests (a start: the daily count, create,
   record and push, then either the accepted-start count or, on refusal, the
   compensating delete and its record removal).
 - Durable Object allowances on Free: 100,000 requests, 100,000 row writes and
   5 million row reads a day. An accepted start costs three ledger requests
-  (the daily count, the record, the accepted-start count) and about three row
-  writes; at the global create ceiling (10 a minute) that is about
-  45,000 requests and 45,000 row writes a day, plus one row per leaked channel
-  sighted; normal use is far below. Reads are dominated by the sweep, which
+  (the daily count, the record, the accepted-start count). Row writes are
+  higher than the three rows touched, because each index entry updated is
+  billed as a written row: roughly five to seven per start including its
+  eventual purge (estimated, not measured against billing). At the global
+  create ceiling (10 a minute) that is about 45,000 requests and 72,000 to
+  100,000 row writes a day, which is at Free's write allowance, so sustained
+  abuse at the ceiling is where Free runs out first. Normal use (a few starts
+  per device a day) is far below. Reads are dominated by the sweep, which
   reads each swept scope's live records once per run (every statement uses an
   index: `SEARCH`, never `SCAN`, in `EXPLAIN QUERY PLAN`).
 - **Unverified:** Free allows about 10 ms of CPU per request. The first APNs
