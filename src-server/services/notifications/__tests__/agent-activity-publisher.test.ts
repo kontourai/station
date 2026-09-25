@@ -1603,6 +1603,7 @@ describe('resolvePushGatewayConfig', () => {
       sendUrl: 'https://push.kontourai.io/v1/fcm/send',
       liveActivityUrl: 'https://push.kontourai.io/v1/apns/live-activity',
       channelsUrl: 'https://push.kontourai.io/v1/apns/channels',
+      alertUrl: 'https://push.kontourai.io/v1/apns/alert',
       audience: 'https://push.kontourai.io',
     });
   });
@@ -1616,6 +1617,7 @@ describe('resolvePushGatewayConfig', () => {
       sendUrl: 'https://push.example.test/v1/fcm/send',
       liveActivityUrl: 'https://push.example.test/v1/apns/live-activity',
       channelsUrl: 'https://push.example.test/v1/apns/channels',
+      alertUrl: 'https://push.example.test/v1/apns/alert',
       audience: 'https://push.example.test',
     });
   });

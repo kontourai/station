@@ -20,6 +20,11 @@ export function sealAgentActivityCard(input: {
   registrationId: string;
   /** Tests only: a fixed nonce for the known-answer vector. */
   nonce?: Buffer;
+  /**
+   * The AAD domain; the card's by default. iOS alerts use
+   * `NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX`, so neither opens as the other.
+   */
+  aadPrefix?: string;
 }): string {
   const key = Buffer.from(input.payloadKey, 'base64url');
   if (key.length !== KEY_BYTES) throw new Error('invalid payload key');
@@ -30,7 +35,7 @@ export function sealAgentActivityCard(input: {
   });
   cipher.setAAD(
     Buffer.from(
-      `${NATIVE_PUSH_SEALED_AAD_PREFIX}${input.registrationId}`,
+      `${input.aadPrefix ?? NATIVE_PUSH_SEALED_AAD_PREFIX}${input.registrationId}`,
       'utf8',
     ),
   );

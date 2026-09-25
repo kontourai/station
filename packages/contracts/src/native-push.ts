@@ -68,6 +68,14 @@ export interface NativePushIosRegistrationRequest {
   platform: 'ios';
   /** Which APNs the token belongs to (a debug build is `sandbox`). */
   apnsEnvironment: 'production' | 'sandbox';
+  /**
+   * The app's regular APNs device token (lowercase hex, 64..200
+   * characters), for notification alerts (#2589). Optional: a phone that
+   * sends none gets Live Activities only, and a registration without one is
+   * stored exactly as before. It is replaced (or dropped) by every
+   * registration, like `token`.
+   */
+  alertToken?: string;
 }
 
 export type NativePushRegistrationRequest =
@@ -102,6 +110,14 @@ export interface NativePushRegistrationResponse {
  * not open as another's even under the same key.
  */
 export const NATIVE_PUSH_SEALED_AAD_PREFIX = 'station-agent-activity:v1:';
+
+/**
+ * The additional authenticated data prefix of a sealed iOS notification
+ * alert (#2589), followed by the registrationId. Distinct from the card's
+ * ({@link NATIVE_PUSH_SEALED_AAD_PREFIX}), so an alert never opens as a card
+ * or a card as an alert under the same payload key.
+ */
+export const NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX = 'station-alert:v1:';
 
 /**
  * A card as the gateway and FCM carry it: only routing data in clear. The

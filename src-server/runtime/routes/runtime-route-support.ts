@@ -547,6 +547,21 @@ export function configureRuntimeSupportServices(
     vapidKeyService.loadOrCreate(),
     resolveWebPushSubject(),
   );
+  // Agent-activity push to registered phones through the Kontour push
+  // gateway (docs/design/notification-delivery.md, "Station contract").
+  // Off exactly where Web Push is off: hosted paired-device records have no
+  // tenant binding. The key store only reads here; the first registration
+  // creates the key.
+  const pushSigningKeyStore = new PushSigningKeyStore(
+    context.configLoader.getProjectHomeDir(),
+    () => context.environmentSecurityService.devicePairing.environmentId(),
+  );
+  const pushGateway = resolvePushGatewayConfig();
+  if (!pushGateway)
+    context.logger.warn(
+      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
+    );
+
   // #2586: every notification past the in-app feed goes through the
   // delivery router (audience → policy → channels). Off exactly where Web
   // Push was: hosted paired-device records have no tenant binding.
@@ -565,22 +580,19 @@ export function configureRuntimeSupportServices(
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     listNotifications: () => notificationService.list(),
+    // #2589: iOS alerts through the push gateway; dormant until a phone
+    // registers an alert token.
+    ...(pushGateway
+      ? {
+          apnsAlert: {
+            devicePairing: context.environmentSecurityService.devicePairing,
+            signingKey: pushSigningKeyStore,
+            gateway: pushGateway,
+          },
+        }
+      : {}),
   });
 
-  // Agent-activity push to registered phones through the Kontour push
-  // gateway (docs/design/notification-delivery.md, "Station contract").
-  // Off exactly where Web Push is off: hosted paired-device records have no
-  // tenant binding. The key store only reads here; the first registration
-  // creates the key.
-  const pushSigningKeyStore = new PushSigningKeyStore(
-    context.configLoader.getProjectHomeDir(),
-    () => context.environmentSecurityService.devicePairing.environmentId(),
-  );
-  const pushGateway = resolvePushGatewayConfig();
-  if (!pushGateway)
-    context.logger.warn(
-      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
-    );
   const agentActivityPublisher = wireAgentActivityPublisher({
     eventBus: context.eventBus,
     devicePairing: context.environmentSecurityService.devicePairing,
@@ -589,6 +601,7 @@ export function configureRuntimeSupportServices(
       sendUrl: '',
       liveActivityUrl: '',
       channelsUrl: '',
+      alertUrl: '',
       audience: '',
     },
     enabled: webPushEnabled && pushGateway !== null,
