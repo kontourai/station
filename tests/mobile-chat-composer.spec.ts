@@ -1871,10 +1871,16 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
    * pathname poll that is satisfied the instant it runs, both passed against
    * a click that revealed nothing at all. Assert the surface and the session
    * it was told to show.
+   *
+   * On a phone the only region is Chat's, so Activity opens as a pane in that
+   * region. A region that holds Chat keeps the "Dock" landmark whichever pane
+   * is selected (#2046 ownership decision D3, PR #2069; `DockShell.tsx`), so
+   * Activity is found inside "Dock", and its selected-pane "Hide Activity"
+   * control is what proves it is the pane on screen.
    */
   await expect(
     page
-      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('region', { name: 'Dock', exact: true })
       .getByRole('button', { name: 'Hide Activity' }),
   ).toBeVisible({ timeout: 10_000 });
   const revealed = page.getByTestId('session-detail');
