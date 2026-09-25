@@ -23,6 +23,7 @@ import {
 import {
   type ConversationActivityCarrier,
   serverTurnLive,
+  serverWorkLive,
 } from './conversation-activity';
 import { modelDisplayLabel } from './modelCapabilities';
 import { modelProviderDisplayLabel } from './modelProviderDisplay';
@@ -1133,6 +1134,14 @@ export function isSessionExecutionActive(
     session.orchestrationStatus === 'awaiting-approval' ||
     session.status === 'sending'
   );
+}
+
+/** Display count only: a running child or pending provider reply is work,
+ * even when this session has no interruptible turn. */
+export function isSessionWorkActive(
+  session?: SessionExecutionActivity | null,
+): boolean {
+  return isSessionExecutionActive(session) || serverWorkLive(session) === true;
 }
 
 type TurnStreamActivity = SessionExecutionActivity & {

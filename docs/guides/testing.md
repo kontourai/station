@@ -274,6 +274,13 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+New or materially changed test files state their measured wall cost in the
+pull request (the `test:focused` duration line is the receipt). A file that
+needs seconds must name the contract no cheaper layer proves; prefer splitting
+by owner boundary over widening a slow file. Weighted capacity planning and
+the resource manifest stay the scheduling authority — this disclosure is
+review evidence, not a separate budget system.
+
 ### Pre-push orchestration transfer gate
 
 `.githooks/pre-push` runs `scripts/check-prepush-orchestration-transfer.mjs`

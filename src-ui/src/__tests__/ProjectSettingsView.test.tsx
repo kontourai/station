@@ -23,6 +23,16 @@ const sdkMocks = vi.hoisted(() => ({
   }>,
   environmentsError: false,
   environmentsLoading: false,
+  peerCredentials: [] as Array<{
+    environmentId: string;
+    apiBase: string;
+    scope: string;
+    label: string | null;
+    createdAt: number;
+    updatedAt: number;
+  }>,
+  peersError: false,
+  peersLoading: false,
   modelConnections: [] as Array<Record<string, unknown>>,
   // `undefined` is the unread config — the picker must not claim a resolved
   // mode it has not seen.
@@ -157,6 +167,15 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: !sdkMocks.environmentsError && !sdkMocks.environmentsLoading,
     isError: sdkMocks.environmentsError,
   }),
+  usePeerCredentialsQuery: () => ({
+    data:
+      sdkMocks.peersError || sdkMocks.peersLoading
+        ? undefined
+        : sdkMocks.peerCredentials,
+    isLoading: sdkMocks.peersLoading,
+    isSuccess: !sdkMocks.peersError && !sdkMocks.peersLoading,
+    isError: sdkMocks.peersError,
+  }),
   useProjectQuery: vi.fn(() => ({
     data: sdkMocks.project,
     isLoading: sdkMocks.isLoading,
@@ -283,6 +302,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.stationConfig = {};
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
+    sdkMocks.peerCredentials = [];
+    sdkMocks.peersError = false;
+    sdkMocks.peersLoading = false;
     sdkMocks.modelConnections = [
       READY_MODEL_CONNECTION,
       SECOND_MODEL_CONNECTION,
@@ -384,6 +406,100 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'selected',
       true,
     );
+  });
+
+  test('keeps a saved peer default preserved without offering new paired selections', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultEnvironment: { kind: 'saved', id: 'env-peer-b' as any },
+    };
+    sdkMocks.environments = [
+      { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
+    ];
+    sdkMocks.peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    renderProjectSettings();
+
+    // No NEW paired-Station selection is offered: the foreground thread
+    // path has no portable admission (#480 scope correction).
+    expect(
+      screen.queryByRole('option', { name: /Paired Station$/ }),
+    ).toBeNull();
+    // The saved peer default stays visible and selected, named as
+    // preserved-but-unsupported — never silently substituted with current.
+    expect(
+      screen.getByRole('option', {
+        name: 'env-peer-b — paired Station (not offered for new threads)',
+      }),
+    ).toHaveProperty('selected', true);
+    expect(screen.getByText(/saved default is a paired Station/)).toBeTruthy();
+    expect(screen.queryByText(/not available in the current list/)).toBeNull();
+  });
+
+  test('a saved peer default survives while either inventory is loading, without offering new paired selections', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultEnvironment: { kind: 'saved', id: 'env-peer-b' as any },
+    };
+    sdkMocks.environments = [
+      { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
+    ];
+    sdkMocks.peersLoading = true;
+    const { rerender } = renderProjectSettings();
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.queryByText(/not available in the current list/)).toBeNull();
+    sdkMocks.peersLoading = false;
+    sdkMocks.peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    rerender(<ProjectSettingsView slug="demo" />);
+    // Still no paired-Station option to newly select; the preserved saved
+    // default remains the selected value with the unsupported notice.
+    expect(
+      screen.queryByRole('option', { name: /Paired Station$/ }),
+    ).toBeNull();
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.getByText(/saved default is a paired Station/)).toBeTruthy();
+  });
+
+  test('names an unverifiable peer default when the peer inventory fails', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultEnvironment: { kind: 'saved', id: 'env-peer-b' as any },
+    };
+    sdkMocks.environments = [
+      { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
+    ];
+    sdkMocks.peersError = true;
+    renderProjectSettings();
+
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.getByText(/Paired Stations are unavailable/)).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Paired Station/ })).toBeNull();
   });
 
   test('clears a dangling saved default through a real selection change', async () => {

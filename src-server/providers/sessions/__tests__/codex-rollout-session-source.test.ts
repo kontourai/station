@@ -538,6 +538,54 @@ describe('CodexRolloutSessionSource', () => {
     );
   });
 
+  test('consecutive assistant messages in a turn import as separate paragraphs, across pages', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    const assistant = (id: string, ...texts: string[]) =>
+      envelope('response_item', {
+        type: 'message',
+        id,
+        role: 'assistant',
+        content: texts.map((text) => ({ type: 'output_text', text })),
+      });
+    writeFileSync(
+      path,
+      [
+        meta('paragraphs'),
+        envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+        envelope('event_msg', { type: 'user_message', message: 'go' }),
+        assistant('m1', 'I opened the PR.'),
+        assistant('m2', 'The focused tests', ' pass.'),
+        envelope('event_msg', { type: 'task_complete', turn_id: 't1' }),
+        envelope('event_msg', { type: 'task_started', turn_id: 't2' }),
+        envelope('event_msg', { type: 'user_message', message: 'more' }),
+        assistant('m3', 'Next turn.'),
+        envelope('event_msg', { type: 'task_complete', turn_id: 't2' }),
+      ]
+        .map(line)
+        .join(''),
+    );
+    // One event per page: the "turn already has text" fact must survive the
+    // cursor between the two message lines.
+    const source = new CodexRolloutSessionSource({
+      homeDir: root,
+      maxEvents: 1,
+    });
+    const session = await discoverOne(source);
+
+    const result = await drain(source, session);
+    expect(
+      result.events
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) => event.delta),
+    ).toEqual([
+      'I opened the PR.',
+      '\n\nThe focused tests',
+      ' pass.',
+      'Next turn.',
+    ]);
+  });
+
   test('retains an exactly maximum-size line whose newline is just outside the byte window', async () => {
     const root = fixtureRoot();
     const path = rolloutPath(root);

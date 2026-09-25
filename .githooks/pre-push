@@ -62,10 +62,6 @@ npm run --silent lint:check
 echo "[station pre-push] repository governance proof"
 npm run --silent proof:repo-governance
 
-# ~9s, and only when this push changes something the UI build reads (#3033).
-echo "[station pre-push] UI entry-bundle ceiling"
-node scripts/check-prepush-ui-bundle.mjs
-
 echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
 

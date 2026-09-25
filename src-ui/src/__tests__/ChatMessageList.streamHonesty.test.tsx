@@ -107,7 +107,7 @@ function managedSession(overrides: Partial<ChatSession>): ChatSession {
   };
 }
 
-function renderList(session: ChatSession) {
+function renderList(session: ChatSession, suppressStreamingRow = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -115,6 +115,7 @@ function renderList(session: ChatSession) {
     <QueryClientProvider client={queryClient}>
       <ChatMessageList
         activeSession={session}
+        suppressStreamingRow={suppressStreamingRow}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -124,6 +125,20 @@ function renderList(session: ChatSession) {
 }
 
 describe('station#3300 — settled turn stays settled on resume', () => {
+  test('a reconnect snapshot with server child work keeps the background banner without a local task list', () => {
+    renderList(
+      managedSession({
+        backgroundTasks: [],
+        conversationActivity: {
+          conversationId: 'stream-honesty-session',
+          asOfSequence: 7,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      }),
+    );
+    expect(screen.getByText('Background agent working')).toBeTruthy();
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+  });
   test('REPRO: a stale "running" orchestrationStatus with the turn fold closed must not reconstruct the streaming row under the settled answer', () => {
     // The exact resume shape: `orchestrationStatus: 'running'` is persisted
     // to sessionStorage and restored on a webview reload; the turn fold
@@ -168,6 +183,79 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
+  });
+
+  test('a projected open turn hides the separate streaming row', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'sending',
+      }),
+      true,
+    );
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+  });
+
+  test('#2654: a projected open turn with running child work does not show the turn-over background banner', () => {
+    const openTurnWithChildWork = managedSession({
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-2',
+      status: 'sending',
+      backgroundTasks: [],
+      conversationActivity: {
+        conversationId: 'stream-honesty-session',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'turn-2',
+          threadId: 'stream-honesty-session',
+          startedAt: '2026-09-25T12:00:00.000Z',
+        },
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    });
+    renderList(openTurnWithChildWork, true);
+    // The live turn renders from the transcript window, not the streaming
+    // row — and it is still live, so the banner that means "the turn ended
+    // while work continues" must not claim otherwise.
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+    expect(screen.queryByText('Background agent working')).toBeNull();
+  });
+
+  test('#2654: local background tasks during a projected open turn also wait for the turn to end', () => {
+    const localTaskMidTurn = managedSession({
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-2',
+      status: 'sending',
+      backgroundTasks: [
+        { taskId: 'task-1', backgrounded: true, description: 'index repo' },
+      ],
+    });
+    renderList(localTaskMidTurn, true);
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+    expect(
+      screen.queryByText('Background agent working — index repo'),
+    ).toBeNull();
+  });
+
+  test('#2654: once the turn settles, local background tasks show the banner', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'idle',
+        orchestrationTurnOpen: false,
+        status: 'idle',
+        backgroundTasks: [
+          { taskId: 'task-1', backgrounded: true, description: 'index repo' },
+        ],
+      }),
+      true,
+    );
+    expect(
+      screen.getByText('Background agent working — index repo'),
+    ).toBeTruthy();
   });
 
   test("#2304: the streaming row counts from the open turn's server start", () => {

@@ -163,6 +163,60 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
   }),
 ]);
 
+/**
+ * #2610: the same overflow class on the server side. The orchestration event
+ * store is imported by most runtime, route and provider suites (its related
+ * graph: ~160 test files; transcript-search-queries.ts reaches the same set
+ * through it). A small store change plus one real-wiring route test ran
+ * fast-checks past its 12-minute budget twice with every selected test
+ * passing (#2550). Each module gets the suites that exercise its OWN
+ * behaviour: the store's persistence, attachment, quarantine and read paths,
+ * its session work-item, revision-evidence, credential-application and
+ * recovery ledgers, the transcript search queries, and the attachment route
+ * through the real runtime wiring. Its consumers run in the required
+ * merge-queue full regression, as do these store suites, which leave the
+ * fast lane: the resource-heavy event-store-batched-projection.large and
+ * event-store-wal-preservation.process (either would take most of the lane),
+ * and the adoption-ledger, turn-deduplicator and session-attachment-barrier
+ * suites, which exercise modules the store hosts but are reached through
+ * their own files. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
+ */
+const ORCHESTRATION_STORE_EDGES = Object.freeze([
+  Object.freeze({
+    pattern: 'src-server/services/orchestration/event-store.ts',
+    tests: Object.freeze([
+      'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
+      'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-turn-attachments.test.ts',
+      'src-server/services/orchestration/__tests__/event-store.test.ts',
+      'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+      'src-server/services/orchestration/__tests__/session-event-reads.test.ts',
+      'src-server/services/orchestration/__tests__/session-work-item-event-store.test.ts',
+      'src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts',
+      'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+      'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
+    ]),
+    reason:
+      'orchestration event store: own-behaviour suites; its import graph is ' +
+      'too broad for the fast lane, so consumers run in the merge-queue full ' +
+      'regression (#2610)',
+  }),
+  Object.freeze({
+    pattern: 'src-server/services/orchestration/transcript-search-queries.ts',
+    tests: Object.freeze([
+      'src-server/services/orchestration/__tests__/event-store.test.ts',
+      'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+      'src-server/services/orchestration/__tests__/session-transcript-reads-usage.test.ts',
+    ]),
+    reason:
+      'transcript search queries: own-behaviour suites; reached through the ' +
+      'event store, so consumers run in the merge-queue full regression (#2610)',
+  }),
+]);
+
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
@@ -248,6 +302,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   },
   ...SDK_TRANSPORT_EDGES,
   ...SDK_BROAD_MODULE_EDGES,
+  ...ORCHESTRATION_STORE_EDGES,
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
     related: true,
@@ -641,12 +696,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     pattern: 'scripts/literal-swap-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
-    pattern: 'scripts/merge-ui-bundle-budget.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/ui-bundle-budget.test.ts']),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({

@@ -1,6 +1,6 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { Tool } from '@voltagent/core';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 
 interface RuntimeVoiceAgentConfigLoader {
   agentExists(slug: string): Promise<boolean>;
@@ -66,7 +66,7 @@ export function createRuntimeVoiceAgentSpec(agentSpecs: Iterable<AgentSpec>) {
     prompt: STATION_VOICE_PROMPT,
     tools: {
       mcpServers,
-      autoApprove: SC_READ_ONLY_TOOLS,
+      autoApprove: SC_AUTO_APPROVED_TOOLS,
       available: ['*'],
     },
   };
