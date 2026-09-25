@@ -679,6 +679,7 @@ across the awaits refuses instead of sending the old intent under new
 credentials, and a late option change cannot redirect an in-flight call.
 The public request body stays exactly the input (prompt, target, optional
 parent task) in both forms; the scope is transport-only and never sent.
+
 ### Durable Project query identity and startup seeding
 
 A verified host may additionally supply `durableAuthorityId` to Project list,
