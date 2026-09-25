@@ -41,8 +41,10 @@ export function createAgentNotificationRoutes(
 
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
-    if (!deps.isInternalRequest(c.req.raw))
+    if (!deps.isInternalRequest(c.req.raw)) {
+      recordAgentNotification('not_found', 'unknown');
       return c.json({ error: { code: 'not_found' } }, 404);
+    }
     await next();
   });
 
@@ -63,7 +65,8 @@ export function createAgentNotificationRoutes(
       parsed = undefined;
     }
     const request = parseNotifyUserRequest(parsed);
-    if (!request)
+    if (!request) {
+      recordAgentNotification('invalid_request', 'unknown');
       return c.json(
         {
           error: {
@@ -74,6 +77,7 @@ export function createAgentNotificationRoutes(
         },
         400,
       );
+    }
     const result = await deps.gate.notify(caller, request);
     return c.json(result satisfies NotifyUserResult, 200);
   });

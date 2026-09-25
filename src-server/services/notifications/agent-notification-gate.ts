@@ -69,13 +69,6 @@ export const ALLOW_ALL_AGENT_NOTIFICATIONS: AgentNotificationPreferences = {
 
 /** What Station's own records say about the calling session. */
 export interface AgentNotificationSessionContext {
-  /**
-   * The ROOT of the calling session's delegation tree (its root
-   * conversation id), when the session is a delegated child. Rate limits and
-   * dedupe keys are namespaced by it, so a child cannot multiply its root's
-   * allowance or collide with a sibling tree's keys.
-   */
-  readonly rootId?: string;
   /** The agent slug the session started with (attribution only). */
   readonly agent?: string;
 }
@@ -84,36 +77,39 @@ export interface AgentNotificationSessionContext {
  * The production {@link AgentNotificationSessionContext}, from the metadata
  * the session STARTED with (`firstStartedMetadataOfThread`): later
  * reconfiguration events drop fields, the start record does not.
+ *
+ * Deliberately NOT read: `delegation` (its root/parent ids). For engines
+ * other than Station's own, a child's delegation context is copied from the
+ * delegating model's tool arguments (#2601), so it cannot namespace limits
+ * or dedupe keys.
  */
 export function agentNotificationSessionContext(
   startedMetadata: Record<string, unknown> | undefined,
 ): AgentNotificationSessionContext | undefined {
   if (!startedMetadata) return undefined;
-  const delegation = startedMetadata.delegation as
-    | { rootConversationId?: unknown }
-    | undefined;
-  const rootId =
-    typeof delegation?.rootConversationId === 'string' &&
-    delegation.rootConversationId
-      ? delegation.rootConversationId
-      : undefined;
   const agent =
     typeof startedMetadata.agentSlug === 'string' && startedMetadata.agentSlug
       ? startedMetadata.agentSlug
       : undefined;
-  return {
-    ...(rootId ? { rootId } : {}),
-    ...(agent ? { agent } : {}),
-  };
+  return agent ? { agent } : {};
 }
 
+/**
+ * Rate limits. The per-session limits keep one session from monopolising the
+ * Station's allowance; they do NOT bound a delegation tree, since every
+ * delegated child is its own verified session. What bounds any agent or tree
+ * is Station-wide: the hourly totals, and the number of distinct sessions
+ * that may notify in an hour.
+ */
 export interface AgentNotificationRateLimits {
-  /** Per root: burst size of the token bucket. */
-  readonly rootBurst: number;
-  /** Per root: one token is restored every this many ms. */
-  readonly rootRefillMs: number;
-  /** Per root: at most this many per rolling hour. */
-  readonly rootPerHour: number;
+  /** Per verified session: burst size of the token bucket. */
+  readonly sessionBurst: number;
+  /** Per verified session: one token is restored every this many ms. */
+  readonly sessionRefillMs: number;
+  /** Per verified session: at most this many per rolling hour. */
+  readonly sessionPerHour: number;
+  /** Per Station: at most this many distinct sessions notify per hour. */
+  readonly distinctSessionsPerHour: number;
   /** Per Station: at most this many `attention` notifications per hour. */
   readonly attentionPerHour: number;
   /** Per Station: at most this many agent notifications per hour. */
@@ -122,18 +118,19 @@ export interface AgentNotificationRateLimits {
 
 export const DEFAULT_AGENT_NOTIFICATION_RATE_LIMITS: AgentNotificationRateLimits =
   Object.freeze({
-    rootBurst: 3,
-    rootRefillMs: 60_000,
-    rootPerHour: 20,
+    sessionBurst: 3,
+    sessionRefillMs: 60_000,
+    sessionPerHour: 20,
+    distinctSessionsPerHour: 10,
     attentionPerHour: 10,
     globalPerHour: 60,
   });
 
 const HOUR_MS = 60 * 60 * 1000;
-/** Upper bound on tracked roots; idle roots are pruned first. */
-const MAX_TRACKED_ROOTS = 5_000;
+/** Upper bound on tracked sessions; idle sessions are pruned first. */
+const MAX_TRACKED_SESSIONS = 5_000;
 
-interface RootState {
+interface SessionState {
   tokens: number;
   refilledAt: number;
   sent: number[];
@@ -144,11 +141,12 @@ type RateDecision =
   | { readonly ok: false; readonly retryAfterMs: number };
 
 /**
- * In-memory limiter. A restart forgets it, which at worst lets one more
- * burst through; persisting it would put a write on every notification.
+ * In-memory limiter keyed by the VERIFIED session id. A restart forgets it,
+ * which at worst lets one more burst through; persisting it would put a
+ * write on every notification.
  */
 export class AgentNotificationRateLimiter {
-  private readonly roots = new Map<string, RootState>();
+  private readonly sessions = new Map<string, SessionState>();
   private readonly attention: number[] = [];
   private readonly global: number[] = [];
 
@@ -157,26 +155,43 @@ export class AgentNotificationRateLimiter {
   ) {}
 
   check(
-    rootId: string,
+    sessionId: string,
     urgency: NotificationUrgency,
     now: number,
   ): RateDecision {
     this.prune(now);
-    const existing = this.roots.get(rootId);
-    const state: RootState = existing
+    const existing = this.sessions.get(sessionId);
+    const state: SessionState = existing
       ? { ...existing, sent: existing.sent }
-      : { tokens: this.limits.rootBurst, refilledAt: now, sent: [] };
+      : { tokens: this.limits.sessionBurst, refilledAt: now, sent: [] };
     const elapsed = Math.max(0, now - state.refilledAt);
     const tokens = Math.min(
-      this.limits.rootBurst,
-      state.tokens + elapsed / this.limits.rootRefillMs,
+      this.limits.sessionBurst,
+      state.tokens + elapsed / this.limits.sessionRefillMs,
     );
     const waits: number[] = [];
     // Tolerance for float refill arithmetic: a caller that waited the
     // advertised retryAfterSec must find a whole token.
-    if (tokens < 1 - 1e-9) waits.push((1 - tokens) * this.limits.rootRefillMs);
-    const hourWait = windowWait(state.sent, this.limits.rootPerHour, now);
+    if (tokens < 1 - 1e-9)
+      waits.push((1 - tokens) * this.limits.sessionRefillMs);
+    const hourWait = windowWait(state.sent, this.limits.sessionPerHour, now);
     if (hourWait > 0) waits.push(hourWait);
+    if (state.sent.length === 0) {
+      // A session new to this hour takes a distinct-session slot.
+      const active = [...this.sessions.values()].filter(
+        (candidate) => candidate.sent.length > 0,
+      );
+      if (active.length >= this.limits.distinctSessionsPerHour)
+        waits.push(
+          Math.min(
+            ...active.map(
+              (candidate) => candidate.sent[candidate.sent.length - 1],
+            ),
+          ) +
+            HOUR_MS -
+            now,
+        );
+    }
     if (urgency === 'attention') {
       const wait = windowWait(
         this.attention,
@@ -196,8 +211,8 @@ export class AgentNotificationRateLimiter {
         state.refilledAt = now;
         state.sent.push(now);
         // Re-insert so Map order tracks recency for eviction.
-        this.roots.delete(rootId);
-        this.roots.set(rootId, state);
+        this.sessions.delete(sessionId);
+        this.sessions.set(sessionId, state);
         if (urgency === 'attention') this.attention.push(now);
         this.global.push(now);
       },
@@ -207,17 +222,17 @@ export class AgentNotificationRateLimiter {
   private prune(now: number): void {
     dropOlderThan(this.attention, now - HOUR_MS);
     dropOlderThan(this.global, now - HOUR_MS);
-    for (const [rootId, state] of this.roots) {
+    for (const [sessionId, state] of this.sessions) {
       dropOlderThan(state.sent, now - HOUR_MS);
       // Idle for an hour: its bucket is full and its window empty, so
       // forgetting it changes no decision.
       if (state.sent.length === 0 && now - state.refilledAt >= HOUR_MS)
-        this.roots.delete(rootId);
+        this.sessions.delete(sessionId);
     }
-    while (this.roots.size > MAX_TRACKED_ROOTS) {
-      const oldest = this.roots.keys().next().value;
+    while (this.sessions.size > MAX_TRACKED_SESSIONS) {
+      const oldest = this.sessions.keys().next().value;
       if (oldest === undefined) break;
-      this.roots.delete(oldest);
+      this.sessions.delete(oldest);
     }
   }
 }
@@ -309,14 +324,35 @@ export function agentNotificationBody(body: string): string | undefined {
 }
 
 /**
- * A root id usable inside a dedupe tag (`agent:<root>:<key>`, no `:` in the
- * root). Ids that are not plain tokens are replaced by a digest, which keeps
- * them distinct without letting their characters reach the tag.
+ * The link an agent may attach: a same-origin Station path without a
+ * fragment, else `undefined` (the target falls back to the calling session).
+ *
+ * No Station view acts on navigation alone (approve/pair/delete need a
+ * click), with one exception: the UI boot consumes a `#station-ui-bootstrap`
+ * fragment as a session credential exchange. Agent links therefore carry no
+ * fragment at all.
  */
-export function agentNotificationNamespace(rootId: string): string {
-  return /^[A-Za-z0-9._-]{1,128}$/.test(rootId)
-    ? rootId
-    : `h${createHash('sha256').update(rootId).digest('hex').slice(0, 32)}`;
+export function agentNotificationLink(
+  value: string | undefined,
+): string | undefined {
+  const link = value?.trim();
+  return link && isRelativeStationPath(link) && !link.includes('#')
+    ? link
+    : undefined;
+}
+
+/**
+ * The verified session id as a dedupe namespace (`agent:<session>:<key>`, no
+ * `:` in the namespace). Ids that are not plain tokens are replaced by a
+ * digest, which keeps them distinct without letting their characters reach
+ * the tag. Namespacing by the calling session means a key only ever updates
+ * that session's own notification; a continuation or delegated child starts
+ * a fresh namespace.
+ */
+export function agentNotificationNamespace(sessionId: string): string {
+  return /^[A-Za-z0-9._-]{1,128}$/.test(sessionId)
+    ? sessionId
+    : `h${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`;
 }
 
 /** What the gate hands the store: the record fields and, separately, its envelope. */
@@ -408,11 +444,14 @@ export class AgentNotificationGate {
     )
       return { status: 'muted' };
 
-    // A delegated child names its tree's root conversation; a root session
-    // is keyed by its own conversation, which is the id its children carry
-    // as `rootConversationId`. A session with neither falls back to itself.
-    const rootId = context?.rootId ?? caller.conversationId ?? caller.sessionId;
-    const decision = this.limiter.check(rootId, request.urgency, this.now());
+    // Keyed by the VERIFIED session only: nothing a model can write (its
+    // delegation metadata included) chooses whose allowance or whose
+    // dedupe namespace a call uses.
+    const decision = this.limiter.check(
+      caller.sessionId,
+      request.urgency,
+      this.now(),
+    );
     if (!decision.ok)
       return {
         status: 'rate_limited',
@@ -423,10 +462,7 @@ export class AgentNotificationGate {
         ),
       };
 
-    const link =
-      request.link !== undefined && isRelativeStationPath(request.link.trim())
-        ? request.link.trim()
-        : undefined;
+    const link = agentNotificationLink(request.link);
     const target: NotificationTarget = link
       ? { kind: 'path', path: link }
       : { kind: 'session', sessionId: caller.sessionId };
@@ -462,7 +498,7 @@ export class AgentNotificationGate {
         ...(request.dedupeKey
           ? {
               dedupeTag: agentNotificationDedupeTag(
-                agentNotificationNamespace(rootId),
+                agentNotificationNamespace(caller.sessionId),
                 request.dedupeKey,
               ),
             }
@@ -485,9 +521,13 @@ export class AgentNotificationGate {
   }
 }
 
-/** One count per `notify_user` answer, including refusals before the gate. */
+/**
+ * One count per answer the route gives, including refusals before the gate:
+ * `invalid_request` (a body the tool's schema would not send) and
+ * `not_found` (a caller that is not Station's internal principal).
+ */
 export function recordAgentNotification(
-  status: NotifyUserResult['status'],
+  status: NotifyUserResult['status'] | 'invalid_request' | 'not_found',
   urgency: NotificationUrgency | 'unknown',
 ): void {
   agentNotificationOps.add(1, { result: status, urgency });

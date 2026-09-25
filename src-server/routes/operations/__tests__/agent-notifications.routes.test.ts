@@ -42,6 +42,7 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { wireWebPushDelivery } from '../../../services/notifications/web-push-delivery.js';
 import type { WebPushService } from '../../../services/notifications/web-push-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { agentNotificationOps } from '../../../telemetry/metrics.js';
 import {
   NOTIFY_USER_DESCRIPTION,
   notifyUser,
@@ -362,6 +363,61 @@ describe('notify_user reaches every engine delivery path', () => {
       status: 'caller-required',
     });
     expect(await service.list()).toEqual([]);
+  });
+});
+
+describe('input the tool schema refuses is a fixable error, and the route counts refusals', () => {
+  test('a whitespace-only title fails the tool schema (the model sees why), and nothing is posted', async () => {
+    const { token } = mintStationControlMcpToken('blank-session', 'url-token');
+    const engine = httpEngine({ query: token });
+    await engine(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'engine', version: '1' },
+    });
+    const call = await engine(2, 'tools/call', {
+      name: 'notify_user',
+      arguments: { title: '   ' },
+    });
+    const text = JSON.stringify(call.error ?? call.result);
+    expect(call.error ?? call.result?.isError).toBeTruthy();
+    expect(text).not.toContain('unavailable');
+    expect(text).toMatch(/title/);
+    expect(await service.list()).toEqual([]);
+  });
+
+  test('invalid_request and not_found are counted like every other answer', async () => {
+    const add = vi.spyOn(agentNotificationOps, 'add');
+    try {
+      const { token } = mintStationControlMcpToken('bad-body', 'url-token');
+      const invalid = await fetch(`${baseUrl}${AGENT_PATH}`, {
+        method: 'POST',
+        headers: internalHeaders({
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+        }),
+        body: JSON.stringify({ title: '   ' }),
+      });
+      expect(invalid.status).toBe(400);
+      const outsider = await fetch(`${baseUrl}${AGENT_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        },
+        body: JSON.stringify({ title: 'x' }),
+      });
+      expect(outsider.status).toBe(404);
+      expect(add).toHaveBeenCalledWith(1, {
+        result: 'invalid_request',
+        urgency: 'unknown',
+      });
+      expect(add).toHaveBeenCalledWith(1, {
+        result: 'not_found',
+        urgency: 'unknown',
+      });
+    } finally {
+      add.mockRestore();
+    }
   });
 });
 

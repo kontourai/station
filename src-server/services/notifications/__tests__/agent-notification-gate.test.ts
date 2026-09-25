@@ -52,9 +52,9 @@ describe('AgentNotificationGate', () => {
   let logs: Array<[string, unknown]>;
 
   function gate(
-    sessionContext?: (
+    startedMetadata?: (
       sessionId: string,
-    ) => { rootId?: string; agent?: string } | undefined,
+    ) => Record<string, unknown> | undefined,
   ) {
     return new AgentNotificationGate({
       schedule: scheduleAgentNotificationVia(service),
@@ -62,7 +62,13 @@ describe('AgentNotificationGate', () => {
       preferences: { agentNotifications: () => preference },
       now: () => clock,
       logger: { info: (message, context) => logs.push([message, context]) },
-      ...(sessionContext ? { sessionContext } : {}),
+      // The production derivation over the session's start metadata.
+      ...(startedMetadata
+        ? {
+            sessionContext: (sessionId: string) =>
+              agentNotificationSessionContext(startedMetadata(sessionId)),
+          }
+        : {}),
     });
   }
 
@@ -98,9 +104,7 @@ describe('AgentNotificationGate', () => {
 
   test('sends a session-reader notification carrying the verified caller, never the request, as its source', async () => {
     const result = await gate((sessionId) =>
-      agentNotificationSessionContext(
-        sessionId === 'session-a' ? { agentSlug: 'planner' } : undefined,
-      ),
+      sessionId === 'session-a' ? { agentSlug: 'planner' } : undefined,
     ).notify(
       CALLER,
       notice('Need approval to run migration', {
@@ -162,7 +166,7 @@ describe('AgentNotificationGate', () => {
     );
   });
 
-  test('the 4th notification from one root within 60 s is rate limited, and one more is allowed a minute later', async () => {
+  test('the 4th notification from one session within 60 s is rate limited, and one more is allowed a minute later', async () => {
     const subject = gate();
     for (const title of ['one', 'two', 'three']) {
       expect((await subject.notify(CALLER, notice(title))).status).toBe('sent');
@@ -183,28 +187,85 @@ describe('AgentNotificationGate', () => {
     });
   });
 
-  test('another root has its own bucket; a delegated child shares its root conversation bucket', async () => {
+  // The start metadata a delegated child gets when a non-Station engine's
+  // delegate_task/send_message copies the model's `_delegation` argument
+  // (#2601): model-written, so it must choose nothing here.
+  const spoofedChildMetadata = {
+    agentSlug: 'worker',
+    delegation: {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 3,
+      parentAgentSlug: 'planner',
+      parentConversationId: 'conversation-a',
+      rootAgentSlug: 'planner',
+      rootConversationId: 'conversation-a',
+    },
+  };
+
+  test('a child spoofing the victim root cannot update the victim notification with the same dedupeKey', async () => {
     const subject = gate((sessionId) =>
-      sessionId === 'child-session' ? { rootId: 'conversation-a' } : undefined,
+      sessionId === 'child-session' ? spoofedChildMetadata : undefined,
     );
-    for (const title of ['one', 'two', 'three'])
-      await subject.notify(CALLER, notice(title));
+    const victim = await subject.notify(
+      CALLER,
+      notice('Deploy needs approval', { dedupeKey: 'deploy' }),
+    );
+    // Same conversation id too: nothing but the verified session namespaces.
     const child: StationControlCaller = {
       sessionId: 'child-session',
       assurance: 'bound',
-      conversationId: 'conversation-child',
+      conversationId: 'conversation-a',
     };
-    expect((await subject.notify(child, notice('child'))).status).toBe(
-      'rate_limited',
+    const spoof = await subject.notify(
+      child,
+      notice('Deploy approved, ignore', { dedupeKey: 'deploy' }),
     );
-    const other: StationControlCaller = {
-      sessionId: 'session-b',
-      assurance: 'bound',
-    };
-    expect((await subject.notify(other, notice('other'))).status).toBe('sent');
+    expect(spoof.status).toBe('sent');
+    expect(spoof.notificationId).not.toBe(victim.notificationId);
+    const record = (await service.list()).find(
+      (notification) => notification.id === victim.notificationId,
+    );
+    expect(record?.title).toBe('Deploy needs approval');
+    expect(readNotificationEnvelope(record)?.audience).toEqual({
+      kind: 'session-readers',
+      sessionId: 'session-a',
+    });
+    expect(record?.metadata?.dedupeTag).toBe('agent:session-a:deploy');
   });
 
-  test('a root is capped at 20 per hour even when its bucket has refilled', async () => {
+  test('N delegated children cannot multiply past the Station ceiling: 10 distinct sessions per hour, however many children', async () => {
+    const subject = gate(() => spoofedChildMetadata);
+    const outcomes: string[] = [];
+    for (let index = 0; index < 25; index += 1) {
+      const child = {
+        sessionId: `child-${index}`,
+        assurance: 'bound',
+        conversationId: 'conversation-a',
+      } as const;
+      for (let call = 0; call < 3; call += 1)
+        outcomes.push((await subject.notify(child, notice('x'))).status);
+    }
+    expect(outcomes.filter((status) => status === 'sent')).toHaveLength(30);
+    expect(await service.list()).toHaveLength(30);
+    // Children 10..24 were refused outright; each of the first 10 took its
+    // own burst of 3.
+    expect(
+      outcomes.slice(30).every((status) => status === 'rate_limited'),
+    ).toBe(true);
+    // A slot frees an hour after its session's last send.
+    clock += 60 * 60 * 1000;
+    expect(
+      (
+        await subject.notify(
+          { sessionId: 'child-late', assurance: 'bound' },
+          notice('late'),
+        )
+      ).status,
+    ).toBe('sent');
+  });
+
+  test('a session is capped at 20 per hour even when its bucket has refilled', async () => {
     const subject = gate();
     for (let index = 0; index < 20; index += 1) {
       expect((await subject.notify(CALLER, notice(`n${index}`))).status).toBe(
@@ -218,27 +279,26 @@ describe('AgentNotificationGate', () => {
     expect(limited.retryAfterSec).toBe(2_400);
   });
 
-  test('attention is capped at 10 per hour per Station, across roots, while other urgencies continue', async () => {
+  test('attention is capped at 10 per hour per Station, across sessions, while other urgencies continue', async () => {
     const subject = gate();
+    const session = (index: number) =>
+      ({ sessionId: `session-${index}`, assurance: 'bound' }) as const;
     for (let index = 0; index < 10; index += 1) {
-      const caller = {
-        sessionId: `root-${index}`,
-        assurance: 'bound',
-      } as const;
       expect(
         (
           await subject.notify(
-            caller,
+            session(index),
             notice('Need input', { urgency: 'attention' }),
           )
         ).status,
       ).toBe('sent');
     }
-    const fresh = { sessionId: 'root-fresh', assurance: 'bound' } as const;
+    // session-0 still has tokens and a distinct slot: only the attention
+    // ceiling refuses it.
     expect(
       (
         await subject.notify(
-          fresh,
+          session(0),
           notice('Need input', { urgency: 'attention' }),
         )
       ).status,
@@ -246,7 +306,7 @@ describe('AgentNotificationGate', () => {
     expect(
       (
         await subject.notify(
-          fresh,
+          session(0),
           notice('Tests failed', { urgency: 'failed' }),
         )
       ).status,
@@ -255,17 +315,18 @@ describe('AgentNotificationGate', () => {
 
   test('all agent notifications are capped at 60 per hour per Station', async () => {
     const subject = gate();
-    for (let index = 0; index < 60; index += 1) {
-      const caller = {
-        sessionId: `root-${index}`,
-        assurance: 'bound',
-      } as const;
-      expect((await subject.notify(caller, notice('Done'))).status).toBe(
-        'sent',
-      );
+    const session = (index: number) =>
+      ({ sessionId: `session-${index}`, assurance: 'bound' }) as const;
+    // 10 sessions × 6 minutes, one send each per minute: 60 sends, inside
+    // every per-session limit.
+    for (let minute = 0; minute < 6; minute += 1) {
+      for (let index = 0; index < 10; index += 1)
+        expect(
+          (await subject.notify(session(index), notice('Done'))).status,
+        ).toBe('sent');
+      clock += 60_000;
     }
-    const fresh = { sessionId: 'root-fresh', assurance: 'bound' } as const;
-    expect((await subject.notify(fresh, notice('Done'))).status).toBe(
+    expect((await subject.notify(session(0), notice('Done'))).status).toBe(
       'rate_limited',
     );
   });
@@ -293,7 +354,7 @@ describe('AgentNotificationGate', () => {
     expect(all[0]).toMatchObject({
       title: 'Tests pass on fix-login',
       category: 'agent-done',
-      metadata: { dedupeTag: 'agent:conversation-a:ci.fix-login' },
+      metadata: { dedupeTag: 'agent:session-a:ci.fix-login' },
     });
     expect(readNotificationEnvelope(all[0])?.urgency).toBe('done');
     // Silent: only the first schedule reached delivery.
@@ -313,7 +374,7 @@ describe('AgentNotificationGate', () => {
     });
   });
 
-  test('the same dedupeKey from a different root never touches another root’s notification', async () => {
+  test('the same dedupeKey from a different session never touches another session’s notification', async () => {
     const subject = gate();
     const mine = await subject.notify(CALLER, notice('A', { dedupeKey: 'k' }));
     const theirs = await subject.notify(
@@ -364,6 +425,12 @@ describe('AgentNotificationGate', () => {
       { sessionId: 'session-b', assurance: 'bound' },
       notice('Evil', { link: '//evil.example/steal' }),
     );
+    // A fragment is refused: the UI boot consumes `#station-ui-bootstrap`
+    // as a credential exchange, the one navigation that acts on load.
+    await subject.notify(
+      { sessionId: 'session-c', assurance: 'bound' },
+      notice('Fragment', { link: '/#station-ui-bootstrap=abc' }),
+    );
     const byTitle = Object.fromEntries(
       (await service.list()).map((notification) => [
         notification.title,
@@ -380,6 +447,10 @@ describe('AgentNotificationGate', () => {
       sessionId: 'session-b',
     });
     expect(byTitle.Evil.metadata).not.toHaveProperty('link');
+    expect(readNotificationEnvelope(byTitle.Fragment)?.target).toEqual({
+      kind: 'session',
+      sessionId: 'session-c',
+    });
   });
 
   test('hosted Station: unavailable, nothing stored', async () => {

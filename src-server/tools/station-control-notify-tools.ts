@@ -52,6 +52,8 @@ const NOTIFY_USER_STATUSES: readonly NotifyUserStatus[] = [
 const notifyUserShape = {
   title: z
     .string()
+    // Whitespace-only is an input error the model can fix, not a send.
+    .trim()
     .min(1)
     .max(NOTIFICATION_TITLE_MAX)
     .describe('Short, outcome-first headline.'),
