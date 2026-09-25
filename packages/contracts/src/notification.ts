@@ -93,7 +93,7 @@ export const NOTIFICATION_URGENCIES: readonly NotificationUrgency[] = [
 export const NOTIFICATION_TITLE_MAX = 80;
 export const NOTIFICATION_BODY_MAX = 300;
 export const NOTIFICATION_DEDUPE_KEY_MAX = 64;
-/** Allowed agent dedupe keys: 1..NOTIFICATION_DEDUPE_KEY_MAX of `[A-Za-z0-9._:-]`. */
+/** An agent dedupe key is 1..NOTIFICATION_DEDUPE_KEY_MAX characters from `[A-Za-z0-9._:-]`. */
 export const NOTIFICATION_DEDUPE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 export const NOTIFICATION_LINK_MAX = 512;
 
