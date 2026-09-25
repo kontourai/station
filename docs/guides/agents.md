@@ -154,10 +154,11 @@ delegated child's allow and block lists and config protection still apply, and
 the approval guardian is consulted before the opt-in. The guardian has two
 modes, `review` and `enforce`:
 
-- In `enforce` mode, only a guardian allow lets an unattended call run. A deny
-  blocks it, and so does a defer — including the guardian's own fallback when
-  its review fails or returns no usable verdict — because nobody is present to
-  decide. This applies to `unattendedAutoApprove` and to a per-job grant alike.
+- In `enforce` mode, a call that isn't already auto-approved (by `autoApprove`
+  or an intrinsic grant, which allow before the guardian runs) runs unattended
+  only on a guardian allow. A deny blocks it, and so does a defer — including
+  the guardian's own fallback when its review fails or returns no usable
+  verdict — because nobody is present to decide. This applies to `unattendedAutoApprove` and to a per-job grant alike.
 - In `review` mode, the guardian never blocks the opt-in.
 
 Attended chat ignores `unattendedAutoApprove` and asks as before; there a

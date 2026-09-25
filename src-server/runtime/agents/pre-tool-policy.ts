@@ -75,8 +75,8 @@ interface StagedPreToolPolicyDeps {
    * #2613: the agent's explicit `tools.unattendedAutoApprove` opt-in. Asked
    * only for a Station-engine call nobody can consent to — no interactive
    * requester, or a delegated child that may not grant approvals — and only
-   * after the approval guardian, which keeps its enforce-mode veto. Absent ⇒
-   * no opt-in.
+   * after the approval guardian: in enforce mode a guardian deny or defer
+   * both refuse the call before this is asked. Absent ⇒ no opt-in.
    */
   isUnattendedGranted?(tool: ToolCallContext): boolean;
   logger: {
