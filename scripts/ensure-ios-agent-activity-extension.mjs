@@ -21,7 +21,8 @@
 // `--aps-environment` names the APNs environment once and writes it to both
 // places that must agree: the app's `aps-environment` entitlement and the
 // Info.plist `StationApsEnvironment` the plugin reads it back from (iOS
-// cannot read its own entitlements at runtime). A later run without it is
+// cannot read its own entitlements at runtime). The same Info.plist step
+// declares `NSSupportsLiveActivities`, which ActivityKit requires. A later run without it is
 // refused while the spec still names one, so the two stay paired.
 //
 // The extension's bundle id cannot be derived from the app's in build
@@ -112,19 +113,46 @@ function apsEnvironmentValue(apsEnvironment) {
   return apsEnvironment;
 }
 
-/**
- * Info.plist `StationApsEnvironment`, the runtime copy of the
- * `aps-environment` entitlement. Replaces an existing value.
- */
-function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
-  const value = apsEnvironmentValue(apsEnvironment);
-  const entry = `<key>StationApsEnvironment</key>\n\t<string>${value}</string>`;
-  const existing =
-    /<key>StationApsEnvironment<\/key>\s*<string>[^<]*<\/string>/;
+/** Sets one top-level Info.plist key to `value` XML, replacing any value. */
+function setInfoPlistKey(plist, key, value) {
+  const entry = `<key>${key}</key>\n\t${value}`;
+  const existing = new RegExp(
+    `<key>${key}</key>\\s*(?:<string>[^<]*</string>|<true\\s*/>|<false\\s*/>)`,
+  );
   if (existing.test(plist)) return plist.replace(existing, entry);
   const end = /\n?<\/dict>\s*<\/plist>\s*$/;
   if (!end.test(plist)) throw new Error('Unrecognized Info.plist shape');
   return plist.replace(end, `\n\t${entry}\n</dict>\n</plist>\n`);
+}
+
+/**
+ * The app Info.plist half of an enabled build:
+ *
+ * - `StationApsEnvironment`, the runtime copy of the `aps-environment`
+ *   entitlement;
+ * - `NSSupportsLiveActivities`, without which ActivityKit reports
+ *   activities disabled, `Activity.request` fails and no push-to-start token
+ *   is issued, however the rest is signed.
+ *
+ * `NSSupportsLiveActivitiesFrequentUpdates` is deliberately not set: it only
+ * raises the budget for priority-10 updates, and the gateway sends routine
+ * updates at priority 5 (`livePriority` in deploy/push-gateway), keeping 10
+ * for start, end and alerting updates. It would also add a "More Frequent
+ * Updates" switch in Settings that changes nothing Station sends.
+ *
+ * Existing values are replaced, so re-running moves them together.
+ */
+function ensureIosLiveActivityInfoPlist(plist, apsEnvironment) {
+  const value = apsEnvironmentValue(apsEnvironment);
+  return setInfoPlistKey(
+    setInfoPlistKey(
+      plist,
+      'StationApsEnvironment',
+      `<string>${value}</string>`,
+    ),
+    'NSSupportsLiveActivities',
+    '<true/>',
+  );
 }
 
 const APP_KEYCHAIN_GROUPS = [
@@ -258,7 +286,7 @@ export function ensureIosAgentActivity(
     infoPlist:
       infoPlist === undefined
         ? undefined
-        : ensureIosApsEnvironmentInfoPlist(infoPlist, apsEnvironment),
+        : ensureIosLiveActivityInfoPlist(infoPlist, apsEnvironment),
   };
 }
 
