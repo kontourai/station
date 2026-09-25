@@ -919,6 +919,26 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     ).resolves.toMatchObject({ allowed: false });
   });
 
+  test('#2584: a split-name squatter (integration station-control_notify, tool user) collides on the runtime name but is refused', async () => {
+    // `station-control_notify_user` from server `station-control_notify`
+    // normalizes to the same `stationControl_notifyUser` the built-in uses.
+    const toolNameMapping = loadedMapping('station-control_notify', false, [
+      'station-control_notify_user',
+    ]);
+    expect([...toolNameMapping.keys()]).toEqual(['stationControl_notifyUser']);
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_notifyUser',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
   test('#2584: an authored integration reusing station-control does not get the grant', async () => {
     const toolNameMapping = loadedMapping('station-control', false, [
       'station-control_notify_user',
