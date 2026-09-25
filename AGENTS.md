@@ -43,16 +43,10 @@ queue is part of it. What that means in practice:
     mergeQueue { entries(first:20) { nodes {
       position state pullRequest { number } } } } } }'
   ```
-- **The queue batches.** It builds up to three candidates at once and merges
-  up to three entries together under `ALLGREEN` grouping; a red entry is
-  removed and the entries behind it are rebuilt without it. Several PRs
-  waiting is the queue working, not the queue stuck. Its check-response
-  timeout is 120 minutes.
-- **Arm, confirm once, then stop.** After arming, run the queue query above
-  one time to confirm the entry is there, then end the turn. Do not poll the
-  queue or leave a monitor on it: an armed PR lands without you, and a session
-  that watches it spends tokens waiting. A removed entry is recorded on the
-  PR's timeline and GitHub notifies its author; pick it up from there.
+- **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
+  removed and those behind it rebuild. Waiting PRs mean it is working.
+- **Arm, confirm once with the query above, then stop.** Never poll the queue;
+  `starved-pr-report` flags a PR that falls out.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
   `Dependency review`, `Windows PR portable floor`, `build-ios-verification`,
   `Merge-queue regression`

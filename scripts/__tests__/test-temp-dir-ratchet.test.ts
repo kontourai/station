@@ -122,7 +122,7 @@ describe('test temp-dir ratchet scope honesty', () => {
       expect(scanned.has(sentinel)).toBe(true);
   });
 
-  test('this repository is at its checked-in baseline', () => {
+  test('this repository is within its checked-in baseline', () => {
     const files = listScannedFiles();
     const baseline = JSON.parse(
       readFileSync('scripts/test-temp-dir-baseline.json', 'utf8'),

@@ -27,8 +27,10 @@
  * so an exact ceiling failed whichever entry built next on bytes a sibling had
  * just merged — three dequeues in one day, none caused by the dequeued change.
  * Growth stays visible: every build prints the measurement against the
- * ceiling. When a raise is warranted, move to the next round number that
- * restores the headroom (8 KB JS, 2 KB CSS), never to your own measurement.
+ * ceiling. When a raise is warranted, move to the next round number (JS in
+ * steps of 10000, CSS in steps of 1000) that restores the headroom (8 KB JS,
+ * 2 KB CSS), never to your own measurement. The lane that crosses the ceiling
+ * pays for growth since the last raise, so its commit attributes that growth.
  *
  * ## How the measurement works
  *
@@ -325,8 +327,10 @@ if (
           '     this surface at all, or can it lazy-load? Is there a dead sibling next to',
           '     the live one you can delete in the same change?',
           '  3. If the residual is genuinely the feature, raise the ceiling to the next',
-          '     round number that restores the headroom (8 KB JS, 2 KB CSS), and say in the',
-          '     commit message what the bytes buy. Never set it to your exact measurement:',
+          '     round number (JS steps of 10000, CSS 1000) that restores the headroom (8 KB',
+          '     JS, 2 KB CSS). The crossing lane pays for growth since the last raise, so',
+          '     say in the commit what grew and what the bytes buy. Never set it to your',
+          '     exact measurement:',
           '     the merge queue builds latest main plus your change, so a zero-headroom',
           '     ceiling fails the next queued pull request on bytes it did not add (#1703).',
         ].join('\n'),
