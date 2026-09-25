@@ -71,7 +71,9 @@ test('container serves one authenticated origin with writable Git workspace and 
         const created = await fetch('/api/coding/files/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // Coding reads and writes are confined to a named Project (#2471).
           body: JSON.stringify({
+            projectSlug: 'container-self-host',
             path: workspace,
             target: 'container-created.txt',
             type: 'file',
@@ -88,16 +90,16 @@ test('container serves one authenticated origin with writable Git workspace and 
         body: await response.json(),
       }));
       const content = await fetch(
-        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=container-sentinel.txt`,
+        `/api/coding/files/content?projectSlug=container-self-host&path=${encodeURIComponent(workspace)}&file=container-sentinel.txt`,
       );
       const createdFile = await fetch(
-        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=container-created.txt`,
+        `/api/coding/files/content?projectSlug=container-self-host&path=${encodeURIComponent(workspace)}&file=container-created.txt`,
       );
       const changes = await fetch(
-        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=changes.txt`,
+        `/api/coding/files/content?projectSlug=container-self-host&path=${encodeURIComponent(workspace)}&file=changes.txt`,
       );
       const gitStatus = await fetch(
-        `/api/coding/git/status?path=${encodeURIComponent(workspace)}`,
+        `/api/coding/git/status?projectSlug=container-self-host&path=${encodeURIComponent(workspace)}`,
       );
       return {
         createStatus,

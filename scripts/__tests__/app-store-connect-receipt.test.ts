@@ -1,8 +1,9 @@
 import { generateKeyPairSync, verify } from 'node:crypto';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   appStoreConnectErrorDetail,
   appStoreConnectRequest,
@@ -20,6 +21,8 @@ import {
 
 const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' });
+
+const makeTempDir = trackTempDirs();
 
 describe('App Store Connect receipt authority', () => {
   test('keeps artifact build time distinct and canonical', () => {
@@ -434,7 +437,7 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
   }
 
   const receiptPath = () =>
-    join(mkdtempSync(join(tmpdir(), 'asc-membership-')), 'receipt.json');
+    join(makeTempDir('asc-membership-'), 'receipt.json');
   const readReceipt = (path: string) =>
     JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
 

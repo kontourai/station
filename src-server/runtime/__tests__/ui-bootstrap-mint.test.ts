@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type HttpBindings } from '@hono/node-server';
@@ -12,6 +11,7 @@ import {
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
@@ -26,12 +26,14 @@ type TestBindings = HttpBindings & {
   };
 };
 
+const makeTempDir = trackTempDirs();
+
 let peerCounter = 1;
 const loopback = () => `127.0.0.${(peerCounter++ % 250) + 2}`;
 const remote = () => `100.96.${(peerCounter++ % 250) + 1}.7`;
 
 function createHarness(options: { uiBootstrapToken?: string } = {}) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-ui-bootstrap-mint-'));
+  const homeDir = makeTempDir('station-ui-bootstrap-mint-');
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const app = new Hono<{ Bindings: TestBindings }>();

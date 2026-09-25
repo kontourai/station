@@ -30,7 +30,10 @@ import {
   type StationProfileStore,
 } from '@kontourai/station-contracts';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import {
+  lookupProcessBirthFingerprint,
+  resolveOwnProcessIdentity,
+} from '@kontourai/station-shared/process-identity';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { assertCredentialTransportAllowed } from './profile-credentials.js';
 import {
@@ -90,12 +93,6 @@ const PROFILE_STORE_LOCK_WAIT_MS = 10_000;
 // more before giving up. A holder that dies mid-wait is reclaimed within it.
 const PROFILE_STORE_RECLAIM_PROBE_INTERVAL_MS = 250;
 const PROFILE_STORE_LOCK_NAP_MS = 10;
-// Our own birth is the identity other processes use to decide whether our
-// lock is stale, so it is never invented. It is our own pid, which is
-// certainly alive, so a null answer is a transient probe failure (on macOS a
-// `ps` that hit its timeout under load); retry that a bounded number of times.
-const PROFILE_LOCK_OWNER_BIRTH_ATTEMPTS = 3;
-const PROFILE_LOCK_OWNER_BIRTH_RETRY_DELAY_MS = 100;
 
 interface ProfileStoreLockTiming {
   genesisWaitMs: number;
@@ -631,16 +628,16 @@ function resolveProfileLockOwnerBirth(): string {
   // lock this process creates (genesis, reclaim guard, store lock).
   if (profileLockOwnerBirth?.pid === process.pid)
     return profileLockOwnerBirth.birth;
-  for (let attempt = 1; ; attempt++) {
-    const birth = lookupProcessBirthFingerprint(process.pid);
-    if (birth) {
-      profileLockOwnerBirth = { pid: process.pid, birth };
-      return birth;
-    }
-    if (attempt >= PROFILE_LOCK_OWNER_BIRTH_ATTEMPTS) break;
-    napSync(PROFILE_LOCK_OWNER_BIRTH_RETRY_DELAY_MS);
-  }
-  throw new Error('saved Station lock process identity is unavailable');
+  // Our own birth is the identity other processes compare, through
+  // lookupProcessBirthFingerprint, to decide whether our lock is stale, so it
+  // is never invented. The shared own-process authority returns that same
+  // fingerprint and owns the bounded retry for a probe that failed under load
+  // (a macOS `ps` timeout; the slow first PowerShell start on Windows).
+  const own = resolveOwnProcessIdentity(process.pid);
+  if (own.state !== 'exact')
+    throw new Error('saved Station lock process identity is unavailable');
+  profileLockOwnerBirth = { pid: process.pid, birth: own.identity.start };
+  return own.identity.start;
 }
 
 function createExclusiveProfileStoreLock(path: string): number | undefined {

@@ -43,28 +43,16 @@ export function summarizeToolActivityDetail(
   return undefined;
 }
 
-function isForegroundChat(threadId: string, chat: ChatUIState): boolean {
-  const navigation = navigationStore.getSnapshot();
-  if (!navigation.isDockOpen) {
-    return false;
-  }
-
-  return (
-    navigation.activeChat === threadId ||
-    navigation.activeChat === chat.conversationId ||
-    navigation.activeConversation === chat.conversationId
-  );
-}
-
+/**
+ * Only a failed tool call toasts. Success and cancellation are routine, and
+ * an unresolved call (station#1558: the session ended with no result) is not
+ * a user-attention event; each stays visible on its tool row. The turn ending
+ * is what calls the user back (`turnAttentionNotifications`).
+ */
 export function shouldNotifyForToolCompletion(
   event: ToolCompletedEvent,
-  chat: ChatUIState,
 ): boolean {
-  if (event.status !== 'success') {
-    return true;
-  }
-
-  return !isForegroundChat(event.threadId, chat);
+  return event.status === 'error';
 }
 
 export function notifyToolCompletion(
@@ -72,7 +60,7 @@ export function notifyToolCompletion(
   chat: ChatUIState,
 ): void {
   if (isReplayThread(event.threadId)) return;
-  if (!shouldNotifyForToolCompletion(event, chat)) {
+  if (!shouldNotifyForToolCompletion(event)) {
     return;
   }
 
@@ -86,17 +74,7 @@ export function notifyToolCompletion(
     toolName,
     agentName,
     conversationTitle: chat.title,
-    status:
-      event.status === 'cancelled'
-        ? 'cancelled'
-        : event.status === 'error'
-          ? 'error'
-          : // station#1558: an unresolved call gets a neutral note, never
-            // the error toast — Station did not observe a failure, only the
-            // absence of any result.
-            event.status === 'unresolved'
-            ? 'unresolved'
-            : 'completed',
+    status: 'error',
     detail,
     onNavigate: () => {
       navigationStore.setDockState(true);
