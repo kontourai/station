@@ -8688,8 +8688,12 @@ export class OrchestrationService {
    * session is deliberately excluded from ordinary user-facing inventories.
    * Read the event-store marker as well as the live Set so restart cannot
    * turn an ephemeral webhook session back into a listed conversation.
+   *
+   * Public for the notification writers (#2589): an ephemeral session is not
+   * in `listSessionReadModel`, so it is never on the agent-activity card, and
+   * its notifications must not be marked as the card's to announce.
    */
-  private isEphemeralSession(threadId: string): boolean {
+  isEphemeralSession(threadId: string): boolean {
     if (this.ephemeralSessionThreads.has(threadId)) return true;
     if (this.sessionReadModel.get(threadId)?.ephemeral === true) return true;
     if (this.options.eventStore?.readSessionByThread(threadId)?.ephemeral)

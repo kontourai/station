@@ -406,6 +406,7 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
       metadata:
         category === 'approval-request'
           ? {
+              onActivityCard: true,
               requestKind: 'orchestration',
               requestKey: 'orchestration:s1:r1',
               sessionId: 's1',
@@ -413,6 +414,7 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
               threadId: 's1',
             }
           : {
+              onActivityCard: true,
               sessionId: 's1',
               sessionKind: 'runtime',
               threadId: 's1',
@@ -463,11 +465,11 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
     ['a plain registry approval (not on the card)', registryApproval()],
     [
       'a registry approval stamped runtime (requestKind registry needs the thread stamp)',
-      registryApproval({ sessionKind: 'runtime' }),
+      registryApproval({ sessionKind: 'runtime', onActivityCard: true }),
     ],
     [
       'a registry approval naming another thread (the stamp must match the session)',
-      registryApproval({ orchestrationThreadId: 'c2' }),
+      registryApproval({ orchestrationThreadId: 'c2', onActivityCard: true }),
     ],
     [
       'an orchestration-kind approval of a non-runtime session (the sessionKind clause)',
@@ -476,9 +478,35 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
         source: 'approval-inbox',
         category: 'approval-request',
         metadata: {
+          onActivityCard: true,
           requestKind: 'orchestration',
           sessionId: 's1',
           sessionKind: 'managed',
+        },
+      }),
+    ],
+    // #2589: what approval-inbox.ts writes for an ephemeral (webhook)
+    // session, which is not on the card: everything but the mark.
+    [
+      'the registry twin of an ephemeral Station-agent approval (the mark)',
+      registryApproval({
+        conversationId: 's1',
+        sessionId: 's1',
+        orchestrationThreadId: 's1',
+      }),
+    ],
+    [
+      'the orchestration approval of an ephemeral session (the mark)',
+      approval({
+        id: 'n-ephemeral',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        metadata: {
+          requestKind: 'orchestration',
+          requestKey: 'orchestration:s1:r1',
+          sessionId: 's1',
+          sessionKind: 'runtime',
+          threadId: 's1',
         },
       }),
     ],
@@ -500,6 +528,7 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
         conversationId: 's1',
         sessionId: 's1',
         orchestrationThreadId: 's1',
+        onActivityCard: true,
       }) as never,
     );
     await settle();

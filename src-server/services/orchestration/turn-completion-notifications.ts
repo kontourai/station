@@ -37,6 +37,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from './event-bus.js';
 import type {
@@ -79,6 +80,46 @@ interface TurnCompletionOrchestrationService {
    * action or a genuine unattended mid-turn death.
    */
   consumeInternalStopSuppression?(turnId: string): boolean;
+  /**
+   * #2589: an ephemeral (webhook) session is left out of the session read
+   * model the agent-activity card is built from, so its turns are never on
+   * the card.
+   */
+  isEphemeralSession(threadId: string): boolean;
+}
+
+/**
+ * #2589: whether the agent-activity card carries this terminal, so the phone
+ * alert channels can leave it to the card (`isCardAlerted`). Two facts:
+ *
+ * - The session is listed: an ephemeral session is never on the card.
+ * - The terminal leaves the session in a phase the card shows. The lifecycle
+ *   fold (session-lifecycle-service.ts) turns `turn.aborted`, and a
+ *   `turn.completed` whose `finishReason` is `'cancelled'`, into `canceled`,
+ *   which the card leaves off (`agentActivityPhaseFor`); a completed turn
+ *   (`idle`) reads Done and a `runtime.error` (`failed`) reads Failed. A
+ *   test pins this against the real fold and card phase.
+ *
+ * Fail-soft to `false`: an unmarked notification still alerts.
+ */
+export function turnTerminalOnActivityCard(
+  orchestrationService: Pick<
+    TurnCompletionOrchestrationService,
+    'isEphemeralSession'
+  >,
+  event: Pick<CanonicalRuntimeEvent, 'method' | 'threadId'> & {
+    finishReason?: unknown;
+  },
+): boolean {
+  const shown =
+    event.method === 'runtime.error' ||
+    (event.method === 'turn.completed' && event.finishReason !== 'cancelled');
+  if (!shown) return false;
+  try {
+    return !orchestrationService.isEphemeralSession(event.threadId);
+  } catch {
+    return false;
+  }
 }
 
 interface TurnCompletionLogger {
@@ -104,6 +145,12 @@ async function deliverTurnCompletionPush(input: {
   threadId: string;
   turnId: string;
   outcome: TurnOutcome;
+  /**
+   * See {@link turnTerminalOnActivityCard}. Absent leaves the notification
+   * unmarked, so it alerts: the internal-stop redispatch failure below is
+   * not a terminal event the card folds.
+   */
+  onActivityCard?: boolean;
 }): Promise<'scheduled' | 'skipped_connected'> {
   const {
     orchestrationService,
@@ -112,6 +159,7 @@ async function deliverTurnCompletionPush(input: {
     threadId,
     turnId,
     outcome,
+    onActivityCard,
   } = input;
   const presenceSubject =
     orchestrationService.resolveSessionPresenceSubject(threadId);
@@ -148,6 +196,7 @@ async function deliverTurnCompletionPush(input: {
       sessionKind: SESSION_KIND,
       threadId,
       turnId,
+      ...(onActivityCard ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true } : {}),
     },
   });
   return 'scheduled';
@@ -537,6 +586,10 @@ export function wireTurnCompletionNotifications(
             threadId: event.threadId,
             turnId: event.turnId,
             outcome,
+            onActivityCard: turnTerminalOnActivityCard(
+              orchestrationService,
+              event,
+            ),
           });
           turnCompletionNotificationOps.add(1, { outcome, result });
         } catch (error) {

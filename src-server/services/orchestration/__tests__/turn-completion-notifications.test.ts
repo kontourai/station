@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.js';
+import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../event-bus.js';
 import {
@@ -10,8 +12,10 @@ import {
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from '../orchestration-stream-presence.js';
+import { projectSessionLifecycle } from '../session-lifecycle-service.js';
 import {
   resolveTurnCompletionOutcome,
+  turnTerminalOnActivityCard,
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
@@ -24,6 +28,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   turnCompletionNotificationOps: { add: vi.fn() },
 }));
 
+/** #2589: the threads the fake orchestration service reports ephemeral. */
+const ephemeralThreads = new Set<string>();
+
 function baseEvent(overrides: Record<string, unknown> = {}) {
   return {
     createdAt: new Date().toISOString(),
@@ -34,6 +41,61 @@ function baseEvent(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe('turnTerminalOnActivityCard (#2589)', () => {
+  // The mark claims the card shows the session this terminal leaves behind.
+  // Pinned against the real lifecycle fold and the real card phase, so a
+  // change to either that the mark does not follow fails here.
+  const session = {
+    provider: 'claude',
+    threadId: 'thread-1',
+    status: 'running',
+    createdAt: '2026-09-25T00:00:00.000Z',
+    updatedAt: '2026-09-25T00:00:05.000Z',
+  } as never;
+  test.each([
+    { method: 'turn.completed', finishReason: 'stop' },
+    { method: 'turn.completed' },
+    { method: 'turn.completed', finishReason: 'cancelled' },
+    { method: 'turn.aborted', reason: 'stopped' },
+    { method: 'runtime.error', message: 'boom' },
+  ])('%o', (terminal) => {
+    const events = [
+      baseEvent({ method: 'turn.started' }),
+      baseEvent(terminal),
+    ] as never[];
+    const { lifecycleState } = projectSessionLifecycle({ session, events });
+    const cardPhase = agentActivityPhaseFor({ lifecycleState, isLoaded: true });
+
+    expect(
+      turnTerminalOnActivityCard(
+        { isEphemeralSession: () => false },
+        baseEvent(terminal) as never,
+      ),
+    ).toBe(cardPhase !== null);
+    expect(
+      turnTerminalOnActivityCard(
+        { isEphemeralSession: () => true },
+        baseEvent(terminal) as never,
+      ),
+    ).toBe(false);
+  });
+
+  test('covers both answers', () => {
+    expect(
+      turnTerminalOnActivityCard(
+        { isEphemeralSession: () => false },
+        baseEvent() as never,
+      ),
+    ).toBe(true);
+    expect(
+      turnTerminalOnActivityCard(
+        { isEphemeralSession: () => false },
+        baseEvent({ method: 'turn.aborted' }) as never,
+      ),
+    ).toBe(false);
+  });
+});
 
 describe('resolveTurnCompletionOutcome', () => {
   test('turn.completed -> done, turn.aborted -> failed, runtime.error -> failed, everything else -> undefined', async () => {
@@ -147,6 +209,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     wireTurnCompletionNotifications(
       bus,
       {
+        isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
       },
@@ -158,9 +221,53 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
   });
 
   afterEach(async () => {
+    ephemeralThreads.clear();
     await notificationService.shutdown();
     rmSync(dir, { force: true, recursive: true });
   });
+
+  // #2589: the phone alert channels leave a notification to the
+  // agent-activity card only when its writer marked it as on the card. An
+  // ephemeral (webhook) session is not in the read model the card is built
+  // from, and an aborted turn folds to `canceled`, which the card leaves off.
+  test.each([
+    ['a completed turn', 'thread-1', {}, true],
+    [
+      'a failed turn (runtime.error)',
+      'thread-1',
+      { method: 'runtime.error' },
+      true,
+    ],
+    ['a completed turn in an ephemeral session', 'thread-e', {}, false],
+    [
+      'a failed turn in an ephemeral session',
+      'thread-e',
+      { method: 'runtime.error' },
+      false,
+    ],
+    ['an aborted turn', 'thread-1', { method: 'turn.aborted' }, false],
+    [
+      'a cancelled turn.completed',
+      'thread-1',
+      { finishReason: 'cancelled' },
+      false,
+    ],
+  ])(
+    '%s on %s is left to the card: %s',
+    async (_label, threadId, overrides, onCard) => {
+      ephemeralThreads.add('thread-e');
+      await emit('orchestration:event', {
+        event: baseEvent({ threadId, ...overrides }),
+      });
+
+      const [notification] = await notificationService.list();
+      expect(notification?.metadata).toMatchObject({
+        sessionId: threadId,
+        sessionKind: 'runtime',
+      });
+      expect(isCardAlerted(notification!)).toBe(onCard);
+    },
+  );
 
   test('schedules a "done" notification when the owner has no live stream open', async () => {
     await emit('orchestration:event', { event: baseEvent() });
@@ -705,6 +812,7 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
     wireTurnCompletionNotifications(
       bus,
       {
+        isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
         resolveSessionPresenceSubject: () =>
           orchestrationStreamPresenceSubjectForSession('owner-1'),
         consumeInternalStopSuppression: (turnId) =>
@@ -895,6 +1003,7 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
     wireInternalStopRedispatchFailureNotifications(
       bus,
       {
+        isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
       },
@@ -1034,6 +1143,7 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
       const dispose = wireTurnCompletionNotifications(
         bus,
         {
+          isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),
         },
@@ -1105,6 +1215,7 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
       const dispose = wireTurnCompletionNotifications(
         bus,
         {
+          isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),
         },

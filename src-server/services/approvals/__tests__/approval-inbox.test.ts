@@ -57,7 +57,10 @@ describe('approval inbox notifications', () => {
   let approvalRegistry: ApprovalRegistry;
   let orchestrationService: Pick<
     OrchestrationService,
-    'dispatch' | 'readRequestOutcome' | 'resolveSessionProjectSlug'
+    | 'dispatch'
+    | 'isEphemeralSession'
+    | 'readRequestOutcome'
+    | 'resolveSessionProjectSlug'
   >;
   let provider: ApprovalInboxNotificationProvider;
 
@@ -81,6 +84,9 @@ describe('approval inbox notifications', () => {
       resolveSessionProjectSlug: vi
         .fn<OrchestrationService['resolveSessionProjectSlug']>()
         .mockReturnValue(undefined),
+      isEphemeralSession: vi
+        .fn<OrchestrationService['isEphemeralSession']>()
+        .mockReturnValue(false),
     };
     provider = new ApprovalInboxNotificationProvider({
       approvalRegistry,
@@ -409,13 +415,19 @@ describe('approval inbox notifications', () => {
   // the /chat relay registers it (the registry notification) and the adapter
   // republishes it as the thread's `request.opened` (the orchestration
   // notification, and the agent-activity card). Both are on the card, so
-  // neither may raise a phone alert; a plain chat's approval must.
+  // neither may raise a phone alert; a plain chat's approval must. An
+  // ephemeral (webhook) session is left out of the session read model the
+  // card is built from, so both of its records must alert.
   test.each([
-    ['a Station-agent relay turn', 'thread-7', true],
-    ['a plain managed chat', undefined, false],
+    ['a Station-agent relay turn', 'thread-7', false, true],
+    ['an ephemeral Station-agent relay turn', 'thread-7', true, false],
+    ['a plain managed chat', undefined, false, false],
   ])(
-    'a registry approval from %s (relay thread %s) is card-alerted: %s',
-    async (_label, orchestrationThreadId, cardAlerted) => {
+    'a registry approval from %s (relay thread %s, ephemeral %s) is card-alerted: %s',
+    async (_label, orchestrationThreadId, ephemeral, cardAlerted) => {
+      vi.mocked(orchestrationService.isEphemeralSession).mockImplementation(
+        (threadId) => ephemeral && threadId === 'thread-7',
+      );
       const elicit = createElicitationCallback(
         { name: 'Reviewer', tools: { autoApprove: [] } } as any,
         new Map(),
@@ -450,7 +462,7 @@ describe('approval inbox notifications', () => {
         const twin = (await notificationService.list()).find(
           (n) => n.metadata?.requestKind === 'orchestration',
         );
-        expect(isCardAlerted(twin!)).toBe(true);
+        expect(isCardAlerted(twin!)).toBe(cardAlerted);
       }
 
       await notificationService.action(registry!.id, 'accept');

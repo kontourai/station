@@ -566,23 +566,36 @@ the route answers 503. The gateway is deployed by hand
   `isCardAlerted(notification)` in `delivery/card-alerted-categories.ts`
   (shared with Android's alert channel, #2588). It is true only for an
   `approval-request`, `turn-completed`, `turn-stopped` or `turn-failed`
-  record whose metadata says it is about an orchestration session
-  (`sessionKind: 'runtime'` with a `sessionId`, and `requestKind`, when
-  present, `'orchestration'`), because the card is built from orchestration
-  sessions only. One registry approval is on the card too: a Station-agent
+  record that its writer marked `onActivityCard: true` and whose metadata
+  says it is about an orchestration session (`sessionKind: 'runtime'` with
+  a `sessionId`, and `requestKind`, when present, `'orchestration'`),
+  because the card is built from the orchestration session read model. The
+  writers (approval-inbox.ts, turn-completion-notifications.ts) mark a
+  record only when the card carries its event: the session is not
+  ephemeral (inbound webhooks start ephemeral sessions, which
+  `listSessionReadModel` leaves out), and a turn terminal leaves the session
+  Done or Failed on the card (an aborted or cancelled turn folds to
+  `canceled`, which the card leaves off, so a stopped turn still alerts).
+  One registry approval is on the card too: a Station-agent
   session relays each turn through `/chat`, so a tool approval there is both
   a registry approval and, republished by the adapter, the thread's
   orchestration `request.opened`. The relay names its thread in the
   internal `x-station-orchestration-thread` header (accepted only from a
   direct internal caller, and only for the request's own conversation), and
   that approval's registry notification carries
-  `metadata.orchestrationThreadId` equal to its `sessionId`; that twin does
-  not alert either. Every other registry approval (a managed chat outside
+  `metadata.orchestrationThreadId` equal to its `sessionId`, marked
+  `onActivityCard` under the same session rule; that twin does not alert
+  either. Every other registry approval (a managed chat outside
   orchestration, an MCP UI call, an ACP bridge request, a Kit action:
   `sessionKind: 'managed'`, `requestKind: 'registry'`, no
   `orchestrationThreadId`) never writes the orchestration `request.opened`
   that puts a session on the card as waiting for approval, so it still
-  alerts, as does anything whose record does not identify it. Only this
+  alerts, as does any record that is unmarked or fails one of these checks
+  (including one written before the mark existed). One known edge: the
+  twin is marked when the approval registers, but the card's entry needs
+  the adapter to receive the injected approval chunk; a relay stream that
+  aborts in between leaves that approval with no phone alert (the inbox
+  still has it). Only this
   alert channel reads the stamp: the two records of a Station-agent
   approval are still two notifications everywhere else. The exclusion
   does not look at the phone: with Live Activities turned off, the

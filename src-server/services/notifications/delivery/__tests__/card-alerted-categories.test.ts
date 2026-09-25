@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import { isCardAlerted } from '../card-alerted-categories.js';
 
+// What the writers stamp for a session on the card (approval-inbox.ts,
+// turn-completion-notifications.ts).
 const orchestrationTurn = {
+  onActivityCard: true,
   sessionId: 's1',
   sessionKind: 'runtime',
   threadId: 's1',
   turnId: 't1',
 };
 const orchestrationApproval = {
+  onActivityCard: true,
   requestKind: 'orchestration',
   sessionId: 's1',
   sessionKind: 'runtime',
@@ -28,6 +32,7 @@ const stationAgentRegistryApproval = {
   conversationId: 's1',
   sessionId: 's1',
   orchestrationThreadId: 's1',
+  onActivityCard: true,
 };
 
 describe('isCardAlerted', () => {
@@ -76,6 +81,28 @@ describe('isCardAlerted', () => {
       'a registry record of a turn category',
       'turn-completed',
       stationAgentRegistryApproval,
+    ],
+    // #2589: the writer's mark is required. An ephemeral (webhook) session
+    // or a cancelled turn is not on the card, so its writer leaves it off.
+    [
+      'an orchestration approval its writer did not mark',
+      'approval-request',
+      { ...orchestrationApproval, onActivityCard: undefined },
+    ],
+    [
+      'an orchestration turn its writer did not mark',
+      'turn-completed',
+      { ...orchestrationTurn, onActivityCard: undefined },
+    ],
+    [
+      'a Station-agent registry twin its writer did not mark',
+      'approval-request',
+      { ...stationAgentRegistryApproval, onActivityCard: undefined },
+    ],
+    [
+      'a mark that is not literally true',
+      'turn-failed',
+      { ...orchestrationTurn, onActivityCard: 'true' },
     ],
     ['another category', 'pairing-request', orchestrationTurn],
     ['an agent notification', 'agent-attention', orchestrationTurn],
