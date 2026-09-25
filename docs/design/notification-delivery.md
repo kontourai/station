@@ -340,8 +340,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   starve it, and the count is cleared when the card sends or has nothing
   left to send.
   It does not retry a failed send (like Web Push); a 410 clears the
-  registration. It does not carry `approval-request`, `turn-completed`,
-  `turn-stopped` or `turn-failed`, which the card already alerts for. On the
+  registration. It does not carry what the card already alerts for: an
+  `approval-request`, `turn-completed`, `turn-stopped` or `turn-failed`
+  whose record says it is about an orchestration session (`sessionKind`
+  `runtime` with a `sessionId`, and `requestKind` absent or
+  `orchestration`). A registry approval (`sessionKind` `managed`,
+  `requestKind` `registry`) is never on the card and is carried, as is any
+  record that does not identify itself as orchestration-backed. The iOS
+  alert channel (#2589) applies the same rule. On the
   phone (`StationNotifications.kt`) each urgency has its own notification
   channel; one Android notification per id per registration; a history of
   the newest `created_at` seen per id (64 ids) drops a duplicate or older

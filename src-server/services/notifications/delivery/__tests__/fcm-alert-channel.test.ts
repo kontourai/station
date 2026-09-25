@@ -434,14 +434,22 @@ describe('FcmAlertChannel through the delivery router', () => {
     expect(h.fetchImpl).not.toHaveBeenCalled();
   });
 
-  test('session lifecycle categories the card already alerts for are not carried; other legacy alerts are', async () => {
+  test("an orchestration session's approval and turn endings are the card's; a registry approval and other alerts are carried", async () => {
     const h = await harness();
-    const legacy = (id: string, category: string) =>
+    // As approval-inbox.ts and turn-completion-notifications.ts stamp them.
+    const orchestration = (id: string, category: string) =>
       notification({
         id,
         category,
         source: 'approval-inbox',
-        metadata: { sessionId: 'session-1' },
+        metadata: {
+          sessionId: 'session-1',
+          sessionKind: 'runtime',
+          threadId: 'session-1',
+          ...(category === 'approval-request'
+            ? { requestKind: 'orchestration' }
+            : {}),
+        },
       });
     for (const category of [
       'approval-request',
@@ -451,18 +459,51 @@ describe('FcmAlertChannel through the delivery router', () => {
     ])
       h.eventBus.emit(
         SERVER_EVENTS.NOTIFICATION_DELIVERED,
-        legacy(`n-${category}`, category) as never,
+        orchestration(`n-${category}`, category) as never,
       );
     await h.settle();
     expect(h.fetchImpl).not.toHaveBeenCalled();
+    // A registry approval (a managed-agent tool call) is never on the card.
     h.eventBus.emit(
       SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      legacy('n-pairing', 'pairing-request') as never,
+      notification({
+        id: 'n-registry',
+        category: 'approval-request',
+        source: 'approval-inbox',
+        metadata: {
+          approvalId: 'approval-1',
+          conversationId: 'session-1',
+          sessionId: 'session-1',
+          sessionKind: 'managed',
+          requestKind: 'registry',
+        },
+      }) as never,
+    );
+    // Nor is a record that does not say it is orchestration-backed.
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      notification({
+        id: 'n-unmarked',
+        category: 'approval-request',
+        source: 'approval-inbox',
+        metadata: { sessionId: 'session-1' },
+      }) as never,
+    );
+    h.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      notification({
+        id: 'n-pairing',
+        category: 'pairing-request',
+        source: 'device-pairing',
+        metadata: { sessionId: 'session-1' },
+      }) as never,
     );
     await h.settle();
-    expect(new Set(h.sent.map((s) => s.plaintext.id))).toEqual(
-      new Set(['n-pairing']),
-    );
+    expect(
+      new Set(
+        h.sent.filter((s) => s.deviceId === h.phone).map((s) => s.plaintext.id),
+      ),
+    ).toEqual(new Set(['n-registry', 'n-unmarked', 'n-pairing']));
   });
 
   test('a send inside the per-phone floor waits for its slot instead of being dropped', async () => {

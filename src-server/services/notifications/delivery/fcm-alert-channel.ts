@@ -58,9 +58,10 @@
  *     free for it.
  * - No retry: a retryable gateway answer is reported as `retry` and logged,
  *   like Web Push. A 410 clears the registration, as the publisher does.
- * - Session lifecycle categories the card already alerts for (an approval,
- *   a finished or failed turn) are not carried, so one event never raises
- *   two alerts on the same phone.
+ * - Notifications the card already alerts for (an orchestration session's
+ *   approval, or its finished, stopped or failed turn; see
+ *   `isCardAlerted`) are not carried, so one event never raises two alerts
+ *   on the same phone. Registry approvals are carried.
  */
 import {
   isNativePushSessionReference,
@@ -113,15 +114,43 @@ const HIDDEN_TITLE = 'Station';
 const HIDDEN_BODY = 'You have a new notification';
 
 /**
- * Categories the agent-activity card already raises its own alert for
- * (approval and input entries, finished and failed turns).
+ * Whether the agent-activity card already announces this notification, so
+ * this channel skips it and one event is not alerted twice on a phone.
+ *
+ * MIRROR of `isCardAlerted` in
+ * `src-server/services/notifications/delivery/card-alerted-categories.ts`
+ * (#2589, the iOS alert channel); the two are to be unified at merge. Same
+ * rule: the card is built from orchestration sessions only and alerts on an
+ * approval or input entry and a finished, stopped or failed turn, so a
+ * record is card-alerted only when its category is one of those AND the
+ * record itself says it is about an orchestration session
+ * (`metadata.sessionKind === 'runtime'` with a `metadata.sessionId`, and
+ * `metadata.requestKind`, when present, is `'orchestration'`). A registry
+ * approval (`sessionKind: 'managed'`, `requestKind: 'registry'`) never
+ * appears on the card and must still alert; so does anything the record
+ * does not identify as orchestration-backed (a duplicate beats a silenced
+ * alert).
  */
-const CARD_ALERTED_CATEGORIES = new Set([
+const CARD_ALERTED_CATEGORIES: ReadonlySet<string> = new Set([
   'approval-request',
   'turn-completed',
   'turn-stopped',
   'turn-failed',
 ]);
+
+function isCardAlerted(
+  notification: Pick<Notification, 'category' | 'metadata'>,
+): boolean {
+  if (!CARD_ALERTED_CATEGORIES.has(notification.category)) return false;
+  const { sessionKind, sessionId, requestKind } = (notification.metadata ??
+    {}) as Record<string, unknown>;
+  return (
+    sessionKind === 'runtime' &&
+    typeof sessionId === 'string' &&
+    sessionId.length > 0 &&
+    (requestKind === undefined || requestKind === 'orchestration')
+  );
+}
 
 export interface FcmAlertDevicePairing {
   listNativePushRegistrationsByPlatform(): {
@@ -197,7 +226,7 @@ export class FcmAlertChannel implements DeliveryChannel {
   }
 
   accepts(notification: Notification): boolean {
-    if (CARD_ALERTED_CATEGORIES.has(notification.category)) return false;
+    if (isCardAlerted(notification)) return false;
     return (
       readNotificationEnvelope(notification) !== undefined ||
       classifyNotificationCategory(notification.category) !== undefined
