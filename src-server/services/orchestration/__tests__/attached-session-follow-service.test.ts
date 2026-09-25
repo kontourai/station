@@ -571,6 +571,82 @@ describe('AttachedSessionFollowService', () => {
     expect(authz.canReadSession(session.threadId, as('stranger'))).toBe(false);
   });
 
+  // An attached session enveloped before owners were recorded keeps its
+  // envelope (same ids, no userId) because its attribution never changes, so
+  // the upgraded follower must record the owner on its own or the session
+  // stays unreadable while still being followed.
+  test('records the operator as owner of a session enveloped before owners were recorded, exactly once', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('event-1')],
+        cursor: 20,
+      }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    // The pre-upgrade follower: identical envelope ids, no owner.
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacyAppend = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacyAppend.mockRestore();
+    expect(store.findSessionOwnerUserId(session.threadId)).toBeUndefined();
+    const envelopeIds = store
+      .listEvents(session.threadId)
+      .map((item) => item.id);
+
+    const invalidated: string[] = [];
+    const upgraded = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      invalidateSessionOwner: (threadId) => invalidated.push(threadId),
+      listProjects,
+    });
+    await upgraded.pollNow();
+    await upgraded.pollNow();
+
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    // The envelope was not rewritten; one owner record was added, once.
+    const after = store.listEvents(session.threadId).map((item) => item.id);
+    expect(after.filter((id) => !envelopeIds.includes(id))).toEqual([
+      `attached-owner:${session.threadId}`,
+    ]);
+    expect(invalidated).toEqual([session.threadId]);
+    const authz = new SessionAuthorization({ eventStore: store });
+    expect(
+      authz.canReadSession(
+        session.threadId,
+        sessionReadAuthorityFromRequest(
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          undefined,
+          undefined,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   test('matches the longest canonical project root and publishes each canonical event once', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
@@ -1032,8 +1108,12 @@ describe('AttachedSessionFollowService', () => {
         { slug: 'beta', workingDirectory: app() },
       ]).pollNow();
 
-      // The stored log already says exactly this. Nothing to correct.
-      expect(store.listEvents(session.threadId)).toHaveLength(seeded);
+      // The stored log already says exactly this: the attribution is not
+      // re-stamped. The only addition is the owner record this pre-owner
+      // envelope lacks, which expresses no attribution of its own.
+      const events = store.listEvents(session.threadId);
+      expect(events).toHaveLength(seeded + 1);
+      expect(events.at(-1)?.id).toBe(`attached-owner:${session.threadId}`);
       expect(summarize().projectSlug).toBe('beta');
     });
 

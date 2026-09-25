@@ -68,6 +68,13 @@ interface FollowState {
    * a re-attribution lands on a session whose transcript has moved on.
    */
   latestEventAt?: string;
+  /**
+   * Whether the persisted log records an owner for this thread. An attached
+   * session enveloped before owners were recorded carries none, and its
+   * envelope is only rewritten when its attribution changes, so without an
+   * explicit owner record it would stay unreadable while still followed.
+   */
+  ownerRecorded: boolean;
 }
 
 const ATTACHED_SESSION_CURSOR_KIND = 'station.attached-session-cursor/v1';
@@ -454,6 +461,15 @@ export class AttachedSessionFollowService {
         }
       }
       state.storedAttribution = fingerprint;
+      // Every envelope event carries the owner.
+      state.ownerRecorded = true;
+    }
+    if (!state.ownerRecorded) {
+      this.appendIngestibleEvent(
+        state,
+        attachedSessionOwnerRecord(descriptor, state.latestEventAt),
+      );
+      state.ownerRecorded = true;
     }
 
     const priorCursor = state.cursors.get(sourceCursorKey(source));
@@ -597,6 +613,9 @@ export class AttachedSessionFollowService {
           : 'attached',
       seen: new Map(),
       cursors: restoredAttachedSessionCursors(persisted, source, descriptor),
+      ownerRecorded:
+        this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) !==
+        undefined,
       ...persistedEnvelopeFacts(configuredEvents, {
         latestEventAt: this.options.eventStore.latestEventCreatedAtByThread(
           descriptor.threadId,
@@ -687,6 +706,12 @@ export class AttachedSessionFollowService {
     this.options.eventStore.upsertSession(session);
   }
 
+  /** Deleting the alias removes its recorded owner, so the cached one goes too. */
+  private deleteAttachedAlias(threadId: string): void {
+    this.options.eventStore.deleteThread(threadId);
+    this.options.invalidateSessionOwner?.(threadId);
+  }
+
   /**
    * archive#1399 fix round 2, B1 (independent review) — a SECOND
    * provenance-sanitizing writer, sibling to
@@ -703,12 +728,6 @@ export class AttachedSessionFollowService {
    * sanitizer exception here can never drop an imported event or crash the
    * poll loop.
    */
-  /** Deleting the alias removes its recorded owner, so the cached one goes too. */
-  private deleteAttachedAlias(threadId: string): void {
-    this.options.eventStore.deleteThread(threadId);
-    this.options.invalidateSessionOwner?.(threadId);
-  }
-
   private appendAndPublish(event: CanonicalRuntimeEvent): void {
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
@@ -1121,6 +1140,37 @@ function attachedSessionEnvelope(
       },
     },
   ] as CanonicalRuntimeEvent[];
+}
+
+/**
+ * The owner record for an attached session whose persisted envelope predates
+ * owner recording: an owner-only `session.configured` naming the local
+ * operator. It expresses no project attribution, so the attribution the log
+ * already carries stays the live one, and its id is fixed per thread, so a
+ * restart or a second poll never appends it twice.
+ */
+function attachedSessionOwnerRecord(
+  session: AttachedSessionDescriptor,
+  latestEventAt: string | undefined,
+): CanonicalRuntimeEvent {
+  return {
+    eventId: `attached-owner:${session.threadId}`,
+    provider: session.provider,
+    threadId: session.threadId,
+    // Never `now`: recording an owner is not fresh session activity.
+    createdAt:
+      latestEventAt && latestEventAt > session.createdAt
+        ? latestEventAt
+        : session.createdAt,
+    method: 'session.configured',
+    sessionId: session.threadId,
+    cwd: session.cwd,
+    metadata: {
+      controlMode: 'read-only-attached',
+      attachedProvider: session.provider,
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    },
+  } as CanonicalRuntimeEvent;
 }
 
 /**
