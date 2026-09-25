@@ -12,6 +12,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -1550,17 +1551,17 @@ describe('metadata normalization (upstream regression #2247)', () => {
 });
 
 describe('NotificationService cross-source dedupe (#2597)', () => {
+  const makeTempDir = trackTempDirs();
   let dir: string;
   let svc: InstanceType<typeof NotificationService>;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'notif-cross-source-'));
+    dir = makeTempDir('notif-cross-source-');
     svc = new NotificationService(new EventBus(), dir, 999_999);
   });
 
   afterEach(async () => {
     await svc.shutdown();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function pairingItem(title: string) {
