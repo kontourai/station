@@ -589,7 +589,7 @@ describe('#2493: who may start a session unconfined', () => {
     });
   });
 
-  test("a webhook turn's session is owned by, and readable by, the operator only", async () => {
+  test("a webhook turn's session is readable by the operator only and acts for no one", async () => {
     const f = await fixture();
     const startTurn = createWebhookTurnStarter({
       readAuthorityFor: f.readAuthority,
@@ -618,6 +618,9 @@ describe('#2493: who may start a session unconfined', () => {
     expect(
       f.service.canUserReadSession(sessionId, f.readAuthority('stranger')),
     ).toBe(false);
+    // An external sender drives it: it must never act (or elevate) as the
+    // operator.
+    expect(f.service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
   });
 
   test('a caller-supplied confinement, stamp or grant in the body is ignored', async () => {

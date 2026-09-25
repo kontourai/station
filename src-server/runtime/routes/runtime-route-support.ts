@@ -26,6 +26,7 @@ import { VapidKeyService } from '../../services/notifications/vapid-key-service.
 import { wireWebPushDelivery } from '../../services/notifications/web-push-delivery.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
@@ -448,8 +449,11 @@ export function configureRuntimeSupportServices(
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
               // An external monitor acts for no request; this Station's
-              // operator configured it and owns the session it dispatches.
+              // operator configured it and owns (reads) the session it
+              // dispatches, but the monitored source drives it, so it acts
+              // for no one.
               ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,
