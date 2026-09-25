@@ -299,6 +299,61 @@ describe('useFocusReporter', () => {
     expect(sentSeqs()).toEqual([1, 2]);
   });
 
+  test('a 204 for an older report the server ignored is not trusted after a lost newer response', async () => {
+    // A model server that applies only reports with a higher seq, and answers
+    // 204 either way — exactly the route's contract.
+    const server = { seq: 0, state: undefined as string | undefined };
+    let holdNext = false;
+    let loseNextResponse = false;
+    let releaseHeld: () => void = () => {};
+    mocks.authenticatedFetch.mockImplementation(
+      async (_url: string, init: { body: string }) => {
+        const { seq, state } = JSON.parse(init.body);
+        const apply = () => {
+          if (seq > server.seq) {
+            server.seq = seq;
+            server.state = state;
+          }
+        };
+        if (holdNext) {
+          holdNext = false;
+          await new Promise<void>((resolve) => {
+            releaseHeld = resolve;
+          });
+          apply();
+          return ok();
+        }
+        apply();
+        if (loseNextResponse) {
+          loseNextResponse = false;
+          throw new Error('response lost');
+        }
+        return ok();
+      },
+    );
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(server).toEqual({ seq: 1, state: 'focused' });
+
+    // A slow focused heartbeat (seq 2) is in flight...
+    await fire(window, 'keydown');
+    holdNext = true;
+    await advance(FOCUS_HEARTBEAT_MS - FOCUS_REPORT_DEBOUNCE_MS);
+    expect(sentSeqs()).toEqual([1, 2]);
+    // ...the page goes hidden (seq 3): the server applies it, the answer is lost.
+    loseNextResponse = true;
+    await setVisibility('hidden');
+    expect(server).toEqual({ seq: 3, state: 'hidden' });
+    // The person comes back while seq 2 is still in flight.
+    await setVisibility('visible');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    // Seq 2 finally lands: ignored by the server, but still a 204.
+    releaseHeld();
+    await advance(0);
+    await advance(10_000);
+    expect(server.state).toBe('focused');
+  });
+
   test('every send, retries included, carries a strictly higher seq', async () => {
     await mountSettled();
     mocks.authenticatedFetch.mockImplementationOnce(async () => status(503));

@@ -193,6 +193,9 @@ export function startFocusReporter(
       // state is unknown, so the retry sends the current state whatever it
       // is (with a new seq, which also outranks the uncertain one).
       acked = undefined;
+      // A newer report may have landed, so no older 2xx can be trusted as the
+      // server's state (the server also answers 204 to reports it ignored).
+      ackedSeq = Math.max(ackedSeq, seq);
       backoffMs = Math.min(
         Math.max(backoffMs * 2, RETRY_BASE_MS),
         RETRY_BACKOFF_MAX_MS,
