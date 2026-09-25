@@ -1035,6 +1035,39 @@ describe('OrchestrationService', () => {
         projectIdSource: 'slug-lookup',
       });
     });
+
+    test('#2601 L3: the started engine comes from the SAME record as the started metadata', () => {
+      // A metadata-less `session.started` is skipped for the metadata, so its
+      // provider must be skipped too: a caller's Agent-less identity (its
+      // engine) and its `adoptedFromThreadId` never come from two events.
+      const now = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'codex',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-started',
+        createdAt: now,
+        method: 'session.started',
+        sessionId: 'split-record-session',
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-configured',
+        createdAt: now,
+        method: 'session.configured',
+        sessionId: 'split-record-session',
+        metadata: { adoptedFromThreadId: 'thread-attached-1' },
+      } as CanonicalRuntimeEvent);
+      expect(
+        service.firstStartedMetadataOfThread('split-record-session'),
+      ).toEqual({ adoptedFromThreadId: 'thread-attached-1' });
+      expect(service.firstStartedEngineOfThread('split-record-session')).toBe(
+        'claude',
+      );
+      expect(
+        service.firstStartedEngineOfThread('no-such-session'),
+      ).toBeUndefined();
+    });
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {

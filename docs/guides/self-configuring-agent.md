@@ -163,6 +163,13 @@ Use the example `agent.json` as a starting point:
 }
 ```
 
+The `delegation` block above is not accepted yet.
+[`schemas/agent.schema.json`](../../schemas/agent.schema.json) has no
+`delegation` field and refuses unknown fields, so a spec that carries one fails
+to load: the Agent is unusable, not only unable to delegate. Remove the block
+before you use this example. Every Agent's children get the default policy described
+below.
+
 ## Delegation rules
 
 Station now enforces child-agent isolation for delegated sessions:
@@ -172,6 +179,66 @@ Station now enforces child-agent isolation for delegated sessions:
 - delegated children can be denied approval-bound tools entirely
 
 That gives you a safe default for “planner delegates to worker” patterns without giving every child full platform control.
+
+### Where a child's lineage comes from
+
+A child's delegation context (its depth, parent, root, and tool limits) is
+derived by Station from the delegating session's own records:
+its Agent, its conversation, and the context that session was started with
+([`request-delegation.ts`](../../src-server/runtime/agents/request-delegation.ts)).
+The `_delegation` argument a model writes into `delegate_task` or
+`send_message` is ignored. A session already at the depth limit is refused
+before any child starts, on every engine.
+
+The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
+denials in `BUILTIN_DELEGATION_DENIALS`
+([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
+`delegate_task`, `run_job`, and every `add_*`, `create_*`, `update_*`,
+`delete_*`, `remove_*`, `connect_*` and `disconnect_*` station-control tool.
+
+**Behaviour change.** Before this, `POST /api/orchestration/delegations`
+dropped any context, so every `delegate_task` child started as an unrestricted
+root, including children of Station's own engine and of the default Agents
+(`station`, `claude`, `codex`). A `send_message` child on another engine
+carried whatever context the model wrote, or none. Every such child now gets
+lineage and the default policy. A delegated child therefore cannot:
+
+- create, update, or delete Station resources (Agents, skills, jobs,
+  Projects), or add or remove anything through station-control;
+- start a scheduled job with `run_job`, or delegate or message further;
+- do work that needs an approval: approval-bound tools are refused rather
+  than routed to a person.
+
+Give such work to a top-level conversation instead of a delegated child.
+
+### Which requests can name a context
+
+- A station-control tool call with a verified per-session credential gets
+  the derived context.
+- Station's own engine's pooled tool child has no per-session credential. Its
+  context is kept only when Station's runtime attested it.
+- Any other internal request that is neither verified nor attested starts a
+  root.
+- A request from outside this Station's process, such as a peer Station, an
+  operator credential, or a paired device, may send a `delegation` body on
+  `POST /api/orchestration/delegations`, as on `/chat/delegated`. Its context
+  is stored as sent. Such a claim can only restrict the session (a depth, tool
+  denials, `denyApprovals`) or label it (parent and root ids). A claimed
+  `maxDepth` does not raise the depth limit of that session's own children,
+  and no server or UI code routes on the parent or root ids.
+
+### Forwarding to a saved Environment
+
+When `delegate_task` or `send_message` targets another Station, this Station
+derives the child's context first and forwards it without an attestation.
+The receiving Station stores it as the sending Station's assertion. There is
+one known gap: a receiver older than this change strips the unknown
+`delegation` field from `POST /api/orchestration/delegations`. On that
+receiver the child starts as a root, which is the same as the behaviour before
+this change. A `send_message` forward to such a receiver still carries its
+context. A station-control connection with no verified caller and no
+attestation keeps the old forwarding behaviour: `send_message` forwards the
+context it was given, and `delegate_task` forwards none.
 
 ## Skill refinement loop
 
