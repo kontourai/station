@@ -607,6 +607,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // no Station boot, no wall-clock assertion.
   'scripts/__tests__/account-requirement.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
+  // #2648: the lease resolves its own exact process identity, which shells
+  // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
+  'scripts/__tests__/desktop-runtime-port-lease.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
   // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
