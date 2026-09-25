@@ -58,7 +58,10 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -3614,7 +3617,17 @@ export class StationRuntime {
                 sessionQueries: this.orchestrationService.sessionQueries,
               },
               fileStores: this.memoryAdapters,
+              // Legacy file-memory conversations are keyed by the OS alias.
               getUserId: () => getCachedUser().alias,
+              // Sessions are owned by principals: this personal Station's own
+              // conversation index reads them as its local operator (hosted
+              // Stations never register this adapter).
+              getReadAuthority: () =>
+                sessionReadAuthorityFromRequest(
+                  LOCAL_OPERATOR_PRINCIPAL_ID,
+                  undefined,
+                  undefined,
+                ),
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });

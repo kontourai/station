@@ -27,6 +27,7 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { getOrchestrationDatabasePath } from '../domain/migrations/003-orchestration-events.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import {
@@ -51,6 +52,13 @@ interface EnsureConversationKnowledgeRootDeps {
   sessionReader: ConversationSessionReader;
   fileStores: Map<string, ConversationFileStoreReader>;
   getUserId: () => string | undefined;
+  /**
+   * The authority the adapter's session leg reads with. The file-memory leg
+   * keeps keying on `getUserId`; the session leg must read as a principal,
+   * because a session is readable only by its recorded principal owner (or
+   * that owner's personal conversation account).
+   */
+  getReadAuthority?: () => SessionReadAuthority;
   /** `projectHomeDir` — used only to derive the documentary `storeRoot` path
    * (`{projectHomeDir}/data/orchestration.sqlite`) recorded on the root for
    * Settings/CLI listings; the adapter itself never reads this path (see
@@ -79,6 +87,9 @@ export async function ensureConversationKnowledgeRoot(
       sessionReader: deps.sessionReader,
       fileStores: deps.fileStores,
       getUserId: deps.getUserId,
+      ...(deps.getReadAuthority
+        ? { getReadAuthority: deps.getReadAuthority }
+        : {}),
     }),
   );
 
