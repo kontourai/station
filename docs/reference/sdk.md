@@ -378,6 +378,28 @@ const { notify } = useNotifications();
 notify('Saved!', { type: 'success' });
 ```
 
+#### `useNotificationPreferencesQuery(apiBase?: string): NotificationPreferencesV1`
+
+Reads `GET /api/notifications/preferences`: how far notifications may
+interrupt beyond the inbox (agent notification level, quiet hours,
+per-surface minimum urgency and hidden content, escalation delay). Operate
+tier; Station's own agent tools and delegated Stations are refused. A saved
+document the server cannot read is a query error, not the defaults.
+
+#### `usePatchNotificationPreferencesMutation(apiBase?: string)`
+
+`PATCH`es a `NotificationPreferencesPatch`: only the named fields change,
+server-side in one step, so a mute and a settings edit never lose each other.
+A map entry of `null` removes it; `quietHours: null` turns quiet hours off.
+Prefer this over a read-modify-write `PUT`.
+
+#### `useUpdateNotificationPreferencesMutation(apiBase?: string)`
+
+`PUT`s a complete `NotificationPreferencesV1`; the server refuses a partial or
+unknown-key document. `GET` returns an `ETag`; a raw `PUT` with `If-Match`
+is refused `412` if the document changed since. Shapes and defaults come
+from `@kontourai/station-contracts/notification-preferences`.
+
 ---
 
 ### Slash Command Hooks
