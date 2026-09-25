@@ -33,8 +33,8 @@ import { notificationOps } from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 import type { EventBus } from '../orchestration/event-bus.js';
+import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 
 const logger = createLogger({ name: 'notification-service' });
 
