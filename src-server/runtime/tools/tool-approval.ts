@@ -18,6 +18,30 @@ export function isAutoApproved(toolName: string, patterns: string[]): boolean {
 }
 
 /**
+ * #2613: Station's engine, matched the way attended chat matches an authored
+ * pattern (`createElicitationCallback`): against the runtime name the model
+ * calls (`stationControl_deleteAgent`) OR the original MCP name the tool was
+ * loaded under (`station-control_delete_agent`). Used for
+ * `tools.unattendedAutoApprove`, so an unattended opt-in is written in the
+ * same form as the attended `tools.autoApprove` pattern it mirrors.
+ *
+ * Deliberately NOT used for `tools.autoApprove` on the pre-tool path: there
+ * the runtime name alone is matched, and widening it to the original name
+ * would silently hand existing agents unattended authority (#2613).
+ */
+export function isAuthoredToolPatternMatch(
+  runtimeToolName: string,
+  patterns: readonly string[] | undefined,
+  toolNameMapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
+): boolean {
+  if (!patterns || patterns.length === 0) return false;
+  const list = [...patterns];
+  if (isAutoApproved(runtimeToolName, list)) return true;
+  const original = toolNameMapping.get(runtimeToolName)?.original;
+  return original !== undefined && isAutoApproved(original, list);
+}
+
+/**
  * External engines (Claude Code's SDK, ACP-driven agents) surface an MCP
  * tool call as `mcp__<server>__<tool>` (double-underscore delimited), while
  * Station's own autoApprove patterns are authored against the
