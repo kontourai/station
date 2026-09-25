@@ -2950,6 +2950,61 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       }
     });
 
+    // Round 5: the reviewer's scenario. A deregistered root's projection
+    // survives in Neo4j; nothing could then check it per caller, so its
+    // reads fail closed, and the built-in root cannot be deregistered.
+    test('the conversation root cannot be removed, and a deregistered root’s projection is never returned', async () => {
+      const driver = new FakeNeo4jDriver();
+      neo4jFake.driver = driver;
+      registerNeo4jGraphViewConnection({ uri: 'neo4j://localhost:7687' });
+      try {
+        const { app, pairing, knowledgeProvider } = await principalSetup({
+          knowledge: true,
+          seed: (seedStore) =>
+            seedConversations(seedStore, [
+              ['operator-note', LOCAL_OPERATOR_PRINCIPAL_ID],
+              ['stranger-note', STRANGER],
+            ]),
+        });
+        const synced = await app.request(
+          '/api/knowledge/roots/root:conversations/graph/neo4j-sync',
+          { method: 'POST', headers: operatorHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(synced.status, await synced.clone().text()).toBe(200);
+        const peer = pairDelegationPeer(pairing);
+        const peerHeaders = { Authorization: `Bearer ${peer.credential}` };
+        const removed = await app.request(
+          '/api/knowledge/roots/root:conversations',
+          { method: 'DELETE', headers: peerHeaders },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(removed.status, await removed.clone().text()).toBe(403);
+        expect(await knowledgeProvider!.getRoot('root:conversations')).not.toBe(
+          null,
+        );
+
+        // Deregistered some other way: the projection is still in Neo4j.
+        await knowledgeProvider!.removeRoot('root:conversations');
+        for (const path of [
+          '',
+          '/shortest-path?fromId=operator-note&toId=stranger-note',
+        ]) {
+          const response = await app.request(
+            `/api/knowledge/roots/root:conversations/graph/neo4j${path}`,
+            { headers: peerHeaders },
+            REMOTE_TAILNET_ENV,
+          );
+          const text = await response.text();
+          expect(response.status, text).toBe(404);
+          expect(text).not.toContain('note');
+        }
+      } finally {
+        clearNeo4jGraphViewConnection();
+        neo4jFake.driver = undefined;
+      }
+    });
+
     // Only the operator rebuilds the conversation index; the Station indexer
     // builds it from ALL sessions, so after the operator's rebuild each caller
     // (a non-account WhoIs principal included) finds exactly its own set.

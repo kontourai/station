@@ -55,7 +55,7 @@ import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js'
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import {
-  isSessionBackedRoot,
+  knowledgeRootReadKind,
   SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
@@ -173,7 +173,12 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       // a partial rebuild (or its record counts) is itself a disclosure.
       if (!(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false)) {
         for (const rootId of rootIds) {
-          if (await isSessionBackedRoot(deps.store, rootId)) {
+          // An unregistered root (or one whose adapter is gone) fails in
+          // `rebuildRoot`'s first step, before its partition is touched.
+          if (
+            (await knowledgeRootReadKind(deps.store, rootId)) ===
+            'session-backed'
+          ) {
             return c.json(
               { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
               403,

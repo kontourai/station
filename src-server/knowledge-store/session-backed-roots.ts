@@ -2,21 +2,37 @@ import { CONVERSATION_STORE_ADAPTER_ID } from './adapters/conversation-store.js'
 import type { KnowledgeStoreProvider } from './knowledge-store-provider.js';
 
 /**
- * Whether a knowledge root is backed by Station sessions (the
- * conversation-store adapter), whatever its id. Such a root's records are
- * per-caller: every path that returns its data must re-read each record as
- * the caller, and only the local operator may (re)build its shared index or
- * graph projection. Decided by the root's ADAPTER, never by its id: a root id
- * says nothing about what backs it.
+ * How a read of a root's projection (Neo4j graph, index partition) may treat
+ * its data, decided POSITIVELY:
+ *
+ * - `shared`: a registered root whose adapter is a registered, non-session
+ *   adapter. Its records are not per-caller, so its projection passes
+ *   through.
+ * - `session-backed`: a registered conversation-store root. Every node or
+ *   hit is re-read as the caller before it is shown.
+ * - `unavailable`: anything else (an unregistered root, whose projection may
+ *   still exist after a deregistration, or a root whose adapter is not
+ *   registered). Nothing can decide per-caller readability, so a read fails
+ *   closed: it returns nothing.
  */
-export async function isSessionBackedRoot(
-  store: Pick<KnowledgeStoreProvider, 'getRoot'>,
+export type KnowledgeRootReadKind = 'shared' | 'session-backed' | 'unavailable';
+
+export async function knowledgeRootReadKind(
+  store: Pick<KnowledgeStoreProvider, 'getRoot' | 'listAdapters'>,
   rootId: string,
-): Promise<boolean> {
-  return (
-    (await store.getRoot(rootId))?.adapterId === CONVERSATION_STORE_ADAPTER_ID
-  );
+): Promise<KnowledgeRootReadKind> {
+  const root = await store.getRoot(rootId);
+  if (!root) return 'unavailable';
+  if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return 'session-backed';
+  return store.listAdapters().some((adapter) => adapter.id === root.adapterId)
+    ? 'shared'
+    : 'unavailable';
 }
+
+export const KNOWLEDGE_ROOT_NOT_FOUND_ERROR = 'Knowledge root not found';
+
+export const RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR =
+  'The built-in conversation root is registered by Station and cannot be removed';
 
 export const SESSION_BACKED_BUILD_FORBIDDEN_ERROR =
   "Only this Station's operator may build a conversation-backed knowledge root's index or graph";

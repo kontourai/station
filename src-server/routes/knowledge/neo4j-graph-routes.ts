@@ -60,7 +60,8 @@ import {
 } from '../../knowledge-store/neo4j-graph-provider.js';
 import { syncRootToNeo4j } from '../../knowledge-store/neo4j-graph-sync.js';
 import {
-  isSessionBackedRoot,
+  KNOWLEDGE_ROOT_NOT_FOUND_ERROR,
+  knowledgeRootReadKind,
   SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
@@ -105,9 +106,10 @@ const MAX_PATH_HOPS = 15;
 async function readableGraph(
   store: KnowledgeStoreProvider,
   rootId: string,
+  kind: 'shared' | 'session-backed',
   graph: ReadGraphResult,
 ): Promise<ReadGraphResult> {
-  if (!(await isSessionBackedRoot(store, rootId))) return graph;
+  if (kind === 'shared') return graph;
   const adapter = (await store.adapterFor(rootId)) as Awaited<
     ReturnType<KnowledgeStoreProvider['adapterFor']>
   > & { readableIds?: (ids: readonly string[]) => Promise<Set<string>> };
@@ -220,7 +222,7 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
 
       if (
         !(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false) &&
-        (await isSessionBackedRoot(deps.store, rootId))
+        (await knowledgeRootReadKind(deps.store, rootId)) !== 'shared'
       ) {
         return c.json(
           { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
@@ -265,9 +267,19 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         );
       }
 
+      // Fail closed: a projection whose root is not (or no longer)
+      // registered cannot be checked per caller, so it is never returned.
+      const kind = await knowledgeRootReadKind(deps.store, rootId);
+      if (kind === 'unavailable') {
+        return c.json(
+          { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
+          404,
+        );
+      }
       const graph = await readableGraph(
         deps.store,
         rootId,
+        kind,
         await readGraph(driverResult.driver, rootId, {
           database: config.database,
         }),
@@ -310,21 +322,30 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
         );
       }
 
-      const path = (await isSessionBackedRoot(deps.store, rootId))
-        ? shortestReadablePath(
-            await readableGraph(
-              deps.store,
-              rootId,
-              await readGraph(driverResult.driver, rootId, {
-                database: config.database,
-              }),
-            ),
-            fromId,
-            toId,
-          )
-        : await shortestPath(driverResult.driver, rootId, fromId, toId, {
-            database: config.database,
-          });
+      const kind = await knowledgeRootReadKind(deps.store, rootId);
+      if (kind === 'unavailable') {
+        return c.json(
+          { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
+          404,
+        );
+      }
+      const path =
+        kind === 'session-backed'
+          ? shortestReadablePath(
+              await readableGraph(
+                deps.store,
+                rootId,
+                kind,
+                await readGraph(driverResult.driver, rootId, {
+                  database: config.database,
+                }),
+              ),
+              fromId,
+              toId,
+            )
+          : await shortestPath(driverResult.driver, rootId, fromId, toId, {
+              database: config.database,
+            });
       return c.json({ success: true, data: path });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
