@@ -1,4 +1,7 @@
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  StationConfinement,
+} from '@kontourai/station-contracts/provider';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -67,6 +70,13 @@ interface CredentialProfileRecoveryDeps {
     provider: EngineId,
     modelOptions: Record<string, unknown> | undefined,
   ) => Promise<Record<string, unknown> | undefined>;
+  /**
+   * #2493: the session's standing confinement (its start stamp, or a
+   * recorded `never`), which this replay's direct `adapter.sendTurn` must
+   * carry exactly as an ordinary turn dispatch does. Never derived from the
+   * replayed approval mode.
+   */
+  replayConfinement: (threadId: string) => StationConfinement;
   onTurnDispatched: (input: {
     provider: string;
     threadId: string;
@@ -216,6 +226,7 @@ export class CredentialProfileRecovery {
           : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
         ...(modelOptions ? { modelOptions } : {}),
+        confinement: this.deps.replayConfinement(input.threadId),
         recoveryCorrelationId: input.recoveryCorrelationId,
         signal: input.signal,
       });

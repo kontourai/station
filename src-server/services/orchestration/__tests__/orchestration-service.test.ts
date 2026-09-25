@@ -76,6 +76,7 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../../../runtime/mcp/station-control-caller.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -11168,7 +11169,13 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         threadId,
         provider: 'claude',
-        metadata: { agentSlug: 'delegated-agent', delegation },
+        // #2493: the restart carries its session's confinement stamp
+        // forward (none here, so the `workspace` it already meant).
+        metadata: {
+          agentSlug: 'delegated-agent',
+          delegation,
+          stationConfinement: 'workspace',
+        },
       }),
       undefined,
     );
@@ -17242,6 +17249,58 @@ describe('OrchestrationService', () => {
       expect.anything(),
     );
   });
+
+  test.each([
+    {
+      label: 'a request that may grant full access',
+      granted: true,
+      expected: 'host',
+    },
+    {
+      label: 'a request that may not (a device without the grant, an agent)',
+      granted: false,
+      expected: 'workspace',
+    },
+  ] as const)(
+    '#2493 Q2: an adoption by $label stamps its child $expected',
+    async ({ granted, expected }) => {
+      const sourceThreadId = `external:claude:confine-${expected}`;
+      const projectRoot = join(tmp, `confine-project-${expected}`);
+      mkdirSync(projectRoot, { recursive: true });
+      configuredProjects.push({
+        slug: `confine-project-${expected}`,
+        workingDirectory: projectRoot,
+      });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: sourceThreadId,
+        status: 'ready',
+        cwd: projectRoot,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: `vendor-confine-${expected}`,
+          affinity: { kind: 'test', ref: 'fixture' },
+        },
+        createdAt: '2026-07-22T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      });
+      await service.dispatch(
+        { type: 'adoptSession', sourceThreadId },
+        granted ? { fullAccessGrant: fullAccessGrantForTesting() } : {},
+      );
+      expect(claude.adoptSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          confinement: expected,
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+            stationConfinement: expected,
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
 
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';
