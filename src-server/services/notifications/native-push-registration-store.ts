@@ -50,7 +50,12 @@ const COMMON_KEYS = [
   'updatedAt',
 ];
 const ANDROID_KEYS = COMMON_KEYS;
-const ANDROID_OPTIONAL_KEYS = ['alerted'];
+/**
+ * Every optional key is written only when it carries something (`alerted`
+ * non-empty, `cardShown` true), so a record with none of them is
+ * byte-identical to what older Stations wrote and read.
+ */
+const ANDROID_OPTIONAL_KEYS = ['alerted', 'cardShown'];
 const IOS_KEYS = [...COMMON_KEYS, 'apnsEnvironment'];
 const IOS_OPTIONAL_KEYS = ['activity', 'alerted', 'channelDeletes'];
 /** Alert ids remembered per registration; the phone itself keeps 64. */
@@ -93,11 +98,26 @@ interface StoredRegistrationFields {
    * re-raise a grouped alert whose id the phone has never seen.
    */
   alerted?: string[];
+  /**
+   * Present (and true) while the last card this phone accepted had rows on
+   * it. Persisted so a device narrowed below `orchestration:read` still gets
+   * its one final empty card after a restart, and a device that never showed
+   * a row is never sent one. Absent means false.
+   */
+  cardShown?: true;
 }
 
 export interface NativePushAndroidRegistration
   extends NativePushAndroidRegistrationRequest,
-    StoredRegistrationFields {}
+    StoredRegistrationFields {
+  /**
+   * Present (and true) while the last card this phone accepted had rows on
+   * it. Persisted so a device narrowed below `orchestration:read` still gets
+   * its one final empty card after a restart, and a device that never showed
+   * a row is never sent one. Absent means false.
+   */
+  cardShown?: true;
+}
 
 /**
  * The Live Activity the Station last started for a registration, and the
@@ -252,6 +272,7 @@ function isValidAndroidRegistration(
   return (
     isRecord(value) &&
     hasExactKeys(value, ANDROID_KEYS, ANDROID_OPTIONAL_KEYS) &&
+    (value.cardShown === undefined || value.cardShown === true) &&
     isValidAndroidRequest(value) &&
     hasValidStoredFields(value)
   );
@@ -685,13 +706,34 @@ export class NativePushRegistrationStore extends RegistrationFileStore<
       fileName: ANDROID_FILE_NAME,
       label: ANDROID_LABEL,
       isValid: isValidAndroidRegistration,
-      build: (request, kept) => ({
+      build: (request, kept, existing) => ({
         token: request.token,
         packageName: request.packageName,
         platform: 'android',
         ...kept,
+        // Token rotation does not clear what the phone is showing.
+        ...(existing?.cardShown ? { cardShown: true as const } : {}),
       }),
     });
+  }
+
+  /**
+   * Records whether the card a registration last accepted had rows. Writes
+   * only on a change, and is ignored when the device has since been
+   * re-registered under a different registrationId.
+   */
+  recordCardShown(
+    deviceId: string,
+    registrationId: string,
+    shown: boolean,
+  ): void {
+    const registrations = this.read();
+    const current = registrations.get(deviceId);
+    if (!current || current.registrationId !== registrationId) return;
+    if ((current.cardShown === true) === shown) return;
+    const { cardShown: _previous, ...rest } = current;
+    registrations.set(deviceId, shown ? { ...rest, cardShown: true } : rest);
+    this.write(registrations);
   }
 }
 

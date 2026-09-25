@@ -33,7 +33,10 @@ class AgentSealTest {
     )
   }
 
-  /** NATIVE_PUSH_SEALED_TEST_VECTOR from @kontourai/station-contracts/native-push: the Station's own sealer output. */
+  /**
+   * NATIVE_PUSH_SEALED_TEST_VECTOR from @kontourai/station-contracts/native-push: the Station's own sealer output.
+   * A copy, pinned to the contract by agent-activity-seal.test.ts on the server side: update both together.
+   */
   @Test
   fun opensTheStationsKnownAnswerVector() {
     val stationSealed =

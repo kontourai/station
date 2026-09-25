@@ -1106,6 +1106,8 @@ export class DevicePairingService {
   readonly #nativePushIos: NativePushIosRegistrationStore;
   readonly #retiredListeners = new Set<(event: { dropped: number }) => void>();
   #reportedDroppedTombstones = 0;
+  /** Told after a device's scope change is committed (see onDeviceAccessChanged). */
+  readonly #accessListeners = new Set<(deviceId: string) => void>();
 
   constructor(options: DevicePairingServiceOptions) {
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
@@ -2427,6 +2429,7 @@ export class DevicePairingService {
     // silently restores what the operator just took away.
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#notifyAccessChanged(deviceId);
     return publicDevice(device);
   }
 
@@ -2466,6 +2469,7 @@ export class DevicePairingService {
     // and absent on disk, where a restart would silently withdraw it.
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#notifyAccessChanged(deviceId);
     return publicDevice(device);
   }
 
@@ -2652,6 +2656,39 @@ export class DevicePairingService {
       try {
         listener({ dropped });
       } catch {}
+  }
+
+  /** Remembers whether a registration's last accepted card had rows (see the store). */
+  recordNativePushCardShown(
+    deviceId: string,
+    registrationId: string,
+    shown: boolean,
+  ): void {
+    this.#nativePush.recordCardShown(deviceId, registrationId, shown);
+  }
+
+  /**
+   * Calls `listener` after a paired device's scope change is committed, so
+   * a consumer that derives what a device may read (the agent-activity
+   * publisher) can act on it now rather than on its next unrelated event.
+   * A listener's failure never undoes or fails the change. Returns the
+   * unsubscribe.
+   */
+  onDeviceAccessChanged(listener: (deviceId: string) => void): () => void {
+    this.#accessListeners.add(listener);
+    return () => {
+      this.#accessListeners.delete(listener);
+    };
+  }
+
+  #notifyAccessChanged(deviceId: string): void {
+    for (const listener of [...this.#accessListeners]) {
+      try {
+        listener(deviceId);
+      } catch {
+        // The change is committed; a consumer's failure is its own to report.
+      }
+    }
   }
 
   /** Remembers alerts a registration was sent (see the store). */

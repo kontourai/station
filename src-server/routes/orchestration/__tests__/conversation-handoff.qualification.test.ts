@@ -102,13 +102,18 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     };
   }
 
+  /** A live engine session keeps its own context across turns (#2540). */
+  private readonly memory = new Map<string, string>();
+
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     const ordinal = this.turns.length;
     const turnId = `${this.provider}-handoff-turn-${ordinal}`;
-    const token = /HANDOFF-CARRY-[0-9]+/.exec(
-      `${input.ambientContext ?? ''}\n${input.input}`,
-    )?.[0];
+    const token =
+      /HANDOFF-CARRY-[0-9]+/.exec(
+        `${input.ambientContext ?? ''}\n${input.input}`,
+      )?.[0] ?? this.memory.get(input.threadId);
+    if (token) this.memory.set(input.threadId, token);
     const base = {
       provider: this.provider,
       threadId: input.threadId,
@@ -428,7 +433,7 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
               INTERNAL_SESSION_READ_SCOPE,
             )
           )?.session.lifecycleState,
-        ).toBe('completed');
+        ).toBe('idle');
       });
 
       const idempotencyKey = `handoff-${source.provider}-to-${target.provider}`;
@@ -494,7 +499,7 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
               INTERNAL_SESSION_READ_SCOPE,
             )
           )?.session.lifecycleState,
-        ).toBe('completed');
+        ).toBe('idle');
       });
       const lineageAfterHandoff = store.conversationSessions(conversationId);
       expect(lineageAfterHandoff).toHaveLength(2);
@@ -522,16 +527,20 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
         { message: 'Third turn stays on the target Agent.' },
       );
       expect(ordinary.status, await ordinary.clone().text()).toBe(200);
+      // #2540: the ordinary turn after a handoff runs in the handoff target's
+      // live Session — no third Session, and no transcript seed: that engine
+      // already holds the context the handoff turn carried to it.
       await eventually(() => {
         expect(targetAdapter.turns).toHaveLength(2);
-        expect(store.conversationSessions(conversationId)).toHaveLength(3);
       });
-      expect(targetAdapter.turns[1]?.ambientContext).toContain(CONTEXT_TOKEN);
+      expect(targetAdapter.turns[1]?.threadId).toBe(
+        handoffReceipt.data.sessionId,
+      );
       expect(sourceAdapter.turns).toHaveLength(1);
 
       const lineage = store.conversationSessions(conversationId);
-      expect(new Set(lineage.map((entry) => entry.sessionId))).toHaveLength(3);
-      expect(lineage.map((entry) => entry.ordinal)).toEqual([0, 1, 2]);
+      expect(new Set(lineage.map((entry) => entry.sessionId))).toHaveLength(2);
+      expect(lineage.map((entry) => entry.ordinal)).toEqual([0, 1]);
       expect(currentBinding(store, conversationId)?.agentId).toBe(target.agent);
 
       await service.shutdown();
@@ -552,7 +561,7 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
         conversationId,
         { authority: INTERNAL_SESSION_READ_SCOPE, turnLimit: 10 },
       );
-      expect(restored?.currentSessionId).toBe(lineage[2]?.sessionId);
+      expect(restored?.currentSessionId).toBe(lineage[1]?.sessionId);
       expect(restored?.handoffs).toEqual([
         expect.objectContaining({
           predecessorSessionId: conversationId,

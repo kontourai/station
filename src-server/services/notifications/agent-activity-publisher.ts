@@ -16,6 +16,8 @@
  * - one unref'd timer that re-flushes when a delivery failed (with backoff),
  *   when a device was held back by the per-device send interval, when a live
  *   card nears its expiry on the phone, and once shortly after boot;
+ * - a flush whenever a paired device's scope changes, so a phone that lost
+ *   read access gets its final empty card now, not on the next event;
  * - never throws into the bus and never blocks it: all work is asynchronous
  *   and every failure is caught and logged without the token or payload.
  *
@@ -376,6 +378,14 @@ export interface AgentActivityDevicePairing {
     registrationId: string,
     update: NativePushLiveActivityUpdate,
   ): unknown;
+  /** Whether the card a registration last accepted had rows (persisted). */
+  recordNativePushCardShown(
+    deviceId: string,
+    registrationId: string,
+    shown: boolean,
+  ): void;
+  /** Told after a device's scope changes; returns the unsubscribe. */
+  onDeviceAccessChanged(listener: (deviceId: string) => void): () => void;
   environmentId(): string;
 }
 
@@ -1465,6 +1475,22 @@ export function wireAgentActivityPublisher(
     }
     state.deliveredActive = outcome === 'sent' && card.active;
     state.deliveredExpiresAt = card.expiresAt;
+    const shown = card.rows.length > 0;
+    if (outcome === 'sent' && (registration.cardShown === true) !== shown) {
+      // Durable, so a device narrowed below read access before the next
+      // flush still gets its final empty card after a restart.
+      try {
+        devicePairing.recordNativePushCardShown(
+          deviceId,
+          registration.registrationId,
+          shown,
+        );
+      } catch (error) {
+        logger.warn('agent-activity: could not record the card shown', {
+          error: errorMessage(error),
+        });
+      }
+    }
   }
 
   async function flush(): Promise<void> {
@@ -1664,7 +1690,10 @@ export function wireAgentActivityPublisher(
       if (!card) {
         // Not (or no longer) a device that may read sessions. A phone that
         // was shown a card gets one final empty card; nothing after that.
-        // An iPhone whose activity is still up (even from before a restart)
+        // An Android phone gets one final empty card if it was shown rows:
+        // this process's delivery state says what it was sent, and after a
+        // restart the persisted bit says whether it still shows rows. An
+        // iPhone whose activity is still up (even from before a restart)
         // has it ended at once.
         warnOnce(
           `unreadable:${deviceId}`,
@@ -1674,7 +1703,10 @@ export function wireAgentActivityPublisher(
         const liveActivity =
           registration.platform === 'ios' &&
           registration.activity !== undefined;
-        if (previous?.cardKey === undefined && !liveActivity) {
+        const cardShown =
+          registration.platform === 'android' &&
+          registration.cardShown === true;
+        if (previous?.cardKey === undefined && !cardShown && !liveActivity) {
           devices.delete(deviceId);
           continue;
         }
@@ -1816,6 +1848,21 @@ export function wireAgentActivityPublisher(
     }
   });
 
+  // A scope change can take a phone's read access away (or give it back):
+  // flush now, through the same pacing and backoff as any other change, so
+  // a narrowed phone's final empty card does not wait for the next
+  // lifecycle event.
+  const unsubscribeAccess = devicePairing.onDeviceAccessChanged(() => {
+    try {
+      if (!registrations()?.length) return;
+      requestFlush();
+    } catch (error) {
+      logger.warn('agent-activity: listener failed', {
+        error: errorMessage(error),
+      });
+    }
+  });
+
   // A revoked, cleared or replaced iPhone must have its live activity ended
   // now, not on the next lifecycle event.
   const unsubscribeRetired = devicePairing.onNativePushRetired?.(
@@ -1847,6 +1894,7 @@ export function wireAgentActivityPublisher(
       cancelTimer?.();
       cancelTimer = undefined;
       unsubscribe();
+      unsubscribeAccess();
       unsubscribeRetired?.();
       await worker.dispose();
     },
