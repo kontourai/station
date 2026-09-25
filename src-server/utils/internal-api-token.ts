@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const INTERNAL_API_TOKEN_KEY = Symbol.for('station.internalApiToken');
@@ -101,9 +102,15 @@ type ServerSelfGlobal = typeof globalThis & {
  * This value is minted in the server process's memory, only when the
  * authority guard is installed, and is never written to any environment,
  * file, argv or response. A child process therefore never holds it, and a
- * stolen internal token does not include it. The tool helper attaches it
- * only outside a station-control tool call (no verified-caller context and
- * not a stdio child), so a tool running in Station's process never borrows it.
+ * stolen internal token does not include it.
+ *
+ * It is attached ONLY inside an explicit server scope
+ * ({@link runAsStationServer}) that each server entry point enters
+ * deliberately. Authority is never inferred from an absence (no caller
+ * context): code that lost its context, or never had one, sends nothing and
+ * the guard fails closed. A station-control tool call leaves any server
+ * scope it inherited (`withStationControlCallerContext`), so a tool running
+ * in Station's process never borrows it.
  */
 export const INTERNAL_SERVER_SELF_HEADER = 'x-station-server-self';
 
@@ -127,6 +134,36 @@ export function isStationServerSelfAttestation(
     createHash('sha256').update(candidate).digest(),
     createHash('sha256').update(expected).digest(),
   );
+}
+
+const serverScope = new AsyncLocalStorage<true>();
+
+/**
+ * Run `operation` as Station's own server code: an entry point Station itself
+ * drives (a person's chat or pane action, a webhook, the Discord gateway, the
+ * built-in engine's relay), never a station-control tool call. Requests made
+ * inside it carry the server-self attestation.
+ *
+ * NOTE for #2377 slice C: a dispatch route handler runs its in-process
+ * execution-target dispatch inside this scope, so the loopback calls that
+ * dispatch makes (SSH connect, peer credential, Agent and Connection reads)
+ * pass the authority guard as server code. Dispatch authority must therefore
+ * be enforced at the dispatch ROUTE, never at those leaves.
+ */
+export function runAsStationServer<T>(operation: () => T): T {
+  return serverScope.run(true, operation);
+}
+
+/** Run `operation` outside any server scope it would otherwise inherit. */
+export function outsideStationServerScope<T>(operation: () => T): T {
+  return serverScope.exit(operation);
+}
+
+/** The server-self header, only inside {@link runAsStationServer}. */
+export function stationServerScopeHeaders(): Record<string, string> {
+  if (serverScope.getStore() !== true) return {};
+  const attestation = stationServerSelfAttestation();
+  return attestation ? { [INTERNAL_SERVER_SELF_HEADER]: attestation } : {};
 }
 
 /** Test-only: forget the attestation so a suite starts from a clean process. */

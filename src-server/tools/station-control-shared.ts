@@ -7,8 +7,8 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  INTERNAL_SERVER_SELF_HEADER,
-  stationServerSelfAttestation,
+  outsideStationServerScope,
+  stationServerScopeHeaders,
 } from '../utils/internal-api-token.js';
 
 let runtimeControlApiBase: string | undefined;
@@ -209,7 +209,10 @@ export function withStationControlCallerContext<T>(
   context: StationControlCallerContext,
   operation: () => T,
 ): T {
-  return callerContexts.run(context, operation);
+  // A tool call never runs as server code, whatever scope it inherited.
+  return outsideStationServerScope(() =>
+    callerContexts.run(context, operation),
+  );
 }
 
 /**
@@ -234,16 +237,15 @@ export function __resetStationControlStdioCallerCredentialForTests(): void {
 }
 
 /**
- * #2377 slice A: the server-self attestation, only for a request that is not
- * a station-control tool call — no verified-caller context (the HTTP MCP route
- * and in-process delivery always install one) and not a stdio child. In any
- * process that never minted the attestation this is empty, so a child never
- * sends one. See `INTERNAL_SERVER_SELF_HEADER`.
+ * #2377 slice A: the server-self attestation, only inside an explicit server
+ * scope (`runAsStationServer`) and never for a station-control tool call (a
+ * verified-caller context, or a stdio child). Outside a server scope nothing
+ * is sent and the authority guard fails closed. See
+ * `INTERNAL_SERVER_SELF_HEADER`.
  */
 function serverSelfHeaders(): Record<string, string> {
   if (callerContexts.getStore() || stdioEntryInstalled) return {};
-  const attestation = stationServerSelfAttestation();
-  return attestation ? { [INTERNAL_SERVER_SELF_HEADER]: attestation } : {};
+  return stationServerScopeHeaders();
 }
 
 function callerCredential(): string | undefined {

@@ -14,6 +14,7 @@ import {
   type WorkspacePaneHostActionActor,
 } from '../../services/plugins/workspace-pane-host-actions.js';
 import { executeExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import { runAsStationServer } from '../../utils/internal-api-token.js';
 
 /** One production bridge, shared by runtime composition and executable proof. */
 export function createRuntimeWorkspacePaneHostActions(input: {
@@ -49,27 +50,31 @@ export async function executeWorkspacePaneHostAction(
   actor: WorkspacePaneHostActionActor,
   admission: ForegroundInvocationAdmission,
 ) {
-  const handle = await executeExecutionTargetMessage(
-    {
-      target: {
-        environment: { kind: 'current' },
-        agent: admission.agentId,
-        workspace: { kind: 'project', projectSlug: admission.project.slug },
+  // #2377: an admitted Pane action is a person's turn Station drives itself;
+  // its loopback calls run as server code.
+  const handle = await runAsStationServer(() =>
+    executeExecutionTargetMessage(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: admission.agentId,
+          workspace: { kind: 'project', projectSlug: admission.project.slug },
+        },
+        message: admission.message,
+        userId: actor.principal.id,
+        principal: actor.principal,
+        clientOrigin: actor.clientOrigin,
+        readAuthority: actor.readAuthority,
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+        ...(actor.fullAccessGrant
+          ? { fullAccessGrant: actor.fullAccessGrant }
+          : {}),
       },
-      message: admission.message,
-      userId: actor.principal.id,
-      principal: actor.principal,
-      clientOrigin: actor.clientOrigin,
-      readAuthority: actor.readAuthority,
-      ...(actor.ownerAttribution
-        ? { ownerAttribution: actor.ownerAttribution }
-        : {}),
-      ...(actor.fullAccessGrant
-        ? { fullAccessGrant: actor.fullAccessGrant }
-        : {}),
-    },
-    orchestration,
-    admission,
+      orchestration,
+      admission,
+    ),
   );
   return {
     conversationId: handle.conversationId,

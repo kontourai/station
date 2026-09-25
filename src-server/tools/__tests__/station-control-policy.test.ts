@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   authorizeStationControlRequest,
+  DISPATCH_ROUTES,
   evaluateStationControlPolicy,
   matchStationControlRoute,
   STATION_CONTROL_INFRASTRUCTURE_POLICY,
@@ -27,6 +28,8 @@ const TABLE = Object.entries(STATION_CONTROL_TOOL_POLICY) as [
 ][];
 
 // Decision 1 (owner, 2026-09-25), transcribed from the issue.
+// Decision 1 names no delegated-custody exception: every Station-wide
+// mutation needs a bound operator caller.
 const DECISION_1_BOUND_OPERATOR = [
   'create_agent',
   'update_agent',
@@ -40,18 +43,19 @@ const DECISION_1_BOUND_OPERATOR = [
   'update_job',
   'run_job',
   'enable_job',
+  'disable_job',
   'delete_job',
   'create_ssh_environment',
   'connect_ssh_environment',
+  'disconnect_ssh_environment',
   'remove_ssh_environment',
+  'list_delegation_targets',
+  'reindex_knowledge',
   'migrate_knowledge',
 ];
-const DECISION_1_DELEGATED_OPERATOR = [
-  'reindex_knowledge',
-  'disable_job',
-  'disconnect_ssh_environment',
-  'list_delegation_targets',
-];
+// Decision 3: answering a worker's request needs bound + Project approve;
+// until slice C adds the Project path, only the bound operator.
+const DECISION_3_BOUND_OPERATOR = ['respond_to_task_request'];
 const DECISION_1_PERSON_ONLY = [
   'create_integration',
   'install_registry_integration',
@@ -64,7 +68,6 @@ const SLICE_C_DISPATCH = [
   'delegate_task',
   'continue_task',
   'interrupt_task',
-  'respond_to_task_request',
   'get_task',
   'get_task_events',
   'list_delegated_tasks',
@@ -115,17 +118,21 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
-  test('decision 1: the delegated-custody operator mutations', () => {
-    for (const name of DECISION_1_DELEGATED_OPERATOR) {
+  test('decision 3: answering a worker request needs the bound operator (slice C adds Project approve)', () => {
+    for (const name of DECISION_3_BOUND_OPERATOR) {
       const policy = STATION_CONTROL_TOOL_POLICY[
         name as keyof typeof STATION_CONTROL_TOOL_POLICY
       ] as StationControlToolPolicy;
-      expect([name, policy.assurance, policy.role]).toEqual([
-        name,
-        'delegated-custody',
-        'operator',
-      ]);
+      expect([name, policy.assurance, policy.role, policy.tightenedBy]).toEqual(
+        [name, 'bound', 'operator', ['C']],
+      );
     }
+  });
+
+  test('no operator mutation accepts less than a bound caller', () => {
+    for (const [name, policy] of TABLE)
+      if (policy.role === 'operator')
+        expect([name, policy.assurance]).toEqual([name, 'bound']);
   });
 
   test('decision 1: host code and credentials are a person’s step', () => {
@@ -148,7 +155,7 @@ describe('station-control authority table: the owner decisions', () => {
     expect(operator.sort()).toEqual(
       [
         ...DECISION_1_BOUND_OPERATOR,
-        ...DECISION_1_DELEGATED_OPERATOR,
+        ...DECISION_3_BOUND_OPERATOR,
         ...DECISION_1_PERSON_ONLY,
       ].sort(),
     );
@@ -162,7 +169,7 @@ describe('station-control authority table: the owner decisions', () => {
       expect([name, policy.assurance, policy.tightenedBy]).toEqual([
         name,
         'any',
-        'C',
+        ['C'],
       ]);
       expect(policy.toolClass).toBe('mutating');
     }
@@ -199,6 +206,24 @@ describe('station-control authority table: no label nothing computes', () => {
       if (policy.role === 'project')
         expect([name, policy.projectAction]).not.toEqual([name, undefined]);
     }
+  });
+
+  test('every entry that owns a leaf shared with dispatch names slice C', () => {
+    const dispatchLeaves = new Set(
+      DISPATCH_ROUTES.map(
+        (route) => `${route.method} ${route.path.replace(/:[A-Za-z]+/g, ':')}`,
+      ),
+    );
+    const missing = TABLE.filter(([, policy]) =>
+      policy.routes.some((route) =>
+        dispatchLeaves.has(
+          `${route.method} ${route.path.replace(/:[A-Za-z]+/g, ':')}`,
+        ),
+      ),
+    )
+      .filter(([, policy]) => !policy.tightenedBy?.includes('C'))
+      .map(([name]) => name);
+    expect(missing).toEqual([]);
   });
 
   test('read-only entries accept any caller and are never person-only', () => {
@@ -241,6 +266,9 @@ describe('station-control authority table: shared leaves', () => {
   // the complete list of tool routes the server guard enforces more loosely
   // than the tool's own entry, each for the reason given. A new sharing turns
   // this red instead of silently weakening a tool.
+  const DISPATCH_LEAVES = DISPATCH_ROUTES.map(
+    (route) => `${route.method} ${route.path}`,
+  );
   const EXPECTED_WEAKENED: Record<string, readonly string[]> = {
     // Dispatch (slice C) reaches these while resolving an SSH target; slice C
     // moves that server-side.
@@ -249,30 +277,12 @@ describe('station-control authority table: shared leaves', () => {
       // get_ssh_environment is a read.
       'GET /api/environments/ssh/:id',
     ],
-    list_delegation_targets: [
-      'GET /api/environments/ssh',
-      'POST /api/environments/ssh/:id/connect',
-      'GET /api/environments/peers/:environmentId/credential',
-      'GET /api/connections/agents',
-      'GET /api/connections/:id',
-      'GET /api/agents',
-      'GET /api/agents/:id',
-      'GET /api/projects/:slug',
-      'POST /api/orchestration/chat',
-      'POST /api/orchestration/chat/delegated',
-      'POST /api/orchestration/chat/background',
-      'POST /api/orchestration/chat/:conversationId/continue',
-      'POST /api/orchestration/delegations',
-      'GET /api/orchestration/delegations/:taskId',
-      'GET /api/orchestration/delegations/:taskId/events',
-      'POST /api/orchestration/delegations/:taskId/continue',
-      'POST /api/orchestration/delegations/:taskId/respond',
-      'POST /api/orchestration/delegations/:taskId/interrupt',
-      'POST /api/orchestration/commands',
-      'GET /api/orchestration/sessions/read-model',
-      'GET /api/orchestration/sessions/:threadId',
-      'GET /api/orchestration/sessions/:threadId/event-page',
-    ],
+    // Every leaf is shared with dispatch (slice C).
+    list_delegation_targets: DISPATCH_LEAVES,
+    // Its own respond leaf is strict; the rest is the dispatch plumbing it
+    // shares (slice C). The respond COMMAND on /commands is held to a bound
+    // operator by the leaf's own rule, not by this entry.
+    respond_to_task_request: DISPATCH_LEAVES,
     // Its status poll is get_review_request's read.
     run_independent_review: [
       'GET /api/projects/:projectSlug/reviews/requests/:requestId',
@@ -381,5 +391,56 @@ describe('station-control authority: route matching and refusals', () => {
     );
     expect(decide({ name: 'j', trustAllTools: false })).toBeUndefined();
     expect(decide({ name: 'j' })).toBeUndefined();
+  });
+
+  test('a respondToRequest command needs the bound operator, whichever tool reaches /commands', () => {
+    const decide = (caller: StationControlPolicyCaller | null, body: unknown) =>
+      authorizeStationControlRequest('POST', '/api/orchestration/commands', {
+        caller,
+        isOperatorPrincipal,
+        body,
+      })?.code;
+    for (const decision of ['accept', 'acceptForSession'])
+      expect(
+        decide(CALLERS['bearer-operator'] ?? null, {
+          type: 'respondToRequest',
+          decision,
+        }),
+      ).toBe('station_control_assurance_insufficient');
+    expect(
+      decide(CALLERS['bound-other-person'] ?? null, {
+        type: 'respondToRequest',
+      }),
+    ).toBe('station_control_role_required');
+    expect(decide(null, { type: 'respondToRequest' })).toBe(
+      'station_control_caller_required',
+    );
+    expect(
+      decide(CALLERS['bound-operator'] ?? null, { type: 'respondToRequest' }),
+    ).toBeUndefined();
+    // Other commands keep the dispatch policy (slice C).
+    expect(
+      decide(CALLERS['bearer-operator'] ?? null, { type: 'interruptTurn' }),
+    ).toBeUndefined();
+    // The dedicated respond leaf is the bound operator's too.
+    expect(
+      authorizeStationControlRequest(
+        'POST',
+        '/api/orchestration/delegations/t/respond',
+        { caller: CALLERS['bearer-operator'] ?? null, isOperatorPrincipal },
+      )?.code,
+    ).toBe('station_control_assurance_insufficient');
+  });
+
+  test('retargeting a granted job is a person’s step even for the bound operator', () => {
+    const decide = (retargetsGrantedJob: boolean) =>
+      authorizeStationControlRequest('PUT', '/scheduler/jobs/nightly', {
+        caller: CALLERS['bound-operator'] ?? null,
+        isOperatorPrincipal,
+        body: { prompt: 'new' },
+        retargetsGrantedJob,
+      })?.code;
+    expect(decide(true)).toBe('station_control_person_only');
+    expect(decide(false)).toBeUndefined();
   });
 });

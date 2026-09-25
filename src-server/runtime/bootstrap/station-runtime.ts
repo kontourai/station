@@ -397,6 +397,7 @@ import {
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import { runAsStationServer } from '../../utils/internal-api-token.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
@@ -1326,9 +1327,11 @@ export class StationRuntime {
           if (!this.orchestrationService) {
             throw new Error('Station orchestration is unavailable');
           }
-          return continueExecutionTargetMessage(
-            input,
-            this.orchestrationService,
+          // #2377: a Discord message is a person's turn Station drives
+          // itself; its loopback calls run as server code.
+          const orchestrationService = this.orchestrationService;
+          return runAsStationServer(() =>
+            continueExecutionTargetMessage(input, orchestrationService),
           );
         },
         readTranscript: ({ sessionId, turnId }) =>

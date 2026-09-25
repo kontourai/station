@@ -92,8 +92,29 @@ export type StationControlPersonOnly =
 
 export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+/**
+ * A rule a ROUTE carries whatever tool reaches it, because the body decides
+ * what the request does:
+ *
+ * - `respond-to-request-needs-bound-operator`: `POST
+ *   /api/orchestration/commands` also answers pending permission requests
+ *   (`type: 'respondToRequest'`, including `acceptForSession`). An agent must
+ *   not approve its own requests, so that command needs a bound operator
+ *   caller (decision 3 names bound + Project approve, which slice C adds;
+ *   until then only the operator).
+ * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
+ *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
+ *   granted job's prompt, agent or provider would hand the person's grants to
+ *   work they never saw, so it is a person's step (the guard reads the grant
+ *   store).
+ */
+export type StationControlRouteRule =
+  | 'respond-to-request-needs-bound-operator'
+  | 'retarget-of-granted-job-is-person-only';
+
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
+  readonly rule?: StationControlRouteRule;
   /**
    * A path pattern: literal segments and `:name` segments, each `:name`
    * matching exactly one non-empty segment. No wildcards: every leaf a tool
@@ -116,7 +137,7 @@ export interface StationControlToolPolicy {
    * one: B = read scoping + log redaction, C = dispatch scoping and
    * server-side cross-Station forwarding, D = built-in engine identity.
    */
-  readonly tightenedBy?: 'B' | 'C' | 'D';
+  readonly tightenedBy?: readonly ('B' | 'C' | 'D')[];
   /**
    * `route`: the route handler already authorizes the verified caller itself
    * (`notify_user`'s `/api/notifications/agent`), so the central guard lets
@@ -126,8 +147,14 @@ export interface StationControlToolPolicy {
 }
 
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
-const post = (path: string): StationControlRoute => ({ method: 'POST', path });
-const put = (path: string): StationControlRoute => ({ method: 'PUT', path });
+const post = (
+  path: string,
+  rule?: StationControlRouteRule,
+): StationControlRoute => ({ method: 'POST', path, ...(rule ? { rule } : {}) });
+const put = (
+  path: string,
+  rule?: StationControlRouteRule,
+): StationControlRoute => ({ method: 'PUT', path, ...(rule ? { rule } : {}) });
 const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
 
 /** Any verified caller may read; a caller-less request may too (decision 4). */
@@ -152,19 +179,6 @@ const OPERATOR_MUTATION: Pick<
   personOnly: 'never',
 };
 
-/**
- * Decision 1: the operator mutations the owner accepted from a
- * delegated-custody caller as well (pausing, reindexing, disconnecting,
- * discovering targets).
- */
-const OPERATOR_MUTATION_DELEGATED: Pick<
-  StationControlToolPolicy,
-  'assurance' | 'role' | 'toolClass' | 'personOnly'
-> = {
-  ...OPERATOR_MUTATION,
-  assurance: 'delegated-custody',
-};
-
 /** Decision 1: host code or stored credentials — a person does it. */
 const PERSON_ONLY: Pick<
   StationControlToolPolicy,
@@ -183,7 +197,7 @@ const PERSON_ONLY: Pick<
  * any of them, because the path it takes depends on the target and on the
  * task's persisted binding, not on the tool name.
  */
-const DISPATCH_ROUTES: readonly StationControlRoute[] = [
+export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/environments/ssh'),
   post('/api/environments/ssh/:id/connect'),
   get('/api/environments/peers/:environmentId/credential'),
@@ -200,9 +214,11 @@ const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/delegations/:taskId'),
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
-  post('/api/orchestration/delegations/:taskId/respond'),
   post('/api/orchestration/delegations/:taskId/interrupt'),
-  post('/api/orchestration/commands'),
+  post(
+    '/api/orchestration/commands',
+    'respond-to-request-needs-bound-operator',
+  ),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
@@ -220,7 +236,7 @@ const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
   role: 'none',
   toolClass: 'mutating',
   personOnly: 'never',
-  tightenedBy: 'C',
+  tightenedBy: ['C'],
 };
 
 const NAVIGATE_ROUTE = post('/api/ui');
@@ -237,13 +253,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
   list_conversations: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/agents/:slug/conversations')],
   },
   get_conversation_messages: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/agents/:slug/conversations/:conversationId/messages')],
   },
   delete_conversation: {
@@ -251,7 +267,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
@@ -261,7 +277,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/board/pin')],
   },
   board_unpin: {
@@ -269,7 +285,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/board/unpin')],
   },
   board_move: {
@@ -277,13 +293,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/board/move')],
   },
   board_read: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/board')],
   },
 
@@ -304,7 +320,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/skills/:name/run')],
   },
   record_skill_outcome: {
@@ -312,7 +328,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/skills/:name/outcome')],
   },
 
@@ -323,7 +339,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     projectAction: 'execute',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'C',
+    tightenedBy: ['C'],
     routes: [
       post('/api/projects/:projectSlug/reviews'),
       get('/api/projects/:projectSlug/reviews/requests/:requestId'),
@@ -333,21 +349,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews/requests/:requestId')],
   },
   list_review_receipts: {
     ...READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews')],
   },
   get_review_receipt: {
     ...READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
   },
 
@@ -370,7 +386,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_job_logs: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/scheduler/jobs/:target/logs')],
   },
   update_job: {
@@ -378,7 +394,9 @@ export const STATION_CONTROL_TOOL_POLICY = {
     // The same decision as `add_job`: without it, an agent could add an
     // ordinary job and then update it to trust every tool.
     personOnly: 'when-trust-all-tools',
-    routes: [put('/scheduler/jobs/:target')],
+    routes: [
+      put('/scheduler/jobs/:target', 'retarget-of-granted-job-is-person-only'),
+    ],
   },
   run_job: {
     ...OPERATOR_MUTATION,
@@ -389,7 +407,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [put('/scheduler/jobs/:target/enable')],
   },
   disable_job: {
-    ...OPERATOR_MUTATION_DELEGATED,
+    ...OPERATOR_MUTATION,
     routes: [put('/scheduler/jobs/:target/disable')],
   },
   delete_job: {
@@ -403,19 +421,19 @@ export const STATION_CONTROL_TOOL_POLICY = {
   read_logs: {
     ...READ,
     // Decision 2 (slice B): unredacted lines only for a bound operator.
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/diagnostics/logs')],
   },
   read_monitoring_events: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/monitoring/events')],
   },
   navigate_to: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [NAVIGATE_ROUTE],
   },
 
@@ -423,21 +441,22 @@ export const STATION_CONTROL_TOOL_POLICY = {
   list_projects: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/projects')],
   },
   get_project: {
     ...READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: 'B',
+    // Its leaf is also shared with dispatch (slice C).
+    tightenedBy: ['B', 'C'],
     routes: [get('/api/projects/:slug')],
   },
   list_project_layouts: {
     ...READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/projects/:slug/layouts')],
   },
 
@@ -448,11 +467,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   list_delegation_environments: {
     ...READ,
+    // Its leaf is shared with dispatch (slice C).
+    tightenedBy: ['C'],
     routes: [get('/api/environments/ssh')],
   },
   list_delegation_targets: {
-    // Decision 1: discovery may reconnect a saved SSH environment.
-    ...OPERATOR_MUTATION_DELEGATED,
+    // Decision 1: discovery may reconnect a saved SSH environment. Every leaf
+    // it reaches is shared with dispatch, so the server enforces it only as
+    // loosely as dispatch until slice C.
+    ...OPERATOR_MUTATION,
+    tightenedBy: ['C'],
     routes: DISPATCH_ROUTES,
   },
   list_delegated_tasks: { ...DISPATCH, routes: DISPATCH_ROUTES },
@@ -464,11 +488,15 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_task_events: { ...DISPATCH, routes: DISPATCH_ROUTES },
   continue_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
   respond_to_task_request: {
-    ...DISPATCH,
-    // Decision 3 (slice C): bound + Project approve.
-    role: 'project',
-    projectAction: 'approve',
-    routes: DISPATCH_ROUTES,
+    // Decision 3: bound + Project approve. Slice C adds the Project-approve
+    // path; until then only a bound operator answers a worker's request (an
+    // agent must not approve its own pending requests).
+    ...OPERATOR_MUTATION,
+    tightenedBy: ['C'],
+    routes: [
+      ...DISPATCH_ROUTES,
+      post('/api/orchestration/delegations/:taskId/respond'),
+    ],
   },
   interrupt_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
 
@@ -480,18 +508,20 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_ssh_environment: {
     ...READ,
     // Decision 2 (slice B): an operator read.
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/environments/ssh/:id')],
   },
   connect_ssh_environment: {
     ...OPERATOR_MUTATION,
+    // Its connect leaf is shared with dispatch (slice C).
+    tightenedBy: ['C'],
     routes: [
       post('/api/environments/ssh/:id/connect'),
       get('/api/environments/ssh/:id'),
     ],
   },
   disconnect_ssh_environment: {
-    ...OPERATOR_MUTATION_DELEGATED,
+    ...OPERATOR_MUTATION,
     routes: [post('/api/environments/ssh/:id/disconnect')],
   },
   remove_ssh_environment: {
@@ -505,23 +535,23 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_usage: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/analytics/usage')],
   },
   get_achievements: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/analytics/achievements')],
   },
   reindex_knowledge: {
-    ...OPERATOR_MUTATION_DELEGATED,
+    ...OPERATOR_MUTATION,
     routes: [post('/api/knowledge/index/rebuild')],
   },
   search_knowledge: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/knowledge/index/search')],
   },
   migrate_knowledge: {
@@ -550,7 +580,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   list_plugins: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [get('/api/plugins')],
   },
   // Guidance only: it answers from the tool and calls nothing.
@@ -566,7 +596,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
   validate_plugin: { ...READ, routes: [post('/api/plugins/validate')] },
@@ -579,7 +609,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
   remove_plugin: {
@@ -587,7 +617,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
 
@@ -595,7 +625,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_basis: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [
       get('/api/orchestration/sessions/:sessionId/turns/:turnId/basis'),
       get('/api/tasks/:taskId/basis'),
@@ -604,7 +634,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_task_basis: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [
       post('/api/tasks/:taskId/basis/app-read'),
       del('/api/tasks/:taskId/basis/app-read'),
@@ -613,7 +643,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_session_inventory: {
     ...READ,
     role: 'self',
-    tightenedBy: 'B',
+    tightenedBy: ['B'],
     routes: [
       post('/api/orchestration/sessions/:sessionId/inventory/app-read'),
       del('/api/orchestration/sessions/:sessionId/inventory/app-read'),
@@ -730,6 +760,12 @@ export interface StationControlPolicyContext {
   readonly isOperatorPrincipal?: (principalId: string) => boolean;
   /** The parsed JSON request body, for body-dependent person-only rules. */
   readonly body?: unknown;
+  /**
+   * For `retarget-of-granted-job-is-person-only`: whether this request changes
+   * what a job that holds unattended grants runs. Only the server can know
+   * (it reads the grant store); absent means it does not.
+   */
+  readonly retargetsGrantedJob?: boolean;
 }
 
 const ASSURANCE_RANK = {
@@ -807,6 +843,7 @@ interface IndexedRoute {
   readonly literalCount: number;
   readonly owners: readonly string[];
   readonly policies: readonly StationControlToolPolicy[];
+  readonly rules: readonly StationControlRouteRule[];
 }
 
 function segmentsOf(path: string): string[] {
@@ -821,6 +858,7 @@ function buildRouteIndex(): readonly IndexedRoute[] {
       segments: string[];
       owners: string[];
       policies: StationControlToolPolicy[];
+      rules: StationControlRouteRule[];
     }
   >();
   const add = (owner: string, policy: StationControlToolPolicy) => {
@@ -836,9 +874,12 @@ function buildRouteIndex(): readonly IndexedRoute[] {
         segments,
         owners: [],
         policies: [],
+        rules: [],
       };
       entry.owners.push(owner);
       entry.policies.push(policy);
+      if (route.rule && !entry.rules.includes(route.rule))
+        entry.rules.push(route.rule);
       byKey.set(key, entry);
     }
   };
@@ -868,6 +909,8 @@ export interface StationControlRouteMatch {
   /** Every tool (or infrastructure entry) that reaches this leaf. */
   readonly owners: readonly string[];
   readonly policies: readonly StationControlToolPolicy[];
+  /** Body-dependent rules this leaf carries whichever tool reaches it. */
+  readonly rules: readonly StationControlRouteRule[];
 }
 
 /**
@@ -888,7 +931,9 @@ export function matchStationControlRoute(
     if (route.method !== normalized || !matches(route, segments)) continue;
     if (!best || route.literalCount > best.literalCount) best = route;
   }
-  return best ? { owners: best.owners, policies: best.policies } : undefined;
+  return best
+    ? { owners: best.owners, policies: best.policies, rules: best.rules }
+    : undefined;
 }
 
 /**
@@ -908,11 +953,49 @@ export function authorizeStationControlRequest(
   let closest: StationControlRefusal | undefined;
   for (const policy of match.policies) {
     const refusal = evaluateStationControlPolicy(policy, context);
-    if (!refusal) return undefined;
+    if (!refusal) return routeRuleRefusal(match.rules, context);
     if (!closest || REFUSAL_STAGE[refusal.code] > REFUSAL_STAGE[closest.code])
       closest = refusal;
   }
   return closest;
+}
+
+/**
+ * The leaf's own body-dependent rules, applied after some tool's policy
+ * admitted the request (so no tool reaching the leaf can loosen them).
+ */
+function routeRuleRefusal(
+  rules: readonly StationControlRouteRule[],
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  for (const rule of rules) {
+    if (rule === 'retarget-of-granted-job-is-person-only') {
+      if (context.retargetsGrantedJob)
+        return stationControlRefusal('station_control_person_only');
+      continue;
+    }
+    const body = context.body;
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      (body as { type?: unknown }).type !== 'respondToRequest'
+    )
+      continue;
+    const caller = context.caller;
+    if (!caller)
+      return stationControlRefusal('station_control_caller_required');
+    if (caller.assurance !== 'bound')
+      return stationControlRefusal('station_control_assurance_insufficient');
+    const isOperator =
+      context.isOperatorPrincipal ??
+      ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
+    if (
+      !caller.principal?.elevationEligible ||
+      !isOperator(caller.principal.id)
+    )
+      return stationControlRefusal('station_control_role_required');
+  }
+  return undefined;
 }
 
 /** The policy for a registered tool name (bare or loader-prefixed). */

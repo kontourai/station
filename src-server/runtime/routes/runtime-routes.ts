@@ -164,6 +164,7 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
       );
 }
 
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
@@ -362,7 +363,10 @@ import { resolveStationBrowserOrigins } from '../../security/station-browser-ori
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
-import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
+import {
+  principalKey,
+  UnattendedGrantStore,
+} from '../../services/agents/unattended-grant-store.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { BoardStore } from '../../services/board/board-store.js';
 import { CheckpointIndexStore } from '../../services/checkpoints/checkpoint-index-store.js';
@@ -582,6 +586,7 @@ import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-cont
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -1096,6 +1101,44 @@ export function isProjectMemberDraftLease(method: string, path: string) {
  */
 const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
 
+/**
+ * #2377 slice A: an in-process entry point Station itself drives (a person's
+ * chat, a webhook, a pane action), run as server code so its own loopback
+ * calls carry the server-self attestation. See `runAsStationServer` —
+ * including why slice C must enforce dispatch at these routes.
+ */
+function stationServerEntry<Args extends unknown[], Result>(
+  operation: (...args: Args) => Result,
+): (...args: Args) => Result {
+  return (...args) => runAsStationServer(() => operation(...args));
+}
+
+/**
+ * #2377 slice A (M1): whether changing `changes` on the job named `jobName`
+ * changes what a job that holds live unattended grants runs. Exported so a
+ * test can drive it against a real grant store.
+ */
+export async function jobEditRetargetsGrantedWork(
+  jobName: string,
+  changes: Record<string, unknown>,
+  listJobs: () => Promise<readonly SchedulerJob[]>,
+  grants: Pick<UnattendedGrantStore, 'listGrants'>,
+): Promise<boolean> {
+  const job = (await listJobs()).find(
+    (candidate) => candidate.name === jobName,
+  );
+  if (!job) return false;
+  const changed = Object.entries(changes).some(
+    ([field, value]) => job[field] !== value,
+  );
+  const jobId = job.unattendedPrincipal?.jobId;
+  if (!changed || !jobId) return false;
+  const key = principalKey({ kind: 'scheduled-job', jobId });
+  return grants
+    .listGrants()
+    .some((grant) => grant.principalKey === key && !grant.revokedAt);
+}
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -1526,6 +1569,16 @@ export function configureRuntimeRoutes(
         ),
       isOperatorPrincipal: (principalId) =>
         principalId === LOCAL_OPERATOR_PRINCIPAL_ID,
+      // A person's unattended grants are keyed by the job; an agent must not
+      // change what a granted job runs. Read at request time: both are
+      // composed further down. A store read that throws fails closed.
+      retargetsGrantedJob: (jobName, changes) =>
+        jobEditRetargetsGrantedWork(
+          jobName,
+          changes,
+          () => schedulerService.listJobs(),
+          unattendedGrantStore,
+        ),
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -3344,11 +3397,12 @@ export function configureRuntimeRoutes(
     createInboundWebhookRoutes({
       homeDir: context.configLoader.getProjectHomeDir(),
       logger: context.logger,
-      startTurn: (input) =>
+      startTurn: stationServerEntry((input) =>
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution() },
           context.orchestrationService,
         ),
+      ),
     }),
   );
   // Current-host composer staging is intentionally process-local: unfinished
@@ -3459,11 +3513,12 @@ export function configureRuntimeRoutes(
       },
       listCheckpointRestoreEvents: (threadId) =>
         checkpointRestoreService.listEvents(threadId),
-      delegateTask: (input) =>
+      delegateTask: stationServerEntry((input) =>
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -3516,11 +3571,12 @@ export function configureRuntimeRoutes(
         }
         return projectDelegationAttemptClaim(record, input.attemptId);
       },
-      executeForegroundMessage: (input) =>
+      executeForegroundMessage: stationServerEntry((input) =>
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(
           {
@@ -3543,11 +3599,12 @@ export function configureRuntimeRoutes(
           references,
           binding,
         ),
-      handoffConversation: (input) =>
+      handoffConversation: stationServerEntry((input) =>
         handoffExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       reserveConversationContextBoundary: (input) =>
         context.orchestrationService.reserveConversationContextBoundary(
           input.conversationId,
@@ -3583,47 +3640,55 @@ export function configureRuntimeRoutes(
       projectDefaultEnvironment: createProjectDefaultEnvironmentCallback(
         context.projectService,
       ),
-      continueForegroundMessage: (input) =>
+      continueForegroundMessage: stationServerEntry((input) =>
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      discoverDelegationOptions,
-      continueDelegatedTask: (input) =>
+      ),
+      discoverDelegationOptions: stationServerEntry(discoverDelegationOptions),
+      continueDelegatedTask: stationServerEntry((input) =>
         continueDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      respondToDelegatedTaskRequest: (input) =>
+      ),
+      respondToDelegatedTaskRequest: stationServerEntry((input) =>
         respondToDelegatedTaskRequest(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      interruptDelegatedTask: (input) =>
+      ),
+      interruptDelegatedTask: stationServerEntry((input) =>
         interruptDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      listDelegatedTasks: (input) =>
+      ),
+      listDelegatedTasks: stationServerEntry((input) =>
         listDelegatedTasks(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      observeDelegatedTask: (input) =>
+      ),
+      observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      refreshDelegatedTaskActivity: (input) =>
+      ),
+      refreshDelegatedTaskActivity: stationServerEntry((input) =>
         refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      observeDelegatedTaskEvents: (input) =>
+      ),
+      observeDelegatedTaskEvents: stationServerEntry((input) =>
         observeDelegatedTaskEvents(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       presence: context.orchestrationStreamPresence,
       hostedTenantRegistry,
     }),

@@ -28,6 +28,7 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
+  runAsStationServer,
 } from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,
@@ -276,7 +277,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     ).toBe('station_control_route_unmapped');
   });
 
-  test('the operator credential, Station’s own server code and the carve-outs pass', async () => {
+  test('the operator credential, Station’s own server code and the readiness carve-outs pass; the relay path does not', async () => {
     const { base } = await setup();
     expect(
       await outcome(
@@ -290,33 +291,30 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
         { theme: 'dark' },
       ),
     ).toBe('passed-guard');
-    for (const [method, path] of [
-      ['GET', '/api/system/identity'],
-      ['GET', '/api/system/instance'],
-      ['POST', '/api/agents/default/chat'],
-    ] as const)
-      expect(
-        await outcome(
-          base,
-          method,
-          path,
-          internal(),
-          method === 'GET' ? undefined : { input: 'hi' },
-        ),
-      ).toBe('passed-guard');
-    // Station's own server code: no caller context, not a stdio child, in the
-    // process the composition minted the server attestation in. The same
-    // request without the attestation is refused (the control).
+    for (const path of ['/api/system/identity', '/api/system/instance'])
+      expect(await outcome(base, 'GET', path, internal())).toBe('passed-guard');
+    // M2: the agent relay path is no longer carved out; only the relay
+    // itself (server code) passes.
+    expect(
+      await outcome(base, 'POST', '/api/agents/default/chat', internal(), {
+        input: 'hi',
+      }),
+    ).toBe('station_control_route_unmapped');
+    // Station's own server code: an explicit server scope, in the process the
+    // composition minted the server attestation in. The same request without
+    // the scope is refused (the control).
     expect(
       await outcome(base, 'PUT', '/config/app', internal(), { theme: 'dark' }),
     ).toBe('station_control_caller_required');
     __resetStationControlStdioCallerCredentialForTests();
     process.env.STATION_API_BASE = base;
     try {
-      const response = (await api('/config/app', {
-        method: 'PUT',
-        body: JSON.stringify({ theme: 'dark' }),
-      })) as { code?: string };
+      const response = (await runAsStationServer(() =>
+        api('/config/app', {
+          method: 'PUT',
+          body: JSON.stringify({ theme: 'dark' }),
+        }),
+      )) as { code?: string };
       expect(response?.code ?? 'passed-guard').not.toMatch(/^station_control_/);
     } finally {
       delete process.env.STATION_API_BASE;

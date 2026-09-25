@@ -26,6 +26,8 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
 import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
@@ -42,8 +44,15 @@ import {
   mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import { jobEditRetargetsGrantedWork } from '../../runtime/routes/runtime-routes.js';
+import {
+  principalKey,
+  UnattendedGrantStore,
+} from '../../services/agents/unattended-grant-store.js';
+import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { EventBus as RealEventBus } from '../../services/orchestration/event-bus.js';
 import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
 import {
   STATION_CONTROL_TOOL_POLICY,
@@ -62,6 +71,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_SERVER_SELF_HEADER,
+  runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -103,6 +113,31 @@ let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
 const hits: string[] = [];
+/** The headers each stub route last received, by its label. */
+const lastHeaders = new Map<string, Headers>();
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
+let grants: UnattendedGrantStore;
+/** The jobs the scheduler would list; `granted` has a live grant. */
+const JOBS = [
+  {
+    name: 'granted',
+    provider: 'builtin',
+    prompt: 'the reviewed prompt',
+    agent: 'reviewer',
+    enabled: true,
+    unattendedPrincipal: {
+      kind: 'scheduled-job' as const,
+      jobId: 'job-granted',
+    },
+  },
+  {
+    name: 'plain',
+    provider: 'builtin',
+    prompt: 'p',
+    enabled: true,
+    unattendedPrincipal: { kind: 'scheduled-job' as const, jobId: 'job-plain' },
+  },
+];
 
 function quietLogger(): Logger {
   return {
@@ -120,6 +155,12 @@ function quietLogger(): Logger {
 
 beforeAll(async () => {
   __resetStationServerSelfAttestationForTests();
+  grants = new UnattendedGrantStore(makeTempDir('authority-guard-grants-'));
+  await grants.grantTool(
+    principalKey({ kind: 'scheduled-job', jobId: 'job-granted' }),
+    'station-control_update_config',
+    'human:local:operator',
+  );
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -145,6 +186,9 @@ beforeAll(async () => {
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(request, resolveRecord),
       isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+      // The production check, over a real grant store.
+      retargetsGrantedJob: (jobName, changes) =>
+        jobEditRetargetsGrantedWork(jobName, changes, async () => JOBS, grants),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -170,6 +214,7 @@ beforeAll(async () => {
   // that it was reached, so "allowed" means the request got through.
   const record = (label: string, body: unknown) => (c: any) => {
     hits.push(label);
+    lastHeaders.set(label, new Headers(c.req.raw.headers));
     return c.json(body);
   };
   const ok = { success: true, data: { ok: true } };
@@ -180,6 +225,23 @@ beforeAll(async () => {
     record('PUT /scheduler/jobs/:target/disable', ok),
   );
   app.post('/scheduler/jobs', record('POST /scheduler/jobs', ok));
+  app.put('/scheduler/jobs/:target', record('PUT /scheduler/jobs/:target', ok));
+  app.post(
+    '/api/orchestration/commands',
+    record('POST /api/orchestration/commands', ok),
+  );
+  // The Station agent relay's target: answers one finished turn.
+  app.post('/api/agents/:id/chat', (c) => {
+    hits.push('POST /api/agents/:id/chat');
+    lastHeaders.set(
+      'POST /api/agents/:id/chat',
+      new Headers(c.req.raw.headers),
+    );
+    return new Response(
+      `data: ${JSON.stringify({ type: 'finish', finishReason: 'stop' })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  });
   app.post('/api/providers', record('POST /api/providers', ok));
   app.post('/api/board/pin', record('POST /api/board/pin', ok));
   app.post(
@@ -200,6 +262,7 @@ beforeEach(() => {
   __resetStationControlStdioCallerCredentialForTests();
   hits.length = 0;
   refusals.length = 0;
+  lastHeaders.clear();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -423,8 +486,8 @@ const ROWS: readonly Row[] = [
     route: 'PUT /scheduler/jobs/:target/disable',
     expect: {
       'bound op-': 'allowed',
-      'delegated-custody op-': 'allowed',
-      'delegated-custody person-': 'station_control_role_required',
+      'bound person-': 'station_control_role_required',
+      'delegated-custody op-': 'station_control_assurance_insufficient',
       'bearer-exposed op-': 'station_control_assurance_insufficient',
       'pooled none': 'station_control_caller_required',
     },
@@ -616,13 +679,28 @@ describe('who the guard does not decide', () => {
     expect(refusals).toEqual([]);
   });
 
-  test('Station’s own server code (outside any tool call) carries the server attestation and is not refused', async () => {
-    // No caller context and no stdio entry: this is how the in-process
-    // execution-target dispatch calls its own API.
-    expect(await api('/config/app', { method: 'PUT', body: '{}' })).toEqual({
-      success: true,
-    });
+  test('Station’s own server code, inside an explicit server scope, carries the attestation and is not refused', async () => {
+    // How an entry point (a person's chat, a webhook, the relay) calls its
+    // own API: no caller context, inside `runAsStationServer`.
+    expect(
+      await runAsStationServer(() =>
+        api('/config/app', { method: 'PUT', body: '{}' }),
+      ),
+    ).toEqual({ success: true });
     expect(hits).toEqual(['PUT /config/app']);
+    expect(
+      lastHeaders.get('PUT /config/app')?.has(INTERNAL_SERVER_SELF_HEADER),
+    ).toBe(true);
+  });
+
+  test('an in-process call with no caller context and no server scope is refused: a lost context is no authority', async () => {
+    expect(
+      await api('/config/app', { method: 'PUT', body: '{}' }),
+    ).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
+    expect(hits).toEqual([]);
   });
 
   test('a forged server attestation is refused like any caller-less request', async () => {
@@ -637,41 +715,53 @@ describe('who the guard does not decide', () => {
     expect(hits).toEqual([]);
   });
 
-  test('a tool running inside Station’s process never borrows the server attestation', async () => {
-    // In-process Claude runs in this very process; acting for someone who is
-    // not the operator it must still be refused, not waved through.
-    const { result, hits: reached } = await callTool(
-      'bound',
-      'person-borrow',
-      'update_config',
-      { updates: { theme: 'dark' } },
-    );
-    expect(result).toMatchObject({ code: 'station_control_role_required' });
-    expect(reached).toEqual([]);
-  });
+  // H1: a station-control tool call never carries the server attestation,
+  // on any delivery channel, for an allowed mutation or a read — even when
+  // the engine was driven from inside a server scope. The stub records the
+  // headers the tool's REST call actually carried.
+  for (const channel of [
+    'bound',
+    'delegated-custody',
+    'bearer-exposed',
+  ] as const)
+    for (const [tool, args, label] of [
+      [
+        'board_pin',
+        {
+          reference: { kind: 'session', id: 's' },
+          name: 'w',
+          block: { type: 'card', body: 'hello' },
+        },
+        'POST /api/board/pin',
+      ],
+      ['list_agents', {}, 'GET /agents'],
+    ] as const)
+      test(`a ${channel} tool call (${tool}) carries its caller token and never the server attestation`, async () => {
+        const { hits: reached } = await runAsStationServer(() =>
+          callTool(channel, nextSession('op-'), tool, args),
+        );
+        expect(reached).toEqual([label]);
+        const headers = lastHeaders.get(label);
+        expect(headers?.has(STATION_CONTROL_CALLER_TOKEN_HEADER)).toBe(true);
+        expect(headers?.has(INTERNAL_SERVER_SELF_HEADER)).toBe(false);
+      });
 
-  test('the carve-outs are exactly the agent relay and the readiness reads', async () => {
+  test('the carve-outs are exactly the readiness reads', async () => {
     expect(
       STATION_CONTROL_GUARD_CARVE_OUTS.map(
         (carveOut) => `${carveOut.method} ${carveOut.pattern.source}`,
       ),
     ).toEqual([
-      'POST ^\\/api\\/agents\\/[^/]+\\/chat$',
       'GET ^\\/api\\/system\\/identity$',
       'GET ^\\/api\\/system\\/instance$',
     ]);
     // Carved out: reaches routing (404 here, no handler mounted).
-    for (const [method, path] of [
-      ['POST', '/api/agents/default/chat'],
-      ['GET', '/api/system/identity'],
-      ['GET', '/api/system/instance'],
-    ] as const)
-      expect(await rest(method, path, internalHeaders(), undefined)).toEqual({
+    for (const path of ['/api/system/identity', '/api/system/instance'])
+      expect(await rest('GET', path, internalHeaders(), undefined)).toEqual({
         status: 404,
       });
     // Exact, not a prefix.
     for (const [method, path] of [
-      ['POST', '/api/agents/default/chat/extra'],
       ['GET', '/api/system/identity/extra'],
       ['POST', '/api/system/identity'],
     ] as const)
@@ -686,6 +776,156 @@ describe('who the guard does not decide', () => {
         status: 403,
         code: 'station_control_route_unmapped',
       });
+  });
+});
+
+describe('the Station agent relay (M2): server code, not a carve-out', () => {
+  test('a bare internal token on the relay path is refused', async () => {
+    expect(
+      await rest('POST', '/api/agents/default/chat', internalHeaders(), {
+        input: 'hi',
+      }),
+    ).toEqual({ status: 403, code: 'station_control_route_unmapped' });
+    expect(hits).toEqual([]);
+  });
+
+  test('the relay itself reaches /chat with the server attestation', async () => {
+    const eventBus = new RealEventBus();
+    const adapter = new StationAgentAdapter({
+      apiBase: baseUrl,
+      hasAgent: () => true,
+      eventBus,
+      approvalRegistry: new ApprovalRegistry(
+        { info: vi.fn(), warn: vi.fn() },
+        { eventBus },
+      ),
+    });
+    await adapter.startSession({
+      threadId: 'relay-thread',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'relay-thread', input: 'hello' });
+    await vi.waitFor(() => expect(hits).toEqual(['POST /api/agents/:id/chat']));
+    expect(
+      lastHeaders
+        .get('POST /api/agents/:id/chat')
+        ?.has(INTERNAL_SERVER_SELF_HEADER),
+    ).toBe(true);
+    expect(refusals).toEqual([]);
+  });
+});
+
+describe('answering a pending request (M4): only the bound operator', () => {
+  const respond = { type: 'respondToRequest', threadId: 't', requestId: 'r' };
+  test.each([
+    ['bound', 'op-', 'allowed'],
+    ['bound', 'person-', 'station_control_role_required'],
+    ['delegated-custody', 'op-', 'station_control_assurance_insufficient'],
+    ['bearer-exposed', 'op-', 'station_control_assurance_insufficient'],
+    ['pooled', 'none', 'station_control_caller_required'],
+  ] as const)(
+    'a %s (%s) caller answering with acceptForSession → %s',
+    async (channel, prefix, outcome) => {
+      const caller = forwardedCaller(channel, nextSession(prefix));
+      const response = await rest(
+        'POST',
+        '/api/orchestration/commands',
+        internalHeaders(
+          caller ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller } : {},
+        ),
+        { ...respond, decision: 'acceptForSession' },
+      );
+      if (outcome === 'allowed') {
+        expect(response).toEqual({ status: 200 });
+        expect(hits).toEqual(['POST /api/orchestration/commands']);
+      } else {
+        expect(response).toEqual({ status: 403, code: outcome });
+        expect(hits).toEqual([]);
+      }
+    },
+  );
+
+  test('other commands keep the dispatch policy, and the operator UI still answers', async () => {
+    const bearer = forwardedCaller('bearer-exposed', nextSession('op-'));
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/commands',
+        internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: bearer! }),
+        { type: 'interruptTurn', threadId: 't' },
+      ),
+    ).toEqual({ status: 200 });
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/commands',
+        {
+          'content-type': 'application/json',
+          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        },
+        { ...respond, decision: 'accept' },
+      ),
+    ).toEqual({ status: 200 });
+    expect(refusals).toEqual([]);
+  });
+});
+
+describe('a job a person granted (M1): an agent cannot change what it runs', () => {
+  const bound = () =>
+    internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+        'bound',
+        nextSession('op-'),
+      )!,
+    });
+  test.each([
+    ['prompt', { prompt: 'something else' }],
+    ['agent', { agent: 'another-agent' }],
+    ['provider', { provider: 'elsewhere' }],
+  ] as const)(
+    'changing a granted job’s %s is a person’s step even for the bound operator',
+    async (_field, change) => {
+      expect(
+        await rest('PUT', '/scheduler/jobs/granted', bound(), change),
+      ).toEqual({ status: 403, code: 'station_control_person_only' });
+      expect(hits).toEqual([]);
+    },
+  );
+
+  test('other edits, unchanged values, and ungranted jobs stay the operator’s', async () => {
+    for (const [target, body] of [
+      ['granted', { enabled: false }],
+      ['granted', { prompt: 'the reviewed prompt' }],
+      ['plain', { prompt: 'something else' }],
+    ] as const)
+      expect(
+        await rest('PUT', `/scheduler/jobs/${target}`, bound(), body),
+      ).toEqual({ status: 200 });
+    expect(hits).toHaveLength(3);
+  });
+
+  test('a revoked grant no longer holds the job', async () => {
+    const store = new UnattendedGrantStore(makeTempDir('authority-revoked-'));
+    const key = principalKey({ kind: 'scheduled-job', jobId: 'job-granted' });
+    await store.grantTool(key, 'tool', 'human:local:operator');
+    expect(
+      await jobEditRetargetsGrantedWork(
+        'granted',
+        { prompt: 'x' },
+        async () => JOBS,
+        store,
+      ),
+    ).toBe(true);
+    await store.revokeGrant(key, 'tool');
+    expect(
+      await jobEditRetargetsGrantedWork(
+        'granted',
+        { prompt: 'x' },
+        async () => JOBS,
+        store,
+      ),
+    ).toBe(false);
   });
 });
 
