@@ -1545,6 +1545,7 @@ describe('TaskGraphService', () => {
           provider: 'codex',
           modelOptions: { approvalMode: 'never' },
         },
+        ownerUserId: 'test-owner',
         fullAccessGrant: grant,
       });
       expect(outcome.kind).toBe(granted ? 'dispatched' : 'forbidden');
@@ -1553,7 +1554,11 @@ describe('TaskGraphService', () => {
         expect(dispatch).not.toHaveBeenCalled();
         const defaulted = await composeTaskDispatcher(service).dispatch(
           task.id,
-          { runtimeConfig: { provider: 'codex' }, fullAccessGrant: null },
+          {
+            runtimeConfig: { provider: 'codex' },
+            ownerUserId: 'test-owner',
+            fullAccessGrant: null,
+          },
         );
         expect(defaulted.kind).toBe('dispatched');
       }
@@ -1619,7 +1624,11 @@ describe('TaskGraphService', () => {
         {
           type: 'startSession',
           input: expect.objectContaining({
-            metadata: { taskSlug: 'kontourai-station-1388' },
+            // The dispatching principal always owns the session.
+            metadata: {
+              userId: 'test-owner',
+              taskSlug: 'kontourai-station-1388',
+            },
           }),
         },
         undefined,
@@ -1644,7 +1653,9 @@ describe('TaskGraphService', () => {
         readState: () => null,
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
@@ -1656,7 +1667,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
       // No slug means no join, so the attach mode must not be forced either.
       expect(
         dispatch.mock.calls[0][2].workflowSidecarAttachMode,
@@ -1669,7 +1682,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('declares nothing when the dispatch supplies no cwd', async () => {
@@ -1700,7 +1715,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('an unreadable sidecar degrades to no slug instead of failing the dispatch', async () => {
@@ -1711,7 +1728,9 @@ describe('TaskGraphService', () => {
         },
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
   });
 

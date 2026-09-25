@@ -7,7 +7,10 @@ import {
   createStationAnswerBinding,
   type StationAnswerBinding,
 } from '@kontourai/station-contracts/task-basis';
-import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import type {
+  InternalSessionReadScope,
+  SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
   observedAssistantMessageId,
@@ -207,7 +210,10 @@ interface SessionConversationQuerySource<Session> {
     updatedAt: string;
     lastEventAt?: string;
   } | null;
-  canReadSession(threadId: string, authority: SessionReadAuthority): boolean;
+  canReadSession(
+    threadId: string,
+    authority: SessionReadAuthority | InternalSessionReadScope,
+  ): boolean;
   listEvents(threadId: string): readonly CanonicalRuntimeEvent[];
   /** Exact descriptor-only point lookup; no transcript or attachment bytes. */
   userInputEventById?(
@@ -267,9 +273,14 @@ interface SessionConversationQuerySource<Session> {
  * totalized as `unavailable`; this module neither mutates nor retries state.
  */
 export interface SessionQueryModule {
+  /**
+   * A caller's authority, or the named internal scope for a Station-internal
+   * aggregate reader (the knowledge indexer, which reads every session and
+   * whose every result is re-read per caller before it is shown).
+   */
   read(
     query: SessionQuery,
-    authority: SessionReadAuthority,
+    authority: SessionReadAuthority | InternalSessionReadScope,
   ): Promise<SessionQueryOutcome>;
   readAssistantTurn(
     query: SessionAssistantTurnQuery,

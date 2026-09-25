@@ -4551,11 +4551,21 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry !== undefined) {
       return c.json({ error: 'unavailable' }, 404);
     }
-    const principals = presence.roster().map((entry) => ({
-      id: entry.principal.id,
-      kind: entry.principal.kind,
-      connections: entry.connections,
-    }));
+    // Only principals whose sessions this caller may read: a member of the
+    // personal conversation account sees the account's connections, and
+    // anyone else sees only their own. Connection presence is never
+    // disclosed beyond what the caller's session reads already reveal.
+    const readable = new Set(
+      orchestrationService.readableSessionOwnerIds(readAuthorityFor(c)),
+    );
+    const principals = presence
+      .roster()
+      .filter((entry) => readable.has(entry.principal.id))
+      .map((entry) => ({
+        id: entry.principal.id,
+        kind: entry.principal.kind,
+        connections: entry.connections,
+      }));
     return c.json({ principals, observedAt: Date.now() });
   });
 
