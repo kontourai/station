@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   classifyChangedPaths,
   classifyDesktopRustChangedPaths,
@@ -110,6 +111,9 @@ function runIosRelevanceShell(
   );
   return readFileSync(githubOutput, 'utf8').trim();
 }
+
+// Removed in an after-hook whether the test passed or not (#2421).
+const makeTempDir = trackTempDirs();
 
 describe('exact CI change classification', () => {
   test('separates candidate-only iOS changes from base-only divergence and direct pushes', () => {
@@ -846,7 +850,7 @@ describe('gallery relevance for the PR gallery check (#2428)', () => {
   });
 
   test('runs the workflow step against a base-controlled classifier and fails closed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-gallery-change-range-'));
+    const root = makeTempDir('station-gallery-change-range-');
     try {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
