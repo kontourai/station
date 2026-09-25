@@ -1457,6 +1457,52 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('reports the UI bundle delta in its own non-blocking, PR-only job (#1703)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      env?: Record<string, string>;
+      'continue-on-error'?: unknown;
+    };
+    const document = load(workflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        {
+          if?: string;
+          needs?: unknown;
+          'continue-on-error'?: unknown;
+          concurrency?: { group?: string };
+          steps: Step[];
+        }
+      >;
+    };
+    const job = document.jobs['ui-bundle-delta'];
+    expect(job.if).toBe(
+      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}",
+    );
+    expect(job.if).not.toContain('merge_group');
+    // Parallel to fast-checks, never behind it.
+    expect(job.needs).toBeUndefined();
+    expect(job['continue-on-error']).toBeUndefined();
+    expect(job.concurrency?.group).toContain(
+      'github.event.pull_request.head.sha',
+    );
+    const runs = job.steps.filter((step) => step.run !== undefined);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      name: 'Report UI entry bundle delta',
+      run: 'node scripts/ui-bundle-delta-report.mjs',
+      env: {
+        STATION_UI_BUNDLE_DELTA_BASE:
+          '${{ github.event.pull_request.base.sha }}',
+      },
+    });
+    for (const step of job.steps)
+      expect(step['continue-on-error'], step.name).toBeUndefined();
+    // Observe mode for both builds is pinned behaviorally in
+    // ui-bundle-delta-report.test.ts (deltaBuildEnv).
+  });
+
   it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
     // #2577: the lane budget and each job fence are separate literals. Raising
     // the lane alone lets a job be killed before the coordinator's own
@@ -1505,7 +1551,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
@@ -1533,6 +1579,9 @@ describe('CI verification workflow contracts', () => {
     ).toBeLessThan(
       fastChecks.indexOf('name: Upload bounded fast-feedback diagnostics'),
     );
+    // #1703: the bundle delta report is a separate job, off this critical
+    // path; fast-checks must not grow a second install and build.
+    expect(fastChecks).not.toContain('ui-bundle-delta-report');
     expect(fastChecks).not.toContain('run: npm run full:regression');
     expect(fastChecks).not.toContain('test:connected-agents');
 
@@ -1577,7 +1626,7 @@ describe('CI verification workflow contracts', () => {
 
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const forkSmoke = ci.slice(
       ci.indexOf('  fork-smoke:'),
@@ -1691,7 +1740,7 @@ describe('CI verification workflow contracts', () => {
     const fullRegression = workflow('full-regression.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const extended = workflow('ci-extended.yml');
     const coverageShard = extended.slice(
@@ -1807,7 +1856,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');

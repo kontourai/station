@@ -197,6 +197,7 @@ function installRecoveryListeners(): void {
  * activity record, supersedes this.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'child-work.updated',
   'turn.started',
   'runtime.error',
   'session.exited',

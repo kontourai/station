@@ -8,7 +8,7 @@
  * dynamic import rather than a stand-in: whether the body loads at all is one
  * of the things under test, and a mocked module would answer that question
  * by construction. What this does NOT prove is which chunk it lands in —
- * that is the entry-bundle ceiling's job (`scripts/check-prepush-ui-bundle.mjs`).
+ * that is the entry-bundle ceiling's job (`scripts/ui-bundle-budget.mjs`).
  */
 
 import type {

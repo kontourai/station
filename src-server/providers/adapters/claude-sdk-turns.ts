@@ -91,6 +91,8 @@ export interface ClaudeSdkTurnLedger {
    * turn that never replies (a handshake) leaves no phantom turn behind.
    */
   providerTurnPending: boolean;
+  /** The bounded display fact published for a provider follow-up. */
+  followUpFactPending?: boolean;
   /** Steer uuid → the turn it was steered into. */
   steers: Map<string, string>;
 }
@@ -190,6 +192,36 @@ function claudeSdkTurns(record: ClaudeSdkTurnState): ClaudeSdkTurnLedger {
   return record.sdkTurns;
 }
 
+function publishFollowUpFact(
+  context: ClaudeSdkTurnContext,
+  pending: boolean,
+): void {
+  const ledger = claudeSdkTurns(context.record);
+  if (!pending && ledger.followUpFactPending !== true) return;
+  if (ledger.followUpFactPending === pending) return;
+  ledger.followUpFactPending = pending;
+  context.publish({
+    eventId: crypto.randomUUID(),
+    provider: context.provider,
+    threadId: context.record.session.threadId,
+    createdAt: context.createdAt,
+    method: 'extension.notification',
+    namespace: 'claude-code',
+    type: 'provider/follow-up-pending',
+    payload: { pending },
+  });
+}
+
+/** Mark the handoff before a background child's settle is published, so the
+ * settle frame itself never briefly advertises an idle conversation. */
+export function observeClaudeBackgroundChildSettling(
+  context: ClaudeSdkTurnContext,
+): void {
+  const ledger = claudeSdkTurns(context.record);
+  if (ledger.lifecycleMessages === true && !ledger.running)
+    publishFollowUpFact(context, true);
+}
+
 /**
  * Why a new send must be refused now, if it must.
  *
@@ -228,6 +260,7 @@ function setRunning(
   record.activeTurnId =
     turn && turn.kind !== 'untracked' ? turn.turnId : undefined;
   if (turn && context) publishClaudeTurnStart(context, turn);
+  if (turn && context) publishFollowUpFact(context, false);
 }
 
 /**
@@ -282,6 +315,7 @@ export function recordClaudeTurnDispatched(
   start?: { event: CanonicalRuntimeEvent; context: ClaudeSdkTurnContext },
 ): void {
   const ledger = claudeSdkTurns(record);
+  if (start) publishFollowUpFact(start.context, false);
   const turn: ClaudeSdkTurn = {
     turnId,
     kind: 'dispatched',
@@ -394,6 +428,7 @@ function openProviderTurn(context: ClaudeSdkTurnContext): void {
     method: 'turn.started',
     metadata: turnMetadata(turn),
   });
+  publishFollowUpFact(context, false);
 }
 
 /**
@@ -540,6 +575,7 @@ export function observeClaudeInit(
   // Opened on its first frame (`observeClaudeReplyFrame`); until then sends
   // are refused, and a turn that never replies publishes nothing.
   ledger.providerTurnPending = true;
+  publishFollowUpFact(context, true);
 }
 
 /**
@@ -650,6 +686,7 @@ export function settleClaudeResultTarget(
  */
 export function observeClaudeEmptyResult(context: ClaudeSdkTurnContext): void {
   claudeSdkTurns(context.record).providerTurnPending = false;
+  publishFollowUpFact(context, false);
 }
 
 /**
@@ -694,6 +731,7 @@ export function endClaudeProviderTurn(context: ClaudeSdkTurnContext): void {
   closeProviderTurnWithoutResult(context, 'session-ended');
   endQueuedClaudeTurns(context);
   claudeSdkTurns(context.record).providerTurnPending = false;
+  publishFollowUpFact(context, false);
 }
 
 /** A terminal failure: nothing is running any more. */
@@ -708,4 +746,5 @@ export function clearClaudeSdkTurns(
   ledger.startedAwaitingInit = false;
   ledger.providerTurnPending = false;
   setRunning(context.record, undefined);
+  publishFollowUpFact(context, false);
 }

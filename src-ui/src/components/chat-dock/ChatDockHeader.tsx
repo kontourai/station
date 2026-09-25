@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { toastStore } from '../../contexts/ToastContext';
 import { useShortcutDisplayLookup } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
-import { isSessionExecutionActive } from '../../utils/execution';
+import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { LazyBoundary } from '../LazyBoundary';
 import {
@@ -29,6 +29,7 @@ interface Session {
   id: string;
   title: string;
   status: string;
+  conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
 }
 
 /**
@@ -152,7 +153,7 @@ export function ChatDockHeader({
   // is a hook and cannot be called inside the activity map.
   const shortcutDisplay = useShortcutDisplayLookup();
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
-    isSessionExecutionActive(s),
+    isSessionWorkActive(s),
   );
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(

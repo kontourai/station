@@ -545,12 +545,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
-    pattern: 'scripts/merge-ui-bundle-budget.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/ui-bundle-budget.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
     pattern: 'scripts/release-cohort-workflow.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/release-cohort.test.ts']),

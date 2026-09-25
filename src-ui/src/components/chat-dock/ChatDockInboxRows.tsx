@@ -410,6 +410,12 @@ export function InboxRow({
             {item.unanswerableNotice}
           </span>
         )}
+        {item.lifecycleLabel === 'Running' &&
+          item.activeReason === 'background' && (
+            <span className="chat-dock-inbox__answerability">
+              Background work running
+            </span>
+          )}
         {/* station#3688: the observation behind a red Failed chip, same
             contract as the answerability notice above — the chip is a
             pointer; this is what computed it. Absent when no reason was

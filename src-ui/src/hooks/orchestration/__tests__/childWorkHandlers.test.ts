@@ -330,6 +330,124 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual([]);
   });
 
+  test('ordered parent activity keeps Home and dock active without offering Stop or Steer during child work; reconnect restores it', async () => {
+    const { isTurnInFlight } = await import(
+      '../../../contexts/active-chats-state'
+    );
+    const { isSessionExecutionActive, isSessionWorkActive } = await import(
+      '../../../utils/execution'
+    );
+    const { buildHomeWorkItems } = await import(
+      '../../../views/home/home-view-model'
+    );
+    const { partitionHomeWorkItems } = await import(
+      '../../../views/home/home-lane-model'
+    );
+    const { applyOrchestrationSnapshot } = await import('../snapshotHandlers');
+    activeChatsStore.updateChat(threadId, {
+      conversationId: threadId,
+      status: 'idle',
+      messages: [{ role: 'user', content: 'work', timestamp: 1 }],
+    });
+    const states = [
+      {
+        openTurn: {
+          turnId: 'turn-1',
+          threadId,
+          startedAt: '2026-09-24T00:00:00Z',
+        },
+      },
+      { runningChildWork: { count: 1, producers: ['engine-subagent'] } },
+      { runningChildWork: { count: 0, producers: [], followUpPending: true } },
+      {
+        openTurn: {
+          turnId: 'provider-1',
+          threadId,
+          startedAt: '2026-09-24T00:00:20Z',
+          trigger: 'provider',
+        },
+      },
+      {},
+    ] as const;
+    for (const [index, state] of states.entries()) {
+      const activity = {
+        conversationId: threadId,
+        asOfSequence: index + 1,
+        ...state,
+      } as any;
+      activeChatsStore.applyConversationActivity(activity);
+      const chat = activeChatsStore.getSnapshot()[threadId]!;
+      const summary = {
+        provider: 'claude',
+        threadId,
+        conversationId: threadId,
+        status: 'ready',
+        lifecycleState: 'completed',
+        hasActiveTurn: Boolean(activity.openTurn),
+        createdAt: '2026-09-24T00:00:00Z',
+        updatedAt: '2026-09-24T00:00:30Z',
+        answerability: { answerable: true },
+        conversationActivity: activity,
+      } as any;
+      const row = buildHomeWorkItems({
+        chats: { [threadId]: chat },
+        agents: [],
+        sessions: [summary],
+      }).find((item) => item.conversationId === threadId)!;
+      const active = index < 4;
+      expect(row.lifecycleLabel).toBe(active ? 'Running' : 'Completed');
+      if (index === 1 || index === 2)
+        expect(row.activeReason).toBe('background');
+      expect(
+        partitionHomeWorkItems({
+          items: [row],
+          now: Date.now(),
+          snoozedUntil: new Map(),
+          terminalSince: new Map(),
+        }).active.length,
+      ).toBe(active ? 1 : 0);
+      expect([chat].filter(isSessionWorkActive)).toHaveLength(active ? 1 : 0);
+      const turnActive = index === 0 || index === 3;
+      expect(isTurnInFlight(chat)).toBe(turnActive);
+      expect(isSessionExecutionActive(chat)).toBe(turnActive);
+    }
+    const reconnectActivity = {
+      conversationId: threadId,
+      asOfSequence: 6,
+      runningChildWork: { count: 1, producers: ['engine-subagent'] },
+    } as any;
+    applyOrchestrationSnapshot({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId,
+          conversationId: threadId,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: reconnectActivity,
+          childWork: {
+            children: {
+              observability: 'reported',
+              observedAt: '2026-09-24T00:00:31Z',
+              running: [
+                {
+                  producer: 'engine-subagent',
+                  reporterThreadId: threadId,
+                  childId: 'reconnected',
+                  status: 'running',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const restored = activeChatsStore.getSnapshot()[threadId]!;
+    expect(restored.conversationActivity?.runningChildWork?.count).toBe(1);
+    expect(isSessionWorkActive(restored)).toBe(true);
+    expect(isTurnInFlight(restored)).toBe(false);
+  });
+
   test("an older server's snapshot row (no childWork) leaves the running set alone", async () => {
     const { applyOrchestrationSnapshot } = await import('../snapshotHandlers');
     tuple('task/registry', {

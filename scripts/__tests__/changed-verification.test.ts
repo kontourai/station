@@ -1164,12 +1164,12 @@ describe('changed verification selection', () => {
     //
     // What this does NOT prove is that the reference is an execution or a
     // source read rather than a command-text pin. A call-argument scan cannot
-    // decide it: nine of these eleven tests build the path through a const or
+    // decide it: most of these eleven tests build the path through a const or
     // a join() before spawning it, and one splits it across join arguments,
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);
