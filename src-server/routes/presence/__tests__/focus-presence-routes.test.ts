@@ -43,8 +43,9 @@ function harness(principal: RuntimeAuthenticatedRequestPrincipal | undefined) {
       presence,
       identifyDevice: (credential) => DEVICES[credential] ?? null,
       resolvePrincipalId: (c) => {
+        // Stands in for the runtime's request-principal resolver: whatever
+        // it resolves for this credential is what the surface records.
         const found = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
-        if (found?.authority === 'operator-credential') return 'operator';
         if (found?.credential === 'unbound-credential') {
           throw new Error('PrincipalUnresolvedError');
         }
@@ -81,7 +82,7 @@ describe('POST /api/presence/focus', () => {
     const local = harness(operator);
     await local.post({ clientSessionId: TAB, state: 'focused' });
     expect(local.presence.snapshot().get(`local:${TAB}`)?.principalId).toBe(
-      'operator',
+      'person-of:operator-credential-value',
     );
   });
 

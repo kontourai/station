@@ -15,8 +15,15 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 }));
 
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
-import { FOCUS_HEARTBEAT_MS, FOCUS_REPORT_DEBOUNCE_MS } from '../focusReporter';
+import {
+  FOCUS_HEARTBEAT_MS,
+  FOCUS_REPORT_DEBOUNCE_MS,
+  FOCUS_REPORT_TIMEOUT_MS,
+} from '../focusReporter';
 import { useFocusReporter } from '../useFocusReporter';
+
+/** Longer than every retry the reporter would schedule on its own. */
+const RETRY_WINDOW_MS = 120_000;
 
 let visibility: DocumentVisibilityState = 'visible';
 let focused = true;
@@ -45,6 +52,18 @@ async function setVisibility(next: DocumentVisibilityState) {
 async function fire(target: EventTarget, type: string) {
   target.dispatchEvent(new Event(type));
   await advance(0);
+}
+
+/** A send the test resolves by hand; it never settles on its own. */
+function holdNextSend() {
+  let release: (response: Response) => void = () => {};
+  mocks.authenticatedFetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  );
+  return (response: Response = ok()) => release(response);
 }
 
 function sentStates(): string[] {
@@ -174,6 +193,89 @@ describe('useFocusReporter', () => {
     await fire(window, 'blur');
     await advance(FOCUS_REPORT_DEBOUNCE_MS);
     expect(sentStates()).toEqual(['focused', 'visible']);
+  });
+
+  test('hidden is sent at once while an earlier report is still in flight', async () => {
+    const release = holdNextSend();
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(sentStates()).toEqual(['focused']);
+
+    await setVisibility('hidden');
+    expect(sentStates()).toEqual(['focused', 'hidden']);
+    expect(mocks.authenticatedFetch.mock.calls[1][1].keepalive).toBe(true);
+
+    // The overtaken focused lands afterwards: hidden is said again so the
+    // server cannot be left holding the older state.
+    release();
+    await advance(0);
+    expect(sentStates()).toEqual(['focused', 'hidden', 'hidden']);
+    await advance(FOCUS_HEARTBEAT_MS * 5);
+    expect(sentStates()).toEqual(['focused', 'hidden', 'hidden']);
+  });
+
+  test('pagehide during an in-flight report sends hidden at once', async () => {
+    holdNextSend();
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await fire(window, 'pagehide');
+    expect(sentStates()).toEqual(['focused', 'hidden']);
+  });
+
+  test('a hung report is abandoned after the timeout and the next report goes', async () => {
+    holdNextSend();
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    const signal: AbortSignal =
+      mocks.authenticatedFetch.mock.calls[0][1].signal;
+    focused = false;
+    await fire(window, 'blur');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(sentStates()).toEqual(['focused']);
+
+    await advance(FOCUS_REPORT_TIMEOUT_MS - FOCUS_REPORT_DEBOUNCE_MS);
+    expect(signal.aborted).toBe(true);
+    expect(sentStates()).toEqual(['focused', 'visible']);
+  });
+
+  test('non-hidden reports are serialized: the next waits for the one in flight', async () => {
+    const release = holdNextSend();
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    focused = false;
+    await fire(window, 'blur');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS * 3);
+    expect(sentStates()).toEqual(['focused']);
+    release();
+    await advance(0);
+    expect(sentStates()).toEqual(['focused', 'visible']);
+  });
+
+  test('400 and 403 are not retried', async () => {
+    for (const code of [400, 403]) {
+      mocks.authenticatedFetch
+        .mockReset()
+        .mockImplementation(async () => status(code));
+      const { unmount } = await mount();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      await advance(RETRY_WINDOW_MS);
+      expect(sentStates(), `status ${code}`).toEqual(['focused']);
+      unmount();
+    }
+  });
+
+  test('Retry-After as an HTTP-date is honoured', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch.mockImplementationOnce(async () =>
+      status(429, {
+        'Retry-After': new Date(Date.now() + 5_000).toUTCString(),
+      }),
+    );
+    await setVisibility('hidden');
+    await advance(3_999);
+    expect(sentStates()).toEqual(['hidden']);
+    await advance(1_001);
+    expect(sentStates()).toEqual(['hidden', 'hidden']);
   });
 
   test('the focused heartbeat runs only while there was input in the last 2 minutes', async () => {
