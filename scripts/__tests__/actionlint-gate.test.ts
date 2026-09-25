@@ -711,6 +711,95 @@ describe('persistent runner policy', () => {
     },
   );
 
+  describe('ui-bundle-delta report job (#1703)', () => {
+    type Step = Record<string, unknown> & {
+      name?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+    };
+    const steps = (job: Record<string, unknown>) => job.steps as Step[];
+    const report = (job: Record<string, unknown>) =>
+      steps(job).find((step) => step.name === 'Report UI entry bundle delta');
+
+    test('accepts the checked-in job', () => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiJobFixture('ui-bundle-delta', () => {}),
+        ).filter(({ jobId }) => jobId === 'ui-bundle-delta'),
+      ).toEqual([]);
+    });
+
+    test.each([
+      [
+        'a merge_group trigger',
+        (job: Record<string, unknown>) => {
+          job.if = `\${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) }}`;
+        },
+        'ui-bundle-delta must use the exact same-repository pull_request_target guard (no merge_group)',
+      ],
+      [
+        'job-level continue-on-error',
+        (job: Record<string, unknown>) => {
+          job['continue-on-error'] = true;
+        },
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ],
+      [
+        'step-level continue-on-error',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          if (step) step['continue-on-error'] = true;
+        },
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ],
+      [
+        'a different base',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          if (step?.env) step.env.STATION_UI_BUNDLE_DELTA_BASE = 'origin/main';
+        },
+        'ui-bundle-delta must measure against the pull-request base sha',
+      ],
+      [
+        'a concurrency group without the head sha',
+        (job: Record<string, unknown>) => {
+          job.concurrency = {
+            group: 'ui-bundle-delta-${{ github.event.pull_request.number }}',
+            'cancel-in-progress': true,
+          };
+        },
+        'ui-bundle-delta concurrency must key on the pull-request head sha',
+      ],
+      [
+        'persisted checkout credentials',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with['persist-credentials'] = true;
+        },
+        'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ],
+      [
+        'an extra shell command',
+        (job: Record<string, unknown>) => {
+          steps(job).push({ name: 'Extra', run: 'npm run build:ui' });
+        },
+        'pull_request_target router jobs must not add unreviewed shell execution',
+      ],
+    ])('rejects %s', (_name, mutate, message) => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiJobFixture('ui-bundle-delta', mutate),
+        ),
+      ).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'ui-bundle-delta',
+        message,
+      });
+    });
+  });
+
   test('rejects an OR tautology in a persistent pull_request_target skip guard', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/ci.yml',

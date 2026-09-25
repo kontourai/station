@@ -69,9 +69,10 @@ merge-queue candidate. With headroom ceilings
 ([#1703](https://github.com/kontourai/station/issues/1703)) the CI
 enforcement is sufficient: `fast-checks` builds the candidate and fails over
 the ceiling, and the merge queue does the same on latest `main` plus the
-change. `fast-checks` also reports each pull request's entry-bundle delta
-against its merge base (never failing on it), so growth stays attributed to
-the change that added it.
+change. A separate, non-required `ui-bundle-delta` job reports each
+same-repository pull request's entry-bundle delta against its merge base,
+in parallel with `fast-checks` and never failing, so growth stays attributed
+to the change that added it. It does not run in the merge queue.
 
 ### What the entry-bundle ceiling is for
 
@@ -109,13 +110,16 @@ builds latest `main` plus each queued pull request, so an exact ceiling failed
 whichever entry built next on bytes a sibling had just merged. Headroom does
 not hide growth: every build prints the measurement against the ceiling.
 
-The delta report (`scripts/ui-bundle-delta-report.mjs`) measures only when
-the change touches something the UI build reads: `src-ui/`, `src-shared/`,
+The delta report (`scripts/ui-bundle-delta-report.mjs`) scopes itself before
+installing anything, so a pull request that touches no UI build input ends
+in seconds. It measures only when the change touches something the UI build
+reads: `src-ui/`, `src-shared/`,
 the `packages/{sdk,connect,contracts}/src/` sources the Vite aliases resolve,
 `vite.config.ts`, either manifest (a dependency bump moves the bundle without
 touching a source file), `patches/`, or the budget script and its ceiling.
-When it cannot measure, it says so and why in a notice rather than skipping
-silently. To measure your share locally, `npm run build:ui` on your branch and
+It builds both trees in observe mode, so an over-ceiling tree still yields a
+number. When it cannot measure, it says so and why in a notice rather than
+skipping silently. To measure your share locally, `npm run build:ui` on your branch and
 on the merge base, each in a worktree with its own `node_modules`.
 
 A conflict on `scripts/ui-bundle-budget.json` is resolved by hand: keep the

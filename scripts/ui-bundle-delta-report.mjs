@@ -8,20 +8,26 @@
  * of the candidate, and printing the difference as a step-summary line and a
  * `::notice` annotation on the pull request.
  *
- * It must never fail the job. Enforcement stays with `npm run build:ui` (the
- * step before this one) and the merge-queue candidate. A measurement that
+ * It runs as its own non-required CI job (`ui-bundle-delta` in ci.yml), off
+ * the critical path of the required `fast-checks`, and must never fail. The
+ * ceiling is enforced by fast-checks' `npm run build:ui` and the merge-queue
+ * candidate, not here. Scoping runs first and needs no installed
+ * dependencies, so a pull request that touches no UI build input finishes in
+ * seconds. A measurement that
  * cannot be taken is reported as a notice that names why — not a silent
  * skip, which would read the same as "no growth", and not a red, which would
  * turn a diagnostic into a gate.
  *
- * The merge base is built in its own worktree with its OWN node_modules:
- * `@kontourai/*` workspace packages resolve through node_modules into the
- * tree's `packages/`, so a borrowed node_modules measures a plausible, wrong
- * number (station#2776). Both builds are measured by this file's
+ * The candidate is installed and built in the current checkout; the merge
+ * base in its own worktree with its OWN node_modules: `@kontourai/*`
+ * workspace packages resolve through node_modules into the tree's
+ * `packages/`, so a borrowed node_modules measures a plausible, wrong number
+ * (station#2776). Both builds run in observe mode, so an over-ceiling tree
+ * still yields a measurement, and both are measured by the same
  * `measureEntryBundle`, so the two numbers share one definition.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, rmSync } from 'node:fs';
+import { appendFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,7 +161,7 @@ export function runDeltaReport(deps) {
     return {
       kind: 'unmeasured',
       line: formatUnmeasuredLine(
-        `the candidate build output could not be read (${errorMessage(error)})`,
+        `the candidate could not be built and measured (${errorMessage(error)})`,
       ),
     };
   }
@@ -206,6 +212,28 @@ function runNpm(args, cwd, env) {
     );
 }
 
+/**
+ * Built into a `dist-ui-` directory (gitignored) rather than `dist-ui/`, so a
+ * local run never replaces the build a dev server or desktop app is serving.
+ */
+const DELTA_BUILD_DIR = 'dist-ui-delta';
+
+/** Observe mode: an over-ceiling tree must still yield a measurement. */
+export function deltaBuildEnv(env = process.env) {
+  return {
+    ...env,
+    STATION_UI_BUNDLE_BUDGET: 'observe',
+    STATION_BUILD_UI_DIR: DELTA_BUILD_DIR,
+  };
+}
+
+function installBuildAndMeasure(root) {
+  const env = deltaBuildEnv();
+  runNpm(['run', 'dependencies:ci'], root, env);
+  runNpm(['run', '--silent', 'build:ui'], root, env);
+  return measureEntryBundle(join(root, DELTA_BUILD_DIR));
+}
+
 function measureMergeBase(baseSha) {
   const root = join(
     process.env.RUNNER_TEMP || tmpdir(),
@@ -214,11 +242,7 @@ function measureMergeBase(baseSha) {
   rmSync(root, { recursive: true, force: true });
   git(['worktree', 'add', '--detach', root, baseSha]);
   try {
-    const env = { ...process.env, STATION_UI_BUNDLE_BUDGET: 'observe' };
-    delete env.STATION_BUILD_UI_DIR;
-    runNpm(['run', 'dependencies:ci'], root, env);
-    runNpm(['run', '--silent', 'build:ui'], root, env);
-    return measureEntryBundle(join(root, 'dist-ui'));
+    return installBuildAndMeasure(root);
   } finally {
     try {
       git(['worktree', 'remove', '--force', root]);
@@ -230,18 +254,11 @@ function measureMergeBase(baseSha) {
 }
 
 export function defaultDeps(env = process.env) {
-  const candidateDir = env.STATION_BUILD_UI_DIR || 'dist-ui';
   return {
     baseRef: env.STATION_UI_BUNDLE_DELTA_BASE || 'origin/main',
     mergeBase: (ref) => git(['merge-base', ref, 'HEAD']),
     changedPaths: (baseSha) => changedPathsSince(baseSha),
-    measureCandidate: () => {
-      if (!existsSync(join(candidateDir, 'index.html')))
-        throw new Error(
-          `${candidateDir}/index.html is missing; run npm run build:ui first`,
-        );
-      return measureEntryBundle(candidateDir);
-    },
+    measureCandidate: () => installBuildAndMeasure(process.cwd()),
     measureBase: measureMergeBase,
   };
 }

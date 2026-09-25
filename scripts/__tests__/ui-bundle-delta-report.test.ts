@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  deltaBuildEnv,
   formatDeltaLine,
   formatSignedBytes,
   isUiBuildInput,
@@ -55,6 +56,19 @@ describe('delta formatting', () => {
     expect(noticeAnnotation('a\nb 100%')).toBe(
       '::notice title=UI entry bundle::a%0Ab 100%25',
     );
+  });
+});
+
+describe('build environment', () => {
+  it('builds in observe mode into a non-served directory, overriding the caller', () => {
+    const env = deltaBuildEnv({
+      STATION_UI_BUNDLE_BUDGET: 'enforce',
+      STATION_BUILD_UI_DIR: 'dist-ui',
+      KEEP: '1',
+    });
+    expect(env.STATION_UI_BUNDLE_BUDGET).toBe('observe');
+    expect(env.STATION_BUILD_UI_DIR).toBe('dist-ui-delta');
+    expect(env.KEEP).toBe('1');
   });
 });
 
@@ -130,7 +144,7 @@ describe('report outcomes', () => {
     ['changedPaths', 'could not list the paths this change touches (bad ref)'],
     [
       'measureCandidate',
-      'the candidate build output could not be read (bad ref)',
+      'the candidate could not be built and measured (bad ref)',
     ],
     [
       'measureBase',

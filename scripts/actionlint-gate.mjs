@@ -311,10 +311,18 @@ const CI_ROUTER_PR_TARGET_TYPES = [
   'reopened',
   'edited',
 ];
+const UI_BUNDLE_DELTA_JOB = 'ui-bundle-delta';
+const UI_BUNDLE_DELTA_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const UI_BUNDLE_DELTA_STEP = Object.freeze({
+  name: 'Report UI entry bundle delta',
+  run: 'node scripts/ui-bundle-delta-report.mjs',
+  base: `\${{ github.event.pull_request.base.sha }}`,
+});
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
   'fork-smoke',
+  UI_BUNDLE_DELTA_JOB,
   'full-regression',
   'manual-completion-diagnostics',
 ]);
@@ -1225,6 +1233,81 @@ function isExactWindowsPrEvidenceUpload(file, jobId, step) {
   );
 }
 
+/**
+ * #1703: the report-only bundle delta job runs same-repository PR head code
+ * (the same trust fast-checks already extends) on a hosted runner with
+ * read-only contents and no credentials. It must stay report-only: no
+ * continue-on-error hiding a verdict, and exactly one reviewed command.
+ */
+function uiBundleDeltaJobFindings(file, job) {
+  const jobId = UI_BUNDLE_DELTA_JOB;
+  const finding = (message) => ({ file, jobId, message });
+  const findings = [];
+  if (job.if !== UI_BUNDLE_DELTA_CONDITION)
+    findings.push(
+      finding(
+        'ui-bundle-delta must use the exact same-repository pull_request_target guard (no merge_group)',
+      ),
+    );
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push(
+      finding(
+        'ui-bundle-delta must declare only permissions: { contents: read }',
+      ),
+    );
+  if (job['runs-on'] !== 'ubuntu-22.04')
+    findings.push(
+      finding('ui-bundle-delta must run on a hosted ubuntu-22.04 image'),
+    );
+  if (
+    typeof job.concurrency?.group !== 'string' ||
+    !job.concurrency.group.includes('github.event.pull_request.head.sha')
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta concurrency must key on the pull-request head sha',
+      ),
+    );
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ),
+    );
+  const checkouts = checkoutSteps(job);
+  const checkout = checkouts[0];
+  if (
+    checkouts.length !== 1 ||
+    checkout?.with?.['persist-credentials'] !== false ||
+    checkout?.with?.['fetch-depth'] !== 0
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ),
+    );
+  const report = (job.steps ?? []).find(
+    (step) => step?.name === UI_BUNDLE_DELTA_STEP.name,
+  );
+  if (report?.env?.STATION_UI_BUNDLE_DELTA_BASE !== UI_BUNDLE_DELTA_STEP.base)
+    findings.push(
+      finding('ui-bundle-delta must measure against the pull-request base sha'),
+    );
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      'actions/checkout@',
+      'actions/setup-node@',
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: UI_BUNDLE_DELTA_STEP.name, run: UI_BUNDLE_DELTA_STEP.run },
+    ]),
+  );
+  return findings;
+}
+
 function forkSmokeIsolationFindings(file, job) {
   const findings = [];
   if (job.if !== FORK_SMOKE_CONDITION)
@@ -1954,15 +2037,11 @@ function primaryCiRouterFindings(file, document) {
           name: 'Enforce candidate UI bundle budget',
           run: 'npm run build:ui',
         },
-        {
-          // #1703: the same candidate runner and tree as the budget step; it
-          // adds a merge-base build, but no new credentials or host authority.
-          name: 'Report candidate UI bundle delta',
-          run: 'node scripts/ui-bundle-delta-report.mjs',
-        },
       ]),
     );
   }
+  if (jobs[UI_BUNDLE_DELTA_JOB])
+    findings.push(...uiBundleDeltaJobFindings(file, jobs[UI_BUNDLE_DELTA_JOB]));
   if (fork) {
     findings.push(...forkSmokeIsolationFindings(file, fork));
     if (

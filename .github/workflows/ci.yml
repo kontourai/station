@@ -181,16 +181,6 @@ jobs:
       - name: Enforce candidate UI bundle budget
         run: npm run build:ui
 
-      # #1703: attribute bytes to the change that added them. Ceilings carry
-      # headroom, so the budget step above cannot say who grew the entry
-      # bundle; this builds the merge base in its own worktree and reports the
-      # difference as a notice. Reporting only: the script exits zero on every
-      # path and names the reason when it cannot measure.
-      - name: Report candidate UI bundle delta
-        env:
-          STATION_UI_BUNDLE_DELTA_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
-        run: node scripts/ui-bundle-delta-report.mjs
-
       # Keep critical browser journeys inside the existing required check.
       # The separate manual diagnostic below depends on full-regression and
       # cannot supply pre-merge evidence when that manual job is skipped.
@@ -225,6 +215,52 @@ jobs:
           # failures in one evening were undiagnosable because of it.
           include-hidden-files: true
           retention-days: 14
+
+  ui-bundle-delta:
+    name: UI entry bundle delta (report only)
+    # #1703: attribute entry-bundle bytes to the pull request that added them.
+    # Ceilings carry headroom, so fast-checks' budget step cannot say who grew
+    # the bundle. This job builds the PR head and its merge base, each with
+    # its own node_modules, and reports the difference as a notice. It is
+    # deliberately NOT part of fast-checks: that job is required and on the
+    # critical path, and a second install plus build there is the wrong trade
+    # for a report. Same-repository PRs only; merge_group is skipped because
+    # a queue candidate's share is not useful to a PR author and costs queue
+    # minutes. Not a required check. The script scopes itself first (a PR
+    # that touches no UI build input ends in seconds) and exits zero on every
+    # path, naming the reason in a notice when it cannot measure.
+    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+    concurrency:
+      # Head sha in the identity for the same reason as fast-checks (#1445):
+      # cancel-in-progress must never cancel a run for a commit it is not about.
+      group: ui-bundle-delta-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      cancel-in-progress: true
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base must be reachable from the PR head.
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Report UI entry bundle delta
+        env:
+          STATION_UI_BUNDLE_DELTA_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ui-bundle-delta-report.mjs
 
   fork-smoke:
     name: Fork pull-request smoke

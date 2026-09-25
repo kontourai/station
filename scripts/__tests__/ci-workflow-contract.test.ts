@@ -1348,11 +1348,57 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('reports the UI bundle delta in its own non-blocking, PR-only job (#1703)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      env?: Record<string, string>;
+      'continue-on-error'?: unknown;
+    };
+    const document = load(workflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        {
+          if?: string;
+          needs?: unknown;
+          'continue-on-error'?: unknown;
+          concurrency?: { group?: string };
+          steps: Step[];
+        }
+      >;
+    };
+    const job = document.jobs['ui-bundle-delta'];
+    expect(job.if).toBe(
+      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}",
+    );
+    expect(job.if).not.toContain('merge_group');
+    // Parallel to fast-checks, never behind it.
+    expect(job.needs).toBeUndefined();
+    expect(job['continue-on-error']).toBeUndefined();
+    expect(job.concurrency?.group).toContain(
+      'github.event.pull_request.head.sha',
+    );
+    const runs = job.steps.filter((step) => step.run !== undefined);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      name: 'Report UI entry bundle delta',
+      run: 'node scripts/ui-bundle-delta-report.mjs',
+      env: {
+        STATION_UI_BUNDLE_DELTA_BASE:
+          '${{ github.event.pull_request.base.sha }}',
+      },
+    });
+    for (const step of job.steps)
+      expect(step['continue-on-error'], step.name).toBeUndefined();
+    // Observe mode for both builds is pinned behaviorally in
+    // ui-bundle-delta-report.test.ts (deltaBuildEnv).
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
@@ -1378,34 +1424,9 @@ describe('CI verification workflow contracts', () => {
     ).toBeLessThan(
       fastChecks.indexOf('name: Upload bounded fast-feedback diagnostics'),
     );
-    // #1703: the delta report reads the build the budget step just produced,
-    // and measures against the same base ci:fast selects from.
-    const fastSteps = (
-      load(ci) as {
-        jobs: Record<
-          string,
-          {
-            steps: Array<{
-              name?: string;
-              run?: string;
-              env?: Record<string, string>;
-              'continue-on-error'?: unknown;
-            }>;
-          }
-        >;
-      }
-    ).jobs['fast-checks'].steps;
-    const stepIndex = (name: string) =>
-      fastSteps.findIndex((step) => step.name === name);
-    const delta = fastSteps[stepIndex('Report candidate UI bundle delta')];
-    expect(delta?.run).toBe('node scripts/ui-bundle-delta-report.mjs');
-    expect(delta?.['continue-on-error']).toBeUndefined();
-    expect(delta?.env?.STATION_UI_BUNDLE_DELTA_BASE).toBe(
-      fastSteps[stepIndex('Run fast CI lane')]?.env?.STATION_CI_FAST_BASE,
-    );
-    expect(stepIndex('Report candidate UI bundle delta')).toBe(
-      stepIndex('Enforce candidate UI bundle budget') + 1,
-    );
+    // #1703: the bundle delta report is a separate job, off this critical
+    // path; fast-checks must not grow a second install and build.
+    expect(fastChecks).not.toContain('ui-bundle-delta-report');
     expect(fastChecks).not.toContain('run: npm run full:regression');
     expect(fastChecks).not.toContain('test:connected-agents');
 
@@ -1450,7 +1471,7 @@ describe('CI verification workflow contracts', () => {
 
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const forkSmoke = ci.slice(
       ci.indexOf('  fork-smoke:'),
@@ -1564,7 +1585,7 @@ describe('CI verification workflow contracts', () => {
     const fullRegression = workflow('full-regression.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -1682,7 +1703,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  ui-bundle-delta:'),
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');
