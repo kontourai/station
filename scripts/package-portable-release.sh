@@ -55,13 +55,23 @@ if [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
 elif [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-preview\.([1-9][0-9]*)$ ]]; then
   CHANNEL=preview
   PRERELEASE=true
+elif [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-nightly\.([1-9][0-9]*)$ ]]; then
+  # The installable Nightly ring (#2675). The caller supplies the version
+  # (X.Y.Z-nightly.<code>, <code> from the immutable nightly-version-code
+  # reservation) as --ref v<version> together with the exact --sha; this
+  # script never invents a nightly number. The ref is the release tag the
+  # signed public manifest names, which the installer requires provenance
+  # to equal.
+  CHANNEL=nightly
+  PRERELEASE=true
 elif [[ "$REF" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}-[1-9][0-9]*$ ]]; then
   # Fleet staging has an exact-SHA build identity but is deliberately not a
-  # release ring.  In particular it must not create Stable/Preview manifests.
+  # release ring.  In particular it must not create Stable/Preview/Nightly
+  # manifests, and its provenance names no installable channel.
   CHANNEL=nightly-staging
   PRERELEASE=true
 else
-  echo "error: release ref must be a Stable/Preview tag or nightly-YYYY-MM-DD-N staging identity" >&2
+  echo "error: release ref must be a Stable/Preview tag, a vX.Y.Z-nightly.N Nightly release, or a nightly-YYYY-MM-DD-N staging identity" >&2
   exit 1
 fi
 if [[ "$CHANNEL" = nightly-staging ]]; then
@@ -104,7 +114,8 @@ node -e '
   const fs = require("node:fs");
   const [path, sha, ref, createdAt, releaseChannel, prerelease] = process.argv.slice(1);
   // A staging bundle is verification-only and never an installable release.
-  const channel = releaseChannel === "preview" ? "beta" : releaseChannel === "nightly-staging" ? "nightly-staging" : "stable";
+  const channel = { stable: "stable", preview: "beta", nightly: "nightly", "nightly-staging": "nightly-staging" }[releaseChannel];
+  if (!channel) process.exit(1);
   fs.writeFileSync(path, `${JSON.stringify({ schemaVersion: 2, sha, ref, createdAt, channel, releaseChannel, prerelease: prerelease === "true" }, null, 2)}\n`);
 ' "$TEMP_DIR/station/.station-release.json" "$SHA" "$REF" "$CREATED_AT" "$CHANNEL" "$PRERELEASE"
 MANIFEST_TOUCH_TIME=$(node -e '

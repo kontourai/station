@@ -34,11 +34,11 @@ install_root_was_requested=false
 if [ -n "${STATION_INSTALL_ROOT+x}" ]; then install_root_was_requested=true; fi
 requested_runtime_channel="${STATION_CHANNEL:-stable}"
 case "$requested_runtime_channel" in
-  stable|beta) ;;
+  stable|beta|nightly) ;;
   preview)
     fail 'STATION_CHANNEL=preview is a legacy unqualified channel; rerun with STATION_CHANNEL=beta (or install stable with STATION_CHANNEL=stable)'
     ;;
-  *) fail 'STATION_CHANNEL must be stable or beta' ;;
+  *) fail 'STATION_CHANNEL must be stable, beta, or nightly' ;;
 esac
 
 # `node` is the one portable authority for resolving filesystem aliases. Check
@@ -66,6 +66,16 @@ configure_runtime_paths() {
       runtime_server_port=28141
       runtime_ui_port=28000
       runtime_launcher_name=station-beta
+      ;;
+    nightly)
+      # Nightly has no public/runtime name split: the ring and the runtime
+      # are both `nightly`. Ports are config/channel-ports.json's nightly
+      # pair, which the Nightly desktop app also defaults to (see the
+      # coexistence preflight below).
+      runtime_release_channel=nightly
+      runtime_server_port=38141
+      runtime_ui_port=38000
+      runtime_launcher_name=station-nightly
       ;;
     *) fail "unsupported verified runtime channel: $runtime_channel" ;;
   esac
@@ -511,6 +521,67 @@ case "${1:-install}" in
 esac
 
 public_manifest_url="${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}"
+# Nightly is published only as a signed public manifest (#2675). The
+# authenticated gh path below resolves `v*` GitHub releases, verifies
+# attestations from release.yml, and maps only stable/preview tags; a nightly
+# build is none of those, so that path cannot serve it and must not guess.
+if [ "$requested_runtime_channel" = nightly ] && [ -z "$public_manifest_url" ]; then
+  fail 'STATION_CHANNEL=nightly installs only from a signed public manifest; set STATION_INSTALL_PUBLIC_MANIFEST_URL (the authenticated GitHub-release path serves stable and beta only)'
+fi
+
+# Nightly coexistence (#2675). The Station Nightly desktop app defaults to the
+# same runtime identity as a portable nightly install: the home
+# $STATION_ROOT/instances/nightly and ports 38141/38000. The two are one
+# channel runtime, so they cannot both run on a host with default settings,
+# and a portable install must never silently adopt data another Station
+# owns. Stable and beta desktop apps share their channels' defaults in the
+# same way; this installer keeps its existing behavior for those channels.
+assert_nightly_coexistence() {
+  [ "$runtime_channel" = nightly ] || return 0
+  # An explicit STATION_HOME is a deliberate choice (the owned launcher and
+  # packaged `station upgrade` always pass one). Only the default home is
+  # guarded: it must be absent, empty, or already carry this installer's
+  # data-root marker.
+  if [ -z "${STATION_HOME:-}" ]; then
+    node -e '
+      const fs = require("node:fs");
+      const [home, markerName] = process.argv.slice(1);
+      let entries;
+      try { entries = fs.readdirSync(home); } catch (error) {
+        if (error && error.code === "ENOENT") process.exit(0);
+        throw error;
+      }
+      if (entries.length === 0 || entries.includes(markerName)) process.exit(0);
+      process.exit(1);
+    ' "$station_home" "$DATA_ROOT_MARKER" || \
+      fail "$station_home already holds Station data this installer does not own (usually the Station Nightly desktop app's home). Refusing to share it silently: set STATION_HOME to that path to share it deliberately, or to another directory under $station_root/instances to keep separate data"
+  fi
+  # A port already in use when no portable nightly release is active cannot
+  # be this install's own Station. (During an upgrade the running Station is
+  # ours and is stopped before the new one starts.) Nothing binds a port when
+  # the install does not start Station.
+  if [ "${STATION_INSTALL_NO_START:-0}" != 1 ] && [ ! -L "$current_link" ]; then
+    for probe_port in "$resolved_server_port" "$resolved_ui_port"; do
+      node -e '
+        const net = require("node:net");
+        const socket = net.connect({ host: "127.0.0.1", port: Number(process.argv[1]) });
+        socket.setTimeout(2000);
+        socket.on("connect", () => { socket.destroy(); process.exit(3); });
+        socket.on("timeout", () => { socket.destroy(); process.exit(4); });
+        socket.on("error", (error) => process.exit(error.code === "ECONNREFUSED" ? 0 : 4));
+      ' "$probe_port" || {
+        probe_status=$?
+        if [ "$probe_status" = 3 ]; then
+          fail "port $probe_port is already in use on this host, and no portable nightly Station is installed to own it. The Station Nightly desktop app uses the same ports; quit it before installing, or install with STATION_INSTALL_NO_START=1 and start Station once the port is free"
+        fi
+        fail "could not determine whether port $probe_port is free"
+      }
+    done
+  fi
+}
+resolve_runtime_flags
+assert_nightly_coexistence
+
 if [ -n "$public_manifest_url" ]; then
   required_commands='curl tar npm'
 else
@@ -550,9 +621,18 @@ previous_launcher_present=false
 release_channel="$runtime_release_channel"
 version="${STATION_VERSION:-latest}"
 if [ "$version" != latest ]; then
-  if ! printf '%s' "$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$'; then
+  if ! printf '%s' "$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(preview|nightly)\.([1-9][0-9]*))?$'; then
     fail "invalid STATION_VERSION: $version"
   fi
+  # An exact pin names its ring. Nightly accepts exact pins because a
+  # rollback (STATION_INSTALL_ALLOW_ROLLBACK=1) needs an exact target.
+  case "$version" in
+    *-nightly.*) version_release_channel=nightly ;;
+    *-preview.*) version_release_channel=preview ;;
+    *) version_release_channel=stable ;;
+  esac
+  [ "$version_release_channel" = "$runtime_release_channel" ] || \
+    fail "STATION_VERSION $version is a $version_release_channel release; it cannot be installed as STATION_CHANNEL=$requested_runtime_channel"
 fi
 
 if [ -n "$public_manifest_url" ]; then
@@ -854,8 +934,9 @@ candidate_identity="$(node -e '
   let provenanceReleaseChannel;
   if (value?.schemaVersion === 2 &&
       ((value.channel === "stable" && value.releaseChannel === "stable") ||
-       (value.channel === "beta" && value.releaseChannel === "preview")) &&
-      value.prerelease === (value.releaseChannel === "preview")) {
+       (value.channel === "beta" && value.releaseChannel === "preview") ||
+       (value.channel === "nightly" && value.releaseChannel === "nightly")) &&
+      value.prerelease === (value.releaseChannel !== "stable")) {
     runtimeChannel = value.channel;
     provenanceReleaseChannel = value.releaseChannel;
   }
@@ -869,8 +950,8 @@ candidate_identity="$(node -e '
 ' "$candidate/.station-release.json" "$release_sha" "$release_tag" "$release_channel")" || fail 'release provenance is invalid'
 
 # The release ring is authenticated above. Only now translate its public
-# stable/preview protocol into the local runtime's stable/beta identity and
-# its exact, concurrent-safe roots.
+# stable/preview/nightly protocol into the local runtime's stable/beta/nightly
+# identity and its exact, concurrent-safe roots.
 runtime_channel="$(printf '%s\n' "$candidate_identity" | sed -n '1p')"
 candidate_release_channel="$(printf '%s\n' "$candidate_identity" | sed -n '2p')"
 [ "$candidate_release_channel" = "$release_channel" ] || fail 'release provenance channel does not match the verified release'
@@ -892,7 +973,7 @@ if [ -e "$state_file" ] || [ -L "$state_file" ]; then
     const s = fs.lstatSync(p);
     if (!s.isFile() || s.isSymbolicLink() || (typeof process.getuid === "function" && s.uid !== process.getuid()) || (s.mode & 0o077) !== 0) process.exit(1);
     const v = JSON.parse(fs.readFileSync(p, "utf8"));
-    if (v?.schemaVersion !== 3 || !((v.channel === "stable" && v.releaseChannel === "stable") || (v.channel === "beta" && v.releaseChannel === "preview")) || typeof v.installRoot !== "string" || typeof v.stationHome !== "string" || typeof v.stationRoot !== "string") process.exit(1);
+    if (v?.schemaVersion !== 3 || !((v.channel === "stable" && v.releaseChannel === "stable") || (v.channel === "beta" && v.releaseChannel === "preview") || (v.channel === "nightly" && v.releaseChannel === "nightly")) || typeof v.installRoot !== "string" || typeof v.stationHome !== "string" || typeof v.stationRoot !== "string") process.exit(1);
     const savedRuntime = v.channel;
     const savedRelease = v.releaseChannel;
     if (savedRuntime !== runtimeChannel || savedRelease !== releaseChannel || (v.installRoot && v.installRoot !== installRoot) || (v.stationRoot && v.stationRoot !== stationRoot) || (v.stationHome && v.stationHome !== stationHome)) process.exit(3);

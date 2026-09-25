@@ -41,12 +41,47 @@ describe('portable release-ring workflow', () => {
       resolve(repoRoot, '.github/workflows/install-smoke.yml'),
       'utf8',
     );
-    expect(smoke).toContain('channel: [stable, preview]');
+    expect(smoke).toContain('channel: [stable, preview, nightly]');
     expect(smoke).toContain(
-      'RUNTIME_CHANNEL: $' +
-        "{{ matrix.channel == 'preview' && 'beta' || 'stable' }}",
+      'RUNTIME_CHANNEL: $' + '{{ matrix.runtime_channel }}',
     );
-    expect(smoke).toContain('launcher_name=station');
+    // Each ring's runtime, launcher, and signing key id. Nightly signs only
+    // under the pinned nightly key id (#2675).
+    for (const [channel, tag, runtime, launcher, keyId] of [
+      [
+        'stable',
+        'v0.0.0',
+        'stable',
+        'station',
+        'station-portable-release-2026-09',
+      ],
+      [
+        'preview',
+        'v0.0.0-preview.1',
+        'beta',
+        'station-beta',
+        'station-portable-release-2026-09',
+      ],
+      [
+        'nightly',
+        'v0.0.0-nightly.1',
+        'nightly',
+        'station-nightly',
+        'station-portable-nightly-2026-09',
+      ],
+    ])
+      expect(smoke).toContain(
+        [
+          `          - channel: ${channel}`,
+          `            release_tag: ${tag}`,
+          `            runtime_channel: ${runtime}`,
+          `            launcher_name: ${launcher}`,
+          `            key_id: ${keyId}`,
+        ].join('\n'),
+      );
+    expect(smoke).toContain('--key-id "$MANIFEST_KEY_ID"');
+    expect(smoke).toContain('schemaVersion: channel === "nightly" ? 2 : 1');
+    expect(smoke).toContain('launcher_name="$LAUNCHER_NAME"');
     expect(smoke).toContain('"$launcher" upgrade');
     expect(smoke).toContain('installs/$runtime_channel');
     expect(smoke).toContain('instances/$runtime_channel');

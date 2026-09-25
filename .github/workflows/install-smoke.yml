@@ -20,13 +20,35 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        channel: [stable, preview]
+        channel: [stable, preview, nightly]
+        include:
+          - channel: stable
+            release_tag: v0.0.0
+            runtime_channel: stable
+            launcher_name: station
+            key_id: station-portable-release-2026-09
+          - channel: preview
+            release_tag: v0.0.0-preview.1
+            runtime_channel: beta
+            launcher_name: station-beta
+            key_id: station-portable-release-2026-09
+          # Nightly (#2675) runs without a published nightly: the locally
+          # packaged vX.Y.Z-nightly.N release, signed with a throwaway key
+          # under the pinned nightly key id (the only id allowed to sign
+          # nightly), verified through the test-only key override.
+          - channel: nightly
+            release_tag: v0.0.0-nightly.1
+            runtime_channel: nightly
+            launcher_name: station-nightly
+            key_id: station-portable-nightly-2026-09
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
-      RELEASE_TAG: ${{ matrix.channel == 'preview' && 'v0.0.0-preview.1' || 'v0.0.0' }}
+      RELEASE_TAG: ${{ matrix.release_tag }}
       RELEASE_CHANNEL: ${{ matrix.channel }}
-      RUNTIME_CHANNEL: ${{ matrix.channel == 'preview' && 'beta' || 'stable' }}
+      RUNTIME_CHANNEL: ${{ matrix.runtime_channel }}
+      LAUNCHER_NAME: ${{ matrix.launcher_name }}
+      MANIFEST_KEY_ID: ${{ matrix.key_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,8 +77,7 @@ jobs:
           set -euo pipefail
           runtime_channel="$RUNTIME_CHANNEL"
           release_channel="$RELEASE_CHANNEL"
-          launcher_name=station
-          if [ "$runtime_channel" = beta ]; then launcher_name=station-beta; fi
+          launcher_name="$LAUNCHER_NAME"
           launcher="$SMOKE_HOME/.local/bin/$launcher_name"
           # Mirror install.sh's default roots for HOME=$SMOKE_HOME without
           # overrides: $station_root/installs|instances/$runtime_channel.
@@ -117,17 +138,20 @@ jobs:
               const [output, serveDir, channel, version, releaseTag, sourceSha] = process.argv.slice(1);
               const digest = (name) => crypto.createHash("sha256").update(fs.readFileSync(`${serveDir}/${name}`)).digest("hex");
               const macos = `station-${version}-macos-universal.dmg`;
+              const portable = { name: "station-portable.tar.gz", url: "http://127.0.0.1:8765/station-portable.tar.gz", sha256: digest("station-portable.tar.gz") };
+              // Schema 1 predates nightly and carries a macOS artifact;
+              // schema 2 is portable-only and the only schema for nightly.
+              const artifacts = channel === "nightly"
+                ? { portable }
+                : { macos: { name: macos, url: `http://127.0.0.1:8765/${macos}`, sha256: digest(macos) }, portable };
               fs.writeFileSync(output, `${JSON.stringify({
-                schemaVersion: 1,
+                schemaVersion: channel === "nightly" ? 2 : 1,
                 channel,
                 version,
                 releaseTag,
                 sourceSha,
                 publishedAt: new Date().toISOString(),
-                artifacts: {
-                  macos: { name: macos, url: `http://127.0.0.1:8765/${macos}`, sha256: digest(macos) },
-                  portable: { name: "station-portable.tar.gz", url: "http://127.0.0.1:8765/station-portable.tar.gz", sha256: digest("station-portable.tar.gz") },
-                },
+                artifacts,
               }, null, 2)}\n`);
             ' "$RUNNER_TEMP/manifest-payload.json" "$serve_dir" "$release_channel" "$version" "$release_tag" "$source_sha"
             # The keyId must name a pinned installer key; the throwaway key
@@ -136,7 +160,7 @@ jobs:
             STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$GITHUB_WORKSPACE/scripts/ecosystem-manifest.mjs" create \
               --payload "$RUNNER_TEMP/manifest-payload.json" \
               --private-key "$RUNNER_TEMP/manifest-private.pem" \
-              --key-id station-portable-release-2026-09 \
+              --key-id "$MANIFEST_KEY_ID" \
               --output "$manifests_dir/manifest.json"
           }
           write_manifest_payload

@@ -97,7 +97,7 @@ describe('channel port generation', () => {
         uiPort,
       ]).toEqual(expectedBlocks[channel]);
     }
-    for (const channel of ['stable', 'beta'] as const) {
+    for (const channel of ['stable', 'beta', 'nightly'] as const) {
       const { serverPort, uiPort } = channelPorts[channel];
       expect(installer).toContain(`runtime_server_port=${serverPort}`);
       expect(installer).toContain(`runtime_ui_port=${uiPort}`);
