@@ -32,9 +32,9 @@ import {
 } from './station-control-shared.js';
 
 /** Where Station serves the tool's REST side. */
-export const NOTIFY_USER_API_PATH = '/api/notifications/agent';
+const NOTIFY_USER_API_PATH = '/api/notifications/agent';
 
-export const NOTIFY_USER_TOOL_NAME = 'notify_user';
+const NOTIFY_USER_TOOL_NAME = 'notify_user';
 
 export const NOTIFY_USER_DESCRIPTION =
   'Send a notification to the user\'s devices (phone, desktop, browser). Use this only when the user would want to know now, even if they are away: you need their input or approval to continue, a long task they are waiting on finished or failed, or something time-sensitive happened. Do not use it for progress updates, routine completions the user is watching, or anything already visible in this conversation. It does not reply to the user; they may never see it if they are muted or it is rate-limited. Keep the title short and outcome-first ("Tests pass on fix-login", "Need approval to run migration"). Never put secrets, tokens, code or file contents in it. Use `dedupeKey` to update an earlier notification instead of sending another. Returns whether it was sent; if it was not, do not retry.';

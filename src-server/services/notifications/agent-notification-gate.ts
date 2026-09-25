@@ -46,7 +46,7 @@ import type {
 } from './notification-service.js';
 
 /** `Notification.source` for every agent notification. */
-export const AGENT_NOTIFICATION_SOURCE = 'agent';
+const AGENT_NOTIFICATION_SOURCE = 'agent';
 
 export type AgentNotificationPreference = 'all' | 'attention-only' | 'off';
 
@@ -63,7 +63,7 @@ export interface AgentNotificationPreferences {
   }): AgentNotificationPreference;
 }
 
-export const ALLOW_ALL_AGENT_NOTIFICATIONS: AgentNotificationPreferences = {
+const ALLOW_ALL_AGENT_NOTIFICATIONS: AgentNotificationPreferences = {
   agentNotifications: () => 'all',
 };
 
@@ -119,7 +119,7 @@ export interface AgentNotificationRateLimits {
   readonly globalPerHour: number;
 }
 
-export const DEFAULT_AGENT_NOTIFICATION_RATE_LIMITS: AgentNotificationRateLimits =
+const DEFAULT_AGENT_NOTIFICATION_RATE_LIMITS: AgentNotificationRateLimits =
   Object.freeze({
     sessionBurst: 3,
     sessionRefillMs: 60_000,
@@ -150,7 +150,7 @@ type RateDecision =
  * which at worst lets one more burst through; persisting it would put a
  * write on every notification.
  */
-export class AgentNotificationRateLimiter {
+class AgentNotificationRateLimiter {
   private readonly sessions = new Map<string, SessionState>();
   private readonly attention: number[] = [];
   private readonly global: number[] = [];
@@ -327,7 +327,7 @@ function cap(text: string, max: number): string {
 }
 
 /** Known credential shapes redacted, one line, bounded. */
-export function agentNotificationTitle(title: string): string {
+function agentNotificationTitle(title: string): string {
   return cap(
     redactSecrets(title).replace(/\s+/g, ' ').trim(),
     NOTIFICATION_TITLE_MAX,
@@ -335,7 +335,7 @@ export function agentNotificationTitle(title: string): string {
 }
 
 /** Known credential shapes redacted, control characters removed, bounded. */
-export function agentNotificationBody(body: string): string | undefined {
+function agentNotificationBody(body: string): string | undefined {
   const text = redactSecrets(body).replace(CONTROL_EXCEPT_NEWLINE, ' ').trim();
   return text ? cap(text, NOTIFICATION_BODY_MAX) : undefined;
 }
@@ -349,9 +349,7 @@ export function agentNotificationBody(body: string): string | undefined {
  * fragment as a session credential exchange. Agent links therefore carry no
  * fragment at all.
  */
-export function agentNotificationLink(
-  value: string | undefined,
-): string | undefined {
+function agentNotificationLink(value: string | undefined): string | undefined {
   const link = value?.trim();
   return link && isRelativeStationPath(link) && !link.includes('#')
     ? link
@@ -366,7 +364,7 @@ export function agentNotificationLink(
  * that session's own notification; a continuation or delegated child starts
  * a fresh namespace.
  */
-export function agentNotificationNamespace(sessionId: string): string {
+function agentNotificationNamespace(sessionId: string): string {
   return /^[A-Za-z0-9._-]{1,128}$/.test(sessionId)
     ? sessionId
     : `h${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`;

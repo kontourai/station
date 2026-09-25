@@ -22,8 +22,6 @@ import {
 } from '../../services/notifications/agent-notification-gate.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 
-export const AGENT_NOTIFICATION_API_PATH = '/api/notifications/agent';
-
 const MAX_BODY_BYTES = 8 * 1024;
 
 export interface AgentNotificationRoutesDeps {
