@@ -68,6 +68,29 @@ describe('action operation contract', () => {
     expect(parseActionOperation(candidate)).toBeUndefined();
   });
 
+  test('an account is any principal id, including a Tailscale login (#2578)', () => {
+    for (const accountId of [
+      'human:tailscale-serve:someone@example.test',
+      'human:local:operator',
+      'human:device:device-1',
+    ])
+      expect(
+        parseActionOperation({ ...operation, scope: { accountId } }),
+        accountId,
+      ).toEqual({ ...operation, scope: { accountId } });
+    for (const accountId of [
+      'someone@example.test',
+      'human:tailscale-serve: ',
+      'human:tailscale-serve:a\u0000b',
+      `human:tailscale-serve:${'a'.repeat(600)}`,
+      'human:Bad Provider:x',
+    ])
+      expect(
+        parseActionOperation({ ...operation, scope: { accountId } }),
+        accountId,
+      ).toBeUndefined();
+  });
+
   test('rejects machine-local path-shaped title, error, and progress input', () => {
     for (const unsafe of [
       '/tmp/station-private',

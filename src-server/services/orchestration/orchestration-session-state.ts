@@ -471,6 +471,10 @@ export function buildOrchestrationSessionSummary(options: {
   turnProgress?: TurnProgressObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
+  /** Durable current execution child, supplied by a lineage-aware reader. */
+  currentSessionId?: string;
+  /** Current unresolved requests; present even when the set is empty. */
+  openRequestIds?: readonly string[];
   /**
    * #2456: the child-work projection's process-local read, handed over like
    * `turnProgress` — never reconstructed from events. A READER rather than a
@@ -529,6 +533,7 @@ export function buildOrchestrationSessionSummary(options: {
     extractDisplayTitle(events) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
     events,
@@ -622,9 +627,22 @@ export function buildOrchestrationSessionSummary(options: {
           lastEventMethod: lastEvent.method,
         }
       : {}),
+    ...(lastRuntimeError
+      ? { lastRuntimeErrorMessage: lastRuntimeError.message }
+      : {}),
+    ...(lastEvent?.method === 'turn.aborted' &&
+    lastEvent.recoveryTerminal !== true
+      ? { lastTurnAbortReason: lastEvent.reason }
+      : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
+      : {}),
+    ...(options.currentSessionId
+      ? { currentSessionId: options.currentSessionId }
+      : {}),
+    ...(options.openRequestIds
+      ? { openRequestIds: [...options.openRequestIds] }
       : {}),
     ...(delegation ? { delegation } : {}),
     ...(inputOrigin ? { inputOrigin } : {}),

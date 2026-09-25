@@ -380,6 +380,7 @@ import type { DeviceToolchainService } from '../../services/devices/toolchain/de
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -427,7 +428,7 @@ import {
   resolveRuntimeVectorDbProvider,
 } from '../plugins/runtime-provider-resolution.js';
 import { configureRuntimeRoutes } from '../routes/runtime-routes.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import { guardRuntimeGenerationTools } from '../tools/runtime-generation-tools.js';
 import type {
   DispatchEvidenceSource,
@@ -701,6 +702,7 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -3119,7 +3121,7 @@ export class StationRuntime {
       logger: this.logger,
       usageAggregator: this.usageAggregator,
       defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-      autoApproveTools: SC_READ_ONLY_TOOLS,
+      autoApproveTools: SC_AUTO_APPROVED_TOOLS,
       replaceTemplateVariables: (text) =>
         replaceRuntimeTemplateVariables(text, appConfig),
       resolveDefaultModelHint: () =>
@@ -4035,6 +4037,7 @@ export class StationRuntime {
       pluginDraftService,
       deviceHosts,
       agentActivityPublisher,
+      notificationDeliveryRouter,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4125,7 +4128,7 @@ export class StationRuntime {
       reloadSkillsAndAgents: async () => this.reloadSkillsAndAgents(),
       initialize: async () => this.initialize(),
       getVoltAgent: () => this.voltAgent,
-      defaultAutoApprovedTools: SC_READ_ONLY_TOOLS,
+      defaultAutoApprovedTools: SC_AUTO_APPROVED_TOOLS,
       createMemoryAdapter: (_slug: string) =>
         new FileMemoryAdapter({
           projectHomeDir: this.configLoader.getProjectHomeDir(),
@@ -4148,6 +4151,7 @@ export class StationRuntime {
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
+    this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4643,6 +4647,8 @@ export class StationRuntime {
       this.deviceSessions = undefined;
       await this.agentActivityPublisher?.stop();
       this.agentActivityPublisher = undefined;
+      this.notificationDeliveryRouter?.stop();
+      this.notificationDeliveryRouter = undefined;
     } catch (error) {
       failures.push(error);
     }

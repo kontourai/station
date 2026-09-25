@@ -75,11 +75,26 @@ function openApprovalRequests(
 export function unansweredApprovalRequests(
   messages: readonly ChatMessage[],
   events: readonly CanonicalRuntimeEvent[],
+  /**
+   * station#2530 review 3: the OPEN turn's own row, when its request's
+   * binding lives there. F4 stitching can make that row PRESENT in
+   * `messages` (`openTurnProjected`) well before the turn settles — but on
+   * screen it is either the live streaming shell itself (nothing to click)
+   * or, once the shell is suppressed for it, the collapsed transcript tool
+   * card (an expand click away from Allow/Deny) — never the strip's
+   * immediately-actionable card this function's own docblock promises for
+   * exactly this case ("the open turn's own row can be held by the live
+   * streaming shell"). Bound-detection therefore ignores a binding on the
+   * currently open turn: the strip stays the answering surface for it until
+   * the turn ends and its durable, settled row takes over.
+   */
+  openTurnId?: string,
 ): PendingApprovalRequest[] {
   const open = openApprovalRequests(events);
   if (open.length === 0) return NO_REQUESTS;
   const bound = new Set<string>();
   for (const message of messages) {
+    if (openTurnId !== undefined && message.turnId === openTurnId) continue;
     for (const part of message.contentParts ?? []) {
       if (part.needsApproval && part.approvalId && part.approvalThreadId)
         bound.add(requestKey(part.approvalThreadId, part.approvalId));

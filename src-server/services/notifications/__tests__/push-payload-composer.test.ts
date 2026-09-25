@@ -34,7 +34,7 @@ describe('composeWebPushPayload', () => {
     ).toBeNull();
   });
 
-  test('single-item pending (the live wireWebPushDelivery shape) composes from that notification', () => {
+  test('single-item pending (the live WebPushChannel shape) composes from that notification', () => {
     const n = notification({ id: 'approval-1' });
     const composed = composeWebPushPayload(n);
     expect(composed?.payload).toMatchObject({

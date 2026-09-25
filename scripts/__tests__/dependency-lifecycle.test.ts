@@ -93,7 +93,7 @@ const gitFixtureRoot = resolve(tmpdir(), 'station-git-integration-repo');
 const gitFixtureToplevel = gitFixtureRoot.replaceAll('\\', '/');
 
 describe('git integration installer', () => {
-  it('writes and reads back hooks and every merge-driver setting', () => {
+  it('writes and reads back the hooks path', () => {
     const config = new Map<string, string>();
     const calls: string[][] = [];
     const runGit = (args: string[]) => {
@@ -114,35 +114,20 @@ describe('git integration installer', () => {
       pathExists: () => true,
     });
 
-    expect(config).toEqual(
-      new Map([
-        ['core.hooksPath', '.githooks'],
-        [
-          'merge.station-ui-bundle-budget.name',
-          'Station UI bundle budget re-measurement',
-        ],
-        [
-          'merge.station-ui-bundle-budget.driver',
-          'node scripts/merge-ui-bundle-budget.mjs %O %A %B %L %P',
-        ],
-      ]),
-    );
+    expect(config).toEqual(new Map([['core.hooksPath', '.githooks']]));
     expect(calls).toContainEqual([
       'config',
       '--local',
       '--get',
-      'merge.station-ui-bundle-budget.driver',
+      'core.hooksPath',
     ]);
   });
 
-  it('fails when a merge-driver write does not read back exactly', () => {
+  it('fails when the hooks path write does not read back exactly', () => {
     const config = new Map<string, string>();
     const runGit = (args: string[]) => {
       if (args[0] === 'rev-parse') return gitFixtureToplevel;
-      if (args[1] === '--local' && args[2] === '--get') {
-        if (args[3] === 'merge.station-ui-bundle-budget.driver') return '';
-        return config.get(args[3]) ?? '';
-      }
+      if (args[1] === '--local' && args[2] === '--get') return '';
       config.set(args[2], args[3]);
       return '';
     };
@@ -153,9 +138,7 @@ describe('git integration installer', () => {
         runGit,
         pathExists: () => true,
       }),
-    ).toThrow(
-      'merge.station-ui-bundle-budget.driver did not read back as configured',
-    );
+    ).toThrow('core.hooksPath did not read back as configured');
   });
 });
 

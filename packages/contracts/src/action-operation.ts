@@ -1,3 +1,5 @@
+import { PRINCIPAL_KINDS, principalIdMatchesKind } from './principal.js';
+
 /** Durable execution-status envelope around an existing Station mutation. */
 export const ACTION_OPERATION_SCHEMA_VERSION =
   'station.action-operation/v1' as const;
@@ -108,6 +110,7 @@ export interface ActionOperationWatchSnapshot extends ActionOperationPage {
 }
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const ACCOUNT_ID_MAX_LENGTH = 512;
 
 function record(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
@@ -135,6 +138,21 @@ function exactFields(
 }
 function id(value: unknown): value is string {
   return typeof value === 'string' && ID.test(value);
+}
+/**
+ * A personal account is its owner's principal id, whose subject is opaque:
+ * a Tailscale Serve login such as `human:tailscale-serve:someone@example`
+ * carries an `@` the plain id grammar refuses (#2578). Accept an id that
+ * parses as a principal, bounded, alongside the plain grammar (hosted
+ * accounts are tenant-qualified digests, which already match it).
+ */
+export function isActionOperationAccountId(value: unknown): value is string {
+  return (
+    id(value) ||
+    (typeof value === 'string' &&
+      value.length <= ACCOUNT_ID_MAX_LENGTH &&
+      PRINCIPAL_KINDS.some((kind) => principalIdMatchesKind(value, kind)))
+  );
 }
 
 /**
@@ -185,7 +203,7 @@ function parseScope(value: unknown): ActionOperationScope | undefined {
   ];
   if (
     !exactFields(value, expected) ||
-    !id(value.accountId) ||
+    !isActionOperationAccountId(value.accountId) ||
     (own(value, 'machineId') && !id(value.machineId)) ||
     (own(value, 'sessionId') && !id(value.sessionId))
   ) {

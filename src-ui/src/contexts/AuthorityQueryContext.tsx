@@ -383,6 +383,11 @@ export function AuthorityQueryProvider({
       // #1418/#1419: a different Station's ledger is not this document's to
       // settle. Flush what the old identity owes, then mint a fresh one.
       notifyPluginCommandEffectAuthoritySwitch();
+      window.dispatchEvent(
+        new CustomEvent('station:orchestration-authority-change', {
+          detail: apiBase,
+        }),
+      );
     }
     lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
@@ -394,7 +399,7 @@ export function AuthorityQueryProvider({
     activeRef.current = next;
     setActive(next);
     if (previous) retireAuthorityClient(previous.queryClient);
-  }, [verifiedNamespace]);
+  }, [verifiedNamespace, apiBase]);
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
   // EXACT captured origin — never a module-global resolved after a switch —

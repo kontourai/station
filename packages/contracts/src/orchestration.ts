@@ -601,6 +601,20 @@ export interface TurnProgressObservation {
  */
 export interface ConversationTurnActivity {
   conversationId: string;
+  /** Execution child the server would continue, even when no turn is open. */
+  currentThreadId?: string;
+  /**
+   * Running children reported by the engine across this conversation's
+   * execution lineage. This never implies an open turn and never enables
+   * Stop or Steer. `followUpPending` is a bounded provider observation after
+   * child settlement, and may be present with count zero.
+   */
+  runningChildWork?: {
+    count: number;
+    producers: import('./child-work.js').ChildWorkProducer[];
+    oldestStartedAt?: string;
+    followUpPending?: true;
+  };
   /**
    * The `global_sequence` of the newest committed event folded into this
    * value. Several carriers deliver it (snapshot rows, stream frames, list
@@ -760,6 +774,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   };
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
+  /** Current terminal runtime error text when the event fold can prove one. */
+  lastRuntimeErrorMessage?: string;
+  /** Reason from the latest non-recovery turn abort, when it is terminal. */
+  lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
   /**
@@ -768,6 +786,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * projection and for sessions with no conversation lineage.
    */
   conversationActivity?: ConversationTurnActivity;
+  /** Durable current execution child for this row's conversation, when read. */
+  currentSessionId?: string;
+  /** Authoritative unresolved request ids when this summary carries a reader. */
+  openRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;

@@ -9,10 +9,3 @@
 # release archives rather than weakening extraction safety.
 CLAUDE.md export-ignore
 
-# A merge driver runs before the merged tree exists, so this one writes a
-# PROVISIONAL resolution (the higher of each field across both sides) rather
-# than measuring; the pre-push `npm run build:ui` gate is the measurement.
-# Clones without the locally registered driver get an ordinary conflict;
-# resolve it the same way: keep the higher of each field. Ceilings are round
-# numbers with headroom (#1703), never a measurement.
-scripts/ui-bundle-budget.json merge=station-ui-bundle-budget
