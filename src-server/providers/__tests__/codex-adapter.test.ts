@@ -3704,8 +3704,13 @@ describe('CodexAdapter', () => {
         { CODEX_HOME: configHome, OPENAI_BASE_URL: 'http://127.0.0.1:8318' },
       ]);
 
-      // Negative control: the same host without the connection env.
+      // Negative control: the same host without the connection env. The
+      // probe must receive no overlay at all, so a regression that always
+      // hands it one (even an empty one) is caught here.
+      probedEnvs = [];
       await expect(loginStatus(undefined)).resolves.toBe('missing');
+      expect(probedEnvs).toHaveLength(1);
+      expect(probedEnvs[0]).toBeUndefined();
     });
   });
 

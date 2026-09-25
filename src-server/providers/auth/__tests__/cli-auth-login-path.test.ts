@@ -252,6 +252,21 @@ describe('runCliCommand connection env overlay', () => {
     expect(env.CODEX_HOME).toBe('/home/test-user/.codex');
   });
 
+  test('an overlay cannot smuggle a boot-internal secret into the probe', async () => {
+    const { BOOT_INTERNAL_SECRET_ENV_KEYS } = await import(
+      '../../../utils/child-process-environment.js'
+    );
+    const overlay = Object.fromEntries(
+      BOOT_INTERNAL_SECRET_ENV_KEYS.map((key) => [key, 'leaked-secret']),
+    );
+    const env = await probedEnv({ ...overlay, CODEX_HOME: '/overlay-home' });
+    // The overlay did reach the probe, so its absence below is the scrub.
+    expect(env.CODEX_HOME).toBe('/overlay-home');
+    for (const key of BOOT_INTERNAL_SECRET_ENV_KEYS) {
+      expect(env[key]).toBeUndefined();
+    }
+  });
+
   test('an overlay cannot replace the Station-owned TMPDIR', async () => {
     const baseline = await probedEnv();
     const env = await probedEnv({ TMPDIR: '/elsewhere' });
