@@ -19,6 +19,7 @@ import {
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { openExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -34,6 +35,27 @@ type Intent =
       method: PullRequestMergeMethod;
       autoMerge: boolean;
     };
+/**
+ * What the "open elsewhere" action is called for a pull request's URL: the
+ * forge by name where Station knows it, else the browser. Derived from the
+ * URL the provider supplied, so the label names where the click goes.
+ */
+export function pullRequestExternalLabel(url: string): string {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return 'Open in browser';
+  }
+  if (hostname === 'github.com' || hostname.endsWith('.github.com'))
+    return 'Open on GitHub';
+  // gitlab.com only: any `gitlab.*` host is a name anyone can register, and
+  // a self-managed instance is not "GitLab" to the reader either way.
+  if (hostname === 'gitlab.com' || hostname === 'www.gitlab.com')
+    return 'Open on GitLab';
+  return 'Open in browser';
+}
+
 const loadDiff = () =>
   import('./DiffPanel').then((module) => ({
     default: module.ObservedDiffPanel,
@@ -220,6 +242,16 @@ function ReviewOwner({
         >
           Refresh
         </Button>
+        {data?.pullRequest.url ? (
+          // Beside Refresh rather than in the body, so the way to the forge
+          // is the first thing on screen. On the web it opens a new tab. In
+          // the Station app the host opens what its policy admits (#2480:
+          // any https link, once that widening lands), and any refusal shows
+          // the link with a Copy action rather than nothing.
+          <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
+            {pullRequestExternalLabel(data.pullRequest.url)}
+          </Button>
+        ) : null}
       </ResponsiveSurfaceActions>
       {!scope?.isCurrent() ? (
         <ErrorState
@@ -259,11 +291,6 @@ function ReviewOwner({
           <p>
             Head <code>{data.headSha}</code> · Observed{' '}
             {new Date(data.observedAt).toLocaleString()}
-          </p>
-          <p>
-            <a href={data.pullRequest.url} target="_blank" rel="noreferrer">
-              Open on forge
-            </a>
           </p>
           <ResponsiveSurfaceActions className="pull-request-review__actions">
             <Button onClick={addReviewContextToChat} disabled={!activeChat}>
