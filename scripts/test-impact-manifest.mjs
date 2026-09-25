@@ -599,6 +599,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/undefined-css-custom-properties.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/__tests__/PageCallout.test.tsx',
+  'src-server/services/notifications/__tests__/notification-service.scan.test.ts',
 ]);
 
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([
