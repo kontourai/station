@@ -265,23 +265,15 @@ const TEMP_SUITES_THAT_ALSO_WALK_SOURCE: Readonly<Record<string, string>> =
     'packages/sdk/src/__tests__/client-entry-portability.test.ts':
       'packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
     'scripts/__tests__/android-channel-release-generation.test.ts':
-      '.github/workflows; not selected by that edge (follow-up)',
-    'scripts/__tests__/classify-ci-change.test.ts':
-      'src-desktop crate sources (follow-up)',
-    'scripts/__tests__/content-integrity-gate.test.ts':
-      'git ls-files --eol over the repository (follow-up)',
+      '.github/workflows; the .github/workflows/** edge selects it',
     'scripts/__tests__/generate-app-icons.test.ts':
-      'src-desktop icons and tracked .icns files (follow-up)',
+      'incidental: compares the committed icon sets and .icns files it regenerates',
     'scripts/__tests__/release-workflow.test.ts':
       '.github/workflows; the .github/workflows/** edge selects it',
-    'scripts/__tests__/test-import-existence-gate.test.ts':
-      'git ls-files over the repository (follow-up)',
-    'scripts/__tests__/test-temp-dir-ratchet.test.ts':
-      'git ls-files over the source roots (follow-up)',
     'scripts/__tests__/vitest-resource-manifest.test.ts':
-      'git ls-files over packages/connect tests (follow-up)',
-    'src-server/services/orchestration/__tests__/orchestration-service.test.ts':
-      'the src-server/services tree, in two of its tests (follow-up)',
+      'packages/connect tests; the check rides the suite-wide Vitest discovery ' +
+      'the whole file shares, and verification:policy:gate re-derives the ' +
+      'corpus partition in ci:fast',
     'src-server/services/plugins/__tests__/example-manifest-fields.test.ts':
       'examples/; its examples/** edge selects it',
   });

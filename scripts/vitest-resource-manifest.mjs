@@ -353,6 +353,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and its EXIT STATUS are proven, not just its pure decision functions.
   // Bounded single-shot children per case.
   'scripts/__tests__/test-temp-dir-ratchet.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -586,6 +589,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // because the scan is `git grep` over TRACKED files and a fixture written
   // to a loose directory would prove nothing about what runs in CI.
   'scripts/__tests__/content-integrity-gate.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // station#1792: drives the newly fixed ci:fast static entry against real
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
@@ -628,6 +634,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // child process" shape as builder-delivery-viewer-import-gate.test.ts and
   // prepush-static-gates.test.ts above.
   'scripts/__tests__/test-import-existence-gate.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   // #2333: runs the test-path import gate as a real child process against
   // throwaway git repos (known-bad fixtures and false-positive controls) and
   // against this repository, same shape as the entry above.

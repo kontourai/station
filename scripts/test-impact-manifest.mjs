@@ -335,8 +335,9 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   Object.freeze({
     pattern: '.github/workflows/**',
     tests: Object.freeze([
-      // These two read workflows through a templated URL or a directory
+      // These three read workflows through a templated URL or a directory
       // listing the path-read scan cannot resolve, so they had no edge (#2176).
+      'scripts/__tests__/android-channel-release-generation.test.ts',
       'scripts/__tests__/android-firebase-workflow-env.test.ts',
       'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
@@ -549,6 +550,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/classify-ci-change.scan.test.ts',
+  'scripts/__tests__/content-integrity-gate.scan.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/docs-index-reachability.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
@@ -558,14 +561,18 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  'scripts/__tests__/test-import-existence-gate.scan.test.ts',
+  'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
   'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
   'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
+  'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
   'src-server/services/devices/__tests__/device-host-resolver.test.ts',
   'src-server/services/infra/__tests__/resource-posture.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
   'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
   'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
   'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
