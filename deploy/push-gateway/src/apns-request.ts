@@ -12,6 +12,32 @@ const LIVE_ACTIVITY_STATE_VERSION = 1;
 const ALERT_TITLE = 'Station';
 const ALERT_BODY = 'Agent activity';
 
+/**
+ * The only words a regular alert push can put on a lock screen, chosen by
+ * the Station's `kind`. A notification's own title and body travel only
+ * inside `sealed`, for the Notification Service Extension to open on the
+ * phone; without that extension the fixed text is what shows.
+ */
+export const APNS_ALERT_TEXT = {
+  attention: { title: 'Station', body: 'Something needs your attention' },
+  failed: { title: 'Station', body: 'Something failed' },
+  done: { title: 'Station', body: 'Work finished' },
+  hidden: { title: 'Station', body: 'You have a new notification' },
+} as const satisfies Record<string, { title: string; body: string }>;
+export type ApnsAlertKind = keyof typeof APNS_ALERT_TEXT;
+const ALERT_KINDS = Object.keys(APNS_ALERT_TEXT) as ApnsAlertKind[];
+/** The custom key the sealed notification travels under. */
+export const APNS_ALERT_PAYLOAD_KEY = 'station';
+const ALERT_PAYLOAD_VERSION = 1;
+/** Kinds that sound and go out at once; the rest are quiet and may wait. */
+const URGENT_ALERT_KINDS: ReadonlySet<ApnsAlertKind> = new Set([
+  'attention',
+  'failed',
+]);
+/** APNs caps apns-collapse-id at 64 bytes; the Station sends a hash. */
+const COLLAPSE_ID = /^[A-Za-z0-9_-]{16,64}$/;
+const MAX_ALERT_SEALED_CHARS = 3000;
+
 /** APNs refuses a Live Activity payload over 4 KB. */
 export const MAX_APNS_PAYLOAD_BYTES = 4096;
 const MAX_SEALED_CHARS = 3400;
@@ -87,6 +113,15 @@ const EVENT_KEYS: Record<LiveActivityEvent, readonly string[]> = {
   update: [...COMMON_KEYS, 'channelId', 'channelAuth', 'staleAt'],
   end: [...COMMON_KEYS, 'channelId', 'channelAuth', 'dismissAt'],
 };
+const ALERT_KEYS = [
+  'bundleId',
+  'environment',
+  'deviceToken',
+  'registrationId',
+  'kind',
+  'collapseId',
+  'sealed',
+] as const;
 const CHANNEL_KEYS = [
   'op',
   'bundleId',
@@ -232,6 +267,100 @@ export function parseLiveActivityRequest(
       ...(event === 'end'
         ? { dismissAt: input.dismissAt as number }
         : { staleAt: input.staleAt as number }),
+    },
+  };
+}
+
+/**
+ * A regular (alert) push to one device: `deviceToken` is the app's APNs
+ * device token, not a Live Activity token, and the topic is the bundle id.
+ */
+export interface AlertRequest {
+  bundleId: string;
+  environment: ApnsEnvironment;
+  deviceToken: string;
+  registrationId: string;
+  kind: ApnsAlertKind;
+  /** Same notification, same id: a later push replaces the shown one. */
+  collapseId: string;
+  sealed: string;
+}
+
+export function parseAlertRequest(
+  body: Uint8Array<ArrayBuffer>,
+  allowedBundles: readonly string[],
+): Parsed<AlertRequest> {
+  const input = decodeObject(body);
+  if (typeof input === 'string') return { ok: false, reason: input };
+  const keyError = checkKeys(input, ALERT_KEYS);
+  if (keyError) return { ok: false, reason: keyError };
+  const routingError = checkRouting(input, allowedBundles);
+  if (routingError) return { ok: false, reason: routingError };
+  if (typeof input.deviceToken !== 'string' || !TOKEN.test(input.deviceToken))
+    return { ok: false, reason: 'invalid deviceToken' };
+  if (
+    typeof input.registrationId !== 'string' ||
+    !REGISTRATION_ID.test(input.registrationId)
+  )
+    return { ok: false, reason: 'invalid registrationId' };
+  if (
+    typeof input.kind !== 'string' ||
+    !(ALERT_KINDS as readonly string[]).includes(input.kind)
+  )
+    return { ok: false, reason: 'unsupported kind' };
+  if (
+    typeof input.collapseId !== 'string' ||
+    !COLLAPSE_ID.test(input.collapseId)
+  )
+    return { ok: false, reason: 'invalid collapseId' };
+  if (
+    typeof input.sealed !== 'string' ||
+    !BASE64URL.test(input.sealed) ||
+    input.sealed.length < MIN_SEALED_CHARS ||
+    input.sealed.length > MAX_ALERT_SEALED_CHARS
+  )
+    return { ok: false, reason: 'invalid sealed' };
+  return {
+    ok: true,
+    request: {
+      bundleId: input.bundleId as string,
+      environment: input.environment as ApnsEnvironment,
+      deviceToken: input.deviceToken.toLowerCase(),
+      registrationId: input.registrationId,
+      kind: input.kind as ApnsAlertKind,
+      collapseId: input.collapseId,
+      sealed: input.sealed,
+    },
+  };
+}
+
+/** Attention and failures go out at once; the rest may wait for power. */
+export function alertPriority(request: AlertRequest): 5 | 10 {
+  return URGENT_ALERT_KINDS.has(request.kind) ? 10 : 5;
+}
+
+/**
+ * The complete APNs body of an alert push. The visible text comes only from
+ * {@link APNS_ALERT_TEXT}; `mutable-content` lets the phone's Notification
+ * Service Extension replace it with the sealed notification once there is
+ * one. `sk` is the verified signing key's thumbprint, never the caller's.
+ */
+export function buildAlertPayload(
+  request: AlertRequest,
+  stationKey: string,
+): Record<string, unknown> {
+  const text = APNS_ALERT_TEXT[request.kind];
+  return {
+    aps: {
+      alert: { title: text.title, body: text.body },
+      ...(URGENT_ALERT_KINDS.has(request.kind) ? { sound: 'default' } : {}),
+      'mutable-content': 1,
+    },
+    [APNS_ALERT_PAYLOAD_KEY]: {
+      v: ALERT_PAYLOAD_VERSION,
+      rid: request.registrationId,
+      sk: stationKey,
+      sealed: request.sealed,
     },
   };
 }

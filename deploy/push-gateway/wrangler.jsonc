@@ -11,7 +11,7 @@
     // Every origin the gateway is reachable at. A Station token names one.
     "AUDIENCES": "https://push.kontourai.io",
     "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug",
-    // iOS bundles for Live Activities. APNs delivery also needs the
+    // iOS bundles for Live Activities and alerts. APNs delivery also needs the
     // APNS_AUTH_KEY and APNS_CHANNEL_AUTH_SECRET secrets; until both are set
     // the /v1/apns routes answer 503.
     "ALLOWED_IOS_BUNDLES": "io.kontourai.station,io.kontourai.station.beta,io.kontourai.station.nightly,io.kontourai.station.dev.instance",

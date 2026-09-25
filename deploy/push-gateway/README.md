@@ -27,6 +27,7 @@ narrow limit never spends a wider, shared budget.
 | `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
 | `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
 | `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple no longer has, `404 BadPath` on a delete, counts as deleted), 403 `channel-unauthorized`, 422, 503 |
+| `/v1/apns/alert` | `{ bundleId, environment, deviceToken, registrationId, kind, collapseId, sealed }` | 200 `{ result: "sent" }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 
 Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
 400 `{ error: <reason> }` on every route.
@@ -76,6 +77,25 @@ wrong one would already fail every create and start. Any other 404 is
 a 429 (Apple throttling the gateway) or `BroadcastFeatureNotEnabled` (the
 bundle's app id lacks the broadcast capability) is the gateway's own fault:
 the caller gets a retryable 503 and the reason goes to the error log.
+
+**Alerts (#2589).** `/v1/apns/alert` sends a regular alert push to one
+device: `/3/device/<deviceToken>`, `apns-push-type: alert`, topic the bundle id
+itself, `apns-collapse-id` the caller's `collapseId` (16 to 64 base64url
+characters: the Station sends a hash of its id and the notification's, so a
+later push for the same notification replaces the shown one), and an
+expiration one hour out. `deviceToken` is the app's regular APNs device token,
+not a Live Activity token. The visible text is chosen by `kind` from a fixed
+vocabulary (`APNS_ALERT_TEXT` in `src/apns-request.ts`): `attention`,
+`failed`, `done`, or `hidden` for a surface that hides content. `attention`
+and `failed` sound and go out at priority 10; `done` and `hidden` are silent at
+priority 5. The body is `{ aps: { alert, sound?, "mutable-content": 1 },
+station: { v: 1, rid, sk, sealed } }`: `sk` is stamped like `sk` on a Live
+Activity, and `sealed` (at most 3000 characters) is the notification sealed
+to the phone, for a Notification Service Extension to open (not built yet, so
+the fixed text is what shows). It is limited like a Live Activity update (per
+device token, per key, global) and spends no channel budget. `Unregistered`,
+`BadDeviceToken` and `DeviceTokenNotForTopic` mean `unregistered`. Not yet
+tried against Apple.
 
 ### Verified against the APNs sandbox (2026-09-24)
 
@@ -192,8 +212,8 @@ prefix; IPv4 addresses as they are.
 
 APNs ships dark: until both the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET`
 secrets are set (and the ids, bundle list, channel limiters and the
-`CHANNEL_LEDGER` Durable Object binding are present), both `/v1/apns` routes
-answer 503 without doing any work, the channel sweep does nothing, and the FCM
+`CHANNEL_LEDGER` Durable Object binding are present), every `/v1/apns` route
+answers 503 without doing any work, the channel sweep does nothing, and the FCM
 route is unaffected. The Durable Object is declared in `wrangler.jsonc`
 (`durable_objects` and a `new_sqlite_classes` migration) and created by the
 deploy; nothing to create by hand.
