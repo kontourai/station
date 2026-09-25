@@ -162,10 +162,13 @@ function deliveredGenuineStationControl(
     .at(-1);
   return (
     !!delivered &&
+    // The whole delivered shape, transport and endpoint included (#2614).
     isBuiltinStationControl(delivered.id, {
       id: delivered.id,
+      transport: delivered.transport,
       command: delivered.command,
       args: delivered.args,
+      endpoint: delivered.endpoint,
     } as ToolDef)
   );
 }
@@ -281,17 +284,8 @@ export function isAutoApprovedExternalTool(
     if (toolNameProvenance !== 'authentic') return false;
     // Check the entry that actually wins delivery (last-write-wins per id),
     // not merely "some entry with this id looks genuine" (Probe B).
-    const delivered = (resolvedToolServers ?? [])
-      .filter((server) => server.id === reservedServer)
-      .at(-1);
-    return (
-      !!delivered &&
-      isBuiltinStationControl(delivered.id, {
-        id: delivered.id,
-        command: delivered.command,
-        args: delivered.args,
-      } as ToolDef)
-    );
+    // (The only other reserved id, station-browser, returned above.)
+    return deliveredGenuineStationControl(resolvedToolServers);
   }
   return true;
 }

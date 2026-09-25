@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  isBuiltinStationControl,
+} from '../../bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
   isAutoApproved,
@@ -206,6 +209,48 @@ describe('tool-approval', () => {
           'authentic',
         ),
       ).toBe(false);
+    });
+
+    test('#2614: a definition with the genuine command/args but an http transport or an endpoint is not the built-in, and gets no grant', () => {
+      const httpTransport = {
+        ...GENUINE_STATION_CONTROL,
+        transport: 'streamable-http' as const,
+        endpoint: 'http://127.0.0.1:9/mcp',
+      };
+      const endpointOnly = {
+        ...GENUINE_STATION_CONTROL,
+        endpoint: 'http://127.0.0.1:9/mcp',
+      };
+      for (const server of [httpTransport, endpointOnly]) {
+        expect(
+          isBuiltinStationControl(server.id, { ...server, kind: 'mcp' }),
+        ).toBe(false);
+        expect(
+          isAutoApprovedExternalTool(
+            'mcp__station-control__notify_user',
+            [],
+            [server],
+            'authentic',
+          ),
+        ).toBe(false);
+        expect(
+          isAutoApprovedExternalTool(
+            'mcp__station-control__list_agents',
+            ['station-control_*'],
+            [server],
+            'authentic',
+          ),
+        ).toBe(false);
+      }
+      // Control: explicit stdio is still genuine.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__notify_user',
+          [],
+          [{ ...GENUINE_STATION_CONTROL, transport: 'stdio' as const }],
+          'authentic',
+        ),
+      ).toBe(true);
     });
 
     test('#2584 review: split-name impostors that canonicalize to station-control_notify_user are refused', () => {
