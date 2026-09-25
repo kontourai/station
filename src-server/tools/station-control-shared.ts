@@ -111,13 +111,11 @@ export type StationControlCallerAssurance =
 /**
  * How the acting principal was derived (see `SessionActingPrincipal` in
  * `services/orchestration/session-authorization.ts`). Declared once here; the
- * session-authorization module derives its type from this list.
+ * session-authorization module derives its type from this list. The only
+ * derivation is the session's recorded owner; a session with none acts for
+ * no one, so there is no inferred source.
  */
-const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = [
-  'session-owner',
-  'legacy-personal-owner',
-  'ownerless-single-operator',
-] as const;
+const STATION_CONTROL_CALLER_PRINCIPAL_SOURCES = ['session-owner'] as const;
 export type StationControlCallerPrincipalSource =
   (typeof STATION_CONTROL_CALLER_PRINCIPAL_SOURCES)[number];
 
@@ -126,11 +124,10 @@ export interface StationControlCallerPrincipal {
   readonly source: StationControlCallerPrincipalSource;
   /**
    * True only for `session-owner`: an owner Station recorded from the
-   * authenticated caller that started the session. A legacy alias mapping
-   * and the ownerless single-operator mapping name the operator by
-   * inference, so they must never grant anything beyond what the session
-   * already had; a consumer that elevates (a Project-role check for browser
-   * tools) must require this flag.
+   * authenticated caller that started the session. That is today the only
+   * source, but a consumer that elevates (a Project-role check for browser
+   * tools) must still require this flag rather than assume it, so a future
+   * inferred derivation cannot elevate by default.
    */
   readonly elevationEligible: boolean;
 }

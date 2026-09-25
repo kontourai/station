@@ -51,10 +51,10 @@ import {
 } from './policy.js';
 
 /**
- * Where focus comes from: #2585's `FocusPresence.snapshotForPrincipals`.
- * Each entry names the principal that reported it. Until it is wired,
- * {@link NO_FOCUS} reports nothing focused, which is exactly today's
- * behaviour (every surface is interrupted).
+ * Where focus comes from: #2585's `FocusPresence.snapshotForPrincipals`
+ * (the runtime wires its one instance, #2620). Each entry names the
+ * principal that reported it. Without one, {@link NO_FOCUS} reports nothing
+ * focused and every surface is interrupted.
  */
 export interface FocusSource {
   snapshotForPrincipals(
@@ -68,8 +68,9 @@ const NO_FOCUS: FocusSource = { snapshotForPrincipals: () => new Map() };
  * Whether a surface can show an in-app toast right now: a connected event
  * stream for that device or client session. A focused surface without one
  * does not count as focused, so it can never silence the others while
- * showing nothing itself. {@link NO_LIVE_IN_APP} says no surface is live,
- * which makes focus inert — the safe side (interrupt) until it is wired.
+ * showing nothing itself. The runtime reads its event-stream leases
+ * (`client-stream-presence.ts`, #2620). {@link NO_LIVE_IN_APP} says no
+ * surface is live, which makes focus inert — the safe side (interrupt).
  */
 export interface InAppLiveness {
   isLive(surface: SurfaceId): boolean;
