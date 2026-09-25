@@ -14,13 +14,21 @@
 //! The answer is static for the process, so the role never changes hands at
 //! runtime and the two can never both post. The one handoff is across an app
 //! upgrade: an older build's webview kept its cursor in localStorage. The
-//! webview hands that cursor over once (`notification_feed_adopt_cursor`) and
-//! deletes its copy; this consumer adopts it only when it has no cursor of
-//! its own for that Station. Until either a handed-over cursor or its own
-//! cursor exists, it reads without applying for up to [`ADOPTION_GRACE_MS`],
-//! and then starts from the cursor it saw on its FIRST read — so nothing that
-//! arrives after the first read is lost, and a backlog an earlier consumer
-//! already alerted is not replayed.
+//! webview offers that cursor once (`notification_feed_adopt_cursor`); this
+//! consumer takes it only when it has no cursor of its own for that Station,
+//! and the webview deletes its copy only when it was taken. Until either a
+//! handed-over cursor or its own cursor exists, it reads without applying for
+//! up to [`ADOPTION_GRACE_MS`], then starts from the cursor it saw on its
+//! FIRST read — so nothing that arrives after the first read is lost, and a
+//! backlog an earlier consumer already alerted is not replayed. An offer that
+//! arrives after the grace is refused: entries queued between the webview's
+//! cursor and this consumer's first read (while the app was closed for the
+//! upgrade) are then not alerted.
+//!
+//! **Delivery is at-least-once.** A read is decided under the consumer lock,
+//! the alerts are posted with the lock released, and the cursor is committed
+//! afterwards. A crash between posting and that commit posts those entries
+//! again on the next run; the in-memory dedupe does not survive a restart.
 //!
 //! **Same surface, same credential.** The read goes to the host-authorized
 //! active Station with that profile's bearer — the exact authority the
@@ -54,6 +62,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Well inside the server's 90 s host lease (`DESKTOP_HOST_LEASE_MS`); the
 /// same cadence the webview used.
@@ -160,7 +169,8 @@ pub(crate) fn parse_feed_response(body: &str) -> Option<Feed> {
 /// same-origin absolute path (`/…`, optionally with a query); refuses
 /// schemes, protocol-relative `//host`, backslashes, fragments, control
 /// characters and oversize values, so a click can navigate the app but never
-/// open anything outside it.
+/// open anything outside it. The NORMALIZED path is checked and returned:
+/// dot segments (`/..//host`, `/%2e%2e//host`) can collapse to `//host`.
 pub(crate) fn in_app_link(link: Option<&str>) -> Option<String> {
     let link = link?;
     if link.is_empty()
@@ -175,7 +185,13 @@ pub(crate) fn in_app_link(link: Option<&str>) -> Option<String> {
     }
     let base = url::Url::parse("https://station.invalid/").ok()?;
     let joined = base.join(link).ok()?;
-    (joined.origin() == base.origin()).then(|| link.to_string())
+    if joined.origin() != base.origin() || joined.path().starts_with("//") {
+        return None;
+    }
+    Some(match joined.query() {
+        Some(query) => format!("{}?{query}", joined.path()),
+        None => joined.path().to_string(),
+    })
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -186,14 +202,61 @@ pub(crate) struct Applied {
     pub waiting: bool,
 }
 
+/// What one read decided, made under the consumer lock and carried out
+/// (OS calls) after it is released.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Action {
+    Post { alert: Alert, key: String },
+    Close(String),
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct Plan {
+    pub actions: Vec<Action>,
+    /// The position to commit once the actions ran; `None` while waiting.
+    commit: Option<StoredCursor>,
+}
+
+impl Plan {
+    pub(crate) fn waiting(&self) -> bool {
+        self.commit.is_none()
+    }
+}
+
+/// Carry out a plan's OS calls. Returns the dedupe keys of alerts the OS
+/// accepted (a refused post is not remembered or counted) and the counts.
+pub(crate) fn execute(actions: Vec<Action>, sink: &mut dyn AlertSink) -> (Vec<String>, Applied) {
+    let mut accepted = Vec::new();
+    let mut applied = Applied::default();
+    for action in actions {
+        match action {
+            Action::Post { alert, key } => {
+                if sink.post(&alert) {
+                    accepted.push(key);
+                    applied.posted += 1;
+                }
+            }
+            Action::Close(notification_id) => {
+                if sink.close(&notification_id) {
+                    applied.closed += 1;
+                }
+            }
+        }
+    }
+    (accepted, applied)
+}
+
 /// The consumer's decisions, free of HTTP and OS calls so they can be tested.
 #[derive(Default)]
 pub(crate) struct FeedConsumer {
     /// Per Station origin: where this consumer has read to.
     cursors: HashMap<String, StoredCursor>,
+    /// Origins by last commit, least recent first (bounds `cursors`).
+    recent: VecDeque<String>,
     /// Cursors handed over by the webview, per origin, not yet adopted.
     handed_over: HashMap<String, StoredCursor>,
-    /// Per origin without a cursor: the first read's position and when.
+    /// Per origin without a cursor: the first read's position and when, on
+    /// the caller's MONOTONIC millisecond clock.
     first_read: HashMap<String, (StoredCursor, u64)>,
     posted: VecDeque<String>,
     posted_set: HashSet<String>,
@@ -202,6 +265,7 @@ pub(crate) struct FeedConsumer {
 impl FeedConsumer {
     pub(crate) fn with_cursors(cursors: HashMap<String, StoredCursor>) -> Self {
         Self {
+            recent: cursors.keys().cloned().collect(),
             cursors,
             ..Self::default()
         }
@@ -223,28 +287,27 @@ impl FeedConsumer {
     }
 
     /// The webview's cursor from an older build (see the module comment).
-    /// Adopted only when this consumer has none for that origin; either way
-    /// the webview's copy is obsolete, so the answer is whether this consumer
-    /// now owns the position (always, for a well-formed cursor).
+    /// Returns whether it was taken: only when this consumer has no cursor of
+    /// its own for that origin. A `false` leaves the webview's copy in place.
     pub(crate) fn hand_over(&mut self, origin: &str, cursor: StoredCursor) -> bool {
-        if cursor.surface.is_empty() || cursor.epoch.is_empty() {
+        if cursor.surface.is_empty() || cursor.epoch.is_empty() || self.cursors.contains_key(origin)
+        {
             return false;
         }
-        if !self.cursors.contains_key(origin) {
-            self.handed_over.insert(origin.to_string(), cursor);
-        }
+        self.handed_over.insert(origin.to_string(), cursor);
         true
     }
 
-    pub(crate) fn apply(
+    /// Decide one read. No OS call happens here; see [`execute`] and
+    /// [`FeedConsumer::finish`].
+    pub(crate) fn plan(
         &mut self,
         origin: &str,
         feed: &Feed,
         focused: bool,
         now_ms: u64,
-        sink: &mut dyn AlertSink,
         store: &mut dyn CursorStore,
-    ) -> Applied {
+    ) -> Plan {
         // A cursor stored for another surface (another installation, or the
         // credential now reads as a different caller) says nothing here.
         if self
@@ -253,18 +316,14 @@ impl FeedConsumer {
             .is_some_and(|stored| stored.surface != feed.surface)
         {
             self.cursors.remove(origin);
+            self.recent.retain(|key| key != origin);
             store.save(&self.cursors);
         }
         let start = match self.cursors.get(origin) {
             Some(stored) => stored.clone(),
             None => match self.start_without_cursor(origin, feed, now_ms) {
                 Some(start) => start,
-                None => {
-                    return Applied {
-                        waiting: true,
-                        ..Applied::default()
-                    }
-                }
+                None => return Plan::default(),
             },
         };
         let from = if start.epoch == feed.epoch {
@@ -284,16 +343,13 @@ impl FeedConsumer {
                 retracted_at.insert(entry.notification_id(), entry.seq());
             }
         }
-        let mut applied = Applied::default();
+        let mut planned_keys = HashSet::new();
+        let mut actions = Vec::new();
         for entry in entries {
             match entry {
                 FeedEntry::Retract {
                     notification_id, ..
-                } => {
-                    if sink.close(notification_id) {
-                        applied.closed += 1;
-                    }
-                }
+                } => actions.push(Action::Close(notification_id.clone())),
                 FeedEntry::Alert {
                     seq,
                     notification_id,
@@ -309,22 +365,69 @@ impl FeedConsumer {
                     // under the same id with new content alerts again.
                     let key = serde_json::to_string(&(notification_id, title, body, urgency))
                         .unwrap_or_default();
-                    if !retracted_later && !focused && !self.posted_set.contains(&key) {
-                        sink.post(&Alert {
-                            notification_id: notification_id.clone(),
-                            title: title.clone(),
-                            body: body.clone(),
-                            link: in_app_link(link.as_deref()),
+                    if !retracted_later
+                        && !focused
+                        && !self.posted_set.contains(&key)
+                        && planned_keys.insert(key.clone())
+                    {
+                        actions.push(Action::Post {
+                            alert: Alert {
+                                notification_id: notification_id.clone(),
+                                title: title.clone(),
+                                body: body.clone(),
+                                link: in_app_link(link.as_deref()),
+                            },
+                            key,
                         });
-                        self.remember_posted(key);
-                        applied.posted += 1;
                     }
                 }
             }
-            // The cursor moves as entries are handled, never ahead of them.
-            self.commit(origin, feed, entry.seq(), store);
         }
-        self.commit(origin, feed, feed.cursor, store);
+        Plan {
+            actions,
+            commit: Some(StoredCursor {
+                surface: feed.surface.clone(),
+                cursor: feed.cursor,
+                epoch: feed.epoch.clone(),
+            }),
+        }
+    }
+
+    /// Record a plan's outcome: remember the accepted alerts and commit the
+    /// cursor. Committing AFTER the OS calls makes delivery at-least-once: a
+    /// crash between posting and this save posts those entries again.
+    pub(crate) fn finish(
+        &mut self,
+        origin: &str,
+        plan_commit: Option<StoredCursor>,
+        accepted: Vec<String>,
+        store: &mut dyn CursorStore,
+    ) {
+        for key in accepted {
+            self.remember_posted(key);
+        }
+        if let Some(next) = plan_commit {
+            self.commit(origin, next, store);
+        }
+    }
+
+    /// Plan, execute and finish in one call, for callers without a lock to
+    /// release in between (tests).
+    #[cfg(test)]
+    pub(crate) fn apply(
+        &mut self,
+        origin: &str,
+        feed: &Feed,
+        focused: bool,
+        now_ms: u64,
+        sink: &mut dyn AlertSink,
+        store: &mut dyn CursorStore,
+    ) -> Applied {
+        let plan = self.plan(origin, feed, focused, now_ms, store);
+        let waiting = plan.waiting();
+        let (accepted, mut applied) = execute(plan.actions, sink);
+        self.finish(origin, plan.commit, accepted, store);
+        applied.waiting = waiting;
         applied
     }
 
@@ -368,22 +471,20 @@ impl FeedConsumer {
         }
     }
 
-    fn commit(&mut self, origin: &str, feed: &Feed, cursor: u64, store: &mut dyn CursorStore) {
-        let next = StoredCursor {
-            surface: feed.surface.clone(),
-            cursor,
-            epoch: feed.epoch.clone(),
-        };
+    fn commit(&mut self, origin: &str, next: StoredCursor, store: &mut dyn CursorStore) {
+        self.handed_over.remove(origin);
+        self.recent.retain(|key| key != origin);
+        self.recent.push_back(origin.to_string());
         if self.cursors.get(origin) == Some(&next) {
             return;
         }
         self.cursors.insert(origin.to_string(), next);
-        self.handed_over.remove(origin);
-        if self.cursors.len() > MAX_STORED_ORIGINS {
-            // Bounded: keep the origin just written and drop an arbitrary other.
-            if let Some(other) = self.cursors.keys().find(|key| *key != origin).cloned() {
-                self.cursors.remove(&other);
-            }
+        // Bounded: drop the least recently committed other origin.
+        while self.cursors.len() > MAX_STORED_ORIGINS {
+            let Some(oldest) = self.recent.pop_front() else {
+                break;
+            };
+            self.cursors.remove(&oldest);
         }
         store.save(&self.cursors);
     }
@@ -400,15 +501,90 @@ impl FeedConsumer {
     }
 }
 
+/// The consumer behind one lock that is never held across an OS call: a
+/// read is planned under it, the alerts are posted or closed after it is
+/// released, and the outcome is committed under it again. A notification
+/// backend that stalls therefore never blocks a cursor handover.
+pub(crate) struct SharedConsumer<C> {
+    inner: Mutex<Option<(FeedConsumer, C)>>,
+}
+
+impl<C: CursorStore> SharedConsumer<C> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+
+    fn with<T>(
+        &self,
+        init: impl FnOnce() -> Option<(FeedConsumer, C)>,
+        run: impl FnOnce(&mut FeedConsumer, &mut C) -> T,
+    ) -> Option<T> {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.is_none() {
+            *guard = init();
+        }
+        let (consumer, store) = guard.as_mut()?;
+        Some(run(consumer, store))
+    }
+
+    pub(crate) fn request(
+        &self,
+        init: impl FnOnce() -> Option<(FeedConsumer, C)>,
+        origin: &str,
+    ) -> Option<(u64, Option<String>)> {
+        self.with(init, |consumer, _| consumer.request(origin))
+    }
+
+    pub(crate) fn hand_over(
+        &self,
+        init: impl FnOnce() -> Option<(FeedConsumer, C)>,
+        origin: &str,
+        cursor: StoredCursor,
+    ) -> bool {
+        self.with(init, |consumer, _| consumer.hand_over(origin, cursor))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn apply(
+        &self,
+        init: impl FnOnce() -> Option<(FeedConsumer, C)>,
+        origin: &str,
+        feed: &Feed,
+        focused: bool,
+        now_ms: u64,
+        sink: &mut dyn AlertSink,
+    ) -> Option<Applied> {
+        let plan = self.with(init, |consumer, store| {
+            consumer.plan(origin, feed, focused, now_ms, store)
+        })?;
+        let waiting = plan.waiting();
+        // No consumer lock from here until the outcome is committed.
+        let (accepted, mut applied) = execute(plan.actions, sink);
+        self.with(
+            || None,
+            |consumer, store| consumer.finish(origin, plan.commit, accepted, store),
+        );
+        applied.waiting = waiting;
+        Some(applied)
+    }
+}
+
 /// The cursor file in the app config directory: `{ "<origin>": StoredCursor }`.
 pub(crate) struct CursorFile {
     path: PathBuf,
+    warned: bool,
 }
 
 impl CursorFile {
     pub(crate) fn in_dir(dir: &Path) -> Self {
         Self {
             path: dir.join(CURSOR_FILE),
+            warned: false,
         }
     }
 
@@ -420,6 +596,30 @@ impl CursorFile {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default()
     }
+
+    fn write(&self, raw: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        // Write-then-rename so a crash never leaves a half-written file;
+        // owner-only where the platform has modes.
+        let temporary = self
+            .path
+            .with_extension(format!("{}.tmp", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let written = options
+            .open(&temporary)
+            .and_then(|mut file| file.write_all(raw.as_bytes()))
+            .and_then(|()| std::fs::rename(&temporary, &self.path));
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        written
+    }
 }
 
 impl CursorStore for CursorFile {
@@ -427,18 +627,14 @@ impl CursorStore for CursorFile {
         let Ok(raw) = serde_json::to_string(cursors) else {
             return;
         };
-        if let Some(dir) = self.path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        // Write-then-rename so a crash never leaves a half-written file.
-        let temporary = self
-            .path
-            .with_extension(format!("{}.tmp", std::process::id()));
-        if std::fs::write(&temporary, raw).is_ok() {
-            if let Err(error) = std::fs::rename(&temporary, &self.path) {
+        match self.write(&raw) {
+            Ok(()) => self.warned = false,
+            Err(error) if !self.warned => {
+                // Once per failure streak: the poll repeats every 20 s.
+                self.warned = true;
                 log::warn!("could not persist the notification delivery cursor: {error}");
-                let _ = std::fs::remove_file(&temporary);
             }
+            Err(_) => {}
         }
     }
 }
@@ -450,8 +646,8 @@ pub(crate) use host::*;
 mod host {
     use super::*;
     use std::io::Read;
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
     use tauri::{AppHandle, Emitter, Manager, Runtime};
 
     const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -460,6 +656,8 @@ mod host {
     /// Threads waiting on a click, at most. Past this an alert still shows;
     /// only its click is not observed.
     const MAX_CLICK_WAITERS: usize = 32;
+    /// The longest one OS notification call (show, close) may take.
+    const OS_CALL_TIMEOUT: Duration = Duration::from_secs(5);
     /// Posted alerts whose handle is kept for a retract (Linux), at most.
     #[cfg(all(unix, not(target_os = "macos")))]
     const MAX_HELD_HANDLES: usize = 64;
@@ -467,7 +665,7 @@ mod host {
     /// Managed state. Its presence is what `notification_feed_native_consumer`
     /// reports: a host that manages it runs the consumer thread.
     pub(crate) struct NotificationFeed {
-        consumer: Mutex<Option<(FeedConsumer, CursorFile)>>,
+        consumer: SharedConsumer<CursorFile>,
         open_link: Mutex<Option<(String, Instant)>>,
         sink: Mutex<Option<OsAlertSink>>,
     }
@@ -475,39 +673,47 @@ mod host {
     impl Default for NotificationFeed {
         fn default() -> Self {
             Self {
-                consumer: Mutex::new(None),
+                consumer: SharedConsumer::new(),
                 open_link: Mutex::new(None),
                 sink: Mutex::new(None),
             }
         }
     }
 
-    fn now_ms() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
+    /// Milliseconds on a monotonic clock: the adoption grace must not jump
+    /// with a wall-clock change.
+    fn monotonic_ms() -> u64 {
+        static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        START.get_or_init(Instant::now).elapsed().as_millis() as u64
     }
 
     fn config_dir(app: &AppHandle) -> Option<PathBuf> {
         app.path().app_config_dir().ok()
     }
 
-    fn with_consumer<T>(
-        app: &AppHandle,
-        run: impl FnOnce(&mut FeedConsumer, &mut CursorFile) -> T,
-    ) -> Option<T> {
-        let state = app.try_state::<NotificationFeed>()?;
-        let mut guard = state
-            .consumer
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if guard.is_none() {
+    fn init_consumer(app: &AppHandle) -> impl FnOnce() -> Option<(FeedConsumer, CursorFile)> + '_ {
+        move || {
             let file = CursorFile::in_dir(&config_dir(app)?);
-            *guard = Some((FeedConsumer::with_cursors(file.load()), file));
+            Some((FeedConsumer::with_cursors(file.load()), file))
         }
-        let (consumer, file) = guard.as_mut()?;
-        Some(run(consumer, file))
+    }
+
+    /// Run one OS notification call off the calling thread and wait at most
+    /// [`OS_CALL_TIMEOUT`]. A D-Bus server that never answers then costs a
+    /// parked helper thread, not a stalled poll.
+    fn bounded<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("station-notification-os-call".into())
+            .spawn(move || {
+                let _ = sender.send(work());
+            })
+            .ok()?;
+        let answer = receiver.recv_timeout(OS_CALL_TIMEOUT).ok();
+        if answer.is_none() {
+            log::warn!("a notification call did not answer within {OS_CALL_TIMEOUT:?}");
+        }
+        answer
     }
 
     /// Start the consumer thread. Called once from setup, after the tray.
@@ -542,8 +748,8 @@ mod host {
         else {
             return;
         };
-        let Some((after, epoch)) = with_consumer(app, |consumer, _| consumer.request(&origin))
-        else {
+        let state = app.state::<NotificationFeed>();
+        let Some((after, epoch)) = state.consumer.request(init_consumer(app), &origin) else {
             return;
         };
         let Some(feed) = read_feed(&origin, &credential, &installation, after, epoch.as_deref())
@@ -551,15 +757,21 @@ mod host {
             return;
         };
         let focused = main_window_focused(app);
-        let state = app.state::<NotificationFeed>();
+        // Only the sink lock is held across the OS calls; the consumer lock
+        // is taken to plan and to commit (see `SharedConsumer::apply`).
         let mut sink_guard = state
             .sink
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let sink = sink_guard.get_or_insert_with(|| OsAlertSink::new(app.clone()));
-        let _ = with_consumer(app, |consumer, file| {
-            consumer.apply(&origin, &feed, focused, now_ms(), sink, file)
-        });
+        let _ = state.consumer.apply(
+            init_consumer(app),
+            &origin,
+            &feed,
+            focused,
+            monotonic_ms(),
+            sink,
+        );
     }
 
     fn read_feed(
@@ -628,6 +840,13 @@ mod host {
     }
 
     /// Closes what the platform backend can close; see the module comment.
+    ///
+    /// Clicks are observed by one waiting thread per alert, at most
+    /// [`MAX_CLICK_WAITERS`]. On macOS (NSUserNotificationCenter) a waiter
+    /// returns only when its notification is clicked, dismissed, or leaves
+    /// Notification Center, so a person who never clears Notification Center
+    /// keeps its slots taken: past the cap, alerts still show but their
+    /// clicks open nothing.
     pub(crate) struct OsAlertSink {
         app: AppHandle,
         waiters: Arc<std::sync::atomic::AtomicUsize>,
@@ -671,7 +890,8 @@ mod host {
             let _ = notify_rust::set_application(&self.app.config().identifier);
             #[cfg(target_os = "windows")]
             notification.app_id(&self.app.config().identifier);
-            let Ok(shown) = notification.show() else {
+            // Bounded: on Linux `show` is a D-Bus round trip.
+            let Some(Ok(shown)) = bounded(move || notification.show()) else {
                 return false;
             };
             let app = self.app.clone();
@@ -753,8 +973,9 @@ mod host {
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .remove(notification_id);
                 if let Some(handle) = held {
-                    tauri::async_runtime::block_on(handle.close_async());
-                    return true;
+                    // Bounded D-Bus `CloseNotification`.
+                    return bounded(move || tauri::async_runtime::block_on(handle.close_async()))
+                        .is_some();
                 }
                 false
             }
@@ -777,17 +998,27 @@ mod host {
 
     /// The webview hands over the cursor an older build kept in
     /// localStorage. `origin` is the Station origin the cursor belongs to.
-    #[tauri::command]
-    pub(crate) fn notification_feed_adopt_cursor(
+    /// Main window only, and off the main thread: it takes the consumer lock.
+    #[tauri::command(async)]
+    pub(crate) fn notification_feed_adopt_cursor<R: Runtime>(
+        window: tauri::WebviewWindow<R>,
         app: AppHandle,
         origin: String,
         cursor: StoredCursor,
     ) -> bool {
+        if window.label() != "main" {
+            return false;
+        }
         let Ok(parsed) = url::Url::parse(&origin) else {
             return false;
         };
         let origin = parsed.origin().ascii_serialization();
-        with_consumer(&app, |consumer, _| consumer.hand_over(&origin, cursor)).unwrap_or(false)
+        let Some(state) = app.try_state::<NotificationFeed>() else {
+            return false;
+        };
+        state
+            .consumer
+            .hand_over(init_consumer(&app), &origin, cursor)
     }
 
     /// The link the last notification click asked for, once. Main window only.
@@ -926,6 +1157,15 @@ mod tests {
             &mut sink,
             &mut file,
         );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.path().join(CURSOR_FILE))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600, "the cursor file is owner-only");
+        }
         let restarted = FeedConsumer::with_cursors(CursorFile::in_dir(dir.path()).load());
         assert_eq!(restarted.cursor(ORIGIN), Some(&stored(3, "run-1")));
         assert_eq!(restarted.request(ORIGIN), (3, Some("run-1".into())));
@@ -1038,7 +1278,10 @@ mod tests {
     fn a_handed_over_cursor_never_rewinds_one_the_consumer_already_has() {
         let mut consumer = started(4, "run-1");
         let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
-        assert!(consumer.hand_over(ORIGIN, stored(1, "run-1")));
+        assert!(
+            !consumer.hand_over(ORIGIN, stored(1, "run-1")),
+            "a cursor that is not adopted must not be reported as taken"
+        );
         consumer.apply(
             ORIGIN,
             &feed(
@@ -1168,10 +1411,18 @@ mod tests {
             "/a#frag",
             "/a b",
             "/a\nb",
+            "/a\u{85}b",
             "",
+            // Dot segments that normalize to a protocol-relative `//host`.
+            "/..//evil.example",
+            "/.//evil.example",
+            "/%2e%2e//evil.example",
+            "/%2E%2E//evil.example/x?y=1",
         ] {
             assert_eq!(in_app_link(Some(bad)), None, "{bad:?}");
         }
+        // The normalized path is what a click navigates to.
+        assert_eq!(in_app_link(Some("/a/../b?x=1")).as_deref(), Some("/b?x=1"));
         assert_eq!(
             in_app_link(Some(&format!("/{}", "a".repeat(MAX_LINK_LEN)))),
             None
@@ -1216,5 +1467,147 @@ mod tests {
             parse_feed_response(r#"{"success":true,"data":{"surface":"s","cursor":1}}"#).is_none()
         );
         assert!(parse_feed_response("not json").is_none());
+    }
+
+    #[test]
+    fn a_post_the_os_refuses_is_not_counted_or_remembered() {
+        struct Refusing(usize);
+        impl AlertSink for Refusing {
+            fn post(&mut self, _alert: &Alert) -> bool {
+                self.0 += 1;
+                false
+            }
+            fn close(&mut self, _notification_id: &str) -> bool {
+                false
+            }
+        }
+        let mut consumer = started(0, "run-1");
+        let (mut sink, mut store) = (Refusing(0), MemoryStore::default());
+        let applied = consumer.apply(
+            ORIGIN,
+            &feed(1, vec![alert(1, "n-1")], "run-1"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert_eq!(applied.posted, 0);
+        // Not remembered: the same content re-delivered after a restart is tried again.
+        consumer.apply(
+            ORIGIN,
+            &feed(1, vec![alert(1, "n-1")], "run-2"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert_eq!(sink.0, 2);
+    }
+
+    #[test]
+    fn the_least_recently_used_origin_is_evicted() {
+        let mut consumer = FeedConsumer::default();
+        let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
+        let origin = |index: usize| format!("http://127.0.0.1:{}", 5000 + index);
+        for index in 0..MAX_STORED_ORIGINS {
+            assert!(consumer.hand_over(&origin(index), stored(0, "run-1")));
+            consumer.apply(
+                &origin(index),
+                &feed(1, vec![], "run-1"),
+                false,
+                0,
+                &mut sink,
+                &mut store,
+            );
+        }
+        // Origin 0 is used again, so origin 1 is now the least recent.
+        consumer.apply(
+            &origin(0),
+            &feed(2, vec![], "run-1"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert!(consumer.hand_over(&origin(99), stored(0, "run-1")));
+        consumer.apply(
+            &origin(99),
+            &feed(1, vec![], "run-1"),
+            false,
+            0,
+            &mut sink,
+            &mut store,
+        );
+        assert!(consumer.cursor(&origin(0)).is_some());
+        assert!(consumer.cursor(&origin(1)).is_none());
+        assert!(consumer.cursor(&origin(99)).is_some());
+    }
+
+    #[test]
+    fn a_blocked_sink_does_not_block_a_handover_or_hold_the_consumer_lock() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        struct Blocking {
+            entered: Sender<()>,
+            release: Receiver<()>,
+        }
+        impl AlertSink for Blocking {
+            fn post(&mut self, _alert: &Alert) -> bool {
+                let _ = self.entered.send(());
+                let _ = self.release.recv();
+                true
+            }
+            fn close(&mut self, _notification_id: &str) -> bool {
+                false
+            }
+        }
+        let shared: Arc<SharedConsumer<MemoryStore>> = Arc::new(SharedConsumer::new());
+        let init = || Some((started(0, "run-1"), MemoryStore::default()));
+        assert!(shared.request(init, ORIGIN).is_some());
+        let (entered_tx, entered_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let applying = {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                let mut sink = Blocking {
+                    entered: entered_tx,
+                    release: release_rx,
+                };
+                shared.apply(
+                    || None,
+                    ORIGIN,
+                    &feed(1, vec![alert(1, "n-1")], "run-1"),
+                    false,
+                    0,
+                    &mut sink,
+                )
+            })
+        };
+        entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the sink was reached");
+        // The sink is stalled inside an OS call. A handover must still run.
+        let (done_tx, done_rx) = channel();
+        {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                let _ = done_tx.send(shared.hand_over(
+                    || None,
+                    "http://127.0.0.1:4200",
+                    stored(3, "run-1"),
+                ));
+            });
+        }
+        let handed = done_rx.recv_timeout(Duration::from_secs(2));
+        release_tx.send(()).unwrap();
+        let applied = applying.join().unwrap().unwrap();
+        assert_eq!(handed, Ok(true), "a handover waited on a stalled OS call");
+        assert_eq!(applied.posted, 1);
+        assert_eq!(
+            shared.request(|| None, ORIGIN),
+            Some((1, Some("run-1".into())))
+        );
     }
 }
