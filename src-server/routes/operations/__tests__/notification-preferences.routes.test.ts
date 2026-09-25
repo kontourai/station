@@ -185,6 +185,10 @@ describe('GET/PUT /api/notifications/preferences', () => {
     );
     expect(put.status).toBe(403);
     expect(put.json.error).toBe('person_required');
+    // Each handler carries its own guard, so each method is pinned.
+    const patch = await call('PATCH', { agentNotifications: 'all' }, principal);
+    expect(patch.status).toBe(403);
+    expect(patch.json.error).toBe('person_required');
     expect((await call('GET')).json.stored).toBe(false);
   });
 
