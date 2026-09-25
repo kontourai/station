@@ -9,6 +9,7 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { Hono } from 'hono';
 import {
@@ -33,13 +34,16 @@ import {
   mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
+import {
+  type NotificationDeliveryWiring,
+  wireNotificationDelivery,
+} from '../../../runtime/routes/notification-delivery-wiring.js';
 import { isStationInternalRequest } from '../../../services/browser/browser-request-origin.js';
 import {
   AgentNotificationGate,
   scheduleAgentNotificationVia,
 } from '../../../services/notifications/agent-notification-gate.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
-import { wireWebPushDelivery } from '../../../services/notifications/web-push-delivery.js';
 import type { WebPushService } from '../../../services/notifications/web-push-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { agentNotificationOps } from '../../../telemetry/metrics.js';
@@ -87,6 +91,7 @@ let baseUrl: string;
 let storeDir: string;
 let service: NotificationService;
 let gate: AgentNotificationGate;
+let delivery: NotificationDeliveryWiring;
 const pushSend = vi.fn<WebPushService['send']>(async () => 'sent');
 
 function quietLogger(): Logger {
@@ -107,9 +112,23 @@ beforeAll(async () => {
   storeDir = makeTempDir('agent-notifications-routes-');
   const eventBus = new EventBus();
   service = new NotificationService(eventBus, storeDir, 999_999);
-  wireWebPushDelivery(
+  delivery = wireNotificationDelivery({
+    enabled: true,
+    homeDir: makeTempDir('agent-notifications-delivery-'),
     eventBus,
-    {
+    logger: quietLogger(),
+    devicePairing: {
+      listDevices: () => [
+        {
+          id: 'phone',
+          name: 'Phone',
+          scope: 'orchestration:read orchestration:operate',
+          kind: 'device',
+          createdAt: 1,
+          revokedAt: null,
+          principalBinding: undefined,
+        } as PairedDevice,
+      ],
       listPushSubscriptions: () => [
         {
           deviceId: 'phone',
@@ -121,9 +140,13 @@ beforeAll(async () => {
       ],
       clearPushSubscription: () => {},
     },
-    { send: pushSend },
-    quietLogger(),
-  );
+    webPushService: { send: pushSend },
+    // No device can read any session, so agent records (session-readers
+    // audience) resolve to no pushable surface; a legacy owner record (no
+    // named session) still reaches the phone.
+    canUserReadSession: () => false,
+    listNotifications: () => service.list(),
+  });
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -178,6 +201,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  delivery.router.stop();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await service.shutdown();
   delete process.env.STATION_API_BASE;
@@ -501,8 +525,8 @@ describe('POST /notifications refuses agents and still serves people', () => {
   });
 });
 
-describe('agent notifications stay out of the legacy Web Push fan-out (#2586)', () => {
-  test('an agent notification is delivered in-app but never pushed; a classified system notification on the same bus still is', async () => {
+describe('agent notifications resolve to no pushable surface unless a device can read their session (#2586)', () => {
+  test('an agent notification is delivered in-app but never pushed (no device can read its session); a classified system notification on the same bus still is', async () => {
     for (const urgency of ['info', 'attention', 'done', 'failed']) {
       // One session per urgency: a root's burst is three.
       const { token } = mintStationControlMcpToken(
