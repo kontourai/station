@@ -130,7 +130,11 @@ export function filePreviewPanePresentationLabel(
     !isCanonicalFilePreviewPaneInstance(instance, state)
   )
     return null;
-  const prefix = 'File Preview — ';
+  // A preview read through a session's thread names a file in the session's
+  // own directory; the label says so, as the tab title does.
+  const prefix = state!.thread
+    ? 'File Preview (session directory) — '
+    : 'File Preview — ';
   const available = 160 - prefix.length;
   const path = state!.path;
   return `${prefix}${

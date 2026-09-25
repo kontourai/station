@@ -1,6 +1,8 @@
+import { isWorkspaceFilePreviewRelativePath } from '@kontourai/station-contracts/workspace-file-preview';
 import { usePullRequestContextQuery } from '@kontourai/station-sdk';
 import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { toastStore } from '../../contexts/ToastContext';
 import {
   openFilePreviewInRegion,
   openPullRequestInRegion,
@@ -9,7 +11,13 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../../platform/openExternalLink';
-import { chipFor, PullRequestLinkState, textOf } from './ChatLinkChip';
+import {
+  chipFor,
+  LinkHostBadge,
+  mismatchedLinkHost,
+  PullRequestLinkState,
+  textOf,
+} from './ChatLinkChip';
 import {
   type MarkdownLinkContextValue,
   useMarkdownLinkContext,
@@ -57,7 +65,9 @@ import { useWorkspaceFileExists } from './useWorkspaceFileExists';
  * through its thread id — the server reads that directory only when it can
  * vouch it is this project's, and otherwise answers nothing (no mention links,
  * a preview is refused), never the checkout's copy. Without a thread id there
- * is no way to read it, and mentions are not linked (`resolvable: false`).
+ * is no way to read it (`resolvable: false`): mentions are not linked, and an
+ * explicit path link is refused with a notice rather than opened against the
+ * checkout.
  */
 function fileScope(link: MarkdownLinkContextValue | null): {
   roots: readonly string[];
@@ -132,9 +142,29 @@ function activate(
     void openNativeExternalLink(target.url);
     return;
   }
+  // A path in a session whose directory this UI cannot read (it runs
+  // outside the checkout and there is no thread to read it through) names a
+  // file the checkout may not hold, or holds at different content. Opening
+  // the checkout's copy under that name would preview the wrong file, so the
+  // click is refused — visibly, since a click that does nothing silently
+  // reads as a broken link. Mentions never reach here: they are not linked
+  // at all in that scope.
+  const scope = fileScope(link);
+  if (!scope.resolvable) {
+    event.preventDefault();
+    toastStore.show(
+      "This file is in the session's own directory, which can't be previewed here.",
+      undefined,
+      5000,
+      undefined,
+      undefined,
+      'warning',
+    );
+    return;
+  }
   if (dockCanHold) {
     event.preventDefault();
-    const thread = fileScope(link).thread;
+    const thread = scope.thread;
     const outcome = openFilePreviewInRegion(model, {
       projectId: link.projectId,
       projectSlug: link.projectSlug,
@@ -167,8 +197,7 @@ function activate(
   // one behaviour to reason about instead of two wrong ones.
   event.preventDefault();
   // The layout route reads the checkout: a worktree file does not take it.
-  if (!fileScope(link).thread)
-    link.openPathInMain?.(target.path, target.lineRange);
+  if (!scope.thread) link.openPathInMain?.(target.path, target.lineRange);
 }
 
 type AnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -260,6 +289,16 @@ function LinkAnchor({
   const text = textOf(children).trim();
   const raw = text === (href ?? '').trim() || `./${text}` === href;
   const chip = target ? chipFor(target, raw) : null;
+  // Text that reads as a URL or host but names another host than the href:
+  // show the real one beside it and put the full href in the tooltip — an
+  // author-supplied title included, since that too is text the link chose.
+  const url = target && target.kind !== 'path' ? target.url : null;
+  const realHost =
+    url && !raw
+      ? mismatchedLinkHost(text, url, target?.kind === 'external')
+      : null;
+  const title = realHost && url ? url : undefined;
+  const hostBadge = realHost ? <LinkHostBadge host={realHost} /> : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
     activate(event, clickTarget, link, model);
   // A web URL the handler lets through (no dock for a pull request, an
@@ -273,8 +312,15 @@ function LinkAnchor({
   const newTab = leaves ? { target: '_blank', rel: 'noopener noreferrer' } : {};
   if (!chip) {
     return (
-      <a {...anchorProps} {...newTab} href={href} onClick={onClick}>
+      <a
+        {...anchorProps}
+        {...newTab}
+        href={href}
+        onClick={onClick}
+        {...(title ? { title } : {})}
+      >
         {children}
+        {hostBadge}
       </a>
     );
   }
@@ -292,7 +338,7 @@ function LinkAnchor({
       className={className}
       href={href}
       onClick={onClick}
-      title={anchorProps.title ?? chip.title}
+      title={title ?? anchorProps.title ?? chip.title}
     >
       {chip.icon}
       {chip.label ? (
@@ -300,6 +346,7 @@ function LinkAnchor({
       ) : (
         children
       )}
+      {hostBadge}
       {target?.kind === 'pull-request' && link?.conversationId ? (
         <PullRequestLinkState
           conversationId={link.conversationId}
@@ -330,12 +377,50 @@ function PathMentionAnchor({
 }
 
 /**
+ * The ref and path a forge file URL names, read against the branch the
+ * checkout is on. The URL alone cannot tell `blob/feature/x/a.ts` (branch
+ * `feature/x`, file `a.ts`) from branch `feature`, file `x/a.ts`; knowing the
+ * checkout's branch settles it for THAT branch. Any other split stays the
+ * classifier's one-segment reading, which then fails the ref comparison and
+ * opens on the forge.
+ */
+function splitForgeRefPath(
+  target: Pick<
+    Extract<MarkdownLinkTarget, { kind: 'repo-file' }>,
+    'ref' | 'path' | 'refPath'
+  >,
+  branch: string | undefined,
+): { ref: string; path: string } {
+  if (branch?.includes('/') && target.refPath.startsWith(`${branch}/`)) {
+    const path = target.refPath.slice(branch.length + 1);
+    if (isWorkspaceFilePreviewRelativePath(path)) return { ref: branch, path };
+  }
+  return { ref: target.ref, path: target.path };
+}
+
+/**
  * A forge file link opens the LOCAL preview only when the conversation's
  * checkout is that repository on that host, on the ref the link names —
  * decided by the same repository context the pull-request list resolves, never
  * by the path merely existing here (a file of the same name in another
  * repository, or at another commit, is a different file).
  * Until that is known, and when it does not match, it opens on the forge.
+ *
+ * The rule, and what it does not know: the ref must equal the checkout's
+ * LOCAL branch name (a branch containing `/` is split at that name, see
+ * `splitForgeRefPath`). The repository context carries no ahead/behind count,
+ * so a checkout behind its upstream, ahead of it, or with uncommitted edits
+ * still matches and the preview shows ITS working copy, not the forge's
+ * revision. The link's tooltip says so rather than implying the two agree.
+ * A URL cannot say where a slash branch ends, so two confusions remain, one
+ * per direction:
+ * - local `feature`, link on `feature/x`: the one-segment reading (ref
+ *   `feature`, path `x/...`) matches, and the preview names `x/...`, which
+ *   usually does not exist in this checkout;
+ * - local `feature/x`, link on branch `feature` to `x/a.ts`: the split at the
+ *   local branch (ref `feature/x`, path `a.ts`) matches, and the preview
+ *   shows THIS checkout's `a.ts`, a different file under a plausible name.
+ * Both need a repository holding both branch names at once.
  */
 function RepoFileAnchor({
   target,
@@ -346,31 +431,47 @@ function RepoFileAnchor({
 }) {
   // In a worktree session the ref to compare is the WORKTREE's branch, which
   // is also the copy the preview then reads.
-  const thread = fileScope(rest.link).thread;
+  const scope = fileScope(rest.link);
+  const thread = scope.thread;
   const context = usePullRequestContextQuery({
     project: rest.link.projectSlug ?? '',
     ...(thread ? { thread } : {}),
   });
   const identity = context.data?.available ? context.data : undefined;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  // Same repository AND the ref the checkout is on: a link to the file at an
-  // older commit or another branch is different code, and the local preview
-  // shows only the working tree. Known limits: the ref is compared with the
-  // LOCAL branch name, a checkout behind its upstream still counts, and a
-  // branch name containing `/` is read as ref + directory — mismatches of the
-  // first kind fall back to the forge, which is the safe direction.
+  const { ref, path } = splitForgeRefPath(target, identity?.branch);
+  // A session whose directory this UI cannot read has no local copy to
+  // open: the context above then describes the CHECKOUT, which is not where
+  // the session works, and a path click would be refused. The forge is the
+  // one place the link still resolves.
   const local =
+    scope.resolvable &&
     !!identity &&
     same(identity.host, target.host) &&
     same(identity.repository.owner, target.owner) &&
     same(identity.repository.name, target.repository) &&
-    identity.branch === target.ref;
+    identity.branch === ref;
   const clickTarget: MarkdownLinkTarget = local
     ? {
         kind: 'path',
-        path: target.path,
+        path,
         ...(target.lineRange ? { lineRange: target.lineRange } : {}),
       }
     : target;
-  return <LinkAnchor {...rest} target={target} clickTarget={clickTarget} />;
+  const anchorProps = local
+    ? {
+        ...rest.anchorProps,
+        title:
+          rest.anchorProps.title ??
+          `${target.url}\nOpens this checkout's working copy of ${path}, which may differ from the forge's.`,
+      }
+    : rest.anchorProps;
+  return (
+    <LinkAnchor
+      {...rest}
+      anchorProps={anchorProps}
+      target={target}
+      clickTarget={clickTarget}
+    />
+  );
 }

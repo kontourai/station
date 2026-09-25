@@ -33,6 +33,8 @@ export interface RegionChromeTab {
   instanceId: string;
   /** The surface's registered title. */
   title: string;
+  /** The tab's tooltip, where the pane supplies one. */
+  tooltip?: string;
 }
 
 /**
@@ -355,6 +357,7 @@ function RegionTabStrip({
               }
               tabIndex={isSelected ? 0 : -1}
               data-region-tab={tab.surfaceId}
+              title={tab.tooltip}
               className="region-tabs__tab"
               onClick={() => onSelect(tab.surfaceId)}
               onKeyDown={(event) => onKeyDown(event, index, tab.surfaceId)}
