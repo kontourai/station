@@ -5,6 +5,7 @@ import { join, relative, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
+import { PARAGRAPH_BREAK } from '../adapters/paragraph-boundary.js';
 import {
   boundedPrompt,
   projectBoundedToolOutput,
@@ -52,6 +53,12 @@ const SOURCE_HOME_NAMESPACE = 'codex-config-home';
 interface CodexCursorState extends Record<string, unknown> {
   version: 1;
   activityObserved?: true;
+  /**
+   * This turn already imported assistant text: the next assistant MESSAGE
+   * opens a new paragraph (see `paragraph-boundary.ts`). Persisted with the
+   * cursor because consecutive messages arrive as separate rollout lines.
+   */
+  assistantTextObserved?: true;
   pendingTurn?: { turnId: string; createdAt: string; lineOffset: number };
   openTools?: Array<{ callId: string; toolName: string; turnId: string }>;
   skipOversizedLine?: true;
@@ -554,6 +561,7 @@ function mapCodexRecord(
     const events = flushPendingTurn(state, session, relativePath);
     state.turnId = turnId;
     delete state.codex.activityObserved;
+    delete state.codex.assistantTextObserved;
     state.codex.pendingTurn = { turnId, createdAt, lineOffset };
     return { events, state };
   }
@@ -727,11 +735,20 @@ function mapCodexRecord(
     const content = Array.isArray(payload.content) ? payload.content : [];
     const turnId = state.turnId;
     if (!turnId) return { events, state };
+    // One message's output_text blocks join verbatim; only a new message
+    // after text earlier in the turn opens a paragraph.
+    let opensParagraph = state.codex.assistantTextObserved === true;
     for (const [contentIndex, block] of content.entries()) {
       const part = asRecord(block);
       if (part?.type !== 'output_text') continue;
-      const outputText = text(part.text);
-      if (!outputText) continue;
+      const rawText = text(part.text);
+      if (!rawText) continue;
+      const outputText =
+        opensParagraph && !rawText.startsWith(PARAGRAPH_BREAK)
+          ? `${PARAGRAPH_BREAK}${rawText}`
+          : rawText;
+      opensParagraph = false;
+      state.codex.assistantTextObserved = true;
       const itemId =
         boundedText(payload.id) ??
         `codex-rollout-item:${digest([
@@ -1044,6 +1061,7 @@ function decodeCodexSourceState(
     !hasOnlyKeys(raw, [
       'version',
       'activityObserved',
+      'assistantTextObserved',
       'pendingTurn',
       'openTools',
       'skipOversizedLine',
@@ -1056,6 +1074,12 @@ function decodeCodexSourceState(
     return null;
   }
   if (raw.skipOversizedLine !== undefined && raw.skipOversizedLine !== true) {
+    return null;
+  }
+  if (
+    raw.assistantTextObserved !== undefined &&
+    raw.assistantTextObserved !== true
+  ) {
     return null;
   }
   let pendingTurn: CodexCursorState['pendingTurn'];
@@ -1114,6 +1138,9 @@ function decodeCodexSourceState(
   return {
     version: 1,
     ...(raw.activityObserved === true ? { activityObserved: true } : {}),
+    ...(raw.assistantTextObserved === true
+      ? { assistantTextObserved: true }
+      : {}),
     ...(pendingTurn ? { pendingTurn } : {}),
     ...(openTools?.length ? { openTools } : {}),
     ...(raw.skipOversizedLine === true ? { skipOversizedLine: true } : {}),

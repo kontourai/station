@@ -45,6 +45,7 @@ import {
   type ApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import {
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -974,18 +975,25 @@ export function parseResumeCursor(
  * thread. The caller computes `threadMissedCount` via a bounded
  * (`LIMIT threshold + 1`) thread-scoped query so this stays cheap even when
  * the true count is large. Omitted (global, no-`threadId`, stream): the
- * cheap `head - cursor` arithmetic is exact, since `global_sequence` has no
- * gaps.
+ * cheap `head - cursor` arithmetic is a safe upper bound. Physical Draft
+ * deletion can leave gaps, in which case it may choose a snapshot early.
  */
 export function resolveStreamResumePlan(
   cursor: number | undefined,
   head: number,
   threadMissedCount?: number,
+  epochMismatch = false,
 ): {
   decision: 'replay' | 'snapshot';
-  reason: 'no_cursor' | 'invalid_cursor' | 'gap_exceeded' | 'within_threshold';
+  reason:
+    | 'no_cursor'
+    | 'invalid_cursor'
+    | 'gap_exceeded'
+    | 'within_threshold'
+    | 'epoch_mismatch';
   gap?: number;
 } {
+  if (epochMismatch) return { decision: 'snapshot', reason: 'epoch_mismatch' };
   if (cursor === undefined)
     return { decision: 'snapshot', reason: 'no_cursor' };
   if (cursor > head) return { decision: 'snapshot', reason: 'invalid_cursor' };
@@ -4111,6 +4119,7 @@ export function createOrchestrationRoutes(
       // the rest of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
+      let stopActivityFlush: (() => void) | undefined;
       try {
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
@@ -4126,6 +4135,7 @@ export function createOrchestrationRoutes(
             // as present (suppressing push-on-completion) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
+            stopActivityFlush?.();
             unsub?.();
             releasePresence();
             resolve();
@@ -4159,16 +4169,67 @@ export function createOrchestrationRoutes(
         };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
+        let draining = false;
+        const drainPending = async () => {
+          if (draining) return;
+          draining = true;
+          try {
+            while (pending.length > 0) await writeAuthorized(pending.shift()!);
+          } finally {
+            draining = false;
+          }
+        };
         const forward = (frame: {
           event: string;
           data: string;
           id?: string;
         }) => {
-          if (caughtUp) {
-            writeAuthorized(frame).catch(() => {});
-          } else {
-            pending.push(frame);
+          pending.push(frame);
+          if (caughtUp) void drainPending().catch(() => {});
+        };
+        const dirtyActivityThreads = new Set<string>();
+        let activityFlushTimer: ReturnType<typeof setTimeout> | undefined;
+        stopActivityFlush = () => {
+          if (activityFlushTimer !== undefined)
+            clearTimeout(activityFlushTimer);
+          activityFlushTimer = undefined;
+          dirtyActivityThreads.clear();
+        };
+        const flushActivity = () => {
+          activityFlushTimer = undefined;
+          const threads = [...dirtyActivityThreads];
+          dirtyActivityThreads.clear();
+          for (const updatedThreadId of threads) {
+            if (
+              !orchestrationService.canUserReadSession(
+                updatedThreadId,
+                authority,
+              )
+            )
+              continue;
+            const conversation = orchestrationService.conversationStreamBinding(
+              {
+                threadId: updatedThreadId,
+                method: 'content.text-delta',
+                force: true,
+              },
+            );
+            if (conversation)
+              forward({
+                event: ORCHESTRATION_STREAM_ACTIVITY_EVENT,
+                data: JSON.stringify({ conversation }),
+              });
           }
+        };
+        const noteActivity = (updatedThreadId: string, hasBinding: boolean) => {
+          if (hasBinding) dirtyActivityThreads.delete(updatedThreadId);
+          else dirtyActivityThreads.add(updatedThreadId);
+          if (activityFlushTimer !== undefined)
+            clearTimeout(activityFlushTimer);
+          activityFlushTimer =
+            dirtyActivityThreads.size > 0
+              ? setTimeout(flushActivity, 100)
+              : undefined;
         };
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
@@ -4223,14 +4284,17 @@ export function createOrchestrationRoutes(
           const globalSequence = eventPayload?.eventId
             ? orchestrationService.readEventGlobalSequence(eventPayload.eventId)
             : undefined;
+          const conversation = orchestrationService.conversationStreamBinding({
+            threadId: eventThreadId,
+            method: eventPayload?.method,
+          });
+          if (globalSequence !== undefined && eventPayload?.method)
+            noteActivity(eventThreadId, conversation !== undefined);
           forward({
             event: SERVER_EVENTS.ORCHESTRATION_EVENT,
             data: JSON.stringify({
               ...(evt.data ?? {}),
-              conversation: orchestrationService.conversationStreamBinding({
-                threadId: eventThreadId,
-                method: eventPayload?.method,
-              }),
+              conversation,
             }),
             ...(globalSequence !== undefined
               ? { id: String(globalSequence) }
@@ -4239,6 +4303,8 @@ export function createOrchestrationRoutes(
         });
 
         const head = orchestrationService.readEventStreamHead();
+        const epoch = orchestrationService.readEventStreamEpoch?.();
+        const clientEpoch = c.req.header('X-Station-Stream-Epoch');
         // Thread-scoped gap fix (review finding, post-merge HIGH): for a
         // `threadId`-scoped connection, decide using this thread's own missed
         // count, not the cross-thread `head - cursor` gap — huge traffic on
@@ -4267,6 +4333,9 @@ export function createOrchestrationRoutes(
           cursor,
           head,
           threadReplayCandidateCount,
+          epoch !== undefined &&
+            clientEpoch !== undefined &&
+            clientEpoch !== epoch,
         );
         orchestrationStreamResumeDecisions.add(1, {
           decision: plan.decision,
@@ -4305,6 +4374,11 @@ export function createOrchestrationRoutes(
         // replay/snapshot boundary (resumeCursor.ts) — the snapshot carries
         // no transcript, and child-work deltas fold idempotently.
         const resolvedHead = head;
+        let replaySessions:
+          | Awaited<
+              ReturnType<typeof orchestrationService.listSessionReadModel>
+            >
+          | undefined;
 
         if (plan.decision === 'replay') {
           const replayBudget = orchestrationService.readEventStreamReplayPlan(
@@ -4323,7 +4397,7 @@ export function createOrchestrationRoutes(
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
-              data: JSON.stringify({ sessions }),
+              data: JSON.stringify({ sessions, ...(epoch ? { epoch } : {}) }),
               id: String(resolvedHead),
             });
           } else {
@@ -4338,9 +4412,6 @@ export function createOrchestrationRoutes(
             for (const persisted of replayed) {
               const data = JSON.stringify({
                 event: persisted.payload,
-                conversation: orchestrationService.conversationStreamBinding(
-                  persisted.payload,
-                ),
                 ...orchestrationService.replayTurnProvenanceSidecar(
                   persisted.payload,
                 ),
@@ -4357,6 +4428,11 @@ export function createOrchestrationRoutes(
                 id: String(persisted.globalSequence),
               });
             }
+            // The replay carries historical events only. A binding computed
+            // now would attach today's child and activity to an old frame.
+            // Reconcile present-tense side effects once, after the replay.
+            replaySessions =
+              await orchestrationService.listSessionReadModel(authority);
           }
         } else {
           const sessions =
@@ -4370,7 +4446,7 @@ export function createOrchestrationRoutes(
           // newer is delivered live from `pending`.
           await writeAuthorized({
             event: 'orchestration:snapshot',
-            data: JSON.stringify({ sessions }),
+            data: JSON.stringify({ sessions, ...(epoch ? { epoch } : {}) }),
             id: String(resolvedHead),
           });
         }
@@ -4380,13 +4456,16 @@ export function createOrchestrationRoutes(
         // be reordered relative to what came before or after it.
         await writeAuthorized({
           event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
-          data: '{}',
+          data: JSON.stringify({
+            ...(epoch ? { epoch } : {}),
+            ...(replaySessions ? { sessions: replaySessions } : {}),
+          }),
           id: String(resolvedHead),
         });
+        // The one queue owns both buffered and subsequent live writes. This
+        // switch has no await, so a new frame cannot overtake the buffer.
         caughtUp = true;
-        for (const frame of pending) {
-          await writeAuthorized(frame);
-        }
+        void drainPending().catch(() => {});
 
         await clientGone;
         deps.logger.debug('Orchestration SSE client disconnected');
@@ -4405,6 +4484,7 @@ export function createOrchestrationRoutes(
         // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
         stopKeepAlive?.();
+        stopActivityFlush?.();
         unsub?.();
         releasePresence();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });

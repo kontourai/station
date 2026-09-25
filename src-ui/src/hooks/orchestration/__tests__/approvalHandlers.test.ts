@@ -58,6 +58,20 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     });
   });
 
+  test('a duplicate request id does not raise a second toast', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: ['req-1'],
+      approvalToasts: new Map([['req-1', 'toast-1']]),
+    });
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash' }),
+    );
+    expect(showToolApproval).not.toHaveBeenCalled();
+  });
+
   test('carries a preview of the command, not just the tool name', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',

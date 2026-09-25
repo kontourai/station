@@ -53,6 +53,8 @@ import {
 
 interface ChatMessageListProps {
   activeSession: ChatSession;
+  /** The canonical window plus sequenced live events already renders this turn. */
+  suppressStreamingRow?: boolean;
   fontSize: number;
   /** Discrete dock/viewport height used to re-anchor before the resized frame paints. */
   layoutHeight?: number;
@@ -138,6 +140,7 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
+  suppressStreamingRow,
   fontSize,
   layoutHeight,
   showReasoning,
@@ -172,9 +175,18 @@ function ChatMessageListComponent({
             approvalEvents
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
+            activeSession.orchestrationTurnOpen
+              ? activeSession.openTurnId
+              : undefined,
           )
         : NO_PENDING_APPROVALS,
-    [activeSession.messages, activeSession.replay, approvalEvents],
+    [
+      activeSession.messages,
+      activeSession.replay,
+      activeSession.orchestrationTurnOpen,
+      activeSession.openTurnId,
+      approvalEvents,
+    ],
   );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
@@ -259,7 +271,7 @@ function ChatMessageListComponent({
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
-  const isStreaming = isTurnStreamLive(activeSession);
+  const isStreaming = isTurnStreamLive(activeSession) && !suppressStreamingRow;
 
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a

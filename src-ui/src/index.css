@@ -1042,6 +1042,15 @@ button:hover {
   animation: responsive-surface-panel-enter var(--motion-base)
     var(--ease-emphasized);
 }
+/* The panel takes focus programmatically (tabindex -1) so the dialog, not a
+   control, is announced first. Under keyboard use every engine then draws its
+   default ring around the whole panel. It is a non-interactive container, so
+   the ring is suppressed deliberately: the first Tab lands on a control with
+   the product's keyboard ring. (A dialog with no controls at all is left with
+   no visible focus.) */
+.responsive-surface-panel:focus {
+  outline: none;
+}
 
 @keyframes responsive-surface-panel-enter {
   from {
@@ -4409,6 +4418,15 @@ button.background-tasks-banner:focus-visible {
     transform var(--motion-slow) var(--ease-out);
 }
 
+/* A notice the user reads and acts on (Retry, Dismiss), not a transcript
+ * annotation: `.message.system`'s italic monospace made multi-sentence
+ * error prose hard to read. */
+.message.system.ephemeral-message {
+  color: var(--text-primary);
+  font-family: inherit;
+  font-style: normal;
+}
+
 .ephemeral-message.removing {
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
@@ -6936,6 +6954,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .file-preview__markdown {
   padding: 4px 8px;
   overflow-wrap: anywhere;
+}
+/* h1-h3 use the transcript's heading scale (.message h1-h3), not browser
+   defaults, so a file's "# Title" reads as a heading, not a banner. h4-h6 sit
+   at body size rather than the defaults' shrinking sizes. */
+.file-preview__markdown h1,
+.file-preview__markdown h2,
+.file-preview__markdown h3,
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.file-preview__markdown > :first-child {
+  margin-top: 0;
+}
+.file-preview__markdown h1 {
+  font-size: 1.5em;
+}
+.file-preview__markdown h2 {
+  font-size: 1.3em;
+}
+.file-preview__markdown h3 {
+  font-size: 1.1em;
+}
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  font-size: 1em;
 }
 .file-preview__markdown ul,
 .file-preview__markdown ol {

@@ -552,8 +552,14 @@ local UI-bootstrap token, and hands the browser the same redeemable URL the
 launcher does (station#1991).
 
 ```text
-station open [--home=<directory>] [--instance=<name>]
+station open [--home=<directory>] [--instance=<name>] [--print]
 ```
+
+`--print` prints the one-time sign-in link instead of launching a browser, for a
+browser this command cannot open, such as a simulator or another profile. Each
+link is single use, and minting one replaces any earlier unspent link, including
+the one `station start` printed (#2612). Without `--print`, the command never
+prints the token.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require

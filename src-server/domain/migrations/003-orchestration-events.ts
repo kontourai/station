@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS orchestration_events (
   global_sequence INTEGER NOT NULL DEFAULT 0
 );
 
+-- Keep the cursor head after a Draft or diagnostic thread is physically
+-- removed. A deleted tail event's sequence must never be reused.
+CREATE TABLE IF NOT EXISTS orchestration_stream_identity (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  high_water INTEGER NOT NULL CHECK (high_water >= 0)
+);
+CREATE TABLE IF NOT EXISTS orchestration_stream_epoch (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  epoch TEXT NOT NULL
+);
+
 -- Explicit native declarations are a private, bounded descriptor projection.
 -- They never widen the generic event payload/transcript contract.
 CREATE TABLE IF NOT EXISTS orchestration_declared_outputs (
@@ -1139,6 +1150,11 @@ export function ensureOrchestrationEventStoreColumns(
   );
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_events_thread_global_sequence ON orchestration_events(thread_id, global_sequence)',
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_events_child_work_history
+     ON orchestration_events(thread_id, global_sequence)
+     WHERE method IN ('child-work.updated', 'extension.notification', 'session.exited', 'session.started')`,
   );
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_events_thread_turn_sequence ON orchestration_events(thread_id, turn_id, sequence)',
