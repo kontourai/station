@@ -357,6 +357,21 @@ describe('wireWebPushDelivery and enveloped notifications (#2583)', () => {
     expect(await sendsFor(AGENT_INFO_NOTIFICATION)).toBe(0);
   });
 
+  test('an envelope this build cannot read (v2, malformed) is still not pushed as legacy', async () => {
+    for (const envelope of [
+      { ...AGENT_INFO_NOTIFICATION.metadata.envelope, v: 2 },
+      { v: 1 },
+      'not-an-object',
+    ]) {
+      expect(
+        await sendsFor({
+          ...AGENT_INFO_NOTIFICATION,
+          metadata: { ...AGENT_INFO_NOTIFICATION.metadata, envelope },
+        }),
+      ).toBe(0);
+    }
+  });
+
   test('control: the same record without its envelope is pushed, so the skip is the envelope', async () => {
     const { envelope: _envelope, ...metadata } =
       AGENT_INFO_NOTIFICATION.metadata;

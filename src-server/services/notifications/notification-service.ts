@@ -251,6 +251,7 @@ export class NotificationService {
    * dedupe tag or an `agent-*` category, and never rewrites an enveloped
    * record — those belong to `scheduleEnveloped`, so a caller cannot forge an
    * agent's provenance or squat (and then dismiss) an agent's dedupe key.
+   * Records squatted on an `agent:` tag before this upgrade are not migrated.
    */
   async schedule(
     source: string,
@@ -259,7 +260,10 @@ export class NotificationService {
     const metadata = jsonSafeMetadata(opts.metadata);
     if (Object.hasOwn(metadata, 'envelope'))
       throw new NotificationReservedFieldError('envelope');
-    if (opts.category.startsWith(AGENT_NOTIFICATION_CATEGORY_PREFIX))
+    if (
+      typeof opts.category === 'string' &&
+      opts.category.startsWith(AGENT_NOTIFICATION_CATEGORY_PREFIX)
+    )
       throw new NotificationReservedFieldError('category');
     const tag = opts.dedupeTag ?? metadata.dedupeTag;
     if (
@@ -1211,9 +1215,20 @@ export class NotificationService {
         try {
           const updates = await provider.syncStatus();
           for (const update of updates) {
+            // A provider syncs only its OWN records, and never an enveloped
+            // or `agent:` one: an unscoped tag lookup let any provider
+            // dismiss (permanently suppressing) or action an agent record.
+            if (
+              typeof update.dedupeTag !== 'string' ||
+              update.dedupeTag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX)
+            )
+              continue;
             const all = await this.read();
             const notification = all.find(
-              (n) => (n.metadata as any)?.dedupeTag === update.dedupeTag,
+              (n) =>
+                n.source === provider.id &&
+                (n.metadata as any)?.dedupeTag === update.dedupeTag &&
+                !Object.hasOwn(n.metadata ?? {}, 'envelope'),
             );
             if (!notification) continue;
             if (update.status === 'actioned') {

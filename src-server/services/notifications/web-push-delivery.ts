@@ -35,7 +35,6 @@ import type {
 } from '@kontourai/station-contracts';
 import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import { defaultNotificationPreferences } from '@kontourai/station-contracts/notification-preferences';
-import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -46,6 +45,7 @@ import {
   type DeliveryChannel,
   type DeliveryOutcome,
   deviceSurfaceId,
+  hasEnvelope,
   type SurfaceId,
 } from './delivery/channel.js';
 import { wireNotificationDeliveryRouter } from './delivery/router.js';
@@ -220,9 +220,10 @@ export function wireWebPushDelivery(
   const legacyOnly: DeliveryChannel = {
     kind: channel.kind,
     capabilities: channel.capabilities,
+    // Presence, not parse success: an envelope this build cannot read (a
+    // newer `v`, malformed) is still not this fan-out's to push.
     accepts: (notification) =>
-      readNotificationEnvelope(notification) === undefined &&
-      channel.accepts(notification),
+      !hasEnvelope(notification) && channel.accepts(notification),
     registrations: () => channel.registrations(),
     deliver: (notification, envelope, to) =>
       channel.deliver(notification, envelope, to),

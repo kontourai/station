@@ -89,9 +89,17 @@ const OUTCOME_URGENCY: Record<string, NotificationUrgency> = {
 };
 
 /**
- * The envelope delivery acts on. A record without a valid envelope is
- * legacy: it goes to the owner at the urgency its category ranks as, with
- * nothing else invented (no agent source, no session audience).
+ * The envelope delivery acts on.
+ *
+ * - A readable envelope is used as read (the lenient reader already turns
+ *   an unknown audience into the owner with `interrupt: 'silent'`).
+ * - An envelope that is PRESENT but unreadable (a newer `v`, malformed) is
+ *   the owner's in-app view only: nothing resolved who it was meant for, so
+ *   nothing may push it. Presence, not parse success, decides — the same
+ *   rule `wireWebPushDelivery` applies.
+ * - No envelope at all is legacy: the owner, at the urgency its category
+ *   ranks as, with nothing else invented (no agent source, no session
+ *   audience).
  */
 export function deliveryEnvelopeFor(notification: Notification): {
   envelope: NotificationEnvelopeV1;
@@ -100,16 +108,29 @@ export function deliveryEnvelopeFor(notification: Notification): {
   const envelope = readNotificationEnvelope(notification);
   if (envelope) return { envelope, legacy: false };
   const outcome = classifyNotificationCategory(notification.category);
+  const unreadable = hasEnvelope(notification);
   return {
     envelope: {
       v: 1,
       source: { kind: 'system', subsystem: notification.source },
       audience: { kind: 'owner' },
       urgency: (outcome && OUTCOME_URGENCY[outcome]) ?? 'info',
-      interrupt: 'default',
+      interrupt: unreadable ? 'silent' : 'default',
     },
-    legacy: true,
+    legacy: !unreadable,
   };
+}
+
+/** Whether the record carries an envelope at all, readable or not. */
+export function hasEnvelope(
+  notification: Pick<Notification, 'metadata'>,
+): boolean {
+  const metadata = notification.metadata;
+  return (
+    typeof metadata === 'object' &&
+    metadata !== null &&
+    Object.hasOwn(metadata, 'envelope')
+  );
 }
 
 export function deviceSurfaceId(deviceId: string): SurfaceId {

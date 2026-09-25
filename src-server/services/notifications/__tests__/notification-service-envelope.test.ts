@@ -531,4 +531,106 @@ describe('NotificationService envelope (#2583)', () => {
       expect(byTitle.B?.dismissedAt).toBeUndefined();
     });
   });
+
+  describe('provider status sync (#2583 delta review)', () => {
+    function syncingProvider(
+      id: string,
+      updates: Array<{
+        dedupeTag: string;
+        status: 'actioned' | 'expired' | 'dismissed';
+      }>,
+    ) {
+      return {
+        id,
+        displayName: id,
+        categories: ['test'],
+        syncStatus: async () => updates,
+      };
+    }
+
+    test.each(['dismissed', 'actioned', 'expired'] as const)(
+      'a provider syncing an agent tag as %s leaves the agent record untouched',
+      async (status) => {
+        const tag = agentNotificationDedupeTag('s1', 'k1');
+        const { notification } = await scheduleAgent(
+          'Agent notice',
+          agentEnvelope('s1'),
+          { dedupeTag: tag, category: 'agent-info' },
+        );
+        svc.addProvider(
+          syncingProvider('rogue', [{ dedupeTag: tag, status }]) as never,
+        );
+        await svc.poll();
+
+        const [stored] = await svc.list();
+        expect(stored).toMatchObject({
+          id: notification.id,
+          status: 'delivered',
+        });
+        const next = await scheduleAgent(
+          'Agent notice 2',
+          agentEnvelope('s1'),
+          {
+            dedupeTag: tag,
+            category: 'agent-info',
+          },
+        );
+        expect(next.outcome).toBe('updated');
+      },
+    );
+
+    test('a provider cannot sync another provider-sourced record, and still syncs its own', async () => {
+      await svc.schedule('provider-a', {
+        category: 'test',
+        title: 'A',
+        dedupeTag: 'shared:1',
+      });
+      svc.addProvider(
+        syncingProvider('provider-b', [
+          { dedupeTag: 'shared:1', status: 'dismissed' },
+        ]) as never,
+      );
+      await svc.poll();
+      expect((await svc.list())[0].status).toBe('delivered');
+
+      svc.addProvider(
+        syncingProvider('provider-a', [
+          { dedupeTag: 'shared:1', status: 'dismissed' },
+        ]) as never,
+      );
+      await svc.poll();
+      expect((await svc.list())[0].status).toBe('dismissed');
+    });
+
+    test('a provider cannot sync an enveloped record that shares its source and tag', async () => {
+      const { notification } = await svc.scheduleEnveloped(
+        'provider-a',
+        { category: 'job-failure', title: 'Enveloped', dedupeTag: 'shared:2' },
+        {
+          v: 1,
+          source: { kind: 'provider', providerId: 'provider-a' },
+          audience: { kind: 'owner' },
+          urgency: 'failed',
+          interrupt: 'default',
+        },
+      );
+      svc.addProvider(
+        syncingProvider('provider-a', [
+          { dedupeTag: 'shared:2', status: 'dismissed' },
+        ]) as never,
+      );
+      await svc.poll();
+      expect((await svc.list())[0]).toMatchObject({
+        id: notification.id,
+        status: 'delivered',
+      });
+    });
+  });
+
+  test('schedule() without a category fails the store validation, not a TypeError', async () => {
+    await expect(
+      svc.schedule('api', { title: 'No category' } as never),
+    ).rejects.toThrow(/Notification store is invalid/);
+    expect(await svc.list()).toEqual([]);
+  });
 });
