@@ -204,3 +204,73 @@ describe('login-shell PATH fallback', () => {
     expect(findCliBinary('codex')).toBe('/opt/nix/bin/codex');
   });
 });
+
+describe('runCliCommand connection env overlay', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    platformMock.mockReturnValue('darwin');
+    existsSyncMock.mockReset().mockImplementation(() => false);
+    execFileMock.mockReset();
+    vi.unstubAllEnvs();
+    // Only the probe itself reaches execFile; no login-shell capture.
+    vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function probedEnv(
+    envOverlay?: Record<string, string>,
+  ): Promise<NodeJS.ProcessEnv> {
+    let captured: NodeJS.ProcessEnv | undefined;
+    execFileMock.mockImplementation((_file, _args, opts, callback) => {
+      captured = opts.env;
+      callback(null, { stdout: 'Logged in', stderr: '' });
+    });
+    const { runCliCommand } = await import('../cli-auth.js');
+    await runCliCommand('codex', ['login', 'status'], undefined, envOverlay);
+    if (!captured) throw new Error('the probe never reached execFile');
+    return captured;
+  }
+
+  test('the overlay reaches the probe, over the inherited value', async () => {
+    vi.stubEnv('CODEX_HOME', '/home/test-user/.codex');
+    const env = await probedEnv({ CODEX_HOME: '/home/test-user/.codex_vibe' });
+    expect(env.CODEX_HOME).toBe('/home/test-user/.codex_vibe');
+  });
+
+  test('an empty-string overlay value masks the inherited one', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'sk-ambient');
+    const env = await probedEnv({ OPENAI_API_KEY: '' });
+    expect(env.OPENAI_API_KEY).toBe('');
+  });
+
+  test('without an overlay the inherited value is untouched', async () => {
+    vi.stubEnv('CODEX_HOME', '/home/test-user/.codex');
+    const env = await probedEnv();
+    expect(env.CODEX_HOME).toBe('/home/test-user/.codex');
+  });
+
+  test('an overlay cannot smuggle a boot-internal secret into the probe', async () => {
+    const { BOOT_INTERNAL_SECRET_ENV_KEYS } = await import(
+      '../../../utils/child-process-environment.js'
+    );
+    const overlay = Object.fromEntries(
+      BOOT_INTERNAL_SECRET_ENV_KEYS.map((key) => [key, 'leaked-secret']),
+    );
+    const env = await probedEnv({ ...overlay, CODEX_HOME: '/overlay-home' });
+    // The overlay did reach the probe, so its absence below is the scrub.
+    expect(env.CODEX_HOME).toBe('/overlay-home');
+    for (const key of BOOT_INTERNAL_SECRET_ENV_KEYS) {
+      expect(env[key]).toBeUndefined();
+    }
+  });
+
+  test('an overlay cannot replace the Station-owned TMPDIR', async () => {
+    const baseline = await probedEnv();
+    const env = await probedEnv({ TMPDIR: '/elsewhere' });
+    expect(env.TMPDIR).toBe(baseline.TMPDIR);
+    expect(env.TMPDIR).not.toBe('/elsewhere');
+  });
+});
