@@ -15,6 +15,8 @@ mod notification_watch;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(not(mobile))]
+mod notification_feed;
+#[cfg(not(mobile))]
 mod desktop_companion;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
@@ -2199,6 +2201,21 @@ fn authorized_credential_reference(
         ));
     }
     Ok(selected.reference)
+}
+
+/// The host-authorized active Station's exact origin, when there is one.
+/// Native consumers pair it with `native_credential_for_origin`, which
+/// re-validates the whole binding before any bearer is read.
+#[cfg(not(mobile))]
+pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
+    let authority = app.try_state::<NativeProfileAuthority>()?;
+    let state = authority.0.lock().ok()?;
+    let active = state.active.as_ref()?;
+    let key = credential_reference_key(&active.reference).ok()?;
+    state
+        .bindings
+        .get(&key)
+        .map(|binding| binding.exact_origin.clone())
 }
 
 /// Native-only credential read for one already-validated origin. It reuses the
@@ -10818,6 +10835,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
         })
         .manage(NativeBrowserPreviewGrants::default())
+        .manage(notification_feed::NotificationFeed::default())
         .manage(ssh_launcher::SshLaunches::default());
 
     #[cfg(not(mobile))]
@@ -10843,6 +10861,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         notification_watch_start,
         notification_watch_stop,
         desktop_installation_id,
+        notification_feed::notification_feed_native_consumer,
+        notification_feed::notification_feed_adopt_cursor,
+        notification_feed::take_notification_open_link,
         open_local_browser_preview,
         open_external_link,
         discover_local_browser_preview_target,
@@ -11062,6 +11083,9 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // fail-closed initialization placeholder and then stop before
                 // the sidecar could publish its healthy state.
                 tray::init(app.handle())?;
+                // The desktop's single consumer of the notification delivery
+                // feed (#2608); the webview defers to it.
+                notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
                 if owner == DesktopOwner::Sidecar {
