@@ -18,6 +18,7 @@
  *   in memory only (a restart starts every feed empty and the host re-reads
  *   from the new cursor).
  */
+import { randomUUID } from 'node:crypto';
 import type {
   Notification,
   NotificationEnvelopeV1,
@@ -67,10 +68,13 @@ export class DesktopHostChannel implements DeliveryChannel {
   };
   readonly #feeds = new Map<SurfaceId, SurfaceFeed>();
   readonly #now: () => number;
+  /** Sequence numbers are per server run; this names the run. */
+  readonly #epoch: string;
   #seq = 0;
 
-  constructor(options: { now?: () => number } = {}) {
+  constructor(options: { now?: () => number; epoch?: string } = {}) {
     this.#now = options.now ?? Date.now;
+    this.#epoch = options.epoch ?? randomUUID();
   }
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
@@ -125,7 +129,14 @@ export class DesktopHostChannel implements DeliveryChannel {
    * read registers the surface (bounded; the least recently read is
    * dropped past the cap).
    */
-  read(surface: SurfaceId, after: number): SurfaceDeliveryFeed {
+  read(surface: SurfaceId, after: number, epoch?: string): SurfaceDeliveryFeed {
+    // A cursor from another server run (or past this run's last entry)
+    // means nothing here: answer from the start rather than withhold
+    // everything until this run's sequence catches up.
+    const since =
+      (epoch !== undefined && epoch !== this.#epoch) || after > this.#seq
+        ? 0
+        : after;
     const now = this.#now();
     let feed = this.#feeds.get(surface);
     if (!feed) {
@@ -137,9 +148,10 @@ export class DesktopHostChannel implements DeliveryChannel {
     this.#prune(feed, now);
     return {
       entries: feed.entries
-        .filter((entry) => entry.seq > after)
+        .filter((entry) => entry.seq > since)
         .map(({ queuedAt: _queuedAt, ...entry }) => entry),
       cursor: this.#seq,
+      epoch: this.#epoch,
       leaseMs: DESKTOP_HOST_LEASE_MS,
     };
   }

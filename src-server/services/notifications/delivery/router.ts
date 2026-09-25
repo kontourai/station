@@ -81,7 +81,8 @@ export interface NotificationDeliveryRouterOptions {
   eventBus: EventBus;
   channels: readonly DeliveryChannel[];
   resolver: AudienceResolver;
-  preferences: Pick<NotificationPreferencesReader, 'current'>;
+  preferences: Pick<NotificationPreferencesReader, 'current'> &
+    Partial<Pick<NotificationPreferencesReader, 'unreadable'>>;
   logger: RouterLogger;
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
@@ -162,13 +163,24 @@ export function wireNotificationDeliveryRouter(
     }
   }
 
+  function preferencesUnreadable(): boolean {
+    try {
+      return options.preferences.unreadable?.() === true;
+    } catch {
+      return true;
+    }
+  }
+
   function hideContentFor(surface: SurfaceId): boolean {
+    // Unreadable preferences: the person's hideContent choices are unknown,
+    // so every surface hides content.
+    if (preferencesUnreadable()) return true;
     try {
       return (
         options.preferences.current().perSurface[surface]?.hideContent === true
       );
     } catch {
-      return false;
+      return true;
     }
   }
 
@@ -348,6 +360,7 @@ export function wireNotificationDeliveryRouter(
       focus: focusMap,
       liveInApp,
       prefs: options.preferences.current(),
+      preferencesUnreadable: preferencesUnreadable(),
       priorDeliveries: new Set(),
       ...(options.timeZone ? { timeZone: options.timeZone } : {}),
     });
@@ -434,6 +447,7 @@ export function wireNotificationDeliveryRouter(
       focus: focusMap,
       liveInApp,
       prefs: options.preferences.current(),
+      preferencesUnreadable: preferencesUnreadable(),
       priorDeliveries,
       phase: 'escalation',
       ...(options.timeZone ? { timeZone: options.timeZone } : {}),

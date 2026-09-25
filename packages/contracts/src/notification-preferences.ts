@@ -97,7 +97,7 @@ export function desktopHostSurfaceId(installationId: string): SurfaceId {
 
 /**
  * The per-surface feed a native host reads the router's decided OS alerts
- * from (`?surface=<SurfaceId>&after=<cursor>`). Only `local:desktop-*`
+ * from (`?surface=<SurfaceId>&after=<cursor>&epoch=<epoch>`). Only `local:desktop-*`
  * surfaces have one today.
  */
 export const NOTIFICATION_DELIVERIES_PATH = '/api/notifications/deliveries';
@@ -126,6 +126,12 @@ export interface SurfaceDeliveryFeed {
   entries: SurfaceDeliveryEntry[];
   /** Pass back as `after` on the next read. */
   cursor: number;
+  /**
+   * This server run's id; pass back as `epoch`. Sequence numbers restart
+   * with the server, so a read whose epoch differs (or whose cursor is past
+   * this run's last entry) is answered from the start of the feed.
+   */
+  epoch: string;
   /** The host's registration lasts this long past each read. */
   leaseMs: number;
 }

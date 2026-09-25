@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import {
@@ -8,8 +12,12 @@ import {
   SERVER_EVENTS,
   type ServerEventName,
 } from '@kontourai/station-contracts/runtime-events';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EventBus } from '../../../orchestration/event-bus.js';
+import {
+  NOTIFICATION_PREFERENCES_FILE,
+  NotificationPreferencesStore,
+} from '../../notification-preferences.js';
 import type { AudienceResolver } from '../audience-resolver.js';
 import type {
   ChannelTarget,
@@ -339,6 +347,45 @@ describe('NotificationDeliveryRouter', () => {
       metadata: {},
     });
     expect(plain.deliveries).toHaveLength(1);
+  });
+
+  describe('unreadable preferences (a corrupted file)', () => {
+    let home: string;
+    beforeEach(() => {
+      home = mkdtempSync(join(tmpdir(), 'router-prefs-'));
+      writeFileSync(
+        join(home, NOTIFICATION_PREFERENCES_FILE),
+        '{"schemaVersion":1,"agentNotifications":"off"', // truncated
+        { mode: 0o600 },
+      );
+    });
+    afterEach(async () => {
+      await rm(home, { recursive: true, force: true });
+    });
+
+    test('an agent notification is not pushed: its mute cannot be honoured', () => {
+      const { bus, plain, retracting } = setup({
+        preferences: new NotificationPreferencesStore(home),
+      });
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification());
+      expect(plain.deliveries).toHaveLength(0);
+      expect(retracting.deliveries).toHaveLength(0);
+    });
+
+    test('an approval still goes out, with content hidden on every surface', () => {
+      const { bus, plain } = setup({
+        preferences: new NotificationPreferencesStore(home),
+      });
+      const approval = notification({ category: 'approval-request' });
+      delete approval.metadata;
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval);
+      expect(
+        plain.deliveries[0]?.to.map((t) => [t.surface, t.hideContent]),
+      ).toEqual([
+        [PHONE, true],
+        [LAPTOP, true],
+      ]);
+    });
   });
 
   describe('focus', () => {

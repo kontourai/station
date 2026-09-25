@@ -316,6 +316,27 @@ describe('plan() — rule 1, silent or muted', () => {
     ).toBe('send:nothing-focused');
   });
 
+  test('unreadable preferences: agent notifications stay in-app, system ones still go out', () => {
+    const agent = plan(input({ preferencesUnreadable: true }));
+    expect(decision(agent, PHONE)).toBe('skip:preferences-unreadable');
+    expect(
+      agent.some((s) => s.channel === 'in-app' && s.action === 'send'),
+    ).toBe(true);
+    const system = plan(
+      input({
+        preferencesUnreadable: true,
+        env: {
+          v: 1,
+          source: { kind: 'system', subsystem: 'approval-inbox' },
+          audience: { kind: 'owner' },
+          urgency: 'attention',
+          interrupt: 'default',
+        },
+      }),
+    );
+    expect(decision(system, PHONE)).toBe('send:nothing-focused');
+  });
+
   test('system notifications are never muted by agent preferences', () => {
     const steps = plan(
       input({

@@ -77,6 +77,13 @@ export interface PlanInput {
   priorDeliveries: ReadonlySet<string>;
   /** `escalation`: the deferral already ran out and the record is unread. */
   phase?: 'initial' | 'escalation';
+  /**
+   * The saved preferences exist but cannot be read: `prefs` are only the
+   * defaults, so agent notifications (whose mutes cannot be honoured) stay
+   * in-app. Non-agent notifications still go out (content hidden by the
+   * router).
+   */
+  preferencesUnreadable?: boolean;
   /** IANA zone quiet hours are read in; the process's zone when absent. */
   timeZone?: string;
 }
@@ -87,6 +94,7 @@ export type PlanReason =
   | 'in-app'
   | 'silent'
   | 'muted'
+  | 'preferences-unreadable'
   | 'quiet-hours'
   | 'below-min-urgency'
   | 'already-delivered'
@@ -173,6 +181,8 @@ export function plan(input: PlanInput): PlanStep[] {
       const step = (action: PlanAction, reason: PlanReason) =>
         steps.push({ surface: surface.id, channel, action, reason });
       if (env.interrupt === 'silent') step('skip', 'silent');
+      else if (input.preferencesUnreadable && env.source.kind === 'agent')
+        step('skip', 'preferences-unreadable');
       else if (muted) step('skip', 'muted');
       else if (quiet) step('skip', 'quiet-hours');
       else if (
