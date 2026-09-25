@@ -95,8 +95,7 @@ const OUTCOME_URGENCY: Record<string, NotificationUrgency> = {
  *   an unknown audience into the owner with `interrupt: 'silent'`).
  * - An envelope that is PRESENT but unreadable (a newer `v`, malformed) is
  *   the owner's in-app view only: nothing resolved who it was meant for, so
- *   nothing may push it. Presence, not parse success, decides — the same
- *   rule `wireWebPushDelivery` applies.
+ *   nothing may push it. Presence, not parse success, decides (#2583).
  * - No envelope at all is legacy: the owner, at the urgency its category
  *   ranks as, with nothing else invented (no agent source, no session
  *   audience).

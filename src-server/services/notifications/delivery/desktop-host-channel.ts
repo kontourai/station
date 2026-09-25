@@ -2,9 +2,10 @@
  * DesktopHostChannel (#2586): the `desktop-os` DeliveryChannel. The desktop
  * app's webview stops polling while hidden in the tray, so the OS alert has
  * to come from something that keeps running — the native host. This channel
- * queues the router's DECIDED deliveries per `local:desktop-<installationId>`
- * surface, and the host reads them from
- * `GET /api/notifications/deliveries?surface=…&after=<cursor>`.
+ * queues the router's DECIDED deliveries per surface — this computer's
+ * `local:desktop-<installationId>`, or `device:<id>` for a desktop app on a
+ * remote Station — and the host reads its own from
+ * `GET /api/notifications/deliveries` (the route derives which).
  *
  * - Only decided deliveries: every entry already passed the policy (focus,
  *   quiet hours, minUrgency, mute). The host shows what it reads.

@@ -2,21 +2,23 @@
  * WebPushChannel — the Web Push `DeliveryChannel` (#2586): turns a pushable
  * notification delivery (archive#1100: approval/input requests and failures
  * — `classifyNotificationCategory`) into a Web Push send to each paired
- * device the delivery router targets. `wireWebPushDelivery` is the
- * owner-only composition of that channel with the router: every subscribed
- * device, no focus, default preferences — the fan-out this file has always
- * performed.
+ * device the delivery router targets. The router decides who and when
+ * (audience, focus, quiet hours, mute, `interrupt: 'silent'`); this channel
+ * only sends. It replaces the pre-#2586 `wireWebPushDelivery` listener,
+ * which fanned every classified notification out to every subscribed
+ * device.
  *
  * Structural degradation guarantee: a push failure must never propagate into
  * notification delivery (the in-app SSE/toast path is completely unaffected).
- * Every layer here — the listener itself, the per-device send, and the
- * self-heal clear — is independently caught, and a subscription answering
+ * Every layer here — the subscription listing, the per-device send, and
+ * the self-heal clear — is independently caught (the router catches the
+ * rest), and a subscription answering
  * 404/410 (browser revoked it, uninstalled, etc.) self-heals by clearing it
  * from the paired-device record rather than retrying forever.
  *
  * Payload composition (title/body/deep-link/TTL) is delegated to
  * `composeWebPushPayload` (`push-payload-composer.ts`), which ranks,
- * per-state-TTLs, and deep-links per archive#1100's design. This listener
+ * per-state-TTLs, and deep-links per archive#1100's design. This channel
  * always composes from a single-item `pending` list — the notification that
  * just fired — deliberately not re-ranking against every other currently
  * pending notification: doing so could replace a fresh event's own push
@@ -34,25 +36,20 @@ import type {
   WebPushSubscription,
 } from '@kontourai/station-contracts';
 import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
-import { defaultNotificationPreferences } from '@kontourai/station-contracts/notification-preferences';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
-import type { EventBus } from '../orchestration/event-bus.js';
-import type { AudienceResolver } from './delivery/audience-resolver.js';
 import {
   type ChannelTarget,
   type DeliveryChannel,
   type DeliveryOutcome,
   deviceSurfaceId,
-  hasEnvelope,
   type SurfaceId,
 } from './delivery/channel.js';
-import { wireNotificationDeliveryRouter } from './delivery/router.js';
 import { composeWebPushPayload } from './push-payload-composer.js';
 import type { WebPushPayload, WebPushService } from './web-push-service.js';
 
-/** The subset of DevicePairingService this subscriber needs. */
+/** The subset of DevicePairingService this channel needs. */
 export interface WebPushDeliveryDevicePairing {
   listPushSubscriptions(): Array<{
     deviceId: string;
@@ -63,14 +60,6 @@ export interface WebPushDeliveryDevicePairing {
 
 interface WebPushDeliveryLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
-}
-
-interface WebPushDeliveryOptions {
-  /**
-   * Hosted paired-device records have no durable tenant binding. Keep their
-   * delivery listener absent until subscriptions can be tenant-authorized.
-   */
-  enabled?: boolean;
 }
 
 /** Generic copy for a surface that asked to hide notification content. */
@@ -179,62 +168,4 @@ export class WebPushChannel implements DeliveryChannel {
 function hiddenPayload(payload: WebPushPayload): WebPushPayload {
   const { body: _body, ...rest } = payload;
   return { ...rest, title: HIDDEN_TITLE, body: HIDDEN_BODY };
-}
-
-/**
- * Owner-only audience over the subscriptions themselves. Enveloped records
- * are the delivery router's (their audience may be narrower than "every
- * subscribed device"), so this composition leaves them alone.
- */
-function everySubscribedDevice(
-  devicePairing: WebPushDeliveryDevicePairing,
-): AudienceResolver {
-  return {
-    resolve(envelope) {
-      if (envelope.audience.kind !== 'owner')
-        return { deviceSurfaces: new Set(), includesOperator: false };
-      return {
-        deviceSurfaces: new Set(
-          devicePairing
-            .listPushSubscriptions()
-            .map(({ deviceId }) => deviceSurfaceId(deviceId)),
-        ),
-        includesOperator: true,
-      };
-    },
-  };
-}
-
-export function wireWebPushDelivery(
-  eventBus: EventBus,
-  devicePairing: WebPushDeliveryDevicePairing,
-  webPushService: Pick<WebPushService, 'send'>,
-  logger: WebPushDeliveryLogger,
-  options: WebPushDeliveryOptions = {},
-): () => void {
-  // Do not even subscribe in disabled mode: notification payloads (including
-  // scheduler and session-completion content/ids) must not reach the global
-  // pairing registry or WebPushService before subscriptions are tenant-bound.
-  if (options.enabled === false) return () => {};
-  const channel = new WebPushChannel(devicePairing, webPushService, logger);
-  const legacyOnly: DeliveryChannel = {
-    kind: channel.kind,
-    capabilities: channel.capabilities,
-    // Presence, not parse success: an envelope this build cannot read (a
-    // newer `v`, malformed) is still not this fan-out's to push.
-    accepts: (notification) =>
-      !hasEnvelope(notification) && channel.accepts(notification),
-    registrations: () => channel.registrations(),
-    deliver: (notification, envelope, to) =>
-      channel.deliver(notification, envelope, to),
-  };
-  const preferences = defaultNotificationPreferences();
-  const router = wireNotificationDeliveryRouter({
-    eventBus,
-    channels: [legacyOnly],
-    resolver: everySubscribedDevice(devicePairing),
-    preferences: { current: () => preferences },
-    logger,
-  });
-  return () => router.stop();
 }

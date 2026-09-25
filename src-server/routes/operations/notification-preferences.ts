@@ -9,16 +9,23 @@
  * - `PATCH /preferences` → a `NotificationPreferencesPatch` applied
  *   server-side in one step (a mute is `{ perAgent: { builder: 'off' } }`);
  *   the way to change one field without a read-modify-write race.
- * - `GET /deliveries?surface=local:desktop-<id>&after=<cursor>` → the
- *   desktop host's decided-alert feed (`DesktopHostChannel`).
+ * - `GET /deliveries?surface=…&after=<cursor>&epoch=<epoch>` → the caller's
+ *   own decided-alert feed (`DesktopHostChannel`): a paired device's
+ *   `device:<id>`, or this computer's `local:desktop-<id>`.
  *
  * Operate tier (pairing-route-scopes.ts). Station's own agent tools and
  * delegated Stations are refused everywhere here: an agent that could write
- * the preferences could unmute itself. The deliveries feed additionally
- * requires the local operator — it is the desktop host on this machine.
+ * the preferences could unmute itself.
  */
 import { type Context, Hono } from 'hono';
-import { isBoundRuntimeLocalOperator } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  isBoundRuntimeLocalOperator,
+} from '../../security/runtime-request-security.js';
+import {
+  deviceSurfaceId,
+  type SurfaceId,
+} from '../../services/notifications/delivery/channel.js';
 import {
   type DesktopHostChannel,
   isDesktopHostSurface,
@@ -34,7 +41,10 @@ import { isNonPersonCaller } from '../plugins/plugin-person-approval.js';
 const MAX_BODY_BYTES = 256 * 1024;
 
 export function createNotificationPreferencesRoutes(
-  store: Pick<NotificationPreferencesStore, 'read' | 'write' | 'patch'>,
+  store: Pick<
+    NotificationPreferencesStore,
+    'read' | 'write' | 'patch' | 'revision'
+  >,
   options: { desktopHost?: Pick<DesktopHostChannel, 'read'> } = {},
 ) {
   const app = new Hono();
@@ -57,6 +67,9 @@ export function createNotificationPreferencesRoutes(
   app.get('/preferences', (c) => {
     const result = store.read();
     if (!result.ok) {
+      // A reset may send this back as If-Match: it then succeeds only if the
+      // file is still unreadable.
+      c.header('ETag', store.revision());
       return c.json(
         {
           success: false,
@@ -136,34 +149,63 @@ export function createNotificationPreferencesRoutes(
         { success: false, error: 'invalid_preferences' },
         body.status,
       );
-    return writeResult(c, () => store.patch(body.body));
+    const ifMatch = c.req.header('if-match');
+    return writeResult(c, () =>
+      store.patch(body.body, ifMatch === undefined ? {} : { ifMatch }),
+    );
   });
 
+  /**
+   * The CALLER'S OWN feed. A paired device (remote desktop app) reads
+   * `device:<its id>`, derived from its credential; a `surface` naming
+   * anything else is refused. The local operator reads the
+   * `local:desktop-<installationId>` surface it names. No caller can read
+   * another surface's feed.
+   */
   app.get('/deliveries', (c) => {
     if (!options.desktopHost)
       return c.json({ success: false, error: 'unavailable' }, 404);
-    if (!isBoundRuntimeLocalOperator(c.req.raw))
-      return c.json(
-        {
-          success: false,
-          error: 'local_operator_required',
-          message: "Only this computer's Station host reads its delivery feed.",
-        },
-        403,
-      );
-    const surface = c.req.query('surface');
+    const requested = c.req.query('surface');
     const afterText = c.req.query('after') ?? '0';
     const epoch = c.req.query('epoch');
-    const after = Number(afterText);
     if (
-      !isDesktopHostSurface(surface) ||
       !/^\d{1,15}$/.test(afterText) ||
       (epoch !== undefined && !/^[A-Za-z0-9-]{1,64}$/.test(epoch))
     )
       return c.json({ success: false, error: 'invalid_request' }, 400);
+    const deviceId = getRuntimeAuthenticatedRequestPrincipal(
+      c.req.raw,
+    )?.deviceId;
+    let surface: SurfaceId;
+    if (deviceId !== undefined) {
+      surface = deviceSurfaceId(deviceId);
+      if (requested !== undefined && requested !== surface)
+        return c.json(
+          {
+            success: false,
+            error: 'surface_not_yours',
+            message: 'A device reads only its own delivery feed.',
+          },
+          403,
+        );
+    } else if (isBoundRuntimeLocalOperator(c.req.raw)) {
+      if (!isDesktopHostSurface(requested))
+        return c.json({ success: false, error: 'invalid_request' }, 400);
+      surface = requested;
+    } else {
+      return c.json(
+        {
+          success: false,
+          error: 'surface_required',
+          message:
+            "Only a paired device or this computer's Station host reads a delivery feed.",
+        },
+        403,
+      );
+    }
     return c.json({
       success: true,
-      data: options.desktopHost.read(surface, after, epoch),
+      data: options.desktopHost.read(surface, Number(afterText), epoch),
     });
   });
 

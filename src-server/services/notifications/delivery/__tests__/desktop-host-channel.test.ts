@@ -197,6 +197,32 @@ describe('DesktopHostChannel', () => {
     expect(after.read(DESKTOP, stale.cursor, 'run-2').entries).toEqual([]);
   });
 
+  test('a remote desktop app (a paired device) that polls its device feed gets the alert', async () => {
+    const channel = new DesktopHostChannel();
+    const bus = new EventBus();
+    wireNotificationDeliveryRouter({
+      eventBus: bus,
+      channels: [channel],
+      resolver: {
+        resolve: () => ({
+          deviceSurfaces: new Set(['device:laptop' as const]),
+          includesOperator: false,
+        }),
+      },
+      preferences: { current: () => defaultNotificationPreferences() },
+      logger: { warn: vi.fn() },
+    });
+    channel.read('device:laptop', 0);
+    // Polling but outside the audience: gets nothing.
+    channel.read('device:stranger', 0);
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
+    await flush();
+    expect(
+      channel.read('device:laptop', 0).entries.map((e) => e.notificationId),
+    ).toEqual(['n-1']);
+    expect(channel.read('device:stranger', 0).entries).toEqual([]);
+  });
+
   test('a feed keeps at most 100 entries', async () => {
     const { channel, bus } = wired();
     channel.read(DESKTOP, 0);

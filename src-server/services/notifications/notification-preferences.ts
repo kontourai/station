@@ -207,6 +207,19 @@ export class NotificationPreferencesStore
     return defaultNotificationPreferences();
   }
 
+  /**
+   * The stored document's revision (the ETag): a content hash, or
+   * {@link UNREADABLE_PREFERENCES_REVISION} while the file cannot be read —
+   * so a reset of an unreadable file is itself a compare-and-swap (it fails
+   * if someone repaired the file in between).
+   */
+  revision(): string {
+    const current = this.read();
+    return current.ok
+      ? preferencesRevision(current.preferences)
+      : UNREADABLE_PREFERENCES_REVISION;
+  }
+
   unreadable(): boolean {
     return !this.read().ok;
   }
@@ -226,14 +239,8 @@ export class NotificationPreferencesStore
   ): NotificationPreferencesV1 {
     const preferences = parseNotificationPreferences(value);
     if (!preferences) throw new NotificationPreferencesInvalidError();
-    if (options.ifMatch !== undefined) {
-      const current = this.read();
-      if (
-        !current.ok ||
-        preferencesRevision(current.preferences) !== options.ifMatch
-      )
-        throw new NotificationPreferencesConflictError();
-    }
+    if (options.ifMatch !== undefined && this.revision() !== options.ifMatch)
+      throw new NotificationPreferencesConflictError();
     return this.#persist(preferences);
   }
 
@@ -244,9 +251,14 @@ export class NotificationPreferencesStore
    * while the stored document is unreadable: patching the defaults would
    * silently discard what the person had saved.
    */
-  patch(value: unknown): NotificationPreferencesV1 {
+  patch(
+    value: unknown,
+    options: { ifMatch?: string } = {},
+  ): NotificationPreferencesV1 {
     const current = this.read();
     if (!current.ok) throw new NotificationPreferencesConflictError();
+    if (options.ifMatch !== undefined && this.revision() !== options.ifMatch)
+      throw new NotificationPreferencesConflictError();
     const next = applyNotificationPreferencesPatch(current.preferences, value);
     if (!next) throw new NotificationPreferencesInvalidError();
     return this.#persist(next);
@@ -284,6 +296,8 @@ export class NotificationPreferencesConflictError extends Error {
     super('Notification preferences changed');
   }
 }
+
+export const UNREADABLE_PREFERENCES_REVISION = '"unreadable"';
 
 /** Content revision, served as the ETag and checked by `If-Match`. */
 export function preferencesRevision(

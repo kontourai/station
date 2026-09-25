@@ -4,7 +4,7 @@
  * (`POST {gateway}/v1/fcm/send`, Station-signed; see deploy/push-gateway and
  * docs/design/notification-delivery.md, "Station contract").
  *
- * Shape, following `wireWebPushDelivery` and the console bridge:
+ * Shape, following the pre-#2586 Web Push listener and the console bridge:
  * - an EventBus subscriber that only marks the card dirty, and only for
  *   events that can change a session's lifecycle or title (never streamed
  *   content), and only while at least one phone is registered — a Station
