@@ -29,6 +29,12 @@ narrow limit never spends a wider, shared budget.
 | `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
 | `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple no longer has, `404 BadPath` on a delete, counts as deleted), 403 `channel-unauthorized`, 422, 503 |
 
+**Rollout order.** Deploy the gateway before a Station that sends
+`station_notification`: an older gateway answers such a message 400
+(`unsupported station_kind`) and the Station logs it as refused. Refusing
+unknown top-level keys on `/v1/fcm/send` breaks no deployed Station, which
+sends only `token`, `packageName` and `data` (a newer one adds `priority`).
+
 Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
 400 `{ error: <reason> }` on every route.
 

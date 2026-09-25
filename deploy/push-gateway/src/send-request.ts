@@ -14,6 +14,15 @@ const RESERVED_KEY =
 // sealed Station notification (an alert, or the retraction of one).
 const STATION_KINDS = new Set(['agent_activity', 'station_notification']);
 
+// A Station sends exactly these; anything else is refused rather than ignored.
+const BODY_KEYS = new Set([
+  'token',
+  'packageName',
+  'data',
+  'collapseKey',
+  'priority',
+]);
+
 export type SendPriority = 'high' | 'normal';
 
 export interface SendRequest {
@@ -46,6 +55,9 @@ export function parseSendRequest(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return { ok: false, reason: 'body must be an object' };
   const input = value as Record<string, unknown>;
+  for (const key of Object.keys(input))
+    if (!BODY_KEYS.has(key))
+      return { ok: false, reason: `unknown key ${key.slice(0, 64)}` };
 
   const { token, packageName, data, collapseKey, priority } = input;
   if (

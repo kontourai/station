@@ -56,7 +56,7 @@ test('refuses an unknown station_kind and a priority it does not know', () => {
   });
 });
 
-test('refuses anything that is not a Station agent-activity data message', () => {
+test('refuses anything that is not a Station data message of a kind the phone renders', () => {
   const cases: Array<[Record<string, unknown>, string]> = [
     [{ packageName: 'com.example.other' }, 'package is not a Station app'],
     [{ data: { device_id: 'x' } }, 'unsupported station_kind'],
@@ -74,6 +74,8 @@ test('refuses anything that is not a Station agent-activity data message', () =>
     [{ collapseKey: 'Has Spaces' }, 'invalid collapseKey'],
     [{ data: data({ notification: 'x' }) }, 'invalid data key notification'],
     [{ data: data({ station_key: 'forged' }) }, 'invalid data key station_key'],
+    [{ notification: { title: 'x' } }, 'unknown key notification'],
+    [{ ttl: '86400s' }, 'unknown key ttl'],
   ];
   for (const [overrides, reason] of cases) {
     assert.deepEqual(parse(overrides), { ok: false, reason }, reason);
