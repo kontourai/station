@@ -42,7 +42,7 @@ describe('agents view utils', () => {
     });
   });
 
-  test('cloneableAgentFields excludes credentials, tool env, and ownership', () => {
+  test('cloneableAgentFields excludes credentials, tool env, the unattended opt-in, and ownership', () => {
     expect(
       cloneableAgentFields({
         slug: 'source',
@@ -79,9 +79,9 @@ describe('agents view utils', () => {
         mcpServers: ['safe-server'],
         available: ['safe-server_read'],
         autoApprove: ['safe-server_read'],
-        // #2613: `tools` is classified 'clone', so the copy keeps the
-        // source's unattended opt-in the same way it keeps autoApprove.
-        unattendedAutoApprove: ['safe-server_read'],
+        // #2613: the unattended opt-in is a standing grant the editor can't
+        // show yet (#2658), so a copy starts without it.
+        unattendedAutoApprove: [],
         // #90 D14: the browser tools default on (the source never switched
         // them off).
         browser: true,
