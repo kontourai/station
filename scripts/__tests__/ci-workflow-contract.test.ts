@@ -10,6 +10,7 @@ import {
   ANDROID_BUILD_TOOLS_VERSION,
   ANDROID_NDK_VERSION,
   CHECKOUT_ACTION,
+  FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
@@ -1237,7 +1238,9 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
-    expect(fastChecks).toContain('timeout-minutes: 55');
+    expect(fastChecks).toContain(
+      `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
+    );
     expect(fastChecks).toContain('timeout-minutes: 20');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
