@@ -249,7 +249,10 @@ import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import { createMonitoringRoutes } from '../../routes/operations/monitoring.js';
 import { createNativePushRoutes } from '../../routes/operations/native-push-routes.js';
-import { createNotificationPreferencesRoutes } from '../../routes/operations/notification-preferences.js';
+import {
+  createNotificationDeliveryFeedRoutes,
+  createNotificationPreferencesRoutes,
+} from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
@@ -5559,9 +5562,15 @@ export function configureRuntimeRoutes(
         context.orchestrationService.canUserReadSession(sessionId, authority),
     }),
   );
+  // #2586: mounted at the two exact leaves; `/api/notifications` itself is
+  // not a route family, so nothing else under it is reachable.
   context.app.route(
-    '/api/notifications',
-    createNotificationPreferencesRoutes(notificationPreferences, {
+    '/api/notifications/preferences',
+    createNotificationPreferencesRoutes(notificationPreferences),
+  );
+  context.app.route(
+    '/api/notifications/deliveries',
+    createNotificationDeliveryFeedRoutes({
       ...(desktopHostChannel ? { desktopHost: desktopHostChannel } : {}),
       isFeedDevice: isNotificationFeedDevice,
     }),

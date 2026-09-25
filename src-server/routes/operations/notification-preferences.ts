@@ -44,41 +44,37 @@ import { isNonPersonCaller } from '../plugins/plugin-person-approval.js';
 
 const MAX_BODY_BYTES = 256 * 1024;
 
+/**
+ * Station's own agent tools and delegated Stations are refused: an agent
+ * that could write the preferences could unmute itself. Each factory is
+ * mounted at its exact leaf path — `/api/notifications` is not a route
+ * family (pairing-route-scopes.ts), so nothing else under it is reachable.
+ */
+async function personOnly(c: Context, next: () => Promise<void>) {
+  if (isNonPersonCaller(c.req.raw)) {
+    return c.json(
+      {
+        success: false,
+        error: 'person_required',
+        message:
+          "Notification preferences belong to a person; Station's agent tools and delegated Stations cannot read or change them.",
+      },
+      403,
+    );
+  }
+  await next();
+}
+
 export function createNotificationPreferencesRoutes(
   store: Pick<
     NotificationPreferencesStore,
     'read' | 'write' | 'patch' | 'revision'
   >,
-  options: {
-    desktopHost?: Pick<DesktopHostChannel, 'read'>;
-    /**
-     * Whether a paired device may hold a delivery feed: a personal-family
-     * device (the ones any audience can include). Anything else — a
-     * delegated Station, a no-read-scope or account-bound device — is
-     * refused before it can occupy one of the bounded feed slots. Absent
-     * means no device may.
-     */
-    isFeedDevice?: (deviceId: string) => boolean;
-  } = {},
 ) {
   const app = new Hono();
+  app.use('*', personOnly);
 
-  app.use('*', async (c, next) => {
-    if (isNonPersonCaller(c.req.raw)) {
-      return c.json(
-        {
-          success: false,
-          error: 'person_required',
-          message:
-            "Notification preferences belong to a person; Station's agent tools and delegated Stations cannot read or change them.",
-        },
-        403,
-      );
-    }
-    await next();
-  });
-
-  app.get('/preferences', (c) => {
+  app.get('/', (c) => {
     const result = store.read();
     if (!result.ok) {
       // A reset may send this back as If-Match: it then succeeds only if the
@@ -143,7 +139,7 @@ export function createNotificationPreferencesRoutes(
     }
   };
 
-  app.put('/preferences', async (c) => {
+  app.put('/', async (c) => {
     const body = await readBody(c.req.raw, (name) => c.req.header(name));
     if (!body.ok)
       return c.json(
@@ -156,7 +152,7 @@ export function createNotificationPreferencesRoutes(
     );
   });
 
-  app.patch('/preferences', async (c) => {
+  app.patch('/', async (c) => {
     const body = await readBody(c.req.raw, (name) => c.req.header(name));
     if (!body.ok)
       return c.json(
@@ -168,6 +164,23 @@ export function createNotificationPreferencesRoutes(
       store.patch(body.body, ifMatch === undefined ? {} : { ifMatch }),
     );
   });
+
+  return app;
+}
+
+export function createNotificationDeliveryFeedRoutes(options: {
+  desktopHost?: Pick<DesktopHostChannel, 'read'>;
+  /**
+   * Whether a paired device may hold a delivery feed: a personal-family
+   * device (the ones any audience can include). Anything else — a
+   * delegated Station, a no-read-scope or account-bound device — is
+   * refused before it can occupy one of the bounded feed slots. Absent
+   * means no device may.
+   */
+  isFeedDevice?: (deviceId: string) => boolean;
+}) {
+  const app = new Hono();
+  app.use('*', personOnly);
 
   /**
    * The CALLER'S OWN feed; the server derives which, the client never
@@ -182,7 +195,7 @@ export function createNotificationPreferencesRoutes(
    * derived surface (older clients); anything else is 403. The response
    * echoes `surface` so the client keys its cursor by the real id.
    */
-  app.get('/deliveries', (c) => {
+  app.get('/', (c) => {
     if (!options.desktopHost)
       return c.json({ success: false, error: 'unavailable' }, 404);
     const requested = c.req.query('surface');
