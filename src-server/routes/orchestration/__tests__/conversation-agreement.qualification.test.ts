@@ -248,7 +248,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           agent: { slug: 'claude' },
         }),
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const conversationId = `conversation:qualification:${workspaceCase.label}`;
       const starts: ProviderSessionStartInput[] = [];
@@ -457,7 +456,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           agent: { slug: 'claude' },
         }),
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const restored = await service.readConversationEventWindow(
         conversationId,
@@ -498,7 +496,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         agent: { slug: 'claude' },
       }),
       logger: { debug: vi.fn(), warn: vi.fn() },
-      ownerlessSessionAccess: 'single-user-compat',
     });
     service.initialize();
     const started = await service.startSessionInternal(

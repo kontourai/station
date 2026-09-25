@@ -12,12 +12,17 @@ import {
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
   resolvePushGatewayConfig,
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
+import type {
+  FocusSource,
+  InAppLiveness,
+} from '../../services/notifications/delivery/router.js';
 import { createNativePushSendFloor } from '../../services/notifications/native-push-send-floor.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
@@ -25,6 +30,7 @@ import { PushSigningKeyStore } from '../../services/notifications/push-signing-k
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
@@ -328,6 +334,12 @@ export function configureRuntimeSupportServices(
      * reads). Absent means gate-review attention is simply unavailable.
      */
     listGateReviews?: () => Promise<PausedGateReviewAggregate>;
+    /**
+     * #2620: focus presence and which focused surfaces can show the in-app
+     * toast. Absent: delivery treats nothing as focused (interrupt all).
+     */
+    focus?: FocusSource;
+    inAppLiveness?: InAppLiveness;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -447,6 +459,12 @@ export function configureRuntimeSupportServices(
               agentId: input.agentId,
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
+              // An external monitor acts for no request; this Station's
+              // operator configured it and owns (reads) the session it
+              // dispatches, but the monitored source drives it, so it acts
+              // for no one.
+              ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
               monitor: {
                 agentId: input.agentId,
                 signal: input.monitor.signal,
@@ -593,6 +611,8 @@ export function configureRuntimeSupportServices(
           },
         }
       : {}),
+    ...(options.focus ? { focus: options.focus } : {}),
+    ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
   });
 
   const agentActivityPublisher = wireAgentActivityPublisher({

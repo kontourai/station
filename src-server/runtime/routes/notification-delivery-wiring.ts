@@ -59,7 +59,10 @@ export interface NotificationDeliveryWiringDeps {
    * (an invalid gateway URL), and then no `fcm-alert` channel exists.
    */
   fcmAlert?: Omit<FcmAlertChannelOptions, 'logger'>;
-  /** #2585 focus presence and its in-app liveness; inert until wired. */
+  /**
+   * #2585 focus presence and #2620 event-stream liveness. Absent: nothing
+   * reads as focused, so every surface is interrupted.
+   */
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
 }

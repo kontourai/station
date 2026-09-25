@@ -3,6 +3,7 @@
  * epic archive#580, S6). Mounted at `/api/projects/:slug/operating-state`, mirroring
  * `routes/work-items.ts`'s project-scoped route seam.
  */
+
 import type { ConsoleAction } from '@kontourai/console-core';
 import {
   isHostedSessionReadAuthority,
@@ -21,6 +22,7 @@ import {
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { OperatingStateService } from '../../services/infra/operating-state-service.js';
+import type { SessionOwnerStamp } from '../../services/orchestration/session-owner-attribution.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { getCachedUser } from '../system/auth.js';
 
@@ -31,6 +33,8 @@ export interface OperatingStateRouteDeps {
   getWorkspacePath: (slug: string) => string | undefined;
   /** Runtime-composed request authority; direct construction has a safe fallback. */
   getSessionReadAuthority?: (request: Request) => SessionReadAuthority;
+  /** Who a board-dispatched session belongs to; see `sessionOwnerStampFor`. */
+  dispatchOwnerForRequest?: (request: Request) => SessionOwnerStamp;
   intentBindingDeps: StationIntentBindingDeps;
 }
 
@@ -169,7 +173,7 @@ export function createOperatingStateRoutes(
     }
     // Hosted project/task state remains unavailable. Let only the exact
     // session-resume authority and subject shape reach the established binder,
-    // which reconstructs fresh authority again at execution.
+    // which executes with this same request authority.
     if (hosted) {
       const threadId = sessionResumeSubjectId(intent);
       if (!threadId) return hostedNotFound(c);
@@ -188,7 +192,17 @@ export function createOperatingStateRoutes(
     const consent = body.consent === true ? true : undefined;
 
     try {
-      const bindings = createStationHostIntentBindings(deps.intentBindingDeps);
+      // The intent executes for THIS request's principal: a session it
+      // resumes is read, and a task it dispatches is owned, by that caller.
+      const bindings = createStationHostIntentBindings({
+        ...deps.intentBindingDeps,
+        getSessionReadAuthority: () => requestAuthority,
+        ...(deps.dispatchOwnerForRequest
+          ? {
+              getDispatchOwner: () => deps.dispatchOwnerForRequest?.(c.req.raw),
+            }
+          : {}),
+      });
       const data = await resolveAndExecuteStationBoardIntent(
         intent,
         consent,
