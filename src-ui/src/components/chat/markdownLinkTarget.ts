@@ -33,9 +33,16 @@ export type MarkdownLinkTarget =
       host: string;
       owner: string;
       repository: string;
-      /** The branch, tag or commit the URL shows the file at. */
+      /**
+       * The branch, tag or commit the URL shows the file at, read as ONE
+       * segment. A branch with a `/` in it cannot be told from a directory
+       * here, so for `feature/x` this is `feature` and `path` starts `x/`;
+       * `refPath` keeps both undivided for a reader that knows the branch.
+       */
       ref: string;
       path: string;
+      /** Everything after `/blob/`, decoded: `<ref>/<path>` undivided. */
+      refPath: string;
       lineRange?: WorkspaceFilePreviewLineRange;
       url: string;
     }
@@ -65,8 +72,9 @@ const PULL_REQUEST_PATH =
  * A forge's file view: GitHub's `/<owner>/<repo>/blob/<ref>/<path>` and
  * GitLab's `/<owner>/<repo>/-/blob/<ref>/<path>`. The ref is taken as ONE
  * segment (a sha, a tag, a simple branch); a branch name with a slash in it
- * is indistinguishable from a directory here and shifts the path by a
- * segment, which the preview then reports as a missing file.
+ * is indistinguishable from a directory from the URL alone. The undivided
+ * tail is kept as `refPath` so `RepoFileAnchor`, which knows the checkout's
+ * branch, can split it at that branch instead.
  */
 const REPO_FILE_PATH = /^\/([^/]+)\/([^/]+)(?:\/-)?\/blob\/([^/]+)\/(.+)$/;
 
@@ -210,8 +218,10 @@ export function classifyMarkdownLink(
         string,
       ];
       let path: string;
+      let refPath: string;
       try {
         path = decodeURIComponent(encodedPath);
+        refPath = decodeURIComponent(`${ref}/${encodedPath}`);
       } catch {
         return { kind: 'external', url: url.href };
       }
@@ -225,6 +235,7 @@ export function classifyMarkdownLink(
         repository,
         ref,
         path,
+        refPath,
         ...(lineRange ? { lineRange } : {}),
         url: url.href,
       };
