@@ -282,7 +282,7 @@ jobs:
           # above, or codesign fails only after the full build. Its SHA-1 is
           # read from the keychain's one identity with this exact name.
           signing_certificate_sha1=$(security find-identity -v -p codesigning "$RUNNER_TEMP/station-ios.keychain-db" | awk -v identity="\"$APPLE_SIGNING_IDENTITY\"" 'index($0, identity) { print $2 }')
-          [[ "$signing_certificate_sha1" =~ ^[A-F0-9]{40}$ ]]
+          [[ "$signing_certificate_sha1" =~ ^[A-F0-9]{40}$ ]] || { echo "::error::Expected exactly one valid code-signing identity named APPLE_SIGNING_IDENTITY in the imported keychain (none, several, or an untrusted chain such as a missing WWDR intermediate)."; exit 1; }
           node scripts/check-ios-store-profile.mjs --station "$extension_profile" --label APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$extension_bundle_id" --expected-certificate-sha1 "$signing_certificate_sha1" > "$extension_metadata"
           # The build writes aps-environment into the app's entitlements, and
           # codesign refuses it against a profile without push only after the
