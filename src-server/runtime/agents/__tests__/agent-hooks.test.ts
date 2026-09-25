@@ -956,10 +956,11 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     ).resolves.toMatchObject({ allowed: false });
   });
 
-  // Pins CURRENT behaviour: an authored pattern is matched against the
-  // runtime (normalized) name only. Matching the original MCP name as well
-  // would newly auto-approve authored station-control patterns in unattended
-  // and delegated runs; that is an owner decision (#2613), not part of #2584.
+  // Pins the owner decision on #2613: an authored `autoApprove` pattern is
+  // matched against the runtime (normalized) name only on this path.
+  // Matching the original MCP name as well would silently auto-approve
+  // authored station-control patterns in unattended and delegated runs;
+  // unattended use is the explicit `tools.unattendedAutoApprove` opt-in.
   test('an authored pattern written against the original MCP name does not match a normalized runtime tool (#2613, unchanged)', async () => {
     const toolNameMapping = loadedMapping('station-control', true, [
       'station-control_list_agents',
@@ -1011,4 +1012,283 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
   // real model round-trip instead of modeling the caller contract here.
   // The read-only twin (SC_READ_ONLY_TOOLS still auto-approves) lives
   // there too.
+});
+
+/**
+ * #2613: `tools.autoApprove` is attended auto-approval; unattended use is the
+ * explicit `tools.unattendedAutoApprove` opt-in. Every case drives the real
+ * hook (`createAgentHooks().beforeToolCall`), and the attended case drives the
+ * real chat requester (`createElicitationCallback`) the way
+ * `chat-primary-stream.ts` registers it.
+ */
+describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)', () => {
+  const DELETE_AGENT = 'stationControl_deleteAgent';
+  const deleteAgentCall = {
+    toolName: DELETE_AGENT,
+    toolCallId: 'tool-1',
+    toolArgs: { slug: 'old-agent' },
+  };
+  const childDelegation = {
+    mode: 'isolated-child' as const,
+    depth: 1,
+    maxDepth: 2,
+    parentAgentSlug: agentId('root'),
+    rootAgentSlug: agentId('root'),
+    denyApprovals: true,
+  };
+  const NO_CHANNEL_REASON =
+    "Tool 'stationControl_deleteAgent' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
+  const UNATTENDED_GRANT_REASON =
+    "Tool 'stationControl_deleteAgent' was denied for this unattended run. Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
+  const CHILD_REASON =
+    "Tool 'stationControl_deleteAgent' requires approval, and delegated child sessions cannot grant approvals. To allow it here, add it to this agent's tools.unattendedAutoApprove list.";
+
+  /** The genuine built-in, loaded the way the MCP loader loads it. */
+  function stationControlMapping() {
+    const mapping = new Map<string, MCPToolNameMappingEntry>();
+    normalizeLoadedMCPTools(
+      'planner',
+      ['station-control_delete_agent', 'station-control_list_agents'].map(
+        (name) => ({ name }) as never,
+      ),
+      mapping,
+      new Map(),
+      new MCPToolProvenanceGeneration(),
+      'station-control',
+      (tool) => ({
+        serverId: 'station-control',
+        originalToolName: (tool as { name: string }).name.slice(
+          'station-control_'.length,
+        ),
+      }),
+      { debug: () => {} },
+      true,
+    );
+    return mapping;
+  }
+
+  function hooksFor(
+    tools: { autoApprove?: string[]; unattendedAutoApprove?: string[] },
+    overrides: Record<string, unknown> = {},
+  ) {
+    const deps = createDeps({
+      toolNameMapping: stationControlMapping(),
+      spec: { name: 'Planner', prompt: 'Plan carefully', tools },
+      ...overrides,
+    });
+    return { deps, hooks: createAgentHooks(deps) };
+  }
+
+  /** Registers the real attended-chat requester for `conversationId`. */
+  async function registerAttendedChat(
+    hooks: ReturnType<typeof createAgentHooks>,
+    deps: ReturnType<typeof createDeps>,
+    conversationId: string,
+  ) {
+    const { createElicitationCallback } = await import(
+      '../../conversation/stream-orchestrator.js'
+    );
+    const approvalRegistry = { register: vi.fn().mockResolvedValue(true) };
+    const injectableStream = { inject: vi.fn() };
+    const elicitation = createElicitationCallback(
+      deps.spec,
+      deps.toolNameMapping,
+      approvalRegistry as never,
+      injectableStream as never,
+      deps.logger,
+      () => conversationId,
+    );
+    hooks.registerApprovalRequester(conversationId, async (tool) =>
+      Boolean(
+        await elicitation({
+          type: 'tool-approval',
+          toolName: tool.toolName,
+          toolDescription: tool.toolDescription || '',
+          toolArgs: tool.toolArgs,
+        }),
+      ),
+    );
+    return { approvalRegistry, injectableStream };
+  }
+
+  test('an authored station-control_* autoApprove approves attended chat without prompting', async () => {
+    const { deps, hooks } = hooksFor({ autoApprove: ['station-control_*'] });
+    const chat = await registerAttendedChat(hooks, deps, 'conv-1');
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        conversationId: 'conv-1',
+      }),
+    ).resolves.toBe(true);
+    // Approved by the authored pattern, not by a person clicking Allow.
+    expect(chat.approvalRegistry.register).not.toHaveBeenCalled();
+    expect(chat.injectableStream.inject).not.toHaveBeenCalled();
+  });
+
+  test('the same autoApprove does NOT approve an unattended run, and the denial names the real remedy', async () => {
+    const { hooks } = hooksFor({ autoApprove: ['station-control_*'] });
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, { agentSlug: 'planner' }),
+    ).resolves.toEqual({
+      allowed: false,
+      reason: NO_CHANNEL_REASON,
+      stationComposedReason: true,
+      policyDenied: true,
+    });
+
+    const withResolver = hooksFor(
+      { autoApprove: ['station-control_*'] },
+      { resolveUnattendedGrant: vi.fn().mockResolvedValue(false) },
+    );
+    await expect(
+      withResolver.hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: UNATTENDED_GRANT_REASON,
+    });
+  });
+
+  test('the same autoApprove does NOT approve a delegated child that cannot grant approvals', async () => {
+    const { hooks } = hooksFor({ autoApprove: ['station-control_*'] });
+    const requester = vi.fn().mockResolvedValue(true);
+    hooks.registerApprovalRequester('child-1', requester);
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        conversationId: 'child-1',
+        delegation: childDelegation,
+      }),
+    ).resolves.toMatchObject({ allowed: false, reason: CHILD_REASON });
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  test('unattendedAutoApprove, written against the original MCP name, runs the tool unattended', async () => {
+    const { hooks } = hooksFor({
+      unattendedAutoApprove: ['station-control_delete_agent'],
+    });
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, { agentSlug: 'planner' }),
+    ).resolves.toBe(true);
+    expect(toolDenials.add).not.toHaveBeenCalled();
+  });
+
+  test('unattendedAutoApprove precedes a standing-grant resolver that would deny', async () => {
+    const resolveUnattendedGrant = vi.fn().mockResolvedValue(false);
+    const { hooks } = hooksFor(
+      { unattendedAutoApprove: ['station-control_*'] },
+      { resolveUnattendedGrant },
+    );
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        unattendedPrincipal: { kind: 'scheduled-job', jobId: 'job-1' },
+      }),
+    ).resolves.toBe(true);
+    expect(resolveUnattendedGrant).not.toHaveBeenCalled();
+  });
+
+  test('unattendedAutoApprove runs the tool in a delegated child that cannot grant approvals', async () => {
+    const { hooks } = hooksFor({
+      unattendedAutoApprove: ['station-control_*'],
+    });
+    const requester = vi.fn().mockResolvedValue(false);
+    hooks.registerApprovalRequester('child-1', requester);
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        conversationId: 'child-1',
+        delegation: childDelegation,
+      }),
+    ).resolves.toBe(true);
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  test("a delegated child's block list still wins over unattendedAutoApprove", async () => {
+    const { hooks } = hooksFor({
+      unattendedAutoApprove: ['station-control_*'],
+    });
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        delegation: {
+          ...childDelegation,
+          blockedTools: ['station-control_delete_agent'],
+        },
+      }),
+    ).resolves.toMatchObject({ allowed: false });
+    expect(toolDenials.add).toHaveBeenCalledWith(1, {
+      reason: 'delegated_tool_blocked',
+    });
+  });
+
+  test('the approval guardian in enforce mode still vetoes an opted-in tool, unattended and in a child', async () => {
+    const reviewToolCall = vi.fn().mockResolvedValue({
+      decision: 'deny',
+      reason: 'Deleting agents is destructive.',
+    });
+    const { hooks } = hooksFor(
+      { unattendedAutoApprove: ['station-control_*'] },
+      {
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          reviewToolCall,
+        },
+      },
+    );
+
+    for (const invocation of [
+      { agentSlug: 'planner' },
+      { agentSlug: 'planner', delegation: childDelegation },
+    ]) {
+      await expect(
+        hooks.beforeToolCall!(deleteAgentCall, invocation),
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('was denied by the approval guardian'),
+      });
+    }
+    expect(reviewToolCall).toHaveBeenCalledTimes(2);
+    expect(toolDenials.add).toHaveBeenCalledWith(1, {
+      reason: 'guardian_denied',
+    });
+  });
+
+  test('attended chat ignores unattendedAutoApprove and still asks the person', async () => {
+    const { deps, hooks } = hooksFor({
+      unattendedAutoApprove: ['station-control_*'],
+    });
+    const chat = await registerAttendedChat(hooks, deps, 'conv-1');
+    chat.approvalRegistry.register.mockResolvedValue(false);
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        conversationId: 'conv-1',
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('the user declined'),
+    });
+    expect(chat.approvalRegistry.register).toHaveBeenCalledOnce();
+  });
+
+  test('an opt-in for one tool does not cover another', async () => {
+    const { hooks } = hooksFor({
+      unattendedAutoApprove: ['station-control_list_agents'],
+    });
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, { agentSlug: 'planner' }),
+    ).resolves.toMatchObject({ allowed: false, reason: NO_CHANNEL_REASON });
+  });
 });

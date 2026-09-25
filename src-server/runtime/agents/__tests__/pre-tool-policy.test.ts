@@ -138,6 +138,39 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     });
   });
 
+  test('#2613: the unattended opt-in is never consulted for an external engine', async () => {
+    // External engines do not deliver Station's unattended chain, so an
+    // opted-in tool must neither skip the engine's own flow nor a child's
+    // denial there.
+    const isUnattendedGranted = vi.fn(() => true);
+    const evaluator = createEvaluator({ isUnattendedGranted });
+
+    await expect(
+      evaluator(tool, invocation, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'defer' });
+    await expect(
+      evaluator(
+        tool,
+        {
+          ...invocation,
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: agentId('parent'),
+            rootAgentSlug: agentId('root'),
+            denyApprovals: true,
+          },
+        },
+        { interaction: 'external' },
+      ),
+    ).resolves.toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('cannot grant approvals') },
+    });
+    expect(isUnattendedGranted).not.toHaveBeenCalled();
+  });
+
   test('uses the MCP leaf name for config-protection while retaining raw grant provenance', async () => {
     const checkToolCall = vi.fn(() => ({
       decision: 'block',

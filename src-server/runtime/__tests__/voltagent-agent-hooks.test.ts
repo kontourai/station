@@ -233,7 +233,7 @@ describe('VoltAgent lifecycle hooks', () => {
 
   it('surfaces the real denial reason in the ToolDeniedError, not the delegated-child wording (station#1834)', async () => {
     const reason =
-      "Tool 'lookup' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.";
+      "Tool 'lookup' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
     const hooks = createVoltAgentLifecycleHooks('assistant', {
       beforeToolCall: vi.fn().mockResolvedValue({ allowed: false, reason }),
     });

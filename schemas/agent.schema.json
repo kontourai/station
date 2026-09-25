@@ -138,7 +138,14 @@
         },
         "autoApprove": {
           "type": "array",
-          "description": "Tools that execute without user confirmation in chat mode",
+          "description": "Tools that execute without user confirmation in attended chat. Unattended runs and delegated children do not honour patterns written against the original MCP name; use unattendedAutoApprove for those.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unattendedAutoApprove": {
+          "type": "array",
+          "description": "Explicit opt-in: tools this agent may run with nobody present (scheduled jobs, /invoke, CLI, delegated children) on Station's engine. Same pattern syntax and name forms as autoApprove; the approval guardian still applies.",
           "items": {
             "type": "string"
           }

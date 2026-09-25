@@ -69,6 +69,14 @@ interface StagedPreToolPolicyDeps {
   ) => Promise<boolean>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   isGranted(tool: ToolCallContext): boolean;
+  /**
+   * #2613: the agent's explicit `tools.unattendedAutoApprove` opt-in. Asked
+   * only for a Station-engine call nobody can consent to — no interactive
+   * requester, or a delegated child that may not grant approvals — and only
+   * after the approval guardian, which keeps its enforce-mode veto. Absent ⇒
+   * no opt-in.
+   */
+  isUnattendedGranted?(tool: ToolCallContext): boolean;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
     info(message: string, meta?: Record<string, unknown>): void;
@@ -110,6 +118,16 @@ function deny(
     }),
   };
 }
+
+/**
+ * #2613: what an unattended denial tells the user to do. `tools.autoApprove`
+ * is not the remedy: a pattern written against the original MCP name
+ * (`station-control_*`) matches only in attended chat, so pointing there sent
+ * users to an edit that changes nothing here. The message names the explicit
+ * unattended opt-in instead.
+ */
+const UNATTENDED_REMEDY =
+  "Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
 
 /** Station's own half of a config-protection denial, always present. */
 const CONFIG_PROTECTION_PREDICATE =
@@ -290,6 +308,29 @@ export function createStagedPreToolPolicyEvaluator(
       }
     }
 
+    // #2613: `tools.autoApprove` is matched above against the runtime name
+    // only, while attended chat's requester also matches the original MCP
+    // name — so an authored `station-control_*` covers attended chat and
+    // nothing else. Unattended use is this separate, explicit opt-in, matched
+    // in the attended form. Attended calls never reach it (they `ask`), and
+    // neither do external engines, whose unattended chain is undelivered (see
+    // the KNOWN GAP below).
+    const nobodyToAsk =
+      invocation.delegation?.denyApprovals === true ||
+      !options.hasInteractiveApproval;
+    if (
+      options.interaction === 'managed' &&
+      nobodyToAsk &&
+      deps.isUnattendedGranted?.(tool) === true
+    ) {
+      deps.logger.info('Unattended auto-approval allowed tool execution', {
+        toolName: tool.toolName,
+        agentSlug: invocation.agentSlug,
+        conversationId: invocation.conversationId,
+      });
+      return { behavior: 'allow' };
+    }
+
     if (invocation.delegation?.denyApprovals) {
       deps.logger.warn('Delegated child agent denied approval-bound tool', {
         toolName: tool.toolName,
@@ -299,7 +340,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'delegation_deny_approvals',
         tool.toolName,
-        'requires approval, and delegated child sessions cannot grant approvals.',
+        "requires approval, and delegated child sessions cannot grant approvals. To allow it here, add it to this agent's tools.unattendedAutoApprove list.",
       );
     }
 
@@ -345,7 +386,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'unattended_grant_denied',
         tool.toolName,
-        "was denied for this unattended run. Add it to the agent's tools.autoApprove list to grant it.",
+        `was denied for this unattended run. ${UNATTENDED_REMEDY}`,
       );
     }
     deps.logger.warn('No approval channel; denied tool execution', {
@@ -357,7 +398,7 @@ export function createStagedPreToolPolicyEvaluator(
     return deny(
       'no_approval_channel',
       tool.toolName,
-      "requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.",
+      `requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). ${UNATTENDED_REMEDY}`,
     );
   };
   return async (tool, invocation, options) => {
