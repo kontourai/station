@@ -158,7 +158,8 @@ modes, `review` and `enforce`:
   or an intrinsic grant, which allow before the guardian runs) runs unattended
   only on a guardian allow. A deny blocks it, and so does a defer — including
   the guardian's own fallback when its review fails or returns no usable
-  verdict — because nobody is present to decide. This applies to `unattendedAutoApprove` and to a per-job grant alike.
+  verdict — because nobody is present to decide. This applies to
+  `unattendedAutoApprove` and to a per-job grant alike.
 - In `review` mode, the guardian never blocks the opt-in.
 
 Attended chat ignores `unattendedAutoApprove` and asks as before; there a
