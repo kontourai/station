@@ -2229,6 +2229,9 @@ export class OrchestrationService {
       ...(options.resumeCursorSupport
         ? { resumeCursorSupport: options.resumeCursorSupport }
         : {}),
+      perTurnModelOverride: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.modelLaunch
+          ?.overridePerTurn !== false,
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -2703,8 +2706,10 @@ export class OrchestrationService {
   }
 
   /**
-   * station#1877: stop ONE provider-reported subagent, leaving the turn and
-   * its siblings running.
+   * station#1877: stop ONE provider-reported subagent, targeted rather than
+   * a blanket turn interrupt. #2486: an engine with no softer path (Codex)
+   * may end its own active turn as part of this — never any OTHER sibling —
+   * see `stopProviderTask` on `ProviderAdapterShape`.
    *
    * Deliberately does NOT fall back to `interruptTurn` when the adapter has
    * no task-scoped stop: a turn interrupt ends every other running subagent
@@ -3981,7 +3986,11 @@ export class OrchestrationService {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -4618,6 +4627,25 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  /**
+   * The owners whose threads `authority` could read, for narrowing an
+   * attachment's candidate threads before {@link canUserReadSession} judges
+   * each one. The same owner set transcript search binds, so the two reads
+   * cannot disagree about whose conversations are in scope. Not an
+   * authorization: `canUserReadSession` stays the final check.
+   */
+  attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    this.initialize();
+    const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
+    return [
+      ...new Set([
+        constraint.ownerUserId,
+        ...(constraint.ownerUserIds ?? []),
+        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
+      ]),
+    ];
   }
 
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {

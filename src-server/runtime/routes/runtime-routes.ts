@@ -1,4 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -137,7 +138,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
-  isSessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -1025,6 +1025,14 @@ export function isProjectMemberDraftLease(method: string, path: string) {
     /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
   );
 }
+
+/**
+ * Candidate threads an attachment read may judge, matching the event store's
+ * per-query bound. The read-predicate calls are therefore bounded at this;
+ * the number of store queries is up to one per readable owner, a count that
+ * comes from the caller and never from the reference.
+ */
+const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -2082,6 +2090,12 @@ export function configureRuntimeRoutes(
   context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.use('/api/tasks', bindConversationReadAuthority);
   context.app.use('/api/tasks/*', bindConversationReadAuthority);
+  // Attachment bytes authorize through the thread that carried them, so they
+  // must resolve the same principal that owns that thread. The OS alias never
+  // matches a principal-owned Session, and every stored attachment 404'd.
+  // GET only: the route has one leaf, and `use` would register every method
+  // with the route-coverage guard.
+  context.app.get('/api/attachments/:ref', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -3070,14 +3084,7 @@ export function configureRuntimeRoutes(
           session: detail.session,
           events: detail.events,
         });
-        const outcome =
-          lifecycle.lifecycleState === 'completed'
-            ? 'completed'
-            : lifecycle.lifecycleState === 'failed'
-              ? 'failed'
-              : lifecycle.lifecycleState === 'canceled'
-                ? 'cancelled'
-                : undefined;
+        const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
           ...(outcome ? { outcome } : {}),
@@ -5135,16 +5142,32 @@ export function configureRuntimeRoutes(
       readAttachment: (ref) =>
         runtimeContext.orchestrationEventStore.readAttachmentBlob(ref),
       threadsForAttachment: (ref, request) => {
-        const authority = readAuthorityForRequest(request);
-        return runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
-          ref,
-          isSessionReadAuthority(authority) ? authority.userId : undefined,
+        // One bounded, owner-narrowed query per owner the caller could read
+        // (their own, shared personal-account owners, and the legacy alias
+        // where the home-possession bridge admits it). The owner list comes
+        // from the caller, never from the reference, so a digest bound only
+        // to other people's threads costs the same as an unbound one.
+        // Ownerless rows come back with the first owner's query and count
+        // toward the bound; under an ownerless `deny` policy four of them
+        // could crowd out a later owner's readable thread.
+        const owners = context.orchestrationService.attachmentCandidateOwnerIds(
+          conversationReadAuthorityForRequest(request),
         );
+        const threads = new Set<string>();
+        for (const owner of owners) {
+          for (const threadId of runtimeContext.orchestrationEventStore.listAttachmentCandidateThreads(
+            ref,
+            owner,
+          ))
+            threads.add(threadId);
+          if (threads.size >= ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST) break;
+        }
+        return [...threads].slice(0, ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST);
       },
       canReadSession: (threadId, request) =>
         context.orchestrationService.canUserReadSession(
           threadId,
-          readAuthorityForRequest(request),
+          conversationReadAuthorityForRequest(request),
         ),
     }),
   );

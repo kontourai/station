@@ -270,14 +270,22 @@ export interface ProviderAdapterShape {
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
   /**
-   * Stop ONE provider-reported subagent without ending the turn or its
-   * siblings.
+   * Stop ONE provider-reported subagent, targeted rather than a blanket
+   * turn interrupt.
    *
    * Present only where the engine exposes a task-scoped stop. Absent is the
    * honest answer for an engine whose only stop is turn-scoped: the caller
    * must not fall back to interrupting the turn, because that ends every
    * other running subagent too — the precise outcome this seam exists to
-   * avoid.
+   * avoid for an engine that CAN leave the turn running.
+   *
+   * #2486: an engine with no softer path (Codex — no client method unblocks
+   * a parent whose turn is waiting on the child any other way) may still end
+   * the reporting session's own active turn as part of this call, though
+   * never any OTHER sibling. The matrix's `subagentControl.stop.
+   * endsParentTurn` cell says which is true for a given engine; a client
+   * reads that flag rather than assuming every engine's stop behaves the
+   * same way.
    */
   stopProviderTask?(
     threadId: string,
