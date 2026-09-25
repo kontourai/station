@@ -338,7 +338,7 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
       ).toBe(true);
       // And the session ends settled on U2's reply, not the engine's.
       expect(detail?.session).toMatchObject({
-        lifecycleState: 'completed',
+        lifecycleState: 'idle',
         transitionReason: 'turn_completed',
       });
       expect(activeTurnIdForEvents(events)).toBeUndefined();

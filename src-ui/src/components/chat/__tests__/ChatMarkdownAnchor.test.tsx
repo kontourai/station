@@ -42,6 +42,7 @@ vi.mock('../../../platform/openExternalLink', () => ({
   openNativeExternalLink: (url: string) => openNativeExternalLink(url),
 }));
 
+import { toastStore } from '../../../contexts/ToastContext';
 import { ChatMarkdownAnchor } from '../ChatMarkdownAnchor';
 import {
   MarkdownLinkContext,
@@ -54,7 +55,6 @@ const CONVERSATION: MarkdownLinkContextValue = {
   projectSlug: 'alpha',
   projectId: 'alpha-id',
   dockProjectSlug: 'alpha',
-  bottomOnly: false,
   openPathInMain,
 };
 
@@ -145,15 +145,20 @@ describe('a link in a chat message (#2049)', () => {
     expect(openPathInMain).toHaveBeenCalledWith('src/app.ts', undefined);
   });
 
-  test('a bottom-only device keeps the main route, and sends a review to the host', () => {
-    const bottomOnly = { ...CONVERSATION, bottomOnly: true };
-    click(mount('src/app.ts', bottomOnly));
-    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
-    expect(openPathInMain).toHaveBeenCalledWith('src/app.ts', undefined);
-    cleanup();
+  // Superseded #2049 B5 ("bottom-only: paths keep the main route, PR links
+  // open externally"): the link context no longer carries the device fold at
+  // all, so the anchor cannot branch on it — a phone hands both links to the
+  // model, which opens them OVER Chat (the phone layer). That half is proven
+  // through the real provider in `RegionModelContext-phone-layer.test.tsx`;
+  // this file pins what the anchor does with the model's answer.
+  test('a refused pull-request pane falls through to the browser rather than doing nothing', () => {
+    openPullRequestInRegion.mockReturnValueOnce({
+      ok: false,
+      reason: 'refused',
+    } as never);
     tauri = true;
-    click(mount('https://github.com/o/r/pull/3', bottomOnly));
-    expect(openPullRequestInRegion).not.toHaveBeenCalled();
+    expect(click(mount('https://github.com/o/r/pull/3'))).toBe(false);
+    expect(openPullRequestInRegion).toHaveBeenCalledTimes(1);
     expect(openNativeExternalLink).toHaveBeenCalledWith(
       'https://github.com/o/r/pull/3',
     );
@@ -383,6 +388,69 @@ describe('a forge file link (github.com/.../blob/...)', () => {
     expect(openNativeExternalLink).toHaveBeenCalledTimes(4);
   });
 
+  const station = (branch?: string) => ({
+    available: true,
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'kontourai', name: 'station' },
+    ...(branch ? { branch } : {}),
+  });
+
+  test('a branch with a `/` in it is split at the checkout’s branch, not at its first segment', () => {
+    repositoryContext = station('feature/x');
+    const anchor = mount(
+      'https://github.com/kontourai/station/blob/feature/x/src/app.ts#L2',
+    );
+    expect(click(anchor)).toBe(false);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      lineRange: { start: 2, end: 2 },
+    });
+    // The tooltip does not imply the local copy is the forge's revision.
+    expect(anchor.getAttribute('title')).toMatch(
+      /working copy of src\/app\.ts/,
+    );
+  });
+
+  test('a slash branch the checkout is not on, or an unknown branch, opens on the forge', () => {
+    tauri = true;
+    for (const context of [
+      station('feature/y'),
+      station('feature/xy'),
+      station(undefined),
+    ]) {
+      repositoryContext = context;
+      const anchor = mount(
+        'https://github.com/kontourai/station/blob/feature/x/src/app.ts',
+      );
+      expect(click(anchor)).toBe(false);
+      expect(anchor.getAttribute('title')).toBe(
+        'https://github.com/kontourai/station/blob/feature/x/src/app.ts',
+      );
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openNativeExternalLink).toHaveBeenCalledTimes(3);
+  });
+
+  test('a session whose directory cannot be read opens the forge, not a refused local path', () => {
+    toastStore.clear();
+    tauri = true;
+    repositoryContext = station('main');
+    const anchor = mount(url, {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/elsewhere/lane',
+      threadId: null,
+    });
+    expect(click(anchor)).toBe(false);
+    expect(openNativeExternalLink).toHaveBeenCalledWith(url);
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(toastStore.getSnapshot()).toHaveLength(0);
+  });
+
   test('in a worktree session the ref is compared with the WORKTREE branch', () => {
     contextQueries.length = 0;
     mount(url, {
@@ -395,5 +463,154 @@ describe('a forge file link (github.com/.../blob/...)', () => {
       project: 'alpha',
       thread: 'thread-7',
     });
+  });
+});
+
+describe('an explicit path link follows the session’s file scope', () => {
+  test('in a worktree session with a thread it opens the session’s copy', () => {
+    const anchor = mount('src/app.ts', {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/wt/lane',
+      threadId: 'thread-7',
+    });
+    expect(click(anchor)).toBe(false);
+    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+      projectId: 'alpha-id',
+      projectSlug: 'alpha',
+      path: 'src/app.ts',
+      thread: 'thread-7',
+    });
+  });
+
+  test('when the session directory cannot be read it refuses visibly, never opening the checkout copy', () => {
+    toastStore.clear();
+    const outside = {
+      ...CONVERSATION,
+      projectRoots: ['/work/repo'],
+      sessionDirectory: '/elsewhere/lane',
+      threadId: null,
+    };
+    for (const value of [outside, { ...outside, dockProjectSlug: 'beta' }]) {
+      const anchor = mount('src/app.ts#L4', value);
+      expect(click(anchor)).toBe(false);
+      cleanup();
+    }
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openPathInMain).not.toHaveBeenCalled();
+    const notices = toastStore.getSnapshot();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.message).toMatch(/session's own directory/);
+    toastStore.clear();
+  });
+});
+
+describe('a link whose text names another host than it goes to', () => {
+  test('shows the real host beside the text and the full href as its tooltip', () => {
+    for (const [href, text, host] of [
+      ['https://evil.test/x', 'github.com/kontourai/station', 'evil.test'],
+      // A path makes it a host claim even when the TLD reads like an
+      // extension (.rs, .net, .zip).
+      ['https://evil.test/x', 'docs.rs/serde', 'evil.test'],
+      ['https://evil.test/x', 'example.net/login', 'evil.test'],
+      ['https://evil.test/x', 'github.com.zip/o/r', 'evil.test'],
+      ['https://evil.test/x', 'https://github.com/o/r', 'evil.test'],
+      ['https://evil.test:8443/', 'www.github.com', 'evil.test:8443'],
+      [
+        'https://github.com.evil.test/o/r',
+        'github.com',
+        'github.com.evil.test',
+      ],
+      // A recognised forge URL on another host is still a mismatch.
+      [
+        'https://gitlab.com/o/r/-/issues/1',
+        'github.com/o/r/issues/1',
+        'gitlab.com',
+      ],
+      // A port is part of the host a reader is promised.
+      ['https://github.com:8443/o/r', 'github.com:443/o/r', 'github.com:8443'],
+      ['http://localhost:9000/', 'localhost:5173', 'localhost:9000'],
+      ['https://github.com/x', 'github.com:8443/x', 'github.com'],
+      // localhost, IP literals, with or without scheme and port.
+      ['https://evil.test/', 'localhost:3000', 'evil.test'],
+      ['https://evil.test/', 'localhost', 'evil.test'],
+      ['https://evil.test/', '127.0.0.1', 'evil.test'],
+      ['https://evil.test/', 'http://10.0.0.1:8080/x', 'evil.test'],
+      ['http://10.0.0.2/', '10.0.0.1', '10.0.0.2'],
+      // A Unicode look-alike is compared in the punycode form it resolves to.
+      ['https://xn--gthub-zsa.com/', 'github.com/o', 'xn--gthub-zsa.com'],
+      ['https://github.com/', 'gíthub.com/o', 'github.com'],
+      ['https://evil.test/', 'example.xn--p1ai/x', 'evil.test'],
+      // The reader sees `github.com`; the parser would call it userinfo.
+      ['https://evil.test/', 'https://github.com@evil.test/', 'evil.test'],
+      // A scheme-less host with a port is a claim.
+      ['https://evil.test/', 'github.com:443/x', 'evil.test'],
+      // Bare text is a claim for an ordinary external site.
+      ['https://evil.test/', 'docs.example', 'evil.test'],
+    ] as const) {
+      const anchor = mount(href, CONVERSATION, text);
+      const visible = anchor.cloneNode(true) as HTMLElement;
+      for (const hidden of visible.querySelectorAll('.sr-only'))
+        hidden.remove();
+      expect(visible.textContent, href).toBe(`${text} (${host})`);
+      // A screen reader hears where it goes, not the parenthetical.
+      expect(
+        screen.getByRole('link', { name: `${text}, goes to ${host}` }),
+        href,
+      ).toBe(anchor);
+      expect(anchor.getAttribute('title'), href).toBe(new URL(href).href);
+      cleanup();
+    }
+  });
+
+  test('prose, file names and matching hosts are unchanged', () => {
+    for (const [href, text] of [
+      ['https://example.test/docs', 'the docs'],
+      ['https://github.com/o/r/blob/main/README.md', 'README.md'],
+      ['https://github.com/o/r', 'github.com/o/r'],
+      ['https://www.github.com/o/r', 'github.com/o/r'],
+      ['https://github.com/o/r/pull/1', 'src/app.ts'],
+      // Text that writes no port promises none.
+      ['http://localhost:5173', 'localhost'],
+      ['http://127.0.0.1:8080/', '127.0.0.1'],
+      ['https://github.com:8443/o/r', 'github.com/o/r'],
+      // A default port is not a difference.
+      ['https://github.com/x', 'github.com:443/x'],
+      ['https://github.com/x', 'https://github.com:443/x'],
+      // Bare file names, on an external site or a forge target.
+      ['https://example.test/a', 'logo.png'],
+      ['https://example.test/a', 'index.php'],
+      ['https://example.test/a', 'Info.plist'],
+      ['https://example.test/a', 'App.vue'],
+      ['https://example.test/a', 'ASP.NET'],
+      ['https://example.test/a', 'docs.rs'],
+      ['https://github.com/o/r/blob/main/go.mod', 'go.mod'],
+      // Bare text on a forge file or pull request is never a host claim —
+      // a ref or file name that happens to look like a domain.
+      ['https://github.com/o/r/blob/main/config.io', 'config.io'],
+      ['https://github.com/o/r/pull/1', 'release.app'],
+      // A file with a position, anchor or query is still a file (#HIGH r2).
+      ['https://github.com/o/r/blob/main/src/app.ts#L42', 'app.ts:42'],
+      ['https://github.com/o/r/blob/main/src/app.ts#L42', 'app.ts#L42'],
+      [
+        'https://github.com/o/r/blob/main/README.md#install',
+        'README.md#install',
+      ],
+      [
+        'https://github.com/o/r/blob/main/package.json?plain=1',
+        'package.json?plain=1',
+      ],
+      ['https://example.test/a', 'app.ts:42'],
+      // A version string is not an address on a forge link.
+      ['https://github.com/o/r/pull/1', '1.2.3.4'],
+      ['https://github.com/o/r/blob/v1.2.3.4/a.ts', '1.2.3.4'],
+      // Without a scheme, `@` makes an address, not a host.
+      ['https://example.test/a', 'someone@github.com'],
+    ] as const) {
+      const anchor = mount(href, CONVERSATION, text);
+      expect(anchor.textContent, `${text} -> ${href}`).toBe(text);
+      expect(anchor.querySelector('.chat-link-host')).toBeNull();
+      cleanup();
+    }
   });
 });

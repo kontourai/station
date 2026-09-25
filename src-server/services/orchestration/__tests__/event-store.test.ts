@@ -2539,7 +2539,7 @@ describe('EventStore', () => {
       events: payloads,
     });
     expect(summary.hasActiveTurn).toBe(false);
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
   });
 
   // archive#3557/#3558 fix-round review BLOCK 1 (independent review's exact
@@ -2778,7 +2778,7 @@ describe('EventStore', () => {
       persisted,
       events: payloads,
     });
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
 
     const run = buildAgentRunSummary({
       answerability,
@@ -2991,7 +2991,7 @@ describe('EventStore', () => {
       .listEvents(threadId)
       .find((event) => event.payload.eventId === 'stamp-turn-2-completed');
     expect(persisted?.payload.method).toBe('turn.completed');
-    expect(persisted?.payload.sessionState).toBe('completed');
+    expect(persisted?.payload.sessionState).toBe('idle');
   });
 
   // archive#3524 fix-round: re-pins archive#3451 B1/D1's fail-closed identity
