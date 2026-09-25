@@ -848,6 +848,9 @@ describe('lifecycle instance state', () => {
     const previous = process.env.STATION_SUPERVISOR_PID;
     const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // #2674: the unit's marker, inherited by a terminal inside a
+    // service-managed Station, must not make this plain start read as one.
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
     // #2327: addressed to the desktop's own sidecar only.
     process.env.STATION_STDOUT_LOGS = '0';
     try {
@@ -868,6 +871,9 @@ describe('lifecycle instance state', () => {
       expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
         'STATION_STDOUT_LOGS',
       );
+      for (const call of spawn.mock.calls) {
+        expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
+      }
     } finally {
       if (previous === undefined) delete process.env.STATION_SUPERVISOR_PID;
       else process.env.STATION_SUPERVISOR_PID = previous;
@@ -896,6 +902,8 @@ describe('lifecycle instance state', () => {
       throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
     }) as typeof process.kill);
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    // The unit sets this on service-run; the supervised server keeps it.
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
@@ -911,9 +919,13 @@ describe('lifecycle instance state', () => {
 
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
+      STATION_SERVICE_MANAGED: '1',
     });
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
+    );
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SERVICE_MANAGED',
     );
   });
 

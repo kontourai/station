@@ -4074,6 +4074,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // This marker is a capability for precisely the server spawn governed by
   // service-run. Never inherit it through a server-initiated lifecycle call.
   delete serverEnv.STATION_SUPERVISOR_PID;
+  // The unit's "you run under the service" marker (set by the launchd/systemd
+  // unit, inherited through service-run) belongs to the supervised spawn only,
+  // like the PID above: a plain `station start` from a terminal inside a
+  // service-managed Station is not service-managed, and reading it as such
+  // makes that server refuse its own core update (#2674).
+  const serviceManaged = serverEnv.STATION_SERVICE_MANAGED;
+  delete serverEnv.STATION_SERVICE_MANAGED;
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
@@ -4106,6 +4113,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   serverEnv.STATION_BOOT_ID = bootId;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
+    if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
   }
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
@@ -4190,6 +4198,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
+          delete uiEnv.STATION_SERVICE_MANAGED;
           return uiEnv;
         })(),
       },

@@ -56,11 +56,14 @@ const DEFAULT_INSTANCE_ID = 'default';
  * Whether this process runs under a supervisor that restarts it on exit, which
  * the git-pull path's detach-then-`exit(0)` restart would fight (#2674):
  *
- * - `STATION_SUPERVISOR_PID` is the operative fact, not a label. The spawner
- *   sets it on exactly the supervised server spawn — `station service run`
- *   passes `supervisorPid`, and the CLI deletes the key from every other spawn
- *   (lifecycle.ts) — and it is what arms this server's parent watchdog. It
- *   covers the Windows service too, whose task sets no other marker.
+ * - `STATION_SUPERVISOR_PID` is the operative fact, not a label. A supervisor
+ *   sets it on exactly the server it supervises — `station service run`
+ *   passes `supervisorPid`, the desktop sets it on its sidecar, and dev
+ *   harnesses set it on the servers they own — and it is what arms this
+ *   server's parent watchdog. `station start` deletes it from its plain
+ *   spawns (lifecycle.ts), and the child-env scrub removes it from terminals
+ *   and engine children (child-process-environment.ts). It covers the
+ *   Windows service too, whose task sets no other marker.
  * - `STATION_SERVICE_MANAGED=1` is written by the launchd/systemd unit and
  *   inherited through the supervisor. It catches the case the PID cannot: a
  *   replacement a PREVIOUS git-pull restart spawned under the service, which

@@ -94,8 +94,6 @@ beforeEach(() => {
     'STATION_BUILD_BUILT_AT',
     'STATION_INSTANCE_ID',
     'STATION_BOOT_ID',
-    // The supervision markers (#2674): a test runner launched under a
-    // supervised Station must not turn every POST into the service refusal.
     'STATION_SUPERVISOR_PID',
     'STATION_SERVICE_MANAGED',
   ]) {
@@ -992,6 +990,7 @@ describe('performGitPullRestart (station#1903)', () => {
     const exitFn = vi.fn();
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     vi.stubEnv('STATION_SUPERVISOR_PID', 'old-supervisor');
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
 
     performGitPullRestart({
       gitRoot: '/repo',
@@ -1028,6 +1027,13 @@ describe('performGitPullRestart (station#1903)', () => {
     expect(spawnFn.mock.calls[0][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
+    // Deliberately inherited (#2674): the replacement still lives in the
+    // service's unit, and this marker is what lets IT refuse a later in-place
+    // update now that the PID is gone. This spawn does not use the child-env
+    // scrub, which removes the marker for every other child.
+    expect(spawnFn.mock.calls[0][2].env).toMatchObject({
+      STATION_SERVICE_MANAGED: '1',
+    });
     expect(childHandle.unref).toHaveBeenCalled();
 
     const [watchdogCmd, watchdogArgs, watchdogOpts] = spawnFn.mock.calls[1] as [
