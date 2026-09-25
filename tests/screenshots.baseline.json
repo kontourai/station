@@ -239,7 +239,7 @@
       "name": "overlay-new-project-layout-control",
       "width": 1440,
       "height": 900,
-      "sha256": "c75a447ea7b41384bf48d5fd656e51885d215f0aa6b5ef55daa39e9b5c521152"
+      "volatile": true
     },
     {
       "name": "overlay-new-project-modal",
