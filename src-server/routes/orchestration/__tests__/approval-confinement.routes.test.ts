@@ -291,6 +291,7 @@ async function fixture(
     continueExecutionTargetMessage,
     delegateTask,
     executeExecutionTargetMessage,
+    handoffExecutionTargetMessage,
   } = await import('../../../tools/station-control-delegation.js');
   const readAuthority = (userId: string) =>
     sessionReadAuthorityFromRequest(userId, undefined, undefined);
@@ -342,6 +343,11 @@ async function fixture(
         ),
       delegateTask: (input: { userId: string }) =>
         delegateTask(
+          { ...input, readAuthority: readAuthority(input.userId) } as never,
+          service,
+        ),
+      handoffConversation: (input: { userId: string }) =>
+        handoffExecutionTargetMessage(
           { ...input, readAuthority: readAuthority(input.userId) } as never,
           service,
         ),
@@ -736,6 +742,96 @@ describe('#2493: who may start a session unconfined', () => {
       threadId: child.threadId,
       confinement: 'workspace',
       modelOptions: { approvalMode: 'auto' },
+    });
+  });
+
+  test('a handoff started by a device without the grant records its own grant, not the recorded never (#2493 round 7)', async () => {
+    // Since #2540 an ordinary follow-up reuses or respawns the conversation's
+    // session (carry-forward stamp). An explicit Agent/engine handoff is a
+    // real `prepareStart` of a NEW session inside a conversation that may
+    // already hold a recorded concrete never.
+    const f = await fixture();
+    f.claude.completeTurns = true;
+    const phone = f.pair('Phone');
+    const { conversationId } = await f.chat(
+      f.bearer(phone.credential),
+      'claude-agent',
+    );
+    const root = f.claude.starts.at(-1)!.threadId;
+    const latestSequence = () => {
+      const sequences = [
+        root,
+        ...f.store.conversationSessions(conversationId).map((s) => s.sessionId),
+      ]
+        .flatMap((sessionId) => f.store.listEvents(sessionId))
+        .filter((row) => row.payload.method === 'session.approval-mode-set')
+        .map((row) => row.globalSequence);
+      return sequences.length > 0 ? Math.max(...sequences) : null;
+    };
+    const decide = async (
+      credential: string,
+      threadId: string,
+      approvalMode: ApprovalMode,
+    ) => {
+      const decided = await f.request(
+        f.bearer(credential),
+        '/api/orchestration/commands',
+        {
+          type: 'setApprovalMode',
+          threadId,
+          approvalMode,
+          basedOnSequence: latestSequence(),
+        },
+      );
+      expect(decided.status, decided.text).toBe(200);
+      expect(decided.body.data.recorded).toBe(true);
+    };
+    await decide(f.operator.credential, root, 'never');
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            conversationId,
+            f.readAuthority('operator'),
+          )
+        )?.session.lifecycleState,
+      ).toBe('idle');
+    });
+
+    const codexStarts = f.codex.starts.length;
+    const handoff = await f.request(
+      f.bearer(phone.credential),
+      `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+      {
+        message: 'Take it from here.',
+        idempotencyKey: 'handoff-confinement',
+        target: { environment: { kind: 'current' }, agent: 'codex-agent' },
+      },
+    );
+    expect(handoff.status, handoff.text).toBe(200);
+    expect(f.codex.starts.length).toBe(codexStarts + 1);
+    const child = f.codex.starts.at(-1)!;
+    expect(child.threadId).not.toBe(root);
+    // Host through the recorded never; the stamp is the phone's own grant.
+    expect.soft(lastStart(f, 'codex-agent')).toEqual({
+      confinement: 'host',
+      approvalMode: 'never',
+      stamp: 'workspace',
+    });
+
+    // The phone tightens to Ask, then picks Default (the Station default
+    // never). Nothing the phone did grants host: the new session is
+    // confined.
+    await decide(phone.credential, child.threadId, 'ask');
+    await decide(phone.credential, child.threadId, 'connection-default');
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: child.threadId, input: 'after default' },
+    });
+    expect(f.codex.turns.at(-1)).toMatchObject({
+      threadId: child.threadId,
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'never' },
     });
   });
 
