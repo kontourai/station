@@ -32,7 +32,7 @@ const APP_TARGET = 'station_iOS';
 const APP_BUNDLE_ID = /^io\.kontourai\.station(\.[a-z0-9-]+)*$/;
 const APS_ENVIRONMENTS = new Set(['development', 'production']);
 
-export function agentActivityExtensionTarget(appBundleId) {
+function agentActivityExtensionTarget(appBundleId) {
   return {
     type: 'app-extension',
     platform: 'iOS',
@@ -105,7 +105,7 @@ function apsEnvironmentValue(apsEnvironment) {
  * Info.plist `StationApsEnvironment`, the runtime copy of the
  * `aps-environment` entitlement. Replaces an existing value.
  */
-export function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
+function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
   const value = apsEnvironmentValue(apsEnvironment);
   const entry = `<key>StationApsEnvironment</key>\n\t<string>${value}</string>`;
   const existing =
@@ -116,7 +116,7 @@ export function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
   return plist.replace(end, `\n\t${entry}\n</dict>\n</plist>\n`);
 }
 
-export function appEntitlementProperties(apsEnvironment) {
+function appEntitlementProperties(apsEnvironment) {
   const properties = {
     'keychain-access-groups': [
       '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
