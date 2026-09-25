@@ -180,4 +180,35 @@ describe('LazyBoundary', () => {
     expect(await screen.findByText('Second surface')).toBeTruthy();
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  test('with sharing, Retry after a rejection imports again and renders', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chunk unavailable'))
+      .mockResolvedValueOnce({ default: () => <div>Loaded on retry</div> });
+
+    render(
+      <LazyBoundary
+        load={load}
+        componentProps={{}}
+        pending={null}
+        unavailable={(onRetry) => (
+          <button type="button" onClick={onRetry}>
+            Try the chunk again
+          </button>
+        )}
+        shareAcrossMounts
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Try the chunk again' }),
+    );
+    expect(await screen.findByText('Loaded on retry')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
+    consoleError.mockRestore();
+  });
 });
