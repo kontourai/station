@@ -205,23 +205,28 @@ function selectedTests(paths: string[], manifest?: unknown): string[] {
  *   a glob-family call. A walk written any other way — a lister imported
  *   from a gate module, a shell `find`, `fs.opendir` — is invisible;
  *   `HELPER_BASED_SCANS` names the ones known when this landed.
- * - A walk is exempt, one call at a time, when its target looks
- *   TEMPORARY: the argument (for `ls-files`, the `cwd:` beside it) mentions
- *   a temp-directory call, a name containing temp/tmp/scratch, or an
- *   identifier the file assigns from one — directly, through another such
- *   identifier, or through a local function whose body creates a temp
- *   directory. A walk inside a helper, on the helper's own parameter, is
- *   exempt when every outside call of the helper passes such an argument.
- *   A suite that creates temp directories is NOT exempt as a whole: one
- *   real walk in it (the hole #2176's round-4 review found in
- *   product-docs-source-links) must be classified.
- * - The tracing is textual and one file deep. A temp root reached through an
- *   imported fixture factory or an object property (`f.root`,
- *   `harness.homeDir`) is not traced, so such suites land in
- *   `DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS` with the reason; the error is
- *   always toward classifying too much, never toward exempting a real walk,
- *   except where a real directory is held in a variable NAMED like a temp
- *   one — which this cannot tell apart.
+ * - A walk is exempt, one call at a time, only when its target looks
+ *   TEMPORARY at that point in the file: the argument (for `ls-files`, a
+ *   `cwd:` inside that same call's arguments — never a neighbour's) contains
+ *   a temp-directory call; a whole name token temp/tmp/scratch/temporary
+ *   (camelCase, `_`, `-` and `.` split tokens, so `templates`, `itemPath` and
+ *   `attempt` are not temp); a call to a local function whose EVERY return is
+ *   temp-derived; or an identifier whose NEAREST PRECEDING assignment in the
+ *   file is temp-derived, by the same rules. A walk inside a helper, on the
+ *   helper's own parameter, is exempt when every outside call of the helper
+ *   passes such an argument. A suite that creates temp directories is NOT
+ *   exempt as a whole.
+ * - LIMITS. Resolution is by file order, not by scope: a binding assigned in
+ *   one test and used in another, or a helper called before its definition,
+ *   resolves to whatever assignment precedes it textually. Imported fixture
+ *   factories, object properties (`f.root`) and parameters of functions that
+ *   are not the walking helper are not traced. Every one of these errs
+ *   toward REPORTING a walk, and the suites it reports are classified by
+ *   hand below (`TEMP_VIA_FIXTURE`). The direction that can hide a real walk:
+ *   a real directory held in a binding NAMED with a temp token or spelled
+ *   with one in a path literal (`'fixtures/tmp-shapes'`), or reached
+ *   through a `return` the regex does not see (a multi-line return
+ *   expression is judged by its first line).
  */
 const WALK_CALL = new RegExp(['\\bread', 'dir(?:Sync)?\\s*\\('].join(''), 'g');
 const LS_FILES = new RegExp(['\\bls', '-files\\b'].join(''), 'g');
@@ -231,9 +236,34 @@ const GLOB_CALL = new RegExp(
 );
 const TEMP_SOURCE =
   /\bmkdtemp(?:Sync)?\b|\btmpdir\(\)|\bmakeTempDir\b|\bmakeTemp\w*\(|\bcreateTemp\w*\(|\btempDir\(|\btemporaryDirectory\(/;
-const TEMP_NAME = /te?mp|scratch/i;
+/** Whole name tokens only: `templates`, `itemPath`, `attempt` are not temp. */
+const TEMP_TOKENS = new Set(['temp', 'tmp', 'scratch', 'temporary']);
 const FUNCTION_HEAD =
   /function\s+(\w+)\s*(?:<[^>]*>)?\(([^)]*)\)|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*(?::[^=]+)?=>/g;
+const ASSIGNMENT =
+  /(?:(?:const|let|var)\s+|^\s*|[;{]\s*)(?:\{([^}]*)\}|(\w+))\s*(?::[^=\n]+)?=(?![=>])\s*([^;]*)/gm;
+const KEYWORDS = new Set([
+  'const',
+  'let',
+  'var',
+  'return',
+  'await',
+  'new',
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'function',
+  'async',
+]);
+
+/** True when some identifier or word in `text` has a whole temp token. */
+function hasTempToken(text: string): boolean {
+  for (const word of text.match(/[A-Za-z][A-Za-z0-9]*/g) ?? [])
+    for (const token of word.split(/(?<=[a-z0-9])(?=[A-Z])/))
+      if (TEMP_TOKENS.has(token.toLowerCase())) return true;
+  return false;
+}
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -255,86 +285,31 @@ function mentions(text: string, name: string): boolean {
   return new RegExp(`\\b${name}\\b`).test(text);
 }
 
-/** Local functions whose body text creates a temporary directory. */
-function tempFunctions(source: string): Set<string> {
-  const names = new Set<string>();
-  const heads =
-    /(?:function\s+(\w+)\s*(?:<[^>]*>)?\([^)]*\)[^{]*\{|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*(?::[^=]+)?=>)/g;
-  for (const match of source.matchAll(heads)) {
-    const window = source.slice(match.index, match.index + 1500);
-    const rest = window.slice(match[0].length);
-    const next = rest.search(
-      /\n(?:export\s+)?(?:async\s+)?function\s|\n(?:const|let)\s+\w+\s*=\s*(?:async\s*)?\(|\ndescribe\(|\ntest\(|\nit\(/,
-    );
-    const body = next === -1 ? window : window.slice(0, match[0].length + next);
-    if (TEMP_SOURCE.test(body)) names.add(match[1] ?? match[2]);
-  }
-  return names;
-}
-
-/** Identifiers assigned, directly or transitively, from a temp source. */
-function tempIdentifiers(source: string): Set<string> {
-  const functions = tempFunctions(source);
-  const assignments = [
-    ...source.matchAll(
-      /(?:(?:const|let|var)\s+|^\s*|[;{]\s*)(?:\{([^}]*)\}|(\w+))\s*(?::[^=\n]+)?=(?![=>])\s*([^;]*)/gm,
-    ),
-  ];
-  const temp = new Set<string>();
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const [, destructured, name, value] of assignments) {
-      const names = name
-        ? [name]
-        : (destructured ?? '')
-            .split(',')
-            .map((part) => part.split(':').pop()?.trim() ?? '')
-            .filter(Boolean);
-      const fromTemp =
-        TEMP_SOURCE.test(value) ||
-        [...functions].some((fn) =>
-          new RegExp(`\\b${fn}\\s*\\(`).test(value),
-        ) ||
-        [...temp].some((known) => mentions(value, known));
-      for (const each of names)
-        if ((fromTemp || TEMP_NAME.test(each)) && !temp.has(each)) {
-          temp.add(each);
-          changed = true;
-        }
-    }
-  }
-  return temp;
-}
-
-/** Every walk in `raw` whose target does not look temporary. */
-function realTreeWalks(raw: string): string[] {
-  const source = stripComments(raw);
-  const temp = tempIdentifiers(source);
-  const looksTemp = (text: string) =>
-    TEMP_SOURCE.test(text) ||
-    TEMP_NAME.test(text) ||
-    [...temp].some((name) => mentions(text, name));
-  // Every local function with the span of its body, so "inside" is a range
-  // test rather than "the nearest head above".
-  const functions = [...source.matchAll(FUNCTION_HEAD)].map((head) => {
+/** Every local function, with its body span and parameters. */
+function localFunctions(source: string) {
+  return [...source.matchAll(FUNCTION_HEAD)].map((head) => {
     const start = head.index ?? 0;
     let open = start + head[0].length;
     while (open < source.length && /\s/.test(source[open])) open += 1;
     if (source.startsWith('=>', open)) open += 2;
     while (open < source.length && /[\s:\w<>[\]|]/.test(source[open]))
       open += 1;
+    const braced = source[open] === '{';
     let end = source.indexOf('\n', open);
-    if (source[open] === '{') {
+    if (braced) {
       let depth = 0;
       for (end = open; end < source.length; end += 1) {
         if (source[end] === '{') depth += 1;
         else if (source[end] === '}' && --depth === 0) break;
       }
     }
+    end = end === -1 ? source.length : end;
     return {
       name: head[1] ?? head[3],
       start,
-      end: end === -1 ? source.length : end,
+      bodyStart: open,
+      end,
+      braced,
       params: (head[2] ?? head[4])
         .split(',')
         .map((param) =>
@@ -346,14 +321,105 @@ function realTreeWalks(raw: string): string[] {
         .filter(Boolean),
     };
   });
+}
+
+/**
+ * Temp-ness of an expression AT a position: a temp call, a whole temp token,
+ * a call to a local function that ALWAYS returns a temp-derived value, or an
+ * identifier whose nearest preceding assignment is itself temp.
+ */
+function tempResolver(source: string) {
+  const functions = localFunctions(source);
+  const assignments = [...source.matchAll(ASSIGNMENT)].map((match) => ({
+    index: match.index ?? 0,
+    names: match[2]
+      ? [match[2]]
+      : (match[1] ?? '')
+          .split(',')
+          .map((part) => part.split(':').pop()?.trim() ?? '')
+          .filter(Boolean),
+    value: match[3],
+  }));
+  const assignmentMemo = new Map<number, boolean>();
+  const factoryMemo = new Map<string, boolean>();
+
+  const resolveName = (name: string, before: number): boolean => {
+    let nearest: (typeof assignments)[number] | undefined;
+    for (const assignment of assignments)
+      if (assignment.index < before && assignment.names.includes(name))
+        nearest = assignment;
+    if (!nearest) return false;
+    const known = assignmentMemo.get(nearest.index);
+    if (known !== undefined) return known;
+    assignmentMemo.set(nearest.index, false); // cycle guard
+    const result =
+      nearest.names.some(hasTempToken) ||
+      valueIsTemp(nearest.value, nearest.index);
+    assignmentMemo.set(nearest.index, result);
+    return result;
+  };
+
+  const alwaysReturnsTemp = (name: string): boolean => {
+    const known = factoryMemo.get(name);
+    if (known !== undefined) return known;
+    factoryMemo.set(name, false); // cycle guard
+    const fn = functions.find((candidate) => candidate.name === name);
+    let result = false;
+    if (fn) {
+      const body = source.slice(fn.bodyStart, fn.end + 1);
+      const returns = fn.braced
+        ? [...body.matchAll(/\breturn\s+([^;\n]+)/g)].map((match) => ({
+            text: match[1],
+            at: fn.bodyStart + (match.index ?? 0),
+          }))
+        : [{ text: body, at: fn.bodyStart }];
+      result =
+        returns.length > 0 &&
+        returns.every(({ text, at }) => valueIsTemp(text, at + 1));
+    }
+    factoryMemo.set(name, result);
+    return result;
+  };
+
+  const valueIsTemp = (text: string, at: number): boolean => {
+    if (TEMP_SOURCE.test(text) || hasTempToken(text)) return true;
+    for (const call of text.matchAll(/\b(\w+)\s*\(/g))
+      if (alwaysReturnsTemp(call[1])) return true;
+    for (const identifier of new Set(text.match(/\b[A-Za-z_$][\w$]*\b/g)))
+      if (!KEYWORDS.has(identifier) && resolveName(identifier, at)) return true;
+    return false;
+  };
+
+  return { functions, valueIsTemp };
+}
+
+/** The argument text of the innermost call that contains `index`. */
+function enclosingCallArguments(source: string, index: number): string {
+  let depth = 0;
+  for (let i = index; i >= 0 && i > index - 600; i -= 1) {
+    if (source[i] === ')') depth += 1;
+    else if (source[i] === '(') {
+      if (depth === 0) return callArgument(source, i);
+      depth -= 1;
+    }
+  }
+  return '';
+}
+
+/** Every walk in `raw` whose target does not look temporary. */
+function realTreeWalks(raw: string): string[] {
+  const source = stripComments(raw);
+  const { functions, valueIsTemp } = tempResolver(source);
   const enclosing = (index: number) =>
     functions
       .filter((fn) => fn.start < index && index <= fn.end)
       .sort((left, right) => right.start - left.start)[0];
   const tempTarget = (text: string, at: number) => {
-    if (looksTemp(text)) return true;
+    if (valueIsTemp(text, at)) return true;
+    // A walk inside a helper, on the helper's own parameter: temp only when
+    // every outside call site passes a temp-derived argument.
     const fn = enclosing(at);
-    if (!fn || !fn.params.some((param) => mentions(text, param))) return false;
+    if (!fn?.params.some((param) => mentions(text, param))) return false;
     const outside = [
       ...source.matchAll(new RegExp(`\\b${fn.name}\\s*\\(`, 'g')),
     ].filter(
@@ -365,7 +431,10 @@ function realTreeWalks(raw: string): string[] {
     return (
       outside.length > 0 &&
       outside.every((call) =>
-        looksTemp(callArgument(source, (call.index ?? 0) + call[0].length - 1)),
+        valueIsTemp(
+          callArgument(source, (call.index ?? 0) + call[0].length - 1),
+          call.index ?? 0,
+        ),
       )
     );
   };
@@ -378,10 +447,10 @@ function realTreeWalks(raw: string): string[] {
     }
   for (const match of source.matchAll(LS_FILES)) {
     const at = match.index ?? 0;
-    const cwd = /cwd:\s*([^,}\n]+)/.exec(
-      source.slice(Math.max(0, at - 150), at + 250),
-    );
-    if (!cwd || !looksTemp(cwd[1]))
+    // Only a `cwd:` inside THIS call's own arguments counts; a neighbour's
+    // `cwd: tempRepo` says nothing about where this one runs.
+    const cwd = /\bcwd:\s*([^,}\n]+)/.exec(enclosingCallArguments(source, at));
+    if (!cwd || !valueIsTemp(cwd[1], at))
       walks.push(`ls-files cwd=${cwd?.[1] ?? '.'}`);
   }
   return walks;
@@ -394,8 +463,9 @@ const HELPER_BASED_SCANS = Object.freeze([
 ]);
 
 const TEMP_VIA_FIXTURE =
-  'walks only a temporary directory reached through a fixture object or ' +
-  'helper the text heuristic does not trace';
+  'hand-checked: walks only a temporary directory the text heuristic cannot ' +
+  'trace (a fixture object, a caller in another scope, or a same-named ' +
+  'binding in another test)';
 const WRAPS_FS =
   'wraps fs.readdir in a mock; walks whatever the code under test asks';
 
@@ -409,8 +479,6 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
     'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
-  'packages/shared/src/__tests__/station-home-recovery-candidate.test.ts':
-    TEMP_VIA_FIXTURE,
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
@@ -433,10 +501,6 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'the whole file shares, and verification:policy:gate re-derives the ' +
     'corpus partition in ci:fast',
   'scripts/__tests__/worktree-hygiene-git.test.ts': TEMP_VIA_FIXTURE,
-  'src-server/adapters/file/__tests__/memory-adapter-message-atomicity.test.ts':
-    TEMP_VIA_FIXTURE,
-  'src-server/adapters/file/__tests__/memory-adapter-message-mutations.test.ts':
-    TEMP_VIA_FIXTURE,
   'src-server/knowledge-index/__tests__/migration-path-traversal.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/knowledge-index/__tests__/migration.test.ts': TEMP_VIA_FIXTURE,
@@ -456,6 +520,30 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
+  'packages/cli/src/__tests__/install-registry.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/ios-channel-icons.test.ts':
+    'incidental: checks the committed iOS icon sets against their catalog, like generate-app-icons',
+  'scripts/__tests__/server-build-portability.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/typecheck-host-slots.test.ts':
+    'walks a directory handed to a fixture child on its argv',
+  'src-server/providers/__tests__/muse-adapter.real-child.process.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/runtime/bootstrap/__tests__/station-runtime-store-quarantine.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/agents/__tests__/playbook-skill-migration.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/browser/__tests__/chromium-acquisition.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/checkpoints/__tests__/checkpoint-index-store.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/infra/__tests__/server-log-store.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/utils/__tests__/git-exec.hardening.test.ts':
+    'git ls-files inside the temporary repository its helper creates',
+  'tests/learning-source.spec.ts':
+    'a Playwright spec; Vitest cannot schedule it (#1817)',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
   'tests/builder-delivery-viewer.spec.ts':
@@ -488,6 +576,42 @@ describe('whole-tree scans are run or classified (#2176)', () => {
       realTreeWalks(`${helper}const home = makeTempDir('h');\nwalk(home);`),
     ).toEqual([]);
     expect(realTreeWalks(`${helper}walk('src-ui/src');`)).toHaveLength(1);
+    // Adversarial controls from the #2176 final review: each must SURFACE.
+    // (a) A temp token must be a whole name token, not a substring.
+    expect(
+      realTreeWalks(`${read}(join(ROOT, 'src-server/templates'));`),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(`const itemPath = join(cwd, 'src');\n${read}(itemPath);`),
+    ).toHaveLength(1);
+    // (b) A shadowed name resolves to its nearest preceding assignment.
+    expect(
+      realTreeWalks(
+        `let root = ${mk}('x');\n${read}(root);\nroot = join(REPO, 'src');\n${read}(root);`,
+      ),
+    ).toEqual(['root']);
+    // (c) A helper that returns a temp dir on only one branch is not a temp
+    // factory; one that always does is.
+    expect(
+      realTreeWalks(
+        `function resolveDir(p) {\n  if (p) return makeTempDir('x');\n  return join(REPO, p);\n}\nconst d = resolveDir(p);\n${read}(d);`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(
+        `function fresh() {\n  return makeTempDir('x');\n}\nconst d = fresh();\n${read}(d);`,
+      ),
+    ).toEqual([]);
+    // (d) Only a \`cwd:\` in the call's OWN arguments counts.
+    const ls = ['ls', '-files'].join('');
+    expect(
+      realTreeWalks(
+        `execFileSync('git', ['init'], { cwd: tempRepo });\nexecFileSync('git', ['${ls}']);`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(`execFileSync('git', ['${ls}'], { cwd: tempRepo });`),
+    ).toEqual([]);
     // A comment naming the call is not a walk.
     expect(realTreeWalks(`// ${read}('docs')\n`)).toEqual([]);
   });
