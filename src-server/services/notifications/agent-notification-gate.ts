@@ -108,7 +108,10 @@ export interface AgentNotificationRateLimits {
   readonly sessionRefillMs: number;
   /** Per verified session: at most this many per rolling hour. */
   readonly sessionPerHour: number;
-  /** Per Station: at most this many distinct sessions notify per hour. */
+  /**
+   * Per Station: at most this many distinct sessions send non-attention
+   * notifications per hour (attention is bounded by `attentionPerHour`).
+   */
   readonly distinctSessionsPerHour: number;
   /** Per Station: at most this many `attention` notifications per hour. */
   readonly attentionPerHour: number;
@@ -176,8 +179,11 @@ export class AgentNotificationRateLimiter {
       waits.push((1 - tokens) * this.limits.sessionRefillMs);
     const hourWait = windowWait(state.sent, this.limits.sessionPerHour, now);
     if (hourWait > 0) waits.push(hourWait);
-    if (state.sent.length === 0) {
-      // A session new to this hour takes a distinct-session slot.
+    if (state.sent.length === 0 && urgency !== 'attention') {
+      // A session new to this hour takes a distinct-session slot. Attention
+      // is exempt: after an ordinary fan-out the user's own session must
+      // still be able to ask for input, and attention has its own Station
+      // ceiling (attentionPerHour).
       const active = [...this.sessions.values()].filter(
         (candidate) => candidate.sent.length > 0,
       );

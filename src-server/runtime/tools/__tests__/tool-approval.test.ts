@@ -162,7 +162,7 @@ describe('tool-approval', () => {
       ).toBe(false);
     });
 
-    test('#2584: notify_user is auto-approved for an agent that authored no patterns — only for the genuine built-in under an authentic name', () => {
+    test('#2584: notify_user is granted only by exact identity: the raw built-in name, authentic, genuine server delivered', () => {
       const notify = 'mcp__station-control__notify_user';
       expect(
         isAutoApprovedExternalTool(
@@ -180,8 +180,7 @@ describe('tool-approval', () => {
           'authentic',
         ),
       ).toBe(true);
-      // ACP names are self-reported: an agent could label any of its own
-      // tools notify_user, so the intrinsic grant never applies there.
+      // ACP names are self-reported: never the intrinsic grant.
       expect(
         isAutoApprovedExternalTool(
           notify,
@@ -198,13 +197,44 @@ describe('tool-approval', () => {
           'authentic',
         ),
       ).toBe(false);
-      // Only the bounded-write tool: a mutating station-control tool still
-      // needs an authored pattern.
+      // A mutating station-control tool still needs an authored pattern.
       expect(
         isAutoApprovedExternalTool(
           'mcp__station-control__delete_agent',
           [],
           [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(false);
+    });
+
+    test('#2584 review: split-name impostors that canonicalize to station-control_notify_user are refused', () => {
+      // Server `station-control_notify`, tool `user`: canonicalizes to
+      // `station-control_notify_user`.
+      const split = 'mcp__station-control_notify__user';
+      const impostorServer = {
+        id: 'station-control_notify',
+        command: 'node',
+        args: ['/tmp/station-control_notify.js'],
+      };
+      // ACP agent with no configuration at all.
+      expect(isAutoApprovedExternalTool(split, [], [], 'self-reported')).toBe(
+        false,
+      );
+      expect(
+        isAutoApprovedExternalTool(
+          'station-control_notify_user',
+          [],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      // Claude, with the genuine built-in AND the impostor delivered.
+      expect(
+        isAutoApprovedExternalTool(
+          split,
+          [],
+          [GENUINE_STATION_CONTROL, impostorServer],
           'authentic',
         ),
       ).toBe(false);

@@ -5,20 +5,7 @@ import {
   STATION_BROWSER_MCP_SERVER_ID,
 } from '../../tools/station-browser-policy.js';
 import { isBuiltinStationControl } from '../bootstrap/station-control-runtime-env.js';
-import { SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS } from './runtime-control-tools.js';
-
-/**
- * #2584: every agent's effective auto-approve list — its authored patterns
- * plus the bounded-write station-control tools every agent may call without
- * a prompt (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`, e.g. `notify_user`). Kept
- * as patterns so the external path's reserved-server checks still decide
- * whether a name really is the built-in station-control's.
- */
-export function withIntrinsicAutoApprovals(
-  patterns: readonly string[] | undefined,
-): string[] {
-  return [...(patterns ?? []), ...SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS];
-}
+import type { MCPToolNameMappingEntry } from './mcp-tool-names.js';
 
 export function isAutoApproved(toolName: string, patterns: string[]): boolean {
   return patterns.some((pattern) => {
@@ -136,6 +123,69 @@ function reservedBuiltinServerForTool(toolName: string): string | null {
 }
 
 /**
+ * #2584: the bounded-write station-control tools every agent may call without
+ * an authored pattern (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`). Granted by
+ * EXACT identity, never through pattern matching: a pattern or a
+ * canonicalized name can be satisfied by a differently split name
+ * (`mcp__station-control_notify__user` canonicalizes to the same string), so
+ * only these identities qualify.
+ */
+const INTRINSIC_STATION_CONTROL_TOOL = 'notify_user';
+const INTRINSIC_EXTERNAL_TOOL_NAME = `mcp__station-control__${INTRINSIC_STATION_CONTROL_TOOL}`;
+
+function deliveredGenuineStationControl(
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+): boolean {
+  const delivered = (resolvedToolServers ?? [])
+    .filter((server) => server.id === 'station-control')
+    .at(-1);
+  return (
+    !!delivered &&
+    isBuiltinStationControl(delivered.id, {
+      id: delivered.id,
+      command: delivered.command,
+      args: delivered.args,
+    } as ToolDef)
+  );
+}
+
+/**
+ * External engines: the raw engine name is exactly the built-in's, the engine
+ * generated it (Claude's Agent SDK, from the `mcpServers` key Station handed
+ * it), and the server delivered under `station-control` is the genuine
+ * built-in. An ACP (`self-reported`) name never qualifies.
+ */
+function isIntrinsicExternalGrant(
+  toolName: string,
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  toolNameProvenance: ExternalToolNameProvenance,
+): boolean {
+  return (
+    toolName === INTRINSIC_EXTERNAL_TOOL_NAME &&
+    toolNameProvenance === 'authentic' &&
+    deliveredGenuineStationControl(resolvedToolServers)
+  );
+}
+
+/**
+ * Station's engine: the loaded tool's own record (keyed by the runtime name
+ * the model calls, e.g. `stationControl_notifyUser`) says it came from the
+ * built-in station-control server (`builtinStationControl`, stamped by the
+ * MCP loader from `isBuiltinStationControl`) and is its `notify_user` tool.
+ */
+export function isIntrinsicStationEngineGrant(
+  runtimeToolName: string,
+  toolNameMapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
+): boolean {
+  const entry = toolNameMapping.get(runtimeToolName);
+  return (
+    entry?.builtinStationControl === true &&
+    entry.provenance?.integrationId === 'station-control' &&
+    entry.provenance.originalToolName === INTRINSIC_STATION_CONTROL_TOOL
+  );
+}
+
+/**
  * Whether `toolName` is authentically bound to the MCP server that will execute
  * it. `'authentic'` — the engine generates the name itself from the actual
  * server config (Claude's Agent SDK produces `mcp__<server>__<tool>` from the
@@ -180,21 +230,22 @@ export function isAutoApprovedExternalTool(
   resolvedToolServers?: readonly ResolvedAgentToolServer[],
   toolNameProvenance: ExternalToolNameProvenance = 'self-reported',
 ): boolean {
-  // The intrinsic grants join BEFORE the reserved-server checks below, so an
-  // ACP self-reported or impostor-delivered `station-control` name never
-  // gets them.
-  const effective = withIntrinsicAutoApprovals(patterns);
+  if (
+    isIntrinsicExternalGrant(toolName, resolvedToolServers, toolNameProvenance)
+  )
+    return true;
+  if (!patterns || patterns.length === 0) return false;
   const canonical = canonicalizeExternalToolName(toolName);
   const matched =
-    isAutoApproved(toolName, effective) ||
-    (canonical !== toolName && isAutoApproved(canonical, effective));
+    isAutoApproved(toolName, patterns) ||
+    (canonical !== toolName && isAutoApproved(canonical, patterns));
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
-      patterns ?? [],
+      patterns,
       resolvedToolServers,
       toolNameProvenance,
     );

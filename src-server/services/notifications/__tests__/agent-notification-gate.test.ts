@@ -279,6 +279,31 @@ describe('AgentNotificationGate', () => {
     expect(limited.retryAfterSec).toBe(2_400);
   });
 
+  test('after a 10-way fan-out fills the distinct-session slots, the user’s own session can still ask for input (attention is exempt), but not send info', async () => {
+    const subject = gate();
+    for (let index = 0; index < 10; index += 1)
+      expect(
+        (
+          await subject.notify(
+            { sessionId: `worker-${index}`, assurance: 'bound' },
+            notice('Done'),
+          )
+        ).status,
+      ).toBe('sent');
+    const main = { sessionId: 'main-session', assurance: 'bound' } as const;
+    expect((await subject.notify(main, notice('Workers done'))).status).toBe(
+      'rate_limited',
+    );
+    expect(
+      (
+        await subject.notify(
+          main,
+          notice('Need approval to merge', { urgency: 'attention' }),
+        )
+      ).status,
+    ).toBe('sent');
+  });
+
   test('attention is capped at 10 per hour per Station, across sessions, while other urgencies continue', async () => {
     const subject = gate();
     const session = (index: number) =>

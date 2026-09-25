@@ -9,6 +9,11 @@ import {
   principalKey,
   UnattendedGrantStore,
 } from '../../../services/agents/unattended-grant-store.js';
+import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
+import {
+  type MCPToolNameMappingEntry,
+  normalizeLoadedMCPTools,
+} from '../../tools/mcp-tool-names.js';
 import { createAgentHooks } from '../agent-hooks.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -854,12 +859,48 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     });
   });
 
-  test('#2584: station-control notify_user is allowed with no authored pattern, no approval channel and no unattended grant; a mutating tool is still denied', async () => {
-    const hooks = createAgentHooks(createDeps());
+  /**
+   * The mapping as the real MCP loader builds it: tools served by a server
+   * whose runtime names are normalized (`station-control_notify_user` →
+   * `stationControl_notifyUser`), stamped with loader provenance and, for
+   * the genuine built-in, `builtinStationControl`.
+   */
+  function loadedMapping(
+    integrationId: string,
+    builtin: boolean,
+    originals: string[],
+  ) {
+    const mapping = new Map<string, MCPToolNameMappingEntry>();
+    normalizeLoadedMCPTools(
+      'planner',
+      originals.map((name) => ({ name }) as never),
+      mapping,
+      new Map(),
+      new MCPToolProvenanceGeneration(),
+      integrationId,
+      (tool) => ({
+        serverId: integrationId,
+        originalToolName: (tool as { name: string }).name.slice(
+          integrationId.length + 1,
+        ),
+      }),
+      { debug: () => {} },
+      builtin,
+    );
+    return mapping;
+  }
+
+  test('#2584: the built-in notify_user, under its production runtime name, is allowed with no pattern, approval channel or unattended grant', async () => {
+    const toolNameMapping = loadedMapping('station-control', true, [
+      'station-control_notify_user',
+      'station-control_delete_agent',
+    ]);
+    expect([...toolNameMapping.keys()]).toContain('stationControl_notifyUser');
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
     await expect(
       hooks.beforeToolCall!(
         {
-          toolName: 'station-control_notify_user',
+          toolName: 'stationControl_notifyUser',
           toolCallId: 'tool-1',
           toolArgs: { title: 'Nightly finished' },
         },
@@ -869,13 +910,56 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     await expect(
       hooks.beforeToolCall!(
         {
-          toolName: 'station-control_delete_agent',
+          toolName: 'stationControl_deleteAgent',
           toolCallId: 'tool-2',
           toolArgs: { slug: 'x' },
         },
         { agentSlug: 'planner' },
       ),
     ).resolves.toMatchObject({ allowed: false });
+  });
+
+  test('#2584: an authored integration reusing station-control does not get the grant', async () => {
+    const toolNameMapping = loadedMapping('station-control', false, [
+      'station-control_notify_user',
+    ]);
+    const hooks = createAgentHooks(createDeps({ toolNameMapping }));
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_notifyUser',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
+  test('an authored pattern matches the original MCP name of a normalized runtime tool', async () => {
+    const toolNameMapping = loadedMapping('station-control', true, [
+      'station-control_list_agents',
+    ]);
+    const hooks = createAgentHooks(
+      createDeps({
+        toolNameMapping,
+        spec: {
+          name: 'Planner',
+          prompt: 'Plan carefully',
+          tools: { autoApprove: ['station-control_list_agents'] },
+        },
+      }),
+    );
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'stationControl_listAgents',
+          toolCallId: 'tool-1',
+          toolArgs: {},
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toBe(true);
   });
 
   test('an absent resolveUnattendedGrant seam denies (fail-closed seam)', async () => {

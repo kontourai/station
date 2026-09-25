@@ -31,7 +31,7 @@ import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolut
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import {
   isAutoApproved,
-  withIntrinsicAutoApprovals,
+  isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
 import type {
   IAgentHooks,
@@ -104,9 +104,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     requester: (tool: ToolCallContext) => Promise<boolean>,
   ): () => void;
 } {
-  // #2584: authored patterns plus the bounded-write tools every agent may
-  // call unprompted (attended, unattended and delegated alike).
-  const autoApprove = withIntrinsicAutoApprovals(deps.spec.tools?.autoApprove);
+  const autoApprove = deps.spec.tools?.autoApprove || [];
   const approvalRequesters = new Map<
     string,
     (tool: ToolCallContext) => Promise<boolean>
@@ -128,7 +126,19 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       : undefined,
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
-    isGranted: (tool) => isAutoApproved(tool.toolName, autoApprove),
+    isGranted: (tool) => {
+      // The loader renames MCP tools (`station-control_list_agents` →
+      // `stationControl_listAgents`); authored patterns are written against
+      // the original name, so match both, as the stream path does.
+      const original = deps.toolNameMapping.get(tool.toolName)?.original;
+      return (
+        isAutoApproved(tool.toolName, autoApprove) ||
+        (original !== undefined && isAutoApproved(original, autoApprove)) ||
+        // #2584: the built-in's bounded-write tools, for every agent and run
+        // (attended, unattended, delegated), by exact loader identity.
+        isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping)
+      );
+    },
     logger: deps.logger,
   });
 
