@@ -109,6 +109,9 @@ object AgentNotifications {
   private const val CARD_TAG = "station-agent-activity"
   private const val ALERT_TAG = "station-agent-alert"
   private const val CARD_NOTIFICATION_ID = 73001
+  private const val ALERT_TITLE_CHARS = 120
+  /** Room for a grouped alert: five thread titles of up to 120 characters, plus separators. */
+  private const val ALERT_BODY_CHARS = 608
   /** The pseudo-registration `preview` renders under. */
   private const val PREVIEW = "preview"
 
@@ -358,9 +361,8 @@ object AgentNotifications {
     alertId: String,
     route: SessionRoute?
   ) {
-    val title = data["alert_title"].orEmpty().take(120)
-    // Room for a grouped alert: five thread titles of up to 120 characters.
-    val body = data["alert_body"].orEmpty().take(608)
+    val title = (data["alert_title"] ?: "").take(ALERT_TITLE_CHARS)
+    val body = (data["alert_body"] ?: "").take(ALERT_BODY_CHARS)
     val notificationId = alertId.hashCode()
     val opens = tapIntent(context, notificationId, "alert:$registrationId:$alertId", route)
     val builder = newBuilder(context, Channel.ALERTS)
