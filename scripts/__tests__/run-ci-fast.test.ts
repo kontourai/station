@@ -313,7 +313,7 @@ describe('bounded ci:fast runner', () => {
     ]);
   });
 
-  it('does not launch the next child after the twelve-minute budget is exhausted', () => {
+  it('does not launch the next child after the fifteen-minute budget is exhausted', () => {
     let clock = 1_000;
     let calls = 0;
     expect(() =>
@@ -326,7 +326,7 @@ describe('bounded ci:fast runner', () => {
           return 0;
         },
       }),
-    ).toThrow('exceeded its 12-minute feedback budget');
+    ).toThrow('exceeded its 15-minute feedback budget');
     expect(calls).toBe(1);
   });
 });
