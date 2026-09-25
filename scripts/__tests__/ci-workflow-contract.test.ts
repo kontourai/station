@@ -10,6 +10,7 @@ import {
   ANDROID_BUILD_TOOLS_VERSION,
   ANDROID_NDK_VERSION,
   CHECKOUT_ACTION,
+  FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
@@ -28,6 +29,7 @@ import {
 } from '../resolve-android-build-run.mjs';
 import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
 import {
+  CI_FAST_TIMEOUT_MS,
   COVERAGE_LANE_TIMEOUT_MS,
   FULL_REGRESSION_PHASES,
 } from '../verification-lanes.mjs';
@@ -1348,6 +1350,50 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
+    // #2577: the lane budget and each job fence are separate literals. Raising
+    // the lane alone lets a job be killed before the coordinator's own
+    // deadline fires and writes its receipt, so each fence must contain the
+    // lane's budget, every other step's own bound, and the unbounded
+    // setup/post steps (checkout, dependencies:ci, build:ui, ...; ~2 minutes
+    // observed across 88 hosted fast-checks runs, budgeted at three). Jobs
+    // are found by what they run, not by name, so a new caller (fork-smoke
+    // was the one first missed) is covered without editing this test.
+    type Step = { run?: string; 'timeout-minutes'?: number };
+    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    const runsCiFast = (step: Step) =>
+      typeof step.run === 'string' &&
+      /(^|[\s;&|])npm run ci:fast(?![\w:-])/.test(step.run);
+    const callers = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        ((document as { jobs?: Record<string, Job> } | null)?.jobs ??
+          {}) as Record<string, Job>,
+      )
+        .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
+        .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
+    );
+    expect(callers.map(({ id }) => id).sort()).toEqual([
+      '.github/workflows/ci.yml#fast-checks',
+      '.github/workflows/ci.yml#fork-smoke',
+    ]);
+    const unboundedAllowanceMs = 3 * 60_000;
+    for (const { id, job } of callers) {
+      const steps = job.steps ?? [];
+      const lane = steps.filter(runsCiFast);
+      expect(lane, id).toHaveLength(1);
+      // The lane step is bounded by its coordinator deadline, not a step
+      // timeout; a step timeout below it would kill it first.
+      expect(lane[0]['timeout-minutes'], id).toBeUndefined();
+      const boundedStepsMs = steps.reduce(
+        (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+        0,
+      );
+      expect((job['timeout-minutes'] ?? 0) * 60_000, id).toBeGreaterThanOrEqual(
+        CI_FAST_TIMEOUT_MS + boundedStepsMs + unboundedAllowanceMs,
+      );
+    }
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
@@ -1359,7 +1405,9 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  manual-completion-diagnostics:'),
     );
 
-    expect(fastChecks).toContain('timeout-minutes: 45');
+    expect(fastChecks).toContain(
+      `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
+    );
     expect(fastChecks).toContain('timeout-minutes: 20');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");

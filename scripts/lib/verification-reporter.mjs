@@ -1195,7 +1195,7 @@ export function summarizeVerificationOutput({
   // station#1827: one thing does outrank attributability, and it is not a
   // scan result at all. When the RUNNER ITSELF stops a lane it prints a
   // structured owner-final line naming its own reason (`ci:fast exceeded its
-  // 12-minute feedback budget`), and `ciFastInfrastructureCause` in
+  // 15-minute feedback budget`), and `ciFastInfrastructureCause` in
   // `verification-execution-lifecycle.mjs` recovers exactly that line's
   // payload. On the ordinary reporting path that value was computed and then
   // discarded, so a budget kill reported whichever `Error:`-shaped line the
