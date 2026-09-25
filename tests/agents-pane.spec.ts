@@ -157,8 +157,10 @@ test.describe('Agents pane child work (#2459)', () => {
     const scopeAll = page.getByRole('button', { name: 'All', exact: true });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
-    // Claude's cell is not wired yet: the shipped per-task Stop stays on the
-    // pre-contract row.
+    // Claude's subagent keeps exactly one Stop. Since #2533 its
+    // `subagentControl` cell is wired, so the pre-contract TaskRow bridge
+    // retires and the child-work row carries that Stop; a bridge that failed
+    // to retire would render a second one here.
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(1);
 
     await scopeAll.click();
@@ -216,9 +218,24 @@ test.describe('Agents pane child work (#2459)', () => {
     await expect(page.getByText('No result')).toBeVisible();
     await expect(page.getByText('Completed')).toHaveCount(0);
 
-    // Only the delegate's Station interrupt is a Stop in All: Claude's
-    // subagent renders from its (unwired) cell and gets none.
-    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(1);
+    // In All, each running child that has a wired stop seam carries exactly
+    // one Stop: the delegate's Station interrupt, and (since #2533 wired
+    // Claude's `subagentControl` cell) Claude's subagent. The exited chatless
+    // subagent has none.
+    const runningRow = (title: string) =>
+      page.getByRole('listitem').filter({ hasText: title });
+    await expect(
+      runningRow('Nightly audit').getByRole('button', { name: 'Stop' }),
+    ).toHaveCount(1);
+    await expect(
+      runningRow('Investigate flaky test').getByRole('button', {
+        name: 'Stop',
+      }),
+    ).toHaveCount(1);
+    await expect(
+      runningRow('Chatless survey').getByRole('button', { name: 'Stop' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(2);
 
     // The scope is remembered on this device.
     await page.reload();
