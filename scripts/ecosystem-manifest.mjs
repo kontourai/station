@@ -64,12 +64,31 @@ function hasExactKeys(value, keys) {
   );
 }
 
+/**
+ * The URL an installer fetches must be exactly the signed string. `new URL()`
+ * silently strips tabs and newlines (and normalizes other input), so only a
+ * URL that is already its own canonical href, with no control characters or
+ * spaces, is accepted.
+ */
+function isCanonicalUrl(value) {
+  if (
+    typeof value !== 'string' ||
+    [...value].some((char) => char <= ' ' || char === '\u007f')
+  )
+    return false;
+  try {
+    return new URL(value).href === value;
+  } catch {
+    return false;
+  }
+}
+
 function validateArtifact(kind, artifact, name) {
   if (
     !hasExactKeys(artifact, ['name', 'sha256', 'url']) ||
     typeof artifact.name !== 'string' ||
     !name.test(artifact.name) ||
-    typeof artifact.url !== 'string' ||
+    !isCanonicalUrl(artifact.url) ||
     !/^(https?:\/\/|file:\/\/)/.test(artifact.url) ||
     (!allowInsecureTestUrls && !artifact.url.startsWith('https://')) ||
     typeof artifact.sha256 !== 'string' ||

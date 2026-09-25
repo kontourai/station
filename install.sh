@@ -602,10 +602,13 @@ if [ -n "$public_manifest_url" ]; then
       fail 'could not download the test-only manifest verification key'
   fi
   # Exit codes: 2 unknown keyId, 3 key not authorized for the payload channel,
-  # 4 signature did not verify, anything else malformed.
-  public_manifest_values="$(node -e '
-    const crypto=require("node:crypto"),fs=require("node:fs");
-    const [manifestFile,pinnedKeysJson,testKeyFile]=process.argv.slice(1);
+  # 4 signature did not verify, 5 artifact URL not in canonical form, anything
+  # else malformed. Each verified value is written to its own file, so no
+  # signed string can shift into another field on the way back to the shell.
+  manifest_values="$tmp_root/manifest-values"
+  node -e '
+    const crypto=require("node:crypto"),fs=require("node:fs"),path=require("node:path");
+    const [manifestFile,pinnedKeysJson,testKeyFile,valuesDir]=process.argv.slice(1);
     const canonical=(v)=>Array.isArray(v)?`[${v.map(canonical).join(",")}]`:v&&typeof v==="object"?`{${Object.keys(v).sort().map(k=>`${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`:JSON.stringify(v);
     const exact=(v,keys)=>Boolean(v)&&typeof v==="object"&&!Array.isArray(v)&&JSON.stringify(Object.keys(v).sort())===JSON.stringify(keys);
     const envelope=JSON.parse(fs.readFileSync(manifestFile,"utf8"));
@@ -625,24 +628,32 @@ if [ -n "$public_manifest_url" ]; then
     const channels=p.schemaVersion===1?["stable","preview"]:["stable","preview","nightly"];
     const a=p.artifacts?.portable;
     if (![1,2].includes(p.schemaVersion)||!channels.includes(p.channel)||typeof p.version!=="string"||!shapes[p.channel].test(p.version)||p.releaseTag!==`v${p.version}`||typeof p.sourceSha!=="string"||! /^[0-9a-f]{40}$/i.test(p.sourceSha)||typeof p.publishedAt!=="string"||Number.isNaN(new Date(p.publishedAt).getTime())||new Date(p.publishedAt).toISOString()!==p.publishedAt||!exact(p.artifacts,artifactKeys)||!exact(a,["name","sha256","url"])||a.name!=="station-portable.tar.gz"||typeof a.sha256!=="string"||! /^[0-9a-f]{64}$/i.test(a.sha256)||typeof a.url!=="string") process.exit(1);
-    const artifactUrl=new URL(a.url);
+    // The URL that is fetched must be exactly the signed string: new URL()
+    // silently strips tabs and newlines, so a non-canonical URL could fetch
+    // something other than what was signed.
+    let artifactUrl;
+    try { artifactUrl=new URL(a.url); } catch { process.exit(5); }
+    if (/[\u0000-\u0020\u007f]/.test(a.url)||artifactUrl.href!==a.url) process.exit(5);
     const allowTest=process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS==="1";
     if (artifactUrl.protocol!=="https:" && !(allowTest&&["http:","file:"].includes(artifactUrl.protocol))) process.exit(1);
-    process.stdout.write(`${p.channel}\n${p.releaseTag}\n${p.sourceSha}\n${a.url}\n${a.sha256.toLowerCase()}`);
-  ' "$manifest_file" "$PINNED_MANIFEST_SIGNING_KEYS" "$test_key_file")" || {
+    fs.mkdirSync(valuesDir,{mode:0o700});
+    for (const [name,value] of Object.entries({channel:p.channel,releaseTag:p.releaseTag,sourceSha:p.sourceSha,url:a.url,sha256:a.sha256.toLowerCase()}))
+      fs.writeFileSync(path.join(valuesDir,name),value,{flag:"wx",mode:0o600});
+  ' "$manifest_file" "$PINNED_MANIFEST_SIGNING_KEYS" "$test_key_file" "$manifest_values" || {
     manifest_status=$?
     case "$manifest_status" in
       2) fail 'public ecosystem manifest is signed by a key this installer does not pin' ;;
       3) fail 'public ecosystem manifest signing key is not authorized for the manifest channel' ;;
       4) fail 'public ecosystem manifest signature did not verify' ;;
+      5) fail 'public ecosystem manifest artifact URL is not in canonical form' ;;
       *) fail 'public ecosystem manifest is invalid' ;;
     esac
   }
-  release_channel="$(printf '%s\n' "$public_manifest_values" | sed -n '1p')"
-  release_tag="$(printf '%s\n' "$public_manifest_values" | sed -n '2p')"
-  release_sha="$(printf '%s\n' "$public_manifest_values" | sed -n '3p')"
-  asset_url="$(printf '%s\n' "$public_manifest_values" | sed -n '4p')"
-  expected_checksum="$(printf '%s\n' "$public_manifest_values" | sed -n '5p')"
+  release_channel="$(cat "$manifest_values/channel")"
+  release_tag="$(cat "$manifest_values/releaseTag")"
+  release_sha="$(cat "$manifest_values/sourceSha")"
+  asset_url="$(cat "$manifest_values/url")"
+  expected_checksum="$(cat "$manifest_values/sha256")"
   [ "$version" = latest ] || [ "$version" = "$release_tag" ] || fail 'requested version does not match public ecosystem manifest'
   # The signed channel must equal the requested one, and an unset
   # STATION_CHANNEL requests stable. Otherwise a manifest host could answer a

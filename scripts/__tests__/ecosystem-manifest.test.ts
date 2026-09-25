@@ -5,6 +5,7 @@ import {
   createPublicKey,
   generateKeyPairSync,
   type KeyObject,
+  sign,
   verify,
 } from 'node:crypto';
 import {
@@ -599,6 +600,48 @@ function signManifest(
   return manifestPath;
 }
 
+/**
+ * Signs `payload` directly, bypassing the signer's own validation, to model a
+ * pinned key that signed something the installer must still refuse. The
+ * canonical form is the one GOLDEN_CANONICAL pins.
+ */
+function signRawManifest(
+  fixture: InstallFixture,
+  payload: unknown,
+  keyId = RELEASE_KEY_ID,
+): string {
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+    if (value && typeof value === 'object')
+      return `{${Object.keys(value)
+        .sort()
+        .map(
+          (key) =>
+            `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
+        )
+        .join(',')}}`;
+    return JSON.stringify(value);
+  };
+  manifestSequence += 1;
+  const manifestPath = join(fixture.dir, `raw-${manifestSequence}.json`);
+  const privateKey = createPrivateKey(readFileSync(fixture.privateKeyPath));
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      algorithm: 'ed25519',
+      keyId,
+      payload,
+      signature: sign(
+        null,
+        Buffer.from(canonical(payload)),
+        privateKey,
+      ).toString('base64'),
+    }),
+  );
+  return manifestPath;
+}
+
 function runInstaller(
   fixture: InstallFixture,
   manifestPath: string,
@@ -1052,5 +1095,69 @@ describe('install.sh public manifest verification', () => {
     const eleventh = runInstaller(fixture, preview(11), beta);
     expect(eleventh.status, eleventh.stderr).toBe(0);
     expect(installedTag(fixture, 'beta')).toBe('v1.3.0-preview.11');
+  });
+
+  it('refuses a signed artifact URL that is not its own canonical form', {
+    timeout: 120_000,
+  }, () => {
+    // The reviewer's probe: a newline in the signed URL used to shift the
+    // next field, so the installer checked a hash other than the signed one.
+    const fixture = makeInstallFixture('station-pinned-url-form-');
+    const archive = buildArchive(fixture, '1.2.3');
+    const payload = (url: string, sha256: string) => ({
+      schemaVersion: 2,
+      channel: 'stable',
+      version: '1.2.3',
+      releaseTag: 'v1.2.3',
+      sourceSha: 'a'.repeat(40),
+      publishedAt: '2026-09-25T00:00:00.000Z',
+      artifacts: {
+        portable: { name: 'station-portable.tar.gz', url, sha256 },
+      },
+    });
+    const href = pathToFileURL(archive).href;
+    for (const url of [
+      `${href}\n${digest(archive)}`,
+      `${href.slice(0, 12)}\t${href.slice(12)}`,
+      href.replace('file://', 'FILE://'),
+    ]) {
+      const result = runInstaller(
+        fixture,
+        signRawManifest(fixture, payload(url, '0'.repeat(64))),
+      );
+      expect(result.stderr, JSON.stringify(url)).toContain(
+        'public ecosystem manifest artifact URL is not in canonical form',
+      );
+      expect(result.status).toBe(1);
+    }
+    // Control: the same payload with the canonical URL installs.
+    const good = runInstaller(
+      fixture,
+      signRawManifest(fixture, payload(href, digest(archive))),
+    );
+    expect(good.status, good.stderr).toBe(0);
+
+    // The signer refuses to emit such a manifest in the first place.
+    const payloadPath = join(fixture.dir, 'newline-payload.json');
+    writeFileSync(
+      payloadPath,
+      JSON.stringify(payload(`${href}\n${digest(archive)}`, digest(archive))),
+    );
+    const signed = run(
+      [
+        'create',
+        '--payload',
+        payloadPath,
+        '--private-key',
+        fixture.privateKeyPath,
+        '--key-id',
+        RELEASE_KEY_ID,
+        '--output',
+        join(fixture.dir, 'newline.json'),
+      ],
+      { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
+    );
+    expect(signed.status).toBe(1);
+    expect(signed.stderr).toContain('invalid portable artifact descriptor');
   });
 });
