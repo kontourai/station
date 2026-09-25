@@ -30,9 +30,20 @@ import {
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
-}));
+/** Whether the Activity pane's stand-in holds an unsaved edit (gap G2). */
+const activityDirty = vi.hoisted(() => ({ value: false }));
+vi.mock('../../views/SessionsView', async () => {
+  const { useUnsavedGuard } = await import('../../hooks/useUnsavedGuard');
+  function SessionsView() {
+    const { DiscardModal } = useUnsavedGuard(activityDirty.value);
+    return (
+      <div data-testid="sessions-view">
+        <DiscardModal />
+      </div>
+    );
+  }
+  return { SessionsView };
+});
 /** The open action Chat's pane sees: the region host's own controller. */
 const openProbe = vi.hoisted(() => ({
   action: null as
@@ -85,6 +96,7 @@ function currentModel(): ReturnType<typeof useRegionModel> {
 }
 
 beforeEach(() => {
+  activityDirty.value = false;
   model = null;
   openProbe.action = null;
   // jsdom has no Web Locks; the host exposes no lockManager prop (it IS the
@@ -187,4 +199,40 @@ test('a pane open over Chat on a phone shows "‹ Chat" in its bar, and pressing
   );
   expect(screen.queryByRole('button', { name: 'Back to Chat' })).toBeNull();
   expect(currentModel().phoneLayer).toBeNull();
+});
+
+/**
+ * Gap G2, through the shipped host: the region host scopes each pane's
+ * `useUnsavedGuard` to its surface, so "‹ Chat" asks the layered pane's own
+ * dirty guard — and an unrelated dirty guard elsewhere is never asked.
+ */
+test('"‹ Chat" asks the layered pane’s own dirty guard, and no one else’s', async () => {
+  activityDirty.value = true;
+  const unrelated = vi.fn();
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('dirty-form-elsewhere'),
+    unrelated,
+  );
+  try {
+    renderShells();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => currentModel().showSurface('activity'));
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
+    await screen.findByTestId('sessions-view');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Chat' }));
+    expect(
+      await screen.findByRole('dialog', { name: /Unsaved Changes/ }),
+    ).toBeTruthy();
+    expect(unrelated).not.toHaveBeenCalled();
+    expect(currentModel().regions.bottom.occupant).toBe('activity');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() =>
+      expect(currentModel().regions.bottom.occupant).toBe('chat'),
+    );
+    expect(unrelated).not.toHaveBeenCalled();
+  } finally {
+    unregister();
+  }
 });
