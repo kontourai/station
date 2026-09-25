@@ -4,6 +4,7 @@ const COMMANDS: &[&str] = &[
     "clear",
     "preview",
     "push_token",
+    "alert_token",
     "open_live_update_settings",
     "take_launch_route",
     "register_listener",

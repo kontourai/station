@@ -1,8 +1,11 @@
 import Foundation
+import ObjectiveC
+import StationAgentActivityAlerts
 import StationAgentActivityShared
 import SwiftRs
 import Tauri
 import UIKit
+import UserNotifications
 import WebKit
 
 // The app still deploys to iOS 14/15, where ActivityKit does not exist:
@@ -34,7 +37,8 @@ class PreviewArgs: Decodable {
 /// The WebView's handle on agent activity. Rendering does not go through
 /// here: APNs starts and updates the Live Activity and the widget extension
 /// opens the card, so this only registers identity, reports capability and
-/// hands the Station the push-to-start token.
+/// hands the Station the push-to-start token and, for notification alerts,
+/// the app's APNs device token (`alertToken`).
 class AgentActivityPlugin: Plugin {
   private static let featureFloor = OperatingSystemVersion(majorVersion: 18, minorVersion: 0, patchVersion: 0)
 
@@ -132,6 +136,48 @@ class AgentActivityPlugin: Plugin {
         "token": token.map { String(format: "%02x", $0) }.joined(),
         "apnsEnvironment": environment,
       ])
+    }
+  }
+
+  /// The app's regular APNs device token, for notification alerts (#2589):
+  /// asks for permission to alert, then registers for remote notifications
+  /// and waits for UIKit's answer. `unconfigured` when the build is not
+  /// signed for push, `denied` when the person refused alerts; neither is an
+  /// error. The Station sends it back as the registration's `alertToken`.
+  @objc public func alertToken(_ invoke: Invoke) {
+    guard let environment = ApnsEnvironment.current else {
+      invoke.resolve(["state": "unconfigured"])
+      return
+    }
+    Task { @MainActor in
+      // The completion-handler form: the async one needs iOS 15, and the
+      // app still deploys below it.
+      let granted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+          continuation.resume(returning: granted)
+        }
+      }
+      guard granted else {
+        invoke.resolve(["state": "denied"])
+        return
+      }
+      guard let delegate = UIApplication.shared.delegate, let delegateClass = object_getClass(delegate) else {
+        invoke.reject("the app delegate is unavailable")
+        return
+      }
+      // Tauri's app delegate has no remote-notification callbacks of its
+      // own; this adds them once (see RemoteNotificationDelegateHook).
+      RemoteNotificationDelegateHook.install(on: delegateClass, broker: .shared)
+      ApnsDeviceTokenBroker.shared.reset()
+      UIApplication.shared.registerForRemoteNotifications()
+      switch await firstValue(timeout: 10, of: { ApnsDeviceTokenBroker.shared.updates() }) {
+      case .token(let token):
+        invoke.resolve(["state": "available", "token": token, "apnsEnvironment": environment])
+      case .failed(let reason):
+        invoke.reject("APNs registration failed: \(reason)")
+      case nil:
+        invoke.reject("APNs device token unavailable")
+      }
     }
   }
 
