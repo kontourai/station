@@ -433,7 +433,7 @@ test('the alert ceiling is per device token, whichever key signs: a stranger wit
   assert.equal(other.status, 200);
 });
 
-test('without its own ceiling the alert route fails closed (503), Live Activities unaffected', async () => {
+test('without its own ceiling the alert route fails closed (503) before any work', async () => {
   const { calls, fetchImpl } = upstream();
   const cfg = await config({ fetchImpl });
   assert.ok(cfg.apns);

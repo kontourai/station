@@ -98,7 +98,10 @@ so a stranger who learns a token can send it fixed-text alerts with a key of
 their own: the route is therefore limited first by its own
 `ALERT_PER_TOKEN_LIMITER` (6 a minute per device token, whichever key signs;
 without the binding the route answers 503), then like a Live Activity update
-(per device token, per key, global). It spends no channel budget. `Unregistered`,
+(per device token, per key, global). That ceiling is shared by every signer,
+the owner's Station included, so a stranger who knows a token can starve its
+alerts for the minute (the Station drops refused alerts to its inbox); a
+per-signer ceiling would instead let fresh, free keys buy fresh budgets. It spends no channel budget. `Unregistered`,
 `BadDeviceToken` and `DeviceTokenNotForTopic` mean `unregistered`. Not yet
 tried against Apple.
 
