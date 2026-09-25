@@ -273,23 +273,24 @@ export function isRelativeStationPath(value: unknown): value is string {
 }
 
 /**
- * Global store dedupe tag for an agent notification. Tags are global and a
- * dismissed tag is final, so an agent's key is namespaced by its ROOT session:
- * two sessions choosing the same key never collide, and a delegated child
- * shares its root's namespace. The `agent:` prefix is reserved to the
+ * Global store dedupe tag for an agent notification: `agent:<sessionId>:<key>`.
+ * Tags are global and a dismissed tag is final, so the key is namespaced by a
+ * session id; which session (the verified caller's, per S2) is the caller's
+ * decision, not this helper's. The id may not contain `:`, so two
+ * (session, key) pairs never alias. The `agent:` prefix is reserved to the
  * service's trusted enveloped write path.
  */
 export function agentNotificationDedupeTag(
-  rootSessionId: string,
+  sessionId: string,
   dedupeKey: string,
 ): string {
-  if (!isCanonicalText(rootSessionId) || rootSessionId.includes(':')) {
-    throw new RangeError('agent notification root session id is invalid');
+  if (!isCanonicalText(sessionId) || sessionId.includes(':')) {
+    throw new RangeError('agent notification session id is invalid');
   }
   if (!NOTIFICATION_DEDUPE_KEY_PATTERN.test(dedupeKey)) {
     throw new RangeError('agent notification dedupe key is invalid');
   }
-  return `${AGENT_NOTIFICATION_DEDUPE_PREFIX}${rootSessionId}:${dedupeKey}`;
+  return `${AGENT_NOTIFICATION_DEDUPE_PREFIX}${sessionId}:${dedupeKey}`;
 }
 
 export function agentNotificationCategory(

@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -7,9 +9,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, win32 } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   canonicalInstructionPath,
+  discoverOnDiskInstructionFiles,
   escapesRoot,
   instructionGateErrors,
   resolveClaudeImports,
@@ -18,6 +23,9 @@ import {
   resolveEffectiveInstructions,
 } from '../agent-instructions-gate.mjs';
 import { REQUIRED_INSTRUCTION_FILES } from '../agent-instructions-manifest.mjs';
+
+// Removed in an after-hook whether the test passed or not (#2421).
+const makeTempDir = trackTempDirs();
 
 const root = process.cwd();
 const governance = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`veritas readiness\` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n`;
@@ -285,6 +293,103 @@ describe('agent instruction topology', () => {
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('skips a build-output symlink under src-desktop/target but still rejects one in real source', () => {
+    // station#2543: a mobile compile (`npm run check:mobile-compile`) leaves
+    // directory symlinks under src-desktop/target (swift-rs), which used to
+    // trip the redirected-directory guard below and red
+    // verification:policy:gate on an otherwise clean worktree. Prove the
+    // build-output path is now skipped, while the guard still catches the
+    // real thing: a symlinked directory somewhere a human actually writes.
+    const buildOutputRoot = makeTempDir('station-instructions-build-output-');
+    const sourceRoot = makeTempDir('station-instructions-source-linked-');
+    const linkedTarget = makeTempDir('station-instructions-linked-target-');
+    try {
+      const swiftRsDir = resolve(
+        buildOutputRoot,
+        'src-desktop/target/aarch64-apple-ios/release/build/swift-rs-0/out',
+      );
+      mkdirSync(swiftRsDir, { recursive: true });
+      symlinkSync(linkedTarget, resolve(swiftRsDir, 'generated'), 'dir');
+      expect(discoverOnDiskInstructionFiles({ root: buildOutputRoot })).toEqual(
+        [],
+      );
+
+      mkdirSync(resolve(sourceRoot, 'src-server'), { recursive: true });
+      symlinkSync(
+        linkedTarget,
+        resolve(sourceRoot, 'src-server/linked'),
+        'dir',
+      );
+      expect(() =>
+        discoverOnDiskInstructionFiles({ root: sourceRoot }),
+      ).toThrow('redirected instruction directory: src-server/linked');
+    } finally {
+      rmSync(buildOutputRoot, { recursive: true, force: true });
+      rmSync(sourceRoot, { recursive: true, force: true });
+      rmSync(linkedTarget, { recursive: true, force: true });
+    }
+  });
+
+  test('the same holds when the gate runs as a real child process (process-level)', () => {
+    const buildOutputRoot = makeTempDir(
+      'station-instructions-proc-build-output-',
+    );
+    const sourceRoot = makeTempDir('station-instructions-proc-source-linked-');
+    const linkedTarget = makeTempDir(
+      'station-instructions-proc-linked-target-',
+    );
+    try {
+      const swiftRsDir = resolve(
+        buildOutputRoot,
+        'src-desktop/target/aarch64-apple-ios/release/build/swift-rs-0/out',
+      );
+      mkdirSync(swiftRsDir, { recursive: true });
+      symlinkSync(linkedTarget, resolve(swiftRsDir, 'generated'), 'dir');
+      mkdirSync(resolve(sourceRoot, 'src-server'), { recursive: true });
+      symlinkSync(
+        linkedTarget,
+        resolve(sourceRoot, 'src-server/linked'),
+        'dir',
+      );
+
+      const moduleUrl = pathToFileURL(
+        resolve(root, 'scripts/agent-instructions-gate.mjs'),
+      ).href;
+      const childScript = (fixtureRoot: string) => `
+        import { discoverOnDiskInstructionFiles } from ${JSON.stringify(moduleUrl)};
+        try {
+          const found = discoverOnDiskInstructionFiles({ root: ${JSON.stringify(fixtureRoot)} });
+          process.stdout.write(JSON.stringify(found));
+        } catch (error) {
+          process.stderr.write(error.message);
+          process.exitCode = 1;
+        }
+      `;
+
+      const buildOutputRun = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', childScript(buildOutputRoot)],
+        { encoding: 'utf8' },
+      );
+      expect(buildOutputRun.status).toBe(0);
+      expect(buildOutputRun.stdout).toBe('[]');
+
+      const sourceRun = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', childScript(sourceRoot)],
+        { encoding: 'utf8' },
+      );
+      expect(sourceRun.status).toBe(1);
+      expect(sourceRun.stderr).toBe(
+        'redirected instruction directory: src-server/linked',
+      );
+    } finally {
+      rmSync(buildOutputRoot, { recursive: true, force: true });
+      rmSync(sourceRoot, { recursive: true, force: true });
+      rmSync(linkedTarget, { recursive: true, force: true });
     }
   });
 

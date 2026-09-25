@@ -139,6 +139,48 @@ export class NotificationEnvelopeValidationError extends Error {
  * and creating a second record under it would shadow it (and fail the
  * store's unique-tag validation).
  */
+/**
+ * Source of every record created through `POST /notifications`, and the
+ * namespace its dedupe tags are stored under (#2597). A request body chooses
+ * neither: a caller-chosen source could relabel (and, through a shared tag,
+ * rewrite) another producer's record, and an un-namespaced tag could squat an
+ * internal producer's tag and block it forever.
+ */
+export const REST_NOTIFICATION_SOURCE = 'api';
+export const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
+
+/**
+ * Sources Station's own producers write under (every in-process
+ * `schedule()`/`scheduleEnveloped()` caller; a test pins this against them).
+ * A record under one of these, or under a registered provider's id, owns its
+ * dedupe tag; any other source's record under a colliding tag was written by
+ * a request before #2597 and is taken over by the tag's rightful writer.
+ */
+export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
+  'agent',
+  'approval-inbox',
+  'device-pairing',
+  'scheduler',
+  'turn-completion',
+]);
+
+/** Provider ids a provider may not register under: they name REST/agent writes. */
+export const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  REST_NOTIFICATION_SOURCE,
+  'sdk',
+  'agent',
+]);
+
+export class NotificationProviderIdError extends Error {
+  constructor(
+    readonly providerId: string,
+    readonly reason: 'reserved' | 'internal' | 'duplicate',
+  ) {
+    super(`Notification provider id "${providerId}" refused: ${reason}`);
+    this.name = 'NotificationProviderIdError';
+  }
+}
+
 export class NotificationDedupeSourceConflictError extends Error {
   constructor() {
     super('Notification dedupe tag belongs to another source');
@@ -216,8 +258,43 @@ export class NotificationService {
       options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   }
 
+  /**
+   * Registers a built-in provider. Action, dismiss and status-sync dispatch
+   * is keyed by a record's `source`, so a provider id is an authority over
+   * every record under that source. Refused (NotificationProviderIdError):
+   * - `reserved` — `api`/`sdk`/`agent`, the REST and agent write sources;
+   * - `duplicate` — an id already registered (a Map would silently REPLACE
+   *   the earlier provider, e.g. a plugin shadowing `device-pairing`).
+   * Built-ins may use an INTERNAL_NOTIFICATION_SOURCES id (that is their
+   * own source); plugins go through `addPluginProvider`, which may not.
+   */
   addProvider(provider: INotificationProvider): void {
+    if (RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'reserved');
+    if (this.providers.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'duplicate');
     this.providers.set(provider.id, provider);
+  }
+
+  /**
+   * Registers a plugin's provider: as `addProvider`, and additionally
+   * refuses (`internal`) any INTERNAL_NOTIFICATION_SOURCES id — a plugin
+   * named `scheduler` would receive the actions and dismissals of scheduler
+   * records.
+   */
+  addPluginProvider(provider: INotificationProvider): void {
+    if (
+      INTERNAL_NOTIFICATION_SOURCES.has(provider.id) &&
+      !RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id)
+    )
+      throw new NotificationProviderIdError(provider.id, 'internal');
+    this.addProvider(provider);
+  }
+
+  private ownsDedupeTags(source: string): boolean {
+    return (
+      INTERNAL_NOTIFICATION_SOURCES.has(source) || this.providers.has(source)
+    );
   }
 
   listProviders(): Array<{
@@ -273,6 +350,52 @@ export class NotificationService {
     source: string,
     opts: ScheduleNotificationOpts,
   ): Promise<Notification> {
+    return this.scheduleUntrusted(source, opts, false);
+  }
+
+  /**
+   * `POST /notifications` (#2597): always source `api`, and the caller's
+   * dedupe tag is stored as `api:<tag>` (dedupe matches the prefixed form),
+   * so a request can never collide with — or squat — an internal, provider
+   * or agent tag. A tag smuggled in `metadata.dedupeTag` is refused.
+   * In hosted mode the route passes the caller's tenant, and the tag is
+   * `api:<tenantId>:<tag>` so two tenants' requests never share a record.
+   * Tenant ids cannot contain `:`, so one tenant's tags never alias
+   * another's. A personal-mode `api:acme:foo` and tenant acme's `foo` are
+   * kept apart because a hosted request always carries a tenant (the route
+   * refuses a hosted request without one), so the unscoped form only ever
+   * exists in personal mode.
+   */
+  async scheduleFromRequest(
+    opts: ScheduleNotificationOpts,
+    scope: { tenantId?: string } = {},
+  ): Promise<Notification> {
+    if (scope.tenantId !== undefined && !/^[^:\s]+$/.test(scope.tenantId))
+      throw new TypeError('scheduleFromRequest tenant id is invalid');
+    const namespace = `${REST_NOTIFICATION_DEDUPE_PREFIX}${
+      scope.tenantId === undefined ? '' : `${scope.tenantId}:`
+    }`;
+    if (Object.hasOwn(jsonSafeMetadata(opts.metadata), 'dedupeTag'))
+      throw new NotificationReservedFieldError('dedupeTag');
+    return this.scheduleUntrusted(
+      REST_NOTIFICATION_SOURCE,
+      {
+        ...opts,
+        ...(opts.dedupeTag === undefined
+          ? {}
+          : {
+              dedupeTag: `${namespace}${opts.dedupeTag}`,
+            }),
+      },
+      true,
+    );
+  }
+
+  private async scheduleUntrusted(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    fromRequest: boolean,
+  ): Promise<Notification> {
     const metadata = jsonSafeMetadata(opts.metadata);
     if (Object.hasOwn(metadata, 'envelope'))
       throw new NotificationReservedFieldError('envelope');
@@ -284,7 +407,8 @@ export class NotificationService {
     const tag = opts.dedupeTag ?? metadata.dedupeTag;
     if (
       typeof tag === 'string' &&
-      tag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX)
+      (tag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX) ||
+        (!fromRequest && tag.startsWith(REST_NOTIFICATION_DEDUPE_PREFIX)))
     )
       throw new NotificationReservedFieldError('dedupeTag');
     return (await this.scheduleRecord(source, opts, metadata, undefined))
@@ -357,17 +481,37 @@ export class NotificationService {
     created: boolean;
     updated: boolean;
   }> {
+    let displaced: string | undefined;
+    let remaining = 0;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
       // lock, so a stale schedule cannot restore a concurrent dismissal or
       // publish a second notification for the same provider item.
       if (opts.dedupeTag) {
-        const existing = all.find(
+        let existing = all.find(
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
         if (existing && existing.source !== source) {
-          throw new NotificationDedupeSourceConflictError();
+          // A record under a source that is neither internal nor a
+          // registered provider can only have come from a request before
+          // #2597 (whose body chose any source: `api`, the SDK's `sdk`, a
+          // plugin string). That tag was never its to hold, so the writer
+          // takes it over (whatever its status) rather than being blocked
+          // forever. An internal/provider record still owns its tag.
+          // Ownership is evaluated now: a provider's records lose it while
+          // that provider is not registered (a removed or failed plugin) and
+          // may then be taken over by a colliding writer. Conversely a
+          // pre-#2597 request squat labelled with an internal or provider
+          // source name keeps ownership and is not reclaimable.
+          if (!this.ownsDedupeTags(existing.source)) {
+            all.splice(all.indexOf(existing), 1);
+            displaced = existing.id;
+            remaining = all.length + 1;
+            existing = undefined;
+          } else {
+            throw new NotificationDedupeSourceConflictError();
+          }
         }
         // Only the trusted path may rewrite an enveloped record: an untrusted
         // update would replace metadata wholesale and strip its envelope.
@@ -477,6 +621,14 @@ export class NotificationService {
       };
     });
 
+    if (displaced) {
+      this.clearTimer(displaced);
+      // The displaced record is gone from the store: tell clients to refetch.
+      this.eventBus.emit(SERVER_EVENTS.NOTIFICATION_CLEARED, {
+        clearedCount: 1,
+        retainedCount: remaining,
+      });
+    }
     if (created) notificationOps.add(1, { op: 'schedule' });
 
     if (created && notification.status === 'delivered') {

@@ -104,7 +104,6 @@ describe('Notification Routes', () => {
         },
       },
     ],
-    ['an agent: dedupe tag', { dedupeTag: 'agent:victim-root:build' }],
     ['an agent-* category', { category: 'agent-attention' }],
   ])(
     'POST / refuses %s with 400 and stores nothing (#2583)',
@@ -119,41 +118,156 @@ describe('Notification Routes', () => {
     },
   );
 
-  test('POST / refuses a cross-source dedupe collision with 409 and leaves the record alone (#2597)', async () => {
-    await svc.schedule('scheduler', {
-      title: 'Original',
-      category: 'job-failure',
-      dedupeTag: 'scheduler:nightly',
-    });
-    const res = await app.request('/', {
+  function post(body: Record<string, unknown>) {
+    return app.request('/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'Click me',
-        category: 'job-failure',
-        dedupeTag: 'scheduler:nightly',
-      }),
+      body: JSON.stringify(body),
     });
-    expect(res.status).toBe(409);
-    const [stored] = await svc.list();
-    expect(stored).toMatchObject({ source: 'scheduler', title: 'Original' });
+  }
+
+  test('POST / cannot relabel a scheduler record: a foreign source is refused and the record is untouched (#2597)', async () => {
+    const original = await svc.schedule('scheduler', {
+      title: 'Job failed',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+      metadata: { link: '/schedule?job=nightly' },
+    });
+    const res = await post({
+      title: 'Click me',
+      category: 'job-failure',
+      source: 'scheduler',
+      dedupeTag: 'scheduler:fail:nightly:1',
+      metadata: { link: 'https://evil.example' },
+    });
+    expect(res.status).toBe(400);
+    expect(await svc.list()).toEqual([original]);
   });
 
-  test('POST / refuses to write under a registered provider source (#2597)', async () => {
-    svc.addProvider({
-      id: 'device-pairing',
-      displayName: 'Pairing',
-      categories: ['pairing-request'],
+  test('POST / records every request as source api, accepting the SDK label (#2597)', async () => {
+    const res = await post({
+      title: 'From SDK',
+      category: 'test',
+      source: 'sdk',
     });
-    const res = await app.request('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'Click me',
-        category: 'pairing-request',
-        source: 'device-pairing',
-        dedupeTag: 'device-pairing:r1',
-      }),
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.source).toBe('api');
+  });
+
+  test('POST / with an internal tag is namespaced: the scheduler record is untouched (#2597)', async () => {
+    const original = await svc.schedule('scheduler', {
+      title: 'Job failed',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+    });
+    const res = await post({
+      title: 'Click me',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.metadata.dedupeTag).toBe(
+      'api:scheduler:fail:nightly:1',
+    );
+    expect((await svc.list()).find((n) => n.id === original.id)).toEqual(
+      original,
+    );
+  });
+
+  test.each([
+    ['scheduler', 'scheduler:heartbeat-stale'],
+    ['approval-inbox', 'approval:req-1'],
+    ['device-pairing', 'device-pairing:r1'],
+  ])(
+    'a REST squat of a %s tag does not block that producer (#2597)',
+    async (source, tag) => {
+      expect(
+        (await post({ title: 'Squat', category: 'test', dedupeTag: tag }))
+          .status,
+      ).toBe(201);
+      const internal = await svc.schedule(source, {
+        title: 'Internal',
+        category: 'test',
+        dedupeTag: tag,
+      });
+      expect(internal).toMatchObject({ source, status: 'delivered' });
+      // And the producer's own dedupe still works afterwards.
+      const again = await svc.schedule(source, {
+        title: 'Internal 2',
+        category: 'test',
+        dedupeTag: tag,
+      });
+      expect(again).toMatchObject({ id: internal.id, title: 'Internal 2' });
+    },
+  );
+
+  test('POST / with an agent: tag is namespaced and cannot squat the agent key (#2597)', async () => {
+    const res = await post({
+      title: 'Squat',
+      category: 'test',
+      dedupeTag: 'agent:victim-root:build',
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.metadata.dedupeTag).toBe(
+      'api:agent:victim-root:build',
+    );
+  });
+
+  test('hosted POST / namespaces REST dedupe tags by tenant', async () => {
+    const hostedApp = createNotificationRoutes(svc, {
+      readAuthorityForRequest: (request) =>
+        hostedAuthority(
+          request.headers.get('x-test-tenant') as 'alpha' | 'bravo',
+        ),
+      canReadSession: (sessionId, authority) =>
+        sessionId === `${authority.tenantExecutionContext?.tenantId}-session`,
+    });
+    const postAs = (tenant: 'alpha' | 'bravo', title: string) =>
+      hostedApp.request('/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-tenant': tenant,
+        },
+        body: JSON.stringify({
+          title,
+          category: 'test',
+          dedupeTag: 'x',
+          metadata: { sessionId: `${tenant}-session` },
+        }),
+      });
+    const alpha = await json(await postAs('alpha', 'Alpha'));
+    const bravo = await json(await postAs('bravo', 'Bravo'));
+    const alphaAgain = await json(await postAs('alpha', 'Alpha 2'));
+
+    expect(alpha.data.metadata.dedupeTag).toBe('api:alpha:x');
+    expect(bravo.data.metadata.dedupeTag).toBe('api:bravo:x');
+    expect(bravo.data.id).not.toBe(alpha.data.id);
+    expect(alphaAgain.data).toMatchObject({
+      id: alpha.data.id,
+      title: 'Alpha 2',
+    });
+    expect((await svc.list()).find((n) => n.id === bravo.data.id)?.title).toBe(
+      'Bravo',
+    );
+  });
+
+  test('POST / same-tag dedupe still works for REST callers (#2597)', async () => {
+    const first = await json(
+      await post({ title: 'v1', category: 'test', dedupeTag: 'mine' }),
+    );
+    const second = await json(
+      await post({ title: 'v2', category: 'test', dedupeTag: 'mine' }),
+    );
+    expect(second.data).toMatchObject({ id: first.data.id, title: 'v2' });
+    expect(await svc.list()).toHaveLength(1);
+  });
+
+  test('POST / refuses a dedupe tag smuggled in metadata (#2597)', async () => {
+    const res = await post({
+      title: 'Squat',
+      category: 'test',
+      metadata: { dedupeTag: 'scheduler:heartbeat-stale' },
     });
     expect(res.status).toBe(400);
     expect(await svc.list()).toEqual([]);

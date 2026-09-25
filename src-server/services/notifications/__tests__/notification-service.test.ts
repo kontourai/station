@@ -1,12 +1,14 @@
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   captureLoggerLines,
@@ -24,6 +26,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const {
+  INTERNAL_NOTIFICATION_SOURCES,
   NotificationDedupeSourceConflictError,
   NotificationDispatchClosedError,
   NotificationService,
@@ -1553,11 +1556,13 @@ describe('metadata normalization (upstream regression #2247)', () => {
 describe('NotificationService cross-source dedupe (#2597)', () => {
   const makeTempDir = trackTempDirs();
   let dir: string;
+  let bus: InstanceType<typeof EventBus>;
   let svc: InstanceType<typeof NotificationService>;
 
   beforeEach(() => {
     dir = makeTempDir('notif-cross-source-');
-    svc = new NotificationService(new EventBus(), dir, 999_999);
+    bus = new EventBus();
+    svc = new NotificationService(bus, dir, 999_999);
   });
 
   afterEach(async () => {
@@ -1637,6 +1642,150 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
       expect(all[0]).toMatchObject({ title: 'Original', status });
     },
   );
+
+  test.each(['delivered', 'dismissed'])(
+    'an internal writer takes over a pre-upgrade REST squat (%s) of its tag',
+    async (status) => {
+      // Pre-#2597 REST records were stored under the caller's raw tag.
+      const squat = await svc.schedule('api', {
+        title: 'Squat',
+        category: 'test',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      if (status === 'dismissed') await svc.dismiss(squat.id);
+      const internal = await svc.schedule('scheduler', {
+        title: 'Heartbeat stale',
+        category: 'scheduler-unhealthy',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      expect(internal).toMatchObject({
+        source: 'scheduler',
+        status: 'delivered',
+      });
+      expect(internal.id).not.toBe(squat.id);
+      expect(await svc.list()).toEqual([internal]);
+    },
+  );
+
+  test.each(['sdk', 'my-plugin'])(
+    'an internal writer takes over a pre-upgrade squat under source %s and announces the removal',
+    async (squatSource) => {
+      const cleared: unknown[] = [];
+      bus.subscribe((message) => {
+        if (message.event === SERVER_EVENTS.NOTIFICATION_CLEARED)
+          cleared.push(message.data);
+      });
+      const squat = await svc.schedule(squatSource, {
+        title: 'Squat',
+        category: 'test',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      const internal = await svc.schedule('scheduler', {
+        title: 'Heartbeat stale',
+        category: 'scheduler-unhealthy',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      expect(internal.id).not.toBe(squat.id);
+      expect(await svc.list()).toEqual([internal]);
+      expect(cleared).toEqual([{ clearedCount: 1, retainedCount: 1 }]);
+    },
+  );
+
+  test.each([
+    ['an internal source', 'turn-completion', false],
+    ['a registered provider', 'plugin-x', true],
+  ])(
+    'a record under %s still owns its tag',
+    async (_label, owner, register) => {
+      if (register) {
+        svc.addProvider({
+          id: owner,
+          displayName: owner,
+          categories: ['test'],
+        });
+      }
+      const original = await svc.schedule(owner, {
+        title: 'Owned',
+        category: 'test',
+        dedupeTag: 'shared:owned',
+      });
+      await expect(
+        svc.schedule('scheduler', {
+          title: 'Takeover',
+          category: 'test',
+          dedupeTag: 'shared:owned',
+        }),
+      ).rejects.toBeInstanceOf(NotificationDedupeSourceConflictError);
+      expect(await svc.list()).toEqual([original]);
+    },
+  );
+
+  test.each(['api', 'sdk', 'agent'])(
+    'a provider may not register as %s',
+    (id) => {
+      expect(() =>
+        svc.addProvider({ id, displayName: id, categories: ['test'] }),
+      ).toThrow(/reserved/);
+      expect(svc.listProviders()).toEqual([]);
+    },
+  );
+
+  test('a second provider under an existing id is refused, not a silent replacement', () => {
+    svc.addProvider({ id: 'p', displayName: 'First', categories: ['test'] });
+    expect(() =>
+      svc.addProvider({ id: 'p', displayName: 'Second', categories: ['test'] }),
+    ).toThrow(/duplicate/);
+    expect(svc.listProviders()).toEqual([
+      { id: 'p', displayName: 'First', categories: ['test'] },
+    ]);
+  });
+
+  test('INTERNAL_NOTIFICATION_SOURCES covers every in-process schedule() caller', () => {
+    const root = join(process.cwd(), 'src-server');
+    const found = new Set<string>();
+    for (const entry of readdirSync(root, { recursive: true })) {
+      const file = String(entry);
+      if (!file.endsWith('.ts') || file.includes('__tests__')) continue;
+      const text = readFileSync(join(root, file), 'utf8');
+      for (const match of text.matchAll(
+        /notificationService!?\??\.(?:schedule|scheduleEnveloped)\(\s*([^,\s)]+)/g,
+      )) {
+        const arg = match[1];
+        const literal = /^'([^']+)'$/.exec(arg)?.[1];
+        const constant = new RegExp(`const ${arg} = '([^']+)'`).exec(text)?.[1];
+        found.add(literal ?? constant ?? `<unresolved ${arg} in ${file}>`);
+      }
+    }
+    // The scan must reach the known callers, or it proves nothing.
+    expect([...found]).toEqual(
+      expect.arrayContaining([
+        'scheduler',
+        'approval-inbox',
+        'turn-completion',
+      ]),
+    );
+    for (const source of found)
+      expect(INTERNAL_NOTIFICATION_SOURCES.has(source), source).toBe(true);
+  });
+
+  test('only the REST path may write an api: tag', async () => {
+    await expect(
+      svc.schedule('scheduler', {
+        title: 'x',
+        category: 'test',
+        dedupeTag: 'api:mine',
+      }),
+    ).rejects.toThrow(/reserved/);
+    const created = await svc.scheduleFromRequest({
+      title: 'x',
+      category: 'test',
+      dedupeTag: 'mine',
+    });
+    expect(created).toMatchObject({
+      source: 'api',
+      metadata: { dedupeTag: 'api:mine' },
+    });
+  });
 
   test('same-source dedupe still updates', async () => {
     const first = await svc.schedule('device-pairing', pairingItem('v1'));

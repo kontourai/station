@@ -31,7 +31,18 @@ const RANDOM_ID_BYTES = 16;
 const PAYLOAD_KEY_BYTES = 32;
 const REGISTRATION_KEYS =
   'packageName,payloadKey,platform,registrationId,stationKey,token,updatedAt';
-const REGISTRATION_KEYS_WITH_ALERTED = `alerted,${REGISTRATION_KEYS}`;
+/**
+ * Every optional key is written only when it carries something (`alerted`
+ * non-empty, `cardShown` true), so the key sets a record can have are these
+ * four; a record with none of them is byte-identical to what older Stations
+ * wrote and read.
+ */
+const REGISTRATION_KEY_SETS = [
+  REGISTRATION_KEYS,
+  `alerted,${REGISTRATION_KEYS}`,
+  `cardShown,${REGISTRATION_KEYS}`,
+  `alerted,cardShown,${REGISTRATION_KEYS}`,
+];
 /** Alert ids remembered per registration; the phone itself keeps 64. */
 const ALERTED_MAX = 128;
 const ALERT_ID_PATTERN = /^[0-9a-f]{64}$/;
@@ -54,6 +65,13 @@ export interface NativePushRegistration extends NativePushRegistrationRequest {
    * re-raise a grouped alert whose id the phone has never seen.
    */
   alerted?: string[];
+  /**
+   * Present (and true) while the last card this phone accepted had rows on
+   * it. Persisted so a device narrowed below `orchestration:read` still gets
+   * its one final empty card after a restart, and a device that never showed
+   * a row is never sent one. Absent means false.
+   */
+  cardShown?: true;
 }
 
 /** The registration store is present but unreadable; nothing is guessed. */
@@ -89,9 +107,8 @@ function isValidRegistration(value: unknown): value is NativePushRegistration {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return (
-    [REGISTRATION_KEYS, REGISTRATION_KEYS_WITH_ALERTED].includes(
-      Object.keys(record).sort().join(','),
-    ) &&
+    REGISTRATION_KEY_SETS.includes(Object.keys(record).sort().join(',')) &&
+    (record.cardShown === undefined || record.cardShown === true) &&
     (record.alerted === undefined ||
       (Array.isArray(record.alerted) &&
         record.alerted.length <= ALERTED_MAX &&
@@ -242,6 +259,8 @@ export class NativePushRegistrationStore {
       // The phone keeps its own alert history across token rotation, and so
       // does this record; a new registration starts empty on both sides.
       ...(existing?.alerted ? { alerted: [...existing.alerted] } : {}),
+      // Token rotation does not clear what the phone is showing.
+      ...(existing?.cardShown ? { cardShown: true as const } : {}),
     };
     if (!isValidRegistration(registration))
       throw new NativePushRegistrationStoreError();
@@ -272,6 +291,25 @@ export class NativePushRegistrationStore {
       ...current,
       alerted: [...known, ...added].slice(-ALERTED_MAX),
     });
+    this.#write(registrations);
+  }
+
+  /**
+   * Records whether the card a registration last accepted had rows. Writes
+   * only on a change, and is ignored when the device has since been
+   * re-registered under a different registrationId.
+   */
+  recordCardShown(
+    deviceId: string,
+    registrationId: string,
+    shown: boolean,
+  ): void {
+    const registrations = this.#read();
+    const current = registrations.get(deviceId);
+    if (!current || current.registrationId !== registrationId) return;
+    if ((current.cardShown === true) === shown) return;
+    const { cardShown: _previous, ...rest } = current;
+    registrations.set(deviceId, shown ? { ...rest, cardShown: true } : rest);
     this.#write(registrations);
   }
 

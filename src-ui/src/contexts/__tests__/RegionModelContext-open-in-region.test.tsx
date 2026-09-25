@@ -350,26 +350,32 @@ describe('openInRegion refusals change nothing (#2048)', () => {
     expect(current().model.surfaceIntents).toEqual({});
   });
 
-  test('on a bottom-only device a side region is unavailable, and an open without a region folds the dock to the revealed region', async () => {
+  // Rewritten for the phone layer: this pinned the pre-layer fold — a side
+  // region refused `region-unavailable`, and an open without a region taking
+  // `right` and hiding Chat's region. Both now open OVER Chat instead
+  // (`RegionModelContext-phone-layer.test.tsx` owns the layer's Back); what
+  // stays here is that neither is a refusal and neither folds Chat away.
+  test('on a bottom-only device a side region, or no region, opens the pane over Chat rather than refusing or folding Chat away', async () => {
     await mount(600);
-    const before = current().model.regions;
-    expect(
-      current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, { region: 'right' }),
-    ).toEqual({ ok: false, reason: 'region-unavailable' });
-    expect(current().model.regions).toBe(before);
-
     let outcome: unknown;
+    act(() => {
+      outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE, {
+        region: 'right',
+      });
+    });
+    expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
+    expect(current().model.regions.bottom).toMatchObject({
+      panes: ['chat', 'activity'],
+      occupant: 'activity',
+    });
+    expect(current().model.regions.right.panes).toEqual([]);
+
     act(() => {
       outcome = current().open(WORKSPACE_ACTIVITY_PANE_INSTANCE);
     });
-    // The surface's own rule places it (`right`, free); the fold then makes
-    // that the only visible dock region, as `showSurface` did before #2048.
-    expect(outcome).toMatchObject({ ok: true, region: 'right' });
-    expect(current().model.regions.right).toMatchObject({
-      panes: ['activity'],
-      visible: true,
-    });
-    expect(current().model.regions.bottom.visible).toBe(false);
+    expect(outcome).toMatchObject({ ok: true, region: 'bottom' });
+    expect(current().model.regions.right.panes).toEqual([]);
+    expect(current().model.regions.bottom.panes).toEqual(['chat', 'activity']);
   });
 });
 

@@ -568,7 +568,7 @@ describe('parseNotificationEnvelopeForWrite', () => {
 });
 
 describe('agent notification helpers', () => {
-  test('dedupe tags are namespaced by root session', () => {
+  test('dedupe tags are namespaced by session', () => {
     expect(agentNotificationDedupeTag('root-a', 'build.status')).toBe(
       'agent:root-a:build.status',
     );
