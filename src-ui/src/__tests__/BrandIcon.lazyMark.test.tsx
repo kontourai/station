@@ -16,7 +16,22 @@ vi.mock('../components/icons/BrandMarks', async (importOriginal) => {
   return importOriginal();
 });
 
+import { Component, type ReactNode } from 'react';
 import { BrandIcon } from '../components/icons/BrandIcon';
+
+/** Stands in for the dock's or route's boundary, which replaces its surface. */
+class SurfaceBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? <p>surface replaced</p> : this.props.children;
+  }
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -29,10 +44,12 @@ describe('BrandIcon when the brand-mark chunk fails to load', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const first = render(
-      <section>
-        <BrandIcon name="Codex" engineId="codex" />
-        <p>sibling content</p>
-      </section>,
+      <SurfaceBoundary>
+        <section>
+          <BrandIcon name="Codex" engineId="codex" />
+          <p>sibling content</p>
+        </section>
+      </SurfaceBoundary>,
     );
 
     // Let the rejected import settle and React commit whatever handles it.
@@ -40,6 +57,7 @@ describe('BrandIcon when the brand-mark chunk fails to load', () => {
       await import('../components/icons/BrandMarks').catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    expect(screen.queryByText('surface replaced')).toBeNull();
     expect(screen.getByText('sibling content')).toBeTruthy();
     expect(
       first.container.querySelector('[data-brand-key="codex"]'),
