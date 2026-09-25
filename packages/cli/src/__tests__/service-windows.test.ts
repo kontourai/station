@@ -39,7 +39,10 @@ function windowsFs(): ServiceFs {
     readFileSync: (
       path: nodeFs.PathLike,
       options?: nodeFs.ObjectEncodingOptions | BufferEncoding | null,
-    ) => nodeFs.readFileSync(translate(path), options),
+    ) =>
+      options === undefined || options === null
+        ? nodeFs.readFileSync(translate(path))
+        : nodeFs.readFileSync(translate(path), options),
     realpathSync: (path: nodeFs.PathLike) =>
       nodeFs.realpathSync(translate(path)),
     renameSync: (oldPath: nodeFs.PathLike, newPath: nodeFs.PathLike) =>
