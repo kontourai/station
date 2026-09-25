@@ -533,11 +533,8 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     expect(pkg.scripts['test:repo-scans']).toBe(
       'node scripts/run-repo-scan-suites.mjs',
     );
-    const runner = readFileSync(
-      join(ROOT, 'scripts/run-repo-scan-suites.mjs'),
-      'utf8',
-    );
-    expect(runner).toContain('runFocusedTests([...REPO_SCAN_SUITES])');
+    // What the runner hands the focused runner is asserted behaviourally in
+    // run-repo-scan-suites.test.ts.
     const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
     const job = ci.slice(
       ci.indexOf('\n  repo-scans:\n'),
