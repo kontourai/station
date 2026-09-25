@@ -10,6 +10,7 @@ import {
   useUpdateNotificationPreferencesMutation,
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
+import { ErrorState, SkeletonBlock } from '../../components/state';
 
 const LEVELS: Array<{ value: AgentNotificationLevel; label: string }> = [
   { value: 'all', label: 'All' },
@@ -41,27 +42,23 @@ export default function NotificationDeliverySettings() {
   const devices = usePairedDevicesQuery();
 
   if (preferences.isLoading) {
-    return (
-      <p className="settings__notification-sounds-help">
-        Loading notification delivery…
-      </p>
-    );
+    return <SkeletonBlock count={1} label="Loading notification delivery" />;
   }
   if (preferences.error || !preferences.data) {
     return (
-      <div className="settings__notif-error" role="alert">
-        <p>
-          {preferences.error?.message ??
-            'Notification delivery settings could not be loaded.'}
-        </p>
-        <Button
-          size="sm"
-          pending={update.isPending}
-          onClick={() => update.mutate(defaultNotificationPreferences())}
-        >
-          Reset to defaults
-        </Button>
-      </div>
+      <ErrorState
+        title="Notification delivery settings could not be loaded"
+        description={preferences.error?.message}
+        action={
+          <Button
+            size="sm"
+            pending={update.isPending}
+            onClick={() => update.mutate(defaultNotificationPreferences())}
+          >
+            Reset to defaults
+          </Button>
+        }
+      />
     );
   }
 

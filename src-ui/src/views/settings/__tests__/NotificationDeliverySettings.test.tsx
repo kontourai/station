@@ -109,9 +109,12 @@ describe('NotificationDeliverySettings', () => {
       data: undefined,
     };
     render(<NotificationDeliverySettings />);
-    expect(screen.getByRole('alert').textContent).toContain(
-      'could not be read',
-    );
+    expect(
+      screen.getByText('Notification delivery settings could not be loaded'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('The saved notification preferences could not be read.'),
+    ).toBeTruthy();
     expect(screen.queryByLabelText('Agent notifications')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
     expect(saved()).toEqual(defaultNotificationPreferences());
