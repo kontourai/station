@@ -1,8 +1,8 @@
 /**
  * The production composition of notification delivery (#2586): the
  * preferences store, the audience resolver over the pairing registry and
- * the orchestration read check, the Web Push and desktop-host channels, and
- * the router. Extracted from `configureRuntimeSupportServices` so a test can
+ * the orchestration read check, the Web Push, desktop-host and (when native
+ * push is on) FCM alert channels (#2588), and the router. Extracted from `configureRuntimeSupportServices` so a test can
  * drive the REAL wiring (which read authority a device resolves to, which
  * store the escalation re-check reads) rather than only its parts.
  */
@@ -18,6 +18,10 @@ import {
   isPersonalFamilyDevice,
 } from '../../services/notifications/delivery/audience-resolver.js';
 import { DesktopHostChannel } from '../../services/notifications/delivery/desktop-host-channel.js';
+import {
+  FcmAlertChannel,
+  type FcmAlertChannelOptions,
+} from '../../services/notifications/delivery/fcm-alert-channel.js';
 import {
   type FocusSource,
   type InAppLiveness,
@@ -49,6 +53,12 @@ export interface NotificationDeliveryWiringDeps {
   ): boolean;
   /** The store's records; the escalation re-check reads one back. */
   listNotifications(): Promise<Notification[]>;
+  /**
+   * Android native push (#2588): the push key, gateway and the send floor
+   * shared with the agent-activity publisher. Absent when native push is off
+   * (an invalid gateway URL), and then no `fcm-alert` channel exists.
+   */
+  fcmAlert?: Omit<FcmAlertChannelOptions, 'logger'>;
   /** #2585 focus presence and its in-app liveness; inert until wired. */
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
@@ -90,6 +100,9 @@ export function wireNotificationDelivery(
     channels: [
       new WebPushChannel(deps.devicePairing, deps.webPushService, deps.logger),
       desktopHostChannel,
+      ...(deps.fcmAlert
+        ? [new FcmAlertChannel({ ...deps.fcmAlert, logger: deps.logger })]
+        : []),
     ],
     resolver: createPairingAudienceResolver({
       listDevices: () => deps.devicePairing.listDevices(),

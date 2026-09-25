@@ -29,6 +29,10 @@ import {
   wireAgentActivityPublisher,
 } from '../agent-activity-publisher.js';
 import type { NativePushRegistration } from '../native-push-registration-store.js';
+import {
+  createNativePushSendFloor,
+  type NativePushSendFloor,
+} from '../native-push-send-floor.js';
 import { PushSigningKeyStore } from '../push-signing-key-store.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -213,6 +217,8 @@ async function harness(
      * device's stored scope decides whether it may read, as in production.
      */
     readerFromPairing?: boolean;
+    /** The floor shared with the Station notification channel (#2588). */
+    sendFloor?: NativePushSendFloor;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
@@ -297,6 +303,7 @@ async function harness(
     },
     gateway: GATEWAY,
     logger: { warn },
+    ...(options.sendFloor ? { sendFloor: options.sendFloor } : {}),
     fetchImpl: fetchImpl as unknown as typeof fetch,
     now: () => clock,
     windowMs: 1,
@@ -783,6 +790,28 @@ describe('agent-activity publisher', () => {
         String(message).includes('push signing key file is unreadable'),
       ),
     ).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
+  test('a slot a Station notification reserved on the shared floor holds the card back (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification to this phone went out half a second ago and another
+    // holds the slot two and a half seconds from now.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Paced to the slot after the reserved one, not dropped.
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 5500);
+    // And the card's own send is on the floor for the next notification.
+    expect(sendFloor.lastSendAt(deviceId)).toBe(START + 5500);
     await h.publisher.stop();
   });
 

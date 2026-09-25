@@ -85,6 +85,11 @@ import {
   type NativePushRegistration,
   newLiveActivityRunId,
 } from './native-push-registration-store.js';
+import {
+  createNativePushSendFloor,
+  NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+  type NativePushSendFloor,
+} from './native-push-send-floor.js';
 import type { PushSigningKey } from './push-signing-key-store.js';
 
 const DEFAULT_PUSH_GATEWAY_URL = 'https://push.kontourai.io';
@@ -98,9 +103,10 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /**
  * The gateway allows 30 sends a minute per push token; never send to one
  * device more often than this. A change inside the interval is coalesced
- * into the next send, which the timer schedules.
+ * into the next send, which the timer schedules. On Android the interval is
+ * shared with Station notifications (`native-push-send-floor.ts`).
  */
-const MIN_SEND_INTERVAL_MS = 3_000;
+const MIN_SEND_INTERVAL_MS = NATIVE_PUSH_MIN_SEND_INTERVAL_MS;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 5 * 60_000;
 /** After this many consecutive failures only a new event retries. */
@@ -418,6 +424,12 @@ export interface AgentActivityPublisherOptions {
   sessionReaderFor: (deviceId: string) => AgentActivitySessionReader | null;
   gateway: PushGatewayConfig;
   logger: AgentActivityLogger;
+  /**
+   * The per-phone send floor shared with the Station notification channel
+   * (both send FCM messages to the same push token). A private one when
+   * absent.
+   */
+  sendFloor?: NativePushSendFloor;
   /** Hosted mode or an invalid gateway URL: do not even subscribe. */
   enabled?: boolean;
   fetchImpl?: typeof fetch;
@@ -532,6 +544,7 @@ export function wireAgentActivityPublisher(
   const fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
   const setTimer = options.setTimer ?? defaultSetTimer;
   const { logger, devicePairing } = options;
+  const sendFloor = options.sendFloor ?? createNativePushSendFloor();
 
   /** Per reading principal: what that principal's sessions were last seen as. */
   const snapshotsByPrincipal = new Map<
@@ -1430,6 +1443,7 @@ export function wireAgentActivityPublisher(
       }),
     };
     state.lastAttemptAt = at;
+    sendFloor.record(deviceId, at);
     const outcome = await send(
       JSON.stringify({
         token: registration.token,
@@ -1772,12 +1786,20 @@ export function wireAgentActivityPublisher(
         continue;
       }
       if (state.retryAt !== undefined && at < state.retryAt) continue;
+      // A notification may have reserved a later slot to this phone.
+      const lastAttemptAt =
+        registration.platform === 'android'
+          ? Math.max(
+              state.lastAttemptAt ?? Number.NEGATIVE_INFINITY,
+              sendFloor.lastSendAt(deviceId) ?? Number.NEGATIVE_INFINITY,
+            )
+          : state.lastAttemptAt;
       if (
-        state.lastAttemptAt !== undefined &&
-        at - state.lastAttemptAt < MIN_SEND_INTERVAL_MS
+        lastAttemptAt !== undefined &&
+        at - lastAttemptAt < MIN_SEND_INTERVAL_MS
       ) {
         // Coalesced into a send once the interval has passed.
-        state.retryAt = state.lastAttemptAt + MIN_SEND_INTERVAL_MS;
+        state.retryAt = lastAttemptAt + MIN_SEND_INTERVAL_MS;
         continue;
       }
       // Monotonic per Station: the phone drops an update older than the last.

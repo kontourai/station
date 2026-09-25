@@ -288,6 +288,39 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   never cut: the card's reference stays for as long as row 0 does, and an
   alert's stays with the alert, so under a tight budget they displace tail
   rows (at most about 310 bytes each for the longest id and slug).
+- **Station notifications on Android (#2588).** A notification the delivery
+  router decides to send to a phone goes out through the same gateway,
+  registration and payload key as the card, as
+  `{ station_kind: 'station_notification', device_id, sealed }` with AAD
+  `station-notification:v1:<registrationId>` (so a card never opens as a
+  notification or the reverse). The plaintext is one JSON object of strings,
+  `NativePushNotificationPlaintext` in
+  `@kontourai/station-contracts/native-push`: `v` (`"1"`), `user_id`, `id`,
+  `kind` (`alert` or `retract`), `created_at` and `expires_at` (epoch ms, an
+  hour apart), and on an alert `title`, `urgency`, an optional `body`, and an
+  optional `session_id` / `project_slug` in the session-reference grammar
+  (the session the record names, the one its audience was limited by; none
+  for a path target). There is no link: a tap opens that session through the
+  card's tap-nonce ledger, never a URL. `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`
+  is its known-answer vector. When the phone's surface asked to hide content,
+  the title and body are replaced with generic copy before sealing. The FCM
+  collapse key is `n` + 40 hex of SHA-256 of the notification id, so a retract
+  replaces its alert if FCM still holds it; attention and failed go at high
+  priority, everything else (and every retract) at normal, and the gateway
+  gives a notification an hour to live instead of the card's five minutes.
+  A read or dismiss elsewhere sends a retract. The channel
+  (`delivery/fcm-alert-channel.ts`) shares the per-phone three-second send
+  floor with the card (`native-push-send-floor.ts`): a notification inside
+  it waits for its slot and holds it, and the card waits for the slot after.
+  It does not retry a failed send (like Web Push); a 410 clears the
+  registration. It does not carry `approval-request`, `turn-completed`,
+  `turn-stopped` or `turn-failed`, which the card already alerts for. On the
+  phone (`StationNotifications.kt`) each urgency has its own notification
+  channel; one Android notification per id per registration; a history of
+  the newest `created_at` seen per id (64 ids) drops a duplicate or older
+  delivery and an alert arriving after its own retract; an expired alert is
+  not shown; and, as for card alerts, nothing is posted while the app is in
+  the foreground.
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with
@@ -493,6 +526,7 @@ status).
 |---|---|
 | Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
+| Station notifications on Android (#2588: gateway kind, `FcmAlertChannel`, `StationNotifications.kt`) | built; the channel is tested through the production delivery wiring against the gateway's own verifier and request parser, and the phone opens the shared known-answer vector in a JVM unit test. Not yet verified on a device or emulator, and the gateway change is not yet deployed |
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
 | Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
