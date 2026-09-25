@@ -2427,9 +2427,11 @@ export function configureRuntimeRoutes(
     // environment variable — instead of a direct env read, so the Settings
     // row ("Device helper URL", with its provenance badge) and the Device
     // pane's setup copy name the same source the runtime actually consults.
+    // Live config first (a user can change the setting between boots); the
+    // boot snapshot is the fallback when no live reader answers.
     const configuredDeviceHub = resolveEffectiveAppSetting(
       'mobileDeviceHubUrl',
-      { config: context.getLiveAppConfig() },
+      { config: context.getLiveAppConfig?.() ?? context.appConfig },
     );
     const configuredDeviceHubUrl =
       typeof configuredDeviceHub?.value === 'string' &&
