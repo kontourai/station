@@ -1,5 +1,5 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
-import { lazy, Suspense, useState } from 'react';
+import { Component, lazy, type ReactNode, Suspense, useState } from 'react';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
 import './BrandIcon.css';
@@ -89,7 +89,38 @@ function safeSameOriginImage(value: unknown): string | undefined {
   }
 }
 
-const LazyBrandMark = lazy(() => import('./BrandMarks'));
+const loadBrandMarks = () => import('./BrandMarks');
+
+// One lazy component for every icon, so a mark that has loaded renders on
+// mount without suspending again. (`LazyBoundary` builds a lazy per instance,
+// which would suspend each newly mounted icon for a tick.) React caches a
+// rejection on the lazy component for good, so a failure replaces it: the
+// next icon to mount imports again.
+let LazyBrandMark = lazy(loadBrandMarks);
+
+/**
+ * The mark is decorative, so a failed chunk (a stale tab after an upgrade)
+ * leaves the tile's box without it instead of reaching an ancestor boundary
+ * and replacing the dock or route that contains the icon.
+ */
+class BrandMarkBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    LazyBrandMark = lazy(loadBrandMarks);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 function Mark({ brand }: { brand: BrandKey }) {
   switch (brand) {
@@ -99,11 +130,13 @@ function Mark({ brand }: { brand: BrandKey }) {
     case 'qwen':
       return <img src={`/provider-icons/${brand}.svg`} alt="" />;
     default:
-      // Until the chunk arrives the tile shows its sized, colored box.
+      // Until the chunk arrives the tile shows its sized, neutral box.
       return (
-        <Suspense fallback={null}>
-          <LazyBrandMark brand={brand} />
-        </Suspense>
+        <BrandMarkBoundary>
+          <Suspense fallback={null}>
+            <LazyBrandMark brand={brand} />
+          </Suspense>
+        </BrandMarkBoundary>
       );
   }
 }
