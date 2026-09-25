@@ -21,6 +21,13 @@ const repoRoot = resolve(import.meta.dirname, '../..');
 const installScript = join(repoRoot, 'install.sh');
 const roots: string[] = [];
 
+/**
+ * The bound on one installer run. A test's own timeout must cover every run
+ * it makes: the describe default below fits two, and a test that makes more
+ * sizes its timeout from this, not from how fast an idle machine is.
+ */
+const INSTALLER_RUN_TIMEOUT_MS = 15_000;
+
 function posixShellLiteral(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
@@ -234,7 +241,7 @@ function runInstaller(
   mkdirSync(home, { recursive: true });
   const result = spawnSync('sh', [installScript, ...args], {
     encoding: 'utf8',
-    timeout: 15_000,
+    timeout: INSTALLER_RUN_TIMEOUT_MS,
     windowsHide: true,
     ...(cwd ? { cwd } : {}),
     env: {
@@ -1047,26 +1054,32 @@ describe('one-line Station installer', { timeout: 15_000 }, () => {
     expect(existsSync(installRoot)).toBe(false);
   });
 
-  it('uninstalls program files while preserving data unless purge is explicit', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
-    const fixture = makeFixtureArchive(root);
-    const installed = runInstaller(root, fixture);
-    expect(installed.result.status, installed.result.stderr).toBe(0);
-    mkdirSync(installed.stationHome, { recursive: true });
-    writeFileSync(join(installed.stationHome, 'keep-me'), 'data');
+  it(
+    'uninstalls program files while preserving data unless purge is explicit',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
+      roots.push(root);
+      const fixture = makeFixtureArchive(root);
+      const installed = runInstaller(root, fixture);
+      expect(installed.result.status, installed.result.stderr).toBe(0);
+      mkdirSync(installed.stationHome, { recursive: true });
+      writeFileSync(join(installed.stationHome, 'keep-me'), 'data');
 
-    const removed = runInstaller(root, fixture, ['uninstall']);
-    expect(removed.result.status, removed.result.stderr).toBe(0);
-    expect(existsSync(removed.installRoot)).toBe(false);
-    expect(existsSync(join(removed.stationHome, 'keep-me'))).toBe(true);
+      const removed = runInstaller(root, fixture, ['uninstall']);
+      expect(removed.result.status, removed.result.stderr).toBe(0);
+      expect(existsSync(removed.installRoot)).toBe(false);
+      expect(existsSync(join(removed.stationHome, 'keep-me'))).toBe(true);
 
-    const reinstalled = runInstaller(root, fixture);
-    expect(reinstalled.result.status, reinstalled.result.stderr).toBe(0);
-    const purged = runInstaller(root, fixture, ['uninstall', '--purge-data']);
-    expect(purged.result.status, purged.result.stderr).toBe(0);
-    expect(existsSync(purged.stationHome)).toBe(false);
-  });
+      const reinstalled = runInstaller(root, fixture);
+      expect(reinstalled.result.status, reinstalled.result.stderr).toBe(0);
+      const purged = runInstaller(root, fixture, ['uninstall', '--purge-data']);
+      expect(purged.result.status, purged.result.stderr).toBe(0);
+      expect(existsSync(purged.stationHome)).toBe(false);
+      // Four installer runs: install, uninstall, reinstall, purge. Under load
+      // they outlasted the describe's 15s budget while each one succeeded.
+    },
+    4 * INSTALLER_RUN_TIMEOUT_MS,
+  );
 
   it('refuses an unrelated launcher during uninstall', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
