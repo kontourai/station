@@ -7,10 +7,16 @@ const COMMANDS: &[&str] = &[
     "open_live_update_settings",
 ];
 
-/// The iOS side (a Swift plugin plus the Live Activity widget it feeds) is
-/// built only when STATION_IOS_LIVE_ACTIVITY=1, so TestFlight output stays
+/// The iOS side is built only when enabled, so every iOS build stays
 /// unchanged until the push-enabled signing it needs exists (#2513 slice D).
-/// Without it the plugin still registers on iOS, with no native half.
+/// Enabling takes two halves together: STATION_IOS_LIVE_ACTIVITY=1 builds
+/// this Swift plugin, and scripts/ensure-ios-agent-activity-extension.mjs
+/// adds the Live Activity widget extension, its embed and the app's keychain
+/// groups to the rendered gen/apple spec. The committed spec carries neither,
+/// so a default build embeds no extension and needs no new provisioning; an
+/// enabled one needs a profile for `<app bundle id>.AgentActivity` and push
+/// on the app. Without the switch the plugin still registers on iOS, with no
+/// native half.
 ///
 /// Xcode runs cargo through `tauri ios xcode-script`, which does not pass the
 /// shell's environment through, so an iOS build sets it as cargo config:

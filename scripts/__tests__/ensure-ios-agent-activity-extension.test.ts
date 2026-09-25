@@ -38,6 +38,8 @@ targets:
 const committedSpec = 'src-desktop/gen/apple/project.yml';
 const committedXcodeProject =
   'src-desktop/gen/apple/station.xcodeproj/project.pbxproj';
+const committedAppEntitlements =
+  'src-desktop/gen/apple/station_iOS/station_iOS.entitlements';
 
 function ensure(project: string, options: Record<string, string> = {}) {
   return YAML.parse(
@@ -192,19 +194,84 @@ describe('iOS agent-activity extension project spec', () => {
     ).toThrow('bundle identifier');
   });
 
-  test('the committed spec and Xcode project already carry the extension', () => {
+  test('a re-run without an APNs environment keeps the paired one, or is refused', () => {
+    const withAps = ensureIosAgentActivity(
+      { project: renderedProject, infoPlist: appInfoPlist },
+      { appBundleId: 'io.kontourai.station', apsEnvironment: 'production' },
+    );
+    // The second, aps-less run would otherwise drop the entitlement while
+    // Info.plist still says production, and the plugin would report push as
+    // configured on a build that can never get a token.
+    expect(() =>
+      ensureIosAgentActivity(
+        { project: withAps.project },
+        { appBundleId: 'io.kontourai.station' },
+      ),
+    ).toThrow('stay paired');
+    // Naming it again is the supported re-run and keeps both in place.
+    const again = ensureIosAgentActivity(
+      { project: withAps.project, infoPlist: withAps.infoPlist },
+      { appBundleId: 'io.kontourai.station', apsEnvironment: 'production' },
+    );
+    expect(again).toEqual(withAps);
+  });
+
+  test('keeps entitlement properties it does not own', () => {
+    const project = renderedProject.replace(
+      '      path: station_iOS/station_iOS.entitlements\n',
+      [
+        '      path: station_iOS/station_iOS.entitlements',
+        '      properties:',
+        '        com.apple.developer.associated-domains:',
+        '          - applinks:example.com',
+        '        keychain-access-groups:',
+        '          - $(AppIdentifierPrefix)com.example.shared',
+        '',
+      ].join('\n'),
+    );
+    const properties =
+      ensure(project).targets.station_iOS.entitlements.properties;
+    expect(properties['com.apple.developer.associated-domains']).toEqual([
+      'applinks:example.com',
+    ]);
+    expect(properties['keychain-access-groups']).toEqual([
+      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
+      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
+      '$(AppIdentifierPrefix)com.example.shared',
+    ]);
+  });
+
+  test('the committed project does not carry the extension until a build enables it', () => {
+    // Every build path that uses the committed gen/apple (CI simulator
+    // builds, build:ios:simulator, tauri ios dev, a local App Store export)
+    // must build exactly what it did before #2513: no embedded extension to
+    // provision and no new app entitlements.
     const committed = readFileSync(committedSpec, 'utf8');
+    const parsed = YAML.parse(committed);
+    expect(parsed.targets[EXTENSION_TARGET]).toBeUndefined();
+    expect(parsed.targets.station_iOS.entitlements).toEqual({
+      path: 'station_iOS/station_iOS.entitlements',
+    });
+    expect(JSON.stringify(parsed.targets.station_iOS.dependencies)).not.toMatch(
+      /StationAgentActivity|ActivityKit/,
+    );
+    expect(readFileSync(committedXcodeProject, 'utf8')).not.toMatch(
+      /StationAgentActivity|ActivityKit/,
+    );
+    expect(readFileSync(committedAppEntitlements, 'utf8')).not.toContain(
+      'keychain-access-groups',
+    );
+    // An enabled build applies it to this same spec, once.
+    const enabled = ensureIosAgentActivityExtension(committed, {
+      appBundleId: 'io.kontourai.station',
+    });
+    expect(YAML.parse(enabled).targets[EXTENSION_TARGET].type).toBe(
+      'app-extension',
+    );
     expect(
-      ensureIosAgentActivityExtension(committed, {
+      ensureIosAgentActivityExtension(enabled, {
         appBundleId: 'io.kontourai.station',
       }),
-    ).toBe(committed);
-    const xcodeProject = readFileSync(committedXcodeProject, 'utf8');
-    expect(xcodeProject).toContain(
-      '/* StationAgentActivity.appex in Embed Foundation Extensions */',
-    );
-    expect(xcodeProject).toMatch(
-      /ActivityKit\.framework in Frameworks \*\/ = \{[^}]*settings = \{ATTRIBUTES = \(Weak, \); \}/,
-    );
+    ).toBe(enabled);
   });
 });

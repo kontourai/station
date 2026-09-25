@@ -67,10 +67,6 @@ targets:
         ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: station_iOS/station_iOS.entitlements
-      properties:
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
-          - $(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity
     scheme:
       environmentVariables:
         RUST_BACKTRACE: full
@@ -95,10 +91,6 @@ targets:
       - sdk: Security.framework
       - sdk: UIKit.framework
       - sdk: WebKit.framework
-      - target: StationAgentActivity
-        embed: true
-      - sdk: ActivityKit.framework
-        weak: true
     preBuildScripts:
       - script: npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}
         name: Build Rust Code
@@ -106,48 +98,3 @@ targets:
         outputFiles:
           - $(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a
           - $(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a
-  StationAgentActivity:
-    type: app-extension
-    platform: iOS
-    deploymentTarget: "18.0"
-    sources:
-      - path: ../../ios/StationAgentActivity
-        excludes:
-          - Info.plist
-          - "*.entitlements"
-      - path: ../../plugins/agent-activity/ios/Sources/StationAgentActivityShared
-    settings:
-      base:
-        STATION_APP_BUNDLE_IDENTIFIER: io.kontourai.station
-        PRODUCT_BUNDLE_IDENTIFIER: $(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity
-        PRODUCT_NAME: StationAgentActivity
-        INFOPLIST_FILE: ../../ios/StationAgentActivity/Info.plist
-        CODE_SIGN_ENTITLEMENTS: ../../ios/StationAgentActivity/StationAgentActivity.entitlements
-        TARGETED_DEVICE_FAMILY: 1,2
-        SWIFT_VERSION: "5.0"
-        ENABLE_BITCODE: false
-        ARCHS:
-          - arm64
-        SKIP_INSTALL: true
-    postBuildScripts:
-      - name: Use the app version
-        basedOnDependencyAnalysis: false
-        inputFiles:
-          - $(PROJECT_DIR)/station_iOS/Info.plist
-        script: |
-          set -eu
-          app_plist="$PROJECT_DIR/station_iOS/Info.plist"
-          built_plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-          for key in CFBundleShortVersionString CFBundleVersion; do
-            value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$app_plist")
-            case "$value" in
-              ''|*'$('*) echo "error: the app's $key is not a literal version: $value" >&2; exit 1 ;;
-            esac
-            # Xcode drops a key whose $(VARIABLE) expanded empty, so add, not set.
-            /usr/libexec/PlistBuddy -c "Delete :$key" "$built_plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add :$key string $value" "$built_plist"
-          done
-    dependencies:
-      - sdk: ActivityKit.framework
-      - sdk: SwiftUI.framework
-      - sdk: WidgetKit.framework

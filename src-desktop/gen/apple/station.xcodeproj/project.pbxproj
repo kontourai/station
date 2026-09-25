@@ -7,75 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		076CC86EEE89BBD756A0C660 /* StationAgentActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */; };
-		07F1DA7937CACF7FCAF063D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C364EC575248172C94D9F36 /* Assets.xcassets */; };
 		0D80FAB4324FD87181983189 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 8D5E67359C63F739BA3D9A2D /* assets */; };
 		36B40623207C6637AB23A941 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 681BC26D1152661AEBA7B5F3 /* main.mm */; };
 		36EA9649946F5301F24F66E0 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D59DE748810D013D359DCE4E /* UIKit.framework */; };
 		3A2610D39B73DBB3218B0E2A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = EDD857CFCBE58A31D3354F2B /* LaunchScreen.storyboard */; };
-		3AE1FEC5EE6FC45DA204DA54 /* StationAgentActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4AD0A53E7A7FCBD0F25452A5 /* StationAgentActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE21876AC634F5E68F78B76 /* StationAgentActivityAttributes.swift */; };
-		4B15850AF6140B9A0DAC385A /* FirstValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598FDDDD17FE817358AE0011 /* FirstValue.swift */; };
 		51F47EFE1B3D39F493E29EF4 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15ED59BCC609CA49A13CD77D /* QuartzCore.framework */; };
-		68D65DC65E64AFD4E9100EC1 /* AgentActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D24F674981EBDA6B8A6AE3 /* AgentActivityCard.swift */; };
-		7DCA57135B98D9B29B1B5A18 /* CardOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097F180D70A7F9BD3DC699DC /* CardOpener.swift */; };
 		8D2BB0A1EFF96C48881C183B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72B645C441E80FC956644B0 /* Metal.framework */; };
 		9761CF8257B335817DD69F97 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AFC2B8495E29FD157E17EEAD /* WebKit.framework */; };
-		9B6D0EAEDF4F74F3DBC2EE75 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 147975E0ACC3E1E8902731FF /* ActivityKit.framework */; };
-		A9DD2F714094B442446F1592 /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E082AB576E782C5B7F42FE /* Base64URL.swift */; };
 		AD0C7D6692E4F5A0C9405F3A /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F153A3698700B6031190A8FA /* MetalKit.framework */; };
 		B4F20CC0FBCCB07F4393C13C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FDEE6627583142A9999DE72B /* PrivacyInfo.xcprivacy */; };
 		BB70795B7BC2EBECB7FADACA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */; };
-		DE98DBE7DCD4522F92FD590B /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 147975E0ACC3E1E8902731FF /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
-		DFE904691728419A756A8D1C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CB41E9A4D283F509B6AD9307 /* SwiftUI.framework */; };
-		E17356213A7022D3EAF0CCF7 /* RegistrationKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84F9AA9B4C9A6BBD84E68BD /* RegistrationKeychain.swift */; };
 		EC733B854472516C57E8F03B /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 20787CF4DFA45B8BBCCC0A75 /* Security.framework */; };
-		EF9BEC1C2ECEBA5B1063FC92 /* AgentActivityModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434E64909DB4E7E2090AD7F2 /* AgentActivityModel.swift */; };
-		F43A7EAB7BBB686772779E32 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DEEC8FDAE0A0484BFBFE00E4 /* WidgetKit.framework */; };
 		F585BC5DED0AA79C7C26A1ED /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B1D4566486EFF27D77D083C /* libapp.a */; };
 		F61409C48A86C4842DDAA523 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A7393132A0B53A78E8BA46E1 /* CoreGraphics.framework */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		B5B126F3342EDE47A03C41CE /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 59BD0127DF5348841BEC8DF5 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = D4019DD2DC8322D2FB702DEA;
-			remoteInfo = StationAgentActivity;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		2843C9A1D08E294F56D058E8 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				3AE1FEC5EE6FC45DA204DA54 /* StationAgentActivity.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		086AD6A306EE7D849A657F29 /* ssh_launcher.rs */ = {isa = PBXFileReference; path = ssh_launcher.rs; sourceTree = "<group>"; };
-		097F180D70A7F9BD3DC699DC /* CardOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardOpener.swift; sourceTree = "<group>"; };
-		0DDF8EAE38AE2883815FEB0E /* native_relay_redemption.rs */ = {isa = PBXFileReference; path = native_relay_redemption.rs; sourceTree = "<group>"; };
 		10453FA41C7DAF9DA304DF22 /* pairing_deep_link_channels_generated.rs */ = {isa = PBXFileReference; path = pairing_deep_link_channels_generated.rs; sourceTree = "<group>"; };
-		147975E0ACC3E1E8902731FF /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 		15ED59BCC609CA49A13CD77D /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		20787CF4DFA45B8BBCCC0A75 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		3A1672A32D06F6326FC12CCF /* desktop_companion.rs */ = {isa = PBXFileReference; path = desktop_companion.rs; sourceTree = "<group>"; };
 		3B1D4566486EFF27D77D083C /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		42DA81DDFBD959D1F703A1C2 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
-		434E64909DB4E7E2090AD7F2 /* AgentActivityModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityModel.swift; sourceTree = "<group>"; };
 		4FD1543B7D7363F59EFC809F /* startup_readiness.rs */ = {isa = PBXFileReference; path = startup_readiness.rs; sourceTree = "<group>"; };
 		50ECFC2E25BAEA0C34D69D43 /* windows_path_trust.rs */ = {isa = PBXFileReference; path = windows_path_trust.rs; sourceTree = "<group>"; };
 		5846F69BCDF7A7941E78AAF4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		598FDDDD17FE817358AE0011 /* FirstValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstValue.swift; sourceTree = "<group>"; };
 		5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */ = {isa = PBXFileReference; path = local_access_watch.rs; sourceTree = "<group>"; };
 		630318A6C42EE06BE935DD54 /* channel_ports_generated.rs */ = {isa = PBXFileReference; path = channel_ports_generated.rs; sourceTree = "<group>"; };
 		681BC26D1152661AEBA7B5F3 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
@@ -83,29 +40,18 @@
 		7345FFA3484F0890CE29A622 /* android_dns.rs */ = {isa = PBXFileReference; path = android_dns.rs; sourceTree = "<group>"; };
 		8D5E67359C63F739BA3D9A2D /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		8F2CA78C54A20EA0EEA824AB /* tray.rs */ = {isa = PBXFileReference; path = tray.rs; sourceTree = "<group>"; };
-		91A3051A548341308DF5DECC /* relay_grant_vault.rs */ = {isa = PBXFileReference; path = relay_grant_vault.rs; sourceTree = "<group>"; };
 		92CF7A7FF6A28CC53BDBAE4B /* station_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = station_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		9C364EC575248172C94D9F36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A0E082AB576E782C5B7F42FE /* Base64URL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base64URL.swift; sourceTree = "<group>"; };
 		A3A6E4C2C130FC18D4CBBA25 /* station_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = station_iOS.entitlements; sourceTree = "<group>"; };
 		A7393132A0B53A78E8BA46E1 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		A9FFC41781B10A1EFFA98C36 /* login_shell.rs */ = {isa = PBXFileReference; path = login_shell.rs; sourceTree = "<group>"; };
-		ACE21876AC634F5E68F78B76 /* StationAgentActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationAgentActivityAttributes.swift; sourceTree = "<group>"; };
-		AD1D8E8B2BD93AECC15BC1F7 /* native_relay_proof_key.rs */ = {isa = PBXFileReference; path = native_relay_proof_key.rs; sourceTree = "<group>"; };
-		AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = StationAgentActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFC2B8495E29FD157E17EEAD /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		BB85CE7E4851316560BE5099 /* bundled_server_state.rs */ = {isa = PBXFileReference; path = bundled_server_state.rs; sourceTree = "<group>"; };
-		CB41E9A4D283F509B6AD9307 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		CEADBA2F0FC0432181CF6049 /* notification_watch.rs */ = {isa = PBXFileReference; path = notification_watch.rs; sourceTree = "<group>"; };
 		D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationAgentActivityWidget.swift; sourceTree = "<group>"; };
 		D59DE748810D013D359DCE4E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
-		DEEC8FDAE0A0484BFBFE00E4 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
-		E84F9AA9B4C9A6BBD84E68BD /* RegistrationKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationKeychain.swift; sourceTree = "<group>"; };
 		EA2365010BB379059C7633AE /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		EDD857CFCBE58A31D3354F2B /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		F153A3698700B6031190A8FA /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
-		F3D24F674981EBDA6B8A6AE3 /* AgentActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityCard.swift; sourceTree = "<group>"; };
 		F65B2B0F7649F66A37265DCF /* service_state.rs */ = {isa = PBXFileReference; path = service_state.rs; sourceTree = "<group>"; };
 		F72B645C441E80FC956644B0 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		F9ABC2F4DC001660B3AD6B74 /* windows_private_acl.rs */ = {isa = PBXFileReference; path = windows_private_acl.rs; sourceTree = "<group>"; };
@@ -125,17 +71,6 @@
 				EC733B854472516C57E8F03B /* Security.framework in Frameworks */,
 				36EA9649946F5301F24F66E0 /* UIKit.framework in Frameworks */,
 				9761CF8257B335817DD69F97 /* WebKit.framework in Frameworks */,
-				DE98DBE7DCD4522F92FD590B /* ActivityKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		EF73B7AAB66410830370C7A8 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				9B6D0EAEDF4F74F3DBC2EE75 /* ActivityKit.framework in Frameworks */,
-				DFE904691728419A756A8D1C /* SwiftUI.framework in Frameworks */,
-				F43A7EAB7BBB686772779E32 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,7 +81,6 @@
 			isa = PBXGroup;
 			children = (
 				92CF7A7FF6A28CC53BDBAE4B /* station_iOS.app */,
-				AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -175,16 +109,6 @@
 			path = station_iOS;
 			sourceTree = "<group>";
 		};
-		6E0B15B56DCA1E1FF70C4E2C /* StationAgentActivity */ = {
-			isa = PBXGroup;
-			children = (
-				9C364EC575248172C94D9F36 /* Assets.xcassets */,
-				D40C7F8B6048F3B5A32C2B66 /* StationAgentActivityWidget.swift */,
-			);
-			name = StationAgentActivity;
-			path = ../../ios/StationAgentActivity;
-			sourceTree = "<group>";
-		};
 		8DB3DF78D9BC56DBA4B6EDDA = {
 			isa = PBXGroup;
 			children = (
@@ -196,8 +120,6 @@
 				1C6E8B82D8F61273B48891DA /* Sources */,
 				CD6275B73E5CDACD97E5DF7F /* src */,
 				6ACB2CC36B13DAB76AFAB161 /* station_iOS */,
-				6E0B15B56DCA1E1FF70C4E2C /* StationAgentActivity */,
-				9C70A5CB48B2BBFC3394E549 /* StationAgentActivityShared */,
 				9BC9D9C3678DE7DF5FAFAC9C /* Frameworks */,
 				065B61453E8DA9124902926C /* Products */,
 			);
@@ -206,34 +128,16 @@
 		9BC9D9C3678DE7DF5FAFAC9C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				147975E0ACC3E1E8902731FF /* ActivityKit.framework */,
 				A7393132A0B53A78E8BA46E1 /* CoreGraphics.framework */,
 				3B1D4566486EFF27D77D083C /* libapp.a */,
 				F72B645C441E80FC956644B0 /* Metal.framework */,
 				F153A3698700B6031190A8FA /* MetalKit.framework */,
 				15ED59BCC609CA49A13CD77D /* QuartzCore.framework */,
 				20787CF4DFA45B8BBCCC0A75 /* Security.framework */,
-				CB41E9A4D283F509B6AD9307 /* SwiftUI.framework */,
 				D59DE748810D013D359DCE4E /* UIKit.framework */,
 				AFC2B8495E29FD157E17EEAD /* WebKit.framework */,
-				DEEC8FDAE0A0484BFBFE00E4 /* WidgetKit.framework */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		9C70A5CB48B2BBFC3394E549 /* StationAgentActivityShared */ = {
-			isa = PBXGroup;
-			children = (
-				F3D24F674981EBDA6B8A6AE3 /* AgentActivityCard.swift */,
-				434E64909DB4E7E2090AD7F2 /* AgentActivityModel.swift */,
-				A0E082AB576E782C5B7F42FE /* Base64URL.swift */,
-				097F180D70A7F9BD3DC699DC /* CardOpener.swift */,
-				598FDDDD17FE817358AE0011 /* FirstValue.swift */,
-				E84F9AA9B4C9A6BBD84E68BD /* RegistrationKeychain.swift */,
-				ACE21876AC634F5E68F78B76 /* StationAgentActivityAttributes.swift */,
-			);
-			name = StationAgentActivityShared;
-			path = "../../plugins/agent-activity/ios/Sources/StationAgentActivityShared";
 			sourceTree = "<group>";
 		};
 		CD6275B73E5CDACD97E5DF7F /* src */ = {
@@ -247,11 +151,8 @@
 				5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */,
 				A9FFC41781B10A1EFFA98C36 /* login_shell.rs */,
 				EA2365010BB379059C7633AE /* main.rs */,
-				AD1D8E8B2BD93AECC15BC1F7 /* native_relay_proof_key.rs */,
-				0DDF8EAE38AE2883815FEB0E /* native_relay_redemption.rs */,
 				CEADBA2F0FC0432181CF6049 /* notification_watch.rs */,
 				10453FA41C7DAF9DA304DF22 /* pairing_deep_link_channels_generated.rs */,
-				91A3051A548341308DF5DECC /* relay_grant_vault.rs */,
 				F65B2B0F7649F66A37265DCF /* service_state.rs */,
 				086AD6A306EE7D849A657F29 /* ssh_launcher.rs */,
 				4FD1543B7D7363F59EFC809F /* startup_readiness.rs */,
@@ -280,6 +181,20 @@
 			path = station;
 			sourceTree = "<group>";
 		};
+		"TEMP_6666F1A7-2728-4C1E-A6AC-0739C8F83A83" /* x86_64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = x86_64;
+			sourceTree = "<group>";
+		};
+		"TEMP_FFD1708A-9684-432F-B61F-CE4092DA1635" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -291,12 +206,10 @@
 				F9CA8B234C78997519D81175 /* Sources */,
 				2206E3A7836688BD302F3287 /* Resources */,
 				40FA30E77053F9E2AA38BB28 /* Frameworks */,
-				2843C9A1D08E294F56D058E8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				23C7DB82C5539DD4EB565043 /* PBXTargetDependency */,
 			);
 			name = station_iOS;
 			packageProductDependencies = (
@@ -304,26 +217,6 @@
 			productName = station_iOS;
 			productReference = 92CF7A7FF6A28CC53BDBAE4B /* station_iOS.app */;
 			productType = "com.apple.product-type.application";
-		};
-		D4019DD2DC8322D2FB702DEA /* StationAgentActivity */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 35ED13583FAD744A5C9DC660 /* Build configuration list for PBXNativeTarget "StationAgentActivity" */;
-			buildPhases = (
-				7B6D4E70DC8086F062342043 /* Sources */,
-				11854212104BA35CDF2EDD56 /* Resources */,
-				EF73B7AAB66410830370C7A8 /* Frameworks */,
-				775B11B1CC8DAD3267725962 /* Use the app version */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = StationAgentActivity;
-			packageProductDependencies = (
-			);
-			productName = StationAgentActivity;
-			productReference = AED4AC48A6B4CB61C93B8D80 /* StationAgentActivity.appex */;
-			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -351,20 +244,11 @@
 			projectRoot = "";
 			targets = (
 				C29D57E4940A31540125B662 /* station_iOS */,
-				D4019DD2DC8322D2FB702DEA /* StationAgentActivity */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		11854212104BA35CDF2EDD56 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				07F1DA7937CACF7FCAF063D2 /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		2206E3A7836688BD302F3287 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -400,44 +284,9 @@
 			shellPath = /bin/sh;
 			shellScript = "npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
 		};
-		775B11B1CC8DAD3267725962 /* Use the app version */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(PROJECT_DIR)/station_iOS/Info.plist",
-			);
-			name = "Use the app version";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -eu\napp_plist=\"$PROJECT_DIR/station_iOS/Info.plist\"\nbuilt_plist=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nfor key in CFBundleShortVersionString CFBundleVersion; do\n  value=$(/usr/libexec/PlistBuddy -c \"Print :$key\" \"$app_plist\")\n  case \"$value\" in\n    ''|*'$('*) echo \"error: the app's $key is not a literal version: $value\" >&2; exit 1 ;;\n  esac\n  # Xcode drops a key whose $(VARIABLE) expanded empty, so add, not set.\n  /usr/libexec/PlistBuddy -c \"Delete :$key\" \"$built_plist\" 2>/dev/null || true\n  /usr/libexec/PlistBuddy -c \"Add :$key string $value\" \"$built_plist\"\ndone\n";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		7B6D4E70DC8086F062342043 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				68D65DC65E64AFD4E9100EC1 /* AgentActivityCard.swift in Sources */,
-				EF9BEC1C2ECEBA5B1063FC92 /* AgentActivityModel.swift in Sources */,
-				A9DD2F714094B442446F1592 /* Base64URL.swift in Sources */,
-				7DCA57135B98D9B29B1B5A18 /* CardOpener.swift in Sources */,
-				4B15850AF6140B9A0DAC385A /* FirstValue.swift in Sources */,
-				E17356213A7022D3EAF0CCF7 /* RegistrationKeychain.swift in Sources */,
-				4AD0A53E7A7FCBD0F25452A5 /* StationAgentActivityAttributes.swift in Sources */,
-				076CC86EEE89BBD756A0C660 /* StationAgentActivityWidget.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		F9CA8B234C78997519D81175 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -447,14 +296,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		23C7DB82C5539DD4EB565043 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = D4019DD2DC8322D2FB702DEA /* StationAgentActivity */;
-			targetProxy = B5B126F3342EDE47A03C41CE /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0769BBA9DBC010A0628AB4B0 /* debug */ = {
@@ -485,31 +326,6 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALID_ARCHS = arm64;
-			};
-			name = debug;
-		};
-		4268039E6D9937C6E77FA761 /* debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = (
-					arm64,
-				);
-				CODE_SIGN_ENTITLEMENTS = ../../ios/StationAgentActivity/StationAgentActivity.entitlements;
-				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = ../../ios/StationAgentActivity/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity";
-				PRODUCT_NAME = StationAgentActivity;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				STATION_APP_BUNDLE_IDENTIFIER = io.kontourai.station;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = debug;
 		};
@@ -566,31 +382,6 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
-			};
-			name = release;
-		};
-		B35B867F764A7DE126FF0DF4 /* release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = (
-					arm64,
-				);
-				CODE_SIGN_ENTITLEMENTS = ../../ios/StationAgentActivity/StationAgentActivity.entitlements;
-				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = ../../ios/StationAgentActivity/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity";
-				PRODUCT_NAME = StationAgentActivity;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				STATION_APP_BUNDLE_IDENTIFIER = io.kontourai.station;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = release;
 		};
@@ -691,15 +482,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		35ED13583FAD744A5C9DC660 /* Build configuration list for PBXNativeTarget "StationAgentActivity" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				4268039E6D9937C6E77FA761 /* debug */,
-				B35B867F764A7DE126FF0DF4 /* release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = debug;
-		};
 		AF77B1C2C724458D9F42771E /* Build configuration list for PBXNativeTarget "station_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

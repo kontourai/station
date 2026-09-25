@@ -4,14 +4,22 @@
 // XcodeGen spec: the StationAgentActivity app-extension target, its embed
 // in the app, a weak ActivityKit link (the app still deploys below iOS 16.1),
 // and the app's keychain groups (default first, then the group shared with
-// the widget). `tauri ios init` renders gen/apple from its template, so the
-// committed spec carries this already; testflight-delivery.yml does not run
-// this yet, and slice D of #2513 will re-apply it after rendering there.
+// the widget).
+//
+// This is the project half of the feature switch; STATION_IOS_LIVE_ACTIVITY=1
+// (plugins/agent-activity/build.rs) is the plugin half, and a build enables
+// both or neither. The committed gen/apple spec carries NEITHER, so no
+// existing build path (CI simulator builds, `build:ios:simulator`,
+// `tauri ios dev`, a local App Store export, TestFlight) embeds an extension
+// or needs provisioning for one. An enabled build runs this on the rendered
+// spec, then `xcodegen generate`, and needs an App ID and profile for
+// `<app bundle id>.AgentActivity` plus push on the app (#2513 slice D).
 //
 // `--aps-environment` names the APNs environment once and writes it to both
 // places that must agree: the app's `aps-environment` entitlement and the
 // Info.plist `StationApsEnvironment` the plugin reads it back from (iOS
-// cannot read its own entitlements at runtime).
+// cannot read its own entitlements at runtime). A later run without it is
+// refused while the spec still names one, so the two stay paired.
 //
 // The extension's bundle id cannot be derived from the app's in build
 // settings: Tauri's project sync writes PRODUCT_BUNDLE_IDENTIFIER only onto
@@ -116,12 +124,30 @@ function ensureIosApsEnvironmentInfoPlist(plist, apsEnvironment) {
   return plist.replace(end, `\n\t${entry}\n</dict>\n</plist>\n`);
 }
 
-function appEntitlementProperties(apsEnvironment) {
+const APP_KEYCHAIN_GROUPS = [
+  '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
+  '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
+];
+
+/**
+ * The app's entitlement properties with this feature's added: every existing
+ * property is kept, and our keychain groups lead (the first is the default
+ * the app writes to) ahead of any others already listed.
+ */
+function appEntitlementProperties(existing, apsEnvironment) {
+  const current = existing ?? {};
+  if (apsEnvironment === undefined && current['aps-environment'] !== undefined)
+    throw new Error(
+      `The spec already names aps-environment ${current['aps-environment']}; pass --aps-environment with --info-plist again so the entitlement and StationApsEnvironment stay paired`,
+    );
+  const others = Array.isArray(current['keychain-access-groups'])
+    ? current['keychain-access-groups'].filter(
+        (group) => !APP_KEYCHAIN_GROUPS.includes(group),
+      )
+    : [];
   const properties = {
-    'keychain-access-groups': [
-      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
-      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
-    ],
+    ...current,
+    'keychain-access-groups': [...APP_KEYCHAIN_GROUPS, ...others],
   };
   if (apsEnvironment !== undefined)
     properties['aps-environment'] = apsEnvironmentValue(apsEnvironment);
@@ -156,6 +182,9 @@ export function ensureIosAgentActivityExtension(
   const entitlementsPath = app.getIn(['entitlements', 'path']);
   if (typeof entitlementsPath !== 'string')
     throw new Error('iOS project spec has no station_iOS entitlements path');
+  const existingProperties = app.getIn(['entitlements', 'properties']);
+  if (existingProperties !== undefined && !YAML.isMap(existingProperties))
+    throw new Error('Unrecognized station_iOS entitlement properties');
 
   document.setIn(
     ['targets', EXTENSION_TARGET],
@@ -165,7 +194,10 @@ export function ensureIosAgentActivityExtension(
     ['targets', APP_TARGET, 'entitlements'],
     document.createNode({
       path: entitlementsPath,
-      properties: appEntitlementProperties(apsEnvironment),
+      properties: appEntitlementProperties(
+        existingProperties?.toJSON(),
+        apsEnvironment,
+      ),
     }),
   );
   let dependencies = app.get('dependencies', true);
@@ -191,7 +223,10 @@ function valueAfter(argv, flag) {
 
 /**
  * Applies the spec and, when an APNs environment is named, the Info.plist
- * copy of it: the one argument feeds both, so they cannot disagree.
+ * copy of it. Within a run the one argument feeds both; across runs, an
+ * aps-less run is refused while the spec names an environment. What this
+ * cannot see is an edit made outside it, such as an Info.plist copy left
+ * beside a spec re-rendered from scratch.
  *
  * @param {{ project: string, infoPlist?: string }} files
  * @param {{ appBundleId?: string, apsEnvironment?: string }} [options]
