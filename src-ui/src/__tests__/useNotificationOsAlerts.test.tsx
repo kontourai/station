@@ -100,7 +100,10 @@ describe('useNotificationOsAlerts (#2587)', () => {
     await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
   });
 
-  test('without a window label a pop-out is recognised by its pane route', async () => {
+  test('without a window label the document is treated as main, whatever its route', async () => {
+    // A route guess would also match the main window's own pane routes and
+    // silently drop its alerts; Tauri labels every webview, so no label
+    // means not a pop-out.
     window.history.replaceState(
       null,
       '',
@@ -108,9 +111,8 @@ describe('useNotificationOsAlerts (#2587)', () => {
     );
     notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
     renderHook(() => useNotificationOsAlerts());
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(pollFeed).not.toHaveBeenCalled();
-    expect(reconcileBlocking).not.toHaveBeenCalled();
+    await waitFor(() => expect(pollFeed).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
   });
 
   test('never polls the feed off a desktop native host (browser tabs keep toasts only)', async () => {

@@ -34,9 +34,14 @@ import { notifyNatively } from './notify';
  *   is all new;
  * - keeps one presentation guard: no OS alert while this window is focused
  *   (the entry is consumed, since the in-app toast already shows it);
- * - reads one at a time: an overlapping poll (a StrictMode double effect, a
- *   read slower than the interval) joins the read in flight instead of
- *   applying the same entries twice;
+ * - reads one at a time per connection: an overlapping poll (a StrictMode
+ *   double effect, a read slower than the interval) joins the read in
+ *   flight instead of applying the same entries twice. A poll for another
+ *   connection never joins: it starts its own read, and the old read's
+ *   answer is discarded;
+ * - bounds every read: the request carries a timeout and the whole read
+ *   (including posting) a deadline, after which it is abandoned — nothing
+ *   it later receives is applied — and the next poll reads afresh;
  * - never posts the same alert twice in a document: a bounded set of
  *   recently posted (notification id, title, body, urgency), behind the
  *   cursor as a second line. The router re-delivers a dedupe update only
@@ -83,7 +88,14 @@ let state: {
   epoch?: string;
 } | null = null;
 
-let inFlight: Promise<number> | null = null;
+/** Request timeout for one feed read; below the hook's poll interval. */
+export const FEED_REQUEST_TIMEOUT_MS = 10_000;
+/** Deadline for a whole read, posting included. */
+export const FEED_READ_DEADLINE_MS = 15_000;
+
+let inFlight: { scopeKey: string; promise: Promise<number> } | null = null;
+/** The connection the latest poll was for; older reads stop applying. */
+let activeScopeKey: string | null = null;
 export interface PostedAlerts {
   has(key: string): boolean;
   add(key: string): void;
@@ -106,6 +118,7 @@ const boundedPostedAlerts: PostedAlerts = {
 export function resetDeliveryFeedState(): void {
   state = null;
   inFlight = null;
+  activeScopeKey = null;
   recentlyPosted.clear();
 }
 
@@ -118,9 +131,12 @@ function defaultDeps(apiBase: string): DeliveryFeedDeps {
         if (epoch !== undefined) query.set('epoch', epoch);
         const response = await authenticatedFetch(
           `${apiBase}${NOTIFICATION_DELIVERIES_PATH}?${query}`,
-          installationId
-            ? { headers: { [DESKTOP_INSTALLATION_HEADER]: installationId } }
-            : undefined,
+          {
+            timeoutMs: FEED_REQUEST_TIMEOUT_MS,
+            ...(installationId
+              ? { headers: { [DESKTOP_INSTALLATION_HEADER]: installationId } }
+              : {}),
+          },
         );
         if (!response.ok) return undefined;
         const body = (await response.json()) as {
@@ -167,19 +183,37 @@ export function pollDeliveryFeed(
   scopeKey: string,
   deps: DeliveryFeedDeps = defaultDeps(apiBase),
 ): Promise<number> {
-  if (inFlight) return inFlight;
-  const read = readOnce(scopeKey, deps).finally(() => {
-    if (inFlight === read) inFlight = null;
+  activeScopeKey = scopeKey;
+  if (inFlight?.scopeKey === scopeKey) return inFlight.promise;
+  let abandoned = false;
+  const live = () => !abandoned && activeScopeKey === scopeKey;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<number>((resolve) => {
+    timer = setTimeout(() => {
+      abandoned = true;
+      resolve(0);
+    }, FEED_READ_DEADLINE_MS);
   });
-  inFlight = read;
-  return read;
+  const entry = {
+    scopeKey,
+    promise: Promise.race([readOnce(scopeKey, deps, live), deadline]).finally(
+      () => {
+        clearTimeout(timer);
+        if (inFlight === entry) inFlight = null;
+      },
+    ),
+  };
+  inFlight = entry;
+  return entry.promise;
 }
 
 async function readOnce(
   scopeKey: string,
   deps: DeliveryFeedDeps,
+  live: () => boolean,
 ): Promise<number> {
   const installationId = await deps.installationId();
+  if (!live()) return 0;
   if (state?.scopeKey !== scopeKey) {
     const stored = deps.loadCursor(scopeKey);
     state = stored ? { scopeKey, ...stored } : { scopeKey, cursor: null };
@@ -191,9 +225,9 @@ async function readOnce(
     epoch: current.epoch,
     installationId,
   });
-  // A connection switch while the read was in flight: this answer belongs
-  // to the previous connection.
-  if (state !== current || !feed) return 0;
+  // A connection switch while the read was in flight (this answer belongs
+  // to the previous connection), or a read past its deadline.
+  if (!live() || state !== current || !feed) return 0;
   // A cursor stored for another surface (a different installation, or the
   // connection now reads as a different caller) says nothing about this one.
   const seeding = current.cursor === null || current.surface !== feed.surface;
@@ -217,6 +251,7 @@ async function readOnce(
   if (deps.isWindowFocused()) return 0;
   let count = 0;
   for (const entry of entries) {
+    if (!live()) break;
     if (entry.kind !== 'alert') continue;
     if ((retractedAt.get(entry.notificationId) ?? -1) > entry.seq) continue;
     // JSON of the fields keeps the key unambiguous (no separator a title

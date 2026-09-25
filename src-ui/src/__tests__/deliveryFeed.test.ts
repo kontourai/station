@@ -24,6 +24,8 @@ vi.mock('../platform/native/installationId', () => ({
 
 import {
   type DeliveryFeedDeps,
+  FEED_READ_DEADLINE_MS,
+  FEED_REQUEST_TIMEOUT_MS,
   pollDeliveryFeed,
   resetDeliveryFeedState,
   type StoredCursor,
@@ -106,7 +108,10 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     notifyNatively.mockClear();
     authenticatedFetch.mockReset();
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   test('posts the router’s decided alert verbatim while the window is unfocused', async () => {
     const { d, reads, notify } = deps([
@@ -211,6 +216,98 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
       'Working',
       'Needs input',
     ]);
+  });
+
+  test('a read that never settles is abandoned at the deadline; the next poll reads afresh', async () => {
+    vi.useFakeTimers();
+    const { d, reads, notify } = deps([feed(0)]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    const answer = d.readFeed;
+    let hung = true;
+    let releaseHung: (value: SurfaceDeliveryFeed) => void = () => {};
+    d.readFeed = (input) => {
+      if (!hung) return answer(input);
+      hung = false;
+      reads.push({ after: input.after });
+      return new Promise((resolve) => {
+        releaseHung = resolve;
+      });
+    };
+    const stuck = pollDeliveryFeed(A, SCOPE, d);
+    // Before the deadline a second poll still joins the hung read.
+    await vi.advanceTimersByTimeAsync(FEED_READ_DEADLINE_MS - 1);
+    void pollDeliveryFeed(A, SCOPE, d);
+    expect(reads).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await stuck).toBe(0);
+
+    // The next poll issues a new read.
+    const fresh = feed(1, [alert(1, 'n-1')]);
+    // (queue the answer for the fresh read)
+    d.readFeed = async (input) => {
+      reads.push({ after: input.after });
+      return fresh;
+    };
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(reads).toHaveLength(3);
+    // The abandoned read settling late applies nothing.
+    releaseHung(feed(9, [alert(9, 'late')]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(0);
+    expect(reads.at(-1)?.after).toBe(1);
+  });
+
+  test('a poll for another connection does not join the old read, and the old read posts nothing', async () => {
+    const storage = new Map<string, StoredCursor>([
+      [SCOPE, { surface: LOCAL, cursor: 0, epoch: 'run-1' }],
+      [`${A}\nconn-b`, { surface: LOCAL, cursor: 0, epoch: 'run-1' }],
+    ]);
+    let releaseOld: (value: SurfaceDeliveryFeed) => void = () => {};
+    const reads: string[] = [];
+    const notify = vi.fn(async (_input: unknown) => true);
+    const d: DeliveryFeedDeps = {
+      installationId: async () => INSTALLATION,
+      readFeed: (input) => {
+        reads.push(input.epoch ?? '');
+        return reads.length === 1
+          ? new Promise((resolve) => {
+              releaseOld = resolve;
+            })
+          : Promise.resolve(feed(3, [alert(3, 'b-1')]));
+      },
+      isWindowFocused: () => false,
+      notify,
+      loadCursor: (key) => storage.get(key),
+      saveCursor: (key, value) => void storage.set(key, value),
+    };
+    const old = pollDeliveryFeed(A, SCOPE, d);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await pollDeliveryFeed(A, `${A}\nconn-b`, d)).toBe(1);
+    expect(reads).toHaveLength(2);
+    releaseOld(feed(2, [alert(2, 'a-1')]));
+    expect(await old).toBe(0);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      title: 'Alert b-1',
+      body: 'Body b-1',
+    });
+    expect(storage.get(SCOPE)?.cursor).toBe(0);
+  });
+
+  test('an urgency-only change under the same id alerts again', async () => {
+    const { d, notify } = deps([
+      feed(0),
+      feed(1, [alert(1, 'n-1')]),
+      feed(2, [
+        { ...alert(2, 'n-1'), urgency: 'attention' } as SurfaceDeliveryEntry,
+      ]),
+    ]);
+    await pollDeliveryFeed(A, SCOPE, d);
+    await pollDeliveryFeed(A, SCOPE, d);
+    expect(await pollDeliveryFeed(A, SCOPE, d)).toBe(1);
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   test('a failed feed read posts nothing and keeps the cursor', async () => {
@@ -318,7 +415,10 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
       `${A}/api/notifications/deliveries?after=7&epoch=run-1`,
-      { headers: { 'X-Station-Desktop-Installation': INSTALLATION } },
+      {
+        timeoutMs: FEED_REQUEST_TIMEOUT_MS,
+        headers: { 'X-Station-Desktop-Installation': INSTALLATION },
+      },
     );
     expect(notifyNatively).toHaveBeenCalledWith({
       title: 'Alert n-1',
@@ -341,7 +441,10 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(await pollDeliveryFeed(REMOTE, scope)).toBe(1);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
       `${REMOTE}/api/notifications/deliveries?after=2&epoch=run-9`,
-      { headers: { 'X-Station-Desktop-Installation': INSTALLATION } },
+      {
+        timeoutMs: FEED_REQUEST_TIMEOUT_MS,
+        headers: { 'X-Station-Desktop-Installation': INSTALLATION },
+      },
     );
   });
 
@@ -351,7 +454,7 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     await pollDeliveryFeed(A, SCOPE);
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
       `${A}/api/notifications/deliveries?after=0`,
-      undefined,
+      { timeoutMs: FEED_REQUEST_TIMEOUT_MS },
     );
   });
 

@@ -6,8 +6,10 @@
  * window: each pop-out kept its own feed cursor and posted the same alert
  * again, and an unfocused pop-out alerted while `main` was in use. The
  * native host names windows (`main`, `workspace-pane-pop-out-<uuid>`) and
- * Tauri exposes the current label synchronously; without it, a pop-out is
- * recognised by the pane route its host opens it on.
+ * Tauri sets the current label synchronously in every webview. With no
+ * label (not a Tauri webview) the document is treated as `main`: a guess
+ * from the route would also match the main window's own pane routes and
+ * silently drop its alerts.
  */
 export function isMainDesktopWindow(): boolean {
   const label = (
@@ -17,8 +19,5 @@ export function isMainDesktopWindow(): boolean {
       };
     }
   ).__TAURI_INTERNALS__?.metadata?.currentWindow?.label;
-  if (typeof label === 'string') return label === 'main';
-  return !/^\/projects\/[^/]+\/layouts\/[^/]+\/panes\//.test(
-    window.location.pathname,
-  );
+  return typeof label !== 'string' || label === 'main';
 }
