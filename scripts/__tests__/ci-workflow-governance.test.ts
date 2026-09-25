@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { FAST_CHECKS_JOB_TIMEOUT_MINUTES } from '../actionlint-gate.mjs';
 import {
   collectCiWorkflowGovernanceFindings,
   collectPostMergeDetectorWorkflowFindings,
@@ -300,7 +301,13 @@ describe('primary CI workflow governance', () => {
       "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
-    expect(fastChecks?.['timeout-minutes']).toBe(45);
+    // The fence is the gate's constant, not a second literal (#2577: this pin
+    // stayed at 45 when the fence moved). ci-workflow-contract.test.ts proves
+    // the value covers the ci:fast budget plus the job's bounded steps; this
+    // keeps ci.yml and the actionlint-gate constant from drifting apart.
+    expect(fastChecks?.['timeout-minutes']).toBe(
+      FAST_CHECKS_JOB_TIMEOUT_MINUTES,
+    );
     expect(fastChecks?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.

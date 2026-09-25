@@ -16,6 +16,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { capturePluginAgentInvocation } from '../../domain/config-loader-agents.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { assertConnectionReady } from '../execution-target/execution-target-resolver.js';
 import type { ForegroundInvocationAdmission } from '../orchestration/foreground-invocation-admission.js';
 import { ForegroundInvocationUnavailableError } from '../orchestration/foreground-invocation-admission.js';
@@ -43,6 +44,11 @@ export interface WorkspacePaneHostActionActor {
    * (agent) request triggers the action; the started session acts for no one.
    */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: set by runtime composition from the request (never for an agent);
+   * the started session runs `host` only with it.
+   */
+  fullAccessGrant?: FullAccessGrant;
 }
 
 const MAX_TICKETS = 128;

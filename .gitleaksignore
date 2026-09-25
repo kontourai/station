@@ -31,3 +31,6 @@ ed19e3a3d7095b97e31eb3b2a372787ff5172ba3:src-server/services/connections/__tests
 # Merge queue #2502 squashed the same verified synthetic digest fixture at a
 # second historical location. Keep this exemption to that exact fingerprint.
 847ec8d05e6cea06d33706e8eb8bbd168f875bfb:src-server/services/connections/__tests__/self-hosted-broker-service.test.ts:generic-api-key:131
+# #2583: a doc comment describing the agent dedupe-key format matched
+# generic-api-key at one historical location; the comment was reworded next.
+1a6db6c227a4b373629bb89de31e3987b96c44c4:packages/contracts/src/notification.ts:generic-api-key:91
