@@ -1,9 +1,9 @@
 import type { Notification } from '@kontourai/station-contracts/notification';
+import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import {
   defaultNotificationPreferences,
-  type NotificationEnvelopeV1,
   type NotificationPreferencesV1,
-} from '@kontourai/station-contracts/notification';
+} from '@kontourai/station-contracts/notification-preferences';
 import {
   SERVER_EVENTS,
   type ServerEventName,

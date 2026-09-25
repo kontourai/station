@@ -27,10 +27,12 @@
  */
 import type {
   NotificationEnvelopeV1,
-  NotificationPreferencesV1,
-  NotificationQuietHours,
   NotificationUrgency,
 } from '@kontourai/station-contracts/notification';
+import type {
+  NotificationPreferencesV1,
+  NotificationQuietHours,
+} from '@kontourai/station-contracts/notification-preferences';
 import { isNotificationSourceMuted } from '../notification-preferences.js';
 import type { ChannelKind, SurfaceId } from './channel.js';
 

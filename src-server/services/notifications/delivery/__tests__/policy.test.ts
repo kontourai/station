@@ -1,9 +1,11 @@
 import {
-  defaultNotificationPreferences,
   type NotificationEnvelopeV1,
-  type NotificationPreferencesV1,
   type NotificationUrgency,
 } from '@kontourai/station-contracts/notification';
+import {
+  defaultNotificationPreferences,
+  type NotificationPreferencesV1,
+} from '@kontourai/station-contracts/notification-preferences';
 import { describe, expect, test } from 'vitest';
 import type { SurfaceId } from '../channel.js';
 import {

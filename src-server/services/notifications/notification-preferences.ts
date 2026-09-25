@@ -16,17 +16,19 @@
  */
 import { join } from 'node:path';
 import {
+  NOTIFICATION_URGENCIES,
+  type NotificationSource,
+  type NotificationUrgency,
+} from '@kontourai/station-contracts/notification';
+import {
   AGENT_NOTIFICATION_LEVELS,
   type AgentNotificationLevel,
   defaultNotificationPreferences,
   NOTIFICATION_ESCALATE_AFTER_MS_MAX,
-  NOTIFICATION_URGENCIES,
   type NotificationPreferencesV1,
   type NotificationQuietHours,
-  type NotificationSource,
   type NotificationSurfacePreference,
-  type NotificationUrgency,
-} from '@kontourai/station-contracts/notification';
+} from '@kontourai/station-contracts/notification-preferences';
 import { errorMessage } from '../../utils/error-message.js';
 import {
   readPrivateJsonFile,

@@ -2,11 +2,11 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import {
   defaultNotificationPreferences,
   NOTIFICATION_PREFERENCES_PATH,
-  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
-} from '@kontourai/station-contracts';
+} from '@kontourai/station-contracts/notification-preferences';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {

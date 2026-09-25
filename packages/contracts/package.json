@@ -93,6 +93,7 @@
     "./mcp-app-display-mode": "./src/mcp-app-display-mode.ts",
     "./model-inventory": "./src/model-inventory.ts",
     "./notification": "./src/notification.ts",
+    "./notification-preferences": "./src/notification-preferences.ts",
     "./operational-event": "./src/operational-event.ts",
     "./pairing-copy": "./src/pairing-copy.ts",
     "./portability": "./src/portability.ts",

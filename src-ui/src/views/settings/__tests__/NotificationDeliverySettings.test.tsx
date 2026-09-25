@@ -3,7 +3,7 @@
 import {
   defaultNotificationPreferences,
   type NotificationPreferencesV1,
-} from '@kontourai/station-contracts/notification';
+} from '@kontourai/station-contracts/notification-preferences';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 

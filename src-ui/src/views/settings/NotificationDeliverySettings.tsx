@@ -1,9 +1,9 @@
+import { type NotificationUrgency } from '@kontourai/station-contracts/notification';
 import {
   type AgentNotificationLevel,
   defaultNotificationPreferences,
   type NotificationPreferencesV1,
-  type NotificationUrgency,
-} from '@kontourai/station-contracts/notification';
+} from '@kontourai/station-contracts/notification-preferences';
 import {
   useNotificationPreferencesQuery,
   usePairedDevicesQuery,

@@ -1,7 +1,7 @@
 import {
   NOTIFICATION_PREFERENCES_PATH,
   type NotificationPreferencesV1,
-} from '@kontourai/station-contracts/notification';
+} from '@kontourai/station-contracts/notification-preferences';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
 import {

@@ -33,10 +33,8 @@ import type {
   Notification,
   WebPushSubscription,
 } from '@kontourai/station-contracts';
-import {
-  defaultNotificationPreferences,
-  type NotificationEnvelopeV1,
-} from '@kontourai/station-contracts/notification';
+import { type NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
+import { defaultNotificationPreferences } from '@kontourai/station-contracts/notification-preferences';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { webPushSends } from '../../telemetry/metrics.js';
