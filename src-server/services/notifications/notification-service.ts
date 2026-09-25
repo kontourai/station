@@ -165,7 +165,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
 ]);
 
 /** Provider ids a provider may not register under: they name REST/agent writes. */
-export const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
+const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
   REST_NOTIFICATION_SOURCE,
   'sdk',
   'agent',
