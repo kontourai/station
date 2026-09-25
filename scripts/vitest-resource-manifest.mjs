@@ -466,6 +466,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `git ls-files --error-unmatch`) whether each referenced image is
   // tracked; a filesystem check passes in any working tree that has them.
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  // #2513: runs the ensure script once as a child process to prove a
+  // refusal is a non-zero exit that leaves the spec untouched.
+  'scripts/__tests__/ensure-ios-agent-activity-extension.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this

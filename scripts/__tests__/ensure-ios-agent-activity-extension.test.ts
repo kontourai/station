@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import YAML from 'yaml';
 import {
@@ -216,21 +219,28 @@ describe('iOS agent-activity extension project spec', () => {
     expect(again).toEqual(withAps);
   });
 
-  test('keeps entitlement properties it does not own', () => {
-    const project = renderedProject.replace(
+  function withEntitlementProperties(lines: string[]) {
+    return renderedProject.replace(
       '      path: station_iOS/station_iOS.entitlements\n',
       [
         '      path: station_iOS/station_iOS.entitlements',
         '      properties:',
-        '        com.apple.developer.associated-domains:',
-        '          - applinks:example.com',
-        '        keychain-access-groups:',
-        '          - $(AppIdentifierPrefix)com.example.shared',
+        ...lines,
         '',
       ].join('\n'),
     );
-    const properties =
-      ensure(project).targets.station_iOS.entitlements.properties;
+  }
+
+  test('keeps entitlement properties it does not own, and groups after the default', () => {
+    const properties = ensure(
+      withEntitlementProperties([
+        '        com.apple.developer.associated-domains:',
+        '          - applinks:example.com',
+        '        keychain-access-groups:',
+        '          - $(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
+        '          - $(AppIdentifierPrefix)com.example.shared',
+      ]),
+    ).targets.station_iOS.entitlements.properties;
     expect(properties['com.apple.developer.associated-domains']).toEqual([
       'applinks:example.com',
     ]);
@@ -239,6 +249,51 @@ describe('iOS agent-activity extension project spec', () => {
       '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
       '$(AppIdentifierPrefix)com.example.shared',
     ]);
+  });
+
+  test('refuses a spec whose first keychain group is not the app default', () => {
+    // Putting ours first would change the app's default keychain group;
+    // appending ours after it would leave the wrong default. Neither is
+    // this script's call.
+    expect(() =>
+      ensure(
+        withEntitlementProperties([
+          '        com.apple.developer.associated-domains:',
+          '          - applinks:example.com',
+          '        keychain-access-groups:',
+          '          - $(AppIdentifierPrefix)com.example.shared',
+        ]),
+      ),
+    ).toThrow(
+      'first keychain group is $(AppIdentifierPrefix)com.example.shared',
+    );
+  });
+
+  test('the command exits non-zero on a refusal and leaves the spec as it was', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-ios-ensure-'));
+    try {
+      const path = join(dir, 'project.yml');
+      const project = withEntitlementProperties([
+        '        keychain-access-groups:',
+        '          - $(AppIdentifierPrefix)com.example.shared',
+      ]);
+      writeFileSync(path, project);
+      const result = spawnSync(
+        process.execPath,
+        [
+          'scripts/ensure-ios-agent-activity-extension.mjs',
+          path,
+          '--app-bundle-id',
+          'io.kontourai.station',
+        ],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('first keychain group');
+      expect(readFileSync(path, 'utf8')).toBe(project);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('the committed project does not carry the extension until a build enables it', () => {

@@ -131,8 +131,11 @@ const APP_KEYCHAIN_GROUPS = [
 
 /**
  * The app's entitlement properties with this feature's added: every existing
- * property is kept, and our keychain groups lead (the first is the default
- * the app writes to) ahead of any others already listed.
+ * property is kept. The first keychain group is the app's default one (where
+ * the keyring store writes, and what the plugin derives the shared group
+ * from), so it must be `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`:
+ * a spec whose first group is anything else is refused rather than silently
+ * given a different default. Other listed groups follow ours.
  */
 function appEntitlementProperties(existing, apsEnvironment) {
   const current = existing ?? {};
@@ -140,11 +143,16 @@ function appEntitlementProperties(existing, apsEnvironment) {
     throw new Error(
       `The spec already names aps-environment ${current['aps-environment']}; pass --aps-environment with --info-plist again so the entitlement and StationApsEnvironment stay paired`,
     );
-  const others = Array.isArray(current['keychain-access-groups'])
-    ? current['keychain-access-groups'].filter(
-        (group) => !APP_KEYCHAIN_GROUPS.includes(group),
-      )
-    : [];
+  const existingGroups = current['keychain-access-groups'] ?? [];
+  if (!Array.isArray(existingGroups))
+    throw new Error('Unrecognized station_iOS keychain-access-groups');
+  if (existingGroups.length > 0 && existingGroups[0] !== APP_KEYCHAIN_GROUPS[0])
+    throw new Error(
+      `The app's first keychain group is ${existingGroups[0]}, not ${APP_KEYCHAIN_GROUPS[0]}; it is the app's default group, so reconcile it by hand`,
+    );
+  const others = existingGroups.filter(
+    (group) => !APP_KEYCHAIN_GROUPS.includes(group),
+  );
   const properties = {
     ...current,
     'keychain-access-groups': [...APP_KEYCHAIN_GROUPS, ...others],
