@@ -7,6 +7,7 @@ import {
 } from '../src/apns-channel-auth.ts';
 import { parseLiveActivityRequest } from '../src/apns-request.ts';
 import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
+import { DAILY_STARTS_PER_DEVICE } from '../src/channel-ledger.ts';
 import {
   type ApnsGatewayConfig,
   addressBucket,
@@ -15,7 +16,7 @@ import {
   handleRequest,
   type RateLimiter,
 } from '../src/gateway.ts';
-import { jwkThumbprint } from '../src/station-auth.ts';
+import { bodyHash, jwkThumbprint } from '../src/station-auth.ts';
 import {
   AUDIENCE,
   allow,
@@ -853,24 +854,21 @@ test('calls the global fetch unbound, as the Workers runtime requires', async ()
 
 const ledgerOf = (cfg: GatewayConfig) =>
   cfg.apns?.ledger as ReturnType<typeof fakeLedger>;
-const ledgerKey = (channelId: string, environment = 'sandbox') =>
-  `ch:${environment}:${IOS_BUNDLE}:${channelId}`;
 
-test('a created channel is recorded in the ledger for 12 hours', async () => {
+test('a created channel is recorded in the ledger', async () => {
   const { fetchImpl } = upstream();
   const cfg = await config({ fetchImpl });
   const station = await stationKey();
   assert.equal((await live(cfg, 'start', {}, station)).status, 200);
-  const entry = ledgerOf(cfg).entries.get(ledgerKey(NEW_CHANNEL));
-  assert.ok(entry, 'recorded under environment, bundle and channel');
-  assert.equal(entry.ttl, 12 * 60 * 60);
-  const value = JSON.parse(entry.value);
-  assert.equal(value.createdAt, NOW);
-  assert.equal(value.bundleId, IOS_BUNDLE);
-  assert.equal(value.environment, 'sandbox');
+  const [row] = ledgerOf(cfg).rows();
+  assert.ok(row, 'recorded');
+  assert.equal(row.channel_id, NEW_CHANNEL);
+  assert.equal(row.environment, 'sandbox');
+  assert.equal(row.bundle_id, IOS_BUNDLE);
+  assert.equal(row.created_at, NOW);
   const thumbprint = await jwkThumbprint(station.publicJwk);
-  assert.match(value.stationKeyHash, /^[\w-]{43}$/);
-  assert.notEqual(value.stationKeyHash, thumbprint, 'the key is hashed');
+  assert.match(String(row.station_key_hash), /^[\w-]{43}$/);
+  assert.notEqual(row.station_key_hash, thumbprint, 'the key is hashed');
 });
 
 test('a channel given back or deleted leaves the ledger', async () => {
@@ -879,32 +877,115 @@ test('a channel given back or deleted leaves the ledger', async () => {
   });
   const refusedCfg = await config({ fetchImpl: refused.fetchImpl });
   assert.equal((await live(refusedCfg, 'start')).status, 410);
-  assert.equal(ledgerOf(refusedCfg).entries.size, 0);
+  assert.deepEqual(ledgerOf(refusedCfg).rows(), []);
 
+  const seed = (cfg: GatewayConfig) =>
+    ledgerOf(cfg).record({
+      environment: 'sandbox',
+      bundleId: IOS_BUNDLE,
+      channelId: CHANNEL_ID,
+      stationKeyHash: 'k',
+      deviceHash: 'd',
+      createdAt: NOW,
+    });
   const { fetchImpl } = upstream();
   const cfg = await config({ fetchImpl });
-  await ledgerOf(cfg).put(ledgerKey(CHANNEL_ID), '{}');
+  await seed(cfg);
   assert.equal((await del(cfg)).status, 200);
-  assert.equal(ledgerOf(cfg).entries.has(ledgerKey(CHANNEL_ID)), false);
+  assert.equal(ledgerOf(cfg).has(CHANNEL_ID), false);
 
-  // A delete Apple refuses keeps the entry: the channel may still exist.
+  // A delete Apple refuses keeps the row: the channel may still exist.
   const failing = upstream({
     delete: () => new Response(null, { status: 500 }),
   });
   const failingCfg = await config({ fetchImpl: failing.fetchImpl });
-  await ledgerOf(failingCfg).put(ledgerKey(CHANNEL_ID), '{}');
+  await seed(failingCfg);
   assert.equal((await del(failingCfg)).status, 503);
-  assert.equal(ledgerOf(failingCfg).entries.has(ledgerKey(CHANNEL_ID)), true);
+  assert.equal(ledgerOf(failingCfg).has(CHANNEL_ID), true);
 });
 
 test('a start whose channel cannot be recorded gives the channel back and pushes nothing', async () => {
   const { apple, fetchImpl } = upstream();
   const cfg = await config({ fetchImpl });
-  ledgerOf(cfg).failPut = true;
+  // The daily-cap read succeeds; the record after the create fails.
+  const ledger = ledgerOf(cfg);
+  const record = ledger.record;
+  ledger.record = async () => {
+    throw new Error('ledger unreachable');
+  };
   const response = await live(cfg, 'start');
+  ledger.record = record;
   assert.equal(response.status, 503);
   assert.deepEqual(apple().map(kindOf), ['create', 'delete']);
   assert.ok(errors.some((line) => line.includes('ledger write failed')));
+});
+
+test('an unreachable ledger refuses starts before any channel is created', async () => {
+  const { apple, fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  ledgerOf(cfg).state.failing = true;
+  const response = await live(cfg, 'start');
+  assert.equal(response.status, 503);
+  assert.deepEqual(apple(), []);
+});
+
+test('each device may create a limited number of channels per UTC day', async () => {
+  const { apple, fetchImpl } = upstream();
+  const cfg = await config({ fetchImpl });
+  const other = 'cd'.repeat(40);
+  const station = await stationKey();
+  for (let index = 0; index < DAILY_STARTS_PER_DEVICE; index += 1) {
+    assert.equal(
+      (await live(cfg, 'start', {}, station)).status,
+      200,
+      `start ${index}`,
+    );
+  }
+  const creates = () =>
+    apple().filter((call) => kindOf(call) === 'create').length;
+  assert.equal(creates(), DAILY_STARTS_PER_DEVICE);
+  const refused = await live(cfg, 'start', {}, station);
+  assert.equal(refused.status, 429);
+  assert.equal(
+    creates(),
+    DAILY_STARTS_PER_DEVICE,
+    'no channel for the refused start',
+  );
+  // Another device is unaffected.
+  assert.equal(
+    (await live(cfg, 'start', { pushToStartToken: other }, station)).status,
+    200,
+  );
+  // The count is per UTC day: tomorrow the device starts afresh.
+  const deviceHash = await bodyHash(
+    new TextEncoder().encode(PUSH_TO_START_TOKEN),
+  );
+  const tomorrow = (Math.floor(NOW / 86_400) + 1) * 86_400;
+  assert.equal(
+    await ledgerOf(cfg).startsToday(deviceHash, NOW),
+    DAILY_STARTS_PER_DEVICE,
+  );
+  assert.equal(await ledgerOf(cfg).startsToday(deviceHash, tomorrow), 0);
+});
+
+test('a refused daily cap spends no wider budget, and a refused start still counts', async () => {
+  const log: string[] = [];
+  const refusedStart = upstream({
+    start: () => Response.json({ reason: 'BadDate' }, { status: 400 }),
+  });
+  const cfg = await config(
+    { fetchImpl: refusedStart.fetchImpl },
+    {
+      channelPerKeyLimiter: recording(log, 'key'),
+      channelGlobalLimiter: recording(log, 'global'),
+    },
+  );
+  // Every created channel counts, even when Apple then refuses the start.
+  for (let index = 0; index < DAILY_STARTS_PER_DEVICE; index += 1)
+    assert.equal((await live(cfg, 'start')).status, 422);
+  log.length = 0;
+  assert.equal((await live(cfg, 'start')).status, 429);
+  assert.deepEqual(log, [], 'refused at the device before key or global');
 });
 
 test('the compensating delete runs through waitUntil, past the response', async () => {
@@ -948,12 +1029,12 @@ test('the compensating delete runs through waitUntil, past the response', async 
   const response = first;
   assert.equal(response.status, 410);
   assert.equal(deferred.length, 1, 'the delete was handed to waitUntil');
-  assert.ok(ledgerOf(cfg).entries.has(ledgerKey(NEW_CHANNEL)), 'not yet');
+  assert.ok(ledgerOf(cfg).has(NEW_CHANNEL), 'not yet');
 
   release();
   await Promise.all(deferred);
   assert.deepEqual(apple().map(kindOf), ['create', 'start', 'delete']);
-  assert.equal(ledgerOf(cfg).entries.size, 0);
+  assert.deepEqual(ledgerOf(cfg).rows(), []);
 });
 
 test('client addresses are limited per IPv6 /64, IPv4 as they are', async () => {

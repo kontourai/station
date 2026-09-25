@@ -405,7 +405,7 @@ App Store signing are separate slices, so nothing reaches an iPhone yet.
   stops only its own platform's cards. A registration pinned to a previous
   push key cannot have its activity ended (its `channelAuth` is bound to
   that key): it goes stale, and the gateway's channel ledger and sweep
-  reclaim the channel within about 13 hours, as they do any channel the
+  reclaim the channel within about 12 hours and a few sweeps, as they do any channel the
   Station loses track of.
 - **What differs from Android in the threat model.** A forged or replayed
   push can blank the card but not inject content: the widget (slice C) is to
@@ -442,7 +442,7 @@ App Store signing are separate slices, so nothing reaches an iPhone yet.
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
 | Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
-| APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a KV ledger that a 15-minute sweep reconciles against Apple so no channel outlives 13 hours unrecorded; an end may carry the fixed alert. Ships dark until the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets are set and the `CHANNEL_LEDGER` namespace is bound; tested against a fake APNs only |
+| APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger (which also caps each device at six channel-creating starts a UTC day) that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation; runs on the Workers Free plan; an end may carry the fixed alert. Ships dark until the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets are set; tested against a fake APNs only |
 | iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
 | iOS Live Activity (widget extension in `gen/apple/project.yml`), App Store signing | not started (#2513 slices C and D) |
 

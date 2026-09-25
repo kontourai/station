@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'vitest';
 import { ApnsSender } from '../src/apns.ts';
 import {
-  MIN_MARK_AGE_SECONDS,
+  MAX_SWEEP_DELETES,
+  MAX_SWEEP_SUBREQUESTS,
   parseSweepScopes,
   type SweepScope,
   sweepChannels,
-} from '../src/apns-ledger.ts';
+} from '../src/apns-sweep.ts';
 import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
+import { UNRECORDED_GRACE_SECONDS } from '../src/channel-ledger.ts';
 import { sweep } from '../src/worker.ts';
 import {
   AUDIENCE,
@@ -54,7 +56,14 @@ function apple(channels: Record<string, Listing>) {
         : Response.json({ channels: listed ?? [] });
     }
     if (init?.method === 'DELETE') {
-      deletes.push(new Headers(init.headers).get('apns-channel-id') ?? '');
+      const channelId = new Headers(init.headers).get('apns-channel-id') ?? '';
+      deletes.push(channelId);
+      // Like Apple, a deleted channel is no longer listed.
+      const listed = channels[`${environment}:${bundle}`];
+      if (Array.isArray(listed))
+        channels[`${environment}:${bundle}`] = listed.filter(
+          (entry) => entry !== channelId,
+        );
       return new Response(null, { status: 204 });
     }
     return new Response(null, { status: 500 });
@@ -72,7 +81,7 @@ async function setup(
   scopes: SweepScope[] = [sandbox()],
 ) {
   const upstream = apple(channels);
-  const store = fakeLedger();
+  const ledger = fakeLedger();
   const sender = new ApnsSender(
     (await fakeApnsKey()).credentials,
     upstream.fetchImpl,
@@ -80,23 +89,33 @@ async function setup(
   let now = NOW;
   /** One sweep run, a cron tick after the previous one unless told. */
   const run = (
-    options: { maxDeletes?: number; maxMarks?: number; after?: number } = {},
+    options: {
+      maxDeletes?: number;
+      maxSubrequests?: number;
+      after?: number;
+    } = {},
   ) => {
     now += options.after ?? TICK;
     return sweepChannels({
-      store,
+      ledger,
       sender,
       scopes,
       nowSeconds: now,
       maxDeletes: options.maxDeletes,
-      maxMarks: options.maxMarks,
+      maxSubrequests: options.maxSubrequests,
     });
   };
-  return { ...upstream, store, run };
+  /** Records a channel as the gateway would, at the current sweep time. */
+  const record = (channelId: string, scope: SweepScope = sandbox()) =>
+    ledger.record({
+      ...scope,
+      channelId,
+      stationKeyHash: 'k',
+      deviceHash: 'd',
+      createdAt: now,
+    });
+  return { ...upstream, ledger, run, record, clock: () => now };
 }
-
-const key = (channelId: string, scope = 'sandbox') =>
-  `ch:${scope}:${IOS_BUNDLE}:${channelId}`;
 
 let errors: string[] = [];
 const originalError = console.error;
@@ -111,68 +130,75 @@ beforeEach(() => {
   };
 });
 
-test('keeps ledgered channels and deletes unrecorded ones once their mark is old enough', async () => {
-  const { store, run, deletes } = await setup({
+test('keeps recorded channels and deletes unrecorded ones after the grace', async () => {
+  const { record, run, deletes } = await setup({
     [`sandbox:${IOS_BUNDLE}`]: [KEPT, ORPHAN_A, ORPHAN_B],
   });
-  await store.put(key(KEPT), '{}');
+  await record(KEPT);
 
   const first = await run();
   assert.equal(first.kept, 1);
-  assert.equal(first.marked, 2);
-  assert.equal(first.deleted, 0);
-  assert.deepEqual(deletes, [], 'a fresh write may not be visible yet');
-  const mark = store.entries.get(`suspect:sandbox:${IOS_BUNDLE}:${ORPHAN_A}`);
-  assert.deepEqual(mark?.metadata, { markedAt: NOW + TICK });
+  assert.equal(first.waiting, 2, 'unrecorded channels are noticed first');
+  assert.deepEqual(deletes, []);
 
   const second = await run();
   assert.equal(second.kept, 1);
   assert.equal(second.deleted, 2);
   assert.deepEqual(deletes.sort(), [ORPHAN_A, ORPHAN_B].sort());
-  assert.equal(
-    store.entries.has(`suspect:sandbox:${IOS_BUNDLE}:${ORPHAN_A}`),
-    false,
-  );
-  assert.equal(store.entries.has(key(KEPT)), true);
 });
 
-test('a second sighting inside ten minutes of the mark deletes nothing', async () => {
+test('an unrecorded channel inside the grace is not deleted', async () => {
   const { run, deletes } = await setup({
     [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A],
   });
   await run();
-  // Two runs close together (a retried cron, overlapping invocations).
-  const early = await run({ after: MIN_MARK_AGE_SECONDS - 1 });
+  const early = await run({ after: UNRECORDED_GRACE_SECONDS - 1 });
   assert.equal(early.deleted, 0);
-  assert.equal(early.marked, 0, 'the original mark is kept, not renewed');
+  assert.equal(early.waiting, 1);
   assert.deepEqual(deletes, []);
   const due = await run({ after: 1 });
   assert.equal(due.deleted, 1);
   assert.deepEqual(deletes, [ORPHAN_A]);
 });
 
-test('a channel ledgered after being marked is kept', async () => {
-  const { store, run, deletes } = await setup({
+test('a channel recorded during its grace (the create-to-record window) is kept', async () => {
+  const { record, run, deletes } = await setup({
     [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A],
   });
   await run();
-  await store.put(key(ORPHAN_A), '{}');
+  await record(ORPHAN_A);
   const second = await run();
   assert.equal(second.kept, 1);
   assert.deepEqual(deletes, []);
 });
 
-test('sweeps only the configured scopes, each against its own ledger', async () => {
-  const { store, run, deletes, lists } = await setup(
+test('a record expires after 12 hours and the channel is then reclaimed', async () => {
+  const { record, run, deletes } = await setup({
+    [`sandbox:${IOS_BUNDLE}`]: [KEPT],
+  });
+  await record(KEPT);
+  assert.equal((await run({ after: 12 * 3600 - 60 })).kept, 1);
+  // Past its lifetime the record is purged: noticed, then deleted.
+  assert.equal((await run({ after: 120 })).waiting, 1);
+  await run();
+  assert.deepEqual(deletes, [KEPT]);
+});
+
+test('sweeps only the configured scopes, each against its own records', async () => {
+  const production = {
+    environment: 'production',
+    bundleId: IOS_BUNDLE,
+  } as const;
+  const { record, run, deletes, lists } = await setup(
     {
       [`sandbox:${IOS_BUNDLE}`]: [KEPT],
       [`production:${IOS_BUNDLE}`]: [KEPT],
       [`production:${OTHER_BUNDLE}`]: [ORPHAN_A],
     },
-    [sandbox(), { environment: 'production', bundleId: IOS_BUNDLE }],
+    [sandbox(), production],
   );
   // Recorded for sandbox only: the production channel of the same id is not.
-  await store.put(key(KEPT), '{}');
+  await record(KEPT);
   await run();
   await run();
   assert.deepEqual(deletes, [KEPT]);
@@ -182,37 +208,64 @@ test('sweeps only the configured scopes, each against its own ledger', async () 
   );
 });
 
-test('respects the per-run delete cap and leaves the rest for later', async () => {
-  const { run, deletes } = await setup({
-    [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A, ORPHAN_B],
-  });
-  await run({ maxDeletes: 1 });
-  const capped = await run({ maxDeletes: 1 });
-  assert.equal(capped.deleted, 1);
-  assert.equal(capped.deferred, 1);
-  assert.equal(deletes.length, 1);
-  const next = await run({ maxDeletes: 1 });
-  assert.equal(next.deleted, 1);
-  assert.equal(deletes.length, 2);
-});
-
-test('respects the per-run mark cap', async () => {
-  const { store, run } = await setup({
-    [`sandbox:${IOS_BUNDLE}`]: [KEPT, ORPHAN_A, ORPHAN_B],
-  });
-  const capped = await run({ maxMarks: 2 });
-  assert.equal(capped.marked, 2);
-  assert.equal(capped.deferred, 1);
-  const marks = [...store.entries.keys()].filter((name) =>
-    name.startsWith('suspect:'),
+test('a run stays within its subrequest and delete caps and leaves the rest', async () => {
+  const many = Array.from(
+    { length: 60 },
+    (_, index) => `${String(index).padStart(4, '0')}BBBBBBBBBBBBBBBBBB==`,
   );
-  assert.equal(marks.length, 2);
-  const next = await run({ maxMarks: 2 });
-  assert.equal(next.marked, 1, 'the deferred channel is marked next run');
+  const second = Array.from(
+    { length: 5 },
+    (_, index) => `${String(index).padStart(4, '0')}CCCCCCCCCCCCCCCCCC==`,
+  );
+  const { ledger, run, deletes, lists, fetchImpl } = await setup(
+    {
+      [`sandbox:${IOS_BUNDLE}`]: many,
+      [`sandbox:${OTHER_BUNDLE}`]: second,
+    },
+    [sandbox(), sandbox(OTHER_BUNDLE)],
+  );
+  void fetchImpl;
+  await run();
+  const before = {
+    apple: lists.length + deletes.length,
+    ledger: ledger.state.requests,
+  };
+  const capped = await run();
+  const spent =
+    lists.length +
+    deletes.length -
+    before.apple +
+    ledger.state.requests -
+    before.ledger;
+  assert.ok(spent <= MAX_SWEEP_SUBREQUESTS, `spent ${spent}`);
+  assert.ok(capped.deleted <= MAX_SWEEP_DELETES, `deleted ${capped.deleted}`);
+  assert.equal(capped.deleted, MAX_SWEEP_DELETES);
+  assert.ok(capped.deferred > 0);
+  // Later runs finish the backlog.
+  await run();
+  await run();
+  assert.equal(new Set(deletes).size, 65);
+
+  // A tighter budget: nothing past it, scopes left whole for the next run.
+  const tight = await setup(
+    { [`sandbox:${IOS_BUNDLE}`]: many, [`sandbox:${OTHER_BUNDLE}`]: second },
+    [sandbox(), sandbox(OTHER_BUNDLE)],
+  );
+  await tight.run();
+  const beforeTight =
+    tight.lists.length + tight.deletes.length + tight.ledger.state.requests;
+  const report = await tight.run({ maxSubrequests: 5 });
+  const tightSpent =
+    tight.lists.length +
+    tight.deletes.length +
+    tight.ledger.state.requests -
+    beforeTight;
+  assert.equal(tightSpent, 5);
+  assert.equal(report.deleted, 3);
 });
 
 test('one failing scope does not stop the others', async () => {
-  const { store, run, deletes } = await setup(
+  const { ledger, run, deletes } = await setup(
     {
       [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A],
       [`sandbox:${OTHER_BUNDLE}`]: [ORPHAN_B],
@@ -220,24 +273,24 @@ test('one failing scope does not stop the others', async () => {
     [sandbox(), sandbox(OTHER_BUNDLE)],
   );
   await run();
-  // The ledger read for the first scope fails from now on.
-  const list = store.list.bind(store);
-  store.list = async (options: { prefix: string; cursor?: string }) => {
-    if (options.prefix.includes(IOS_BUNDLE)) throw new Error('kv list failed');
-    return list(options);
+  // The ledger fails for the first scope from now on.
+  const triage = ledger.triage;
+  ledger.triage = async (scope, listed, now) => {
+    if (scope.bundleId === IOS_BUNDLE) throw new Error('ledger unreachable');
+    return triage(scope, listed, now);
   };
   const report = await run();
   assert.deepEqual(report.skipped, [`sandbox:${IOS_BUNDLE}`]);
   assert.deepEqual(deletes, [ORPHAN_B], 'the healthy scope was still swept');
-  assert.ok(errors.some((line) => line.includes('kv list failed')));
+  assert.ok(errors.some((line) => line.includes('ledger unreachable')));
 });
 
-test('deletes nothing in a scope whose ledger cannot be read', async () => {
-  const { store, run, deletes } = await setup({
+test('deletes nothing when the ledger cannot be read', async () => {
+  const { ledger, run, deletes } = await setup({
     [`sandbox:${IOS_BUNDLE}`]: [ORPHAN_A],
   });
   await run();
-  store.failList = true;
+  ledger.state.failing = true;
   const report = await run();
   assert.deepEqual(report.skipped, [`sandbox:${IOS_BUNDLE}`]);
   assert.deepEqual(deletes, []);
@@ -281,7 +334,7 @@ test('logs a channel list that may be paged', async () => {
   for (const [listing, logged] of cases) {
     errors = [];
     const { run } = await setup({ [`sandbox:${IOS_BUNDLE}`]: listing });
-    await run({ maxMarks: 0 });
+    await run();
     assert.equal(
       errors.some((line) => line.includes('may be paged')),
       logged,
@@ -331,7 +384,7 @@ async function workerEnv() {
     CHANNEL_PER_KEY_LIMITER: allow,
     CHANNEL_GLOBAL_LIMITER: allow,
     CHANNEL_DELETE_LIMITER: allow,
-    CHANNEL_LEDGER: fakeLedger(),
+    CHANNEL_LEDGER: fakeLedger().namespace,
   };
 }
 

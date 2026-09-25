@@ -7,17 +7,13 @@ import {
   verifyChannelAuth,
 } from './apns-channel-auth.ts';
 import {
-  forgetChannel,
-  type LedgerStore,
-  recordChannel,
-} from './apns-ledger.ts';
-import {
   buildLiveActivityPayload,
   parseChannelRequest,
   parseLiveActivityRequest,
   payloadBytes,
 } from './apns-request.ts';
 import type { ApnsCredentials } from './apns-token.ts';
+import { DAILY_STARTS_PER_DEVICE, type Ledger } from './channel-ledger.ts';
 import { FcmSender, type SendOutcome, type ServiceAccount } from './fcm.ts';
 import { parseSendRequest } from './send-request.ts';
 import { bodyHash, verifyStationRequest } from './station-auth.ts';
@@ -33,8 +29,11 @@ export interface ApnsGatewayConfig {
   credentials: ApnsCredentials;
   allowedBundles: readonly string[];
   channelAuth: ChannelAuthSecrets;
-  /** Every channel the gateway created; the sweep deletes the rest. */
-  ledger: LedgerStore;
+  /**
+   * Every channel the gateway created (the sweep deletes the rest), and each
+   * device's channel-creating starts per UTC day.
+   */
+  ledger: Ledger;
   /**
    * Every start creates a channel, which spends a finite per-app Apple quota
    * that never refills by itself, so starts have their own ceilings, narrowest
@@ -327,11 +326,30 @@ async function liveActivity(
   );
 
   if (request.event === 'start') {
-    const device = request.pushToStartToken ?? '';
+    const deviceHash = await hashKey(request.pushToStartToken ?? '');
     if (
       !(await withinLimits([
         [apns.channelPerIpLimiter, signed.clientIp],
-        [apns.channelPerDeviceLimiter, await hashKey(device)],
+        [apns.channelPerDeviceLimiter, deviceHash],
+      ]))
+    )
+      return RATE_LIMITED();
+    // The device's daily ceiling sits between its per-minute limit and the
+    // wider ones. Reading it spends nothing; the count rises only when a
+    // channel is actually created and recorded.
+    let startsToday: number;
+    try {
+      startsToday = await apns.ledger.startsToday(
+        deviceHash,
+        signed.nowSeconds,
+      );
+    } catch {
+      console.error('apns channel ledger unavailable; start refused');
+      return json(503, { result: 'unavailable' });
+    }
+    if (startsToday >= DAILY_STARTS_PER_DEVICE) return RATE_LIMITED();
+    if (
+      !(await withinLimits([
         [apns.channelPerKeyLimiter, stationKey],
         [apns.channelGlobalLimiter, 'global'],
       ]))
@@ -350,19 +368,20 @@ async function liveActivity(
       environment: request.environment,
       channelId,
     });
+    const stationKeyHash = await hashKey(stationKey);
     const outcome = await sender.start(
       request,
       (channelId) =>
         payloadBytes(buildLiveActivityPayload(request, stationKey, channelId)),
       {
         record: (channelId) =>
-          recordChannel(
-            apns.ledger,
-            channelOf(channelId),
-            stationKey,
-            signed.nowSeconds,
-          ),
-        forget: (channelId) => forgetChannel(apns.ledger, channelOf(channelId)),
+          apns.ledger.record({
+            ...channelOf(channelId),
+            stationKeyHash,
+            deviceHash,
+            createdAt: signed.nowSeconds,
+          }),
+        forget: (channelId) => apns.ledger.forget(channelOf(channelId)),
         defer: (work) => {
           const settled = work.catch(() => {});
           if (signed.defer) signed.defer(settled);
@@ -433,7 +452,18 @@ async function channels(
     request.environment,
     request.channelId,
   );
-  if (outcome.kind === 'deleted') await forgetChannel(apns.ledger, request);
+  // Best effort: a row left behind only keeps the channel "recorded" until it
+  // expires, and Apple no longer lists it anyway.
+  if (outcome.kind === 'deleted')
+    await apns.ledger
+      .forget({
+        environment: request.environment,
+        bundleId: request.bundleId,
+        channelId: request.channelId,
+      })
+      .catch(() => {
+        console.error('apns channel ledger forget failed');
+      });
   return apnsResponse(outcome, proof);
 }
 

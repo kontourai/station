@@ -1,12 +1,13 @@
 import { ApnsSender } from './apns.ts';
 import { parseChannelAuthSecrets } from './apns-channel-auth.ts';
-import {
-  type LedgerStore,
-  parseSweepScopes,
-  sweepChannels,
-} from './apns-ledger.ts';
+import { parseSweepScopes, sweepChannels } from './apns-sweep.ts';
 import { parseApnsCredentials } from './apns-token.ts';
+import { type LedgerNamespace, ledgerClient } from './channel-ledger.ts';
 import { parseServiceAccount, type ServiceAccount } from './fcm.ts';
+
+// The Durable Object class must be exported from the Worker's main module.
+export { ChannelLedger } from './channel-ledger.ts';
+
 import {
   type ApnsGatewayConfig,
   type ExecutionContextLike,
@@ -46,8 +47,8 @@ export interface Env {
   CHANNEL_PER_KEY_LIMITER?: RateLimiter;
   CHANNEL_GLOBAL_LIMITER?: RateLimiter;
   CHANNEL_DELETE_LIMITER?: RateLimiter;
-  /** Workers KV: the ledger of channels this gateway created. */
-  CHANNEL_LEDGER?: LedgerStore;
+  /** The ChannelLedger Durable Object namespace (SQLite-backed). */
+  CHANNEL_LEDGER?: LedgerNamespace;
 }
 
 // Parsed once per isolate: handleRequest keys its sender (and the cached
@@ -121,7 +122,7 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     CHANNEL_PER_KEY_LIMITER: channelPerKeyLimiter,
     CHANNEL_GLOBAL_LIMITER: channelGlobalLimiter,
     CHANNEL_DELETE_LIMITER: channelDeleteLimiter,
-    CHANNEL_LEDGER: ledger,
+    CHANNEL_LEDGER: ledgerNamespace,
   } = env;
   if (
     !credentials ||
@@ -132,7 +133,7 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     !channelPerKeyLimiter ||
     !channelGlobalLimiter ||
     !channelDeleteLimiter ||
-    !ledger
+    !ledgerNamespace
   )
     return null;
   return {
@@ -144,7 +145,7 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     channelPerKeyLimiter,
     channelGlobalLimiter,
     channelDeleteLimiter,
-    ledger,
+    ledger: ledgerClient(ledgerNamespace),
   };
 }
 
@@ -160,7 +161,7 @@ export async function sweep(
   if (scopes.length === 0) return;
   try {
     const report = await sweepChannels({
-      store: apns.ledger,
+      ledger: apns.ledger,
       sender: new ApnsSender(apns.credentials, fetchImpl, () => nowSeconds),
       scopes,
       nowSeconds,

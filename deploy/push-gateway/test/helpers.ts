@@ -1,3 +1,9 @@
+import { DatabaseSync } from 'node:sqlite';
+import {
+  ChannelLedger,
+  type LedgerNamespace,
+  ledgerClient,
+} from '../src/channel-ledger.ts';
 import {
   base64UrlEncode,
   bodyHash,
@@ -160,50 +166,49 @@ export const encodeBody = (value: unknown): Uint8Array<ArrayBuffer> =>
   new TextEncoder().encode(JSON.stringify(value));
 
 /**
- * An in-memory Workers KV stand-in. `list` pages two keys at a time so
- * callers must follow the cursor.
+ * The real ChannelLedger Durable Object class over an in-memory SQLite
+ * (node:sqlite), reached through the same client and fetch protocol the
+ * Worker uses. `failing` makes every ledger request fail; `requests` counts
+ * them (each is a subrequest in the Worker).
  */
 export function fakeLedger() {
-  const entries = new Map<
-    string,
-    { value: string; ttl?: number; metadata?: unknown }
-  >();
-  const store = {
-    entries,
-    failPut: false,
-    failList: false,
-    async put(
-      key: string,
-      value: string,
-      options?: { expirationTtl?: number; metadata?: unknown },
-    ) {
-      if (store.failPut) throw new Error('kv put failed');
-      entries.set(key, {
-        value,
-        ttl: options?.expirationTtl,
-        metadata: options?.metadata,
-      });
-    },
-    async delete(key: string) {
-      entries.delete(key);
-    },
-    async list({ prefix, cursor }: { prefix: string; cursor?: string }) {
-      if (store.failList) throw new Error('kv list failed');
-      const names = [...entries.keys()]
-        .filter((name) => name.startsWith(prefix))
-        .sort();
-      const start = cursor ? Number(cursor) : 0;
-      const page = names.slice(start, start + 2);
-      const done = start + 2 >= names.length;
-      return {
-        keys: page.map((name) => ({
-          name,
-          metadata: entries.get(name)?.metadata,
-        })),
-        list_complete: done,
-        ...(done ? {} : { cursor: String(start + 2) }),
-      };
+  const db = new DatabaseSync(':memory:');
+  // Like the Durable Object's `sql.exec`, the statement runs at the call;
+  // the cursor only hands back its rows.
+  const sql = {
+    exec: (query: string, ...bindings: Array<string | number | null>) => {
+      const rows = db.prepare(query).all(...bindings) as Array<
+        Record<string, unknown>
+      >;
+      return { toArray: () => rows };
     },
   };
-  return store;
+  const object = new ChannelLedger({ storage: { sql } });
+  const state = { failing: false, requests: 0 };
+  const namespace: LedgerNamespace = {
+    idFromName: (name) => name,
+    get: () => ({
+      fetch: async (request: Request) => {
+        state.requests += 1;
+        if (state.failing) throw new Error('ledger unreachable');
+        return object.fetch(request);
+      },
+    }),
+  };
+  return Object.assign(ledgerClient(namespace), {
+    state,
+    /** The Durable Object binding the Worker receives as CHANNEL_LEDGER. */
+    namespace,
+    /** Every channel row, for assertions. */
+    rows: () =>
+      db.prepare('SELECT * FROM channels ORDER BY channel_id').all() as Array<
+        Record<string, unknown>
+      >,
+    has: (channelId: string, environment = 'sandbox', bundleId = IOS_BUNDLE) =>
+      db
+        .prepare(
+          'SELECT 1 FROM channels WHERE environment = ? AND bundle_id = ? AND channel_id = ?',
+        )
+        .all(environment, bundleId, channelId).length > 0,
+  });
 }

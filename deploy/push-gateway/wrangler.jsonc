@@ -82,13 +82,16 @@
       "simple": { "limit": 10, "period": 60 }
     }
   ],
-  // The channel sweep (src/apns-ledger.ts): reclaims every broadcast channel
+  // The channel sweep (src/apns-sweep.ts): reclaims every broadcast channel
   // Apple holds that the ledger does not record. A no-op while APNs is dark.
-  "triggers": { "crons": ["*/15 * * * *"] },
-  // The channel ledger, a Workers KV namespace. APNs stays dark (routes 503,
-  // sweep off) until it is bound. Create it once, then uncomment with its id:
-  //   npx --yes wrangler@4 kv namespace create CHANNEL_LEDGER
-  // "kv_namespaces": [{ "binding": "CHANNEL_LEDGER", "id": "<namespace id>" }],
+  "triggers": { "crons": ["*/3 * * * *"] },
+  // The channel ledger: one SQLite-backed Durable Object (src/channel-ledger.ts),
+  // which the Workers Free plan includes. Deploying creates it; no namespace
+  // to create by hand.
+  "durable_objects": {
+    "bindings": [{ "name": "CHANNEL_LEDGER", "class_name": "ChannelLedger" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChannelLedger"] }],
   // Error lines only: invocation logs would record request headers, which
   // include the Station's signed authorization.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } }

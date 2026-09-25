@@ -30,7 +30,7 @@ async function fullEnv(): Promise<Env> {
     CHANNEL_PER_KEY_LIMITER: allow,
     CHANNEL_GLOBAL_LIMITER: allow,
     CHANNEL_DELETE_LIMITER: allow,
-    CHANNEL_LEDGER: fakeLedger(),
+    CHANNEL_LEDGER: fakeLedger().namespace,
   };
 }
 
@@ -71,4 +71,20 @@ test('APNs ships dark when any setting is missing or unusable', async () => {
     assert.equal(await statusOf(env, '/v1/apns/live-activity'), 503, name);
     assert.equal(await statusOf(env, '/v1/apns/channels'), 503, name);
   }
+});
+
+test('the Worker exports the ChannelLedger Durable Object that wrangler.jsonc binds', async () => {
+  const module = await import('../src/worker.ts');
+  assert.equal(typeof module.ChannelLedger, 'function');
+  const { readFile } = await import('node:fs/promises');
+  const wrangler = await readFile(
+    new URL('../wrangler.jsonc', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    wrangler,
+    /"bindings":\s*\[\{\s*"name":\s*"CHANNEL_LEDGER",\s*"class_name":\s*"ChannelLedger"\s*\}\]/,
+  );
+  assert.match(wrangler, /"new_sqlite_classes":\s*\["ChannelLedger"\]/);
+  assert.doesNotMatch(wrangler, /kv_namespaces/);
 });

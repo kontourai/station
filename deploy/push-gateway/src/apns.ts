@@ -160,7 +160,10 @@ export class ApnsSender {
       channel.environment,
       channel.channelId,
     );
-    if (deleted.kind === 'deleted') await hooks.forget(channel.channelId);
+    if (deleted.kind === 'deleted')
+      await hooks.forget(channel.channelId).catch(() => {
+        console.error('apns channel ledger forget failed');
+      });
     else
       console.error(
         `apns channel left behind after a refused start (${deleted.kind})`,
