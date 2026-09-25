@@ -296,6 +296,46 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     expect(storage.get(SCOPE)?.cursor).toBe(0);
   });
 
+  test('an old read that lands before the new connection’s read starts applies nothing', async () => {
+    // The switch is recorded when the new poll is made, not when its read
+    // gets as far as loading state: the old answer arriving in between must
+    // not move the old cursor or post the old connection's alerts.
+    const storage = new Map<string, StoredCursor>([
+      [SCOPE, { surface: LOCAL, cursor: 0, epoch: 'run-1' }],
+    ]);
+    let releaseOld: (value: SurfaceDeliveryFeed) => void = () => {};
+    let releaseId: (value: string) => void = () => {};
+    let calls = 0;
+    const notify = vi.fn(async (_input: unknown) => true);
+    const d: DeliveryFeedDeps = {
+      installationId: () => {
+        calls += 1;
+        return calls === 1
+          ? Promise.resolve(INSTALLATION)
+          : new Promise((resolve) => {
+              releaseId = resolve;
+            });
+      },
+      readFeed: () =>
+        new Promise((resolve) => {
+          releaseOld = resolve;
+        }),
+      isWindowFocused: () => false,
+      notify,
+      loadCursor: (key) => storage.get(key),
+      saveCursor: (key, value) => void storage.set(key, value),
+    };
+    const old = pollDeliveryFeed(A, SCOPE, d);
+    await Promise.resolve();
+    await Promise.resolve();
+    void pollDeliveryFeed(A, `${A}\nconn-b`, d);
+    releaseOld(feed(2, [alert(2, 'a-1')]));
+    expect(await old).toBe(0);
+    expect(notify).not.toHaveBeenCalled();
+    expect(storage.get(SCOPE)?.cursor).toBe(0);
+    releaseId(INSTALLATION);
+  });
+
   test('an urgency-only change under the same id alerts again', async () => {
     const { d, notify } = deps([
       feed(0),
