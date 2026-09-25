@@ -397,6 +397,9 @@ describe('instance-keyed dock panes (#2049)', () => {
     writePreview('src/components/Deep/File.tsx');
     const pane = regionSurfacePane(PREVIEW_ID);
     expect(pane?.title).toBe('File.tsx');
+    expect(pane?.tooltip).toBe(
+      'src/components/Deep/File.tsx — from the project checkout',
+    );
     const instance = pane?.instance(PROJECT);
     expect(String(instance?.instanceId)).toBe(PREVIEW_ID);
     expect(instance?.boundContext?.projectId).toBe('project-uuid');

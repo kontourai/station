@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,6 +8,7 @@ import {
 } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { navigationStore } from '../contexts/navigation-store';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 
 /**
  * Reusable unsaved-changes guard.
@@ -22,6 +24,7 @@ export function useUnsavedGuard(dirty: boolean) {
   const pendingRef = useRef<(() => void) | null>(null);
   const pendingCancel = useRef<(() => void) | undefined>(undefined);
   const navigationGuardId = useRef(Symbol('unsaved-navigation-guard'));
+  const owner = useContext(UnsavedGuardOwnerContext);
 
   useEffect(() => {
     if (dirty || !showDiscard) return;
@@ -66,8 +69,9 @@ export function useUnsavedGuard(dirty: boolean) {
     return navigationStore.registerNavigationGuard(
       navigationGuardId.current,
       guard,
+      owner,
     );
-  }, [dirty, guard]);
+  }, [dirty, guard, owner]);
 
   const onConfirm = useCallback(() => {
     setShowDiscard(false);

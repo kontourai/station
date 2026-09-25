@@ -622,6 +622,27 @@ repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
+`.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
+on pull requests, in the same container (#2428), so a PR that moves a screen
+finds out before it merges instead of reddening the next nightly. Its
+`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
+base commit and skips the capture only when every changed path is one the
+capture never reads (docs, agent instructions, other workflows, desktop Rust,
+test files). The scope is an exclusion list because the capture boots the
+whole product through `./station start`, not just `src-ui/`. When the diff
+fails, the job summary prints the exact refresh commands: download the run's
+`gallery-pr-<run>-<attempt>` artifact, then
+`npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
+baseline on its own. The check's re-run on that commit catches a baseline
+from any other renderer, as long as the PR does not also change the capture or
+diff scripts; the nightly on main, running trusted code, remains the
+authoritative check. The baseline writer refuses a capture whose screen name is
+not a slug or whose file resolves outside the gallery directory, because for a
+fork PR the artifact is produced by the fork's code. A capture that did not
+complete is reported separately and must not be re-baselined. The check
+compares the PR head against its own baseline, so combinations of PRs are
+still only caught nightly.
+
 Two consequences worth stating plainly:
 
 - **Regenerate a baseline from the CI renderer, not from a laptop**, and as its

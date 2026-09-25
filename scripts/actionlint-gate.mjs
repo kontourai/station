@@ -442,6 +442,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
   '.github/workflows/ecosystem-packaging.yml',
+  '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/merge-queue-regression.yml',
   '.github/workflows/security-analysis.yml',
@@ -608,6 +609,12 @@ const MERGE_QUEUE_WORKFLOWS = new Set([
 ]);
 const MERGE_QUEUE_REGRESSION_WORKFLOW =
   '.github/workflows/merge-queue-regression.yml';
+/**
+ * #2428: the PR gallery check uploads its captures and pixel diffs, which are
+ * the only source a PR author may refresh the exact baseline from. The
+ * artifact holds what the candidate rendered and nothing the token can reach.
+ */
+const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -2137,7 +2144,8 @@ function baseControlledPrWorkflowFindings(file, document) {
         ].some((prefix) => step.uses.startsWith(prefix)) &&
         !(
           (file === '.github/workflows/build-ios.yml' ||
-            file === MERGE_QUEUE_REGRESSION_WORKFLOW) &&
+            file === MERGE_QUEUE_REGRESSION_WORKFLOW ||
+            file === GALLERY_PR_WORKFLOW) &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&

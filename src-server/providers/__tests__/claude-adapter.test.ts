@@ -4273,6 +4273,56 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test.each([
+    ['a confined session applied at auto', 'auto', 'workspace', 'acceptEdits'],
+    ['a host session at never', 'never', 'host', 'bypassPermissions'],
+  ] as const)(
+    '#2493: session.configured and turn.started report %s with its confinement',
+    async (_label, approvalMode, confinement, permissionMode) => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = `thread-confinement-${confinement}`;
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        modelOptions: { approvalMode },
+        confinement,
+      });
+      await iterator.next(); // session.started
+      const configured = await iterator.next();
+      expect(configured.value).toMatchObject({
+        method: 'session.configured',
+        metadata: {
+          permissionMode,
+          allowDangerouslySkipPermissions: approvalMode === 'never',
+          approvalMode,
+          confinement,
+        },
+      });
+
+      await adapter.sendTurn({
+        threadId,
+        input: 'go',
+        modelOptions: { approvalMode },
+        confinement,
+      });
+      let turnStarted: IteratorResult<any> | undefined;
+      for (let seen = 0; seen < 10; seen += 1) {
+        const next = await iterator.next();
+        if (next.value?.method === 'turn.started') {
+          turnStarted = next;
+          break;
+        }
+      }
+      expect(turnStarted?.value?.metadata).toMatchObject({
+        approvalMode,
+        confinement,
+      });
+    },
+  );
+
   test('a later turn without approvalMode does not reset Claude to default (station#1950)', async () => {
     const mockedQuery = createMockQuery([]);
     mockQuery.mockReturnValue(mockedQuery);
