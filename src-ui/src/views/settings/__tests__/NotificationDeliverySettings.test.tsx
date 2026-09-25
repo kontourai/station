@@ -10,8 +10,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   preferences: {
     isLoading: false,
-    error: null as Error | null,
+    error: null as (Error & { code?: string }) | null,
     data: undefined as NotificationPreferencesV1 | undefined,
+    refetch: vi.fn(),
   },
   devices: [] as Array<{ id: string; name: string; revokedAt: number | null }>,
   mutate: vi.fn(),
@@ -54,6 +55,7 @@ beforeEach(() => {
     isLoading: false,
     error: null,
     data: defaultNotificationPreferences(),
+    refetch: vi.fn(),
   };
   state.devices = [
     { id: 'phone', name: 'Pixel', revokedAt: null },
@@ -123,18 +125,36 @@ describe('NotificationDeliverySettings', () => {
   test('an unreadable saved document says so and offers a reset, not a form', () => {
     state.preferences = {
       isLoading: false,
-      error: new Error('The saved notification preferences could not be read.'),
+      error: Object.assign(
+        new Error('The saved notification preferences could not be read.'),
+        { code: 'preferences_unreadable' },
+      ),
       data: undefined,
+      refetch: vi.fn(),
     };
     render(<NotificationDeliverySettings />);
     expect(
       screen.getByText('Notification delivery settings could not be loaded'),
     ).toBeTruthy();
-    expect(
-      screen.getByText('The saved notification preferences could not be read.'),
-    ).toBeTruthy();
     expect(screen.queryByLabelText('Agent notifications')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
     expect(saved()).toEqual(defaultNotificationPreferences());
+  });
+
+  test('a transient failure offers a retry, never a reset', () => {
+    const refetch = vi.fn();
+    state.preferences = {
+      isLoading: false,
+      error: Object.assign(new Error('HTTP 503'), { code: undefined }),
+      data: undefined,
+      refetch,
+    };
+    render(<NotificationDeliverySettings />);
+    expect(
+      screen.queryByRole('button', { name: 'Reset to defaults' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+    expect(state.mutate).not.toHaveBeenCalled();
   });
 });

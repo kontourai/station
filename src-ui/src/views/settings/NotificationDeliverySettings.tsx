@@ -56,18 +56,31 @@ export default function NotificationDeliverySettings() {
     return <SkeletonBlock count={1} label="Loading notification delivery" />;
   }
   if (preferences.error || !preferences.data) {
+    // Only a saved file the server cannot read is replaced by a reset; a
+    // transient failure (offline, 5xx) must never offer to wipe the
+    // person's choices. The SDK sends the unreadable revision as If-Match,
+    // so the reset loses to anyone who repaired the file meanwhile.
+    const unreadable =
+      (preferences.error as { code?: string } | null)?.code ===
+      'preferences_unreadable';
     return (
       <ErrorState
         title="Notification delivery settings could not be loaded"
         description={preferences.error?.message}
         action={
-          <Button
-            size="sm"
-            pending={update.isPending}
-            onClick={() => update.mutate(defaultNotificationPreferences())}
-          >
-            Reset to defaults
-          </Button>
+          unreadable ? (
+            <Button
+              size="sm"
+              pending={update.isPending}
+              onClick={() => update.mutate(defaultNotificationPreferences())}
+            >
+              Reset to defaults
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => void preferences.refetch()}>
+              Retry
+            </Button>
+          )
         }
       />
     );

@@ -10,6 +10,11 @@
  * dismissed or no longer delivered cancel its escalation and ask
  * retract-capable channels to take back what they showed.
  *
+ * Escalations are in memory only. A restart loses every armed escalation:
+ * the notification stays in the inbox and is never pushed later. At most
+ * MAX_TRACKED records are remembered; evicting one with an armed escalation
+ * cancels it and is logged.
+ *
  * Never throws into the bus: EventBus drops a listener that throws, so the
  * callback, every channel call and every timer are independently caught.
  * Everything up to `channel.deliver` runs synchronously inside the callback,
@@ -144,6 +149,10 @@ export function wireNotificationDeliveryRouter(
       while (tracked.size > MAX_TRACKED) {
         const oldest = tracked.keys().next().value;
         if (oldest === undefined) break;
+        if (tracked.get(oldest)?.deferred)
+          logger.warn(
+            'notification-delivery: dropped an armed escalation (too many tracked notifications)',
+          );
         forget(oldest);
       }
     }

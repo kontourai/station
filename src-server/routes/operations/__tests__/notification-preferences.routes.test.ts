@@ -223,6 +223,36 @@ describe('compare-and-swap and PATCH', () => {
     });
   });
 
+  test('PATCH with a stale If-Match is refused 412', async () => {
+    const { etag } = await call('GET');
+    await call('PATCH', { perAgent: { builder: 'off' } });
+    const stale = await call('PATCH', { agentNotifications: 'off' }, PERSON, {
+      headers: { 'if-match': etag! },
+    });
+    expect(stale.status).toBe(412);
+    expect((await call('GET')).json.data).toMatchObject({
+      agentNotifications: 'all',
+    });
+  });
+
+  test('an unreadable file serves an ETag that makes the reset a CAS', async () => {
+    writeFileSync(join(home, NOTIFICATION_PREFERENCES_FILE), '{', {
+      mode: 0o600,
+    });
+    const unreadable = await call('GET');
+    expect(unreadable.status).toBe(409);
+    expect(unreadable.etag).toBe('"unreadable"');
+    const reset = await call('PUT', defaultNotificationPreferences(), PERSON, {
+      headers: { 'if-match': unreadable.etag! },
+    });
+    expect(reset.status).toBe(200);
+    // A second reset from the same stale read now loses.
+    const again = await call('PUT', defaultNotificationPreferences(), PERSON, {
+      headers: { 'if-match': unreadable.etag! },
+    });
+    expect(again.status).toBe(412);
+  });
+
   test('an invalid PATCH is 400', async () => {
     expect(
       (await call('PATCH', { perAgent: { builder: 'loud' } })).status,

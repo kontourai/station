@@ -34,7 +34,10 @@ import { isNonPersonCaller } from '../plugins/plugin-person-approval.js';
 const MAX_BODY_BYTES = 256 * 1024;
 
 export function createNotificationPreferencesRoutes(
-  store: Pick<NotificationPreferencesStore, 'read' | 'write' | 'patch'>,
+  store: Pick<
+    NotificationPreferencesStore,
+    'read' | 'write' | 'patch' | 'revision'
+  >,
   options: { desktopHost?: Pick<DesktopHostChannel, 'read'> } = {},
 ) {
   const app = new Hono();
@@ -57,6 +60,9 @@ export function createNotificationPreferencesRoutes(
   app.get('/preferences', (c) => {
     const result = store.read();
     if (!result.ok) {
+      // A reset may send this back as If-Match: it then succeeds only if the
+      // file is still unreadable.
+      c.header('ETag', store.revision());
       return c.json(
         {
           success: false,
@@ -136,7 +142,10 @@ export function createNotificationPreferencesRoutes(
         { success: false, error: 'invalid_preferences' },
         body.status,
       );
-    return writeResult(c, () => store.patch(body.body));
+    const ifMatch = c.req.header('if-match');
+    return writeResult(c, () =>
+      store.patch(body.body, ifMatch === undefined ? {} : { ifMatch }),
+    );
   });
 
   app.get('/deliveries', (c) => {

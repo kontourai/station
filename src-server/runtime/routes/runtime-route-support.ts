@@ -1,7 +1,6 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
@@ -13,24 +12,15 @@ import {
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import {
   resolvePushGatewayConfig,
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
-import { createPairingAudienceResolver } from '../../services/notifications/delivery/audience-resolver.js';
-import { DesktopHostChannel } from '../../services/notifications/delivery/desktop-host-channel.js';
-import {
-  type NotificationDeliveryRouter,
-  wireNotificationDeliveryRouter,
-} from '../../services/notifications/delivery/router.js';
-import { NotificationPreferencesStore } from '../../services/notifications/notification-preferences.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
-import { WebPushChannel } from '../../services/notifications/web-push-delivery.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
@@ -49,13 +39,13 @@ import { DevicePairingNotificationProvider } from '../../services/ssh/device-pai
 import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
-import { pairedDevicePrincipal } from '../bootstrap/orchestration-request-principal.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
 import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
+import { wireNotificationDelivery } from './notification-delivery-wiring.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -387,8 +377,8 @@ export function configureRuntimeSupportServices(
     context.logger,
   );
   // station#1225 (offline slice 3): push-on-completion — schedules a
-  // notification (and, via the existing `wireWebPushDelivery` fan-out
-  // below, a Web Push send) when a turn completes/fails for a session
+  // notification (and, via the notification delivery router's Web Push
+  // channel below, a Web Push send) when a turn completes/fails for a session
   // whose owning user has no live `/events` stream open.
   // `context.orchestrationStreamPresence` is the SAME instance
   // `createOrchestrationRoutes` registers connect/disconnect against
@@ -557,50 +547,21 @@ export function configureRuntimeSupportServices(
   // #2586: every notification past the in-app feed goes through the
   // delivery router (audience → policy → channels). Off exactly where Web
   // Push was: hosted paired-device records have no tenant binding.
-  const notificationPreferences = new NotificationPreferencesStore(
-    context.configLoader.getProjectHomeDir(),
-    context.logger,
-  );
-  // The desktop app's native host reads its decided alerts from a feed;
-  // inert until a host polls it (#2586).
-  const desktopHostChannel = new DesktopHostChannel();
-  const notificationDeliveryRouter: NotificationDeliveryRouter = webPushEnabled
-    ? wireNotificationDeliveryRouter({
-        eventBus: context.eventBus,
-        channels: [
-          new WebPushChannel(
-            context.environmentSecurityService.devicePairing,
-            webPushService,
-            context.logger,
-          ),
-          desktopHostChannel,
-        ],
-        resolver: createPairingAudienceResolver({
-          listDevices: () =>
-            context.environmentSecurityService.devicePairing.listDevices(),
-          devicePrincipalId: (device) => pairedDevicePrincipal(device).id,
-          operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          // Personal mode only (the router is off in hosted mode), minted
-          // the way the session-list route mints a device's authority.
-          canPrincipalReadSession: (sessionId, principalId) =>
-            context.orchestrationService.canUserReadSession(
-              sessionId,
-              sessionReadAuthorityFromRequest(
-                principalId,
-                undefined,
-                undefined,
-              ),
-            ),
-          logger: context.logger,
-        }),
-        preferences: notificationPreferences,
-        logger: context.logger,
-        readNotification: async (id) =>
-          (await notificationService.list()).find(
-            (notification) => notification.id === id,
-          ),
-      })
-    : { stop: () => {}, pendingEscalations: () => [] };
+  const {
+    preferences: notificationPreferences,
+    router: notificationDeliveryRouter,
+    desktopHostChannel,
+  } = wireNotificationDelivery({
+    enabled: webPushEnabled,
+    homeDir: context.configLoader.getProjectHomeDir(),
+    eventBus: context.eventBus,
+    logger: context.logger,
+    devicePairing: context.environmentSecurityService.devicePairing,
+    webPushService,
+    canUserReadSession: (sessionId, authority) =>
+      context.orchestrationService.canUserReadSession(sessionId, authority),
+    listNotifications: () => notificationService.list(),
+  });
 
   // Agent-activity push to registered phones through the Kontour push
   // gateway (docs/design/notification-delivery.md, "Station contract").
@@ -699,7 +660,7 @@ export function configureRuntimeSupportServices(
     webPushEnabled,
     notificationPreferences,
     notificationDeliveryRouter,
-    desktopHostChannel: webPushEnabled ? desktopHostChannel : undefined,
+    desktopHostChannel,
     pushSigningKeyStore,
     pushGatewayAvailable: pushGateway !== null,
     agentActivityPublisher,

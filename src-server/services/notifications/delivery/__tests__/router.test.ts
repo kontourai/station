@@ -665,6 +665,20 @@ describe('NotificationDeliveryRouter', () => {
     });
   });
 
+  test('evicting an armed escalation past the tracking bound cancels it and says so', () => {
+    const { bus, timers, logger } = setup({ focus: focusOn(LAPTOP) });
+    for (let i = 0; i <= 500; i += 1)
+      bus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        notification({ id: `n-${i}` }),
+      );
+    expect(timers[0]?.cancelled).toBe(true);
+    expect(timers[1]?.cancelled).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'notification-delivery: dropped an armed escalation (too many tracked notifications)',
+    );
+  });
+
   test('stop() unsubscribes and cancels armed escalations', () => {
     const { bus, timers, router } = setup({ focus: focusOn(LAPTOP) });
     bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, notification());

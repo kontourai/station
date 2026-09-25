@@ -42,17 +42,19 @@ paired phone gets a push, and tapping it lands on the attention inbox
   recovery — a revoked credential cannot be re-authenticated, and a caller
   with no credential was never paired. Whether the gate should distinguish
   the two on the wire is open in station#1212.
-- **Sender**: `wireWebPushDelivery` (`src-server/services/notifications/web-push-delivery.ts`)
-  is a decoupled `EventBus` subscriber on `NOTIFICATION_DELIVERED`, filtered
-  to any category the attention-ranked outcome model classifies
-  (`classifyNotificationCategory`, `@kontourai/station-shared/notification-priority`)
-  — today that's `approval-request` (outcome `needs-input`) and `job-failure`
-  (outcome `failed`; station#1100). A record carrying a readable
-  notification envelope (`metadata.envelope`, #2583 — agent notifications)
-  is skipped: the delivery router owns those. It fans out over every paired device's
-  subscription, self-heals a 404/410 ("this subscription is gone") by
-  clearing it, and catches everything — a push failure can never affect the
-  in-app SSE/toast delivery path. `needs_input`/`review_pending` are polled
+- **Sender**: `WebPushChannel` (`src-server/services/notifications/web-push-channel.ts`)
+  is one channel of the notification delivery router
+  (`src-server/services/notifications/delivery/router.ts`, #2586). The router
+  subscribes to `NOTIFICATION_DELIVERED`, resolves the audience (the owner's
+  personal-family devices, or the devices that can read the session for an
+  agent notification), applies the delivery policy (focus, quiet hours,
+  per-device minimum urgency, mutes) and hands the channel its targets. The
+  channel carries only categories the attention-ranked outcome model
+  classifies (`classifyNotificationCategory`,
+  `@kontourai/station-shared/notification-priority`), sends a generic title
+  and body to a device whose preferences hide content, self-heals a 404/410
+  ("this subscription is gone") by clearing it, and catches everything — a
+  push failure can never affect the in-app SSE/toast delivery path. `needs_input`/`review_pending` are polled
   projections with no discrete delivery event, so they are **not** pushed
   (deferred to a follow-up).
 - **Payload composition (station#1100)**: `composeWebPushPayload`

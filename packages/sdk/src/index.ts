@@ -1137,6 +1137,7 @@ export {
 export {
   fetchNotificationPreferences,
   type NotificationPreferencesPatch,
+  NotificationPreferencesRequestError,
   type NotificationPreferencesV1,
   patchNotificationPreferences,
   updateNotificationPreferences,
