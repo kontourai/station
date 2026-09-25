@@ -27,14 +27,13 @@ export function resetOsAlertScope(): void {
   scope = null;
 }
 
-export function reconcileOsAlerts(input: {
-  notifications: readonly Notification[];
-  apiBase: string;
-  scopeKey: string;
-  /** React Query's `dataUpdatedAt` for this list; absent = unknown. */
-  dataUpdatedAt?: number;
-}): void {
-  const { notifications, apiBase, scopeKey, dataUpdatedAt } = input;
+/** `dataUpdatedAt` is React Query's for this list; absent = unknown. */
+export function reconcileOsAlerts(
+  notifications: readonly Notification[],
+  apiBase: string,
+  scopeKey: string,
+  dataUpdatedAt?: number,
+): void {
   if (scope === null) {
     scope = { key: scopeKey, since: 0 };
   } else if (scope.key !== scopeKey) {

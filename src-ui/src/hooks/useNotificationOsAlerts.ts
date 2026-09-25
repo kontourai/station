@@ -70,23 +70,18 @@ export function useNotificationOsAlerts(): void {
     { status: LIVE_NOTIFICATION_STATUSES },
     { refetchInterval: 10_000, enabled },
   );
+  const scopeKey = `${apiBase}\n${connectionId ?? ''}`;
   useEffect(() => {
     if (!enabled || !data) return;
     // Connection scoping, the local-pairing filter and the blocking channel live in
     // the lazily loaded `osAlerts` chunk (entry-bundle budget).
     void import('../platform/native/osAlerts').then((module) =>
-      module.reconcileOsAlerts({
-        notifications: data,
-        apiBase,
-        scopeKey: `${apiBase}\n${connectionId ?? ''}`,
-        dataUpdatedAt,
-      }),
+      module.reconcileOsAlerts(data, apiBase, scopeKey, dataUpdatedAt),
     );
-  }, [apiBase, connectionId, data, dataUpdatedAt, enabled]);
+  }, [apiBase, scopeKey, data, dataUpdatedAt, enabled]);
 
   useEffect(() => {
     if (!enabled) return;
-    const scopeKey = `${apiBase}\n${connectionId ?? ''}`;
     const poll = () =>
       void import('../platform/native/deliveryFeed').then((module) =>
         module.pollDeliveryFeed(apiBase, scopeKey),
@@ -94,5 +89,5 @@ export function useNotificationOsAlerts(): void {
     poll();
     const timer = setInterval(poll, DELIVERY_FEED_POLL_MS);
     return () => clearInterval(timer);
-  }, [apiBase, connectionId, enabled]);
+  }, [apiBase, scopeKey, enabled]);
 }
