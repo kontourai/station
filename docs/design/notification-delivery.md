@@ -236,6 +236,58 @@ The Station side mirrors Web Push (`push-routes.ts`, `wireWebPushDelivery`):
   `station_key`. `NATIVE_PUSH_SEALED_TEST_VECTOR` in
   `@kontourai/station-contracts/native-push` is the known-answer vector for
   the phone's opener.
+- **Opening the session a card names (#2515).** The plaintext may also
+  carry `activity_session_id` / `activity_project_slug` (the session in row 0)
+  and, for a single-session alert, `alert_session_id` / `alert_project_slug`.
+  A grouped alert names none. They travel only inside the seal, and only
+  when the session id (and the project slug, if the session has one) match
+  `NATIVE_PUSH_SESSION_REFERENCE_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`,
+  ASCII); otherwise nothing is sent and a tap opens the app where it was. The
+  reference is a pair of identifiers, not a path, so neither the card nor the
+  phone ever supplies a URL. On the phone, `AgentActivityModel.kt`
+  (`SessionRoute.validOrNull`) checks the same grammar — a server test pins
+  the Kotlin pattern to the contract's — and drops the whole route on any
+  failure; the route's Station is the registration's verified Station id,
+  never a card field. The route never rides on an intent: the tap's
+  launch intent (no data URI or action, which the deep-link plugin would
+  read as a pairing link) carries only a random tap nonce, and
+  `AgentNotifications.openApp` records nonce → route in app-private storage
+  (`TapLedger` in `AgentActivityModel.kt`: one live nonce per card or alert,
+  at most 20, expiring after 24 hours, the longest a card lives). Each card
+  and alert has its own request code and, from API 29, intent identifier, and
+  `FLAG_UPDATE_CURRENT` replaces the extras of the same notification's
+  intent, so a re-posted card carries only its newest nonce.
+  `AgentActivityPlugin` looks at an intent from `load` or `onNewIntent` only
+  if it is shaped like those launch intents (`ACTION_MAIN`, no data, not
+  `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), and adopts a route only by
+  redeeming its nonce, which consumes it. That is what makes the exported
+  launcher activity safe: extras another app supplies name no issued nonce,
+  and the original launch intent Android restores to a recreated activity
+  after process death names a nonce already redeemed (removing the extra
+  only helps within one process). Redeeming always records a fresh nonce for
+  the same card or alert, and writes it into that notification's
+  PendingIntent only if it still exists (`FLAG_NO_CREATE` check, then
+  `FLAG_UPDATE_CURRENT`), so tapping the same ongoing card again works; for
+  a notification already gone the fresh nonce is never carried and simply
+  occupies a ledger slot until it expires. The
+  plugin then holds the route
+  and hands it to the web layer through `take_launch_route` (returns and
+  clears), announced by a `launchRoute` plugin event while the app runs. The
+  web layer (`agentActivitySessionTarget`) validates the grammar a third time
+  and navigates only when the route's Station is the connected one, to the
+  Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
+  or `/?chat=<id>&dock=open` without a project. A route for another Station
+  is dropped; switching Stations from a tap is not attempted. The check is
+  per Station, not per user: with two registrations for different users on
+  one Station, a card may navigate the app while it is connected as the
+  other user. Only navigation follows; the session itself stays behind the
+  server's per-session read checks. The iOS Live Activity receives the same
+  fields inside its seal and ignores them: an iOS tap opens the app without
+  routing.
+  The references count against the 2500-byte plaintext budget and are
+  never cut: the card's reference stays for as long as row 0 does, and an
+  alert's stays with the alert, so under a tight budget they displace tail
+  rows (at most about 310 bytes each for the longest id and slug).
 - **Publisher.** An `ORCHESTRATION_EVENT` subscriber marks the card dirty on
   lifecycle events (never streamed content), coalesces per Station, and reads
   the session read model once per reading principal: each phone reads with

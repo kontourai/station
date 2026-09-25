@@ -355,6 +355,30 @@
           "markdownDescription": "Denies the push_token command without any pre-configured scope."
         },
         {
+          "description": "Enables the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-register-listener",
+          "markdownDescription": "Enables the register_listener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-register-listener",
+          "markdownDescription": "Denies the register_listener command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-remove-listener",
+          "markdownDescription": "Enables the remove_listener command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-remove-listener",
+          "markdownDescription": "Denies the remove_listener command without any pre-configured scope."
+        },
+        {
           "description": "Enables the status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-status",
@@ -367,10 +391,22 @@
           "markdownDescription": "Denies the status command without any pre-configured scope."
         },
         {
-          "description": "Read capability status, register the device for agent-activity delivery, and open Live Update settings. `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`",
+          "description": "Enables the take_launch_route command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-take-launch-route",
+          "markdownDescription": "Enables the take_launch_route command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the take_launch_route command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-take-launch-route",
+          "markdownDescription": "Denies the take_launch_route command without any pre-configured scope."
+        },
+        {
+          "description": "Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Read capability status, register the device for agent-activity delivery, and open Live Update settings. `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`"
+          "markdownDescription": "Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`"
         }
       ]
     }

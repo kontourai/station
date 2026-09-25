@@ -162,6 +162,7 @@ describe('web agent-activity adapter', () => {
       web.configureAgentActivity(),
       web.clearAgentActivity(),
       web.openLiveUpdateSettings(),
+      web.takeAgentActivityLaunchRoute(),
     ]);
     expect(
       results.map((result) => [
@@ -174,6 +175,107 @@ describe('web agent-activity adapter', () => {
       ['unsupported', 'configure-agent-activity'],
       ['unsupported', 'clear-agent-activity'],
       ['unsupported', 'open-live-update-settings'],
+      ['unsupported', 'take-agent-activity-launch-route'],
     ]);
+  });
+});
+
+describe('agent-activity launch routes (#2515)', () => {
+  it('takes the route with take_launch_route and checks its shape', async () => {
+    let reply: unknown = {
+      route: {
+        stationId: 'env-a',
+        sessionId: 'thread-1',
+        projectSlug: 'login-app',
+      },
+    };
+    const { instance, calls } = adapter('enabled', () => reply);
+    await instance.getCapabilityReport();
+    await expect(instance.takeAgentActivityLaunchRoute()).resolves.toEqual({
+      status: 'ok',
+      value: {
+        route: {
+          stationId: 'env-a',
+          sessionId: 'thread-1',
+          projectSlug: 'login-app',
+        },
+      },
+    });
+    expect(calls).toEqual([
+      {
+        command: 'plugin:station-agent-activity|take_launch_route',
+        args: undefined,
+      },
+    ]);
+    reply = { route: null };
+    await expect(instance.takeAgentActivityLaunchRoute()).resolves.toEqual({
+      status: 'ok',
+      value: { route: null },
+    });
+    for (const malformed of [
+      null,
+      'route',
+      { route: 'thread-1' },
+      { route: { stationId: 'env-a' } },
+      { route: { stationId: 'env-a', sessionId: 7 } },
+      { route: { stationId: 'env-a', sessionId: 's', projectSlug: 1 } },
+    ]) {
+      reply = malformed;
+      await expect(instance.takeAgentActivityLaunchRoute()).resolves.toEqual(
+        expect.objectContaining({
+          status: 'error',
+          command: 'take-agent-activity-launch-route',
+        }),
+      );
+    }
+  });
+
+  it('listens for the plugin nudge only where remote-push is enabled', async () => {
+    const registered: Array<{ plugin: string; event: string }> = [];
+    let fire: (() => void) | undefined;
+    let unregistered = 0;
+    const make = (remotePush: NativeCapabilityState) =>
+      new TauriNativePlatformAdapter({
+        async invoke<T>(command: string) {
+          return (
+            command === 'native_capability_report'
+              ? completeNativeCapabilityReport('android', {
+                  'remote-push': { state: remotePush, reason: 'from host' },
+                })
+              : null
+          ) as T;
+        },
+        listen: async () => () => {},
+        async addPluginListener(plugin, event, handler) {
+          registered.push({ plugin, event });
+          fire = handler;
+          return () => {
+            unregistered += 1;
+          };
+        },
+      });
+    const off = make('unsupported');
+    await off.getCapabilityReport();
+    const offSubscription = off.subscribeToAgentActivityLaunchRoutes(() => {});
+    await offSubscription.ready;
+    offSubscription.dispose();
+    expect(registered).toEqual([]);
+
+    const on = make('enabled');
+    await on.getCapabilityReport();
+    let nudges = 0;
+    const subscription = on.subscribeToAgentActivityLaunchRoutes(() => {
+      nudges += 1;
+    });
+    await subscription.ready;
+    expect(registered).toEqual([
+      { plugin: 'station-agent-activity', event: 'launchRoute' },
+    ]);
+    fire?.();
+    expect(nudges).toBe(1);
+    subscription.dispose();
+    expect(unregistered).toBe(1);
+    fire?.();
+    expect(nudges).toBe(1);
   });
 });

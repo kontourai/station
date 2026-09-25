@@ -13,6 +13,14 @@ import {
 } from '../local-port-scanner.js';
 import { deriveStationListeners } from '../station-listeners.js';
 
+// Fixture workspaces live under the HOST temp dir, not the vitest run root:
+// the run root nests under `<tmp>/station/`, and a `/station/` path segment
+// is exactly what `STATION_PROCESS` flags, so every cwd under it would carry
+// a spurious 'station-process' warning (station#2623). These suites remove
+// their own roots in afterEach.
+const fixtureTmp = (): string =>
+  process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir();
+
 const LSOF = [
   'p100',
   'cnode',
@@ -143,10 +151,10 @@ describe('LocalPortScanner', () => {
 
 describe('suggestLocalTargets', () => {
   test('web listeners whose process runs inside the workspace, minus Station and registered ports', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'station-browser-ws-'));
+    const workspace = mkdtempSync(join(fixtureTmp(), 'station-browser-ws-'));
     roots.push(workspace);
     mkdirSync(join(workspace, 'app'));
-    const outside = mkdtempSync(join(tmpdir(), 'station-browser-other-'));
+    const outside = mkdtempSync(join(fixtureTmp(), 'station-browser-other-'));
     roots.push(outside);
     const cwd: Record<number, string> = {
       100: join(workspace, 'app'),
@@ -226,7 +234,7 @@ describe('suggestLocalTargets', () => {
 
 describe('Project attribution by working directory', () => {
   test('a sibling directory sharing the workspace prefix is outside it', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-browser-prefix-'));
+    const root = mkdtempSync(join(fixtureTmp(), 'station-browser-prefix-'));
     roots.push(root);
     mkdirSync(join(root, 'proj'));
     mkdirSync(join(root, 'proj-2'));
@@ -282,7 +290,7 @@ describe('round 2: suggestion safety', () => {
   });
 
   test('each suggestion carries pid, command line and cwd, is unselected, and warns on transitive reach', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'station-browser-ws-'));
+    const workspace = mkdtempSync(join(fixtureTmp(), 'station-browser-ws-'));
     roots.push(workspace);
     const scanner = new LocalPortScanner(
       () => [],
@@ -402,7 +410,7 @@ describe('nit: secrets are masked in suggestion command lines', () => {
   });
 
   test('the suggestion payload carries the masked command line', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'station-browser-ws-'));
+    const workspace = mkdtempSync(join(fixtureTmp(), 'station-browser-ws-'));
     roots.push(workspace);
     const scanner = new LocalPortScanner(
       () => [],
