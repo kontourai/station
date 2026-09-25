@@ -513,6 +513,12 @@ describe('self-hosted broker pion factory', () => {
     await runtime.start();
     try {
       await waitFor(() => h.acceptCallback !== undefined);
+      // Admission (crypto sign + verify) must fully publish the peer entry
+      // before a synthetic channel-accept event can find it; otherwise the
+      // accept handler sees no entry yet and closes the channel unserved.
+      // Mirror the other accept-callback tests below and wait for the
+      // publish signal, not just the (much earlier) callback assignment.
+      await waitFor(() => h.capturedProof !== undefined);
       const received: unknown[] = [];
       let rawInbound: ((value: unknown) => void) | undefined;
       const raw = {
