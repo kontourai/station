@@ -6,6 +6,13 @@ import Foundation
 /// "combined" representation), the registration bound in as associated data.
 /// Only the Station and this phone hold the key, so the gateway, Cloudflare
 /// and Apple carry the card without being able to read or forge it.
+///
+/// They can REPLAY it: an earlier genuine card for the same registration
+/// opens just as well, and APNs orders updates by the push's own timestamp,
+/// which the relay sets. Nothing on the phone remembers the last card it
+/// accepted (the widget renders from each update's state alone and has no
+/// state of its own to keep), so a replay is bounded only by the card's
+/// `activity_expires_at`, which AgentActivityCardResolver enforces.
 public enum CardOpener {
   static let nonceBytes = 12
   static let tagBytes = 16

@@ -34,7 +34,7 @@ where S: SendableMetatype, S.AsyncIterator: SendableMetatype, S.Element: Sendabl
       once.track(
         Task {
           do {
-            try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+            try await Task.sleep(nanoseconds: deadlineNanoseconds(seconds))
           } catch {
             return  // Cancelled because another outcome already answered.
           }
@@ -44,6 +44,15 @@ where S: SendableMetatype, S.AsyncIterator: SendableMetatype, S.Element: Sendabl
   } onCancel: {
     once.resume(nil)
   }
+}
+
+/// `seconds` as a sleep length: negative and NaN mean now, and anything past
+/// a year (including infinity) is a year, where `UInt64(seconds * 1e9)`
+/// would trap.
+func deadlineNanoseconds(_ seconds: Double) -> UInt64 {
+  let year = 365.0 * 24 * 60 * 60
+  guard seconds > 0 else { return 0 }  // Also NaN.
+  return UInt64(min(seconds, year) * 1_000_000_000)
 }
 
 /// Delivers one answer and cancels the tasks racing to give it. Every member

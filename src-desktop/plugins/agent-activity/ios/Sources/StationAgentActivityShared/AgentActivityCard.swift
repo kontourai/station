@@ -1,3 +1,5 @@
+import Foundation
+
 /// What the Live Activity shows for one content update.
 public enum AgentActivityCard: Equatable {
   /// Something did not check out; the view shows a neutral
@@ -8,12 +10,21 @@ public enum AgentActivityCard: Equatable {
 
 public enum AgentActivityCardResolver {
   /// Every check must pass, in this order, before anything from the push is
-  /// shown. The Station key pin (`sk`) is what stops another Station, which
-  /// can also get a signature past the gateway, from writing on this phone's
-  /// card; `user_id` inside the seal must name the Station that registered.
+  /// shown. What keeps another Station off this phone's card is the seal:
+  /// only this registration's payload key opens it, with the registration id
+  /// bound in as associated data. The Station key pin (`sk`) is defence in
+  /// depth on top of that, and `user_id` inside the seal must name the
+  /// Station that registered.
+  ///
+  /// A card past its `activity_expires_at` (epoch millis, which the Station
+  /// always writes) renders as the neutral placeholder, never as current
+  /// content: a replayed older card carries its own, earlier, expiry. There
+  /// is deliberately no render-time age limit on `updated_at` (Android has
+  /// one); a Live Activity can legitimately sit unchanged for longer.
   public static func resolve(
     state: StationAgentActivityAttributes.ContentState,
     attributesRid: String,
+    now: Date = Date(),
     registration lookup: (String) -> AgentActivityRegistration?
   ) -> AgentActivityCard {
     guard state.v == liveActivityStateVersion else { return .placeholder }
@@ -31,6 +42,9 @@ public enum AgentActivityCardResolver {
         sealed: state.sealed)
     else { return .placeholder }
     guard card["user_id"] == registration.stationId else { return .placeholder }
+    guard let expiresAt = card["activity_expires_at"].flatMap({ Int64($0) }),
+      Double(expiresAt) > now.timeIntervalSince1970 * 1000
+    else { return .placeholder }
     return .card(ActivityModel(data: card, active: card["active"] == "true"))
   }
 }

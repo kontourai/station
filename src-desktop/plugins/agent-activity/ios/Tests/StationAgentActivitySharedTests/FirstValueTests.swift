@@ -32,6 +32,20 @@ private final class Deliveries: @unchecked Sendable {
 }
 
 final class FirstValueTests: XCTestCase {
+  func testTimeoutsThatWouldOverflowAreClampedNotTrapped() async {
+    XCTAssertEqual(deadlineNanoseconds(2), 2_000_000_000)
+    XCTAssertEqual(deadlineNanoseconds(-1), 0)
+    XCTAssertEqual(deadlineNanoseconds(.nan), 0)
+    let year: UInt64 = 365 * 24 * 60 * 60 * 1_000_000_000
+    XCTAssertEqual(deadlineNanoseconds(.infinity), year)
+    XCTAssertEqual(deadlineNanoseconds(1e300), year)
+    // End to end: an unbounded wait still answers with the first value.
+    let first = await firstValue(timeout: .infinity) {
+      AsyncStream<Int> { continuation in continuation.yield(3) }
+    }
+    XCTAssertEqual(first, 3)
+  }
+
   func testReturnsTheFirstValue() async {
     let first = await firstValue(timeout: 5) {
       AsyncStream<Int> { continuation in

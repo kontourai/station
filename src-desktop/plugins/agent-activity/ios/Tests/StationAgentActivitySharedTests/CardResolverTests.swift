@@ -24,12 +24,18 @@ final class CardResolverTests: XCTestCase {
   private func resolve(
     _ state: StationAgentActivityAttributes.ContentState,
     attributesRid: String = SealedTestVector.registrationId,
+    now: Date = SealedTestVector.updatedAt,
     registration: AgentActivityRegistration?? = .none
   ) -> AgentActivityCard {
     let stored = registration ?? self.registration
-    return AgentActivityCardResolver.resolve(state: state, attributesRid: attributesRid) { rid in
+    return AgentActivityCardResolver.resolve(state: state, attributesRid: attributesRid, now: now) {
+      rid in
       rid == stored?.id ? stored : nil
     }
+  }
+
+  private func millis(_ value: Int64) -> Date {
+    Date(timeIntervalSince1970: Double(value) / 1000)
   }
 
   func testRendersTheOpenedCardWhenEveryCheckPasses() {
@@ -42,6 +48,27 @@ final class CardResolverTests: XCTestCase {
     XCTAssertEqual(model.action, "Approve")
     XCTAssertTrue(model.active)
     XCTAssertEqual(model.hero?.project, "Login App")
+  }
+
+  func testAnExpiredCardRendersThePlaceholderNotItsContent() {
+    let expiry = SealedTestVector.expiresAtMillis
+    guard case .card = resolve(state(), now: millis(expiry - 1)) else {
+      return XCTFail("a card is current until its expiry")
+    }
+    XCTAssertEqual(resolve(state(), now: millis(expiry)), .placeholder, "at its expiry")
+    XCTAssertEqual(resolve(state(), now: millis(expiry + 60_000)), .placeholder, "after it")
+  }
+
+  func testACardWithoutAReadableExpiryIsNotRendered() throws {
+    let base =
+      #""user_id":"11111111-1111-4111-8111-111111111111","active":"true","activity_line_0":"Working\tA\tB""#
+    guard case .card = resolve(
+      state(sealed: try SealedTestVector.seal("{\(base),\"activity_expires_at\":\"1800007200000\"}")))
+    else { return XCTFail("the same card with an expiry renders") }
+    XCTAssertEqual(resolve(state(sealed: try SealedTestVector.seal("{\(base)}"))), .placeholder)
+    XCTAssertEqual(
+      resolve(state(sealed: try SealedTestVector.seal("{\(base),\"activity_expires_at\":\"soon\"}"))),
+      .placeholder)
   }
 
   func testAnUnknownContentVersionIsNotRendered() {

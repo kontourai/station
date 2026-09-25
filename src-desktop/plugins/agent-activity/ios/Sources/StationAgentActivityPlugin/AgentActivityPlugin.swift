@@ -255,7 +255,9 @@ enum LiveActivities {
   /// (goes stale 5 s in), `stale-past` (an update whose stale date has
   /// already passed, which is how a Station that stopped updating looks).
   /// ActivityKit does not show an activity requested with a past stale date,
-  /// so `stale-past` starts fresh and then updates with one.
+  /// so `stale-past` starts fresh and then updates with one. The vector's
+  /// card carries `activity_expires_at` 1800007200000 (2027-01-15 UTC); from
+  /// then on `kat` renders the placeholder, as any expired card does.
   enum DebugPreview {
     static let registrationId = "AAECAwQFBgcICQoLDA0ODw"
     static let payloadKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
