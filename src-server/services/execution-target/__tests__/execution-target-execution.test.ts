@@ -808,6 +808,7 @@ describe('executeForegroundMessage', () => {
     '%s start with no userId is refused and starts no session',
     async (_label, successor) => {
       const deps = dependencies();
+      const recordApprovalMode = vi.fn(() => undefined);
       if (successor) {
         deps.readSessionBinding = vi.fn(async () => ({
           environmentId: 'environment-kontour',
@@ -827,11 +828,16 @@ describe('executeForegroundMessage', () => {
               agent: agentId('station'),
             },
             message: 'Nobody owns this',
+            // A carried approval pick: its receipt must not be written for
+            // a start that is refused.
+            setApprovalMode: 'ask',
+            setApprovalModeBasedOn: null,
             ...(successor ? { conversationId: 'conversation:ownerless' } : {}),
           },
-          deps,
+          { ...deps, recordApprovalMode },
         ),
       ).rejects.toThrow('A session start requires the principal it belongs to');
+      expect(recordApprovalMode).not.toHaveBeenCalled();
       expect(deps.startSession).not.toHaveBeenCalled();
       expect(deps.sendTurn).not.toHaveBeenCalled();
     },

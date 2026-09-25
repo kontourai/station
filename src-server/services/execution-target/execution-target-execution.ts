@@ -613,6 +613,18 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  // A fresh or successor session records `userId` as its owner, and a
+  // session with no recorded owner is readable by no caller. Refuse the start
+  // before this send writes anything else: its approval-mode receipt, a
+  // boundary claim, a worktree or an engine start. (A successor's child is
+  // already reserved above by `resolveConversationSession`; that happens
+  // only for a conversation whose binding the caller passed, and a binding
+  // recording an owner refuses a caller who names none.)
+  if ((!binding || continuation?.startRequired) && !input.userId?.trim()) {
+    throw new Error(
+      'A session start requires the principal it belongs to (userId).',
+    );
+  }
   // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
@@ -661,15 +673,6 @@ export async function executeForegroundMessage(
       ? resolved.workspace.workspaceIsolation
       : undefined);
   if (!binding || continuation?.startRequired) {
-    // A fresh or successor session records `userId` as its owner, and a
-    // session with no recorded owner is readable by no caller. Refuse the
-    // start before any side effect (a boundary claim, a worktree) rather than
-    // create a session nobody can open.
-    if (!input.userId?.trim()) {
-      throw new Error(
-        'A session start requires the principal it belongs to (userId).',
-      );
-    }
     // A boundary is claimed at the real cold-start seam, never by a warm turn
     // or ordinary recovery.  Empty policy intentionally has no transcript seed.
     const contextBoundaryStartCommandId = continuation?.contextBoundary
