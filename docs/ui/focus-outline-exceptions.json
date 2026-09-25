@@ -220,6 +220,11 @@
       "path": "src-ui/src/views/page-layout.css",
       "selector": ".page__search-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".responsive-surface-panel:focus",
+      "reason": "The dialog panel is a programmatic focus target (tabindex -1), not a control, and is already excluded from the global keyboard-focus floor; Safari otherwise rings the whole panel on open. Controls inside keep the floor's ring (tests/pdf-canvas-preview.spec.ts keyboard-open case)."
     }
   ]
 }
