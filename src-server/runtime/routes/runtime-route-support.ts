@@ -19,6 +19,7 @@ import {
   wireAgentActivityPublisher,
 } from '../../services/notifications/agent-activity-publisher.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
+import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { wireWebPushDelivery } from '../../services/notifications/web-push-delivery.js';
@@ -367,9 +368,11 @@ export function configureRuntimeSupportServices(
   notificationService.addProvider(
     new DevicePairingNotificationProvider(resolveDevicePairing),
   );
-  for (const { provider } of getNotificationProviders()) {
-    notificationService.addProvider(provider);
-  }
+  registerPluginNotificationProviders(
+    notificationService,
+    getNotificationProviders(),
+    context.logger,
+  );
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -570,7 +573,12 @@ export function configureRuntimeSupportServices(
     eventBus: context.eventBus,
     devicePairing: context.environmentSecurityService.devicePairing,
     signingKey: pushSigningKeyStore,
-    gateway: pushGateway ?? { sendUrl: '', audience: '' },
+    gateway: pushGateway ?? {
+      sendUrl: '',
+      liveActivityUrl: '',
+      channelsUrl: '',
+      audience: '',
+    },
     enabled: webPushEnabled && pushGateway !== null,
     logger: context.logger,
     // Each phone reads what its own paired device may read (see
