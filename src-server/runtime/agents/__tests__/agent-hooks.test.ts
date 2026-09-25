@@ -854,6 +854,30 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     });
   });
 
+  test('#2584: station-control notify_user is allowed with no authored pattern, no approval channel and no unattended grant; a mutating tool is still denied', async () => {
+    const hooks = createAgentHooks(createDeps());
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'station-control_notify_user',
+          toolCallId: 'tool-1',
+          toolArgs: { title: 'Nightly finished' },
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      hooks.beforeToolCall!(
+        {
+          toolName: 'station-control_delete_agent',
+          toolCallId: 'tool-2',
+          toolArgs: { slug: 'x' },
+        },
+        { agentSlug: 'planner' },
+      ),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
   test('an absent resolveUnattendedGrant seam denies (fail-closed seam)', async () => {
     const hooks = createAgentHooks(createDeps());
 

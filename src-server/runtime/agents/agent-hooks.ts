@@ -29,7 +29,10 @@ import {
 } from '../conversation/usage-stats.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import {
+  isAutoApproved,
+  withIntrinsicAutoApprovals,
+} from '../tools/tool-executor.js';
 import type {
   IAgentHooks,
   InvocationContext,
@@ -101,7 +104,9 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     requester: (tool: ToolCallContext) => Promise<boolean>,
   ): () => void;
 } {
-  const autoApprove = deps.spec.tools?.autoApprove || [];
+  // #2584: authored patterns plus the bounded-write tools every agent may
+  // call unprompted (attended, unattended and delegated alike).
+  const autoApprove = withIntrinsicAutoApprovals(deps.spec.tools?.autoApprove);
   const approvalRequesters = new Map<
     string,
     (tool: ToolCallContext) => Promise<boolean>

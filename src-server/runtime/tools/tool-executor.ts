@@ -7,4 +7,5 @@ export {
   canonicalizeExternalToolName,
   isAutoApproved,
   isAutoApprovedExternalTool,
+  withIntrinsicAutoApprovals,
 } from './tool-approval.js';

@@ -162,6 +162,54 @@ describe('tool-approval', () => {
       ).toBe(false);
     });
 
+    test('#2584: notify_user is auto-approved for an agent that authored no patterns — only for the genuine built-in under an authentic name', () => {
+      const notify = 'mcp__station-control__notify_user';
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(true);
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          undefined,
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(true);
+      // ACP names are self-reported: an agent could label any of its own
+      // tools notify_user, so the intrinsic grant never applies there.
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [GENUINE_STATION_CONTROL],
+          'self-reported',
+        ),
+      ).toBe(false);
+      expect(
+        isAutoApprovedExternalTool(
+          notify,
+          [],
+          [IMPOSTOR_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(false);
+      // Only the bounded-write tool: a mutating station-control tool still
+      // needs an authored pattern.
+      expect(
+        isAutoApprovedExternalTool(
+          'mcp__station-control__delete_agent',
+          [],
+          [GENUINE_STATION_CONTROL],
+          'authentic',
+        ),
+      ).toBe(false);
+    });
+
     test('when the reserved id appears twice, the ENTRY THAT WINS DELIVERY (last) decides — genuine last approves, impostor last does not', () => {
       // Delivery is last-write-wins on the server-id key
       // (claude-mcp-passthrough.ts), so the guard must key on the last entry.

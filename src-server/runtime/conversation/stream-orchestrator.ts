@@ -13,7 +13,10 @@ import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import {
+  isAutoApproved,
+  withIntrinsicAutoApprovals,
+} from '../tools/tool-executor.js';
 
 /**
  * Create elicitation callback for tool approval
@@ -34,7 +37,8 @@ export function createElicitationCallback(
   logger: any,
   getConversationId: () => string | undefined = () => undefined,
 ) {
-  const autoApprove = agentSpec?.tools?.autoApprove || [];
+  // #2584: authored patterns plus the bounded-write intrinsic grants.
+  const autoApprove = withIntrinsicAutoApprovals(agentSpec?.tools?.autoApprove);
 
   return async (request: any) => {
     if (request.type === 'tool-approval') {

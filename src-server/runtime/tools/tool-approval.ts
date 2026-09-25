@@ -5,6 +5,20 @@ import {
   STATION_BROWSER_MCP_SERVER_ID,
 } from '../../tools/station-browser-policy.js';
 import { isBuiltinStationControl } from '../bootstrap/station-control-runtime-env.js';
+import { SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS } from './runtime-control-tools.js';
+
+/**
+ * #2584: every agent's effective auto-approve list — its authored patterns
+ * plus the bounded-write station-control tools every agent may call without
+ * a prompt (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`, e.g. `notify_user`). Kept
+ * as patterns so the external path's reserved-server checks still decide
+ * whether a name really is the built-in station-control's.
+ */
+export function withIntrinsicAutoApprovals(
+  patterns: readonly string[] | undefined,
+): string[] {
+  return [...(patterns ?? []), ...SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS];
+}
 
 export function isAutoApproved(toolName: string, patterns: string[]): boolean {
   return patterns.some((pattern) => {
@@ -166,18 +180,21 @@ export function isAutoApprovedExternalTool(
   resolvedToolServers?: readonly ResolvedAgentToolServer[],
   toolNameProvenance: ExternalToolNameProvenance = 'self-reported',
 ): boolean {
-  if (!patterns || patterns.length === 0) return false;
+  // The intrinsic grants join BEFORE the reserved-server checks below, so an
+  // ACP self-reported or impostor-delivered `station-control` name never
+  // gets them.
+  const effective = withIntrinsicAutoApprovals(patterns);
   const canonical = canonicalizeExternalToolName(toolName);
   const matched =
-    isAutoApproved(toolName, patterns) ||
-    (canonical !== toolName && isAutoApproved(canonical, patterns));
+    isAutoApproved(toolName, effective) ||
+    (canonical !== toolName && isAutoApproved(canonical, effective));
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
-      patterns,
+      patterns ?? [],
       resolvedToolServers,
       toolNameProvenance,
     );
