@@ -631,7 +631,7 @@ Two consequences worth stating plainly:
 - **Bump the container in lockstep with `@playwright/test`**, and expect a
   re-baseline to be part of that change. A rebuilt base image published under
   the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.62.1-noble`.
+  pin is a digest rather than `v1.63.0-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
