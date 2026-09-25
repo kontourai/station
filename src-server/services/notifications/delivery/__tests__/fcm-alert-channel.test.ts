@@ -6,7 +6,7 @@
  * then opens the sealed notification the way the phone does. A message the
  * deployed gateway would refuse, or the phone could not open, fails here.
  */
-import { createDecipheriv, createHash } from 'node:crypto';
+import { createDecipheriv } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NATIVE_PUSH_NOTIFICATION_AAD_PREFIX } from '@kontourai/station-contracts/native-push';
@@ -261,11 +261,8 @@ function open(sealed: string, registration: NativePushRegistration) {
   ) as Record<string, string>;
 }
 
-const collapseKeyOf = (id: string) =>
-  `n${createHash('sha256').update(id).digest('hex').slice(0, 40)}`;
-
 describe('FcmAlertChannel through the delivery router', () => {
-  test('an attention notification reaches each registered phone sealed, high priority, collapsing on its id', async () => {
+  test('an attention notification reaches each registered phone sealed, high priority, with no collapse key', async () => {
     const h = await harness();
     const record = notification();
     h.eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record as never);
@@ -282,7 +279,8 @@ describe('FcmAlertChannel through the delivery router', () => {
       'station_kind',
     ]);
     expect(toPhone.priority).toBeUndefined();
-    expect(toPhone.collapseKey).toBe(collapseKeyOf(record.id));
+    // Non-collapsible: FCM keeps only four collapse keys per offline device.
+    expect(toPhone.collapseKey).toBeUndefined();
     expect(toPhone.plaintext).toEqual({
       v: '1',
       user_id: ENVIRONMENT_ID,
@@ -361,7 +359,7 @@ describe('FcmAlertChannel through the delivery router', () => {
           created_at: String(h.clock.now),
           expires_at: String(h.clock.now + FCM_ALERT_LIFETIME_MS),
         });
-        expect(retract.collapseKey).toBe(collapseKeyOf(record.id));
+        expect(retract.collapseKey).toBeUndefined();
         expect(retract.priority).toBe('normal');
       }
     }

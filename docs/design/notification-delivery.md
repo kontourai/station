@@ -303,9 +303,12 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   for a path target). There is no link: a tap opens that session through the
   card's tap-nonce ledger, never a URL. `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`
   is its known-answer vector. When the phone's surface asked to hide content,
-  the title and body are replaced with generic copy before sealing. The FCM
-  collapse key is `n` + 40 hex of SHA-256 of the notification id, so a retract
-  replaces its alert if FCM still holds it; attention and failed go at high
+  the title and body are replaced with generic copy before sealing. Station
+  notifications carry no FCM collapse key: FCM keeps at most four collapse
+  keys per offline or dozing device and drops the rest without saying so,
+  which would lose alerts, retracts or card updates, so each message is kept
+  and the phone's `created_at` history orders them (an alert arriving after
+  its retract is dropped). Attention and failed go at high
   priority, everything else (and every retract) at normal, and the gateway
   gives a notification an hour to live instead of the card's five minutes.
   A read or dismiss elsewhere sends a retract. The channel

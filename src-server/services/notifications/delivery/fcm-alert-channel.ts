@@ -14,12 +14,13 @@
  *   the session it names).
  * - Sealed to the registration's payload key under
  *   `station-notification:v1:<registrationId>`: the gateway and Google see
- *   only routing data, a collapse key (a hash of the notification id) and a
- *   priority. `hideContent` replaces the title and body with generic copy
+ *   only routing data and a priority. No collapse key: FCM keeps only four
+ *   per offline or dozing device and silently drops the rest, which would
+ *   lose alerts and retracts; the phone orders deliveries itself. `hideContent` replaces the title and body with generic copy
  *   before sealing, so the notification's own text is never sent at all.
  * - Retract: a read or dismiss elsewhere sends a `retract` for the same id,
- *   which cancels the phone's notification. It collapses with the alert, so
- *   an alert FCM is still holding for an offline phone is replaced by it.
+ *   which cancels the phone's notification. If FCM delivers the alert after
+ *   its retract, the phone drops it (`created_at` history).
  * - Paced: shares the per-phone send floor with the agent-activity card
  *   (`native-push-send-floor.ts`); a send inside the floor waits for its
  *   slot rather than being dropped.
@@ -29,7 +30,6 @@
  *   a finished or failed turn) are not carried, so one event never raises
  *   two alerts on the same phone.
  */
-import { createHash } from 'node:crypto';
 import {
   isNativePushSessionReference,
   type NativePushNotificationData,
@@ -114,11 +114,6 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms).unref?.();
   });
-}
-
-/** `n` + 40 hex characters of SHA-256 of the notification id. */
-function fcmAlertCollapseKey(notificationId: string): string {
-  return `n${createHash('sha256').update(notificationId, 'utf8').digest('hex').slice(0, 40)}`;
 }
 
 export class FcmAlertChannel implements DeliveryChannel {
@@ -231,7 +226,6 @@ export class FcmAlertChannel implements DeliveryChannel {
           deviceId,
           registration,
           plaintext,
-          notificationId,
           urgent,
           signingKey,
         );
@@ -244,7 +238,6 @@ export class FcmAlertChannel implements DeliveryChannel {
     deviceId: string,
     registration: NativePushAndroidRegistration,
     plaintext: NativePushNotificationPlaintext,
-    notificationId: string,
     urgent: boolean,
     key: PushSigningKey,
   ): Promise<SendResult> {
@@ -264,7 +257,6 @@ export class FcmAlertChannel implements DeliveryChannel {
           token: registration.token,
           packageName: registration.packageName,
           data,
-          collapseKey: fcmAlertCollapseKey(notificationId),
           ...(urgent ? {} : { priority: 'normal' }),
         }),
         'utf8',

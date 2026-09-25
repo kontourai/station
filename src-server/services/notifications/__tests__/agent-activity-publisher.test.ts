@@ -475,6 +475,12 @@ describe('agent-activity publisher', () => {
     expect(() => openCard(a?.data.sealed ?? '', second.registration)).toThrow();
     // Redirects are refused, never followed with the token.
     expect(h.fetchInits.every((init) => init.redirect === 'error')).toBe(true);
+    // The card is not collapsible either (#2588): it sends no collapse key,
+    // so it never competes for FCM's four per device.
+    for (const init of h.fetchInits)
+      expect(
+        JSON.parse(Buffer.from(init.body as Buffer).toString('utf8')),
+      ).not.toHaveProperty('collapseKey');
     await h.publisher.stop();
   });
 
