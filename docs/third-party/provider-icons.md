@@ -1,8 +1,9 @@
 # Provider and integration icons
 
 Station renders Claude Code, Codex/OpenAI, Pi, Kiro, OpenCode, Muse Code,
-Cursor, Goose, and Qwen Code through a small bundled SVG mark family in
-`BrandIcon`. The Claude, Codex, Pi, Kiro, and OpenCode path data is taken from
+Cursor, Goose, and Qwen Code through a small bundled SVG mark family:
+`BrandIcon` renders it, and the inline marks live in `BrandMarks.tsx`, which
+loads on demand. The Claude, Codex, Pi, Kiro, and OpenCode path data is taken from
 each provider's own published asset, retrieved 2026-09-25:
 
 | Mark | Source | SHA-256 of the retrieved file |

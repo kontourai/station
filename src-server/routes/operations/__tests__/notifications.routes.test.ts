@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -614,6 +615,186 @@ describe('Notification Routes', () => {
       }),
     );
     expect(body.success).toBe(true);
+  });
+
+  describe('POST /:id/read (#2587)', () => {
+    const CLIENT_SESSION = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
+    const envelope: NotificationEnvelopeV1 = {
+      v: 1,
+      source: {
+        kind: 'agent',
+        sessionId: 'session-1',
+        agent: 'builder',
+        assurance: 'bound',
+      },
+      audience: { kind: 'session-readers', sessionId: 'session-1' },
+      urgency: 'done',
+      interrupt: 'default',
+    };
+
+    function withDevice(deviceId: string) {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          credential: 'device-credential',
+          authority: 'device-credential',
+          deviceId,
+          source: 'bearer',
+        });
+        await next();
+      });
+      outer.route('/', createNotificationRoutes(svc));
+      return outer;
+    }
+
+    async function readMarker(id: string) {
+      const stored = (await svc.list()).find((n) => n.id === id);
+      return (stored?.metadata?.envelope ?? {}) as {
+        readAt?: string;
+        readBy?: string;
+      };
+    }
+
+    test('records the local client session as the reader, ignoring a body claim', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const res = await app.request(`/${n.id}/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Station-Client-Session': CLIENT_SESSION.toUpperCase(),
+        },
+        body: JSON.stringify({ surfaceId: 'device:someone-else' }),
+      });
+      expect(res.status).toBe(200);
+      expect((await json(res)).data).toEqual({ outcome: 'read' });
+      expect((await readMarker(n.id)).readBy).toBe(`local:${CLIENT_SESSION}`);
+    });
+
+    test('a paired device reads as device:<id> from its verified credential', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const res = await withDevice('device-7').request(`/${n.id}/read`, {
+        method: 'POST',
+        headers: { 'X-Station-Client-Session': CLIENT_SESSION },
+      });
+      expect(res.status).toBe(200);
+      expect((await readMarker(n.id)).readBy).toBe('device:device-7');
+    });
+
+    test('refuses a caller that names no surface, and records nothing', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      for (const headers of [
+        {},
+        { 'X-Station-Client-Session': 'not-a-uuid' },
+      ] as Record<string, string>[]) {
+        const res = await app.request(`/${n.id}/read`, {
+          method: 'POST',
+          headers,
+        });
+        expect(res.status).toBe(400);
+      }
+      expect((await readMarker(n.id)).readAt).toBeUndefined();
+    });
+
+    test('reports first-reader-wins and legacy records truthfully', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const headers = { 'X-Station-Client-Session': CLIENT_SESSION };
+      await app.request(`/${n.id}/read`, { method: 'POST', headers });
+      const second = await withDevice('device-7').request(`/${n.id}/read`, {
+        method: 'POST',
+      });
+      expect((await json(second)).data).toEqual({ outcome: 'already-read' });
+      expect((await readMarker(n.id)).readBy).toBe(`local:${CLIENT_SESSION}`);
+
+      const legacy = await svc.schedule('test', { title: 'X', category: 'c' });
+      const legacyRes = await app.request(`/${legacy.id}/read`, {
+        method: 'POST',
+        headers,
+      });
+      expect((await json(legacyRes)).data).toEqual({ outcome: 'no-envelope' });
+
+      expect(
+        (await app.request('/missing/read', { method: 'POST', headers }))
+          .status,
+      ).toBe(404);
+
+      const pending = (
+        await svc.scheduleEnveloped(
+          'agent',
+          {
+            title: 'Later',
+            category: 'agent-done',
+            scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+          envelope,
+        )
+      ).notification;
+      const pendingRes = await app.request(`/${pending.id}/read`, {
+        method: 'POST',
+        headers,
+      });
+      expect((await json(pendingRes)).data).toEqual({
+        outcome: 'not-delivered',
+      });
+    });
+
+    test("a hosted caller cannot mark another tenant's notification read", async () => {
+      const alpha = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Alpha only', category: 'agent-done' },
+          {
+            ...envelope,
+            source: {
+              kind: 'agent',
+              sessionId: 'alpha-session',
+              assurance: 'bound',
+            },
+            audience: { kind: 'session-readers', sessionId: 'alpha-session' },
+          },
+        )
+      ).notification;
+      const hostedApp = createNotificationRoutes(svc, {
+        readAuthorityForRequest: (request) =>
+          hostedAuthority(
+            request.headers.get('x-test-tenant') as 'alpha' | 'bravo',
+          ),
+        canReadSession: (sessionId, authority) =>
+          sessionId === `${authority.tenantExecutionContext?.tenantId}-session`,
+      });
+      const res = await hostedApp.request(`/${alpha.id}/read`, {
+        method: 'POST',
+        headers: {
+          'x-test-tenant': 'bravo',
+          'X-Station-Client-Session': CLIENT_SESSION,
+        },
+      });
+      expect(res.status).toBe(404);
+      expect((await readMarker(alpha.id)).readAt).toBeUndefined();
+    });
   });
 
   test('hosted list and mutations retain bravo and unbound scheduler/API rows while allowing only alpha', async () => {

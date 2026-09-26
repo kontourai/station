@@ -31,8 +31,10 @@ internal const val EXTRA_TAP = "io.kontourai.station.agentactivity.TAP"
 class AgentMessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     val data = remoteMessage.data
-    if (data["station_kind"] != AGENT_ACTIVITY_KIND) return
-    AgentNotifications.receive(this, data)
+    when (data["station_kind"]) {
+      AGENT_ACTIVITY_KIND -> AgentNotifications.receive(this, data)
+      STATION_NOTIFICATION_KIND -> StationNotifications.receive(this, data)
+    }
   }
 }
 
@@ -120,8 +122,12 @@ object AgentNotifications {
   private fun indexStore(context: Context): SharedPreferences =
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
 
-  /** Registration ids are validated base64url, so they are safe in a file name. */
-  private fun registrationStore(context: Context, registrationId: String): SharedPreferences =
+  /**
+   * One registration's preferences. Registration ids are validated base64url,
+   * so they are safe in a file name. StationNotifications keeps its replay
+   * state here too.
+   */
+  internal fun state(context: Context, registrationId: String): SharedPreferences =
     context.getSharedPreferences("$STORE.$registrationId", Context.MODE_PRIVATE)
 
   private fun knownIds(context: Context): Set<String> =
@@ -132,11 +138,12 @@ object AgentNotifications {
   }
 
   private fun storedStationId(context: Context, registrationId: String): String? =
-    registrationStore(context, registrationId).getString(KEY_STATION_ID, null)
+    state(context, registrationId).getString(KEY_STATION_ID, null)
 
-  private fun loadRegistration(context: Context, registrationId: String): Registration? {
+  /** The stored registration for [registrationId], or null when this phone does not know it. */
+  internal fun registration(context: Context, registrationId: String): Registration? {
     if (registrationId !in knownIds(context)) return null
-    val store = registrationStore(context, registrationId)
+    val store = state(context, registrationId)
     return Registration(
       registrationId,
       store.getString(KEY_STATION_ID, null) ?: return null,
@@ -166,14 +173,14 @@ object AgentNotifications {
     // just a claim, and a different Station quoting it must not evict this one.
     val superseded = knownIds(context).filter { otherId ->
       otherId != registration.id &&
-        registrationStore(context, otherId).let { other ->
+        state(context, otherId).let { other ->
           other.getString(KEY_STATION_ID, null) == registration.stationId &&
             other.getString(KEY_STATION_KEY, null) == registration.stationKey
         }
     }
     superseded.forEach { forget(context, it) }
 
-    val store = registrationStore(context, registration.id)
+    val store = state(context, registration.id)
     // A new key means a new replay history: start this registration over.
     val rekeyed = store.getString(KEY_STATION_KEY, null) != registration.stationKey
     if (rekeyed) cancelCard(context, registration.id)
@@ -207,7 +214,9 @@ object AgentNotifications {
         val manager = notificationManager(context)
         for (posted in manager.activeNotifications) {
           val tag = posted.tag ?: continue
-          if (tag.startsWith(CARD_TAG) || tag.startsWith(ALERT_TAG)) manager.cancel(tag, posted.id)
+          val ours = tag.startsWith(CARD_TAG) || tag.startsWith(ALERT_TAG) ||
+            StationNotifications.isStationNotificationTag(tag)
+          if (ours) manager.cancel(tag, posted.id)
         }
       }
       registrationId in knownIds(context) -> forget(context, registrationId)
@@ -223,10 +232,12 @@ object AgentNotifications {
     cancelCard(context, registrationId)
     val manager = notificationManager(context)
     val alerts = alertTag(registrationId)
+    val notificationPrefix = StationNotifications.tagPrefix(registrationId)
     for (posted in manager.activeNotifications) {
-      if (posted.tag == alerts) manager.cancel(posted.tag, posted.id)
+      val tag = posted.tag ?: continue
+      if (tag == alerts || tag.startsWith(notificationPrefix)) manager.cancel(tag, posted.id)
     }
-    registrationStore(context, registrationId).edit().clear().commit()
+    state(context, registrationId).edit().clear().commit()
     context.deleteSharedPreferences("$STORE.$registrationId")
   }
 
@@ -290,20 +301,20 @@ object AgentNotifications {
       return
     }
     if (registrationId !in knownIds(context)) return
-    registrationStore(context, registrationId).edit().putBoolean(KEY_DISMISSED, true).apply()
+    state(context, registrationId).edit().putBoolean(KEY_DISMISSED, true).apply()
     cancelCard(context, registrationId)
   }
 
   @Synchronized
   fun expire(context: Context, registrationId: String, now: Long = System.currentTimeMillis()) {
-    val expiresAt = registrationStore(context, registrationId).getLong(KEY_EXPIRES_AT, 0)
+    val expiresAt = state(context, registrationId).getLong(KEY_EXPIRES_AT, 0)
     // An alarm set for an earlier run must not take down a later run's card.
     if (expiresAt > 0 && expiresAt <= now) cancelCard(context, registrationId)
   }
 
   @Synchronized
   fun receive(context: Context, data: Map<String, String>) {
-    val registration = data["device_id"]?.let { loadRegistration(context, it) } ?: return
+    val registration = data["device_id"]?.let { registration(context, it) } ?: return
     // Cards travel sealed. One that does not open with this registration's
     // key was not written by its Station.
     val card = openPush(registration, data) ?: return
@@ -311,7 +322,7 @@ object AgentNotifications {
     if (!acceptsPush(registration, card)) return
     if (!isFresh(updatedAt, System.currentTimeMillis())) return
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-    val store = registrationStore(context, registration.id)
+    val store = state(context, registration.id)
     ensureChannels(context)
     handleAlert(context, registration.id, store, card, sessionRoute(registration, card, RouteSource.ALERT))
     handleCard(context, registration.id, store, card, updatedAt, sessionRoute(registration, card, RouteSource.ACTIVITY))
@@ -364,7 +375,7 @@ object AgentNotifications {
     val title = (data["alert_title"] ?: "").take(ALERT_TITLE_CHARS)
     val body = (data["alert_body"] ?: "").take(ALERT_BODY_CHARS)
     val notificationId = alertId.hashCode()
-    val opens = tapIntent(context, notificationId, "alert:$registrationId:$alertId", route)
+    val opens = openApp(context, notificationId, "alert:$registrationId:$alertId", route)
     val builder = newBuilder(context, Channel.ALERTS)
     builder.setSmallIcon(R.drawable.agent_activity_mark)
     builder.setContentTitle(title)
@@ -437,7 +448,7 @@ object AgentNotifications {
     val onDismiss = registrationBroadcast(context, AgentActivityDismissReceiver::class.java, registrationId)
     // One PendingIntent per registration's card, updated in place, so a tap
     // (or the primary button) opens whatever session row 0 names right now.
-    val opens = tapIntent(context, registrationId.hashCode(), "activity:$registrationId", route)
+    val opens = openApp(context, registrationId.hashCode(), "activity:$registrationId", route)
     val builder = newBuilder(context, Channel.ACTIVITY)
     builder.setOngoing(active)
     builder.setOnlyAlertOnce(true)
@@ -463,7 +474,7 @@ object AgentNotifications {
       // takes the card down, even after the process is gone, without an
       // exact-alarm permission, a foreground service or periodic work.
       val expiresAt = System.currentTimeMillis() + remainingMs
-      registrationStore(context, registrationId).edit().putLong(KEY_EXPIRES_AT, expiresAt).apply()
+      state(context, registrationId).edit().putLong(KEY_EXPIRES_AT, expiresAt).apply()
       val alarms = context.getSystemService(AlarmManager::class.java)
       alarms.setAndAllowWhileIdle(
         AlarmManager.RTC_WAKEUP,
@@ -478,7 +489,7 @@ object AgentNotifications {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return
     val alarms = context.getSystemService(AlarmManager::class.java)
     alarms.cancel(registrationBroadcast(context, AgentActivityExpiryReceiver::class.java, registrationId))
-    registrationStore(context, registrationId).edit().remove(KEY_EXPIRES_AT).apply()
+    state(context, registrationId).edit().remove(KEY_EXPIRES_AT).apply()
   }
 
   private fun notificationManager(context: Context): NotificationManager =
@@ -516,7 +527,7 @@ object AgentNotifications {
    * only its latest nonce, and a card that stops naming a session stops
    * carrying one.
    */
-  private fun tapIntent(context: Context, requestCode: Int, identity: String, route: SessionRoute?): PendingIntent? {
+  internal fun openApp(context: Context, requestCode: Int, identity: String, route: SessionRoute?): PendingIntent? {
     val intent = launchIntent(context, identity) ?: return null
     val now = System.currentTimeMillis()
     val ledger = loadTaps(context)

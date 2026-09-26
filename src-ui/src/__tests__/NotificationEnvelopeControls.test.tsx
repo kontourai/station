@@ -1,0 +1,198 @@
+/**
+ * @vitest-environment jsdom
+ */
+
+import type { Notification } from '@kontourai/station-contracts/notification';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const fetchPreferences = vi.fn();
+const patchPreferences = vi.fn();
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    NotificationPreferencesRequestError:
+      actual.NotificationPreferencesRequestError,
+    fetchNotificationPreferences: (...args: unknown[]) =>
+      fetchPreferences(...args),
+    patchNotificationPreferences: (...args: unknown[]) =>
+      patchPreferences(...args),
+  };
+});
+
+import { NotificationPreferencesRequestError } from '@kontourai/station-sdk';
+
+const markNotificationRead = vi.fn(async () => 'read');
+vi.mock('@kontourai/station-sdk/notification-read', () => ({
+  markNotificationRead: (...args: unknown[]) =>
+    markNotificationRead(...(args as [])),
+}));
+const navigate = vi.fn();
+vi.mock('../contexts/NavigationContext', () => ({
+  navigationStore: { navigate: (...args: unknown[]) => navigate(...args) },
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
+import { NotificationCard } from '../components/notifications/NotificationCard';
+import { NotificationHistoryItem } from '../components/notifications/NotificationHistoryItem';
+
+function agentNotification(): Notification {
+  return {
+    id: 'n-1',
+    source: 'agent',
+    category: 'agent-attention',
+    status: 'delivered',
+    priority: 'high',
+    title: 'Need approval to run migration',
+    createdAt: '2026-09-24T00:00:00.000Z',
+    updatedAt: '2026-09-24T00:00:00.000Z',
+    metadata: {
+      envelope: {
+        v: 1,
+        source: {
+          kind: 'agent',
+          sessionId: '6f1c2d3e-aaaa-bbbb-cccc-111122223333',
+          agent: 'builder',
+          projectId: 'proj-1',
+          assurance: 'bound',
+        },
+        audience: { kind: 'owner' },
+        urgency: 'attention',
+        interrupt: 'default',
+      },
+    },
+  };
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+function preferencesRoute(present: boolean | 503) {
+  const refusal = (status: number) =>
+    new NotificationPreferencesRequestError('refused', status);
+  fetchPreferences.mockImplementation(async () => {
+    if (present === true) return { schemaVersion: 1 };
+    throw refusal(present === 503 ? 503 : 404);
+  });
+  patchPreferences.mockResolvedValue({ schemaVersion: 1 });
+}
+
+function renderHistoryItem(notification = agentNotification()) {
+  return render(
+    <NotificationHistoryItem
+      notification={notification}
+      isActionPending={false}
+      isDismissPending={false}
+      onAction={vi.fn()}
+      onDismiss={vi.fn()}
+    />,
+    { wrapper },
+  );
+}
+
+describe('inbox rows for enveloped notifications (#2587)', () => {
+  beforeEach(() => {
+    fetchPreferences.mockReset();
+    patchPreferences.mockReset();
+    markNotificationRead.mockClear();
+    navigate.mockClear();
+  });
+
+  test('attributes an agent notification to its agent and session', async () => {
+    preferencesRoute(false);
+    renderHistoryItem();
+    expect(screen.getByTestId('notification-attribution').textContent).toBe(
+      'from builder · session 6f1c2d3e',
+    );
+  });
+
+  test('offers Mute only once the preferences route answers, and mutes through it', async () => {
+    preferencesRoute(true);
+    renderHistoryItem();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Mute this agent' }),
+    );
+    await screen.findByText('Muted');
+    expect(patchPreferences).toHaveBeenCalledWith(
+      { perAgent: { builder: 'off' } },
+      'http://station.test',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Mute this project' }),
+    ).toBeTruthy();
+  });
+
+  test('without the preferences route there is no Mute to press', async () => {
+    preferencesRoute(false);
+    renderHistoryItem();
+    await waitFor(() => expect(fetchPreferences).toHaveBeenCalled());
+    // Let the settled query render before asserting absence.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
+  });
+
+  test('a failed preferences read offers no Mute either', async () => {
+    preferencesRoute(503);
+    renderHistoryItem();
+    await waitFor(() => expect(fetchPreferences).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
+  });
+
+  test('Open goes to the calling session and marks the notification read', async () => {
+    preferencesRoute(false);
+    render(
+      <NotificationCard
+        notification={agentNotification()}
+        onDismiss={vi.fn()}
+      />,
+      {
+        wrapper,
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await waitFor(() =>
+      expect(markNotificationRead).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'n-1' }),
+      ),
+    );
+    expect(navigate).toHaveBeenCalledWith('/', {
+      chat: '6f1c2d3e-aaaa-bbbb-cccc-111122223333',
+      dock: 'open',
+    });
+  });
+
+  test('an unknown source kind gets Open but no attribution or Mute', async () => {
+    preferencesRoute(true);
+    const newer = agentNotification();
+    newer.metadata = {
+      envelope: {
+        ...(newer.metadata?.envelope as object),
+        source: { kind: 'robot', robotId: 'r-1' },
+        target: { kind: 'path', path: '/schedule' },
+      },
+    };
+    renderHistoryItem(newer);
+    expect(screen.getByRole('button', { name: 'Open' })).toBeTruthy();
+    expect(screen.queryByTestId('notification-attribution')).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button', { name: /Mute/ })).toBeNull();
+  });
+
+  test('a legacy record renders neither attribution nor Open', () => {
+    const legacy = agentNotification();
+    legacy.metadata = {};
+    renderHistoryItem(legacy);
+    expect(screen.queryByTestId('notification-envelope-controls')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+  });
+});

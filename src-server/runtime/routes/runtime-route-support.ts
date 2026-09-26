@@ -23,6 +23,7 @@ import type {
   FocusSource,
   InAppLiveness,
 } from '../../services/notifications/delivery/router.js';
+import { createNativePushSendFloor } from '../../services/notifications/native-push-send-floor.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
@@ -565,6 +566,23 @@ export function configureRuntimeSupportServices(
     vapidKeyService.loadOrCreate(),
     resolveWebPushSubject(),
   );
+  // Agent-activity push to registered phones through the Kontour push
+  // gateway (docs/design/notification-delivery.md, "Station contract").
+  // Off exactly where Web Push is off: hosted paired-device records have no
+  // tenant binding. The key store only reads here; the first registration
+  // creates the key.
+  const pushSigningKeyStore = new PushSigningKeyStore(
+    context.configLoader.getProjectHomeDir(),
+    () => context.environmentSecurityService.devicePairing.environmentId(),
+  );
+  const pushGateway = resolvePushGatewayConfig();
+  // One per-phone FCM send floor for the card and Station notifications,
+  // which share each phone's push token budget at the gateway (#2588).
+  const nativePushSendFloor = createNativePushSendFloor();
+  if (!pushGateway)
+    context.logger.warn(
+      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
+    );
   // #2586: every notification past the in-app feed goes through the
   // delivery router (audience → policy → channels). Off exactly where Web
   // Push was: hosted paired-device records have no tenant binding.
@@ -583,24 +601,20 @@ export function configureRuntimeSupportServices(
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     listNotifications: () => notificationService.list(),
+    ...(pushGateway
+      ? {
+          fcmAlert: {
+            devicePairing: context.environmentSecurityService.devicePairing,
+            signingKey: pushSigningKeyStore,
+            gateway: pushGateway,
+            sendFloor: nativePushSendFloor,
+          },
+        }
+      : {}),
     ...(options.focus ? { focus: options.focus } : {}),
     ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
   });
 
-  // Agent-activity push to registered phones through the Kontour push
-  // gateway (docs/design/notification-delivery.md, "Station contract").
-  // Off exactly where Web Push is off: hosted paired-device records have no
-  // tenant binding. The key store only reads here; the first registration
-  // creates the key.
-  const pushSigningKeyStore = new PushSigningKeyStore(
-    context.configLoader.getProjectHomeDir(),
-    () => context.environmentSecurityService.devicePairing.environmentId(),
-  );
-  const pushGateway = resolvePushGatewayConfig();
-  if (!pushGateway)
-    context.logger.warn(
-      'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
-    );
   const agentActivityPublisher = wireAgentActivityPublisher({
     eventBus: context.eventBus,
     devicePairing: context.environmentSecurityService.devicePairing,
@@ -612,6 +626,7 @@ export function configureRuntimeSupportServices(
       audience: '',
     },
     enabled: webPushEnabled && pushGateway !== null,
+    sendFloor: nativePushSendFloor,
     logger: context.logger,
     // Each phone reads what its own paired device may read (see
     // agent-activity-session-reader.ts); hosted mode never reaches this.

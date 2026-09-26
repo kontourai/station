@@ -10,11 +10,32 @@ const DATA_KEY = /^[a-z][a-z0-9_]{0,63}$/;
 const RESERVED_KEY =
   /^(google|gcm|from|message_type|collapse_key|notification$|station_key$)/;
 
+// The kinds the Android handler renders: the agent-activity card, and a
+// sealed Station notification (an alert, or the retraction of one).
+const STATION_KINDS = new Set(['agent_activity', 'station_notification']);
+
+// A Station sends exactly these; anything else is refused rather than ignored.
+const BODY_KEYS = new Set([
+  'token',
+  'packageName',
+  'data',
+  'collapseKey',
+  'priority',
+]);
+
+export type SendPriority = 'high' | 'normal';
+
 export interface SendRequest {
   token: string;
   packageName: string;
   data: Record<string, string>;
   collapseKey?: string;
+  /**
+   * FCM delivery priority; `high` when absent. The card must always be high
+   * (Doze would hold it past the phone's freshness window), so only a
+   * notification may ask for `normal`.
+   */
+  priority?: SendPriority;
 }
 
 export type ParsedSendRequest =
@@ -34,8 +55,11 @@ export function parseSendRequest(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return { ok: false, reason: 'body must be an object' };
   const input = value as Record<string, unknown>;
+  for (const key of Object.keys(input))
+    if (!BODY_KEYS.has(key))
+      return { ok: false, reason: `unknown key ${key.slice(0, 64)}` };
 
-  const { token, packageName, data, collapseKey } = input;
+  const { token, packageName, data, collapseKey, priority } = input;
   if (
     typeof token !== 'string' ||
     token.length < 20 ||
@@ -56,6 +80,8 @@ export function parseSendRequest(
   ) {
     return { ok: false, reason: 'invalid collapseKey' };
   }
+  if (priority !== undefined && priority !== 'high' && priority !== 'normal')
+    return { ok: false, reason: 'invalid priority' };
   if (!data || typeof data !== 'object' || Array.isArray(data))
     return { ok: false, reason: 'data must be an object' };
 
@@ -69,10 +95,13 @@ export function parseSendRequest(
       return { ok: false, reason: 'data values must be strings' };
   }
   const fields = data as Record<string, string>;
-  // The Android handler only renders this kind; refusing others keeps the gateway
-  // scoped to agent activity rather than arbitrary app messages.
-  if (fields.station_kind !== 'agent_activity')
+  // The Android handler only renders these kinds; refusing others keeps the
+  // gateway scoped to Station's own sealed messages rather than arbitrary app
+  // messages.
+  if (!STATION_KINDS.has(fields.station_kind ?? ''))
     return { ok: false, reason: 'unsupported station_kind' };
+  if (priority === 'normal' && fields.station_kind !== 'station_notification')
+    return { ok: false, reason: 'invalid priority' };
   if (
     new TextEncoder().encode(JSON.stringify(fields)).length > MAX_DATA_BYTES
   ) {
@@ -86,6 +115,7 @@ export function parseSendRequest(
       packageName,
       data: fields,
       ...(collapseKey ? { collapseKey } : {}),
+      ...(priority ? { priority } : {}),
     },
   };
 }

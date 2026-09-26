@@ -103,11 +103,11 @@ const loadOutboundQueueFlushMount = () =>
     default: module.OutboundQueueFlushMount,
   }));
 
-import { useApprovalOsAlerts } from './hooks/useApprovalOsAlerts';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
+import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
@@ -167,7 +167,7 @@ function App() {
 
   // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
-  useApprovalOsAlerts();
+  useNotificationOsAlerts();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
   // #2585: tell Station whether this document is being looked at, so
