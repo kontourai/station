@@ -229,27 +229,63 @@ export class SelfHostedBrokerClient {
       'keyThumbprint',
     ]);
     const now = this.now();
+    const channel = returnedSurface.channel;
     if (
       value.version !== 'station-broker-native-route-invitation/v2' ||
+      typeof value.brokerOrigin !== 'string' ||
       value.brokerOrigin !== this.#base ||
+      typeof scope.stationId !== 'string' ||
       scope.stationId !== this.#scope.stationId ||
+      typeof scope.enrollmentId !== 'string' ||
       scope.enrollmentId !== this.#scope.enrollmentId ||
+      typeof scope.routingGeneration !== 'number' ||
       scope.routingGeneration !== this.#scope.routingGeneration ||
+      returnedSurface.kind !== 'station-native' ||
+      typeof returnedSurface.appIdentifier !== 'string' ||
+      (channel !== 'dev' &&
+        channel !== 'stable' &&
+        channel !== 'beta' &&
+        channel !== 'nightly') ||
+      typeof returnedSurface.clientInstanceId !== 'string' ||
+      typeof returnedSurface.keyThumbprint !== 'string' ||
       Object.keys(returnedSurface).some(
         (key) => returnedSurface[key] !== surface[key as keyof typeof surface],
       ) ||
+      typeof value.stationSigningKeyId !== 'string' ||
       value.stationSigningKeyId !== stationSigningKeyId ||
+      typeof value.stationSigningGeneration !== 'number' ||
       value.stationSigningGeneration !== stationSigningGeneration ||
       typeof value.invitationId !== 'string' ||
       !/^[A-Za-z0-9_-]{22}$/.test(value.invitationId) ||
       typeof value.invitationSecret !== 'string' ||
       !/^[A-Za-z0-9_-]{43}$/.test(value.invitationSecret) ||
+      typeof value.expiresAt !== 'number' ||
       !Number.isSafeInteger(value.expiresAt) ||
       (value.expiresAt as number) <= now ||
       (value.expiresAt as number) > now + 300_000
     )
       throw new Error('broker_response_invalid');
-    return value as unknown as SelfHostedBrokerNativeRouteInvitationV2;
+    return {
+      version: 'station-broker-native-route-invitation/v2',
+      brokerOrigin: value.brokerOrigin,
+      scope: {
+        stationId: scope.stationId,
+        enrollmentId: scope.enrollmentId,
+        routingGeneration: scope.routingGeneration,
+      },
+      stationSigningKeyId: value.stationSigningKeyId,
+      stationSigningGeneration: value.stationSigningGeneration,
+      surface: {
+        kind: 'station-native',
+        appIdentifier: returnedSurface.appIdentifier,
+        channel,
+        clientInstanceId: returnedSurface.clientInstanceId,
+        keyThumbprint: returnedSurface.keyThumbprint,
+      },
+      invitationId: value.invitationId,
+      invitationSecret: value.invitationSecret,
+      expiresAt: value.expiresAt,
+    };
   }
 
   async requireOnline(signal: AbortSignal): Promise<void> {
