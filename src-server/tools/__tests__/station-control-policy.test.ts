@@ -396,7 +396,9 @@ describe('station-control authority table: shared leaves', () => {
   // but every dispatch tool reaches the same leaf with any verified caller,
   // so the leaf is only as strict as dispatch until slice C. No read loosens
   // a dispatch tool any more.
-  EXPECTED_WEAKENED.list_delegation_environments = ['GET /api/environments/ssh'];
+  EXPECTED_WEAKENED.list_delegation_environments = [
+    'GET /api/environments/ssh',
+  ];
 
   test('the complete list of tool routes the guard enforces more loosely than the tool', () => {
     const weakened: Record<string, string[]> = {};

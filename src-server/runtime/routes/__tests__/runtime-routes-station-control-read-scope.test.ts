@@ -24,6 +24,7 @@
  * operator's own UI (an operator credential, never `kind:'internal'`) is the
  * control that must not move.
  */
+import { EventEmitter } from 'node:events';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -50,9 +51,17 @@ import { TaskGraphService } from '../../../services/projects/task-graph-service.
 import {
   __resetStationControlStdioCallerCredentialForTests,
   api,
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
   withStationControlCallerContext,
 } from '../../../tools/station-control-shared.js';
-import { __resetStationServerSelfAttestationForTests } from '../../../utils/internal-api-token.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { RuntimeEventLog } from '../../conversation/runtime-event-log.js';
 import {
   __resetStationControlMcpTokensForTests,
@@ -312,6 +321,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     }
 
     const eventBus = new EventBus();
+    const monitoringEvents = new EventEmitter();
     const app = new Hono();
     const context = deepStub({
       projectMembership: membership.service,
@@ -344,7 +354,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
       }),
       metricsLog: [],
-      monitoringEvents: [],
+      monitoringEvents,
       queryEventsFromDisk: (start: number, end: number, userId: string) =>
         eventLog.queryEvents(start, end, userId),
       orchestrationEventStore: store,
@@ -387,7 +397,16 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     );
     const base = `http://127.0.0.1:${await listening}`;
     process.env.STATION_API_BASE = base;
-    return { base, eventBus, memory, aProject, bProject, aTask, bTask };
+    return {
+      base,
+      eventBus,
+      monitoringEvents,
+      memory,
+      aProject,
+      bProject,
+      aTask,
+      bTask,
+    };
   }
 
   type Caller =
@@ -855,6 +874,81 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     expect((await asTool('raw-token', '/api/environments/ssh')).code).toBe(
       'station_control_caller_required',
     );
+  });
+
+  test('monitoring live stream: an agent’s stream carries only rows naming its owner', async () => {
+    const { base, monitoringEvents } = await setup();
+    const token = mintStationControlMcpToken('b-agent', 'url-token').token;
+    const controller = new AbortController();
+    const response = await fetch(`${base}/monitoring/events`, {
+      signal: controller.signal,
+      headers: {
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+      },
+    });
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    const readUntil = async (marker: string) => {
+      while (!text.includes(marker)) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+    };
+    await readUntil('connected');
+    // A row with no owner at all, a row naming A only through the
+    // `station.user.id` attribute, A's own row, then B's row as the marker.
+    monitoringEvents.emit('event', { timestamp: NOW, marker: 'NO-OWNER-ROW' });
+    monitoringEvents.emit('event', {
+      timestamp: NOW,
+      'station.user.id': A,
+      marker: 'A-ATTRIBUTE-ROW',
+    });
+    monitoringEvents.emit('event', {
+      timestamp: NOW,
+      userId: A,
+      marker: 'A-USER-ROW',
+    });
+    monitoringEvents.emit('event', {
+      timestamp: NOW,
+      userId: B,
+      marker: 'B-OWN-ROW',
+    });
+    await readUntil('B-OWN-ROW');
+    controller.abort();
+    expect(text).toContain('B-OWN-ROW');
+    expect(text).not.toContain('NO-OWNER-ROW');
+    expect(text).not.toContain('A-ATTRIBUTE-ROW');
+    expect(text).not.toContain('A-USER-ROW');
+  });
+
+  test('the Task-scoped session inventory leaf is mapped: the guard lets B’s caller through to the route', async () => {
+    const { bTask } = await setup();
+    const answer = await asTool(
+      B_CALLERS['bound B']!,
+      `/api/tasks/${bTask.id}/sessions/b-chat/inventory/app-read`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          version: 'station.session-inventory-mcp/v2',
+          operation: 'open',
+          scope: {
+            kind: 'kept-in-task',
+            taskId: bTask.id,
+            sessionId: 'b-chat',
+          },
+        }),
+      },
+    );
+    // The route's own answer (this fixture has no kept rows), never the
+    // guard's unmapped-route refusal.
+    expect(String(answer?.code ?? '')).not.toMatch(/^station_control_/);
+    expect(answer).toMatchObject({ success: false });
   });
 
   test('a caller-less request still reads what belongs to no person', async () => {
