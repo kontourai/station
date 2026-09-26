@@ -20,6 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # TODO(#2675, PR 3): add a nightly leg once nightly ships as the
+        # prebuilt per-platform server archive (station-server-<os>-<arch>).
+        # This smoke packages the source tarball, which is not a nightly
+        # artifact; install.sh's nightly path is covered by
+        # scripts/__tests__/ecosystem-manifest.test.ts until then.
         channel: [stable, preview]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

@@ -38,6 +38,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyNodePtyHandshake } from './lib/dependency-lifecycle-policy.mjs';
+import { symbolVersionFloor } from './lib/elf-symbol-floor.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,22 +53,6 @@ function parseArguments(argv) {
     if (argv[index] === '--artifact') parsed.artifact = argv[index + 1];
   }
   return parsed;
-}
-
-function symbolVersionFloor(artifact, prefix) {
-  const result = spawnSync('objdump', ['-T', artifact], {
-    encoding: 'utf8',
-    timeout: 30_000,
-    windowsHide: true,
-  });
-  if (result.status !== 0) return null;
-  const versions = [
-    ...new Set(result.stdout.match(new RegExp(`${prefix}_[0-9.]+`, 'g')) ?? []),
-  ];
-  versions.sort((left, right) =>
-    left.localeCompare(right, undefined, { numeric: true }),
-  );
-  return versions.at(-1) ?? null;
 }
 
 const { artifact } = parseArguments(process.argv.slice(2));

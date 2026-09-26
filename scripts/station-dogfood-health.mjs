@@ -12,7 +12,6 @@ import {
 } from 'node:fs';
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 
 function readInstanceRecord(file, { allowWildcardHost = false } = {}) {
   const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -54,6 +53,34 @@ function readInstanceRecord(file, { allowWildcardHost = false } = {}) {
   }
 }
 
+/**
+ * The Linux branch of `lookupProcessBirthFingerprint`
+ * (packages/shared/src/process-identity.mjs), inlined on purpose (#2696):
+ * install-macos.zsh installs this file ALONE into the support dir's `bin/`,
+ * where a relative import of the shared module does not resolve and the
+ * installed helper would die with ERR_MODULE_NOT_FOUND. This helper must stay
+ * import-free (node builtins only). The parity test in
+ * scripts/__tests__/station-dogfood-health.test.ts pins this copy to the
+ * shared function on the same inputs, so the two cannot drift silently.
+ */
+export function linuxProcessBirthFingerprint(pid, readFile = readFileSync) {
+  try {
+    const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
+    const commandEnd = stat.lastIndexOf(')');
+    if (commandEnd < 2) return null;
+    const fieldsAfterCommand = stat
+      .slice(commandEnd + 1)
+      .trim()
+      .split(/\s+/);
+    const startTime = fieldsAfterCommand[19];
+    const bootId = readFile('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+    if (!/^\d+$/.test(startTime ?? '') || !bootId) return null;
+    return `linux:${bootId}:${startTime}`;
+  } catch {
+    return null;
+  }
+}
+
 function remainingMs(deadline) {
   const remaining = deadline - Date.now();
   if (remaining < 1) throw new Error('probe deadline exceeded');
@@ -66,7 +93,8 @@ function remainingMs(deadline) {
  * (`inspectProcessFingerprint` in packages/cli/src/commands/platform.ts).
  *
  * On Linux the start token is the shared `/proc` birth fingerprint
- * (`linux:<boot_id>:<field 22>`, process-identity.mjs), not `ps -o lstart=`:
+ * (`linux:<boot_id>:<field 22>`, inlined above from process-identity.mjs),
+ * not `ps -o lstart=`:
  * since #2325 the CLI records that token on Linux, and an lstart observation
  * can never equal it, so every Linux health probe reported `process` /
  * `ownership-post` failures and reconcile never converged (#2332 item 1).
@@ -126,9 +154,7 @@ export function inspectProcessFingerprints(
 }
 
 function inspectLinuxProcessFingerprints(pids, deadline, runSync, options) {
-  const birth =
-    options.birth ??
-    ((pid) => lookupProcessBirthFingerprint(pid, { platform: 'linux' }));
+  const birth = options.birth ?? ((pid) => linuxProcessBirthFingerprint(pid));
   const uniquePids = [...new Set(pids)];
   const births = new Map();
   for (const pid of uniquePids) {
