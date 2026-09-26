@@ -1,11 +1,18 @@
 import { spawnSync } from 'node:child_process';
 import {
+  createHash,
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
   type KeyObject,
 } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
@@ -14,7 +21,7 @@ import {
   type ReleaseManifestPayload,
   selectArtifact,
   verifyReleaseManifest,
-} from '../../packages/shared/src/release-manifest.js';
+} from '../../packages/shared/src/release-manifest.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   canonicalJson,
@@ -23,11 +30,17 @@ import {
 } from './fixtures/release-manifest-v2.js';
 
 /**
- * One golden corpus, run through both verifiers of the schema v2 release
- * manifest (#2675): the signer's CLI (scripts/ecosystem-manifest.mjs, as a
- * child process) and packages/shared's release-manifest.ts. Each vector
- * names the exact decision; the two must agree except where a vector records
- * the deliberate difference (the shared verifier accepts schema v2 only).
+ * One golden corpus for the schema v2 release manifest (#2675), run through
+ * both public entry points of its one implementation
+ * (packages/shared/src/release-manifest.mjs): the signer's CLI
+ * (scripts/ecosystem-manifest.mjs, as a child process, for its wiring, exit
+ * codes and messages) and the shared verifyReleaseManifest the supervisor
+ * calls. They must agree except where a vector records the deliberate
+ * difference: the shared API accepts schema v2 only.
+ *
+ * Two paths through one implementation do not prove its canonical bytes;
+ * the golden vector below does, against a written-out literal and the
+ * fixture's independently written canonicalJson.
  */
 
 const root = resolve(import.meta.dirname, '../..');
@@ -227,6 +240,22 @@ const VECTORS: Vector[] = [
       ),
     expected: 'platform artifact darwin-arm64 url is not a canonical HTTPS URL',
   },
+  ...[
+    [
+      'userinfo',
+      'https://user:pass@example.test/station-server-darwin-arm64.tar.gz',
+    ],
+    ['a query', 'https://example.test/station-server-darwin-arm64.tar.gz?x=1'],
+    ['a fragment', 'https://example.test/station-server-darwin-arm64.tar.gz#x'],
+    [
+      'an empty query',
+      'https://example.test/station-server-darwin-arm64.tar.gz?',
+    ],
+  ].map(([what, url]) => ({
+    name: `an artifact URL with ${what}`,
+    envelope: () => nightly(withArtifact(0, { url })),
+    expected: 'platform artifact darwin-arm64 url is not a canonical HTTPS URL',
+  })),
   {
     name: 'a non-canonical artifact URL',
     envelope: () =>
@@ -284,6 +313,11 @@ const VECTORS: Vector[] = [
     name: 'a malformed Node.js version',
     envelope: () => nightly(platformPayload({ nodeVersion: 'v24.21.0' })),
     expected: 'invalid Node.js version',
+  },
+  {
+    name: 'a non-string channel',
+    envelope: () => nightly(platformPayload({ channel: ['nightly'] })),
+    expected: 'invalid manifest channel',
   },
   {
     name: 'a channel that does not match the version',
@@ -380,9 +414,21 @@ const VECTORS: Vector[] = [
   },
 ];
 
-function sharedOutcome(envelope: unknown, keys: unknown = KEYS): Outcome {
+/**
+ * The shared API's decision. It requires the ring the caller installs; the
+ * corpus passes the payload's own channel so that only the vector's defect
+ * decides (a mismatched ring is its own test below).
+ */
+function sharedOutcome(
+  envelope: Record<string, unknown>,
+  keys: unknown = KEYS,
+): Outcome {
+  const channel = (envelope.payload as { channel?: unknown } | undefined)
+    ?.channel;
   try {
-    verifyReleaseManifest(envelope, keys);
+    verifyReleaseManifest(envelope, keys, {
+      expectedChannel: typeof channel === 'string' ? channel : 'nightly',
+    });
     return 'accept';
   } catch (error) {
     return (error as Error).message;
@@ -528,6 +574,12 @@ describe('release manifest signer CLI (#2675)', () => {
       'platform artifacts are not sorted by os, then arch',
     );
     expect(unsorted.written).toBe(false);
+    // An unpinned key id skips the pinned-channel check, so the payload's own
+    // validation must refuse a channel that only coerces to a ring name.
+    const arrayChannel = sign(platformPayload({ channel: ['nightly'] }));
+    expect(arrayChannel.status).toBe(1);
+    expect(arrayChannel.stderr.trim()).toBe('invalid manifest channel');
+    expect(arrayChannel.written).toBe(false);
     const good = sign(platformPayload());
     expect(good.status, good.stderr).toBe(0);
     expect(good.written).toBe(true);
@@ -586,19 +638,19 @@ function createHashHex(seed: string): string {
 
 /**
  * Writes descriptors one per subdirectory, as actions/download-artifact lays
- * out one artifact per build job.
+ * out one artifact per build job. The archives themselves are not beside
+ * them (the multi-job layout); tests that place one say so.
  */
 function writeDescriptors(
   dir: string,
   descriptors: ReturnType<typeof descriptor>[],
 ): string {
   const tree = join(dir, 'descriptors');
+  mkdirSync(tree, { recursive: true });
   descriptors.forEach((value, index) => {
     const job = join(tree, `job-${index}`);
     mkdirSync(job, { recursive: true });
     writeFileSync(join(job, `${value.name}.json`), JSON.stringify(value));
-    // The archive itself sits beside its descriptor and is not read.
-    writeFileSync(join(job, value.name as string), 'archive bytes');
   });
   return tree;
 }
@@ -608,14 +660,15 @@ const ALL_DESCRIPTORS = () =>
     descriptor(os, arch, format),
   );
 
-function assemble(
+function assembleTree(
   dir: string,
-  descriptors: ReturnType<typeof descriptor>[],
+  tree: string,
   overrides: Record<string, string> = {},
+  flags: string[] = [],
 ) {
   const output = join(dir, 'payload.json');
   const options = {
-    '--descriptors': writeDescriptors(dir, descriptors),
+    '--descriptors': tree,
     '--version': PREVIEW.version,
     '--channel': PREVIEW.channel,
     '--source-sha': PREVIEW.sha,
@@ -627,8 +680,28 @@ function assemble(
     '--output': output,
     ...overrides,
   };
-  const result = run(['assemble', ...Object.entries(options).flat()]);
+  const result = run(['assemble', ...Object.entries(options).flat(), ...flags]);
   return { ...result, output, written: existsSync(output) };
+}
+
+function assemble(
+  dir: string,
+  descriptors: ReturnType<typeof descriptor>[],
+  overrides: Record<string, string> = {},
+  flags: string[] = [],
+) {
+  return assembleTree(
+    dir,
+    writeDescriptors(dir, descriptors),
+    overrides,
+    flags,
+  );
+}
+
+function assembledTargets(output: string): string[] {
+  return (JSON.parse(readFileSync(output, 'utf8')).artifacts as Artifact[]).map(
+    (artifact) => `${artifact.os}-${artifact.arch}`,
+  );
 }
 
 describe('release manifest assemble (#2675)', () => {
@@ -659,7 +732,7 @@ describe('release manifest assemble (#2675)', () => {
       })),
     });
 
-    // The assembled payload signs, and both verifiers accept the result.
+    // The assembled payload signs, and both entry points accept the result.
     const privatePath = join(dir, 'release.pem');
     writeFileSync(privatePath, pem(releaseKey.privateKey, 'pkcs8'));
     const keysPath = join(dir, 'keys.json');
@@ -688,10 +761,127 @@ describe('release manifest assemble (#2675)', () => {
     expect(verified.status, verified.stderr).toBe(0);
     expect(JSON.parse(verified.stdout)).toEqual(payload);
     const envelope = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    expect(verifyReleaseManifest(envelope, KEYS)).toEqual(payload);
+    expect(
+      verifyReleaseManifest(envelope, KEYS, { expectedChannel: 'preview' }),
+    ).toEqual(payload);
+  });
+
+  it('requires every target unless a partial set is explicit', () => {
+    const only = () => [descriptor('linux', 'x64', 'tar.gz')];
+    const refused = assemble(
+      makeTempDir('station-release-manifest-partial-'),
+      only(),
+    );
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      'archive descriptors do not cover the required targets (missing: darwin-arm64, darwin-x64, linux-arm64, win32-x64; unexpected: none)',
+    );
+    expect(refused.written).toBe(false);
+
+    const named = assemble(
+      makeTempDir('station-release-manifest-partial-'),
+      only(),
+      { '--targets': 'linux-x64' },
+    );
+    expect(named.status, named.stderr).toBe(0);
+    expect(assembledTargets(named.output)).toEqual(['linux-x64']);
+
+    const short = assemble(
+      makeTempDir('station-release-manifest-partial-'),
+      only(),
+      { '--targets': 'darwin-arm64,linux-x64' },
+    );
+    expect(short.status).toBe(1);
+    expect(short.stderr).toContain('(missing: darwin-arm64; unexpected: none)');
+
+    const partial = assemble(
+      makeTempDir('station-release-manifest-partial-'),
+      only(),
+      {},
+      ['--allow-partial'],
+    );
+    expect(partial.status, partial.stderr).toBe(0);
+    expect(assembledTargets(partial.output)).toEqual(['linux-x64']);
+  });
+
+  it('refuses a symbolic link anywhere in the descriptor tree', () => {
+    for (const kind of ['file', 'dir'] as const) {
+      const dir = makeTempDir('station-release-manifest-symlink-');
+      const all = ALL_DESCRIPTORS();
+      const linked = all.pop() as ReturnType<typeof descriptor>;
+      const tree = writeDescriptors(dir, all);
+      const outside = join(dir, 'outside');
+      mkdirSync(outside);
+      writeFileSync(
+        join(outside, `${linked.name}.json`),
+        JSON.stringify(linked),
+      );
+      const link =
+        kind === 'file'
+          ? join(tree, `${linked.name}.json`)
+          : join(tree, 'job-linked');
+      symlinkSync(
+        kind === 'file' ? join(outside, `${linked.name}.json`) : outside,
+        link,
+      );
+      const result = assembleTree(dir, tree);
+      expect(result.status, kind).toBe(1);
+      expect(result.stderr).toContain(
+        `descriptor tree contains a symbolic link: ${link}`,
+      );
+      expect(result.written).toBe(false);
+    }
+  });
+
+  it('checks an archive that sits beside its descriptor', () => {
+    const bytes = Buffer.from('the archive bytes');
+    const make = (content: Buffer) => {
+      const dir = makeTempDir('station-release-manifest-beside-');
+      const all = ALL_DESCRIPTORS();
+      all[3] = {
+        ...all[3],
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        size: bytes.length,
+      };
+      const tree = writeDescriptors(dir, all);
+      writeFileSync(join(tree, 'job-3', all[3].name), content);
+      return assembleTree(dir, tree);
+    };
+    const good = make(bytes);
+    expect(good.status, good.stderr).toBe(0);
+    const tampered = make(Buffer.from('the archive bytez'));
+    expect(tampered.status).toBe(1);
+    expect(tampered.stderr).toContain(
+      'station-server-linux-x64.tar.gz: the archive beside its descriptor is not the one it describes',
+    );
+    expect(tampered.written).toBe(false);
+  });
+
+  it('refuses a descriptor whose file name is not its archive name', () => {
+    const dir = makeTempDir('station-release-manifest-file-name-');
+    const all = ALL_DESCRIPTORS();
+    const tree = writeDescriptors(dir, all.slice(0, 3).concat(all.slice(4)));
+    const job = join(tree, 'job-renamed');
+    mkdirSync(job);
+    writeFileSync(
+      join(job, 'station-server-linux-x64.zip.json'),
+      JSON.stringify(all[3]),
+    );
+    const result = assembleTree(dir, tree);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'station-server-linux-x64.zip.json: name or format does not match station-server-linux-x64.tar.gz',
+    );
+    expect(result.written).toBe(false);
   });
 
   const all = ALL_DESCRIPTORS;
+  const withRelease = (edit: Record<string, unknown>) => () => {
+    const list = all();
+    list[0] = { ...list[0], release: { ...list[0].release, ...edit } };
+    return list;
+  };
+  const VERSIONED = `v${PREVIEW.version}`;
   const REFUSALS: Array<{
     name: string;
     descriptors: () => ReturnType<typeof descriptor>[];
@@ -748,15 +938,18 @@ describe('release manifest assemble (#2675)', () => {
     },
     {
       name: 'an archive built from another commit',
-      descriptors: () => {
-        const list = all();
-        list[0] = {
-          ...list[0],
-          release: { ...list[0].release, sha: 'e'.repeat(40) },
-        };
-        return list;
-      },
-      error: `station-server-darwin-arm64.tar.gz.json: built for v${PREVIEW.version} (preview) at ${'e'.repeat(40)}, not v${PREVIEW.version} (preview) at ${PREVIEW.sha}`,
+      descriptors: withRelease({ sha: 'e'.repeat(40) }),
+      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (preview) at ${'e'.repeat(40)}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
+    },
+    {
+      name: 'an archive built for another tag at the same commit',
+      descriptors: withRelease({ ref: 'v0.7.0-preview.2' }),
+      error: `station-server-darwin-arm64.tar.gz.json: built for v0.7.0-preview.2 (preview) at ${PREVIEW.sha}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
+    },
+    {
+      name: 'an archive built for another ring at the same commit',
+      descriptors: withRelease({ releaseChannel: 'stable' }),
+      error: `station-server-darwin-arm64.tar.gz.json: built for ${VERSIONED} (stable) at ${PREVIEW.sha}, not ${VERSIONED} (preview) at ${PREVIEW.sha}`,
     },
     {
       name: 'an unsupported target',
@@ -771,7 +964,13 @@ describe('release manifest assemble (#2675)', () => {
         '--base-url':
           'https://github.com/kontourai/station/releases/latest/download/',
       },
-      error: `--base-url must name the versioned release v${PREVIEW.version}, not a rolling pointer`,
+      error: `--base-url must name the versioned release ${VERSIONED}, not a rolling pointer`,
+    },
+    {
+      name: 'a rolling segment beside the versioned one, in any case',
+      descriptors: all,
+      options: { '--base-url': `https://evil.example/Latest/${VERSIONED}/` },
+      error: `--base-url must name the versioned release ${VERSIONED}, not a rolling pointer`,
     },
     {
       name: 'a base URL for another release',
@@ -780,14 +979,20 @@ describe('release manifest assemble (#2675)', () => {
         '--base-url':
           'https://github.com/kontourai/station/releases/download/v0.7.0-preview.2/',
       },
-      error: `--base-url must name the versioned release v${PREVIEW.version}, not a rolling pointer`,
+      error: `--base-url must name the versioned release ${VERSIONED}, not a rolling pointer`,
     },
-    {
-      name: 'an http base URL',
+    ...[
+      ['http', BASE_URL.replace('https:', 'http:')],
+      ['userinfo', BASE_URL.replace('https://', 'https://user@')],
+      ['a query', `${BASE_URL}?x=/`],
+      ['a fragment', `${BASE_URL}#/`],
+    ].map(([what, url]) => ({
+      name: `a base URL with ${what}`,
       descriptors: all,
-      options: { '--base-url': BASE_URL.replace('https:', 'http:') },
-      error: '--base-url must be a canonical HTTPS URL ending in a slash',
-    },
+      options: { '--base-url': url },
+      error:
+        '--base-url must be a canonical HTTPS URL ending in a slash, with no userinfo, query or fragment',
+    })),
     {
       name: 'an empty descriptor directory',
       descriptors: () => [],
@@ -797,8 +1002,6 @@ describe('release manifest assemble (#2675)', () => {
 
   it.each(REFUSALS)('refuses $name', ({ descriptors, options, error }) => {
     const dir = makeTempDir('station-release-manifest-refuse-');
-    if (descriptors().length === 0)
-      mkdirSync(join(dir, 'descriptors'), { recursive: true });
     const result = assemble(dir, descriptors(), options);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(error);
@@ -807,23 +1010,38 @@ describe('release manifest assemble (#2675)', () => {
 });
 
 describe('shared release manifest verifier (#2675)', () => {
-  const payload = () => verifyReleaseManifest(nightly(platformPayload()), KEYS);
-
-  it('refuses a validly signed manifest for another expected channel', () => {
+  it('requires the ring it verifies for, and refuses another ring', () => {
     const envelope = nightly(platformPayload());
     expect(
       verifyReleaseManifest(envelope, KEYS, { expectedChannel: 'nightly' })
         .version,
     ).toBe('0.7.0-nightly.12');
+    // Validly signed by the pinned nightly key, but not what a stable
+    // supervisor installs.
     expect(() =>
       verifyReleaseManifest(envelope, KEYS, { expectedChannel: 'stable' }),
     ).toThrow(
       'manifest channel nightly does not match the expected channel stable',
     );
+    for (const options of [{}, { expectedChannel: '' }, undefined])
+      expect(() =>
+        verifyReleaseManifest(
+          envelope,
+          KEYS,
+          options as unknown as { expectedChannel: string },
+        ),
+      ).toThrow();
+    expect(() =>
+      verifyReleaseManifest(envelope, KEYS, {} as { expectedChannel: string }),
+    ).toThrow('an expected release channel is required');
   });
 
   it('selects the host platform artifact and refuses one it does not publish', () => {
-    const verified: ReleaseManifestPayload = payload();
+    const verified: ReleaseManifestPayload = verifyReleaseManifest(
+      nightly(platformPayload()),
+      KEYS,
+      { expectedChannel: 'nightly' },
+    );
     expect(selectArtifact(verified, 'win32', 'x64')).toEqual(artifacts()[4]);
     expect(selectArtifact(verified, 'linux', 'arm64').name).toBe(
       'station-server-linux-arm64.tar.gz',

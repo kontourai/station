@@ -682,6 +682,22 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
+  // The signer CLI imports these, and ecosystem-manifest.test.ts reaches them
+  // only through that child process, which the import graph cannot see.
+  ...[
+    'packages/shared/src/release-manifest.mjs',
+    'packages/shared/src/portable-server-targets.mjs',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      related: true,
+      tests: Object.freeze([
+        'scripts/__tests__/ecosystem-manifest.test.ts',
+        'scripts/__tests__/release-manifest-vectors.test.ts',
+      ]),
+      reason: EXECUTED_SCRIPT_EDGE_REASON,
+    }),
+  ),
   Object.freeze({
     pattern: 'scripts/evidence-check-execution-gate.mjs',
     related: true,

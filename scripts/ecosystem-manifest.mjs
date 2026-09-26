@@ -1,33 +1,62 @@
 #!/usr/bin/env node
-import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+// The manifest signer's CLI: create | verify | cask | assemble. Canonical
+// bytes, the pinned key table, the envelope and schema v2 come from the one
+// shared implementation (packages/shared/src/release-manifest.mjs); schema v1
+// (the macOS cask shape) is read only here.
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  sign,
+} from 'node:crypto';
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   findPortableServerTarget,
+  PORTABLE_SERVER_TARGETS,
   portableServerArchiveName,
 } from '../packages/shared/src/portable-server-targets.mjs';
+import {
+  assertEnvelopeShape,
+  assertEnvelopeSignature,
+  canonicalManifestJson,
+  hasExactKeys,
+  isCanonicalUrl,
+  isHttpsArtifactUrl,
+  isPlainCanonicalUrl,
+  KEY_ID,
+  NODE_VERSION,
+  parseKeyTable,
+  pinnedKeyFor,
+  SHA256_HEX,
+  validateCommonPayload,
+  validateReleaseManifestPayloadV2,
+} from '../packages/shared/src/release-manifest.mjs';
 
-const SHA256 = /^[a-f0-9]{64}$/;
-const SHA = /^[a-f0-9]{40}$/;
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
 const VERSION = new RegExp(`^${RELEASE}(-preview\\.([1-9][0-9]*))?$`);
-// Schema v2 is portable-only and adds the nightly channel. Each channel owns
-// exactly one version shape, so a payload cannot claim one ring while carrying
-// another ring's version.
-const CHANNEL_VERSION = {
-  stable: new RegExp(`^${RELEASE}$`),
-  preview: new RegExp(`^${RELEASE}-preview\\.([1-9][0-9]*)$`),
-  nightly: new RegExp(`^${RELEASE}-nightly\\.([1-9][0-9]*)$`),
-};
-const KEY_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DEFAULT_KEY_TABLE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../config/release-manifest-keys.json',
 );
 const allowInsecureTestUrls =
   process.env.STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS === '1';
+// The explicit test escape: fixtures may point artifacts at http:// or
+// file:// URLs. A published manifest never needs it, and the shared
+// verifyReleaseManifest has no such escape.
+const isAllowedArtifactUrl = allowInsecureTestUrls
+  ? (value) => isPlainCanonicalUrl(value, ['https:', 'http:', 'file:'])
+  : isHttpsArtifactUrl;
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -39,52 +68,8 @@ function optionalOption(name) {
   return process.argv.includes(name) ? option(name) : undefined;
 }
 
-/**
- * The signed bytes: recursive sorted-key JSON with no whitespace. install.sh
- * carries an independent copy of this function; the golden vector in
- * ecosystem-manifest.test.ts pins both to the same bytes.
- */
-function canonical(value) {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
-}
-
-function hasExactKeys(value, keys) {
-  return (
-    Boolean(value) &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    JSON.stringify(Object.keys(value).sort()) === JSON.stringify(keys)
-  );
-}
-
-/**
- * The URL an installer fetches must be exactly the signed string. `new URL()`
- * silently strips tabs and newlines (and normalizes other input), so only a
- * URL that is already its own canonical href, with no control characters or
- * spaces, is accepted.
- */
-function isCanonicalUrl(value) {
-  if (
-    typeof value !== 'string' ||
-    [...value].some((char) => char <= ' ' || char === '\u007f')
-  )
-    return false;
-  try {
-    return new URL(value).href === value;
-  } catch {
-    return false;
-  }
 }
 
 function validateArtifact(kind, artifact, name) {
@@ -96,7 +81,7 @@ function validateArtifact(kind, artifact, name) {
     !/^(https?:\/\/|file:\/\/)/.test(artifact.url) ||
     (!allowInsecureTestUrls && !artifact.url.startsWith('https://')) ||
     typeof artifact.sha256 !== 'string' ||
-    !SHA256.test(artifact.sha256)
+    !SHA256_HEX.test(artifact.sha256)
   )
     throw new Error(`invalid ${kind} artifact descriptor`);
 }
@@ -111,131 +96,12 @@ const PAYLOAD_KEYS_V1 = [
   'sourceSha',
   'version',
 ];
-const PAYLOAD_KEYS_V2 = [
-  'artifacts',
-  'channel',
-  'launcherProtocol',
-  'nodeVersion',
-  'publishedAt',
-  'releaseTag',
-  'schemaVersion',
-  'sourceSha',
-  'version',
-];
-const PLATFORM_ARTIFACT_KEYS = [
-  'arch',
-  'format',
-  'name',
-  'os',
-  'sha256',
-  'size',
-  'url',
-];
-const NODE_VERSION = new RegExp(`^${RELEASE}$`);
-
-function validateCommonPayload(payload) {
-  if (typeof payload.sourceSha !== 'string' || !SHA.test(payload.sourceSha))
-    throw new Error('invalid source SHA');
-  if (
-    typeof payload.publishedAt !== 'string' ||
-    Number.isNaN(new Date(payload.publishedAt).getTime()) ||
-    new Date(payload.publishedAt).toISOString() !== payload.publishedAt
-  )
-    throw new Error('invalid publication timestamp');
-}
-
-// Schema v2: portable-only, stable | preview | nightly.
-//
-// One prebuilt server archive per platform (#2675). packages/shared's
-// release-manifest.ts verifies the same schema for the service supervisor;
-// the shared golden vectors in release-manifest-vectors.test.ts hold the two
-// to the same accept/reject decisions and reasons.
-function validatePayloadV2(payload) {
-  if (!Object.hasOwn(CHANNEL_VERSION, payload.channel))
-    throw new Error('invalid manifest channel');
-  if (typeof payload.version !== 'string')
-    throw new Error('invalid manifest version');
-  if (!CHANNEL_VERSION[payload.channel].test(payload.version))
-    throw new Error('manifest channel does not match version');
-  if (payload.releaseTag !== `v${payload.version}`)
-    throw new Error('release tag does not match version');
-  validateCommonPayload(payload);
-  if (
-    typeof payload.nodeVersion !== 'string' ||
-    !NODE_VERSION.test(payload.nodeVersion)
-  )
-    throw new Error('invalid Node.js version');
-  const protocol = payload.launcherProtocol;
-  if (
-    !hasExactKeys(protocol, ['max', 'min']) ||
-    !Number.isSafeInteger(protocol.min) ||
-    !Number.isSafeInteger(protocol.max) ||
-    protocol.min < 1 ||
-    protocol.max < protocol.min
-  )
-    throw new Error('invalid launcher protocol range');
-  validatePlatformArtifacts(payload.artifacts);
-  return payload;
-}
-
-function validatePlatformArtifact(artifact, index) {
-  if (
-    !hasExactKeys(artifact, PLATFORM_ARTIFACT_KEYS) ||
-    typeof artifact.os !== 'string' ||
-    typeof artifact.arch !== 'string'
-  )
-    throw new Error(`platform artifact ${index} has an unexpected shape`);
-  const id = `${artifact.os}-${artifact.arch}`;
-  const target = findPortableServerTarget(artifact.os, artifact.arch);
-  if (!target)
-    throw new Error(`platform artifact ${id} is not a supported target`);
-  if (artifact.format !== target.format)
-    throw new Error(`platform artifact ${id} format must be ${target.format}`);
-  const name = portableServerArchiveName(target);
-  if (artifact.name !== name)
-    throw new Error(`platform artifact ${id} name must be ${name}`);
-  if (
-    !isCanonicalUrl(artifact.url) ||
-    !(
-      artifact.url.startsWith('https://') ||
-      (allowInsecureTestUrls && /^(http|file):\/\//.test(artifact.url))
-    )
-  )
-    throw new Error(`platform artifact ${id} url is not a canonical HTTPS URL`);
-  if (typeof artifact.sha256 !== 'string' || !SHA256.test(artifact.sha256))
-    throw new Error(`platform artifact ${id} sha256 is invalid`);
-  if (!Number.isSafeInteger(artifact.size) || artifact.size <= 0)
-    throw new Error(`platform artifact ${id} size is invalid`);
-  return id;
-}
-
-/**
- * The signed bytes depend on array order, so the order is part of the
- * schema: one entry per target, sorted by os, then arch (code-point order).
- */
-function validatePlatformArtifacts(artifacts) {
-  if (!Array.isArray(artifacts) || artifacts.length === 0)
-    throw new Error('invalid artifact set');
-  const ids = artifacts.map(validatePlatformArtifact);
-  const seen = new Set();
-  for (const id of ids) {
-    if (seen.has(id)) throw new Error(`duplicate platform artifact ${id}`);
-    seen.add(id);
-  }
-  for (let index = 1; index < artifacts.length; index += 1) {
-    const previous = artifacts[index - 1];
-    const current = artifacts[index];
-    if (
-      previous.os > current.os ||
-      (previous.os === current.os && previous.arch > current.arch)
-    )
-      throw new Error('platform artifacts are not sorted by os, then arch');
-  }
-}
 
 // Schema v1: stable | preview, with the macOS cask artifact. Kept for the
 // existing cask renderer and fixtures.
 function validatePayloadV1(payload) {
+  if (!hasExactKeys(payload, PAYLOAD_KEYS_V1))
+    throw new Error('manifest payload has an unexpected shape');
   if (!['stable', 'preview'].includes(payload.channel))
     throw new Error('invalid manifest channel');
   if (typeof payload.version !== 'string' || !VERSION.test(payload.version))
@@ -262,85 +128,13 @@ function validatePayloadV1(payload) {
 
 // Each schema owns an exact key set: a v2 payload under schema 1, or v1 keys
 // under schema 2, is malformed rather than read as the other shape.
-const SCHEMAS = {
-  1: { keys: PAYLOAD_KEYS_V1, validate: validatePayloadV1 },
-  2: { keys: PAYLOAD_KEYS_V2, validate: validatePayloadV2 },
-};
-
 function validatePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload))
     throw new Error('manifest payload has an unexpected shape');
-  const schema =
-    payload.schemaVersion === 1 || payload.schemaVersion === 2
-      ? SCHEMAS[payload.schemaVersion]
-      : undefined;
-  if (!schema) throw new Error('unsupported manifest schema');
-  if (!hasExactKeys(payload, schema.keys))
-    throw new Error('manifest payload has an unexpected shape');
-  return schema.validate(payload);
-}
-
-function readEnvelope(path) {
-  const envelope = readJson(path);
-  if (
-    !hasExactKeys(envelope, [
-      'algorithm',
-      'keyId',
-      'payload',
-      'schemaVersion',
-      'signature',
-    ]) ||
-    envelope.schemaVersion !== 1 ||
-    envelope.algorithm !== 'ed25519' ||
-    typeof envelope.keyId !== 'string' ||
-    !KEY_ID.test(envelope.keyId) ||
-    typeof envelope.signature !== 'string' ||
-    !/^[A-Za-z0-9+/]+={0,2}$/.test(envelope.signature)
-  )
-    throw new Error('manifest envelope has an unexpected shape');
-  return envelope;
-}
-
-/**
- * The pinned signing-key table (config/release-manifest-keys.json). install.sh
- * embeds a copy of the same table; a unit test holds the two equal.
- */
-function readKeyTable(path) {
-  const table = readJson(path);
-  if (!hasExactKeys(table, ['keys']) || !Array.isArray(table.keys))
-    throw new Error('signing-key table has an unexpected shape');
-  const seen = new Set();
-  for (const entry of table.keys) {
-    if (
-      !hasExactKeys(entry, [
-        'algorithm',
-        'channels',
-        'keyId',
-        'publicKeySpkiPem',
-      ]) ||
-      entry.algorithm !== 'ed25519' ||
-      typeof entry.keyId !== 'string' ||
-      !KEY_ID.test(entry.keyId) ||
-      seen.has(entry.keyId) ||
-      !Array.isArray(entry.channels) ||
-      entry.channels.length === 0 ||
-      !entry.channels.every((channel) =>
-        Object.hasOwn(CHANNEL_VERSION, channel),
-      ) ||
-      typeof entry.publicKeySpkiPem !== 'string' ||
-      createPublicKey(entry.publicKeySpkiPem).asymmetricKeyType !== 'ed25519'
-    )
-      throw new Error('signing-key table has an invalid entry');
-    seen.add(entry.keyId);
-  }
-  return table.keys;
-}
-
-function assertChannelAllowed(entry, payload) {
-  if (!entry.channels.includes(payload?.channel))
-    throw new Error(
-      `signing key ${entry.keyId} is not authorized for channel ${String(payload?.channel)}`,
-    );
+  if (payload.schemaVersion === 1) return validatePayloadV1(payload);
+  if (payload.schemaVersion === 2)
+    return validateReleaseManifestPayloadV2(payload, { isAllowedArtifactUrl });
+  throw new Error('unsupported manifest schema');
 }
 
 /**
@@ -348,33 +142,34 @@ function assertChannelAllowed(entry, payload) {
  * it exists for the cask dry-run and test fixtures. Otherwise the envelope's
  * keyId must name a pinned key that is authorized for the payload's channel.
  */
-export function verifyManifest({ manifest, publicKey, keyTable }) {
-  const envelope = readEnvelope(manifest);
-  let key;
-  if (publicKey) {
-    key = createPublicKey(readFileSync(resolve(publicKey), 'utf8'));
-  } else {
-    const entry = readKeyTable(keyTable ?? DEFAULT_KEY_TABLE).find(
-      (candidate) => candidate.keyId === envelope.keyId,
-    );
-    if (!entry)
-      throw new Error(`manifest signing key ${envelope.keyId} is not pinned`);
-    assertChannelAllowed(entry, envelope.payload);
-    key = createPublicKey(entry.publicKeySpkiPem);
-  }
-  const signature = Buffer.from(envelope.signature, 'base64');
-  if (!verify(null, Buffer.from(canonical(envelope.payload)), key, signature))
-    throw new Error('manifest signature did not verify');
+function verifyManifest({ manifest, publicKey, keyTable }) {
+  const envelope = assertEnvelopeShape(readJson(manifest));
+  const key = publicKey
+    ? createPublicKey(readFileSync(resolve(publicKey), 'utf8'))
+    : pinnedKeyFor(
+        parseKeyTable(readJson(keyTable ?? DEFAULT_KEY_TABLE)),
+        envelope.keyId,
+        envelope.payload?.channel,
+      );
+  assertEnvelopeSignature(envelope, key);
   return validatePayload(envelope.payload);
 }
 
 const DESCRIPTOR_FILE = /^station-server-.+\.(tar\.gz|zip)\.json$/;
 
-/** Every archive descriptor under `root`, found recursively. */
+/**
+ * Every archive descriptor under `root`, found recursively. A symbolic link
+ * anywhere in the tree is refused rather than skipped or followed: it could
+ * substitute another build's descriptor or hide one.
+ */
 function findDescriptors(root) {
+  if (lstatSync(root).isSymbolicLink())
+    throw new Error(`descriptor tree contains a symbolic link: ${root}`);
   const found = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
+    if (entry.isSymbolicLink())
+      throw new Error(`descriptor tree contains a symbolic link: ${path}`);
     if (entry.isDirectory()) found.push(...findDescriptors(path));
     else if (entry.isFile() && DESCRIPTOR_FILE.test(entry.name))
       found.push(path);
@@ -382,10 +177,51 @@ function findDescriptors(root) {
   return found.sort();
 }
 
+/** The size and sha256 of a regular file, read in bounded chunks. */
+function describeFile(path) {
+  const hash = createHash('sha256');
+  const buffer = Buffer.alloc(1024 * 1024);
+  const fd = openSync(path, 'r');
+  let size = 0;
+  try {
+    for (;;) {
+      const read = readSync(fd, buffer, 0, buffer.length, null);
+      if (read === 0) break;
+      hash.update(buffer.subarray(0, read));
+      size += read;
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return { size, sha256: hash.digest('hex') };
+}
+
 function parsePositiveInteger(name, value) {
   if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value)))
     throw new Error(`${name} must be a positive integer`);
   return Number(value);
+}
+
+/**
+ * The target ids a manifest must publish: every portable server target,
+ * unless `--targets` names an explicit subset or `--allow-partial` accepts
+ * whatever the descriptors cover (undefined).
+ */
+function requiredTargets(targets, allowPartial) {
+  if (allowPartial && targets !== undefined)
+    throw new Error('--targets and --allow-partial are mutually exclusive');
+  if (allowPartial) return undefined;
+  if (targets === undefined)
+    return PORTABLE_SERVER_TARGETS.map(({ os, arch }) => `${os}-${arch}`);
+  const ids = targets.split(',');
+  for (const id of ids) {
+    const [os, arch, ...rest] = id.split('-');
+    if (rest.length > 0 || !findPortableServerTarget(os, arch))
+      throw new Error(`--targets names an unsupported target: ${id}`);
+  }
+  if (new Set(ids).size !== ids.length)
+    throw new Error('--targets names a target twice');
+  return ids;
 }
 
 /**
@@ -405,18 +241,18 @@ function assemblePayload({
   launcherProtocolMin,
   launcherProtocolMax,
   publishedAt,
+  targets,
 }) {
   const releaseTag = `v${version}`;
-  if (
-    !isCanonicalUrl(baseUrl) ||
-    !baseUrl.startsWith('https://') ||
-    !baseUrl.endsWith('/')
-  )
+  if (!isHttpsArtifactUrl(baseUrl) || !baseUrl.endsWith('/'))
     throw new Error(
-      '--base-url must be a canonical HTTPS URL ending in a slash',
+      '--base-url must be a canonical HTTPS URL ending in a slash, with no userinfo, query or fragment',
     );
   const segments = new URL(baseUrl).pathname.split('/');
-  if (!segments.includes(releaseTag) || segments.includes('latest'))
+  if (
+    !segments.includes(releaseTag) ||
+    segments.some((segment) => segment.toLowerCase() === 'latest')
+  )
     throw new Error(
       `--base-url must name the versioned release ${releaseTag}, not a rolling pointer`,
     );
@@ -447,7 +283,7 @@ function assemblePayload({
       throw new Error(`${where}: name or format does not match ${name}`);
     if (
       typeof descriptor.sha256 !== 'string' ||
-      !SHA256.test(descriptor.sha256)
+      !SHA256_HEX.test(descriptor.sha256)
     )
       throw new Error(`${where}: malformed sha256`);
     if (!Number.isSafeInteger(descriptor.size) || descriptor.size <= 0)
@@ -463,6 +299,29 @@ function assemblePayload({
       );
     if (byTarget.has(descriptor.target))
       throw new Error(`duplicate archive descriptor for ${descriptor.target}`);
+    // When the archive sits beside its descriptor (a local or single-job
+    // assembly), its bytes must be the ones described. Otherwise the
+    // descriptor is trusted here; the publishing job (slice E) re-downloads
+    // each uploaded asset and compares it with the signed manifest.
+    const archive = join(dirname(path), name);
+    let stat;
+    try {
+      stat = lstatSync(archive);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (stat) {
+      if (!stat.isFile())
+        throw new Error(`${name}: beside its descriptor but not a file`);
+      const actual = describeFile(archive);
+      if (
+        actual.size !== descriptor.size ||
+        actual.sha256 !== descriptor.sha256
+      )
+        throw new Error(
+          `${name}: the archive beside its descriptor is not the one it describes`,
+        );
+    }
     nodeVersions.add(descriptor.node?.version);
     byTarget.set(descriptor.target, {
       os: target.os,
@@ -483,6 +342,14 @@ function assemblePayload({
     throw new Error(
       `archives bundle Node.js ${String(bundledNode)}, not the pinned ${nodeVersion}`,
     );
+  if (targets) {
+    const missing = targets.filter((id) => !byTarget.has(id));
+    const extra = [...byTarget.keys()].filter((id) => !targets.includes(id));
+    if (missing.length > 0 || extra.length > 0)
+      throw new Error(
+        `archive descriptors do not cover the required targets (missing: ${missing.join(', ') || 'none'}; unexpected: ${extra.join(', ') || 'none'}); pass --targets or --allow-partial for a partial manifest`,
+      );
+  }
   const artifacts = [...byTarget.values()].sort((left, right) =>
     left.os === right.os
       ? left.arch < right.arch
@@ -517,10 +384,8 @@ try {
     if (!KEY_ID.test(keyId)) throw new Error('invalid signing key id');
     // A pinned key id may only sign the channels it is pinned for; refuse to
     // emit an envelope every installer would reject.
-    const pinned = readKeyTable(DEFAULT_KEY_TABLE).find(
-      (entry) => entry.keyId === keyId,
-    );
-    if (pinned) assertChannelAllowed(pinned, payload);
+    const pinned = parseKeyTable(readJson(DEFAULT_KEY_TABLE));
+    if (pinned.has(keyId)) pinnedKeyFor(pinned, keyId, payload.channel);
     // No installer trusts an unpinned key id, so emitting one is only useful
     // for fixtures and dry-runs; make that an explicit choice.
     else if (!process.argv.includes('--allow-unpinned-key'))
@@ -537,7 +402,7 @@ try {
       payload,
       signature: sign(
         null,
-        Buffer.from(canonical(payload)),
+        Buffer.from(canonicalManifestJson(payload)),
         privateKey,
       ).toString('base64'),
     };
@@ -565,6 +430,10 @@ try {
         option('--launcher-protocol-max'),
       ),
       publishedAt: optionalOption('--published-at') ?? new Date().toISOString(),
+      targets: requiredTargets(
+        optionalOption('--targets'),
+        process.argv.includes('--allow-partial'),
+      ),
     });
     writeFileSync(
       resolve(option('--output')),
