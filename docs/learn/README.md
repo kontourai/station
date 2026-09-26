@@ -35,6 +35,10 @@ reader. References to tracked source files open local text snapshots, and each
 document offers its original Markdown. This works before a branch is published.
 GitHub links are a secondary route to the recorded revision and require that
 revision to exist on the remote. Rebuild to refresh the local snapshots.
+Source URLs include the hash of their exact captured bytes. Normal rebuilds
+retain those immutable files, so an already open reader's evidence links keep
+showing the bytes selected by its original snapshot. GitHub links to older
+commits stay on GitHub; links to `main` or the build's commit route locally.
 
 The atlas includes every tracked Markdown file, including hidden directories,
 READMEs, historical records, changesets, and fixture instructions. Inclusion is
@@ -85,10 +89,14 @@ work still to complete.
 
 The reader starts with a small navigation manifest. It fetches individual
 document/module bodies, the full-text search index, and the diagram renderer
-when needed. Document digests bind a fetched body to the manifest that selected
-it; a mismatched snapshot asks the reader to reload. Mobile navigation uses a
-native modal dialog so the reading content comes first and the background is
-inert while the menu is open.
+when needed. Snapshot digests bind rendered content, review metadata, and source
+dependencies to the manifest that selected them; a mismatched lazy payload asks
+the reader to reload. Changing supporting code without changing Markdown still
+invalidates that identity. The builder hashes and writes the same captured
+source bytes, including the bytes used to evaluate review freshness. A cached
+page retains its original content and evidence across rebuilds. Mobile navigation
+uses a native modal dialog so the reading content comes first and the background
+is inert while the menu is open.
 
 The [builder](../../scripts/build-learning-guide.mjs) owns these static artifacts,
 the [shared model](../../scripts/lib/documentation-model.mjs) owns section and

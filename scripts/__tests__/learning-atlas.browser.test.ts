@@ -1,5 +1,7 @@
-import { mkdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import {
   type Browser,
   type BrowserContext,
@@ -7,6 +9,7 @@ import {
   chromium,
 } from '@playwright/test';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildDiagramBundle,
   buildLearningGuide,
@@ -17,6 +20,7 @@ let browser: Browser;
 let atlas: Awaited<ReturnType<typeof buildLearningGuide>>;
 const assets = new Map<string, { body: string; contentType: string }>();
 const contexts: BrowserContext[] = [];
+const makeTempDir = trackTempDirs();
 
 beforeAll(async () => {
   atlas = await buildLearningGuide({ check: true });
@@ -72,15 +76,10 @@ async function pageAt(width: number, suffix = '') {
   contexts.push(context);
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
-    const sourcePath =
-      url.pathname.startsWith('/sources/') && url.pathname.endsWith('.txt')
-        ? decodeURIComponent(url.pathname.slice('/sources/'.length, -4))
-        : null;
-    if (
-      url.origin === 'http://atlas.test' &&
-      sourcePath &&
-      atlas.sourcePaths.includes(sourcePath)
-    ) {
+    const sourcePath = Object.keys(atlas.sourceSnapshots).find(
+      (file) => `/${atlas.sourceSnapshots[file]}` === url.pathname,
+    );
+    if (url.origin === 'http://atlas.test' && sourcePath) {
       await route.fulfill({
         status: 200,
         contentType: 'text/plain; charset=utf-8',
@@ -144,7 +143,9 @@ test('a reader follows a concept into its exact module, searches, and returns th
   });
   await browserExpect(sourceLink).toHaveAttribute(
     'href',
-    'sources/src-server/services/orchestration/__tests__/session-command-module.test.ts.txt',
+    atlas.sourceSnapshots[
+      'src-server/services/orchestration/__tests__/session-command-module.test.ts'
+    ],
   );
   await sourceLink.click();
   await browserExpect(page.locator('body')).toContainText(
@@ -323,3 +324,181 @@ test('refuses a document body from a different generated snapshot', async () => 
     'Wrong snapshot content',
   );
 });
+
+test('an open reader keeps immutable evidence and rejects lazy content after a source-only rebuild', async () => {
+  const root = makeTempDir('station-atlas-snapshot-');
+  const output = join(root, '.kontourai/docs-learning');
+  const hash = (bytes: string | Buffer) =>
+    createHash('sha256').update(bytes).digest('hex');
+  const code = Buffer.from('export const evidence = "original café";\r\n');
+  const guide = '# Snapshot guide\n\n[Supporting code](owner.ts)\n';
+  const moduleMap = '# Modules\n\n## Snapshot module\n\n`owner.ts`\n';
+  const records = [
+    ['README.md', guide],
+    ['docs/architecture/module-map.md', moduleMap],
+  ].map(([path, markdown]) => ({
+    path,
+    kind: 'current',
+    state: 'source-reviewed',
+    documentDigest: hash(markdown),
+    sourceRevision: 'a'.repeat(40),
+    summary: 'The fixture code was reviewed.',
+    limits: 'Fixture evidence only.',
+    sources: [{ path: 'owner.ts', digest: hash(code) }],
+    checks: ['Source inspected.'],
+  }));
+  const inputs = {
+    'README.md': guide,
+    'docs/architecture/module-map.md': moduleMap,
+    'owner.ts': code,
+    'docs/learn/atlas.json': JSON.stringify({
+      version: 1,
+      groups: [
+        {
+          id: 'snapshot',
+          title: 'Snapshot',
+          summary: 'Snapshot fixture',
+          docs: ['README.md'],
+          modules: ['Snapshot module'],
+          questions: ['Which bytes?'],
+        },
+      ],
+    }),
+    'docs/learn/review-ledger.json': JSON.stringify({ version: 1, records }),
+  };
+  let context: BrowserContext | undefined;
+  try {
+    for (const [file, bytes] of Object.entries(inputs)) {
+      await mkdir(dirname(join(root, file)), { recursive: true });
+      await writeFile(join(root, file), bytes);
+    }
+    for (const file of ['index.html', 'atlas.js', 'atlas.css'])
+      await copyFile(`docs/learn/${file}`, join(root, 'docs/learn', file));
+    const git = (args: string[]) =>
+      execFileSync('git', args, { cwd: root, windowsHide: true });
+    git(['init', '-q']);
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Snapshot Fixture',
+      '-c',
+      'user.email=snapshot@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'test: capture snapshot fixture',
+    ]);
+    const original = await buildLearningGuide({ root });
+    const originalUrl = original.sourceSnapshots['owner.ts'];
+    expect(originalUrl).toBe(`sources/${hash(code)}/owner.ts.txt`);
+    expect(await readFile(join(output, originalUrl))).toEqual(code);
+
+    context = await browser.newContext();
+    await context.route('http://snapshot.test/**', async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      const file =
+        pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1));
+      const contentType = file.endsWith('.json')
+        ? 'application/json'
+        : file.endsWith('.js')
+          ? 'text/javascript'
+          : file.endsWith('.css')
+            ? 'text/css'
+            : file.endsWith('.html')
+              ? 'text/html'
+              : 'text/plain; charset=utf-8';
+      await route.fulfill({
+        body: await readFile(join(output, file)),
+        contentType,
+      });
+    });
+    const cached = await context.newPage();
+    await cached.goto('http://snapshot.test/#doc=README.md');
+    await browserExpect(cached.locator('.review-status')).toContainText(
+      'Reviewed against code',
+    );
+    const lazy = await context.newPage();
+    await lazy.goto('http://snapshot.test/');
+    await browserExpect(
+      lazy.getByRole('heading', { name: 'How Station fits together.' }),
+    ).toBeVisible();
+
+    const changedCode = Buffer.from(
+      'export const evidence = "changed code";\r\n',
+    );
+    await writeFile(join(root, 'owner.ts'), changedCode);
+    const rebuilt = await buildLearningGuide({ root });
+    expect(rebuilt.documents[0].digest).toBe(original.documents[0].digest);
+    expect(rebuilt.documents[0].snapshotDigest).not.toBe(
+      original.documents[0].snapshotDigest,
+    );
+    expect(rebuilt.modules[0].digest).toBe(original.modules[0].digest);
+    expect(rebuilt.modules[0].snapshotDigest).not.toBe(
+      original.modules[0].snapshotDigest,
+    );
+    expect(await readFile(join(output, originalUrl))).toEqual(code);
+    const changedUrl = rebuilt.sourceSnapshots['owner.ts'];
+    expect(changedUrl).toBe(`sources/${hash(changedCode)}/owner.ts.txt`);
+    expect(await readFile(join(output, changedUrl))).toEqual(changedCode);
+
+    await cached.goto('http://snapshot.test/#branch=snapshot');
+    await cached
+      .getByRole('article')
+      .getByRole('link', { name: 'Snapshot guide' })
+      .click();
+    await browserExpect(cached.locator('.review-status')).toContainText(
+      'Reviewed against code',
+    );
+    await cached
+      .locator('summary')
+      .filter({ hasText: 'Sources & review' })
+      .click();
+    const evidence = cached
+      .locator('#reading-status')
+      .getByRole('link', { name: 'owner.ts', exact: true });
+    await browserExpect(evidence).toHaveAttribute('href', originalUrl);
+    await evidence.click();
+    await browserExpect(cached.locator('body')).toContainText('original café');
+    await browserExpect(cached.locator('body')).not.toContainText(
+      'changed code',
+    );
+
+    await lazy.goto('http://snapshot.test/#doc=README.md');
+    await browserExpect(lazy.getByRole('alert')).toContainText(
+      'document was rebuilt',
+    );
+    await browserExpect(lazy.locator('.review-status')).toHaveCount(0);
+    await lazy.goto('http://snapshot.test/#module=snapshot-module');
+    await browserExpect(lazy.getByRole('alert')).toContainText(
+      'document was rebuilt',
+    );
+    await lazy.reload();
+    await browserExpect(lazy.locator('.review-status')).toContainText(
+      'Review out of date',
+    );
+    await browserExpect(
+      lazy.getByRole('article').getByRole('link', { name: 'owner.ts' }),
+    ).toHaveAttribute('href', changedUrl);
+
+    records[0].limits = 'A changed review limit without a Markdown change.';
+    records[1].limits =
+      'A changed module owner review without a Markdown change.';
+    await writeFile(
+      join(root, 'docs/learn/review-ledger.json'),
+      JSON.stringify({ version: 1, records }),
+    );
+    const reviewed = await buildLearningGuide({ root });
+    expect(reviewed.documents[0].digest).toBe(rebuilt.documents[0].digest);
+    expect(reviewed.documents[0].snapshotDigest).not.toBe(
+      rebuilt.documents[0].snapshotDigest,
+    );
+    expect(reviewed.modules[0].digest).toBe(rebuilt.modules[0].digest);
+    expect(reviewed.modules[0].snapshotDigest).not.toBe(
+      rebuilt.modules[0].snapshotDigest,
+    );
+    expect(await readFile(join(output, originalUrl))).toEqual(code);
+  } finally {
+    await context?.close();
+  }
+}, 60_000);

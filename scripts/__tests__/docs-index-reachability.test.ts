@@ -322,6 +322,27 @@ describe('learning atlas', () => {
         new Set(['src-server/index.ts']),
       ),
     ).toBe('sources/src-server/index.ts.txt');
+    for (const ref of ['main', 'abc'])
+      expect(
+        learningHref(
+          `https://github.com/kontourai/station/blob/${ref}/src-server/index.ts`,
+          'README.md',
+          files,
+          'abc',
+          new Set(['src-server/index.ts']),
+        ),
+      ).toBe('sources/src-server/index.ts.txt');
+    const oldSource =
+      'https://github.com/kontourai/station/blob/older/src-server/index.ts';
+    expect(
+      learningHref(
+        oldSource,
+        'README.md',
+        files,
+        'abc',
+        new Set(['src-server/index.ts']),
+      ),
+    ).toBe(oldSource);
     expect(learningHref('../../outside', 'docs/guide.md', files, 'abc')).toBe(
       '',
     );

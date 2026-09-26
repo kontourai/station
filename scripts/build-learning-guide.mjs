@@ -129,9 +129,9 @@ export function renderLearningDocument(
   return { html, headings };
 }
 
-function git(args) {
+function git(args, cwd = root) {
   return execFileSync('git', args, {
-    cwd: root,
+    cwd,
     encoding: 'utf8',
     windowsHide: true,
   }).trimEnd();
@@ -165,25 +165,41 @@ export function learningClientData(data) {
   };
 }
 
-export async function buildLearningGuide({ check = false } = {}) {
-  const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean).sort();
+export async function buildLearningGuide({
+  check = false,
+  root: inputRoot = root,
+} = {}) {
+  const tracked = git(['ls-files', '-z'], inputRoot)
+    .split('\0')
+    .filter(Boolean)
+    .sort();
   const files = new Set(
     tracked.filter((file) => /\.(md|mdx|markdown)$/i.test(file)),
   );
   if (!files.size)
     throw new Error('Learning inventory contains no tracked Markdown.');
-  const revision = git(['rev-parse', 'HEAD']);
+  const revision = git(['rev-parse', 'HEAD'], inputRoot);
   const sourceFiles = new Set(tracked);
+  // Review hashes, rendering, and published evidence must use the same read.
+  const capturedSources = new Map();
+  async function captureSource(file) {
+    if (!sourceFiles.has(file))
+      throw new Error(`Untracked source snapshot: ${file}`);
+    if (!capturedSources.has(file))
+      capturedSources.set(file, await readFile(path.join(inputRoot, file)));
+    return capturedSources.get(file);
+  }
   const catalog = JSON.parse(
-    await readFile(path.join(root, 'docs/learn/atlas.json'), 'utf8'),
+    (await captureSource('docs/learn/atlas.json')).toString('utf8'),
   );
   const modules = extractModules(
-    await readFile(path.join(root, moduleMap), 'utf8'),
+    (await captureSource(moduleMap)).toString('utf8'),
   );
   validateCatalog(catalog, modules, files);
   const documents = [];
   for (const file of files) {
-    const source = await readFile(path.join(root, file), 'utf8');
+    const bytes = await captureSource(file);
+    const source = bytes.toString('utf8');
     const rendered = renderLearningDocument(
       source,
       file,
@@ -194,7 +210,7 @@ export async function buildLearningGuide({ check = false } = {}) {
     documents.push({
       path: file,
       title: rendered.headings[0]?.title ?? file,
-      digest: createHash('sha256').update(source).digest('hex'),
+      digest: createHash('sha256').update(bytes).digest('hex'),
       review: 'Semantic review not established by this build',
       search: source.toLowerCase(),
       ...rendered,
@@ -214,45 +230,88 @@ export async function buildLearningGuide({ check = false } = {}) {
   }
   const reviews = await compileDocumentationReviews(
     JSON.parse(
-      await readFile(path.join(root, 'docs/learn/review-ledger.json'), 'utf8'),
+      (await captureSource('docs/learn/review-ledger.json')).toString('utf8'),
     ),
     new Map(documents.map((doc) => [doc.path, doc.digest])),
     sourceFiles,
-    (file) => readFile(path.join(root, file)),
+    captureSource,
     { requireFresh: check },
   );
-  for (const doc of documents) doc.reviewRecord = reviews.get(doc.path) ?? null;
+  const renderedModules = modules.map(({ text, ...module }) => ({
+    ...module,
+    digest: createHash('sha256').update(text).digest('hex'),
+    ...renderLearningDocument(text, moduleMap, files, revision, sourceFiles),
+  }));
+  const sourcePaths = [
+    ...new Set([
+      ...files,
+      ...[...reviews.values()].flatMap((review) =>
+        review.sources.map((source) => source.path),
+      ),
+      ...[...documents, ...renderedModules].flatMap((doc) =>
+        [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map((match) =>
+          decodeURIComponent(match[1]),
+        ),
+      ),
+    ]),
+  ].sort();
+  /** @type {Record<string, string>} */
+  const sourceSnapshots = {};
+  for (const file of sourcePaths) {
+    const digest = createHash('sha256')
+      .update(await captureSource(file))
+      .digest('hex');
+    sourceSnapshots[file] =
+      `sources/${digest}/${file.split('/').map(encodeURIComponent).join('/')}.txt`;
+  }
+  function bindSourceLinks(html) {
+    return html.replace(
+      /href="sources\/([^"#]+)\.txt"/g,
+      (_match, encoded) =>
+        `href="${sourceSnapshots[decodeURIComponent(encoded)]}"`,
+    );
+  }
+  const snapshots = documents.map((doc) => {
+    const snapshot = {
+      ...doc,
+      html: bindSourceLinks(doc.html),
+      sourceUrl: sourceSnapshots[doc.path],
+      reviewRecord: reviews.get(doc.path) ?? null,
+    };
+    const evidence = (snapshot.reviewRecord?.sources ?? []).map(
+      ({ path: file }) => sourceSnapshots[file],
+    );
+    return {
+      ...snapshot,
+      snapshotDigest: createHash('sha256')
+        .update(JSON.stringify([snapshot, evidence]))
+        .digest('hex'),
+    };
+  });
+  const owner = snapshots.find((doc) => doc.path === moduleMap);
   const data = {
     revision,
-    dirty: Boolean(git(['status', '--porcelain'])),
+    dirty: Boolean(git(['status', '--porcelain'], inputRoot)),
     builtAt: new Date().toISOString(),
     groups: catalog.groups,
-    modules: modules.map(({ text, ...module }) => ({
-      ...module,
-      digest: createHash('sha256').update(text).digest('hex'),
-      ...renderLearningDocument(text, moduleMap, files, revision, sourceFiles),
-    })),
-    documents,
-    sourcePaths: [
-      ...new Set([
-        ...files,
-        ...[...reviews.values()].flatMap((review) =>
-          review.sources.map((source) => source.path),
-        ),
-        ...documents.flatMap((doc) =>
-          [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map(
-            (match) => decodeURIComponent(match[1]),
-          ),
-        ),
-      ]),
-    ].sort(),
+    modules: renderedModules.map((module) => {
+      const snapshot = { ...module, html: bindSourceLinks(module.html) };
+      return {
+        ...snapshot,
+        snapshotDigest: createHash('sha256')
+          .update(JSON.stringify([snapshot, owner.snapshotDigest]))
+          .digest('hex'),
+      };
+    }),
+    documents: snapshots,
+    sourceSnapshots,
   };
   if (!check) {
-    const output = path.join(root, '.kontourai/docs-learning');
+    const output = path.join(inputRoot, '.kontourai/docs-learning');
     await mkdir(output, { recursive: true });
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
       await copyFile(
-        path.join(root, 'docs/learn', asset),
+        path.join(inputRoot, 'docs/learn', asset),
         path.join(output, asset),
       );
     await writeFile(
@@ -271,6 +330,7 @@ export async function buildLearningGuide({ check = false } = {}) {
         JSON.stringify({
           path: doc.path,
           digest: doc.digest,
+          snapshotDigest: doc.snapshotDigest,
           html: doc.html,
           headings: doc.headings,
         }),
@@ -293,14 +353,19 @@ export async function buildLearningGuide({ check = false } = {}) {
     );
     await writeFile(
       path.join(output, 'inventory.json'),
-      `${JSON.stringify({ revision, documents: documents.map(({ path: file, digest, review, reviewRecord }) => ({ path: file, digest, review, reviewRecord })) }, null, 2)}\n`,
+      `${JSON.stringify({ revision, documents: snapshots.map(({ path: file, digest, review, reviewRecord }) => ({ path: file, digest, review, reviewRecord })) }, null, 2)}\n`,
     );
-    for (const file of data.sourcePaths) {
-      if (!sourceFiles.has(file))
-        throw new Error(`Untracked source snapshot: ${file}`);
-      const destination = path.join(output, 'sources', `${file}.txt`);
+    for (const file of sourcePaths) {
+      const destination = path.join(
+        output,
+        decodeURIComponent(sourceSnapshots[file]),
+      );
       await mkdir(path.dirname(destination), { recursive: true });
-      await copyFile(path.join(root, file), destination);
+      await writeFile(destination, capturedSources.get(file), {
+        flag: 'wx',
+      }).catch((error) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
     }
     await writeFile(
       path.join(output, 'atlas-data.json'),
