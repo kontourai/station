@@ -609,3 +609,123 @@ This is distinct from the dormant generic/mobile notification watch described ab
 Channel-specific `open-browser` links are handled by the desktop host. It verifies the requested loopback browser port against its owned Station before minting a launcher capability. These links carry an origin, never an operator credential or arbitrary redirect destination.
 
 Closing the desktop main window hides it to the tray while its owned backend and access watch continue. Explicit Quit remains the process/sidecar shutdown action.
+
+## Desktop OS alerts: one native consumer of the delivery feed
+
+The server's delivery router decides desktop OS alerts and queues them per
+surface: this computer's desktop app reads `local:desktop-<installationId>`,
+a desktop app paired to a remote Station reads `device:<id>`, both from
+`GET /api/notifications/deliveries?after=&epoch=` with the
+`X-Station-Desktop-Installation` header. Every entry has already passed focus
+presence, quiet hours, mutes and minimum urgency, and is redacted per the
+surface's `hideContent`. A reader shows what it reads and filters nothing.
+
+**The desktop host is the only reader (#2608).** The webview used to read the
+feed, and a window hidden in the tray suspends its page, so nothing alerted
+while hidden. `src-desktop/src/notification_feed.rs` now reads it on a host
+thread every 20 seconds (inside the server's 90-second lease), whatever the
+window is doing. The webview asks `notification_feed_native_consumer` before
+its first read; this host answers `true`, and the webview then never reads the
+feed and never posts from it (`src-ui/src/platform/native/deliveryFeed.ts`).
+The answer is fixed for the process, so the role never changes hands at
+runtime and the two can never both alert. A shell without the command answers
+`false` and the webview stays the reader, as before.
+
+- **Same surface, same credential.** The host reads the host-authorized active
+  Station with that profile's bearer — the authority the webview's own
+  requests use through `station_native_http_request` — so the server derives
+  the same surface. No new credential exists; with no authorized Station the
+  host reads nothing.
+- **Cursor and epoch** persist per Station origin in the app config directory
+  (`notification-delivery-cursors.json`, owner-only, least recently used
+  origin evicted past 16), tagged with the surface the server
+  echoed; a cursor for another surface is not used, and a different epoch is
+  a restarted server whose answer is all new.
+- **Only a definite answer settles the role.** `true`, or `false` / Tauri's
+  "Command … not found" from an older shell (or no Tauri bridge at all), is
+  remembered for the page. Any other failure of the question reads and posts
+  nothing and asks again on the next poll; treating it as "not native" would
+  let both post. A test pins the three command names the webview invokes to
+  the desktop `generate_handler!`.
+- **Handoff across an upgrade.** An older build's webview kept its cursor in
+  localStorage. The new webview offers it to the host once
+  (`notification_feed_adopt_cursor`, main window only, off the main thread)
+  and deletes its copy only if the host took it. The host takes it only when
+  it has no cursor of its own for that Station, and then resumes exactly where
+  the webview stopped. Without either cursor the host reads without applying
+  for up to 30 seconds (monotonic clock), then starts from the cursor its
+  first read saw, so entries after that read still alert and an
+  already-alerted backlog is not replayed. An offer is refused once the host
+  has chosen its own start (a committed cursor, or a read that chose one
+  still being committed), so entries queued between the webview's cursor and
+  the host's first read (while the app was closed for the upgrade) are then
+  not alerted.
+- **One attempt per entry.** A read is decided under the consumer lock, its
+  OS calls are made with the lock released, in order, and the cursor is
+  committed as far as the outcomes allow: saved past each consumed entry
+  before the next call, and through the whole read when the poll ends.
+  Shown, refused by the OS, or timed out (the call was made and did not
+  answer within five seconds): the entry is consumed, the cursor passes it,
+  and it is never tried again. Refusals and timeouts are logged at most once
+  a minute. A show that answers late still has its handle kept.
+- **Only a call not made is retried.** When the breaker is open or the gate
+  is disabled, no call is made: the poll stops before that entry, the cursor
+  does not pass it, and nothing after it is posted in that poll.
+- **Stale entries.** An alert queued more than 15 minutes before the server
+  answered is consumed without posting, so the backlog after the gate
+  re-enables or after a restart is not replayed. Both times are the
+  server's: the entry's `at` against the feed's `now`. The desktop's own
+  clock is never used, so a remote Station whose clock differs from this
+  computer's neither drops fresh alerts nor keeps stale ones. A server too
+  old to send `now` has nothing stale. Stale drops are logged at most once a
+  minute.
+- **Stuck notification service.** zbus has no method timeout, so each OS
+  call runs on a helper thread bounded at five seconds, and while four calls
+  are still stuck no new call is made. After 15 polls in a row (about five
+  minutes) ending that way, the stuck calls are written off and calls
+  resume; once 16 calls have been written off over the process's lifetime,
+  Station makes no OS notification call again and **desktop alerts stop until
+  the app restarts** (logged as an error). The consumer lock is never held
+  across an OS call, so none of this blocks a handover.
+- **Duplicates.** The dedupe of shown content is in memory and bounded. The
+  poll thread is not joined on quit. The cursor is saved before each next
+  call, not inside one, and nothing is saved before a read's first call. So
+  a crash or quit during that first call replays, on the next launch, the
+  whole read from the previous cursor, including entries consumed without
+  a call (focus-suppressed, deduped, retracted), which are decided again
+  with the in-memory dedupe gone. Later in the read, it reposts the entry
+  whose call was in progress or had just returned. A cursor file that fails
+  to save (logged once per failure streak) replays from the last saved
+  cursor on the next launch, bounded by the server's 60-minute retention
+  and, when the server sends `now`, by the 15-minute staleness.
+- **Focus.** No OS alert while the main window is focused and visible (the
+  in-app toast shows it); the entry is consumed.
+- **Retract** closes the OS notification the host posted for that id where the
+  pinned backend can: Linux (D-Bus `CloseNotification`). A retract that
+  arrives before its alert's late answer leaves a bounded tombstone, and the
+  late notification is closed as soon as it answers; an older post's late
+  answer never replaces a newer post's handle, and that superseded
+  notification stays on screen with no handle, so a retract of its id closes
+  only the newer one. notify-rust 4.18's
+  macOS (NSUserNotificationCenter) and Windows handles expose no close, so
+  there a retract only stops an alert not yet posted (a retract later in the
+  same read). tauri-plugin-notification 2.4.0 cannot remove a delivered
+  notification on any desktop platform either.
+- **Click** focuses the app and hands the entry's `link` to the main webview:
+  the host keeps it for 60 seconds and emits `station://notification-open`,
+  and the webview takes it once (`take_notification_open_link`) and
+  navigates. The link must be an in-app path (`/…`, optional query; no
+  scheme, `//host`, backslash, fragment, whitespace or control character),
+  and its NORMALIZED path must not be `//host` either (`/..//host`,
+  `/%2e%2e//host`); it is checked natively and again in the webview
+  (`src-ui/src/lib/notificationOpen.ts`), and the normalized path is what
+  navigates. Anything else opens the app where it was; no URL outside the app
+  is ever opened. On macOS a click is observed by a waiting thread per alert
+  (at most 32), and a slot frees only when its notification is clicked,
+  dismissed or cleared from Notification Center; past the cap alerts still
+  show but their clicks open nothing.
+
+The legacy `notification_watch.rs` is not this: it posts raw titles and
+ignores envelopes, `hideContent`, quiet hours and mutes. It stays dormant.
+Blocking-category alerts (`blockingAlert.ts`) still come from the webview and
+so still pause while it is hidden.

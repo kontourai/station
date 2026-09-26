@@ -563,6 +563,36 @@ describe('pollDeliveryFeed (#2587 on #2586’s delivery feed)', () => {
     );
   });
 
+  test('default wiring: the server clock `now` is optional but must be a string', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    // A current server sends its clock; an older one does not. Both post.
+    authenticatedFetch
+      .mockResolvedValueOnce(ok(feed(1)))
+      .mockResolvedValueOnce(
+        ok({
+          ...feed(2, [alert(2, 'n-now')]),
+          now: '2026-09-24T00:01:00.000Z',
+        }),
+      )
+      .mockResolvedValueOnce(ok(feed(3, [alert(3, 'n-older')])));
+    await pollDeliveryFeed(A, SCOPE);
+    expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
+    expect(await pollDeliveryFeed(A, SCOPE)).toBe(1);
+    // A malformed clock is a malformed feed: nothing posts.
+    authenticatedFetch.mockResolvedValueOnce(
+      ok({
+        ...feed(4, [alert(4, 'n-bad')]),
+        now: 42,
+      } as unknown as SurfaceDeliveryFeed),
+    );
+    await pollDeliveryFeed(A, SCOPE);
+    expect(
+      notifyNatively.mock.calls.map(
+        ([input]) => (input as { title: string }).title,
+      ),
+    ).toEqual(['Alert n-now', 'Alert n-older']);
+  });
+
   test('default wiring: without an installation id no header is sent', async () => {
     installation.current = undefined;
     authenticatedFetch.mockResolvedValueOnce(ok(feed(1)));

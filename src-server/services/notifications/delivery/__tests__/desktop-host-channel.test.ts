@@ -78,6 +78,23 @@ describe('DesktopHostChannel', () => {
     expect(isDesktopHostSurface('local:desktop-x')).toBe(false);
   });
 
+  test("every read carries the server's clock so a reader ages entries by it", async () => {
+    const { channel, bus, advance } = wired();
+    expect(channel.read(DESKTOP, 0).now).toBe(
+      new Date(1_000_000).toISOString(),
+    );
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
+    await flush();
+    advance(20 * 60 * 1000);
+    const feed = channel.read(DESKTOP, 0);
+    const [entry] = feed.entries;
+    // Pinned literal beside the derivation: 1_000_000 ms + 20 minutes.
+    expect(feed.now).toBe('1970-01-01T00:36:40.000Z');
+    expect(Date.parse(feed.now ?? '') - Date.parse(entry?.at ?? '')).toBe(
+      20 * 60 * 1000,
+    );
+  });
+
   test('a host that never read its feed is not a delivery target', async () => {
     const { channel, bus } = wired();
     bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
@@ -96,6 +113,7 @@ describe('DesktopHostChannel', () => {
       cursor: 0,
       epoch: expect.any(String),
       leaseMs: DESKTOP_HOST_LEASE_MS,
+      now: '1970-01-01T00:16:40.000Z',
     });
     bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
     await flush();

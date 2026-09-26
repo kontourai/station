@@ -26,7 +26,10 @@
 import { useEffect } from 'react';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
+import { subscribeToNotificationOpen } from '../lib/notificationOpen';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
+import { isMainDesktopWindow } from '../platform/native/mainWindow';
+import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import {
   AgentActivityLaunchRoutes,
   AgentActivityRefresher,
@@ -52,6 +55,22 @@ function TrayNavigationListener() {
   return null;
 }
 
+/** A click on a native notification alert opens its in-app link (#2608). */
+function NotificationOpenListener() {
+  const { navigate } = useNavigationActions();
+  const profile = usePlatformProfile();
+  const enabled =
+    profile.isTauri &&
+    profile.isDesktop &&
+    !profile.isMobile &&
+    isMainDesktopWindow();
+  useEffect(
+    () => (enabled ? subscribeToNotificationOpen(navigate) : undefined),
+    [enabled, navigate],
+  );
+  return null;
+}
+
 export default function DeferredAppOverlays() {
   return (
     <>
@@ -60,6 +79,7 @@ export default function DeferredAppOverlays() {
       <ReportProblemHost />
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
+      <NotificationOpenListener />
       <AgentActivityRefresher />
       <AgentActivityLaunchRoutes />
     </>
