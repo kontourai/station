@@ -7,6 +7,7 @@ import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
 
@@ -20,6 +21,13 @@ export interface ChatDockMobileOverflowActions {
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
   onOpenConversationHistory?: () => void;
+  /**
+   * Desktop More-menu parity: the dock header's clipboard rows (Copy thread
+   * ID, Copy session ID once diverged, Copy project path) from
+   * `useDockCopyActions`. A coarse device has no hover tooltip to carry these
+   * identities, so the sheet is their only home. Absent: no rows.
+   */
+  copyActions?: DockMoreAction[];
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
   inputOriginLabel?: string;
