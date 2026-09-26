@@ -1,4 +1,5 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -128,5 +129,47 @@ describe('install.sh generated blocks', () => {
         `${pristine}# BEGIN GENERATED PINNED MANIFEST SIGNING KEYS\n# END GENERATED PINNED MANIFEST SIGNING KEYS\n`,
       ),
     ).toThrow(/exactly one PINNED MANIFEST SIGNING KEYS block/);
+  });
+});
+
+describe('install-script:check as a process', () => {
+  // The gate verify:static:raw runs is the CLI, not the exported functions, so
+  // run it as a child and read its exit status in both directions.
+  function runCheck(cwd: string) {
+    return spawnSync(
+      process.execPath,
+      [join(cwd, 'scripts/install-script-generated.mjs'), '--check'],
+      { cwd, encoding: 'utf8' },
+    );
+  }
+
+  it('exits 0 on this checkout', () => {
+    const result = runCheck(root);
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it('exits non-zero, naming the stale blocks, when install.sh drifts', () => {
+    const copy = makeTempDir('station-install-check-');
+    mkdirSync(join(copy, 'scripts'));
+    mkdirSync(join(copy, 'config'));
+    for (const file of [
+      'scripts/install-script-generated.mjs',
+      'scripts/channel-ports.mjs',
+      'config/channel-ports.json',
+      'config/release-manifest-keys.json',
+    ]) {
+      copyFileSync(join(root, file), join(copy, file));
+    }
+    const nightly = String(ports.nightly.serverPort);
+    const source = readFileSync(INSTALL_SCRIPT_PATH, 'utf8');
+    expect(source).toContain(nightly);
+    writeFileSync(
+      join(copy, 'install.sh'),
+      source.replace(nightly, String(ports.nightly.serverPort + 1)),
+    );
+
+    const result = runCheck(copy);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/stale/i);
   });
 });
