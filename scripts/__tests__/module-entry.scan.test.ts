@@ -89,38 +89,99 @@ function findHandRolledEntryGuards(
 
 /**
  * Scripts that run as lone files, away from scripts/lib, so they keep an
- * inline realpath guard instead of importing the helper. Each entry is
- * re-proven below: the lone-file use still exists, the guard still realpaths,
- * and (where it is true today) the file imports nothing relative.
+ * inline guard instead of importing the helper. Each pins its EXACT guard,
+ * through the call that uses it: the main scan still reads the whole file with
+ * only that text removed, so any other hand-rolled comparison in it (or an
+ * edit to the guard itself) fails. Each entry also re-proves that the
+ * lone-file use still exists and, where it is true today, that the file
+ * imports nothing relative.
  */
 const LONE_FILE_SCRIPTS: Readonly<
-  Record<string, { usedAt: string; use: string; importFree: boolean }>
+  Record<
+    string,
+    { usedAt: string; use: string; importFree: boolean; guard: string }
+  >
 > = {
   // Three workflows extract it from the base commit into $RUNNER_TEMP.
   'scripts/classify-ci-change.mjs': {
     usedAt: '.github/workflows/windows-pr-verification.yml',
     use: 'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
     importFree: true,
+    guard: [
+      'let isMain = false;',
+      'try {',
+      '  isMain =',
+      "    realpathSync(resolve(process.argv[1] ?? '')) ===",
+      '    realpathSync(fileURLToPath(import.meta.url));',
+      '} catch {',
+      "  // A missing entry path cannot be this module's executable invocation.",
+      '}',
+      'if (isMain) main(process.argv.slice(2));',
+    ].join('\n'),
   },
   // Copied (never symlinked) onto PATH as `station-dev`.
   'scripts/station-dev.mjs': {
     usedAt: 'scripts/install-station-dev.mjs',
     use: "'station-dev.mjs'",
     importFree: true,
+    guard: [
+      'function isMain() {',
+      '  const entry = process.argv[1];',
+      '  if (!entry) return false;',
+      '  try {',
+      '    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));',
+      '  } catch {',
+      '    return false;',
+      '  }',
+      '}',
+      '',
+      'if (isMain()) {',
+    ].join('\n'),
   },
   'scripts/station-dogfood-reconcile.mjs': {
     usedAt: 'ops/dogfood/install-macos.zsh',
     use: 'install -m 0755 "$REPO_ROOT/scripts/station-dogfood-reconcile.mjs" "$RUNNER"',
     importFree: true,
+    guard: [
+      'function invokedDirectly() {',
+      '  const entry = process.argv[1];',
+      '  if (!entry) return false;',
+      '  let real;',
+      '  try {',
+      '    real = realpathSync(path.resolve(entry));',
+      '  } catch (error) {',
+      "    if (['ENOENT', 'ENOTDIR', 'ENAMETOOLONG'].includes(error?.code))",
+      '      return false;',
+      '    throw error;',
+      '  }',
+      '  return real === realpathSync(fileURLToPath(import.meta.url));',
+      '}',
+      '',
+      'if (invokedDirectly()) {',
+    ].join('\n'),
   },
   // Installed alone too, but it ALREADY imports
   // ../packages/shared/src/process-identity.mjs, so the installed copy cannot
   // resolve it. That is a separate, pre-existing defect; this pins only what
-  // is true: no module-entry import and a realpath guard.
+  // is true: no module-entry import and its guard as it stands (realpath of
+  // argv[1] against the already-realpathed import.meta.url).
   'scripts/station-dogfood-health.mjs': {
     usedAt: 'ops/dogfood/install-macos.zsh',
     use: 'install -m 0755 "$REPO_ROOT/scripts/station-dogfood-health.mjs" "$HEALTH_HELPER"',
     importFree: false,
+    guard: [
+      'function isMainModule() {',
+      '  const entrypoint = process.argv[1];',
+      '  if (!entrypoint) return false;',
+      '  try {',
+      '    return import.meta.url === pathToFileURL(realpathSync(entrypoint)).href;',
+      '  } catch {',
+      '    return import.meta.url === pathToFileURL(entrypoint).href;',
+      '  }',
+      '}',
+      '',
+      'if (isMainModule()) {',
+    ].join('\n'),
   },
 };
 const RELATIVE_IMPORT = /\bfrom\s+['"]\.\.?\/|\bimport\(\s*['"]\.\.?\//;
@@ -153,13 +214,19 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
   });
 
   test('no tracked script compares argv[1] with import.meta by hand', () => {
-    const offenders = scannedFiles()
-      .filter((path) => !(path in LONE_FILE_SCRIPTS))
-      .flatMap((path) =>
-        findHandRolledEntryGuards(
-          readFileSync(join(repoRoot, path), 'utf8'),
-        ).map(({ line, rule }) => `${path}:${line} (${rule})`),
+    const offenders = scannedFiles().flatMap((path) => {
+      const source = readFileSync(join(repoRoot, path), 'utf8');
+      // Only a lone-file script's exact pinned guard is exempt. Blanked, not
+      // deleted, so the reported line numbers stay those of the file.
+      const guard = LONE_FILE_SCRIPTS[path]?.guard;
+      const scanned =
+        guard && source.includes(guard)
+          ? source.replace(guard, guard.replace(/[^\n]/g, ' '))
+          : source;
+      return findHandRolledEntryGuards(scanned).map(
+        ({ line, rule }) => `${path}:${line} (${rule})`,
       );
+    });
     expect(
       offenders,
       'use `invokedDirectly(import.meta.url)` from scripts/lib/module-entry.mjs',
@@ -168,16 +235,15 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
 
   test.each(Object.entries(LONE_FILE_SCRIPTS))(
     '%s stays a lone file with a realpath guard',
-    (path, { usedAt, use, importFree }) => {
+    (path, { usedAt, use, importFree, guard }) => {
       expect(scannedFiles()).toContain(path);
       const source = readFileSync(join(repoRoot, path), 'utf8');
       expect(readFileSync(join(repoRoot, usedAt), 'utf8')).toContain(use);
       expect(source).not.toMatch(/from\s+['"][^'"]*module-entry\.mjs['"]/);
       if (importFree) expect(RELATIVE_IMPORT.test(source)).toBe(false);
-      // The inline guard realpaths argv[1] and compares with import.meta.url.
-      expect(source).toMatch(/realpathSync\(/);
-      expect(source).toMatch(/process\.argv\[1\]/);
-      expect(source).toMatch(/import\.meta\.url/);
+      // The pinned guard, exactly once; the scan above covers the rest.
+      expect(source.split(guard).length - 1, 'pinned guard').toBe(1);
+      expect(guard).toMatch(/realpathSync\(/);
     },
   );
 

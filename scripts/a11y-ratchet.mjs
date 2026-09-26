@@ -92,12 +92,6 @@ export function evaluate(measured, baseline) {
 }
 
 /**
- * Biome writes its summary to stdout but its diagnostics to stderr, and exits
- * 0 when everything it found was a warning. Capturing only stdout — or only the
- * throwing path — measures an empty string and silently reports a clean tree.
- * Always merge both streams, on both paths.
- */
-/**
  * Biome's own JS launcher under the current Node, never an `npx` shim: on
  * Windows `npx.cmd` cannot be spawned without a shell (`EINVAL` since Node's
  * CVE-2024-27980 hardening), which threw here once this gate first ran on
@@ -115,6 +109,12 @@ export function biomeLintInvocation() {
   };
 }
 
+/**
+ * Biome writes its summary to stdout but its diagnostics to stderr, and exits
+ * 0 when everything it found was a warning. Capturing only stdout — or only the
+ * throwing path — measures an empty string and silently reports a clean tree.
+ * Always merge both streams, on both paths.
+ */
 function runBiome() {
   // spawnSync rather than execFileSync: execFileSync only hands back stderr on
   // the throwing path, so a run that exits 0 with warnings loses every
