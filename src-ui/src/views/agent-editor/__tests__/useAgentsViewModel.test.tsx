@@ -870,6 +870,36 @@ describe('persisted detail remains authoritative while the collection reconciles
   });
 });
 
+// archive#3662: an ABSENT engine binding is Station's own engine, not "no
+// engine", so the editor must offer the Model-connection choice for it. The
+// old predicate answered the other way and the one Agent shape that always
+// needs a Model connection was the shape never offered one.
+describe('an Agent with no engine binding edits as a Station-engine Agent (archive#3662)', () => {
+  test('an absent binding selects the Model-connection engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: '' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('model');
+  });
+
+  test('a binding to an external engine selects the CLI engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: 'claude' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('cli');
+  });
+});
+
 /**
  * archive#4521: does the editor actually let the user SET the
  * agent's model/provider binding — read from a loaded agent, and written

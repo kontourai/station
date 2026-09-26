@@ -179,11 +179,7 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         // tested green in jsdom, which does not model that pruning, while
         // lying about what a real AT announces). The visible dot stays for
         // sighted users (`aria-hidden`); the attention text instead joins
-        // the tab's own accessible name, mirroring the exact pattern
-        // `CodingInspectorPanel.tsx` already uses. (Cited by component name
-        // only: this file has no Coding dependency, and the full path token
-        // anchors coding-composition-inventory-gate's semantic scan, which
-        // would then demand an inventory entry nothing derives.)
+        // the tab's own accessible name.
         const accessibleName = item.attention
           ? `${item.label}${countText}, needs attention`
           : undefined;

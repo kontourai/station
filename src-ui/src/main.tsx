@@ -36,7 +36,6 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
-import { LocalUiSessionGate } from './components/LocalUiSessionGate';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
@@ -66,6 +65,7 @@ import {
   PlatformBootstrap,
   usePlatformProfile,
 } from './platform/PlatformProfileContext';
+import { PlatformSessionGate } from './platform/PlatformSessionGate';
 import './providers/context/index';
 
 // Connection onboarding is mounted after the provider shell has booted. Keep
@@ -148,15 +148,6 @@ function ClientOriginProfileBridge() {
     return () => setClientOriginResolver(undefined);
   }, [surface]);
   return null;
-}
-
-function PlatformSessionGate({ children }: { children: React.ReactNode }) {
-  const profile = usePlatformProfile();
-  return profile.isTauri ? (
-    children
-  ) : (
-    <LocalUiSessionGate apiBase={localUiApiBase}>{children}</LocalUiSessionGate>
-  );
 }
 
 // #481 client authority — the NONPERSISTED bootstrap client. It carries
@@ -247,7 +238,7 @@ function renderApp(): void {
         <PlatformBootstrap>
           <ClientOriginProfileBridge />
           <ApiBaseProvider>
-            <PlatformSessionGate>
+            <PlatformSessionGate apiBase={localUiApiBase}>
               <QueryClientProvider client={bootstrapQueryClient}>
                 {/* COMPOSITION BOUNDARY (hosted connect-modal regression):
                   navigation, toasts, and the connection recovery shell are

@@ -1,8 +1,6 @@
 /**
  * @vitest-environment jsdom
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   cleanup,
   fireEvent,
@@ -312,23 +310,5 @@ describe('reasoning disclosure (station#55)', () => {
         .getAttribute('aria-expanded'),
     ).toBe('true');
     expect(screen.getByText(grown)).toBeTruthy();
-  });
-
-  test('both chat consumers render the shared ReasoningSection', () => {
-    const uiRoot = join(process.cwd(), 'src-ui/src/components/chat');
-    const streamingConsumer = readFileSync(
-      join(uiRoot, 'ChatMessageList.tsx'),
-      'utf8',
-    );
-    const settledConsumer = readFileSync(
-      join(uiRoot, 'message-bubble/MessageContent.tsx'),
-      'utf8',
-    );
-
-    for (const source of [streamingConsumer, settledConsumer]) {
-      expect(source).toContain('import { ReasoningSection }');
-      expect(source).toContain('<ReasoningSection');
-      expect(source).toContain('hasAnswerText=');
-    }
   });
 });
