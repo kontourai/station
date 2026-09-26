@@ -68,6 +68,22 @@ function findHandRolledEntryGuards(
   return found;
 }
 
+/**
+ * Scripts that must stay importless because they run as lone files, whose
+ * inline guard already realpaths both sides. Each entry is re-proven below:
+ * still flagged (or the entry is stale), still import-free, still realpath,
+ * and the lone-file use still exists.
+ */
+const LONE_FILE_SCRIPTS: Readonly<
+  Record<string, { usedAt: string; use: string }>
+> = {
+  'scripts/classify-ci-change.mjs': {
+    usedAt: '.github/workflows/windows-pr-verification.yml',
+    use: 'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+  },
+};
+const RELATIVE_IMPORT = /\bfrom\s+['"]\.\.?\/|\bimport\(\s*['"]\.\.?\//;
+
 function scannedFiles(): string[] {
   return execFileSync('git', ['ls-files', '-z', '--', ...SCAN_ROOTS], {
     cwd: repoRoot,
@@ -96,16 +112,35 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
   });
 
   test('no tracked script compares argv[1] with import.meta by hand', () => {
-    const offenders = scannedFiles().flatMap((path) =>
-      findHandRolledEntryGuards(readFileSync(join(repoRoot, path), 'utf8')).map(
-        ({ line, rule }) => `${path}:${line} (${rule})`,
-      ),
-    );
+    const offenders = scannedFiles()
+      .filter((path) => !(path in LONE_FILE_SCRIPTS))
+      .flatMap((path) =>
+        findHandRolledEntryGuards(
+          readFileSync(join(repoRoot, path), 'utf8'),
+        ).map(({ line, rule }) => `${path}:${line} (${rule})`),
+      );
     expect(
       offenders,
       'use `invokedDirectly(import.meta.url)` from scripts/lib/module-entry.mjs',
     ).toEqual([]);
   });
+
+  test.each(Object.entries(LONE_FILE_SCRIPTS))(
+    '%s stays a lone file with a realpath guard',
+    (path, { usedAt, use }) => {
+      expect(scannedFiles()).toContain(path);
+      const source = readFileSync(join(repoRoot, path), 'utf8');
+      expect(
+        findHandRolledEntryGuards(source).length,
+        'stale entry',
+      ).toBeGreaterThan(0);
+      expect(RELATIVE_IMPORT.test(source)).toBe(false);
+      expect(
+        source.match(/realpathSync\(/g)?.length ?? 0,
+      ).toBeGreaterThanOrEqual(2);
+      expect(readFileSync(join(repoRoot, usedAt), 'utf8')).toContain(use);
+    },
+  );
 
   // Each form that was on main before #2682, verbatim in shape. The scan is
   // only as good as these: a rule that stops matching fails here.

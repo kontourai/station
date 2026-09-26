@@ -864,12 +864,6 @@ describe('coverage arguments', () => {
       expect(result.stdout).not.toContain('e2e bucket:');
     }
   });
-
-  it('uses the realpath entry guard rather than a fragile string URL', () => {
-    expect(readFileSync('scripts/run-e2e-coverage.mjs', 'utf8')).toContain(
-      'invokedDirectly(import.meta.url)',
-    );
-  });
 });
 
 describe('E2E capacity configuration', () => {

@@ -31,10 +31,12 @@
  * "imported": swallowing it would make a gate silently do nothing and exit 0,
  * the failure this helper exists to prevent.
  *
- * `scripts/station-dev.mjs`, `scripts/station-dogfood-reconcile.mjs` and
- * `scripts/station-dogfood-health.mjs` are installed as standalone single-file
- * copies, so they keep an inline realpath comparison instead of importing this
- * module; the scan test names them.
+ * Four scripts run as lone files, so they keep an inline realpath comparison
+ * instead of importing this module: `scripts/station-dev.mjs`,
+ * `scripts/station-dogfood-reconcile.mjs` and
+ * `scripts/station-dogfood-health.mjs` are installed as single-file copies,
+ * and three workflows run `git show "$BASE_SHA:scripts/classify-ci-change.mjs"`
+ * from a temp path. The scan test names the one whose spelling it would flag.
  */
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
