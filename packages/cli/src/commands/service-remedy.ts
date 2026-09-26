@@ -1,4 +1,7 @@
-import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  sameRuntimePath,
+  spawnedStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
 
 /**
  * Render a service reinstall command only when the installed manifest carries
@@ -68,8 +71,14 @@ export function resolveServiceInstallRemedy(
       reason: `this registration carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=${shellArgument(bareRoot)}. Inspect its manifest before reinstalling.`,
     };
   }
+  // A recorded root is prefixed only when a bare reinstall would derive a
+  // different one. Manifests written before #1102 record a self-rooted home
+  // as STATION_ROOT === STATION_HOME; spelling that out is exactly the
+  // configuration admitStationRuntimeHome refuses, while a bare reinstall
+  // derives the same root implicitly, so it must not be prefixed.
+  const bareEquivalent = bareRoot ?? baseDir;
   const envPrefix =
-    recordedRoot !== undefined && recordedRoot !== bareRoot
+    recordedRoot !== undefined && !sameRuntimePath(recordedRoot, bareEquivalent)
       ? `STATION_ROOT=${shellArgument(recordedRoot)} `
       : '';
 

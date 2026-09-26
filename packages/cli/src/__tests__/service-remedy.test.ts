@@ -90,6 +90,24 @@ describe('service reinstall STATION_ROOT (#2663 review M1)', () => {
     ).toBe(true);
   });
 
+  test('does not prefix a pre-#1102 self-rooted manifest whose root equals its home', () => {
+    // Before #1102 install recorded STATION_ROOT === STATION_HOME for a raw
+    // --base. Spelling that out is the configuration the runtime refuses to
+    // boot; a bare reinstall derives the same root implicitly.
+    for (const stationRoot of ['/srv/self-rooted', '/srv/self-rooted/']) {
+      const remedy = resolveServiceInstallRemedy({
+        ...completeConfiguration,
+        baseDir: '/srv/self-rooted',
+        stationRoot,
+      });
+      expect(
+        remedy.command?.startsWith('station service install '),
+        stationRoot,
+      ).toBe(true);
+      expect(runRenderedCommand(remedy.command!).stationRoot).toBe('<unset>');
+    }
+  });
+
   test('gives no command when a recorded absence would be filled in by a reinstall', () => {
     expect(
       resolveServiceInstallRemedy({

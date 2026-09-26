@@ -1582,7 +1582,7 @@ describe('station service dispatch', () => {
         });
         const realFirst = nodeFs.realpathSync(first);
         const realSecond = nodeFs.realpathSync(second);
-        // Shared position 2: the Node directory (/usr/bin here) leads both.
+        // Shared position 2: the real Node directory (dirname of realpath(execPath)) leads both.
         const drift = JSON.parse(
           String(log.mock.calls.at(-1)?.[0]),
         ).servicePath;
