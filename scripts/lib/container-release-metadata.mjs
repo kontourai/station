@@ -1,3 +1,5 @@
+import { invokedDirectly } from './module-entry.mjs';
+
 const SHA = /^[0-9a-f]{40}$/i;
 const STABLE = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const PREVIEW =
@@ -92,7 +94,7 @@ function option(name, args) {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   const metadata = createContainerReleaseMetadata({
     tag: option('tag', args) ?? process.env.RELEASE_TAG,

@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const digest = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -133,10 +132,7 @@ export function evaluateFallowReview(
   };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     if (process.argv.length !== 3)
       throw new Error(

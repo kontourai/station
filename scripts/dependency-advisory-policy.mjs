@@ -3,13 +3,14 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import {
   ALL_DEPENDENCY_SCOPES,
   classifyGitRange,
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
@@ -1070,10 +1071,7 @@ export async function runPolicyCli({
   return result.ok ? 0 : 1;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     process.exitCode = await runPolicyCli();
   } catch (error) {

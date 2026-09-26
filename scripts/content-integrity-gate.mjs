@@ -12,6 +12,7 @@
 // ordinary text.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * C0 controls minus TAB (0x09), LF (0x0A) and CR (0x0D), plus DEL (0x7F).
@@ -222,6 +223,6 @@ export function runGate({ log = console.log, error = console.error } = {}) {
 }
 
 // Run only as a script, not when the gate's own test imports it.
-if (process.argv[1]?.endsWith('content-integrity-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(runGate());
 }

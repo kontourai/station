@@ -36,8 +36,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import YAML from 'yaml';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const EXTENSION_TARGET = 'StationAgentActivity';
 const APP_TARGET = 'station_iOS';
@@ -315,10 +315,7 @@ function main(argv) {
   if (infoPlist !== undefined) rewrite(infoPlist, next.infoPlist);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

@@ -865,9 +865,9 @@ describe('coverage arguments', () => {
     }
   });
 
-  it('uses the resolved file URL entry guard rather than a fragile string URL', () => {
+  it('uses the realpath entry guard rather than a fragile string URL', () => {
     expect(readFileSync('scripts/run-e2e-coverage.mjs', 'utf8')).toContain(
-      'pathToFileURL(resolve(process.argv[1])).href',
+      'invokedDirectly(import.meta.url)',
     );
   });
 });

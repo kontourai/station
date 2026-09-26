@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const ZERO_SHA = '0'.repeat(40);
@@ -465,12 +463,4 @@ function main(args) {
   console.log(renderGithubOutputs(result));
 }
 
-let isMain = false;
-try {
-  isMain =
-    realpathSync(resolve(process.argv[1] ?? '')) ===
-    realpathSync(fileURLToPath(import.meta.url));
-} catch {
-  // A missing entry path cannot be this module's executable invocation.
-}
-if (isMain) main(process.argv.slice(2));
+if (invokedDirectly(import.meta.url)) main(process.argv.slice(2));

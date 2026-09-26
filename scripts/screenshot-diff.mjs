@@ -43,8 +43,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { PNG } from 'pngjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** A gallery screen name is a slug; it becomes `<name>.png` in the baseline. */
 const SCREEN_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -713,14 +713,9 @@ async function main(argv) {
   return runDiff(options).exitCode;
 }
 
-// station#4464 arbiter fix: match the repo's own idiom (scripts/run-e2e-suite.mjs)
-// instead of a bare pathname compare, which silently no-ops on a path
-// containing spaces.
-const isDirectRun =
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
-
-if (isDirectRun) {
+// station#4464: not a bare pathname compare, which silently no-ops on a path
+// containing spaces (#2682 moved every script to this helper).
+if (invokedDirectly(import.meta.url)) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

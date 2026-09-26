@@ -316,7 +316,7 @@ describe('the gate as a real child process', () => {
     expect(output).toContain('outside-only-fixture-pkg');
   });
 
-  // The entrypoint guard used to be a raw
+  // The entrypoint guard used to be a raw (it is now `invokedDirectly`)
   // `import.meta.url === \`file://${process.argv[1]}\`` string compare.
   // `import.meta.url` percent-encodes a space in the path; `process.argv[1]`
   // does not — so invoking the gate from (or through) a path containing a
@@ -336,6 +336,12 @@ describe('the gate as a real child process', () => {
     mkdirSync(spaceDir, { recursive: true });
     const scriptCopy = join(spaceDir, 'test-import-existence-gate.mjs');
     copyFileSync(gatePath, scriptCopy);
+    // Its entry guard (#2682) lives beside it, as in the real checkout.
+    mkdirSync(join(spaceDir, 'lib'));
+    copyFileSync(
+      join(repoRoot, 'scripts/lib/module-entry.mjs'),
+      join(spaceDir, 'lib', 'module-entry.mjs'),
+    );
     mkdirSync(join(spaceDir, 'node_modules'));
     symlinkSync(
       realpathSync(join(repoRoot, 'node_modules/typescript')),

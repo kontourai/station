@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import {
   decodeProvisioningProfile,
   inspectAppStoreDistributionProfile,
 } from './check-ios-store-profile.mjs';
 import { iosTestFlightChannel } from './ios-testflight-channel.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 function required(args, name) {
   const index = args.indexOf(`--${name}`);
@@ -44,18 +43,7 @@ export function iosTestFlightReadiness({
   };
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     console.log(

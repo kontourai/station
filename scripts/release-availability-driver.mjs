@@ -7,6 +7,7 @@ import {
   commitsInRange,
   mergedIssueFacts,
 } from './lib/github-merged-issue-facts.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertOnlyExpectedAssets,
   readInventory,
@@ -454,7 +455,7 @@ async function tagSha(tag) {
   return tagObject.object.sha;
 }
 
-if (process.argv[1]?.endsWith('release-availability-driver.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const api = {
     repository: () => request(`/repos/${REPOSITORY}`),
     releaseForTag: (tag) =>
