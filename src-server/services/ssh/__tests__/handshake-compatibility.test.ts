@@ -134,6 +134,11 @@ describe('public handshake capability flags (station#1095)', () => {
     };
 
     expect(response.status).toBe(200);
+    // archive#1887: `devicePairingApproval` is deliberately absent. Its token
+    // and enforcement shipped without the operator surfaces (CLI verb, host
+    // route, device-list toggle), so advertising it would promise clients an
+    // affordance no human can reach. Add it here only in the change that
+    // ships those surfaces.
     expect(body.capabilities).toEqual({
       sshEnvironments: true,
       webPushNotifications: true,
