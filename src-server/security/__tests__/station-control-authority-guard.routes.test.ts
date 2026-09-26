@@ -123,8 +123,9 @@ const JOBS = [
     agent: 'reviewer',
     enabled: true,
     monitor: {
-      kind: 'github-pull-request',
-      target: 'org/repo#1',
+      kind: 'github-pull-request' as const,
+      objective: 'review-ready' as const,
+      target: 'https://github.com/org/repo/pull/1',
       agentId: 'reviewer',
       projectId: 'project-a',
     },
@@ -1044,7 +1045,7 @@ describe('a job a person granted (M1): an agent cannot change what it runs', () 
   test.each([
     ['agentId', { agentId: 'another-agent' }],
     ['projectId', { projectId: 'another-project' }],
-    ['target', { target: 'org/other#2' }],
+    ['target', { target: 'https://github.com/org/other/pull/2' }],
   ] as const)(
     'changing a granted job’s monitor %s is a person’s step even for the bound operator',
     async (_field, change) => {
