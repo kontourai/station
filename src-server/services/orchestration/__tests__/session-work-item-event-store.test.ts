@@ -109,18 +109,22 @@ function open(
 
 describe('EventStore Session work-item associations', () => {
   test('never materializes an oversized association JSON, at rest or grown between admission and fetch', () => {
-    // Read cost is what crosses from SQLite into JS. Record the largest string
-    // any statement returns while the store lists observations: metadata
-    // admission must reject an oversized row before its JSON is selected, and
-    // the bounded content fetch must return NULL for a row that grew after
-    // admission instead of the grown bytes.
+    // Read cost is what crosses from SQLite into JS. Rows leave a statement
+    // only through `all`, `get` and `iterate` (`run` returns counts), so every
+    // one is measured: record the largest string any of them returns while
+    // the store lists observations. Metadata admission must reject an
+    // oversized row before its JSON is selected, and the bounded content
+    // fetch must return NULL for a row that grew after admission instead of
+    // the grown bytes.
     const oversizedJson = JSON.stringify({
       retained: 'x'.repeat(2 * 1024 * 1024),
     });
     let largestReturnedString = 0;
-    const record = (rows: unknown) => {
+    const readMethods = new Set<string>();
+    const record = (method: string, rows: unknown) => {
       for (const row of Array.isArray(rows) ? rows : [rows]) {
         if (!row || typeof row !== 'object') continue;
+        readMethods.add(method);
         for (const value of Object.values(row))
           if (typeof value === 'string')
             largestReturnedString = Math.max(
@@ -130,26 +134,42 @@ describe('EventStore Session work-item associations', () => {
       }
     };
     let afterMetadataRead: (() => void) | undefined;
-    const originalAll = StatementSync.prototype.all;
-    const originalGet = StatementSync.prototype.get;
-    vi.spyOn(StatementSync.prototype, 'all').mockImplementation(function (
-      this: StatementSync,
-      ...args: Parameters<StatementSync['all']>
-    ) {
-      const rows = originalAll.apply(this, args);
-      record(rows);
+    const afterRead = () => {
       const grow = afterMetadataRead;
       afterMetadataRead = undefined;
       grow?.();
-      return rows;
-    });
-    vi.spyOn(StatementSync.prototype, 'get').mockImplementation(function (
+    };
+    for (const method of ['all', 'get'] as const) {
+      const original = StatementSync.prototype[method] as (
+        this: StatementSync,
+        ...args: unknown[]
+      ) => unknown;
+      vi.spyOn(StatementSync.prototype, method).mockImplementation(function (
+        this: StatementSync,
+        ...args: unknown[]
+      ) {
+        const rows = original.apply(this, args);
+        record(method, rows);
+        afterRead();
+        return rows as never;
+      });
+    }
+    const originalIterate = StatementSync.prototype.iterate as (
       this: StatementSync,
-      ...args: Parameters<StatementSync['get']>
+      ...args: unknown[]
+    ) => Iterator<unknown>;
+    vi.spyOn(StatementSync.prototype, 'iterate').mockImplementation(function (
+      this: StatementSync,
+      ...args: unknown[]
     ) {
-      const row = originalGet.apply(this, args);
-      record(row);
-      return row;
+      const rows = originalIterate.apply(this, args);
+      return (function* () {
+        for (let next = rows.next(); !next.done; next = rows.next()) {
+          record('iterate', next.value);
+          yield next.value;
+        }
+        afterRead();
+      })() as never;
     });
     const writeAssociationJson = (path: string, value: string) => {
       const writer = new DatabaseSync(path);
@@ -180,10 +200,21 @@ describe('EventStore Session work-item associations', () => {
           }),
         ).toEqual({ kind: 'staged' });
         store.appendEvent(completion());
-        // Positive control: an admitted row's JSON does cross, in full.
+        // Positive control: the probe observes the content fetch, whichever
+        // read method it uses — an admitted row's stored JSON crosses in full.
+        const stored = new DatabaseSync(path, { readOnly: true });
+        const storedJson = stored
+          .prepare(
+            `SELECT association_json FROM orchestration_session_work_item_associations
+              WHERE association_id = ?`,
+          )
+          .get('association-a') as { association_json: string };
+        stored.close();
         largestReturnedString = 0;
+        readMethods.clear();
         expect(list(store)).toHaveLength(1);
-        expect(largestReturnedString).toBeGreaterThan(0);
+        expect(readMethods.size).toBeGreaterThan(0);
+        expect(largestReturnedString).toBe(storedJson.association_json.length);
         expect(largestReturnedString).toBeLessThan(oversizedJson.length);
 
         // Grown between the metadata read and the content fetch.

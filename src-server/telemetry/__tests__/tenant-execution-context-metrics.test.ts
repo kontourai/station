@@ -24,24 +24,45 @@ describe('tenant execution-context telemetry contract', () => {
     });
   });
 
-  test('passes every vocabulary value through unchanged', () => {
-    // A literal alongside the constant-derived rows: emptying the operation
-    // vocabulary cannot make its rows vacuous.
-    expect(TENANT_EXECUTION_CONTEXT_OPERATION).toContain('station_control');
-    const dimensions = [
-      ['operation', TENANT_EXECUTION_CONTEXT_OPERATION],
-      ['source', TENANT_EXECUTION_CONTEXT_SOURCE],
-      ['outcome', TENANT_EXECUTION_CONTEXT_OUTCOME],
-      ['reason', TENANT_EXECUTION_CONTEXT_REASON],
-    ] as const;
+  test('passes exactly the pinned vocabulary through unchanged', () => {
+    // Pinned as literals, not derived from the production arrays: a value
+    // added to (or dropped from) a metric dimension is a contract change this
+    // test must see.
+    const vocabulary = {
+      operation: [
+        'bind',
+        'dispatch',
+        'start',
+        'continue',
+        'relay',
+        'station_control',
+        'background',
+      ],
+      source: ['none', 'request', 'session', 'operator', 'aggregate'],
+      outcome: ['accepted', 'rejected', 'skipped'],
+      reason: [
+        'none',
+        'missing',
+        'unknown',
+        'mismatch',
+        'aggregate_safe',
+        'personal_mode',
+      ],
+    } as const;
+    expect({
+      operation: TENANT_EXECUTION_CONTEXT_OPERATION,
+      source: TENANT_EXECUTION_CONTEXT_SOURCE,
+      outcome: TENANT_EXECUTION_CONTEXT_OUTCOME,
+      reason: TENANT_EXECUTION_CONTEXT_REASON,
+    }).toEqual(vocabulary);
     const base = {
       operation: 'bind',
       source: 'none',
       outcome: 'accepted',
       reason: 'none',
     } as const;
-    for (const [dimension, vocabulary] of dimensions) {
-      for (const value of vocabulary) {
+    for (const [dimension, values] of Object.entries(vocabulary)) {
+      for (const value of values) {
         expect(
           tenantExecutionContextAttributes({ ...base, [dimension]: value }),
         ).toEqual({ ...base, [dimension]: value });
