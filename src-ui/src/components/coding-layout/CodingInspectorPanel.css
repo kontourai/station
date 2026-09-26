@@ -145,6 +145,14 @@
   gap: 12px;
 }
 
+/* The copy-command fallback's "why" — muted so the command stays the focus. */
+.coding-inspector__cta-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
 .coding-inspector__cta-action {
   align-self: flex-start;
   border: 1px solid var(--accent-primary);

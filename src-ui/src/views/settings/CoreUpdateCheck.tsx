@@ -340,9 +340,19 @@ export function CoreUpdateCheck({
     view?.kind === 'checkout' &&
     identityMatches &&
     status.applyMethod === 'git-pull' &&
+    // The server refuses to apply under the installed service (#2674); any
+    // stated refusal — including a code this client does not know — closes
+    // the offer, and the reason below says what to do instead.
+    !status.selfUpdateUnavailableReason &&
     status.updateAvailable &&
     behind > 0 &&
     ahead === 0;
+  const applyRefusal =
+    status?.applyMethod === 'git-pull' &&
+    status.updateAvailable &&
+    !comparisonSuperseded
+      ? (status.selfUpdateUnavailableReason ?? null)
+      : null;
 
   const technicalDisclosure =
     view && (view.kind === 'refusal' || view.kind === 'failed-check') ? (
@@ -430,6 +440,11 @@ export function CoreUpdateCheck({
               {label}: {value}
             </span>
           ))}
+        </div>
+      )}
+      {applyRefusal && (
+        <div className="settings__update-msg settings__update-msg--warning">
+          Server update cannot be applied from here: {applyRefusal}.
         </div>
       )}
       {restarting && (

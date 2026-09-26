@@ -193,6 +193,10 @@
       "type": "boolean",
       "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
     },
+    "mobileDeviceHubUrl": {
+      "type": "string",
+      "description": "HTTP address of the local device helper Station uses to list and capture simulators and emulators."
+    },
     "registryUrl": {
       "type": "string",
       "description": "Source URL for the agents/skills/plugins registry catalog."

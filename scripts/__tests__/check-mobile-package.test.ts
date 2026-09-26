@@ -144,6 +144,45 @@ describe('packaged iOS capability audit', () => {
       }),
     ).toThrow(/not in the bundle-relative allowlist/);
   });
+  test('reviews the Live Activity widget extension and its executable (#2513)', () => {
+    const widget = {
+      ...base,
+      signedBundles: [
+        ...base.signedBundles,
+        {
+          path: 'PlugIns/StationAgentActivity.appex',
+          entitlements:
+            '<key>application-identifier</key><key>com.apple.developer.team-identifier</key><key>keychain-access-groups</key>',
+        },
+      ],
+      dependencies: [
+        ...base.dependencies,
+        {
+          binary: 'PlugIns/StationAgentActivity.appex/StationAgentActivity',
+          output:
+            'StationAgentActivity:\n/System/Library/Frameworks/WidgetKit.framework/WidgetKit\n/usr/lib/swift/libswiftCore.dylib',
+        },
+      ],
+    };
+    expect(auditIosInventory(widget)).toEqual({
+      privacyCount: 2,
+      signedBundleCount: 2,
+      binaryCount: 2,
+    });
+    // Another binary inside the widget is still refused.
+    expect(() =>
+      auditIosInventory({
+        ...widget,
+        dependencies: [
+          ...base.dependencies,
+          {
+            binary: 'PlugIns/StationAgentActivity.appex/Helper',
+            output: 'Helper:\n/usr/lib/libobjc.A.dylib',
+          },
+        ],
+      }),
+    ).toThrow(/Mach-O PlugIns\/StationAgentActivity.appex\/Helper/);
+  });
   test('fails an unreviewed extension entitlement', () =>
     expect(() =>
       auditIosInventory({

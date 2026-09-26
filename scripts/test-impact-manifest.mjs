@@ -392,6 +392,11 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   Object.freeze({
     pattern: '.github/workflows/**',
     tests: Object.freeze([
+      // These three read workflows through a templated URL or a directory
+      // listing the path-read scan cannot resolve, so they had no edge (#2176).
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+      'scripts/__tests__/android-firebase-workflow-env.test.ts',
+      'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
@@ -502,6 +507,156 @@ const EXECUTED_SCRIPT_EDGE_REASON =
 const SOURCE_READ_SCRIPT_EDGE_REASON =
   'script source is read and asserted by its test rather than imported, so ' +
   'the import graph has no edge to it (#1757)';
+
+/**
+ * #2176: suites whose subject reaches them by a path the module graph does
+ * not model, so neither `vitest related` nor a generic boundary edge ever
+ * schedules them. Before these edges a new settings row first failed
+ * `gen-settings-registry.test.ts` in the merge queue's full-corpus
+ * regression (#2511, #2593), costing a queue candidate and a rebuild of
+ * everything behind it.
+ *
+ * Every edge is `supplemental`: it only ADDS the suite and leaves the path's
+ * related selection, escalation, and lanes as they were (an ordinary edge
+ * naming `tests` would set `hasExplicitBoundary` and drop the related graph;
+ * #1563, #1613). The suite asserts through `selectChangedVerification` that
+ * each generator input still selects it, so a new input without an edge reds
+ * on the pull request that adds it.
+ *
+ * NOT here, deliberately: whole-tree source scans such as
+ * `orchestration-source-invariants.test.ts` (#2553). Their honest edge is
+ * every file under several roots, which would add them to nearly every
+ * selection and reshape every exact selection this manifest's tests pin. They
+ * run as their own pull-request job instead: `REPO_SCAN_SUITES` below.
+ */
+const GENERATED_SETTINGS_REGISTRY_TEST =
+  'scripts/__tests__/gen-settings-registry.test.ts';
+export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The generator loads its sources through a computed specifier (so the
+  // scripts typecheck never follows it into `.tsx`), and `--check` reads the
+  // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
+  // the list these mirror. The generator itself needs no edge: the suite
+  // imports it.
+  ...[
+    'src-ui/src/views/settings/settings-catalog.ts',
+    'src-ui/src/views/settings/settings-deep-link.ts',
+    'packages/contracts/src/settings-registry.ts',
+    'packages/contracts/src/device-settings.ts',
+    'src-server/generated/settings-registry.json',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([GENERATED_SETTINGS_REGISTRY_TEST]),
+      reason:
+        'settings registry artifact is generated from this input outside ' +
+        'the import graph (#2176)',
+    }),
+  ),
+  // The rest read one named file each, by a path the scan cannot resolve (a
+  // `test.each` parameter, a cwd-relative literal, a directory copied into a
+  // temp plugin), and import nothing that reaches it.
+  ...[
+    // Generation must run where its readers run: `build:basis-pane` and the
+    // ci:fast static list are asserted by text.
+    ['package.json', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    ['scripts/run-ci-fast.mjs', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    // Its SHELL_FILES, scanned for hand-rolled chrome alert markup.
+    [
+      'src-ui/src/App.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    [
+      'src-ui/src/main.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    // Installs the example plugin's files and exercises them.
+    [
+      'examples/smart-routing/**',
+      'src-server/routes/__tests__/smart-routing-plugin.test.ts',
+    ],
+  ].map(([pattern, test]) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([test]),
+      reason: 'suite reads this file by path, outside the import graph (#2176)',
+    }),
+  ),
+]);
+
+/**
+ * #2176: suites whose subject is a whole source tree, read by walking it.
+ * No impact edge can honestly select them — the edge would be every file
+ * under the tree, and a supplemental test on every path is noise in the
+ * selection — so they run as their own pull-request job instead
+ * (`npm run test:repo-scans`, the `repo-scans` job in ci.yml). Before that
+ * they ran only in the merge queue's full corpus, where a violation cost a
+ * queue candidate (#2553).
+ *
+ * The ONE list: the runner, the CI job and the classification pin in
+ * `path-read-pin-boundary.test.ts` all read it. That pin requires every suite
+ * with a directory walk whose target does not look temporary to be here or
+ * classified with a reason; its docblock states what that text heuristic
+ * cannot see.
+ */
+export const REPO_SCAN_SUITES = Object.freeze([
+  'packages/basis-pane/src/__tests__/package-boundary.test.ts',
+  'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
+  'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/classify-ci-change.scan.test.ts',
+  'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
+  'scripts/__tests__/docs-index-reachability.test.ts',
+  'scripts/__tests__/docs-reference-gate.test.ts',
+  'scripts/__tests__/docs-snippets.test.ts',
+  'scripts/__tests__/dogfood-evidence-retention.test.ts',
+  'scripts/__tests__/gate-scope.test.ts',
+  'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/product-docs-source-links.test.ts',
+  'scripts/__tests__/publish-surface.test.ts',
+  'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  'scripts/__tests__/test-import-existence-gate.scan.test.ts',
+  'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
+  'src-server/providers/__tests__/child-work-conformance.test.ts',
+  'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
+  'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
+  'src-server/security/__tests__/svg-response-tripwire.test.ts',
+  'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
+  'src-server/services/devices/__tests__/device-host-resolver.test.ts',
+  'src-server/services/infra/__tests__/resource-posture.test.ts',
+  'src-server/services/notifications/__tests__/notification-service.scan.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
+  'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
+  'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/board-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/connection-host-copy.test.ts',
+  'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
+  'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
+  'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  'src-ui/src/__tests__/native-notification-watch.test.ts',
+  'src-ui/src/__tests__/package-css-fork.test.ts',
+  'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  'src-ui/src/__tests__/plain-language-policy.test.ts',
+  'src-ui/src/__tests__/project-query-scope-tripwire.test.ts',
+  'src-ui/src/__tests__/raw-local-storage-policy.test.ts',
+  'src-ui/src/__tests__/region-surface-boundary.test.ts',
+  'src-ui/src/__tests__/responsive-dialog-close-adoption.test.ts',
+  'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
+  'src-ui/src/__tests__/settings-row-literal-coverage.test.ts',
+  'src-ui/src/__tests__/single-main-landmark.test.ts',
+  'src-ui/src/__tests__/undefined-css-custom-properties.test.ts',
+  'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
+  'src-ui/src/components/__tests__/PageCallout.test.tsx',
+]);
 
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
@@ -742,7 +897,14 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'WSL quarantine exact-list pin parses this source outside the module graph',
   },
   {
+    // SUPPLEMENTAL (#2176). As an ordinary edge its one test set
+    // `hasExplicitBoundary`, which cancelled the `ci-fast` escalation
+    // `package.json` is listed for in ESCALATION_PATHS: a scripts or
+    // dependency edit completed green on a documentation check. The doc
+    // suite still runs; the root manifest still escalates. A dependency bump
+    // escalates through the lockfile regardless, so this adds no lane to one.
     pattern: 'package.json',
+    supplemental: true,
     tests: ['scripts/__tests__/public-doc-contract-examples.test.ts'],
     reason: 'public npm-command example authority',
   },
@@ -1410,6 +1572,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'script boundary',
   },
   ...SPAWNED_SCRIPT_EDGES,
+  ...UNMODELLED_INPUT_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [

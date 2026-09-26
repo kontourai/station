@@ -139,6 +139,7 @@ describe('buildStationResetPlan', () => {
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
+      'mobileDeviceHubUrl',
       // Sources
       'registryUrl',
       'disableDefaultSkillRegistries',
@@ -171,6 +172,7 @@ describe('buildStationResetPlan', () => {
         'disableDefaultSkillRegistries',
         'distributionProfile',
         'mcpUiHost',
+        'mobileDeviceHubUrl',
         'region',
         'registryUrl',
         'surfaceTrustFromVeritasEvidence',
