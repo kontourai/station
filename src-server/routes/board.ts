@@ -57,6 +57,17 @@ import { getBody, validate } from './schemas/schemas.js';
 export interface BoardRouteAuthorization {
   canReadSession: (sessionId: string, request: Request) => boolean;
   taskExists: (projectId: string, taskId: string) => boolean;
+  /**
+   * #2377 slice B: whether this request may read (`view`) or change
+   * (`edit`) the board of a Task in `projectId`. A station-control agent
+   * acting for an account principal needs that principal's Project action;
+   * every other caller keeps the existence-only rule above. Absent: allowed.
+   */
+  mayUseTaskBoard?: (
+    projectId: string,
+    request: Request,
+    action: 'view' | 'edit',
+  ) => boolean;
 }
 
 const boundedTextSchema = (maxBytes: number) =>
@@ -341,7 +352,13 @@ export function createBoardRoutes(
     const authorized =
       reference.kind === 'session'
         ? authz.canReadSession(reference.id, c.req.raw)
-        : authz.taskExists(reference.projectId, reference.id);
+        : authz.taskExists(reference.projectId, reference.id) &&
+          (authz.mayUseTaskBoard?.(
+            reference.projectId,
+            c.req.raw,
+            c.req.method === 'GET' || c.req.method === 'HEAD' ? 'view' : 'edit',
+          ) ??
+            true);
     if (authorized) return null;
     return c.json(
       {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const REQUIRED = ['linux/amd64', 'linux/arm64'];
@@ -30,7 +31,7 @@ export function platformDigests(manifest, manifestDigest) {
   );
 }
 
-if (process.argv[1]?.endsWith('release-container-platform-digests.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const [input, manifestDigest] = process.argv.slice(2);
   if (!input || !manifestDigest)
     throw new Error('usage: <manifest.json> <manifest digest>');

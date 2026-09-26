@@ -60,6 +60,7 @@
 //      list easy to extend.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: no bare confirm()/prompt() or window.confirm()/window.prompt()
@@ -346,6 +347,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

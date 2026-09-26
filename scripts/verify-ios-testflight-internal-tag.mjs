@@ -4,6 +4,7 @@ import {
   INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME,
   parseInternalTestFlightAuthorityRef,
 } from './ios-testflight-internal-authority.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 function fail(message) {
   throw new Error(
@@ -83,7 +84,7 @@ function option(args, name) {
   const index = args.indexOf(`--${name}`);
   return index < 0 ? undefined : args[index + 1];
 }
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const options = Object.fromEntries(
     [
       'source-ref',

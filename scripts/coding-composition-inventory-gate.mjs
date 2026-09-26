@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { REQUIRED_CODING_COMPOSITION_CATEGORIES } from './coding-composition-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const expectedDependencies = new Map(
   Object.entries({
@@ -354,7 +354,7 @@ export function auditCodingCompositionInventory(
   return findings;
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   const findings = auditCodingCompositionInventory();
   if (findings.length) {
     for (const finding of findings) console.error(finding);

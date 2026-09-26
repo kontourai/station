@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export class ApkSignatureVerificationError extends Error {
   constructor() {
@@ -57,7 +58,7 @@ export function verifyAndroidApkSignature(
   }
 }
 
-if (process.argv[1]?.endsWith('verify-android-apk-signature.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   try {
     verifyAndroidApkSignature(process.argv[2], process.argv[3], {
       apksigner: process.argv[4] || 'apksigner',

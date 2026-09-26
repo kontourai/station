@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const KONTOUR_TEAM_ID = 'U7KHF2QAC4';
 const IDENTITY_PATTERN = new RegExp(
@@ -228,6 +229,6 @@ export async function runMacosSigningIdentityCli({
   return currentIdentity();
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   console.log(await runMacosSigningIdentityCli({ command: process.argv[2] }));
 }

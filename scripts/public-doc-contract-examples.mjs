@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadPublicDocs } from './build-github-pages.mjs';
 import { parseJustInterface } from './just-interface.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const CLI_COMMAND_ARRAYS = [
@@ -183,5 +184,5 @@ export async function runPublicDocContractExamples() {
   return 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`)
+if (invokedDirectly(import.meta.url))
   process.exitCode = await runPublicDocContractExamples();

@@ -1,5 +1,5 @@
-import { readFileSync, realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 function text(value, label) {
   if (typeof value !== 'string' || !value) {
@@ -147,17 +147,6 @@ export function inspectExportedIosAgentActivityEntitlements(
   };
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
 const USAGE =
   'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID [--live-activity APS_ENVIRONMENT | --agent-activity-extension]';
 
@@ -191,7 +180,7 @@ export function exportedEntitlementsCli(
   throw new Error(USAGE);
 }
 
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   process.stdout.write(
     `${JSON.stringify(exportedEntitlementsCli(process.argv.slice(2)), null, 2)}\n`,
   );

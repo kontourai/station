@@ -2,8 +2,8 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Review signals only: moved assertions and deliberate contract changes are not defects. */
 export function collectTestContractReview(diff) {
@@ -55,10 +55,7 @@ export function collectTestContractReview(diff) {
   }));
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const outputPath = '.kontourai/veritas/external/test-contract-review.json';
   let report;
   try {

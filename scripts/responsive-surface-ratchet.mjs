@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
 const INVENTORY = join(ROOT, 'docs/ui/responsive-surfaces.json');
@@ -143,7 +144,7 @@ export function validateResponsiveSurfaceInventory() {
   };
 }
 
-if (process.argv[1]?.endsWith('responsive-surface-ratchet.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const result = validateResponsiveSurfaceInventory();
   console.log(
     `Responsive surface inventory: ${result.total} modal-like surfaces (${result.covered} covered; ${result.sharedDialogContracts} shared dialog contracts), ${result.actionTotal} action surfaces (${result.actionCovered} covered).`,

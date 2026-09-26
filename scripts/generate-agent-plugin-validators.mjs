@@ -10,11 +10,12 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import standaloneCode from 'ajv/dist/standalone/index.js';
 import { build } from 'esbuild';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
@@ -109,7 +110,7 @@ export async function generateAgentPluginValidators({ check = false } = {}) {
       );
   } else writeFileSync(target, output);
 }
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
+if (invokedDirectly(import.meta.url))
   await generateAgentPluginValidators({
     check: process.argv.includes('--check'),
   });

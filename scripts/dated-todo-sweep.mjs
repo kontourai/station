@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ISSUE_TITLE = 'Dated TODO sweep';
 const REPORT_MARKER = 'dated-todo-sweep';
@@ -216,6 +217,6 @@ function main(argv) {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main(process.argv.slice(2));
 }

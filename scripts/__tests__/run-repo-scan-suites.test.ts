@@ -3,11 +3,7 @@ import { symlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import {
-  ensureCliBundle,
-  isEntrypoint,
-  runRepoScans,
-} from '../run-repo-scan-suites.mjs';
+import { ensureCliBundle, runRepoScans } from '../run-repo-scan-suites.mjs';
 import { REPO_SCAN_SUITES } from '../test-impact-manifest.mjs';
 
 const makeTempDir = trackTempDirs();
@@ -80,8 +76,5 @@ describe('repo-scans runner (#2176)', () => {
         ...REPO_SCAN_SUITES,
       ]);
     }
-    expect(isEntrypoint(link)).toBe(true);
-    expect(isEntrypoint(join(import.meta.dirname, 'nope.mjs'))).toBe(false);
-    expect(isEntrypoint('')).toBe(false);
   });
 });

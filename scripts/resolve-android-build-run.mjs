@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { appendFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BUILD_WORKFLOW_PATH = '.github/workflows/build-android.yml';
 const TRUSTED_BRANCH = 'main';
@@ -337,7 +337,7 @@ async function main() {
   });
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
     console.error(`::error::${sanitizeLookupDiagnostic(error, token)}`);

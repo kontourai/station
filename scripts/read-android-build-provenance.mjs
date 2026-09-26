@@ -21,6 +21,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const APK_BUILD_MANIFEST_ENTRY = 'assets/station-build.json';
 export const AAB_BUILD_MANIFEST_ENTRY = `base/${APK_BUILD_MANIFEST_ENTRY}`;
@@ -138,7 +139,7 @@ export function readAndroidBuildProvenance(archivePath) {
   return parseAndroidBuildProvenance(contents.toString('utf8'));
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   const archivePath = process.argv[2];
   if (!archivePath) {
     console.error(

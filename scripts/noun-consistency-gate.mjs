@@ -59,6 +59,7 @@ import {
   UI_SCAN_EXTENSIONS,
   UI_SCAN_ROOTS,
 } from './lib/gate-scope.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * The scope this gate reports on. ONE shared constant, imported from the
@@ -962,6 +963,6 @@ function main() {
   process.exit(1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

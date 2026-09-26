@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const JOURNEYS = [
   {
@@ -175,4 +176,4 @@ export function main(argv = process.argv.slice(2)) {
   writeFileSync(join(output, 'summary.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ output, ...report }, null, 2));
 }
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();
