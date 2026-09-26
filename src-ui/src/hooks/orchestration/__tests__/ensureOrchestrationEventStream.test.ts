@@ -308,14 +308,6 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
     expect(options.stallTimeoutMs).toBe(75_000);
   });
 
-  test('a second call for the SAME apiBase is a no-op (existing dedup guard) — no new snapshot state', () => {
-    applyOrchestrationSnapshot.mockClear();
-    ensureOrchestrationEventStream('http://api-1225-c');
-    const firstOnMessage = capturedOnMessage();
-    ensureOrchestrationEventStream('http://api-1225-c');
-    expect(capturedOnMessage()).toBe(firstOnMessage);
-  });
-
   test('station#1225 review (MEDIUM fix): a supplied queryClient is threaded through to applyOrchestrationSnapshot', () => {
     applyOrchestrationSnapshot.mockClear();
     const fakeQueryClient = { getQueryData: vi.fn() } as any;

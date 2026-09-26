@@ -4,7 +4,7 @@ import {
   useProviderCommandsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import type { BindingStatus } from '../utils/execution';
@@ -288,15 +288,7 @@ export function useSlashCommands(
   // Per-keystroke ACP argument autocomplete has no equivalent on
   // ProviderAdapterShape (no getCommandOptions-style method) after the
   // #149 orchestration-path cutover — accepted gap, filed as a follow-up
-  // (see docs/guides/acp.md "Slash Commands"). Returning an empty list
-  // here keeps the static command list (acpCommands, above) as the only
-  // ACP command surface.
-  const fetchCommandOptions = useCallback(
-    async (_partial: string): Promise<SlashCommand[]> => {
-      return [];
-    },
-    [],
-  );
-
-  return { commands, catalog, fetchCommandOptions };
+  // (see docs/guides/acp.md "Slash Commands"). The static command list
+  // (acpCommands, above) is the only ACP command surface.
+  return { commands, catalog };
 }
