@@ -100,11 +100,11 @@ export async function installRegistrySkill(
   );
   const result = (await response.json()) as SkillsEnvelope<unknown>;
   if (!result.success) {
-    // Keep the envelope's machine `code` (e.g. a typed refusal) and read the
-    // `error` field a refusal answers with, not only `message`.
+    // Keep the envelope's machine `code` (e.g. a typed refusal); the message
+    // comes from the shared reader, which also keeps schema field errors.
     throw new StationHttpError(
       response.status,
-      result.message || result.error || 'Install failed',
+      apiErrorMessage(result, 'Install failed'),
       typeof result.code === 'string' ? { code: result.code } : undefined,
     );
   }
