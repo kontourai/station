@@ -8,8 +8,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
-import { invokedDirectly } from './lib/module-entry.mjs';
 import { loadSelfHostedBrokerConnectorConfig } from '../src-server/runtime/bootstrap/self-hosted-connector-config.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Operator terminal only: public prepare file in, private invitation file out. */
 export async function writeNativeRelayInvitation(
