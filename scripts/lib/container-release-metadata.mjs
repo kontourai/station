@@ -94,7 +94,7 @@ function option(name, args) {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   const metadata = createContainerReleaseMetadata({
     tag: option('tag', args) ?? process.env.RELEASE_TAG,

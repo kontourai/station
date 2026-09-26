@@ -52,7 +52,7 @@ export async function runDocsTruthGateAggregate(options = {}) {
   });
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const ok = await runDocsTruthGateAggregate();
   if (!ok) process.exitCode = 1;
 }

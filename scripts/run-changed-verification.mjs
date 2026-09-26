@@ -22,7 +22,6 @@ import {
   resolve,
   sep,
 } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
@@ -31,6 +30,7 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -1537,10 +1537,7 @@ export async function runChangedVerification(
           : 1,
   };
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),

@@ -41,15 +41,24 @@ afterEach(() => {
   contentGateRepos.clear();
 });
 
+/** The copied gate imports its entry guard from scripts/lib (#2682). */
+function copyEntryGuard(dir: string): void {
+  copyFileSync(
+    join(process.cwd(), 'scripts', 'lib', 'module-entry.mjs'),
+    join(dir, 'scripts', 'lib', 'module-entry.mjs'),
+  );
+}
+
 function contentGateRepo(source: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'station-ci-fast-content-gate-'));
   contentGateRepos.add(dir);
-  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
   mkdirSync(join(dir, 'src-server'), { recursive: true });
   copyFileSync(
     join(process.cwd(), 'scripts', 'content-integrity-gate.mjs'),
     join(dir, 'scripts', 'content-integrity-gate.mjs'),
   );
+  copyEntryGuard(dir);
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({
@@ -135,6 +144,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      ['npm', ['run', 'content:excluded-names']],
       // CLI help ↔ docs/reference/cli.md parity: a help topic without a
       // reference heading must red the PR lane, not the nightly (the `open`
       // verb shipped green and failed Nightly a day later).
@@ -390,11 +400,12 @@ describe('Changesets workspace validation through ci:fast', () => {
       contentGateRepos.add(dir);
       mkdirSync(join(dir, 'packages', 'published'), { recursive: true });
       mkdirSync(join(dir, '.changeset'));
-      mkdirSync(join(dir, 'scripts'));
+      mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
       copyFileSync(
         join(process.cwd(), 'scripts', 'check-changesets.mjs'),
         join(dir, 'scripts', 'check-changesets.mjs'),
       );
+      copyEntryGuard(dir);
       writeFileSync(
         join(dir, 'package.json'),
         JSON.stringify({

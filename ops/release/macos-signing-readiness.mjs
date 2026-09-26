@@ -12,9 +12,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
-import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { signingIdentityRecordsFromSecurityOutput } from '../nightly/macos-signing-identity.mjs';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 export const KEYCHAIN_UNLOCK_LIFETIME_SECONDS = 105 * 60;
 export const PRIVATE_KEY_PROBE_TIMEOUT_MS = 60 * 1000;
@@ -463,4 +463,5 @@ export async function runMacosSigningReadinessCli({
     });
 }
 
-if (invokedDirectly(import.meta)) await runMacosSigningReadinessCli();
+if (invokedDirectly(import.meta.url))
+  await runMacosSigningReadinessCli();

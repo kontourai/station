@@ -29,7 +29,7 @@ import { rmSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { registerProcessSignal } from './lib/owned-process.mjs';
 import { corpusDescriptors, runVitestCorpus } from './run-vitest-corpus.mjs';
 
@@ -339,5 +339,4 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href)
-  void main();
+if (invokedDirectly(import.meta.url)) void main();

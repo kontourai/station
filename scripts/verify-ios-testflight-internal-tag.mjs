@@ -84,7 +84,7 @@ function option(args, name) {
   const index = args.indexOf(`--${name}`);
   return index < 0 ? undefined : args[index + 1];
 }
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const options = Object.fromEntries(
     [
       'source-ref',

@@ -608,4 +608,4 @@ function main() {
   console.log('Public contribution surfaces are structurally valid.');
 }
 
-if (invokedDirectly(import.meta)) main();
+if (invokedDirectly(import.meta.url)) main();

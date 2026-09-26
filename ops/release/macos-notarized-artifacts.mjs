@@ -10,12 +10,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -1210,7 +1210,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
   };
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   createMacosNotarizedArtifacts(
     parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
   ).catch((error) => {

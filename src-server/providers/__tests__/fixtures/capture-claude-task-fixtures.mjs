@@ -406,15 +406,7 @@ function redactMessageShape(message) {
   return message;
 }
 
-// Same rule as scripts/lib/module-entry.mjs (not imported across the
-// src-server/scripts boundary): Node's own `import.meta.main`, and a Node
-// without it fails loudly instead of silently skipping the capture.
-if (typeof import.meta.main !== 'boolean') {
-  throw new Error(
-    `import.meta.main is ${typeof import.meta.main}; this tool needs Node 24.2 or newer`,
-  );
-}
-if (import.meta.main) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   const [scenario, out] = process.argv.slice(2);
   if (!scenario || !out) {
     console.error(

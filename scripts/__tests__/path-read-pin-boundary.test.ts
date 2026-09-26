@@ -114,10 +114,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/changed-verification.test.ts',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
   'scripts/__tests__/guardrail-process-boundary.test.ts',
-  // Reads every file `git ls-files` lists to enforce a structural rule over
-  // entry checks; the paths come from git, so there is no pin to report. It
-  // runs in the repo-scans job instead of by impact edge.
-  'scripts/__tests__/module-entry-guard.scan.test.ts',
+  // #2682: a whole-tree scan of scripts/ and ops/ (in REPO_SCAN_SUITES) —
+  // it reads every tracked script, so no single pin could stand for it.
+  'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/publish-oidc-exchange-status.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/release-sbom-generation.test.ts',
@@ -663,8 +662,11 @@ describe('whole-tree scans are run or classified (#2176)', () => {
 
   it('the repo-scans CI job runs exactly the one list, on same-repository pull requests', () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    // publish-surface packs packages/cli and asserts the built entrypoint is
+    // in the tarball, so the scans build the CLI they inspect first; the
+    // pinned repo-scans job runs only this script (#2686).
     expect(pkg.scripts['test:repo-scans']).toBe(
-      'node scripts/run-repo-scan-suites.mjs',
+      'npm run build:cli && node scripts/run-repo-scan-suites.mjs',
     );
     // What the runner hands the focused runner is asserted behaviourally in
     // run-repo-scan-suites.test.ts.

@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 
 /**
  * archive#3567 fix round FIX 1: before this fix, `send_message`'s and
@@ -80,7 +81,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {

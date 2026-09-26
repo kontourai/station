@@ -479,4 +479,4 @@ function main() {
     `OK: Builder Delivery Viewer uses only published contracts (${scopedFiles().length} files scanned).`,
   );
 }
-if (invokedDirectly(import.meta)) main();
+if (invokedDirectly(import.meta.url)) main();

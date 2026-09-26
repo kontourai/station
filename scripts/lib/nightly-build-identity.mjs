@@ -15,8 +15,6 @@
  * reworked to stay ahead of it for good.
  */
 
-import { invokedDirectly } from './module-entry.mjs';
-
 /** Tauri/Play ceiling for an Android version code. */
 export const MAX_ANDROID_VERSION_CODE = 2_100_000_000;
 
@@ -267,6 +265,7 @@ import {
   readChannelPlatformMatrix,
 } from '../channel-platform-matrix.mjs';
 import { assertProductVersion } from '../product-version.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 import { updaterPluginConfig } from './native-release-config.mjs';
 
 function nightlyDeepLinkConfig() {
@@ -544,7 +543,7 @@ export function writeCliNightlyVersion(packageJsonPath, version) {
   return version;
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   const cliVersionIndex = args.indexOf('--cli-version');
   if (cliVersionIndex !== -1) {

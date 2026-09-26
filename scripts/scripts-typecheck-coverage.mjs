@@ -277,6 +277,6 @@ export function checkScriptsTypecheckCoverage({
   return false;
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   if (!checkScriptsTypecheckCoverage()) process.exitCode = 1;
 }

@@ -79,7 +79,7 @@ function option(args, name) {
   return index < 0 ? undefined : args[index + 1];
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const expectedFingerprint = option(process.argv, 'expected-fingerprint');
   const authorityPath = option(process.argv, 'authority-colons');
   const githubPath = option(process.argv, 'github-colons');

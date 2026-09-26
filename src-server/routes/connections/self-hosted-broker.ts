@@ -1,7 +1,9 @@
+import type { StationConnectionKeyCandidateV1 } from '@kontourai/station-contracts/connection-proof';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOpenV2,
   SelfHostedBrokerNativeGrantRenewV2,
+  SelfHostedBrokerNativeKeyCandidateProofV1,
   SelfHostedBrokerNativeRedemptionProofV2,
   SelfHostedBrokerNativeRouteInvitationV2,
   SelfHostedBrokerNativeScopeV2,
@@ -34,7 +36,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     if (c.req.method === 'OPTIONS') {
       const pathname = new URL(c.req.url).pathname;
       if (
-        /\/native\/(?:connections(?:\/.*)?|grants\/(?:retire|renew))$/.test(
+        /\/native\/(?:key-candidates(?:\/.*)?|connections(?:\/.*)?|grants\/(?:retire|renew))$/.test(
           pathname,
         )
       )
@@ -212,6 +214,89 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         );
       }
     };
+  for (const action of ['request', 'read'] as const) {
+    app.post(
+      `/native/key-candidates/${action}`,
+      invoke(async (c) => {
+        if (
+          c.req.header('origin') ||
+          c.req.header('cookie') ||
+          c.req.header('authorization') ||
+          c.req.header('x-broker-credential-id') ||
+          c.req.header('content-type')?.toLowerCase() !== 'application/json'
+        )
+          throw new Error('broker_credential_refused');
+        let body: unknown;
+        try {
+          body = await c.req.json();
+        } catch {
+          throw new Error('invalid_request');
+        }
+        exact(body, ['version', 'invitation', 'proof']);
+        if (body.version !== `station-broker-native-key-candidate-${action}/v1`)
+          throw new Error('invalid_request');
+        const invitation =
+          body.invitation as SelfHostedBrokerNativeRouteInvitationV2;
+        if (invitation?.brokerOrigin !== new URL(c.req.url).origin)
+          throw new Error('native_invitation_refused');
+        const proof = body.proof as SelfHostedBrokerNativeKeyCandidateProofV1;
+        c.header('Cache-Control', 'no-store');
+        return action === 'request'
+          ? service.requestNativeKeyCandidate(invitation, proof)
+          : service.readNativeKeyCandidate(invitation, proof);
+      }),
+    );
+  }
+  app.post(
+    '/native/key-candidates/offers',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope']);
+      return {
+        offers: service.nativeKeyCandidateOffers(
+          body.scope as BrokerScope,
+          credential,
+        ),
+      };
+    }),
+  );
+  app.post(
+    '/native/key-candidates/refuse',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope', 'invitationId', 'challenge']);
+      if (
+        typeof body.invitationId !== 'string' ||
+        typeof body.challenge !== 'string'
+      )
+        throw new Error('invalid_request');
+      return service.refuseNativeKeyCandidate(
+        body.scope as BrokerScope,
+        credential,
+        body.invitationId,
+        body.challenge,
+      );
+    }),
+  );
+  app.post(
+    '/native/key-candidates/answer',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope', 'invitationId', 'challenge', 'candidate']);
+      if (
+        typeof body.invitationId !== 'string' ||
+        typeof body.challenge !== 'string'
+      )
+        throw new Error('invalid_request');
+      return service.answerNativeKeyCandidate(
+        body.scope as BrokerScope,
+        credential,
+        body.invitationId,
+        body.challenge,
+        body.candidate as StationConnectionKeyCandidateV1,
+      );
+    }),
+  );
   app.post(
     '/native/connections/open',
     invoke(async (c) => {

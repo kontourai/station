@@ -1,48 +1,66 @@
 /**
  * Is this module the process entry point?
  *
- *     if (invokedDirectly(import.meta)) main();
+ *     if (invokedDirectly(import.meta.url)) main();
  *
- * The answer is Node's own: `import.meta.main` (Node 24.2+) is true only for
- * the module Node started as the entry point, whether that is the main thread
- * or a worker. It needs no filesystem access and no reading of `process.argv`,
- * and it behaves the same on every platform.
+ * Every script under `scripts/` and `ops/` that runs a body only when executed
+ * (and not when a test imports it) asks through this helper (#2682).
+ * `scripts/__tests__/module-entry.scan.test.ts` refuses a hand-rolled
+ * comparison, so a copied-in `file://` template fails there rather than
+ * exiting 0 on somebody's machine.
  *
- * ## Why not compare paths (history)
+ * ## Why neither side may be compared as written
  *
- * Every earlier form rebuilt the answer from `process.argv[1]`, and each one
- * made some gate skip `main()` and **exit 0 having done nothing**. That is a
- * gate reporting success while governing nothing, the failure these gates
- * exist to catch:
+ * Node realpath-resolves an ESM entry for `import.meta.url` and
+ * percent-encodes it, but leaves `argv[1]` as the (absolute) path it was given.
+ * Invoking a script through a symlink (`/tmp` is `/private/tmp` on macOS), or
+ * from a checkout whose path contains a space or `%`, therefore makes a string
+ * comparison disagree, the `main` body never runs, and the process **exits 0
+ * having done nothing** — a gate reporting success while governing nothing.
+ * `pathToFileURL(argv[1])` fixes the encoding but not the symlink. Both sides
+ * are realpathed here, which also covers the mirror case of the *module*
+ * reached through a symlinked path. Found by the guardrail fixtures in
+ * `scripts/__tests__/guardrail-known-bad-fixtures.test.ts`.
  *
- * - URL strings built from `argv[1]` (a backtick `file://` template, or
- *   `new URL(import.meta.url).pathname`) broke on Windows drive paths and on
- *   any percent-encoded character, such as a space in the checkout path. That
- *   made `type-laundering-gate.mjs` a silent no-op in the required Windows
- *   portable-floor job.
- * - Realpath comparisons broke on symlinked invocation paths. Under
- *   `node -e … <arg>` and stdin (`node - <arg>`), `argv[1]` is a user
- *   argument or `-`, so a strict realpath crashed any workflow step that
- *   imported a gate that way.
- * - Detecting eval mode from `process.execArgv` broke in workers, which
- *   inherit the parent's `-e`.
+ * ## Which failures mean "not the entry point"
  *
- * ## Fail closed on an unsupported Node
+ * No `argv[1]` (a REPL), or an `argv[1]` that cannot name a file —
+ * ENOENT/ENOTDIR (a test that points `argv[1]` at a fixture path, then
+ * imports the module) or ENAMETOOLONG (`node -e 'import(…)' <long data>`, where
+ * argv[1] is data) — cannot be this module, which exists: `false`. Any other
+ * resolution failure (EACCES, ELOOP) is a real problem and is thrown, not read
+ * as "imported": swallowing it would make a gate silently do nothing and exit
+ * 0, the failure this helper exists to prevent.
  *
- * On a Node without `import.meta.main`, the property is `undefined`.
- * Treating that as "not the entry point" would silently skip every gate, so
- * this throws instead. `package.json` engines and `.nvmrc` pin Node 24.
- *
- * `scripts/__tests__/module-entry-guard.scan.test.ts` rejects the old
- * textual forms, and `scripts/__tests__/module-entry.process.test.ts` runs
- * each invocation shape above as a child process.
+ * Four scripts run away from scripts/lib, so they keep an inline realpath
+ * comparison instead of importing this module: `scripts/station-dev.mjs` is
+ * copied onto PATH by `install-station-dev.mjs`;
+ * `scripts/station-dogfood-reconcile.mjs` and
+ * `scripts/station-dogfood-health.mjs` are installed on their own by
+ * `ops/dogfood/install-macos.zsh` (health already imports from
+ * `packages/shared`, a separate defect); and three workflows run
+ * `git show "$BASE_SHA:scripts/classify-ci-change.mjs"` from a temp path.
+ * `scripts/__tests__/module-entry.scan.test.ts` pins all four.
  */
-export function invokedDirectly(importMeta) {
-  const main = importMeta?.main;
-  if (typeof main !== 'boolean') {
-    throw new Error(
-      `invokedDirectly: import.meta.main is ${typeof main}, not a boolean. It needs Node 24.2 or newer (running ${process.version}); pass import.meta, not import.meta.url.`,
-    );
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * @param {string} moduleUrl the caller's `import.meta.url`
+ * @param {string | undefined} [argv1] the entry path; defaults to `process.argv[1]`
+ * @returns {boolean}
+ */
+export function invokedDirectly(moduleUrl, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  let entry;
+  try {
+    entry = realpathSync(resolve(argv1));
+  } catch (error) {
+    const code = /** @type {NodeJS.ErrnoException} */ (error).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENAMETOOLONG')
+      return false;
+    throw error;
   }
-  return main;
+  return entry === realpathSync(fileURLToPath(moduleUrl));
 }

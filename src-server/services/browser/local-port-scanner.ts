@@ -2,12 +2,12 @@
  * Suggestions for registered local targets (#90 D7): which local web servers
  * are listening, and which Project each belongs to.
  *
- * The approach follows t3code's `apps/server/src/preview/PortScanner.ts`
- * (MIT, © 2026 T3 Tools Inc.): `lsof -nP -iTCP -sTCP:LISTEN -Fpcn` on macOS
- * and Linux, `Get-NetTCPConnection` on Windows, then a bounded HTTP probe
- * that keeps only listeners answering with HTML or a redirect. Station adds
- * Project attribution: a port belongs to a Project when its owning process's
- * working directory is inside the Project's workspace root.
+ * Listeners come from `lsof -nP -iTCP -sTCP:LISTEN -Fpcn` on macOS and
+ * Linux and `Get-NetTCPConnection` on Windows; a bounded HTTP probe then
+ * keeps only listeners answering with HTML or a redirect, since only those
+ * are worth opening in the Browser pane. A port belongs to a Project when
+ * its owning process's working directory is inside the Project's workspace
+ * root.
  *
  * Scans run on demand only (a cached result is reused for a few seconds);
  * nothing polls in the background, and nothing is ever registered from here:

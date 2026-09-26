@@ -770,4 +770,4 @@ function main() {
 // Importable for tests without running the gate against the real repo files;
 // still runs normally when invoked as a script. station#1805 review: this call
 // site's form is the canonical one, now shared rather than duplicated.
-if (invokedDirectly(import.meta)) main();
+if (invokedDirectly(import.meta.url)) main();

@@ -485,7 +485,7 @@ export function instructionGateErrors({
   return errors;
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const errors = instructionGateErrors();
   if (errors.length) {
     console.error(

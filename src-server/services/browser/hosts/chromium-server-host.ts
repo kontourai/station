@@ -26,8 +26,8 @@
  *   line.
  * - Downloads are denied (`Browser.setDownloadBehavior`). Headless Chrome's
  *   default otherwise writes into the user's real Downloads folder.
- * - Popups load in their opener's tab and the popup target is closed (t3code
- *   behaviour, `apps/desktop/src/preview/Manager.ts`, MIT © 2026 T3 Tools Inc.).
+ * - Popups load in their opener's tab and the popup target is closed, so the
+ *   pane stays on one tab and no second target is left open.
  * - Permissions are denied.
  * - Clipboard: measured 2026-09-22 on macOS with Chrome 153 `--headless=new`,
  *   the headless browser does NOT share the host's system clipboard —

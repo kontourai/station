@@ -394,6 +394,6 @@ export function runDocsReferenceGate({
   return 0;
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   process.exitCode = runDocsReferenceGate();
 }

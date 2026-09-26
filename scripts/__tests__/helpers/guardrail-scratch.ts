@@ -116,12 +116,9 @@ export interface ScratchOptions {
  * A throwaway directory carrying the guardrail and a tree for it to walk,
  * `git init`ed and committed unless `git: false`.
  *
- * `scripts/lib/module-entry.mjs` is always copied: it is the entry guard
- * (`invokedDirectly`) many guardrails import, so without it those gates would
- * die with `ERR_MODULE_NOT_FOUND` before reaching anything under test. It
- * answers from `import.meta.main`, so for a gate that uses it, neither the
- * `mkdtempSync` path nor how `runGuardrail` spells the script can make
- * `main()` silently skip.
+ * Every guardrail gates `main()` behind `invokedDirectly(import.meta.url)`
+ * (#2682), so `scripts/lib/module-entry.mjs` is always copied beside it; a
+ * fixture without it would fail at import, not exercise the gate.
  */
 export function scratchRepo({
   script,
@@ -225,8 +222,7 @@ export function runGuardrail(
 /**
  * Import the guardrail as an ordinary module rather than running it as the
  * entry point, so `process.argv[1]` is not the script and every one of these
- * gates' entry guards (`invokedDirectly`, or a hand-rolled argv comparison)
- * is false.
+ * gates' `invokedDirectly(import.meta.url)` entry guards is false.
  *
  * This is what makes "the failure came from behind the entry guard" a
  * computed claim instead of a comment: a diagnostic that appears here as well

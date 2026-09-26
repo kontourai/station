@@ -535,7 +535,7 @@ export async function main(args = process.argv.slice(2)) {
   const result = await syncLatestE2EEvidence(parseSyncArgs(args));
   console.log(formatSyncResult(result));
 }
-if (invokedDirectly(import.meta))
+if (invokedDirectly(import.meta.url))
   main().catch((error) => {
     console.error(`E2E evidence sync failed: ${error.message}`);
     process.exitCode = 1;

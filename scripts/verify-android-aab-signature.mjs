@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const VERIFIED_OUTPUT = 'jar verified.';
 const CHAIN_WARNING_OUTPUT = 'jar verified, with signer errors.';
@@ -121,7 +122,7 @@ export function verifyAndroidAabSignature(
   };
 }
 
-if (process.argv[1]?.endsWith('verify-android-aab-signature.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const result = verifyAndroidAabSignature(process.argv[2], process.argv[3]);
     console.log(`Android App Bundle signature verified (${result.condition}).`);

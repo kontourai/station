@@ -427,6 +427,6 @@ function main() {
   console.log(`OK: ${built.length} example(s) built.`);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

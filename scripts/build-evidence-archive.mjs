@@ -32,6 +32,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const DOGFOOD_ROOT = 'docs/strategy/dogfood';
@@ -248,5 +249,4 @@ export function main(argv = process.argv.slice(2)) {
   return 2;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
-  process.exitCode = main();
+if (invokedDirectly(import.meta.url)) process.exitCode = main();

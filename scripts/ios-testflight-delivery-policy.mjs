@@ -131,7 +131,7 @@ function option(args, name) {
   return index < 0 ? undefined : args[index + 1];
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const repository = option(process.argv, 'repository');
   const output = option(process.argv, 'output');
   if (!repository || !output)

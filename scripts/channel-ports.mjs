@@ -144,7 +144,7 @@ export function checkGeneratedChannelPorts() {
   }
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   if (process.argv[2] === '--sync-desktop') syncGeneratedChannelPorts();
   else if (process.argv[2] === '--check') checkGeneratedChannelPorts();
   else

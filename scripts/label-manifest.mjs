@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
 export const MANIFEST_PATH = '.github/labels.json';
@@ -252,7 +252,7 @@ function main(argv = process.argv.slice(2)) {
   );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

@@ -32,7 +32,7 @@ export async function checkContainerHealth({
     throw new Error('Container backend is not ready');
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     await checkContainerHealth();
   } catch (error) {

@@ -270,7 +270,7 @@ export function runPublishNpmrcCredentialCheck(options = {}) {
   return 0;
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   process.exitCode = runPublishNpmrcCredentialCheck({
     writeError: (message) => process.stderr.write(`${message}\n`),
     writeOutput: (message) => process.stdout.write(`${message}\n`),

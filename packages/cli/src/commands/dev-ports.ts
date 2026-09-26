@@ -4,10 +4,10 @@
  * A bleeding-edge dev instance must coexist with the stable dogfood (reserved
  * on 3141/3000) and never move its ports between restarts — otherwise a URL
  * shared to a phone or a teammate breaks the moment the process is bounced.
- * This is a straight lift of t3code's dev-runner port model
- * (`scripts/dev-runner.ts` `resolveOffset` + the port-scan, and
- * `packages/shared/src/devHome.ts` worktree detection), ported to plain
- * TypeScript with a small FNV-1a hash instead of Effect's.
+ * So the port offset is derived from stable inputs (an explicit offset, an
+ * instance seed, or the worktree path, hashed with a small FNV-1a), a forward
+ * port scan absorbs the rare collision, and the dev home is keyed the same
+ * way as the ports.
  *
  * Every function here is pure / side-effect-light and dependency-injected so
  * it can be unit-tested without touching a real filesystem or a real socket.
@@ -69,8 +69,8 @@ const FETCH_BAD_PORTS = new Set<number>([
 ]);
 
 /**
- * FNV-1a 32-bit. A small, stable, dependency-free string hash — it need not
- * match t3code's hash, only be deterministic across runs and machines. Uses
+ * FNV-1a 32-bit. A small, stable, dependency-free string hash — it only has
+ * to be deterministic across runs and machines. Uses
  * `Math.imul` for the 32-bit multiply and `>>> 0` to stay unsigned.
  */
 export function fnv1a32(input: string): number {
@@ -111,7 +111,7 @@ function assertOffsetInRange(offset: number, label: string): void {
 }
 
 /**
- * Precedence (high to low), lifted from t3code's `resolveOffset`:
+ * Precedence (high to low):
  *   1. explicit numeric port offset  (--port-offset / STATION_PORT_OFFSET)
  *   2. STATION_DEV_INSTANCE seed      (numeric = that exact offset;
  *                                      non-numeric = hashed into 1..MAX_OFFSET)
@@ -283,7 +283,7 @@ export interface DerivedDevInstance {
  * basename), and the home MUST be keyed the same way or it can collide:
  *
  *  - Explicit STATION_DEV_INSTANCE seed → `dev-<sanitized-seed>`, NO path hash.
- *    A shared name is then the user's intentional choice (matches t3code): two
+ *    A shared name is then the user's intentional choice: two
  *    worktrees given the same seed deliberately share a home.
  *
  *  - Auto (worktree/cwd) → `dev-<sanitized-basename>-<hash8(fullResolvedPath)>`.
@@ -348,7 +348,7 @@ function offsetPortsToProbe(serverPort: number, uiPort: number): number[] {
 /**
  * Starting at `startOffset`, find the first offset whose FIVE listeners are
  * all free, scanning FORWARD to absorb the rare hash collision between two
- * worktrees (t3code does the same). Bounded by MAX_OFFSET: because the band is
+ * worktrees. Bounded by MAX_OFFSET: because the band is
  * only MAX_OFFSET+1 wide, the scan wraps modulo (MAX_OFFSET+1) so it can cover
  * the whole band from any starting point before giving up.
  */

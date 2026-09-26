@@ -190,6 +190,6 @@ function main(argv) {
   for (const pr of targets) sweepPr(pr, argv, repoArgs);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   main(process.argv.slice(2));
 }

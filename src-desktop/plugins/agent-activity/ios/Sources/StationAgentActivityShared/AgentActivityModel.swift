@@ -1,33 +1,31 @@
-// Ported from the Android plugin's AgentActivityModel.kt, itself adapted from
-// T3 Code (https://github.com/pingdotgg/t3code,
-// apps/mobile/modules/t3-agent-notifications), MIT License,
-// Copyright (c) 2026 T3 Tools Inc.
-
 import Foundation
 
-/// One `activity_line_N` row: `status\ttitle\tproject`, ordered by the sender.
+// The card model shared by the iOS plugin and the Live Activity widget. It
+// reads the same payload as the Android plugin's AgentActivityModel.kt and
+// must say the same things; AgentActivityModelTests mirrors the Android tests
+// so a divergence shows up on both sides. The payload fields are documented
+// in docs/design/notification-delivery.md.
+
+/// One agent thread as the card lists it, from an `activity_line_N` row.
 public struct ActivityRow: Equatable {
   public let status: String
   public let title: String
   public let project: String
 }
 
-public enum ActivityPhase: CaseIterable, Equatable {
-  case starting, running, approval, input, stale, completed, failed
+/// Where an agent thread is. The raw value is the `activity_phase` wire value.
+public enum ActivityPhase: String, CaseIterable, Equatable {
+  case starting = "starting"
+  case running = "running"
+  case approval = "waiting_for_approval"
+  case input = "waiting_for_input"
+  case stale = "stale"
+  case completed = "completed"
+  case failed = "failed"
 
-  public var wire: String {
-    switch self {
-    case .starting: return "starting"
-    case .running: return "running"
-    case .approval: return "waiting_for_approval"
-    case .input: return "waiting_for_input"
-    case .stale: return "stale"
-    case .completed: return "completed"
-    case .failed: return "failed"
-    }
-  }
+  public var wire: String { rawValue }
 
-  /// Row status label, as the sender writes it in `activity_line_N`.
+  /// The label the sender writes at the front of an `activity_line_N` row.
   public var status: String {
     switch self {
     case .starting: return "Connecting"
@@ -40,109 +38,125 @@ public enum ActivityPhase: CaseIterable, Equatable {
     }
   }
 
-  /// Short label for the Dynamic Island's compact and minimal slots.
+  /// One short word for the Dynamic Island's compact and minimal slots.
   public var chip: String {
     switch self {
     case .starting, .running: return "Working"
     case .approval: return "Approve"
     case .input: return "Answer"
-    case .stale: return "Waiting"
-    case .completed: return "Done"
-    case .failed: return "Failed"
+    case .stale, .completed, .failed: return status
     }
   }
 
+  /// The card's button: the verb the user is asked for, else Open.
   public var action: String {
     switch self {
     case .approval: return "Approve"
     case .input: return "Answer"
-    default: return "Open"
+    case .starting, .running, .stale, .completed, .failed: return "Open"
     }
   }
 
-  public var needsUser: Bool { self == .approval || self == .input }
-  public var finished: Bool { self == .completed || self == .failed }
+  public var needsUser: Bool { [.approval, .input].contains(self) }
+  public var finished: Bool { [.completed, .failed].contains(self) }
 
-  public static func forStatus(_ status: String) -> ActivityPhase? {
-    allCases.first { $0.status == status }
-  }
+  private static let byStatus: [String: ActivityPhase] = Dictionary(
+    uniqueKeysWithValues: allCases.map { ($0.status, $0) })
 
-  public static func forWire(_ wire: String) -> ActivityPhase? {
-    allCases.first { $0.wire == wire }
-  }
+  public static func forStatus(_ status: String) -> ActivityPhase? { byStatus[status] }
+
+  public static func forWire(_ wire: String) -> ActivityPhase? { ActivityPhase(rawValue: wire) }
 }
 
+/// Row slots the sender may fill; later slots are ignored.
 public let maxActivityRows = 5
 
-private func isBlank(_ value: String) -> Bool {
-  value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+private let statusCharacters = 40
+private let textCharacters = 120
+
+private extension String {
+  var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
-/// The sender orders rows; the card never reorders them. Malformed rows are dropped.
+/// The card's rows, in the sender's order (the card never re-sorts). A slot
+/// that is missing, lacks three tab-separated fields, or has a blank title is
+/// skipped; overlong fields are cut.
 public func activityRows(_ data: [String: String]) -> [ActivityRow] {
-  (0..<maxActivityRows).compactMap { index in
-    guard let line = data["activity_line_\(index)"] else { return nil }
-    let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
-    guard parts.count == 3, !isBlank(String(parts[1])) else { return nil }
-    return ActivityRow(
-      status: String(parts[0].prefix(40)),
-      title: String(parts[1].prefix(120)),
-      project: String(parts[2].prefix(120)))
+  var rows: [ActivityRow] = []
+  for slot in 0..<maxActivityRows {
+    guard let line = data["activity_line_\(slot)"] else { continue }
+    let fields = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false)
+    guard fields.count == 3 else { continue }
+    let title = String(fields[1])
+    if title.isBlank { continue }
+    rows.append(
+      ActivityRow(
+        status: String(fields[0].prefix(statusCharacters)),
+        title: String(title.prefix(textCharacters)),
+        project: String(fields[2].prefix(textCharacters))))
   }
+  return rows
 }
 
+/// `activity_phase` when it names a known phase, otherwise whatever the first
+/// row's status label maps to.
 public func activityPhase(_ data: [String: String], rows: [ActivityRow]) -> ActivityPhase? {
-  if let wire = data["activity_phase"], !isBlank(wire), let phase = ActivityPhase.forWire(wire) {
-    return phase
-  }
-  return rows.first.flatMap { ActivityPhase.forStatus($0.status) }
+  let declared = data["activity_phase"] ?? ""
+  if !declared.isBlank, let phase = ActivityPhase.forWire(declared) { return phase }
+  guard let lead = rows.first else { return nil }
+  return ActivityPhase.forStatus(lead.status)
 }
 
-/// What the card says, derived only from the opened payload.
+private func total(_ data: [String: String], _ key: String) -> Int? {
+  guard let raw = data[key], let value = Int(raw) else { return nil }
+  return max(0, value)
+}
+
+/// Everything the card shows, worked out from the opened payload alone.
 public struct ActivityModel: Equatable {
   public let active: Bool
   public let rows: [ActivityRow]
   public let phase: ActivityPhase?
+  /// The sender's totals win: they count threads beyond the five rows.
   public let activeCount: Int
   public let attentionCount: Int
   public let failedCount: Int
 
   public init(data: [String: String], active: Bool) {
-    self.active = active
     let rows = activityRows(data)
+    let rowPhases = rows.map { ActivityPhase.forStatus($0.status) }
+    let finished = rowPhases.reduce(0) { $0 + ($1?.finished == true ? 1 : 0) }
+    let waiting = rowPhases.reduce(0) { $0 + ($1?.needsUser == true ? 1 : 0) }
+    self.active = active
     self.rows = rows
     self.phase = activityPhase(data, rows: rows)
-    self.activeCount =
-      data["activity_active_count"].flatMap { Int($0) }.map { max(0, $0) }
-      ?? rows.filter { ActivityPhase.forStatus($0.status)?.finished != true }.count
-    self.attentionCount =
-      data["activity_attention_count"].flatMap { Int($0) }.map { max(0, $0) }
-      ?? rows.filter { ActivityPhase.forStatus($0.status)?.needsUser == true }.count
-    self.failedCount = rows.filter { $0.status == ActivityPhase.failed.status }.count
+    self.activeCount = total(data, "activity_active_count") ?? (rows.count - finished)
+    self.attentionCount = total(data, "activity_attention_count") ?? waiting
+    self.failedCount = rows.reduce(0) { $0 + ($1.status == ActivityPhase.failed.status ? 1 : 0) }
   }
 
   public var hero: ActivityRow? { rows.first }
 
+  /// The thread itself when there is one, else a count of what matters most.
   public var summary: String {
-    guard let hero else { return "Agent activity" }
-    if rows.count == 1 { return hero.title }
-    if attentionCount == 1 { return "1 needs you" }
-    if attentionCount > 1 { return "\(attentionCount) need you" }
-    if activeCount > 0 && failedCount > 0 { return "\(failedCount) failed" }
-    if activeCount > 0 { return "\(activeCount) working" }
-    if failedCount > 0 { return "Finished, \(failedCount) failed" }
-    return "All finished"
+    guard let only = hero else { return "Agent activity" }
+    if rows.count == 1 { return only.title }
+    if attentionCount > 0 { return attentionCount == 1 ? "1 needs you" : "\(attentionCount) need you" }
+    if failedCount > 0 { return activeCount > 0 ? "\(failedCount) failed" : "Finished, \(failedCount) failed" }
+    return activeCount > 0 ? "\(activeCount) working" : "All finished"
   }
 
-  /// The compact Dynamic Island label; "Done"/"Failed" once finished.
+  /// The compact Dynamic Island label. Unlike Android's chip it always has a
+  /// value: a finished card with no phase reads "Done".
   public var chip: String {
-    guard let phase else { return active ? "Active" : "Done" }
-    if active && phase == .running && activeCount > 1 {
-      return "\(activeCount > 9 ? "9+" : String(activeCount)) live"
-    }
-    return phase.chip
+    guard let current = phase else { return active ? "Active" : "Done" }
+    guard active, current == .running, activeCount > 1 else { return current.chip }
+    return activeCount > 9 ? "9+ live" : "\(activeCount) live"
   }
 
-  /// Nil when finished: the card only opens the app.
-  public var action: String? { active ? (phase?.action ?? "Open") : nil }
+  /// Nil once finished: the card then only opens the app.
+  public var action: String? {
+    guard active else { return nil }
+    return phase?.action ?? "Open"
+  }
 }

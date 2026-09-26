@@ -271,11 +271,11 @@ export function run(
 }
 
 /**
- * Is this module the process entry point? Realpath-resolves both sides rather
- * than the weaker `import.meta.url === file://\${process.argv[1]}` form, which
- * breaks on a symlinked invocation path or a space in it. (The shared
- * `scripts/lib/module-entry.mjs` helper now uses `import.meta.main`; this file
- * does not import it, to stay self-contained.)
+ * Is this module the process entry point? Realpath-resolves both sides (see
+ * `scripts/lib/module-entry.mjs`'s `invokedDirectly`, not imported here to
+ * keep this file self-contained) rather than the weaker
+ * `import.meta.url === file://\${process.argv[1]}` form, which breaks on a
+ * symlinked invocation path or a space in it.
  */
 function isMain() {
   const entry = process.argv[1];

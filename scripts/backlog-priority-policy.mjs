@@ -3,8 +3,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { validateIssueLabelAxes } from './label-manifest.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const PRIORITIES = Object.freeze(['P1', 'P2', 'P3']);
 const NON_ACTIONABLE_DISPOSITIONS = Object.freeze([
@@ -263,4 +263,4 @@ function main() {
   if (result.findings.length > 0) process.exitCode = 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();
+if (invokedDirectly(import.meta.url)) main();

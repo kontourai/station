@@ -14,6 +14,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -639,5 +640,4 @@ export async function main(argv = process.argv.slice(2)) {
   }
   console.log(JSON.stringify({ directory, results }, null, 2));
 }
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  await main();
+if (invokedDirectly(import.meta.url)) await main();

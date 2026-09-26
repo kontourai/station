@@ -246,6 +246,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Two bounded, short-lived Node probes prove per-process stdio caller
   // separation while sharing one fixture internal credential; no real services.
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
+  // #2377: one bounded Node child runs the stdio entry's credential install
+  // and the stdio tools' own REST helper against an in-process guard, proving
+  // a real pooled child reaches reads only; no real services.
+  'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
   // envelopes; every child exits after its one requested operation.
@@ -275,6 +279,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2923: imports commands/service.ts, whose production command probe
   // uses spawnSync; the direct-import detector cannot see that child seam.
   'packages/cli/src/__tests__/service.test.ts',
+  // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
+  // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
+  'packages/cli/src/__tests__/service-build-stamp.test.ts',
+  // station#2689: drives runCli through commands/service.ts (spawnSync seam,
+  // as service.test.ts) for every source-checkout service entry point.
+  'packages/cli/src/__tests__/service-dev-home-entry-points.test.ts',
   // station#2928: the offline ConfigLoader path writes a real Station home
   // through the mutation-identity boundary, not an in-memory config double.
   'packages/cli/src/__tests__/config.test.ts',
@@ -357,16 +367,21 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that made it a silent no-op is proven, not just the scanner. Two bounded
   // single-shot children.
   'scripts/__tests__/type-laundering-gate.process.test.ts',
-  // Starts scripts that use the entry helper under -e, -p, stdin, a spaced
-  // path, a symlink, and as a worker entry, to prove `import.meta.main`
-  // answers each correctly. Six bounded single-shot children.
-  'scripts/__tests__/module-entry.process.test.ts',
-  // Repo-wide `git ls-files` scan (one child) for URL-string entry checks
-  // built from process.argv[1]; repo-scans job, same shape as the file above.
-  'scripts/__tests__/module-entry-guard.scan.test.ts',
   // #2176: spawns the repo-scans runner through a symlink (`--list`, no
   // Vitest child) to prove its entrypoint guard reaches the runner.
   'scripts/__tests__/run-repo-scan-suites.test.ts',
+  // #2682: runs real `node` entry points from temp paths with a space, a `%`
+  // and a symlink to prove `invokedDirectly` reaches the script body.
+  // Bounded single-shot children per case.
+  'scripts/__tests__/module-entry.test.ts',
+  // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
+  // child process with an empty PATH to prove it needs no npx shim.
+  'scripts/__tests__/a11y-ratchet.test.ts',
+  // #2682: asks the real fallow CLI (`<subcommand> --help`, no writes) to
+  // accept each baseline invocation as built.
+  'scripts/__tests__/fallow-baseline.test.ts',
+  // #2682: the real-tree half — one `git ls-files` over scripts/ and ops/.
+  'scripts/__tests__/module-entry.scan.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -615,6 +630,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // because the scan is `git grep` over TRACKED files and a fixture written
   // to a loose directory would prove nothing about what runs in CI.
   'scripts/__tests__/content-integrity-gate.test.ts',
+  // The excluded-names gate is `git grep` over TRACKED files too, so its test
+  // commits fixtures into throwaway repos and runs the gate as a child
+  // process to assert the real exit status. Single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/excluded-names-gate.test.ts',
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
@@ -738,6 +758,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
+  // #2663: real lookup against a temp HOME — may spawn a fake `$SHELL -ic`,
+  // and launches a fake `muse` through the production MuseAdapter spawn.
+  'src-server/runtime/bootstrap/__tests__/native-engine-adoption.path-resolution.process.test.ts',
   // station#3218: builds the store-integrity probe exactly as
   // `esbuild.config.mjs` does and runs that bundle as a REAL child against
   // real corrupt bytes, so its 0/1/2/3 exit contract is proven by an actual

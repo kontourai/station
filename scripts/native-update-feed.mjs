@@ -505,7 +505,7 @@ function main() {
   throw new Error(`Unknown command: ${command}`);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     await main();
   } catch (error) {

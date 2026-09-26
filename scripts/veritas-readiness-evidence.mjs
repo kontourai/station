@@ -168,6 +168,6 @@ async function main() {
   }
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   await main();
 }

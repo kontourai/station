@@ -2,7 +2,7 @@
 // Regression gate for #1184 (the "honesty rule needs a mechanical guard, not a norm" meta-issue).
 // Follows `scripts/state-primitives-ratchet.mjs` / `scripts/shell-conformance-ratchet.mjs`'s exact,
 // established architecture (pure exported functions; `main()` gated behind
-// `invokedDirectly(import.meta)`; a checked-in numeric ceiling
+// `invokedDirectly(import.meta.url)`; a checked-in numeric ceiling
 // (scripts/claim-fixture-baseline.json's `gapCeiling`) that must only decrease; a fixed, curated,
 // staleness-checked registry rather than a repo-wide scan) — this is Option 1 from #1184: a
 // fixture-completeness lint for status/capability/identity surfaces.
@@ -632,6 +632,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

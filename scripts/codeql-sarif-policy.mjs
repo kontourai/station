@@ -2,8 +2,8 @@
 
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { TextDecoder } from 'node:util';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const SARIF_SCHEMA_URLS = Object.freeze([
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
@@ -620,7 +620,7 @@ export function runCodeqlSarifPolicy(
   };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const result = runCodeqlSarifPolicy();
     if (result.staleBaseline.length > 0)

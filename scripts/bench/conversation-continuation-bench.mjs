@@ -369,7 +369,7 @@ export function summarize(engines) {
   );
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error('[bench] FAIL', error?.stack ?? error);
     process.exit(1);

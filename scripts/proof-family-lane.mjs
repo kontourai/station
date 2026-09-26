@@ -6,9 +6,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { evaluateRepoStandards, loadRepoStandards } from '@kontourai/veritas';
 import { collectCiWorkflowGovernanceFindings } from './ci-workflow-governance.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectPublicContributionSurfaceFindings } from './public-contribution-surfaces.mjs';
 import { collectRouteErrorEgressFindings } from './route-error-egress-gate.mjs';
 
@@ -718,9 +719,6 @@ function main() {
   console.log(`proof-family sidecar: ${sidecarPath}`);
 }
 
-if (
-  process.argv[1] &&
-  pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

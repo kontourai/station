@@ -184,5 +184,5 @@ export async function runPublicDocContractExamples() {
   return 1;
 }
 
-if (invokedDirectly(import.meta))
+if (invokedDirectly(import.meta.url))
   process.exitCode = await runPublicDocContractExamples();

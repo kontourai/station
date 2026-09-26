@@ -139,7 +139,7 @@ export function syncProductVersion(root = process.cwd()) {
   return checkProductVersion(root);
 }
 
-if (invokedDirectly(import.meta)) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.length !== 1 || !['--check', '--sync'].includes(args[0])) {
     throw new Error('Usage: product-version.mjs --check|--sync');
