@@ -7,7 +7,6 @@ import {
   discoverOpenSshHosts,
   parseConcreteOpenSshAliases,
   parseOpenSshGOutput,
-  redactOpenSshArgs,
   resolveOpenSshHost,
 } from '../openssh-config.js';
 
@@ -172,38 +171,6 @@ describe('OpenSSH alias discovery', () => {
       unavailableAliases: ['missing'],
     });
   });
-});
-
-test('redacts control sockets, forwards, worker payloads, agent sockets, and proxy commands', () => {
-  expect(
-    redactOpenSshArgs([
-      '-S',
-      '/tmp/private/control.sock',
-      '-L',
-      '127.0.0.1:4444:127.0.0.1:3141',
-      '-o',
-      'IdentityAgent=/private/agent.sock',
-      '-o',
-      'ProxyCommand=secret-helper token',
-      'brian-media',
-      'node',
-      '-',
-      'eyJyZW1vdGVQcm9qZWN0UGF0aCI6Ii9ob21lL2JyaWFuL3ByaXZhdGUifQ',
-    ]),
-  ).toEqual([
-    '-S',
-    '<control-path>',
-    '-L',
-    '<loopback-forward>',
-    '-o',
-    'IdentityAgent=<redacted>',
-    '-o',
-    'ProxyCommand=<redacted>',
-    'brian-media',
-    'node',
-    '-',
-    '<worker-payload>',
-  ]);
 });
 
 /**

@@ -382,23 +382,3 @@ export async function discoverOpenSshHosts(
   }
   return { hosts, unavailableAliases };
 }
-
-export function redactOpenSshArgs(args: readonly string[]): string[] {
-  const redacted: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const value = args[index];
-    const previous = args[index - 1];
-    if (previous === '-S') {
-      redacted.push('<control-path>');
-    } else if (previous === '-L') {
-      redacted.push('<loopback-forward>');
-    } else if (previous === '-' && /^[A-Za-z0-9_-]+$/.test(value)) {
-      redacted.push('<worker-payload>');
-    } else if (/^(ControlPath|IdentityAgent|ProxyCommand)=/i.test(value)) {
-      redacted.push(`${value.slice(0, value.indexOf('='))}=<redacted>`);
-    } else {
-      redacted.push(value);
-    }
-  }
-  return redacted;
-}
