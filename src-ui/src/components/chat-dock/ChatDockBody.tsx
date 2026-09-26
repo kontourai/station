@@ -1342,6 +1342,35 @@ export function ChatDockBody({
         />
       ) : null}
       {/*
+        The way out of a stale wait. A `busy` resolution is an authoritative
+        wait on the active turn, and only three things re-prove it: the
+        terminal turn event (turnHandlers), a child change (snapshotHandlers),
+        or a reload (hydrate seeds pending). Miss the terminal — a backgrounded
+        phone across a long turn — and the composer sits draft-only with Send
+        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` owns
+        Start new, `busy` owned nothing. When this tab itself sees no turn in
+        flight, the wait may be that stale one, so offer the same re-resolve
+        the recovery notice owns. A genuine wait (turn in flight) keeps the
+        current draft-only behavior below.
+      */}
+      {busyOpen && !isTurnInFlight(activeSession) ? (
+        <div className="session-history-controls" role="status">
+          <span>
+            Still waiting on the active turn. If it already finished, check
+            again to send.
+          </span>
+          {onRetryConversationOpen ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void onRetryConversationOpen()}
+            >
+              Check again
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {/*
         #765 A2/A3: the turn-stall watchdog's projection, surfaced IN the
         chat it is about. The server has observed this silence for the
         agent's whole stall window (`turn-progress-tracker.ts`,
