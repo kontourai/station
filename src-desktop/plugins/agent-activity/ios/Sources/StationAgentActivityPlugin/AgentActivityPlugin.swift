@@ -1,8 +1,11 @@
 import Foundation
+import ObjectiveC
+import StationAgentActivityAlerts
 import StationAgentActivityShared
 import SwiftRs
 import Tauri
 import UIKit
+import UserNotifications
 import WebKit
 
 // The app still deploys to iOS 14/15, where ActivityKit does not exist:
@@ -34,7 +37,8 @@ class PreviewArgs: Decodable {
 /// The WebView's handle on agent activity. Rendering does not go through
 /// here: APNs starts and updates the Live Activity and the widget extension
 /// opens the card, so this only registers identity, reports capability and
-/// hands the Station the push-to-start token.
+/// hands the Station the push-to-start token and, for notification alerts,
+/// the app's APNs device token (`alertToken`).
 class AgentActivityPlugin: Plugin {
   private static let featureFloor = OperatingSystemVersion(majorVersion: 18, minorVersion: 0, patchVersion: 0)
 
@@ -43,6 +47,12 @@ class AgentActivityPlugin: Plugin {
   }
 
   override func load(webview: WKWebView) {
+    // As early as a plugin can: the delegate gets its remote-notification
+    // callbacks, and is re-assigned so UIKit re-reads them, long before the
+    // first alert_token call registers. Nothing registers here.
+    DispatchQueue.main.async {
+      RemoteNotificationDelegateHook.install(in: UIApplication.shared, broker: .shared)
+    }
     if #available(iOS 18.0, *) {
       LiveActivities.startDeduplicating()
     }
@@ -132,6 +142,50 @@ class AgentActivityPlugin: Plugin {
         "token": token.map { String(format: "%02x", $0) }.joined(),
         "apnsEnvironment": environment,
       ])
+    }
+  }
+
+  /// The app's regular APNs device token, for notification alerts (#2589):
+  /// asks for permission to alert, then registers for remote notifications
+  /// and waits for UIKit's answer. `unconfigured` when the build is not
+  /// signed for push, `denied` when the person refused alerts; neither is an
+  /// error. The Station sends it back as the registration's `alertToken`.
+  ///
+  /// Call it only from an explicit user action (turning alerts on): it shows
+  /// the system permission prompt the first time.
+  @objc public func alertToken(_ invoke: Invoke) {
+    guard let environment = ApnsEnvironment.current else {
+      invoke.resolve(["state": "unconfigured"])
+      return
+    }
+    Task { @MainActor in
+      // The completion-handler form: the async one needs iOS 15, and the
+      // app still deploys below it.
+      let granted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+          continuation.resume(returning: granted)
+        }
+      }
+      guard granted else {
+        invoke.resolve(["state": "denied"])
+        return
+      }
+      guard UIApplication.shared.delegate != nil else {
+        invoke.reject("the app delegate is unavailable")
+        return
+      }
+      // Normally done at load already; a no-op then.
+      RemoteNotificationDelegateHook.install(in: UIApplication.shared, broker: .shared)
+      ApnsDeviceTokenBroker.shared.reset()
+      UIApplication.shared.registerForRemoteNotifications()
+      switch await firstValue(timeout: 10, of: { ApnsDeviceTokenBroker.shared.updates() }) {
+      case .token(let token):
+        invoke.resolve(["state": "available", "token": token, "apnsEnvironment": environment])
+      case .failed(let reason):
+        invoke.reject("APNs registration failed: \(reason)")
+      case nil:
+        invoke.reject("APNs device token unavailable")
+      }
     }
   }
 
@@ -335,6 +389,20 @@ enum LiveActivities {
     }
   }
 #endif
+
+extension UIApplication: ApplicationDelegateHolder {
+  /// Through `setDelegate:` rather than the typed property: tao declares its
+  /// AppDelegate class without adopting the UIApplicationDelegate protocol,
+  /// so `as? UIApplicationDelegate` would fail and clear the delegate. The
+  /// same object goes back; nil is never assigned.
+  public var hookableDelegate: AnyObject? {
+    get { delegate }
+    set {
+      guard let newValue else { return }
+      _ = perform(NSSelectorFromString("setDelegate:"), with: newValue)
+    }
+  }
+}
 
 @_cdecl("init_plugin_station_agent_activity")
 func initPlugin() -> Plugin {

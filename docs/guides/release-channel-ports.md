@@ -9,7 +9,7 @@ remain live while beta, nightly, or a development worktree runs beside it.
 | development worktree | 40141-40640 | 39141-39640 | `~/.station/instances/dev/<worktree-id>` | worktree command | the checked-out worktree |
 | stable | 18000 | 18141 | `~/.station/instances/stable` | `station` | signed stable tag |
 | beta | 28000 | 28141 | `~/.station/instances/beta` | `station-beta` | signed preview tag |
-| nightly | 38000 | 38141 | `~/.station/instances/nightly` | nightly launcher | `origin/main` |
+| nightly | 38000 | 38141 | `~/.station/instances/nightly` | `station-nightly` | signed nightly manifest (`vX.Y.Z-nightly.N` from `origin/main`) |
 
 Development worktrees use the `40141-40640` UI and `39141-39640` server bands
 and must not borrow a release-channel port. `station dev` deterministically
@@ -30,6 +30,35 @@ but callers must set both values and keep a matching `STATION_HOME` and
 The owned launcher exports the exact channel, home, and install root on every
 later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
 run `STATION_CHANNEL=beta` instead.
+
+`config/channel-ports.json` is the single source for these values: its
+`channels` hold each runtime's ports and home, and its `releaseRings` map
+each installable ring to the runtime it installs as (`preview` installs as
+`beta`), whether it is a prerelease, and its launcher. `install.sh` must stay
+one standalone file, so `scripts/install-script-generated.mjs` projects that
+table (and the pinned signing keys from `config/release-manifest-keys.json`)
+into generated blocks; `npm run install-script:check` fails when they are
+stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
+
+`STATION_CHANNEL=nightly` installs only from a signed public manifest
+(`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
+nightly key; the authenticated GitHub-release path serves stable and beta
+only. No nightly standalone release is published yet (#2675). Nightly has no
+public/runtime name split: the ring, the runtime, and the provenance channel
+are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
+reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
+`vX.Y.Z-nightly.N` so a rollback can name its target; builds order
+numerically on `N`.
+
+A portable nightly install and the Station Nightly desktop app are the same
+channel runtime: both default to `~/.station/instances/nightly` and ports
+`38141`/`38000`, so only one can run on a host at a time. The installer
+therefore refuses to adopt a default nightly home that holds data it does not
+own (set `STATION_HOME` to share that home deliberately, or to another
+instance directory to keep separate data), and refuses to start a fresh
+nightly install over a port that is already in use. Stable and beta desktop
+apps share their channels' defaults in the same way; the installer does not
+yet guard those channels.
 
 ## Platform identity matrix
 
