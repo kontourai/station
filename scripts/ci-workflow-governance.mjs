@@ -8,13 +8,12 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
- * A governed workflow must declare an unquoted top-level `on` mapping. Push
- * and pull-request branch filters are parsed separately so the primary CI
- * workflow's push, candidate, and merge-queue triggers are each checked
- * against main. Scalar, sequence, inline-event, quoted-key, duplicate-key, and
- * unknown-filter forms fail closed. Every top-level semantic `on` spelling is
- * counted before the canonical declaration is admitted, so a duplicate cannot
- * override it.
+ * A governed workflow must declare an unquoted top-level `on` mapping. Push,
+ * pull-request, and merge-group branch filters are parsed separately so each
+ * of those triggers is checked against main. Scalar, sequence, inline-event,
+ * quoted-key, duplicate-key, and unknown-filter forms fail closed. Every
+ * top-level semantic `on` spelling is counted before the canonical declaration
+ * is admitted, so a duplicate cannot override it.
  */
 function workflowTriggerDeclaration(workflowText) {
   const lines = workflowText.split('\n');

@@ -450,7 +450,7 @@ describe('primary CI trigger declaration parser', () => {
       'unsupported event',
       `on:\n  push:\n    branches: [main]\n  schedule:\n${candidateTriggers}`,
     ],
-  ])('rejects %s as unsupported syntax', (_name, triggers) => {
+  ])('rejects %s as an unsupported trigger declaration', (_name, triggers) => {
     expect(
       collectPrimaryCiWorkflowTriggerFindings(withTriggers(triggers)),
     ).toEqual(unsupported);
