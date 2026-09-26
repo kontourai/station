@@ -471,7 +471,8 @@ type Workflow = {
 const POLICY_INTERPRETER =
   /(?:^|[\s;&|(])(node|bash|sh|python3?)\s+("[^"]*"|\S+)/g;
 const EXECUTABLE_PATH = /\.(?:mjs|cjs|js|ts|mts|sh|py)$/;
-const POLICY_PATH = /^(?:\$PWD\/)?release-policy\/([\w./-]+)$/;
+// No `..` segment: `release-policy/../scripts/x` would run the tag's copy.
+const POLICY_PATH = /^(?:\$PWD\/)?release-policy\/((?:(?!\.\.(?:\/|$))[\w.-]+\/)*(?!\.\.$)[\w.-]+)$/;
 // The only shell variables allowed to name a program; each step that uses
 // one must assign it a release-policy path.
 const POLICY_VARIABLES = ['policy_script'];
