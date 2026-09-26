@@ -29,12 +29,8 @@ interface BoardEnvelope<T> {
  * route's `RouteError.code` (`src-server/routes/board.ts`) verbatim.
  */
 export class BoardResponseError extends StationHttpError {
-  constructor(
-    status: number,
-    message: string,
-    readonly code: string | undefined,
-  ) {
-    super(status, message);
+  constructor(status: number, message: string, code: string | undefined) {
+    super(status, message, code === undefined ? undefined : { code });
     this.name = 'BoardResponseError';
   }
 }
