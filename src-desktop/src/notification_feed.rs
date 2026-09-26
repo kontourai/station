@@ -1493,7 +1493,7 @@ mod host {
             id: String,
             generation: u64,
             link: Option<String>,
-            shown: notify_rust::NotificationHandle,
+            shown: Shown,
         ) {
             #[cfg(all(unix, not(target_os = "macos")))]
             {
@@ -1536,9 +1536,13 @@ mod host {
                 if self.claim_waiter() {
                     let shared = Arc::clone(self);
                     std::thread::spawn(move || {
-                        shown.wait_for_action(|action| {
+                        // The waiter is FnMut; it is called once.
+                        let mut link = Some(link);
+                        shown(&mut |action| {
                             if is_open_action(action) {
-                                open_from_click(&shared.app, link);
+                                if let Some(link) = link.take() {
+                                    open_from_click(&shared.app, link);
+                                }
                             }
                         });
                         shared
@@ -1584,6 +1588,30 @@ mod host {
         }
     }
 
+    /// A shown notification. notify-rust exports its handle type on Linux and
+    /// macOS but not on Windows (its `windows` module is private), so outside
+    /// Linux the handle travels as the one thing we do with it: wait for its
+    /// action. Dropping it drops the handle, as before.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    type Shown = notify_rust::NotificationHandle;
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    type Shown = Box<dyn FnOnce(&mut dyn FnMut(&str)) + Send>;
+
+    fn show(notification: &notify_rust::Notification) -> notify_rust::error::Result<Shown> {
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            notification.show()
+        }
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        {
+            notification.show().map(|handle| {
+                Box::new(move |on_action: &mut dyn FnMut(&str)| {
+                    handle.wait_for_action(|action| on_action(action))
+                }) as Shown
+            })
+        }
+    }
+
     fn is_open_action(action: &str) -> bool {
         // macOS reports the action label; other backends use its id.
         action == "default" || action == "Open"
@@ -1605,14 +1633,14 @@ mod host {
                 let shared = Arc::clone(&self.shared);
                 let id = alert.notification_id.clone();
                 let link = alert.link.clone();
-                move |shown: notify_rust::error::Result<notify_rust::NotificationHandle>| {
+                move |shown: notify_rust::error::Result<Shown>| {
                     if let Ok(shown) = shown {
                         shared.present(id, generation, link, shown);
                     }
                 }
             };
             // Gated: on Linux `show` is a D-Bus round trip with no timeout.
-            match self.shared.gate.run(move || notification.show(), late) {
+            match self.shared.gate.run(move || show(&notification), late) {
                 GateAnswer::NotCalled => OsOutcome::NotCalled,
                 GateAnswer::TimedOut => OsOutcome::Unknown,
                 GateAnswer::Answered(Err(_)) => OsOutcome::NotDone,
