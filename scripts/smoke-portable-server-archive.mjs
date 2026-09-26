@@ -247,14 +247,17 @@ async function choosePorts() {
 
 /**
  * Boots through the archive's own CLI exactly as a user would: a plain
- * `station start`, no channel or instance given. The launcher takes the
- * channel from the archive, the CLI takes that channel as the instance and
- * finds the archive's prebuilt dist-server-<channel>/, so nothing is built.
- * Ports are explicit (flags and environment): an unset port falls back to a
- * channel default the owner's own Station uses.
+ * `station start`, with no channel, instance or home given. The launcher
+ * takes the channel from the archive, so the CLI picks that channel's home
+ * under the (throwaway) HOME and serves the archive's prebuilt dist-server/
+ * and dist-ui/, building nothing. Only the ports are explicit (flags and
+ * environment): an unset port falls back to a channel default the owner's
+ * own Station uses.
  */
 async function bootAndProbe({ launcher, env, home, release }) {
-  const stationHome = join(home, 'station-home');
+  // The home a release of this channel owns (runtime-path-resolver's
+  // runtimeInstancePath); a development checkout would pick instances/dev/<id>.
+  const stationHome = join(home, '.station', 'instances', release.channel);
   const { serverPort, uiPort } = await choosePorts();
   const lifecycleEnv = {
     ...env,
@@ -265,25 +268,27 @@ async function bootAndProbe({ launcher, env, home, release }) {
   try {
     const refused = runLauncherExpectingFailure(
       launcher,
-      ['build', `--base=${stationHome}`],
+      ['build'],
       lifecycleEnv,
       home,
     );
     if (!refused.includes('prebuilt Station archive')) {
       fail(`station build did not refuse as a prebuilt archive:\n${refused}`);
     }
-    runLauncher(
+    const started = runLauncher(
       launcher,
-      [
-        'start',
-        `--base=${stationHome}`,
-        `--port=${serverPort}`,
-        `--ui-port=${uiPort}`,
-      ],
+      ['start', `--port=${serverPort}`, `--ui-port=${uiPort}`],
       lifecycleEnv,
       home,
       START_TIMEOUT_MS,
     );
+    const announced = /Station home: (.+) \(/.exec(started)?.[1];
+    if (!announced || realpathSync(announced) !== realpathSync(stationHome)) {
+      fail(
+        `station start chose home ${announced}; a ${release.channel} archive owns ${stationHome}`,
+      );
+    }
+    log(`home is the ${release.channel} channel's: ${stationHome}`);
     const live = await getJson(
       `http://127.0.0.1:${serverPort}/api/system/liveness`,
     );

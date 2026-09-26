@@ -382,9 +382,9 @@ function treeFootprint(root) {
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
  *   runtime/                the pinned, digest-verified official Node.js
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
- *   dist-server-<channel>/  the server bundle, stamped with this provenance,
+ *   dist-server/            the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
- *   dist-ui-<channel>/      the built UI
+ *   dist-ui/                the built UI, served by every instance
  *   schemas/                the server's data schemas
  *   node_modules/           the desktop stager's pruned runtime closure
  *
@@ -404,10 +404,9 @@ async function stagePortableServerTree({
   }
   // Removes and recreates stageRoot, then stages node_modules into it.
   stageDesktopServerRuntime({ projectRoot, outputRoot: stageRoot });
-  // Named for the release channel, as install.sh's `station build` names a
-  // release tree's build: the CLI takes the channel as its instance when no
-  // STATION_INSTANCE_ID is set, and reads dist-server-<instance>/.
-  const serverDir = join(stageRoot, `dist-server-${release.channel}`);
+  // The CLI resolves every instance of a prebuilt archive to dist-server/
+  // and dist-ui/ (lifecycle.ts resolveBuildPaths).
+  const serverDir = join(stageRoot, 'dist-server');
   // Rebuild rather than copy dist-server: the bundle bakes its build
   // identity, and a portable release must report its release channel, not
   // the `source-checkout` channel an ordinary checkout build stamps.
@@ -424,11 +423,9 @@ async function stagePortableServerTree({
   pruneNonRuntimeArtifacts(serverDir);
   writeServerBuildManifest(serverDir, release);
   await bundleStationCli(projectRoot, stageRoot);
-  cpSync(
-    join(projectRoot, 'dist-ui'),
-    join(stageRoot, `dist-ui-${release.channel}`),
-    { recursive: true },
-  );
+  cpSync(join(projectRoot, 'dist-ui'), join(stageRoot, 'dist-ui'), {
+    recursive: true,
+  });
   cpSync(join(projectRoot, 'schemas'), join(stageRoot, 'schemas'), {
     recursive: true,
   });

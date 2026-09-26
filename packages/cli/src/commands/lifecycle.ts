@@ -2709,7 +2709,10 @@ function warnOnSharedHome(instanceId: string, projectHome: string): void {
 }
 
 export function resolveBuildPaths(instanceId: string): BuildPaths {
-  if (instanceId === DEFAULT_INSTANCE_ID) {
+  // A prebuilt archive ships one build and no toolchain to make another.
+  // Nothing in a build is instance-specific (buildApplication varies only its
+  // output directories), so every instance of an archive serves that build.
+  if (instanceId === DEFAULT_INSTANCE_ID || isPrebuiltArchiveRoot(CWD)) {
     return { server: 'dist-server', ui: 'dist-ui' };
   }
   return {
@@ -3067,10 +3070,8 @@ export async function buildApplication(
     throw new Error(
       [
         `This is a prebuilt Station archive (${CWD}): nothing to build.`,
-        hasCompleteBuildOutputs(activeBuildPaths)
-          ? `Instance ${instanceId} is already built (${activeBuildPaths.server}/, ${activeBuildPaths.ui}/).`
-          : `It ships a build only for its own instance, not for instance ${instanceId}.`,
-        'Run `station start` with no --build and no --instance.',
+        `It ships its server and UI already built in ${activeBuildPaths.server}/ and ${activeBuildPaths.ui}/, which every instance uses.`,
+        'Run `station start` without --build.',
       ].join('\n'),
     );
   }
