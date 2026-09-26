@@ -181,7 +181,11 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
   const diagram = page.locator('#data-flow-chat-request + figure');
   await browserExpect(diagram.locator('svg')).toBeVisible();
   await diagram.getByRole('button', { name: 'Fit width', exact: true }).click();
-  await browserExpect(diagram.locator('svg')).toHaveCSS('width', '350px');
+  const canvasBounds = await diagram.locator('.diagram-canvas').boundingBox();
+  const drawingBounds = await diagram.locator('svg').boundingBox();
+  expect(canvasBounds).not.toBeNull();
+  expect(drawingBounds).not.toBeNull();
+  expect(drawingBounds!.width).toBeCloseTo(canvasBounds!.width, 0);
   await diagram
     .getByRole('button', { name: 'Actual size', exact: true })
     .click();
