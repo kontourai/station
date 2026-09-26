@@ -407,7 +407,7 @@ describe('Project Routes', () => {
     );
   }
 
-  test('GET / answers the operator every project, unprojected and cacheable', async () => {
+  test('GET / answers the operator every project, unprojected and without no-store', async () => {
     // No `memberProjectAdmissions`: the operator path. The member projection
     // (above) filters, projects and marks the response no-store; this one
     // must do none of that.
@@ -2544,7 +2544,8 @@ describe('Project Routes', () => {
   });
 
   test('DELETE /:slug/layouts/:layoutSlug deletes layout', async () => {
-    // The positive control for the traversal refusal above, over real
+    // The positive control for the traversal refusal in 'layout GET and
+    // DELETE reject decoded and double-encoded traversal', over real
     // storage: the named layout is gone and its sibling is not.
     const projectHomeDir = createTempProjectHome();
     const storage = new FileStorageAdapter(projectHomeDir);
