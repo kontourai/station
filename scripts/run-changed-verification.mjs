@@ -1428,16 +1428,19 @@ export async function runChangedVerification(
       { ...executionSelection, signal },
       {
         vitestPath,
-        discoverRelated:
-          discoverRelatedFiles ??
-          ((discoveryRoot, relatedPaths) =>
-            discoverRelatedTestFiles(discoveryRoot, relatedPaths, {
-              // The merge base, not the ref: purity and exported names are
-              // compared against the tree this diff was taken from.
-              base: changed.mergeBase,
-              run,
-              signal,
-            })),
+        // The merge base, not the ref: SDK barrel refinement compares
+        // purity and exported names against the tree this diff was taken
+        // from (#2707).
+        discoverRelated: (discoveryRoot, relatedPaths) =>
+          (
+            discoverRelatedFiles ??
+            ((rootPath, paths, options) =>
+              discoverRelatedTestFiles(rootPath, paths, {
+                ...options,
+                run,
+                signal,
+              }))
+          )(discoveryRoot, relatedPaths, { base: changed.mergeBase }),
         partition: resourcePartition,
         beforeCleanup(executions, preparation) {
           result.executed = executions;

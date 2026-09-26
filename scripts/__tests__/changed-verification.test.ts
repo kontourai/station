@@ -566,6 +566,35 @@ describe('changed verification selection', () => {
     // provisional on a selection that dropped the rest of the diff.
     expect(result.receipt.terminal.status).toBe('completed');
   });
+  test('related discovery receives the merge base for SDK barrel refinement (#2707)', async () => {
+    const discovered: Array<{ paths: string[]; base: unknown }> = [];
+    await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({
+        mergeBase: 'merge-base-sha',
+        paths: ['packages/sdk/src/client/scheduler.ts'],
+      }),
+      discoverRelatedFiles: async (
+        _root: string,
+        relatedPaths: string[],
+        options?: { base?: string },
+      ) => {
+        discovered.push({ paths: [...relatedPaths], base: options?.base });
+        return ['packages/sdk/src/__tests__/scheduler.test.ts'];
+      },
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // The merge base, not the `--base` ref: refinement reads the module as
+    // it was where this diff starts.
+    expect(discovered).toEqual([
+      {
+        paths: ['packages/sdk/src/client/scheduler.ts'],
+        base: 'merge-base-sha',
+      },
+    ]);
+  });
   test.each([
     [
       'a pattern it cannot match',
