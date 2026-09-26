@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
@@ -67,10 +67,13 @@ function dedupe(dirs: string[]): string[] {
 // launch will not have -- only included when they actually exist, so a
 // dead entry never bloats every PATH search. POSIX-only (mirrors the
 // login-shell resolve itself; Windows keeps todays behavior unchanged).
-function wellKnownInstallDirs(): string[] {
+//
+// Exported unfiltered (#2663) so a test that needs "this CLI is nowhere" can
+// check exactly the directories the search reads, not a hand-kept copy.
+export function wellKnownInstallDirCandidates(): string[] {
   if (isWindows()) return [];
   const home = homedir();
-  const candidates = [
+  return [
     '/run/current-system/sw/bin',
     '/opt/homebrew/bin',
     '/usr/local/bin',
@@ -78,7 +81,10 @@ function wellKnownInstallDirs(): string[] {
     `${home}/.nix-profile/bin`,
     `${home}/.local/share/mise/shims`,
   ];
-  return candidates.filter((dir) => {
+}
+
+function wellKnownInstallDirs(): string[] {
+  return wellKnownInstallDirCandidates().filter((dir) => {
     try {
       return existsSync(dir);
     } catch {
@@ -130,6 +136,11 @@ export async function resolveLoginShellPath(): Promise<string> {
       // `zsh -ic` and `bash -ic` running an 8s command under a 1s timeout
       // settled at ~8s with SIGTERM and at ~1s with SIGKILL. Native-engine
       // adoption now awaits this capture, so the bound has to be real.
+      //
+      // Known limit: this kills the shell only. Work its rc files started in
+      // the background outlives it. A group kill needs the shell in its own
+      // process group, which `execFile` cannot give (it does not forward
+      // `detached`), so that is left rather than rebuilt on `spawn` here.
       killSignal: 'SIGKILL',
       windowsHide: true,
     });
@@ -187,6 +198,18 @@ export async function resolveAugmentedPath(): Promise<string> {
   return combinedPathDirs().join(pathDelimiter());
 }
 
+// The combined PATH as it stands NOW, without awaiting a login-shell capture
+// that is still in flight (it is started if it has not been). For the
+// synchronous engine spawns (`codex-adapter-transport`, `muse-adapter`),
+// whose binary was just resolved by the sync `findCliBinary` from these same
+// directories: giving the child this PATH is what lets a
+// `#!/usr/bin/env node` launcher found through them find its `node` (#2663).
+// Async call sites use `augmentedSpawnEnv`, which awaits the capture.
+export function resolveAugmentedPathSync(): string {
+  void ensureLoginPathResolutionStarted();
+  return combinedPathDirs().join(pathDelimiter());
+}
+
 // process.env layered with the fully-resolved augmented PATH -- for
 // passing to execFile/spawn calls that need the spawned process itself
 // (not just Stations own PATH search) to see the login-shell PATH.
@@ -229,7 +252,24 @@ export async function augmentedSpawnEnv(
 function resolveAbsoluteCommand(command: string): string | null | undefined {
   const direct = expandTilde(command);
   if (!isAbsolute(direct)) return undefined;
-  return existsSync(direct) ? direct : null;
+  return isRunnableFile(direct) ? direct : null;
+}
+
+/**
+ * What `which` accepted and a bare `existsSync` did not check (#2663): a
+ * directory, or on POSIX a file without an execute bit, "exists" and then
+ * fails to spawn with EACCES. Rejecting it here also lets the search go on
+ * to a runnable same-named binary later on the PATH instead of stopping at
+ * the dead one. Windows has no execute bit, so there it is a file check.
+ */
+function isRunnableFile(candidate: string): boolean {
+  try {
+    if (!statSync(candidate).isFile()) return false;
+    if (!isWindows()) accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function findCliBinary(command: string): string | null {
@@ -250,7 +290,7 @@ export function findCliBinary(command: string): string | null {
   for (const dir of combinedPathDirs()) {
     for (const suffix of suffixes) {
       const candidate = `${dir}/${command}${suffix}`;
-      if (existsSync(candidate)) return candidate;
+      if (isRunnableFile(candidate)) return candidate;
     }
   }
   return null;

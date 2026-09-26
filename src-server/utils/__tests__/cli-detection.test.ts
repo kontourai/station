@@ -15,6 +15,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  * `native-engine-adoption.path-resolution.process.test.ts`.
  */
 const auth = vi.hoisted(() => ({
+  // The sync read of what is known now. Null by default, so every case below
+  // except the one about it exercises the awaited lookup.
+  findCliBinary: vi.fn((_command: string): string | null => null),
   findCliBinaryAsync: vi.fn(
     async (_command: string): Promise<string | null> =>
       '/home/u/.local/bin/muse',
@@ -22,6 +25,7 @@ const auth = vi.hoisted(() => ({
 }));
 
 vi.mock('../../providers/auth/cli-auth.js', () => ({
+  findCliBinary: auth.findCliBinary,
   findCliBinaryAsync: auth.findCliBinaryAsync,
 }));
 
@@ -41,6 +45,7 @@ function pendingLookup(): (value: string | null) => void {
 
 beforeEach(() => {
   auth.findCliBinaryAsync.mockClear();
+  auth.findCliBinary.mockClear();
   vi.useRealTimers();
 });
 
@@ -54,6 +59,19 @@ describe('detectCliOnPath', () => {
 
     auth.findCliBinaryAsync.mockRejectedValueOnce(new Error('boom'));
     await expect(detectCliOnPath('muse')).resolves.toBe(false);
+  });
+
+  test('answers a hit already known without awaiting the login-shell lookup', async () => {
+    // #2663 review: the awaited lookup waits on the `$SHELL -ic` capture
+    // before searching, so a CLI on the process PATH read as absent to a
+    // caller whose budget ran out first.
+    auth.findCliBinary.mockReturnValueOnce('/usr/bin/codex');
+
+    await expect(detectCliOnPath('codex', { timeoutMs: 2_000 })).resolves.toBe(
+      true,
+    );
+    expect(auth.findCliBinary).toHaveBeenCalledWith('codex');
+    expect(auth.findCliBinaryAsync).not.toHaveBeenCalled();
   });
 
   test('leaves an optionless caller exactly as unbounded as it was', async () => {
@@ -112,6 +130,7 @@ describe('detectCliOnPath', () => {
     // spawns the shared `$SHELL -ic` PATH capture, and the caller of an
     // aborted probe is a runtime that has already begun tearing down.
     expect(auth.findCliBinaryAsync).not.toHaveBeenCalled();
+    expect(auth.findCliBinary).not.toHaveBeenCalled();
     expect(detected).toBe(false);
   });
 });

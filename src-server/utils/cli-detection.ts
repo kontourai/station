@@ -1,4 +1,7 @@
-import { findCliBinaryAsync } from '../providers/auth/cli-auth.js';
+import {
+  findCliBinary,
+  findCliBinaryAsync,
+} from '../providers/auth/cli-auth.js';
 
 export interface CliDetectionOptions {
   /**
@@ -62,6 +65,16 @@ export async function detectCliOnPath(
   // runtime that has begun shutting down, and the first lookup in a process
   // is what spawns the shared login-shell capture.
   if (options?.signal?.aborted) return false;
+  // A hit needs no login-shell PATH, so it must not wait on one. The async
+  // lookup awaits that capture (up to 5s) BEFORE searching, which let a cold
+  // `/api/system/status` refresh, on a 2s budget, report a CLI sitting on
+  // the process PATH as absent and cache that for a minute. Same rule, same
+  // directories: `findCliBinary` is the sync read of what is known now.
+  try {
+    if (findCliBinary(command) !== null) return true;
+  } catch {
+    // Fall through to the awaited lookup, which has its own answer.
+  }
   const lookup = findCliBinaryAsync(command).then(
     (binary) => binary !== null,
     () => false,
