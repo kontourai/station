@@ -36,9 +36,11 @@ export function collectServicePathCandidates(
     ],
     {
       env: process.env,
+      // SIGKILL, not spawnSync's default SIGTERM: a profile that traps TERM
+      // would otherwise outlive the cap.
       ...(options.timeoutMs === undefined
         ? {}
-        : { timeout: options.timeoutMs }),
+        : { killSignal: 'SIGKILL', timeout: options.timeoutMs }),
     },
   );
   const match =
@@ -72,11 +74,15 @@ export function collectServicePathCandidates(
  *
  * - `missing`: directories a reinstall would capture now that the unit lacks.
  * - `stale`: directories in the unit that a reinstall would no longer capture.
+ * - `reordered`: the directories both sides share appear in a different
+ *   order, which changes which same-named binary wins. `position` is the
+ *   zero-based index within that shared sequence.
  * - `unknown`: one side could not be read; nothing is compared or claimed.
  */
 export interface ServicePathDrift {
   missing: string[];
   reason?: string;
+  reordered?: { current: string; position: number; unit: string };
   stale: string[];
   status: 'current' | 'drifted' | 'unknown';
 }
@@ -221,9 +227,26 @@ export function inspectServicePathDrift(
   const currentSet = new Set(current.accepted);
   const missing = current.accepted.filter((dir) => !unitSet.has(dir));
   const stale = unitDirs.filter((dir) => !currentSet.has(dir));
+  const sharedInUnit = unitDirs.filter((dir) => currentSet.has(dir));
+  const sharedInCurrent = current.accepted.filter((dir) => unitSet.has(dir));
+  const position = sharedInUnit.findIndex(
+    (dir, index) => dir !== sharedInCurrent[index],
+  );
+  const reordered =
+    position === -1
+      ? undefined
+      : {
+          current: sharedInCurrent[position],
+          position,
+          unit: sharedInUnit[position],
+        };
   return {
     missing,
+    ...(reordered ? { reordered } : {}),
     stale,
-    status: missing.length > 0 || stale.length > 0 ? 'drifted' : 'current',
+    status:
+      missing.length > 0 || stale.length > 0 || reordered
+        ? 'drifted'
+        : 'current',
   };
 }

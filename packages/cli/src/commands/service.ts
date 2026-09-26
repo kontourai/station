@@ -39,7 +39,10 @@ import {
   inspectServicePathDrift,
   type ServicePathDrift,
 } from './service-path.js';
-import { renderServiceInstallRemedy } from './service-remedy.js';
+import {
+  resolveServiceInstallRemedy,
+  type ServiceInstallRemedy,
+} from './service-remedy.js';
 import { superviseService } from './service-run.js';
 import {
   inspectServiceSchedulingPolicy,
@@ -612,7 +615,7 @@ function renderStatus(
   state: InstanceState,
   scheduling: ServiceSchedulingPolicy,
   servicePath: ServicePathDrift | null,
-  remedy: string | null,
+  remedy: ServiceInstallRemedy | null,
   json: boolean,
 ): void {
   const installed = state.installation !== 'absent';
@@ -654,15 +657,23 @@ function renderStatus(
   if (state.allowedOrigins.length) {
     console.log(`origins        ${state.allowedOrigins.join(', ')}`);
   }
+  // Scheduling and PATH drift share one remedy; print it once, under the
+  // first layer that needs it.
+  let remedyPrinted = false;
+  const printRemedy = () => {
+    if (remedyPrinted) return;
+    remedyPrinted = true;
+    console.log(
+      remedy?.command
+        ? `               run: ${remedy.command}`
+        : `               reinstall command unavailable: ${remedy?.reason ?? 'this registration does not record every setting. Inspect its manifest before reinstalling.'}`,
+    );
+  };
   if (scheduling.status === 'stale') {
     console.log(
       `scheduling     stale (${scheduling.observed}, expected ${scheduling.expected})`,
     );
-    if (remedy) console.log(`               run: ${remedy}`);
-    else
-      console.log(
-        '               reinstall command unavailable: this registration does not record every setting. Inspect its manifest before reinstalling.',
-      );
+    printRemedy();
   } else if (scheduling.status === 'current') {
     console.log(`scheduling     current (${scheduling.observed})`);
   } else if (scheduling.status === 'operator-override') {
@@ -688,10 +699,18 @@ function renderStatus(
         `               no longer captured: ${servicePath.stale.join(', ')}`,
       );
     }
+    if (servicePath.reordered) {
+      const { position, unit, current } = servicePath.reordered;
+      console.log(
+        `               same directories in a different order (first difference at shared position ${position + 1}: the unit has ${unit}, a reinstall would put ${current})`,
+      );
+    }
     console.log(
-      '               engines installed only in a missing directory can go undetected by the service; reinstall to recapture PATH',
+      servicePath.missing.length > 0
+        ? '               engines installed only in a missing directory can go undetected by the service; reinstall to recapture PATH'
+        : '               reinstall to recapture PATH',
     );
-    if (remedy) console.log(`               run: ${remedy}`);
+    printRemedy();
   } else if (servicePath?.status === 'unknown') {
     console.log(`service PATH   unknown (${servicePath.reason})`);
   }
@@ -1364,7 +1383,7 @@ export async function runServiceCommand(
     ? inspectServicePathDrift(existing, { fs, run })
     : null;
   const remedy = existing
-    ? renderServiceInstallRemedy(existing, lifecycle.baseDir)
+    ? resolveServiceInstallRemedy(existing, lifecycle.baseDir)
     : null;
   renderStatus(
     observed,

@@ -181,6 +181,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.exitCode = undefined;
+  vi.unstubAllEnvs();
 });
 
 describe('station service dispatch', () => {
@@ -671,6 +672,9 @@ describe('station service dispatch', () => {
 
   test('reports stale launchd scheduling in text and JSON without changing the registration', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
+    // Installed from a shell without STATION_ROOT, so the recorded root is
+    // the one a pasted reinstall derives and the command needs no prefix.
+    vi.stubEnv('STATION_ROOT', '');
     const baseDir = makeTempDir('station-service-test-');
     const unitPath = join(baseDir, 'installed.plist');
     const registration = {
@@ -1354,6 +1358,7 @@ describe('station service dispatch', () => {
       baseDir: string,
       loginPath: () => string,
     ) {
+      vi.stubEnv('STATION_ROOT', '');
       const { renderSystemdUnit } = await vi.importActual<
         typeof import('../commands/service-systemd.js')
       >('../commands/service-systemd.js');
@@ -1552,6 +1557,252 @@ describe('station service dispatch', () => {
       } finally {
         log.mockRestore();
         vi.unstubAllEnvs();
+      }
+    });
+
+    test('reports a reordering of the same directories, since order decides which binary wins', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const first = makeTempDir('station-service-first-');
+      const second = makeTempDir('station-service-second-');
+      let loginPath = `${first}:${second}:/usr/bin:/bin`;
+      const { run } = await installLinuxService(baseDir, () => loginPath);
+      loginPath = `${second}:${first}:/usr/bin:/bin`;
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const realFirst = nodeFs.realpathSync(first);
+        const realSecond = nodeFs.realpathSync(second);
+        // Shared position 2: the Node directory (/usr/bin here) leads both.
+        const drift = JSON.parse(
+          String(log.mock.calls.at(-1)?.[0]),
+        ).servicePath;
+        expect(drift).toEqual({
+          missing: [],
+          reordered: { current: realSecond, position: 1, unit: realFirst },
+          stale: [],
+          status: 'drifted',
+        });
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const text = log.mock.calls.flat().join('\n');
+        expect(text).toContain(
+          `               same directories in a different order (first difference at shared position 2: the unit has ${realFirst}, a reinstall would put ${realSecond})`,
+        );
+        expect(text).not.toContain('current (matches your login-shell PATH)');
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('round-trips PATH directories containing a space, a quote and a backslash through the real unit', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const awkward = join(
+        makeTempDir('station-service-home-'),
+        'we ird"dir\\x',
+      );
+      mkdirSync(awkward);
+      const { run, unitPath } = await installLinuxService(
+        baseDir,
+        () => `${awkward}:/usr/bin:/bin`,
+      );
+      // The writer's own escaping, not a hand-made fixture.
+      expect(readFileSync(unitPath, 'utf8')).toContain('we ird\\"dir\\\\x');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        expect(
+          JSON.parse(String(log.mock.calls.at(-1)?.[0])).servicePath,
+        ).toEqual({ missing: [], stale: [], status: 'current' });
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('treats a spawn error beside status 0 (a timed-out shell) as no answer', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = makeTempDir('station-service-bin-');
+      const { run } = await installLinuxService(
+        baseDir,
+        () => `${localBin}:/usr/bin:/bin`,
+      );
+      const timedOutRun = vi.fn((command: string, args: string[]) =>
+        args[0] === '-l' && args[1] === '-c'
+          ? {
+              ...loginShellAnswer('/usr/bin:/bin'),
+              error: Object.assign(new Error('spawnSync /bin/sh ETIMEDOUT'), {
+                code: 'ETIMEDOUT',
+              }),
+            }
+          : run(command, args),
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run: timedOutRun,
+        });
+        expect(
+          JSON.parse(String(log.mock.calls.at(-1)?.[0])).servicePath,
+        ).toMatchObject({
+          reason: 'your login shell did not report its PATH',
+          status: 'unknown',
+        });
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('bounds the status login shell with a SIGKILL timeout', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = makeTempDir('station-service-bin-');
+      const { run } = await installLinuxService(
+        baseDir,
+        () => `${localBin}:/usr/bin:/bin`,
+      );
+      run.mockClear();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+      } finally {
+        log.mockRestore();
+      }
+      const shellCalls = run.mock.calls.filter(
+        ([, args]) => args[0] === '-l' && args[1] === '-c',
+      );
+      expect(shellCalls).toHaveLength(1);
+      expect(shellCalls[0][2]).toMatchObject({
+        killSignal: 'SIGKILL',
+        timeout: 5_000,
+      });
+    });
+
+    test.skipIf(process.platform === 'win32')(
+      'a login shell that ignores SIGTERM is still stopped at the cap',
+      async () => {
+        const { defaultRun } = await import('../commands/service.js');
+        const { collectServicePathCandidates } = await import(
+          '../commands/service-path.js'
+        );
+        const shell = join(makeTempDir('station-service-shell-'), 'stubborn');
+        // Ignored dispositions survive exec, so the sleeping process itself
+        // ignores TERM and only SIGKILL ends it before 10s.
+        writeFileSync(shell, "#!/bin/sh\ntrap '' TERM\nexec sleep 10\n");
+        chmodSync(shell, 0o755);
+        vi.stubEnv('SHELL', shell);
+        const started = Date.now();
+        const result = collectServicePathCandidates(defaultRun, serviceFs, {
+          timeoutMs: 300,
+        });
+        expect(Date.now() - started).toBeLessThan(5_000);
+        expect(result.loginShell).toBe(false);
+      },
+      15_000,
+    );
+
+    test('prefixes the recorded STATION_ROOT and prints the shared remedy once', async () => {
+      const root = makeTempDir('station-service-root-');
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = makeTempDir('station-service-bin-');
+      const oldGeneration = makeTempDir('station-service-hm-old-');
+      let loginPath = `${oldGeneration}:/usr/bin:/bin`;
+      const { run: installRun, unitPath } = await installLinuxService(
+        baseDir,
+        () => loginPath,
+      );
+      // installLinuxService installs from a shell without STATION_ROOT; redo
+      // the install from one that carries an operator root.
+      vi.stubEnv('STATION_ROOT', root);
+      await runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'linux',
+        run: installRun,
+      });
+      expect(readFileSync(unitPath, 'utf8')).toContain(
+        `Environment="STATION_ROOT=${root}"`,
+      );
+      // The operator reads status from a shell without it.
+      vi.stubEnv('STATION_ROOT', '');
+      loginPath = `${localBin}:/usr/bin:/bin`;
+      // A Nice= in the main fragment makes scheduling stale too.
+      const run = vi.fn((command: string, args: string[]) =>
+        command === 'systemctl' && args[1] === 'cat'
+          ? {
+              status: 0,
+              stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
+            }
+          : installRun(command, args),
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const lines = log.mock.calls.flat().map(String);
+        expect(lines).toContain(
+          'scheduling     stale (Nice=10, expected systemd defaults)',
+        );
+        expect(lines.join('\n')).toContain('service PATH   drifted');
+        const runLines = lines.filter((line) => line.includes('run: '));
+        expect(runLines).toEqual([
+          `               run: STATION_ROOT=${root} station service install --instance=service-test --base=${baseDir} --port=3242 --ui-port=5274 --host=127.0.0.1`,
+        ]);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('explains a missing remedy when drift is found but the root cannot be reproduced', async () => {
+      const baseDir = join(
+        makeTempDir('station-service-root-'),
+        'instances',
+        'blue',
+      );
+      mkdirSync(baseDir, { mode: 0o700, recursive: true });
+      const localBin = makeTempDir('station-service-bin-');
+      let loginPath = '/usr/bin:/bin';
+      const { run } = await installLinuxService(baseDir, () => loginPath);
+      // A registration written before the root was recorded: a reinstall of
+      // this instances/ home would now set STATION_ROOT, which a pasted
+      // command cannot undo.
+      const manifestPath = join(baseDir, 'service', 'service-test.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      expect(typeof manifest.stationRoot).toBe('string');
+      delete manifest.stationRoot;
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      loginPath = `${localBin}:/usr/bin:/bin`;
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const text = log.mock.calls.flat().join('\n');
+        expect(text).toContain('service PATH   drifted');
+        expect(text).toContain(
+          '               reinstall command unavailable: this registration carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=',
+        );
+        expect(text).not.toContain('run: ');
+      } finally {
+        log.mockRestore();
       }
     });
 
