@@ -659,8 +659,11 @@ describe('whole-tree scans are run or classified (#2176)', () => {
 
   it('the repo-scans CI job runs exactly the one list, on same-repository pull requests', () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    // publish-surface packs packages/cli and asserts the built entrypoint is
+    // in the tarball, so the scans build the CLI they inspect first; the
+    // pinned repo-scans job runs only this script (#2686).
     expect(pkg.scripts['test:repo-scans']).toBe(
-      'node scripts/run-repo-scan-suites.mjs',
+      'npm run build:cli && node scripts/run-repo-scan-suites.mjs',
     );
     // What the runner hands the focused runner is asserted behaviourally in
     // run-repo-scan-suites.test.ts.

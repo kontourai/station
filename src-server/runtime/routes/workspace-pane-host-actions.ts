@@ -6,6 +6,7 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
@@ -49,27 +50,31 @@ export async function executeWorkspacePaneHostAction(
   actor: WorkspacePaneHostActionActor,
   admission: ForegroundInvocationAdmission,
 ) {
-  const handle = await executeExecutionTargetMessage(
-    {
-      target: {
-        environment: { kind: 'current' },
-        agent: admission.agentId,
-        workspace: { kind: 'project', projectSlug: admission.project.slug },
+  // #2377: an admitted Pane action is a person's turn Station drives itself;
+  // its loopback calls run as server code.
+  const handle = await runAsStationServer(() =>
+    executeExecutionTargetMessage(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: admission.agentId,
+          workspace: { kind: 'project', projectSlug: admission.project.slug },
+        },
+        message: admission.message,
+        userId: actor.principal.id,
+        principal: actor.principal,
+        clientOrigin: actor.clientOrigin,
+        readAuthority: actor.readAuthority,
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+        ...(actor.fullAccessGrant
+          ? { fullAccessGrant: actor.fullAccessGrant }
+          : {}),
       },
-      message: admission.message,
-      userId: actor.principal.id,
-      principal: actor.principal,
-      clientOrigin: actor.clientOrigin,
-      readAuthority: actor.readAuthority,
-      ...(actor.ownerAttribution
-        ? { ownerAttribution: actor.ownerAttribution }
-        : {}),
-      ...(actor.fullAccessGrant
-        ? { fullAccessGrant: actor.fullAccessGrant }
-        : {}),
-    },
-    orchestration,
-    admission,
+      orchestration,
+      admission,
+    ),
   );
   return {
     conversationId: handle.conversationId,
