@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { apiErrorMessage } from '../api-core';
 import {
+  envelopeDetailsMessage,
   envelopeError,
   envelopeMessage,
   readEnvelopeFailure,
@@ -36,8 +37,30 @@ describe('apiErrorMessage', () => {
         'Update failed',
       ),
     ).toBe(
-      'A command word is lowercase letters, digits and dashes — the text typed after "/".',
+      'Validation failed: command A command word is lowercase letters, digits and dashes — the text typed after "/".',
     );
+  });
+
+  test('names each field, so two "Required"s are not two bare words (#2708 M1)', () => {
+    // The CLI's station#2871 shape: the SDK and the CLI print one sentence.
+    expect(
+      apiErrorMessage(
+        {
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { command: ['Required'], name: ['Required'] },
+          },
+        },
+        'Update failed',
+      ),
+    ).toBe('Validation failed: command Required, name Required');
+    expect(
+      envelopeDetailsMessage({
+        fieldErrors: { id: ['Too short', 'Bad characters'] },
+      }),
+    ).toBe('id Too short; Bad characters');
+    expect(envelopeDetailsMessage({ fieldErrors: { id: [] } })).toBe(undefined);
   });
 
   test('carries every broken rule, form-level ones included', () => {
@@ -52,7 +75,9 @@ describe('apiErrorMessage', () => {
         },
         'Update failed',
       ),
-    ).toBe('Body is required Too long Bad word');
+    ).toBe(
+      'Validation failed: name Too long, command Bad word, Body is required',
+    );
   });
 
   test('falls back to the envelope, then to the caller, and never to noise', () => {
@@ -142,7 +167,9 @@ describe('readEnvelopeFailure / envelopeError', () => {
       'fallback',
     );
     expect(error.details).toEqual(details);
-    expect(error.message).toBe('A command word is lowercase.');
+    expect(error.message).toBe(
+      'Validation failed: command A command word is lowercase.',
+    );
     // Non-validation details survive too: the structure is the caller's.
     expect(
       envelopeError(response(409), { error: 'x', details: ['a', 1] }, 'f')
@@ -169,10 +196,31 @@ describe('readEnvelopeFailure / envelopeError', () => {
     });
   });
 
+  test('a fixed message withholds the server text but keeps status, code and Retry-After', () => {
+    const error = envelopeError(
+      new Response(null, { status: 404, headers: { 'Retry-After': '3' } }),
+      {
+        error: 'peer-supplied text',
+        code: 'input_request_missing',
+        details: { fieldErrors: { id: ['peer text'] } },
+      },
+      'fallback',
+      { message: 'Input request unavailable' },
+    );
+    expect(error).toBeInstanceOf(StationHttpError);
+    expect(error.message).toBe('Input request unavailable');
+    expect(error).toMatchObject({
+      status: 404,
+      code: 'input_request_missing',
+      retryAfterMs: 3000,
+    });
+    expect(error).not.toHaveProperty('details');
+  });
+
   describe('message order', () => {
     const cases: Array<[string, unknown, string]> = [
       [
-        'details.formErrors and fieldErrors first',
+        'field-qualified details follow the summary',
         {
           error: 'Validation failed',
           message: 'top',
@@ -181,7 +229,12 @@ describe('readEnvelopeFailure / envelopeError', () => {
             fieldErrors: { a: ['Too long'] },
           },
         },
-        'Body is required Too long',
+        'Validation failed: a Too long, Body is required',
+      ],
+      [
+        'details with no summary follow the fallback',
+        { details: { fieldErrors: { a: ['Too long'] } } },
+        'fallback: a Too long',
       ],
       [
         'then a string error',

@@ -968,6 +968,17 @@ export interface JsonEnvelope<T> {
   message?: unknown;
 }
 
+/**
+ * One envelope VALUE as text: a string as-is, anything else serialized.
+ *
+ * @deprecated A third message rule, kept for its public signature (#2708). It
+ * reads one field and serializes an object (`{"code":"missing_server"}`),
+ * where the shared rule reads the whole body and names the object's
+ * `message` or `code`. For a failure envelope use `envelopeError` (the
+ * thrown `StationHttpError`) or `apiErrorMessage(body, fallback)`. Not
+ * rerouted in place: its one caller (`MCPToolUIFrame`) pins the serialized
+ * shape.
+ */
 export function envelopeFailureMessage(value: unknown): string | undefined {
   if (typeof value === 'string') return value || undefined;
   if (value === undefined || value === null) return undefined;

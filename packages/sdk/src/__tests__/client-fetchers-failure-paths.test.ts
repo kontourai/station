@@ -340,8 +340,28 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       status: 403,
       code: 'station_control_scope_denied',
       details,
-      message: 'Unknown integration id.',
+      message: 'Validation failed: id Unknown integration id.',
     });
+  });
+
+  it('integrations: a validation refusal reads as a sentence naming each field (#2708 M1)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse(
+        {
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { command: ['Required'], name: ['Required'] },
+          },
+        },
+        400,
+      ),
+    );
+
+    await expect(listIntegrations('http://example.test')).rejects.toThrow(
+      /^Validation failed: command Required, name Required$/,
+    );
   });
 
   it('integrations: a 2xx success:false keeps its observed status and code', async () => {

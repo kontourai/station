@@ -131,24 +131,50 @@ function stringEntries(value: unknown): string[] {
 }
 
 /**
- * The one message rule, in order: the validation sentences in
- * `details.formErrors` / `details.fieldErrors`; a string `error`; an object
+ * The validation sentences in a zod `flatten()` `details`, each qualified by
+ * the field it is about: `command Required, name Required`. Field errors come
+ * first (several reasons for one field joined with `; `), then form-level
+ * errors. `undefined` when there are none. This is the shape the CLI printed
+ * first (station#2871, `Validation failed: command Required`); the CLI now
+ * reads it from here, so the two agree.
+ */
+export function envelopeDetailsMessage(details: unknown): string | undefined {
+  const flattened = record(details);
+  if (!flattened) return undefined;
+  const parts: string[] = [];
+  const fieldErrors = record(flattened.fieldErrors);
+  if (fieldErrors) {
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      const reasons = stringEntries(messages);
+      if (reasons.length > 0) parts.push(`${field} ${reasons.join('; ')}`);
+    }
+  }
+  parts.push(...stringEntries(flattened.formErrors));
+  return parts.length > 0 ? parts.join(', ') : undefined;
+}
+
+/**
+ * The one message rule. The summary is, in order: a string `error`; an object
  * `error`'s `message`, then its `code` (a machine token, still shown rather
  * than swapped for an invention — it is what the server computed); the
- * top-level `message`; and only then `fallback`.
+ * top-level `message`; and only then `fallback`. When `details` carries
+ * validation sentences they follow it, field-qualified —
+ * `Validation failed: command Required, name Required` — so a refusal names
+ * the field and the rule instead of "Validation failed" alone (station#3737)
+ * or two bare "Required"s that could be about anything.
  */
 export function envelopeMessage(body: unknown, fallback: string): string {
   const envelope = record(body);
   if (!envelope) return fallback;
-  const details = record(envelope.details);
-  const parts = stringEntries(details?.formErrors);
-  const fieldErrors = record(details?.fieldErrors);
-  if (fieldErrors) {
-    for (const messages of Object.values(fieldErrors)) {
-      parts.push(...stringEntries(messages));
-    }
-  }
-  if (parts.length > 0) return parts.join(' ');
+  const summary = envelopeSummary(envelope, fallback);
+  const fields = envelopeDetailsMessage(envelope.details);
+  return fields ? `${summary}: ${fields}` : summary;
+}
+
+function envelopeSummary(
+  envelope: Record<string, unknown>,
+  fallback: string,
+): string {
   const { error, message } = envelope;
   if (nonBlank(error)) return error;
   const detail = record(error);
@@ -198,18 +224,34 @@ export function readEnvelopeFailure(
   return failure;
 }
 
-/** `readEnvelopeFailure` as the error a fetcher throws. */
+/**
+ * `readEnvelopeFailure` as the error a fetcher throws.
+ *
+ * `options.message` is for a fetcher that withholds the server's words on
+ * purpose (a fixed "Input request unavailable" that must not echo whatever a
+ * peer sent): the error then carries that fixed message and no `details`
+ * (which are server text too), and still keeps the observed status, `code`
+ * and `Retry-After` — the fields a caller branches on.
+ */
 export function envelopeError(
   response: EnvelopeFailureResponse,
   body: unknown,
   fallback: string,
+  options?: { message?: string },
 ): StationHttpError {
-  const { status, message, ...options } = readEnvelopeFailure(
+  const { status, message, details, ...rest } = readEnvelopeFailure(
     response,
     body,
     fallback,
   );
-  return new StationHttpError(status, message, options);
+  if (options?.message !== undefined) {
+    return new StationHttpError(status, options.message, rest);
+  }
+  return new StationHttpError(
+    status,
+    message,
+    details === undefined ? rest : { ...rest, details },
+  );
 }
 
 /**
