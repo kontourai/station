@@ -159,6 +159,10 @@ describe('install-registry helpers', () => {
         },
       }),
     ],
+    [
+      'a valid alias record owned by the browsed registry',
+      'OWNED_BY_BROWSED_REGISTRY',
+    ],
   ])(
     'lists the registry without claiming installed state from %s',
     async (_label, aliases) => {
@@ -171,7 +175,21 @@ describe('install-registry helpers', () => {
           JSON.stringify({ name, version: '1.0.0' }),
         );
       }
-      if (aliases !== undefined) writeFileSync(aliasesPath, aliases);
+      if (aliases === 'OWNED_BY_BROWSED_REGISTRY') {
+        // Exactly what the server writes after installing curated-demo from
+        // this registry (registryKey = the resolved local manifest path).
+        writeFileSync(
+          aliasesPath,
+          JSON.stringify({
+            'curated-demo': {
+              pluginName: 'actual-plugin',
+              registryKey: join(root, 'registry', 'plugins.json'),
+            },
+          }),
+        );
+      } else if (aliases !== undefined) {
+        writeFileSync(aliasesPath, aliases);
+      }
       process.env.STATION_HOME = home;
       const { showOrSaveRegistry } = await import(
         '../commands/install-registry.js'
