@@ -8,7 +8,11 @@
  * Real paths are named deliberately. If one moves, update the pin to an
  * equivalent importer rather than deleting the case.
  */
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { beforeAll, describe, expect, test } from 'vitest';
 import {
   loadSdkImportGraph,
@@ -67,5 +71,74 @@ describe('SDK barrel selection on the real corpus', () => {
     // The bound is loose on purpose; the subset and the named control above
     // are what pin the direction.
     expect(refined.length).toBeLessThan(whole.length * 0.75);
+  });
+});
+
+/**
+ * The resolver understands exactly two specifier forms for the SDK: the
+ * package name through its `exports` map, and relative paths. An alias that
+ * names SDK source any other way would make the graph silently miss edges —
+ * under-selection with a green lane. This pins every alias surface to what
+ * the resolver can see.
+ */
+describe('no alias names SDK source behind the resolver’s back', () => {
+  const tracked = (pattern: string) =>
+    execFileSync('git', ['ls-files', '-z', '--', pattern], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+    })
+      .split('\0')
+      .filter(Boolean);
+  const sdkExports: Record<string, string> = JSON.parse(
+    readFileSync(join(ROOT, 'packages/sdk/package.json'), 'utf8'),
+  ).exports;
+
+  test('no Vitest config aliases the SDK', () => {
+    const configs = tracked('*vitest.config.*');
+    expect(configs).toContain('vitest.config.ts');
+    for (const config of configs)
+      expect(
+        readFileSync(join(ROOT, config), 'utf8'),
+        `${config} mentions the SDK; teach resolveSdkSpecifier its alias first`,
+      ).not.toMatch(/station-sdk|packages\/sdk/);
+  });
+
+  test('every tsconfig path into SDK source is the package export it mirrors', () => {
+    const mismatches: string[] = [];
+    let sdkPaths = 0;
+    for (const config of tracked('*tsconfig*.json')) {
+      const parsed = ts.parseConfigFileTextToJson(
+        config,
+        readFileSync(join(ROOT, config), 'utf8'),
+      ).config;
+      const paths: Record<string, string[]> =
+        parsed?.compilerOptions?.paths ?? {};
+      const baseUrl = posix.join(
+        posix.dirname(config),
+        parsed?.compilerOptions?.baseUrl ?? '.',
+      );
+      for (const [key, targets] of Object.entries(paths))
+        for (const target of targets) {
+          const resolved = posix.normalize(posix.join(baseUrl, target));
+          if (!resolved.startsWith('packages/sdk/')) continue;
+          sdkPaths += 1;
+          const subpath =
+            key === '@kontourai/station-sdk'
+              ? '.'
+              : key.startsWith('@kontourai/station-sdk/')
+                ? `.${key.slice('@kontourai/station-sdk'.length)}`
+                : null;
+          const exported = subpath === null ? undefined : sdkExports[subpath];
+          if (
+            exported === undefined ||
+            posix.normalize(posix.join('packages/sdk', exported)) !== resolved
+          )
+            mismatches.push(`${config}: ${key} -> ${target}`);
+        }
+    }
+    // Population: src-ui mirrors five subpaths today.
+    expect(sdkPaths).toBeGreaterThan(0);
+    expect(mismatches).toEqual([]);
   });
 });
