@@ -6,6 +6,7 @@
  * the native-v2 broker client/connector and the real Pion diagnosticEcho
  * process. It never mounts in Station startup or opens an application channel.
  * Run only with: npm run lab:native-relay-diagnostic-echo -- --run-real-local-lab
+ * Exercise abort cleanup: append --exercise-ice-gather-abort (expected failure).
  */
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -73,6 +74,9 @@ if (!process.argv.includes(optIn)) {
 }
 if (process.platform === 'win32')
   throw new Error('native_relay_diagnostic_echo_local_lab_requires_posix');
+const exerciseIceGatherAbort = process.argv.includes(
+  '--exercise-ice-gather-abort',
+);
 
 process.umask(0o077);
 const root = mkdtempSync(join(tmpdir(), 'station-native-echo-lab-'));
@@ -124,6 +128,7 @@ let brokerStationId: string | undefined;
 let brokerLeaseWithdrawn = false;
 let turnStoppedOnCleanup = false;
 let brokerDatabasePath: string | undefined;
+let withdrawProvisionedBrokerLease: (() => void) | undefined;
 const cleanupErrors: string[] = [];
 
 type BrowserDiagnosticChannel = {
@@ -178,6 +183,32 @@ async function closeServer(server: ReturnType<typeof serve>) {
   );
 }
 
+async function runWithAbortBoundary<T>(
+  label: string,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const signal = controller.signal;
+  signal.throwIfAborted();
+  let rejectAborted!: (reason: unknown) => void;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAborted = reject;
+  });
+  const onAbort = () =>
+    rejectAborted(signal.reason ?? new Error(`${label}_aborted`));
+  signal.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(
+    () => controller.abort(new Error(`${label}_timed_out`)),
+    timeoutMs,
+  );
+  try {
+    return await Promise.race([Promise.resolve().then(operation), aborted]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 function fingerprint(sdp: string) {
   const matches = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
     (match) => match[1]!.trim(),
@@ -226,6 +257,8 @@ async function main() {
   brokerStationId = scope.stationId;
   const credentials = createBrokerCredentialBundle();
   broker.provision(scope, 600_000, credentials);
+  withdrawProvisionedBrokerLease = () =>
+    broker?.withdraw(scope, credentials.connector);
   const app = new Hono().route(
     '/broker/v1',
     createSelfHostedBrokerRoutes(broker),
@@ -328,47 +361,64 @@ async function main() {
   const browserContext = await browser.newContext();
   const page = await browserContext.newPage();
   await page.goto('about:blank');
-  const offer = await page.evaluate(
-    async ({ port, username, password }) => {
-      const peer = new RTCPeerConnection({
-        iceServers: [
-          {
-            urls: `turn:127.0.0.1:${port}?transport=tcp`,
-            username,
-            credential: password,
-          },
-        ],
-        iceTransportPolicy: 'relay',
-      });
-      const channel = peer.createDataChannel('station-lab-v1');
-      const received: string[] = [];
-      channel.addEventListener('message', (event: { readonly data: unknown }) =>
-        received.push(String(event.data)),
-      );
-      const gathered = new Promise<void>((resolveGathered) => {
-        if (peer.iceGatheringState === 'complete') return resolveGathered();
-        peer.addEventListener('icegatheringstatechange', () => {
-          if (peer.iceGatheringState === 'complete') resolveGathered();
-        });
-      });
-      await peer.setLocalDescription(await peer.createOffer());
-      await gathered;
-      if (!peer.localDescription) throw new Error('browser offer missing');
-      const windowValue: unknown = Reflect.get(globalThis, 'window');
-      if (!windowValue || typeof windowValue !== 'object')
-        throw new Error('browser window unavailable');
-      const browserWindow = windowValue as BrowserWindow;
-      browserWindow.__stationEcho = {
-        peer,
-        channel,
-        received,
-      };
-      return {
-        type: peer.localDescription.type,
-        sdp: peer.localDescription.sdp,
-      };
-    },
-    { port: turnTcpPort, username: turnUsername, password: turnPassword },
+  const offer = await runWithAbortBoundary(
+    'browser_ice_gathering',
+    exerciseIceGatherAbort ? 500 : 30_000,
+    () =>
+      page.evaluate(
+        async ({ port, username, password, exerciseAbort }) => {
+          const peer = new RTCPeerConnection({
+            iceServers: [
+              {
+                urls: `turn:127.0.0.1:${port}?transport=tcp`,
+                username,
+                credential: password,
+              },
+            ],
+            iceTransportPolicy: 'relay',
+          });
+          const channel = peer.createDataChannel('station-lab-v1');
+          const received: string[] = [];
+          channel.addEventListener(
+            'message',
+            (event: { readonly data: unknown }) =>
+              received.push(String(event.data)),
+          );
+          const gathered = new Promise<void>((resolveGathered) => {
+            if (peer.iceGatheringState === 'complete') return resolveGathered();
+            peer.addEventListener('icegatheringstatechange', () => {
+              if (peer.iceGatheringState === 'complete') resolveGathered();
+            });
+          });
+          await peer.setLocalDescription(await peer.createOffer());
+          if (exerciseAbort)
+            await new Promise<void>(() => {
+              // The Node-side abort boundary must close this deliberately stuck
+              // page evaluation and still retire every fixture-owned resource.
+            });
+          await gathered;
+          if (!peer.localDescription) throw new Error('browser offer missing');
+          const windowValue: unknown = Reflect.get(globalThis, 'window');
+          if (!windowValue || typeof windowValue !== 'object')
+            throw new Error('browser window unavailable');
+          const browserWindow = windowValue as BrowserWindow;
+          browserWindow.__stationEcho = {
+            peer,
+            channel,
+            received,
+          };
+          return {
+            type: peer.localDescription.type,
+            sdp: peer.localDescription.sdp,
+          };
+        },
+        {
+          port: turnTcpPort,
+          username: turnUsername,
+          password: turnPassword,
+          exerciseAbort: exerciseIceGatherAbort,
+        },
+      ),
   );
   assert.equal(offer.type, 'offer');
   assert.match(offer.sdp, / typ relay(?:\s|\r?$)/m);
@@ -581,17 +631,19 @@ async function main() {
       throw new Error('remote SDP state changed before proof acceptance');
     await state.peer.setRemoteDescription({ type: 'answer', sdp });
   }, answer.answerSdp);
-  await page.waitForFunction(
-    () => {
-      const windowValue: unknown = Reflect.get(globalThis, 'window');
-      if (!windowValue || typeof windowValue !== 'object')
-        throw new Error('browser window unavailable');
-      const browserWindow = windowValue as BrowserWindow;
-      const state = browserWindow.__stationEcho;
-      return state?.channel.readyState === 'open';
-    },
-    undefined,
-    { timeout: 15_000 },
+  await runWithAbortBoundary('browser_datachannel_open', 15_000, () =>
+    page.waitForFunction(
+      () => {
+        const windowValue: unknown = Reflect.get(globalThis, 'window');
+        if (!windowValue || typeof windowValue !== 'object')
+          throw new Error('browser window unavailable');
+        const browserWindow = windowValue as BrowserWindow;
+        const state = browserWindow.__stationEcho;
+        return state?.channel.readyState === 'open';
+      },
+      undefined,
+      { timeout: 15_000 },
+    ),
   );
 
   const probe = `station-diagnostic-echo-${randomUUID()}`;
@@ -605,29 +657,44 @@ async function main() {
       throw new Error('diagnostic channel label changed');
     state.channel.send(value);
   }, probe);
-  const echoed = await Promise.race([
-    page.waitForFunction(
-      (value) => {
-        const windowValue: unknown = Reflect.get(globalThis, 'window');
-        if (!windowValue || typeof windowValue !== 'object')
-          throw new Error('browser window unavailable');
-        const browserWindow = windowValue as BrowserWindow;
-        const state = browserWindow.__stationEcho;
-        return state?.received.includes(value) ?? false;
-      },
-      probe,
-      { timeout: 15_000 },
-    ),
-    stationPoll.then((outcome) => {
-      if (outcome.kind === 'error') throw outcome.error;
-      if (!outcome.result.diagnosticEchoes?.includes(probe))
-        throw new Error('Station Pion did not report the real echo');
+  // The signal aborts both waits together, and success requires independent
+  // evidence from the browser and Station's Pion diagnostics.
+  const [browserReceivedEcho, stationEchoOutcome] = await Promise.all([
+    runWithAbortBoundary('browser_echo_receipt', 15_000, async () => {
+      const received = await page.waitForFunction(
+        (value) => {
+          const windowValue: unknown = Reflect.get(globalThis, 'window');
+          if (!windowValue || typeof windowValue !== 'object')
+            throw new Error('browser window unavailable');
+          const browserWindow = windowValue as BrowserWindow;
+          const state = browserWindow.__stationEcho;
+          return state?.received.includes(value) ?? false;
+        },
+        probe,
+        { timeout: 15_000 },
+      );
+      try {
+        return await received.jsonValue();
+      } finally {
+        await received.dispose();
+      }
     }),
-  ]);
-  void echoed;
-  const pollOutcome = await stationPoll;
-  if (pollOutcome.kind === 'error') throw pollOutcome.error;
-  const pollResult = pollOutcome.result;
+    runWithAbortBoundary('station_echo_receipt', 15_000, () => stationPoll),
+  ]).catch((error: unknown) => {
+    if (!controller.signal.aborted) controller.abort(error);
+    throw error;
+  });
+  assert.equal(
+    browserReceivedEcho,
+    true,
+    'Chromium did not independently observe the echoed message',
+  );
+  if (stationEchoOutcome.kind === 'error') throw stationEchoOutcome.error;
+  const pollResult = stationEchoOutcome.result;
+  assert.ok(
+    pollResult.diagnosticEchoes?.includes(probe),
+    'Station Pion did not independently report the echoed message',
+  );
   assert.deepEqual(pollResult.diagnosticEchoes, [probe]);
   echoConfirmed = true;
 
@@ -689,6 +756,7 @@ try {
   await main();
 } catch (error) {
   failure = error;
+  if (!controller.signal.aborted) controller.abort(error);
 } finally {
   for (const [label, close] of [
     [
@@ -713,8 +781,11 @@ try {
     [
       'Chromium browser',
       async () => {
-        await browser?.close();
+        // BrowserServer owns Chromium. Closing it terminates the browser even
+        // when its Playwright page.evaluate is still pending after an abort.
         await browserServer?.close();
+        browser = undefined;
+        browserServer = undefined;
       },
     ],
     [
@@ -726,6 +797,27 @@ try {
     [
       'broker service',
       async () => {
+        if (brokerDatabasePath && brokerStationId) {
+          const beforeClose = new DatabaseSync(brokerDatabasePath, {
+            readOnly: true,
+          });
+          let needsWithdrawal: boolean;
+          try {
+            const row = beforeClose
+              .prepare(
+                'SELECT withdrawn_at FROM broker_leases WHERE station_id=?',
+              )
+              .get(brokerStationId);
+            needsWithdrawal = Boolean(row && row.withdrawn_at === null);
+          } finally {
+            beforeClose.close();
+          }
+          if (needsWithdrawal) {
+            if (!withdrawProvisionedBrokerLease)
+              throw new Error('broker lease withdrawal owner was not recorded');
+            withdrawProvisionedBrokerLease();
+          }
+        }
         broker?.close();
         if (!brokerDatabasePath) return;
         if (!brokerStationId)
@@ -745,7 +837,11 @@ try {
               ? 'withdrawn'
               : 'still_active'
             : 'missing';
-          assert.equal(brokerLeaseWithdrawn, connectorRegistered);
+          assert.equal(
+            brokerLeaseWithdrawn,
+            true,
+            'fixture-owned broker lease remained active after cleanup',
+          );
         } finally {
           database.close();
         }
