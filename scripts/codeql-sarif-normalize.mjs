@@ -15,8 +15,8 @@ import {
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
 import { MAX_SARIF_BYTES, parseSarifBytes } from './codeql-sarif-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const FILESYSTEM = Object.freeze({
   closeSync,
@@ -154,7 +154,7 @@ export function runCodeqlSarifNormalize(argv = process.argv.slice(2)) {
   return { input, output };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const result = runCodeqlSarifNormalize();
     console.log(

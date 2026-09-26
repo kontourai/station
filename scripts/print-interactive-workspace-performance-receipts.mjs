@@ -2,8 +2,8 @@
 
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { performanceReportReceipt } from './interactive-workspace-performance.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const MAX_PERFORMANCE_RECEIPT_FILES = 16;
 const MAX_PERFORMANCE_REPORT_BYTES = 20 * 1024 * 1024;
@@ -89,10 +89,7 @@ export function performanceReceiptLogLines(
     : ['[interactive-workspace-performance] receipt=NO_REPORTS_FOUND'];
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? '.kontourai/performance');
   for (const line of performanceReceiptLogLines(directory)) console.log(line);
 }

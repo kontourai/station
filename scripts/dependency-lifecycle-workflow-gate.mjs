@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -232,7 +233,7 @@ export function checkWorkflowDirectory(directory = WORKFLOWS) {
   return [...workflowFindings, ...repositoryFindings];
 }
 
-if (process.argv[1]?.endsWith('dependency-lifecycle-workflow-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const findings = checkWorkflowDirectory();
   if (findings.length) {
     console.error(findings.join('\n'));

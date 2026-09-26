@@ -24,9 +24,8 @@
  * read` cannot split a field in half the way `%@*`/`##*@` splitting can.
  */
 
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { DEPLOY_LEDGER_VERSION_PATTERN } from '../deploy-ledger.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 
 /** npm package names: `pkg` or `@scope/pkg`, no whitespace, no shell
  * metacharacters, no JSON punctuation. */
@@ -110,13 +109,10 @@ function main(argv) {
   return 0;
 }
 
-// realpathSync both sides: an unresolved argv[1] under a symlinked workspace
+// invokedDirectly realpaths both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
 // feature exists to close.
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

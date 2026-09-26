@@ -9,6 +9,7 @@ import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-h
 import { calculateJwkThumbprint } from 'jose';
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SCHEMA = 'station.self-hosted-connector-identity/v1';
 const USAGE = 'Usage: npm run connector:identity -- /absolute/station-home';
@@ -76,12 +77,7 @@ export async function initializeConnectorIdentity(homeDir: string): Promise<{
   }
 }
 
-const invokedAsEntry =
-  typeof process.argv[1] === 'string' &&
-  (process.argv[1].endsWith('self-hosted-connector-identity.ts') ||
-    process.argv[1].endsWith('self-hosted-connector-identity.js'));
-
-if (invokedAsEntry) {
+if (invokedDirectly(import.meta.url)) {
   if (process.argv.length === 3 && process.argv[2] === '--help') {
     console.log(USAGE);
   } else {

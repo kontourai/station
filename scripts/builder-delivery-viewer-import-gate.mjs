@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import ts from 'typescript';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = 'examples/builder-delivery-viewer';
 const READ_ONLY_FS_IMPORTS = new Set([
@@ -478,4 +479,4 @@ function main() {
     `OK: Builder Delivery Viewer uses only published contracts (${scopedFiles().length} files scanned).`,
   );
 }
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (invokedDirectly(import.meta.url)) main();

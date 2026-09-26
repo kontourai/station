@@ -7,9 +7,10 @@
  * `--list` prints the suites and runs nothing.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { runFocusedTests } from './run-focused-tests.mjs';
 import { REPO_SCAN_SUITES } from './test-impact-manifest.mjs';
 
@@ -53,22 +54,7 @@ export async function runRepoScans({
   return run([...REPO_SCAN_SUITES]);
 }
 
-/**
- * True when this module is the process entrypoint. Compared by REAL path:
- * Node resolves a symlinked main module to its target, so `import.meta.url`
- * is the target while `argv[1]` is the link, and a plain comparison would
- * make the CLI exit 0 having run nothing.
- */
-export function isEntrypoint(argv1 = process.argv[1]) {
-  if (!argv1) return false;
-  try {
-    return realpathSync(argv1) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isEntrypoint()) {
+if (invokedDirectly(import.meta.url)) {
   if (process.argv.includes('--list')) {
     process.stdout.write(`${REPO_SCAN_SUITES.join('\n')}\n`);
   } else {

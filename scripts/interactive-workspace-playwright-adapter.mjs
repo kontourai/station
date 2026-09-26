@@ -16,7 +16,6 @@ import {
 import { createConnection } from 'node:net';
 import { cpus, platform, release, totalmem } from 'node:os';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   buildReceiptMatches,
   PRODUCTION_BRIDGE_GLOBAL,
@@ -24,6 +23,7 @@ import {
   unavailableBridgeObservations,
   validateProductionBridgeEvidence,
 } from './lib/interactive-workspace-production-bridge.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ADAPTER = 'station-playwright-production-v1';
 const REFERENCE_MODE_PARAM = 'station-performance-reference';
@@ -1845,10 +1845,7 @@ export async function publishPeerCursor(peer, owner, taskId, iteration) {
   };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const configIndex = process.argv.indexOf('--config');
   const configPath =
     configIndex >= 0

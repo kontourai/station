@@ -19,7 +19,7 @@
 // bare mounts may only ever fall.
 //
 // Follows the established ratchet family (pure exported functions + a
-// `main()` gated behind `import.meta.url === file://process.argv[1]`,
+// `main()` gated behind `invokedDirectly(import.meta.url)`,
 // `git ls-files`-scoped, checked-in baseline). Counted rather than
 // zero-tolerance because the migration is per-call-site: `LazyBoundary` owns
 // the `lazy()` creation, so each adoption restructures its call site and a
@@ -32,7 +32,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SCAN_PATHSPECS = ['src-ui/src'];
 
@@ -124,6 +124,6 @@ function main() {
   );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Inspect bytes without assuming a successful installer copied every file. */
 export function inspectWindowsInstalledTree(directory) {
@@ -60,10 +60,7 @@ export function inspectWindowsInstalledTree(directory) {
   };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const [directory, output] = process.argv.slice(2);
   const { records, summary } = inspectWindowsInstalledTree(directory);
   writeFileSync(output, `${JSON.stringify(records)}\n`);
