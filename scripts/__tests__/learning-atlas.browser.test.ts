@@ -126,7 +126,10 @@ test('a reader follows a concept into its exact module, searches, and returns th
   ).toEqual(['SessionCommandModule']);
   await browserExpect(page.locator('.review-status')).toBeVisible();
   await browserExpect(page.locator('.review-status')).toContainText(
-    'This page has not been verified in full against the code.',
+    'Partially reviewed',
+  );
+  await browserExpect(page.locator('.review-status')).toContainText(
+    'Reviewed sections do not certify the full catalog.',
   );
   await page.locator('summary').filter({ hasText: 'Sources & review' }).click();
   await browserExpect(

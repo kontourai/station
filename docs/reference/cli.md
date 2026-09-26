@@ -916,7 +916,13 @@ resumable — it is never torn down (no `stopSession`) just because a
 request opened. `--json` carries a typed `pendingRequest` field
 (`requestId`/`requestType`/`title`/`respondCommand`) plus `lifecycleState` (the session's
 `SessionLifecycleState`, e.g. `needs_input`/`review_pending`) whenever
-either is present — distinguishing a stalled turn from a merely slow one.
+either was observed. `pendingRequest` retains the last request-opened notice;
+the CLI does not clear it on resolution. With `--on-request=fail`, it explains
+why waiting stopped. With `wait`, even completed final JSON can retain that
+notice. Read the current Session/request before deciding that it still needs
+an answer; the field's presence alone is not current pending-state evidence.
+The response-contract correction is tracked in
+[#2741](https://github.com/kontourai/station/issues/2741).
 
 **Managed-chat orchestration — landed, and not behind a flag.** A managed
 Station-agent `station chat <slug>` starts a private `station-agent`

@@ -151,6 +151,11 @@ returned preview without displaying it. [#2734](https://github.com/kontourai/sta
 tracks the authenticated caller and visible confirmation journey. These are
 source/caller findings, not proof of a real restore or engine execution.
 
+The CLI's final JSON can also retain `pendingRequest` after that request has
+resolved and the turn completed. An isolated caller/SSE probe reproduced this
+combination. [#2741](https://github.com/kontourai/station/issues/2741) tracks a
+response contract that distinguishes current pending work from the last notice.
+
 ### A declared namespace and its consumer can name different stores
 
 Enterprise Layout declares `notes` but its

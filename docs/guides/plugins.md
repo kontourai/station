@@ -1330,9 +1330,13 @@ and the rest of this workflow operates on — your actual working directory.
 
 Available templates:
 
-- `full` — Workspace Panes + Agent + build config
-- `pane` — UI-focused Workspace Pane starter (default)
+- `full` — Workspace Panes + Agent + build config (CLI default)
+- `pane` — UI-focused Workspace Pane starter
 - `provider` — server-side starter with `serverModule` and provider examples
+
+The CLI also accepts `--template=layout` as an alias for `pane`. The shared
+scaffold builder and Project scaffold API default to `pane`; the CLI wrapper
+explicitly chooses `full` when no template is supplied.
 
 ### 2. Dev Server
 

@@ -881,6 +881,80 @@
       "checks": []
     },
     {
+      "path": "AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No merge, push, queue mutation, release, full regression, or behavioral conformance audit was performed. GitHub rules are a time-specific observation.",
+      "documentDigest": "f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0",
+      "sources": [
+        {
+          "path": "package.json",
+          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+        },
+        {
+          "path": ".githooks/pre-push",
+          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+        },
+        {
+          "path": "scripts/dependency-lifecycle.mjs",
+          "digest": "0712226ce655b2bfef67116bd4c137fc46803aa07ff7a40b61e2138da14c87b3"
+        },
+        {
+          "path": "scripts/gate-for.mjs",
+          "digest": "442d887f268215ec4e8e33aa79bd37b4bbefdab876f204b4ee42fbb9578f1707"
+        },
+        {
+          "path": "scripts/run-focused-tests.mjs",
+          "digest": "7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c"
+        },
+        {
+          "path": "scripts/orchestration-transfer-gate.mjs",
+          "digest": "f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5"
+        },
+        {
+          "path": "scripts/lib/typecheck-host-slots.mjs",
+          "digest": "26e76900f135282106e245c4946798b5a084cb98de3074750629e9a96d0bef1d"
+        },
+        {
+          "path": ".agents/skills/documentation-audit/SKILL.md",
+          "digest": "6d2eb75c6d5fa8a9db0fe83c5dc3eebad91de807c90810a9d2edf7c39961048a"
+        },
+        {
+          "path": ".veritas/GOVERNANCE.md",
+          "digest": "7db422ec20e647443b017edf43aab11f3c9baa10aa8bcc271d248836b0f17b2f"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md. The root also carries the canonical protected Veritas governance block.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "ca6627ac9cce6d3a94bea40f42622b34376ae20ff004cffcdb22c3981dc18847",
+      "sources": [
+        {
+          "path": "AGENTS.md",
+          "digest": "f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0"
+        },
+        {
+          "path": ".veritas/GOVERNANCE.md",
+          "digest": "7db422ec20e647443b017edf43aab11f3c9baa10aa8bcc271d248836b0f17b2f"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
       "path": "CODE_OF_CONDUCT.md",
       "documentDigest": "a8f9ce630f2daf074a964211919a0c1c097c5808e9136c8027ebdf182a13c327",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1391,6 +1465,61 @@
       ]
     },
     {
+      "path": "docs/guides/plugins.md",
+      "documentDigest": "468f39704c84d08a7b055077000b925263bae648dcf6908681fa1a111c77b2d0",
+      "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed manifest/identity compatibility, settings and secret storage, provider interfaces and SDK examples, grant revisions, person-owned lifecycle, approval versus activation, content withholding, install paths and scaffold defaults/alias.",
+      "limits": "Not every SDK hook/example or recovery/dependency race was qualified. No installed UI, live provider, publication, or native proof. Source helper defaults were corrected by following both CLI and HTTP callers.",
+      "sources": [
+        {
+          "path": "src-server/services/plugins/plugin-manifest-loader.ts",
+          "digest": "ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df"
+        },
+        {
+          "path": "src-server/routes/plugins/plugin-config-routes.ts",
+          "digest": "dd90382ebda838291b986f66a7ec072eae62ae0608da0bf3209937a254e6ef83"
+        },
+        {
+          "path": "src-server/providers/plugin-provider-loader.ts",
+          "digest": "7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-install-transaction.ts",
+          "digest": "bc81e514914c45793c0893f7ced2fc8dd0c16878e27b38d82d53fb83b25aa071"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-permissions.ts",
+          "digest": "1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf"
+        },
+        {
+          "path": "src-server/routes/plugins/plugin-host-approval-routes.ts",
+          "digest": "5c978a2eac36bceb4001ae8a294172e8911aa0eaacfa81c74134ee27898ee3c4"
+        },
+        {
+          "path": "packages/sdk/src/hooks/operations.ts",
+          "digest": "02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994"
+        },
+        {
+          "path": "packages/cli/src/commands/init.ts",
+          "digest": "fcb691b8cdbf28db96da3330c656f221d076ae85ddcafbb9948b7048190e4e53"
+        },
+        {
+          "path": "packages/shared/src/plugin-scaffold.ts",
+          "digest": "47f077e8253eb468c8d28cc20f02a36dd78872e5670624b9e1580e01dba50b99"
+        },
+        {
+          "path": "src-server/routes/projects/plugin-scaffold-routes.ts",
+          "digest": "5be55a138b9e5a5854f702de6fb59263613ad383ea563d684aeee7084296eef2"
+        }
+      ],
+      "checks": [
+        "Independent plugin source/caller and correction review accepted.",
+        "Plugin implementation lane: 92 documentation-foundation and 151 contract tests passed before later source-neutral wording corrections."
+      ]
+    },
+    {
       "path": "docs/reference/api-summary.md",
       "documentDigest": "6f7cc874b9ec86a158514b996c6da61666a977b72ac4d86db8fc037e9e3e6c55",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1414,6 +1543,74 @@
       ],
       "checks": [
         "Documentation foundations: static OpenAPI bytes match buildOpenApiSpec(); included in the passed docs:truth:gate run."
+      ]
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "documentDigest": "b457fa25eff68c5bd4d0d29fe762b69cabcb4722ea33e7a52b2cfc3373218519",
+      "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed distribution/targeting, chat/session/delegate settings, nullable configuration, dev/service and environment commands, checkpoint limitations, and selected CRUD surfaces. Corrected last-observed pending-request semantics and credential rotation output.",
+      "limits": "The large reference remains incomplete: deep triage, home recovery, portable artifacts, cloud/workspace transfer and secondary operations still need source review. No live provider, service or restore execution proof.",
+      "sources": [
+        {
+          "path": "packages/cli/src/distribution.ts",
+          "digest": "f02cc7baf384dcfc9393a9b7223e7e0e6609762540ca04dcbbad8f6837be8c44"
+        },
+        {
+          "path": "packages/cli/src/commands/version.ts",
+          "digest": "2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0"
+        },
+        {
+          "path": "packages/cli/src/commands/core-api.ts",
+          "digest": "10b07d55e1c409934c7414784cd2de14f61be535616024c02bffb6d90696b3d8"
+        },
+        {
+          "path": "packages/cli/src/commands/core.ts",
+          "digest": "0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b"
+        },
+        {
+          "path": "packages/cli/src/commands/session-client.ts",
+          "digest": "0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8"
+        },
+        {
+          "path": "packages/cli/src/commands/model-options.ts",
+          "digest": "e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a"
+        },
+        {
+          "path": "packages/cli/src/commands/checkpoints.ts",
+          "digest": "49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd"
+        },
+        {
+          "path": "packages/cli/src/commands/environment.ts",
+          "digest": "23d0d86878c0847cad503d22d7616e016bc3b6e09d89d46025223a65ee7793c3"
+        },
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        },
+        {
+          "path": "packages/cli/package.json",
+          "digest": "3326cda44f10983039189724dbec68a663a5fa2eecb7ba4663a96a4eaedd4d91"
+        },
+        {
+          "path": "packages/cli/bundle-externals.mjs",
+          "digest": "5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85"
+        },
+        {
+          "path": "scripts/station-dev.mjs",
+          "digest": "97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b"
+        },
+        {
+          "path": "station",
+          "digest": "bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb"
+        }
+      ],
+      "checks": [
+        "Independent CLI caller review and final wording deltas accepted.",
+        "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+        "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls."
       ]
     },
     {
@@ -2146,6 +2343,97 @@
       "checks": []
     },
     {
+      "path": "packages/cli/README.md",
+      "documentDigest": "5f8b70f1da1c293bd152e0207edff453c85301549d0753ba46042d31e2c352f9",
+      "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed source/bundle entry points, distribution exceptions, package dependencies, version provenance, approximate freshness, shared deadlines, JSON acceptance/SSE distinction, and checkpoint limitations.",
+      "limits": "No complete review of setup, triage and target-selection examples; no published artifact, installation, OS service/keyring, live chat or restore execution proof.",
+      "sources": [
+        {
+          "path": "packages/cli/src/distribution.ts",
+          "digest": "f02cc7baf384dcfc9393a9b7223e7e0e6609762540ca04dcbbad8f6837be8c44"
+        },
+        {
+          "path": "packages/cli/src/commands/version.ts",
+          "digest": "2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0"
+        },
+        {
+          "path": "packages/cli/src/commands/core-api.ts",
+          "digest": "10b07d55e1c409934c7414784cd2de14f61be535616024c02bffb6d90696b3d8"
+        },
+        {
+          "path": "packages/cli/src/commands/core.ts",
+          "digest": "0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b"
+        },
+        {
+          "path": "packages/cli/src/commands/session-client.ts",
+          "digest": "0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8"
+        },
+        {
+          "path": "packages/cli/src/commands/model-options.ts",
+          "digest": "e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a"
+        },
+        {
+          "path": "packages/cli/src/commands/checkpoints.ts",
+          "digest": "49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd"
+        },
+        {
+          "path": "packages/cli/src/commands/environment.ts",
+          "digest": "23d0d86878c0847cad503d22d7616e016bc3b6e09d89d46025223a65ee7793c3"
+        },
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        },
+        {
+          "path": "packages/cli/package.json",
+          "digest": "3326cda44f10983039189724dbec68a663a5fa2eecb7ba4663a96a4eaedd4d91"
+        },
+        {
+          "path": "packages/cli/bundle-externals.mjs",
+          "digest": "5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85"
+        },
+        {
+          "path": "scripts/station-dev.mjs",
+          "digest": "97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b"
+        },
+        {
+          "path": "station",
+          "digest": "bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb"
+        }
+      ],
+      "checks": [
+        "Independent CLI caller review and final wording deltas accepted.",
+        "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+        "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls."
+      ]
+    },
+    {
+      "path": "packages/contracts/AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Routes to the contracts reference and requires domain-specific imports, explicit compatibility, and focused consumer checks. The prohibition on runtime helpers/parsers is normative, not a claim that the existing package contains none.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+      "documentDigest": "cc1c91a1c20944964c821fab6d2bd7c5646032545bb01d9bf592ac0916f2592c",
+      "sources": [
+        {
+          "path": "docs/reference/contracts.md",
+          "digest": "fbb4933168c319cdf5579cd49ff70c180c73e12a854585c2f7a1753861071c88"
+        },
+        {
+          "path": "packages/contracts/package.json",
+          "digest": "be67e427665002a91848c74e6ab3e3d24703f4368b4a3177d380aafa4f95563f"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
       "path": "packages/contracts/CHANGELOG.md",
       "documentDigest": "e579762198f760e21a31799153062f7d5d4691f5c0635c88546cfca3338f91b0",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -2155,6 +2443,52 @@
       "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "packages/contracts/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "packages/contracts/AGENTS.md",
+          "digest": "cc1c91a1c20944964c821fab6d2bd7c5646032545bb01d9bf592ac0916f2592c"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "packages/sdk/AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+      "documentDigest": "b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06",
+      "sources": [
+        {
+          "path": "docs/reference/sdk.md",
+          "digest": "ff1d344b28200295a3794d405d081e4ffc2a80a4d143b87e8d70d260079a8562"
+        },
+        {
+          "path": "packages/sdk/package.json",
+          "digest": "47af8a80fddf80e9b52afb5eabd3bbd2f790a8e54fccee8289e7f9621ccbafb1"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
     },
     {
       "path": "packages/sdk/CHANGELOG.md",
@@ -2168,6 +2502,25 @@
       "checks": []
     },
     {
+      "path": "packages/sdk/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "packages/sdk/AGENTS.md",
+          "digest": "b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
       "path": "packages/shared/CHANGELOG.md",
       "documentDigest": "87b0e26e8c52fa13b6211c91ad017f11538997b0636486c530b301a8db15dd9c",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -2177,6 +2530,534 @@
       "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "schemas/agent-plugins/1.0.0/UPSTREAM.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Both local schemas match the documented SHA-256 values and pinned upstream commit ff8ab5e392cc87bd88d87c060815a87490e51003 byte-for-byte. The loader reads local schema files and caches validators; generation consumes those same vendored files.",
+      "limits": "The claim about website serving on 2026-09-03 is retained as historical provenance, not independently reconstructed from a website archive. No future schema compatibility is implied.",
+      "documentDigest": "64be6f495e93a648248caf1d95149560291dcf3d5036d0c2919ab786818757c6",
+      "sources": [
+        {
+          "path": "schemas/agent-plugins/1.0.0/plugin.schema.json",
+          "digest": "0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883"
+        },
+        {
+          "path": "schemas/agent-plugins/1.0.0/mcp.schema.json",
+          "digest": "6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb"
+        },
+        {
+          "path": "src-server/services/plugins/agent-plugin-loader.ts",
+          "digest": "91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6"
+        },
+        {
+          "path": "scripts/generate-agent-plugin-validators.mjs",
+          "digest": "2bd3f7bc3213181f05f97d5e9f727d2d19499c0f6ba2514d318bc816f16c3330"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+      "documentDigest": "6500d9d9e476f425384826b8c40f1845bb87b97efe0bbd53595eb429f7b1668d",
+      "sources": [
+        {
+          "path": "scripts/vitest-resource-manifest.mjs",
+          "digest": "44bf40b1a71b485a1f52e9389ff90e2a0ad9f5cc28a414aa2bc8869e723f02d6"
+        },
+        {
+          "path": "scripts/code-health-gate.mjs",
+          "digest": "601c9b86a673c782230fad9f1caaec8791a1fdd15f64b7124ef8bdf6151b9927"
+        },
+        {
+          "path": "scripts/verification-lanes.mjs",
+          "digest": "75a751ec217bfd3ea451ddacc114f2cf8e9672e2d3b4c6b0db8c2ae22bbfeb86"
+        },
+        {
+          "path": "scripts/lib/owned-process.mjs",
+          "digest": "33bb6787bb2609ed5e8c69946b3b1272b46085f6b4261fd55e39bbf91cb8a118"
+        },
+        {
+          "path": "docs/guides/testing.md",
+          "digest": "e89bdb923140095fed0c4488af51987f7544767057334aba3fe21d58e2d24998"
+        },
+        {
+          "path": "docs/guides/code-quality.md",
+          "digest": "61bcfaf444d7bb0f95b089cc7cfb180dc6c41113d8f7ac207eee18273e33b56a"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "scripts/AGENTS.md",
+          "digest": "6500d9d9e476f425384826b8c40f1845bb87b97efe0bbd53595eb429f7b1668d"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/__tests__/fixtures/changed-verification/README.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
+      "limits": "Preserved intentionally minimal fixture text. Focused selector tests verify fixture consumption, not global changed-test completeness.",
+      "documentDigest": "d22aaa83030747724e36351e6ab74b0c8c901d7d2ccd9c7a6ff031b0c96d5260",
+      "sources": [
+        {
+          "path": "scripts/__tests__/fixtures/changed-verification/scenarios.json",
+          "digest": "2907f43f933ad105cbd3d77eb4c41bbc4883115e8cbc233ff9f6eb5867a17b48"
+        },
+        {
+          "path": "scripts/__tests__/changed-verification.test.ts",
+          "digest": "6aa0e82453d724e4f046dde2a5a1123cca398267231edb822f3c2ded13ef3e87"
+        },
+        {
+          "path": "scripts/run-changed-verification.mjs",
+          "digest": "2e28cde1d3baa9c919db31a6082697f4eea50171ed0aa39b36fd51b4d9146f1b"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/__tests__/fixtures/codeql-sarif/README.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "Explains extension-rule, legacy driver-rule, failed-invocation, and omitted-level fixtures. Hosted run 33187380619 still exists and reports success at fa8099f3537687834660550e99093d6d4cc37b17; current policy tests exercise the local fixtures.",
+      "limits": "Raw historical hosted SARIF artifacts and verbatim result provenance were not independently re-downloaded. Recorded CodeQL/action versions describe the historical fixture, not current production scanner versions or absence of vulnerabilities.",
+      "documentDigest": "5a307d869e13496693f9fc2d2c326babbc8f41d642f2a205e99c3f5d04d7b0b9",
+      "sources": [
+        {
+          "path": "scripts/__tests__/codeql-sarif-policy.test.ts",
+          "digest": "a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-clean.sarif",
+          "digest": "7dec53f4b0db44caebf2e7fd875e4b0b1dd23b2c978b22ce0a47d4a984af8eb1"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-finding.sarif",
+          "digest": "ae1df04a0cb3d212c3b35b5e5d725657f0101e4546676fdc436fa4e9143fcf5c"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-analysis-error.sarif",
+          "digest": "a2c5960dfd057840bee33d877ccebcd55c04460dfd2479111b424a25321cb944"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-legacy-driver-rules.sarif",
+          "digest": "4c8ee460492d9f70226a43b786399a783e37de70f3571d5fb275dd69b33ac33e"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/codeql-sarif/codeql-2.26.3-no-level.sarif",
+          "digest": "8cba93de488c3234d605f2e2f371f9285fc99df78d753a9f35a5d474916c4085"
+        },
+        {
+          "path": "scripts/codeql-error-baseline.json",
+          "digest": "68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/__tests__/fixtures/sbom/README.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "The parsed SPDX schema is identical to pinned upstream JSON despite repository formatting differences. SPDX-LICENSE is byte-identical to upstream LICENSE. Offline schema consumption is present in the SBOM tests; no license text was changed.",
+      "limits": "Schema equality and retained license bytes are provenance checks, not legal advice or a completed SBOM/release validation.",
+      "documentDigest": "663c1854f89d925a27f9340924c3c0cc76b266acaf79ba0db6ba87b8fa7b3f55",
+      "sources": [
+        {
+          "path": "scripts/__tests__/fixtures/sbom/spdx-2.3.schema.json",
+          "digest": "bb5028fb04407b880448b7052ca3792b56cac3126d1fa728bb071732baee3604"
+        },
+        {
+          "path": "scripts/__tests__/fixtures/sbom/SPDX-LICENSE",
+          "digest": "017e38491cccbd2bdb6da0a32a33db9ec245b5dab30fdcd09f2c742c975e5b35"
+        },
+        {
+          "path": "scripts/__tests__/release-sbom-generation.test.ts",
+          "digest": "32ec8766c0ab9e4238e56a71f99a29a59a9485da7c80d7eff005a6dcaafaa4c1"
+        },
+        {
+          "path": "package.json",
+          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "scripts/fixtures/orchestration-transfer/README.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retains the original traffic measurements and envelope rationale. The active budget still sets 64000-byte window/snapshot ceilings; the gate consumes budget.json and requires attribution for changed policy.",
+      "limits": "Initial 39-52 KB window, 0.9-1.7 KB snapshot, and roughly 1 MB live-turn observations were not reproduced. The historical calibration is not current performance evidence or authority to change ceilings.",
+      "documentDigest": "d3f783333e53ae3480ac102ee43fef0ff4a59210030f4eb4e4d88781ab3a89f7",
+      "sources": [
+        {
+          "path": "scripts/fixtures/orchestration-transfer/budget.json",
+          "digest": "47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b"
+        },
+        {
+          "path": "scripts/orchestration-transfer-gate.mjs",
+          "digest": "f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5"
+        },
+        {
+          "path": "scripts/orchestration-transfer-capture.ts",
+          "digest": "7107a7dc69364236ebea29d3daa7fba149c735b245671eebf0e033c99293eab8"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-desktop/AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+      "documentDigest": "639c22132706ff3f95576f36d67379fe01240546042bb299f4075c3571dd1de4",
+      "sources": [
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "d8ba051e2e233e36c97ee803a5cce7b4e347624f33b007c0df5a8fa91e0027d3"
+        },
+        {
+          "path": "scripts/gate-for.mjs",
+          "digest": "442d887f268215ec4e8e33aa79bd37b4bbefdab876f204b4ee42fbb9578f1707"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-desktop/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "src-desktop/AGENTS.md",
+          "digest": "639c22132706ff3f95576f36d67379fe01240546042bb299f4075c3571dd1de4"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-server/AGENTS.md",
+      "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. Flow artifact-root and batch advice is a routing/invariant classification, not a fresh whole-request performance measurement.",
+      "documentDigest": "00bfed83f5bfd3af081f1197430799b3aa84470e657ddfcabc545f75aa7167e1",
+      "sources": [
+        {
+          "path": "docs/architecture/module-map.md",
+          "digest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468"
+        },
+        {
+          "path": "docs/guides/development.md",
+          "digest": "ef7f3206e5a2af3e2412300d626be261e2450a54deb9bb39b8ad5e427c068a59"
+        },
+        {
+          "path": "docs/guides/testing.md",
+          "digest": "e89bdb923140095fed0c4488af51987f7544767057334aba3fe21d58e2d24998"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-content-integrity.ts",
+          "digest": "c1d7056567dc83f60d871b606a1ae2a5cdba27a52e889ca09d02379a3ef5bd70"
+        },
+        {
+          "path": "src-server/services/evidence/workflow-sidecar-service.ts",
+          "digest": "f5c67856aea916f6d8d0a3a50038f008e48025d47564129b414d4735bafc6396"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged."
+      ]
+    },
+    {
+      "path": "src-server/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "src-server/AGENTS.md",
+          "digest": "00bfed83f5bfd3af081f1197430799b3aa84470e657ddfcabc545f75aa7167e1"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/UPSTREAM.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "plugin.json exactly matches upstream commit 5f3f5084a821aefa792e79500dd8f0462ab83473. A full upstream/local skill diff shows only the documented replacement of three supplementary-reference links by the fixture-scope note.",
+      "limits": "The adapted skill intentionally is not byte-identical. Provenance and loader tests do not qualify executing the migration workflow on real client plugins.",
+      "documentDigest": "bfb392ce68b59605e995af956ae2973445df97261e209a983ad366a06666cfb8",
+      "sources": [
+        {
+          "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/plugin.json",
+          "digest": "febc5269ac2154f2ca38257e15e126dfb481a5f4558a35bdf126d1ce10aff885"
+        },
+        {
+          "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md",
+          "digest": "17ba97883cd14c7f96eca65f0f9e431a9b89ee6c072cb2314747c50689b884c4"
+        },
+        {
+          "path": "src-server/services/plugins/__tests__/agent-plugin-loader.test.ts",
+          "digest": "8fa82879e7405b2a4f7dad2415af06ca8a0195c0b682ee5aea90d6a777db1a05"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "Preserves upstream inventory, portable-core/client-extension/compatibility distinctions, additive migration, schema selection, and evidence requirements. Omitted supplementary references are explicitly disclosed. It is test data, not a Station task instruction or current Station support matrix.",
+      "limits": "No migration was performed and no cross-client behavior was qualified. Portable schema features such as SSE do not imply Station runtime support. Do not modernize this fixture merely to match current product prose.",
+      "documentDigest": "17ba97883cd14c7f96eca65f0f9e431a9b89ee6c072cb2314747c50689b884c4",
+      "sources": [
+        {
+          "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/UPSTREAM.md",
+          "digest": "bfb392ce68b59605e995af956ae2973445df97261e209a983ad366a06666cfb8"
+        },
+        {
+          "path": "src-server/services/plugins/__tests__/agent-plugin-loader.test.ts",
+          "digest": "8fa82879e7405b2a4f7dad2415af06ca8a0195c0b682ee5aea90d6a777db1a05"
+        },
+        {
+          "path": "src-server/services/plugins/agent-plugin-loader.ts",
+          "digest": "91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6"
+        },
+        {
+          "path": "packages/shared/src/agent-plugin-manifest.ts",
+          "digest": "a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "src-ui/AGENTS.md",
+      "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No visual, touch-target, theme, or all-surface conformance certification was performed.",
+      "documentDigest": "87beb6320f24e5600ce62185eba54cdf453eabf31cbb02df668c856eb99235d3",
+      "sources": [
+        {
+          "path": "docs/architecture/module-map.md",
+          "digest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468"
+        },
+        {
+          "path": "docs/guides/testing.md",
+          "digest": "e89bdb923140095fed0c4488af51987f7544767057334aba3fe21d58e2d24998"
+        },
+        {
+          "path": "src-ui/src/contexts/navigation-store.ts",
+          "digest": "cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7"
+        },
+        {
+          "path": "src-ui/src/hooks/useUnsavedGuard.tsx",
+          "digest": "12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62"
+        },
+        {
+          "path": "src-ui/src/components/Button.tsx",
+          "digest": "b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b"
+        },
+        {
+          "path": "src-ui/src/components/Dialog.tsx",
+          "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2"
+        },
+        {
+          "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+          "digest": "954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged."
+      ]
+    },
+    {
+      "path": "src-ui/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "src-ui/AGENTS.md",
+          "digest": "87beb6320f24e5600ce62185eba54cdf453eabf31cbb02df668c856eb99235d3"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "tests/AGENTS.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "All named fixture helpers and npm scripts resolve. buildExamplePlugin uses the supported scripts/station-cli.ts bootstrap with windowsHide; pairBrowser and fixture audit helpers exist. Conversation, navigation, dialog, bootstrap, and real-action requirements are preserved as policy.",
+      "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No live browser install/pairing, device interaction, journey profiling, or production mutation run was performed.",
+      "documentDigest": "accdb8953eed58866c69d7476eacde02621d4933fae8c1e56116ca38c1e981d7",
+      "sources": [
+        {
+          "path": "docs/guides/testing.md",
+          "digest": "e89bdb923140095fed0c4488af51987f7544767057334aba3fe21d58e2d24998"
+        },
+        {
+          "path": "tests/helpers/connection-fixtures.ts",
+          "digest": "39c95ec807503b7523044a5b9cf30cb794fea091e7c2087f64ecd915afd5376d"
+        },
+        {
+          "path": "tests/helpers/runtime-conversation-fixture.ts",
+          "digest": "b07a4d76654d8e688113b0a8d9f65c29f6f1a429e5cb313e644a57bc50a2337c"
+        },
+        {
+          "path": "tests/helpers/fixture-audit.ts",
+          "digest": "ef308de2593937ae6aadbb3aecd875fb5d9313c3b691cc6e61646eb9fe6ed98d"
+        },
+        {
+          "path": "tests/helpers/install-plugin.ts",
+          "digest": "dc3683c74ba62c0c1f136e69279b91b3c465d01affdcdc98c34d7e2754c09a3c"
+        },
+        {
+          "path": "tests/live/helpers/station-instance.mjs",
+          "digest": "1d37729e4616b4d6624df520d6d640377da16d3ee896a03884e31cef63bf3fa7"
+        },
+        {
+          "path": "scripts/station-cli.ts",
+          "digest": "f7c3079b713e6bda690bf4b73419ffad0ff3fd8856c9c9be1f85eeb1271b3b36"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "tests/CLAUDE.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+      "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+      "documentDigest": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "sources": [
+        {
+          "path": "tests/AGENTS.md",
+          "digest": "accdb8953eed58866c69d7476eacde02621d4933fae8c1e56116ca38c1e981d7"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "tests/fixtures/plugin-pane-sdk-context/README.md",
+      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "kind": "fixture",
+      "state": "classified",
+      "summary": "Manifest declares the test-only Pane without global actions/default Agent/execution authority. Renderer reads public Agent/navigation/toast/plugin identity contexts. The owning E2E source uses real preview-consent-install helpers and direct/placed Project occurrences; it does not migrate examples.",
+      "limits": "The installed browser journey was source-inspected, not executed in this audit. No first-party example migration, physical device proof, provider execution, or completed issue status is inferred.",
+      "documentDigest": "eb9b9152b3bddc25dd4baea0c6751c30f7e1bc5c9b4ca35b4191d32350d8cf7f",
+      "sources": [
+        {
+          "path": "tests/fixtures/plugin-pane-sdk-context/plugin.json",
+          "digest": "26af39a56c1677e3e94ad3c7dd75f375d60be6745069ce97a42d0146a98edc6a"
+        },
+        {
+          "path": "tests/fixtures/plugin-pane-sdk-context/src/index.tsx",
+          "digest": "62f840d255b0c99a06fb2de422d52a68462ba2effb864cb775d3696caeb72e35"
+        },
+        {
+          "path": "tests/plugin-pane-sdk-context.spec.ts",
+          "digest": "9c7dae827f31537ac3078cbdce667f43fd8891df09ffba435f41bf301c282308"
+        },
+        {
+          "path": "tests/helpers/install-plugin.ts",
+          "digest": "dc3683c74ba62c0c1f136e69279b91b3c465d01affdcdc98c34d7e2754c09a3c"
+        }
+      ],
+      "checks": [
+        "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
     }
   ]
 }
