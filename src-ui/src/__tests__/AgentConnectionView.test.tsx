@@ -151,6 +151,14 @@ let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
  * exercise the ACP half set this explicitly.
  */
 let acpRegistryEntries: unknown[] = [];
+/**
+ * The ACP bridge's live connection set — the projection that gates (and the
+ * reconnect route 404s against) the detail header's Reconnect action. Empty
+ * by default so non-ACP fixtures keep rendering without it.
+ */
+let acpBridgeConnections: unknown[] = [];
+const reconnectMutate = vi.fn();
+let reconnectMutationError: Error | null = null;
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({
@@ -182,6 +190,15 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useTestAgentConnectionMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useReconnectACPConnectionMutation: (options: {
+    onError?: (error: Error) => void;
+  }) => ({
+    mutate: (id: string) => {
+      reconnectMutate(id);
+      if (reconnectMutationError) options.onError?.(reconnectMutationError);
+    },
+    isPending: false,
+  }),
   useAppHomeProfileQuery: () => ({ data: appHomeProfileQueryData }),
   useCredentialRecoveryQuery: () => ({
     data: credentialRecoveryQueryData,
@@ -272,7 +289,7 @@ vi.mock('../contexts/NavigationContext', () => {
 });
 
 vi.mock('../hooks/useACPConnections', () => ({
-  useACPConnections: () => ({ data: [] }),
+  useACPConnections: () => ({ data: acpBridgeConnections }),
   useACPConnectionRegistry: () => ({ data: acpRegistryEntries }),
 }));
 
@@ -294,6 +311,9 @@ describe('AgentConnectionView', () => {
     agentConnections = DEFAULT_AGENT_CONNECTIONS;
     agentCatalog = DEFAULT_AGENT_CATALOG;
     acpRegistryEntries = [];
+    acpBridgeConnections = [];
+    reconnectMutate.mockReset();
+    reconnectMutationError = null;
     connectionQueryData = null;
     appHomeProfileQueryData = null;
     credentialRecoveryQueryData = null;
@@ -849,6 +869,80 @@ describe('AgentConnectionView', () => {
     expect(
       steps.filter((step) => step.getAttribute('aria-current') === 'step'),
     ).toHaveLength(0);
+  });
+
+  // The refusal sentence (enriched-agents.ts) names the setup page as the
+  // first path to the handshake retry — so the setup page has to actually
+  // carry the action. The bridge's live connection set is the gate: it is
+  // the same projection the reconnect route 404s against.
+  test('an ACP-managed engine offers the handshake reconnect in place', () => {
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    connectionQueryData = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'degraded',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+
+    render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(reconnectMutate).toHaveBeenCalledWith('opencode');
+  });
+
+  test('an engine the ACP bridge does not manage offers no reconnect', () => {
+    connectionQueryData = {
+      id: 'codex',
+      kind: 'agent',
+      type: 'codex',
+      name: 'Codex',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { executionClass: 'connected', providerLabel: 'Codex' },
+      setup: { state: 'ready', detected: true, configured: false },
+    };
+
+    render(
+      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
+  test('a refused reconnect reports the engine observation in place', () => {
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    reconnectMutationError = new Error(
+      'The ACP connection could not be reconnected. Engine exited before handshake',
+    );
+    connectionQueryData = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'degraded',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+
+    render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(screen.getByText(/Engine exited before handshake/)).toBeTruthy();
   });
 
   /*
