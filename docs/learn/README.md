@@ -85,6 +85,12 @@ explanation from an implementation defect. The
 the [audit ledger](../plans/documentation-code-audit.md) retains the broader
 work still to complete.
 
+For known defects and suggested fixes, follow the issue links in the
+abstraction review. GitHub owns their progress. The implementation PR should
+update the current explanation, diagrams, and shared MCP material when it
+changes the behavior, then re-review the affected evidence. The audit retains
+the original observation and a link to the fix.
+
 ## Maintaining the atlas
 
 The reader starts with a small navigation manifest. It fetches individual

@@ -130,6 +130,57 @@ Tracked in [#2730: cross-platform suppression policy](https://github.com/kontour
 under the notification epic. Classification proof and physical delivery proof
 remain separate acceptance items.
 
+### CLI request assembly does not always use the shared client contract
+
+The [chat caller](../../packages/cli/src/commands/core.ts) builds workspace
+selection separately from saved-Station selection. The source launcher changes
+working directory, and continuation omits workspace flags without a warning.
+[#2733](https://github.com/kontourai/station/issues/2733) tracks one explicit
+workspace-selection contract across those paths.
+
+The [model-option collector](../../packages/cli/src/commands/model-options.ts)
+does not reject the bare flag produced by the advertised spaced syntax;
+the following value becomes prompt text. A local parser/collector probe
+confirmed that the equals spelling works and the spaced spelling loses the
+option. [#2732](https://github.com/kontourai/station/issues/2732) tracks support
+or explicit refusal, with tests through chat and delegate callers.
+
+[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) uses raw
+fetch without the common authentication/target/deadline path and confirms its
+returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
+tracks the authenticated caller and visible confirmation journey. These are
+source/caller findings, not proof of a real restore or engine execution.
+
+### A declared namespace and its consumer can name different stores
+
+Enterprise Layout declares `notes` but its
+[public SDK hooks](../../examples/enterprise-layout/src/data/notes-hooks.ts)
+read and write `enterprise-notes`. The host preserves those names; fallback
+storage admits the undeclared partition, while unscoped retrieval enumerates
+registered RAG namespaces. [#2735](https://github.com/kontourai/station/issues/2735)
+tracks an identity correction with preservation of existing records. Manifest
+validation alone does not prove that a consumer uses the registered resource.
+
+### Board revisions do not establish freshness of linked work
+
+Work Board rejects conflicting Board writes, but returning to the Pane can
+reuse cached observations, and a conflict does not automatically fetch the
+other writer's state. Cleanup uses the last loaded missing-reference result;
+its revision check covers the Board, not changes in each referenced owner.
+[#2736](https://github.com/kontourai/station/issues/2736) proposes a bounded
+refresh and cleanup policy. It is a product recommendation; removing a pin
+does not delete its underlying work.
+
+### Snapshot phase names are not an execution barrier
+
+Workspace checkpoint capture is queued from turn events. Its per-thread queue
+orders snapshot work, while the engine can continue changing files. A
+`baseline` or `settle` label therefore does not establish exact before/after
+attribution. [#2737](https://github.com/kontourai/station/issues/2737) tracks the
+choice between a stronger execution-boundary guarantee and an explicitly
+best-effort observation. Any stronger capture policy must measure its cost and
+define refusal/failure behavior at the real engine caller.
+
 ### Composition owners are difficult to learn as a single page
 
 At the baseline, `station-runtime.ts` has 4,947 lines, `runtime-routes.ts` has

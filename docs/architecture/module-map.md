@@ -54,6 +54,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
+| [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
+| [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
@@ -120,6 +122,18 @@ principal-composition suite exercise refusal and identity propagation. They do n
 prove a production identity provider, email delivery, visual design or physical
 two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
 for the operator contract and the remaining account/member delivery boundaries.
+
+### Optional local-account OIDC
+
+`local-account-oidc.ts` reads bounded operator configuration and secret references.
+The local account provider composes pinned Better Auth verification and
+server-controlled invitation state with the private session/administration
+owners. The descriptor, SDK and account entry view expose configured browser
+choices alongside passwords. A failed or mismatched discovery response disables
+the external choice. A stalled discovery request can instead delay all account
+startup; optional OIDC has no independent Station-owned discovery deadline.
+The HTTP issuer fixture in `local-account-oidc.test.ts` exercises identity and
+callback failures. It does not qualify a production issuer or Windows custody.
 
 ## VirtualApplicationIngress
 
@@ -1280,13 +1294,68 @@ invocation. The caller retains path containment and owned-worktree admission.
 Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
 Resolution is an observation, not a filesystem lease or a compute grant.
 
-### Optional local-account OIDC
+## Workspace checkpoints
 
-`local-account-oidc.ts` reads bounded operator configuration and secret references.
-The local account provider composes pinned Better Auth OAuth verification,
-server-controlled invitation state and the existing private session/administration
-owners. The descriptor, SDK and account entry view expose configured browser
-choices alongside passwords. Failed issuer establishment disables the external
-choice and its callback without granting authority or changing local passwords.
-The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
-identity, callback faults and local operation during issuer unavailability.
+**Purpose and interface.** Checkpoints retain file snapshots associated with a
+Session's turn events. `TurnCheckpointCaptureCoordinator` queues `baseline`
+and `settle` captures; `CheckpointIndexStore` records outcomes, and
+`CheckpointRefStore` owns their Git objects/references. Capture includes tracked
+and non-ignored untracked files. Missing directories, refused Git configuration,
+capture failures, and pruned objects are distinct from an empty successful diff.
+
+**Capture boundary.** The event subscriber queues work without waiting for it.
+The per-thread queue orders captures with each other, not with engine effects.
+The checkpoint mutation lock coordinates capture, retention, and restore; it
+does not turn a phase label into proof of exact pre-turn or post-turn state.
+
+**Restore boundary.** `CheckpointRestoreService.preview` binds a short-lived
+preview to the caller, Session/turn/phase, checkpoint identity, and current
+tree. It shows at most 200 paths and reports truncation. Confirmation rechecks
+these facts, repository configuration, and caller authority, records a recovery
+reference, materializes the target tree, verifies it, and persists a receipt.
+Failure after filesystem work can leave an uncertain outcome; it is not an
+automatic rollback of commands, conversation history, or external effects.
+
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) wraps
+restore in `OrchestrationService.runWorkspaceRestore`, which excludes admitted
+turns for the same canonical Git working-tree root. It is not a filesystem
+lease against arbitrary external editors/processes. The chat SDK selects only
+`settle`; the CLI's separate authentication and preview gaps are tracked in
+[#2734](https://github.com/kontourai/station/issues/2734).
+
+**Follow the evidence.** Begin with the
+[user journey](../user/workspace-checkpoints.md), then
+[capture](../../src-server/services/checkpoints/turn-checkpoint-capture.ts),
+[restore](../../src-server/services/checkpoints/checkpoint-restore.ts), and
+[restore tests](../../src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts).
+These tests use isolated repositories; they do not prove a packaged app or a
+restore in the user's working tree.
+
+## Personal Work Board
+
+**Purpose and interface.** Work Board stores typed references to existing work
+plus a title, camera, pin layout/order, revision, and one undo snapshot. The
+[store](../../src-server/services/spatial-board/spatial-board-store.ts) accepts
+revision-checked mutations. The
+[resolver](../../src-server/services/spatial-board/spatial-board-resolver.ts)
+asks existing owners about pinned references; it cannot discover arbitrary work
+or make a copied title, receipt, or status authoritative.
+
+**Composition and limits.** Runtime mounts this store only outside hosted-tenant
+execution and persists it in the Station home. Session/run resolution uses the
+request's principal; the Board is not a separate grant to read its references.
+The [Pane](../../src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx)
+uses the public SDK and only displays resolutions matching its loaded Board
+revision. That check does not prove a newly loaded owner observation: queries
+can retain cached data on return, and conflicting writes require manual refresh.
+Cleanup checks Board revision and pinned identities but trusts the supplied
+missing-reference selection rather than rereading each owner. It removes pins,
+not underlying work. [#2736](https://github.com/kontourai/station/issues/2736)
+records the proposed freshness/cleanup policy.
+
+**Follow the evidence.** The [user guide](../user/work-board.md) describes
+controls and recovery. [SDK mutations](../../packages/sdk/src/spatial-board.ts),
+[routes](../../src-server/routes/spatial-board.ts), and
+[owner resolution tests](../../src-server/services/spatial-board/__tests__/spatial-board-owner-resolver.test.ts)
+show the request and storage boundaries. Mounted component tests do not prove
+pointer geometry, contrast, or a physical touch-device journey.

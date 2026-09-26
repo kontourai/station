@@ -12,10 +12,15 @@ It does not ingest, index, retrieve, or cite a real document collection.
 
 ## Run It
 
-Install from the local starter registry:
+Build and inspect the local example from the Station checkout, then install it
+on the selected Station:
 
 ```bash
-station registry install knowledge-docs-starter --manifest examples/registry/manifest.json
+npm run dependencies:ci
+(cd examples/knowledge-docs-starter && ../../station plugin build)
+./station target
+./station plugin preview ./examples/knowledge-docs-starter
+./station plugin install ./examples/knowledge-docs-starter
 ```
 
 The [Library component](src/index.tsx) ships three static document rows. Their
@@ -30,6 +35,9 @@ or load the sample filenames. The **Summarize selected documents** host action
 sends a fixed prompt; it does not read those rows or attach source content.
 Configure a usable model connection for the contributed Agent before attempting
 that action, and do not treat an uncited response as grounded in this sample.
+Real Knowledge integration is tracked in
+[#268](https://github.com/kontourai/station/issues/268), whose detailed scope
+was folded into the pane-workspace epic.
 
 For real content, implement intake, retrieval, selection, and citation handling
 through the appropriate public SDK contracts. Use

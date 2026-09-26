@@ -57,6 +57,12 @@ account identity and unexpired cookies. Another Station identity or a missing
 authority secret for an existing account store is refused. Preserve that whole
 private directory under the Station home backup/recovery procedure.
 
+Private-file checks enforce ownership and modes on POSIX systems. The Windows
+path checks file/directory shape and symlinks, but does not validate a private
+Windows ACL. The operator must protect that directory and its backups with
+appropriate OS access controls; Windows custody has not been qualified by
+this audit. These files are not a generally encrypted database.
+
 ## Configure a deployment
 
 Use Node.js 24 and an operator-owned JavaScript module with a named async
@@ -105,8 +111,8 @@ and implement idempotent resource closure.
   are a conflict; no credential is selected by precedence.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
-  purpose. An explicit POST logout operation is required. The core `/session`
-  and `/accept-invitation` paths are reserved.
+  purpose. An explicit POST logout operation is required. The core `/session`,
+  `/invitation-preview`, and `/accept-invitation` paths are reserved.
 - Optional `login` selects the standard browser entry: `email-password` or
   `username-password` names
   declared POST `signInPath` and optional `signUpPath` operations; `redirect`
@@ -173,8 +179,10 @@ Unknown operations return 404. Bodies are limited to 32 KiB, responses use
 budget before adapter invocation. The adapter must also enforce its account-
 and operation-specific abuse controls.
 
-POST requires the configured Station origin. Cross-origin form-post callbacks
-are outside this first contract's supported browser flow; use a GET code callback
+POST requires an exact configured allowed browser origin. The public Station
+origin is included; additional origins must be explicitly configured through
+`STATION_AUTHENTICATION_BROWSER_ORIGINS` as well as the existing CORS policy.
+This does not make arbitrary cross-origin form-post callbacks supported. Use a GET code callback
 with the provider's state, nonce, issuer, audience and PKCE verification. OAuth
 authorization alone does not establish identity. A custom non-OIDC adapter must
 verify identity using its provider's documented contract.
@@ -503,8 +511,10 @@ The pinned Better Auth generic OAuth implementation performs discovery, code
 exchange, PKCE, ID-token signature/audience/issuer validation and nonce binding.
 Station additionally pins the discovered issuer to the configured issuer,
 requires an ID token on every OIDC callback (no UserInfo-only downgrade), and
-refuses registration if required verification is unavailable. Provider tokens
-are encrypted by the maintained library in Station's private account database.
+refuses registration if required verification is unavailable. The pinned
+library encrypts OAuth access and refresh tokens in the account store. This
+setting does not encrypt every account field or the database as a whole;
+other stored identity material relies on the private-file access controls.
 The public descriptor exposes only the configured display choice, availability
 and Station login endpoint. It exposes no client secret or provider token.
 
@@ -518,10 +528,13 @@ verified issuer and immutable subject; reusing an operator's provider label for
 a different issuer cannot inherit an old account. UserInfo must identify the
 same subject as the verified ID token, following [OIDC Core UserInfo validation](https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse). Equal emails never link accounts automatically.
 
-Discovery runs at account-provider startup. An unavailable or mismatched
-optional issuer is shown as unavailable and its start/callback endpoints refuse;
-local username/password login remains available. Restart after repairing issuer
-configuration/discovery. Existing Station sessions use Station's current local
+Discovery runs at account-provider startup. If discovery returns a failure or
+an issuer mismatch, the optional provider becomes unavailable and its
+start/callback endpoints refuse, while local username/password login can start.
+A stalled discovery request delays the whole account provider: this path has
+no Station-owned discovery deadline. Optional OIDC therefore does not yet have
+independent startup availability. Restart after repairing issuer configuration
+or connectivity. Existing Station sessions use Station's current local
 account/session revocation state; disabling an account at the external IdP does
 not itself revoke an already established Station session. Operators can disable
 or revoke it through Station's account administration.

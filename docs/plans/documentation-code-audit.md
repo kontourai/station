@@ -90,7 +90,7 @@ existing interface when it already hides the relevant complexity.
 
 GitHub owns follow-up implementation. The
 [abstraction review](../architecture/abstraction-review.md) links source-backed
-findings to existing owners and audit issues #2727–#2730. Issue acceptance names
+findings to existing owners and individual audit issues. Issue acceptance names
 the documentation owners to revisit when the behavior changes. Keep evidence
 and links here; do not copy live issue status into a parallel checklist.
 
@@ -248,10 +248,11 @@ composition before closing that review unit.
 
 ## Foundation implemented in this tranche
 
-- A local reader with ten concept branches, 65 current module sections,
+- A local reader with ten concept branches and the current module catalog,
   full-library search, document outlines, local Markdown/code snapshots, and
-  keyboard/deep-link navigation. Its inventory now includes 393 Markdown files.
-- The same canonical manual and architecture sections compile into 91 static
+  keyboard/deep-link navigation. Its generated inventory lists every tracked
+  Markdown file and reports current counts at build time.
+- The same canonical manual and architecture sections compile into static
   MCP topics. Existing IDs remain; parent filtering exposes the tree. Payloads
   carry source locations and a documentation digest. Runtime retrieval remains
   credential-free and has no filesystem/network access.

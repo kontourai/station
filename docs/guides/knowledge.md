@@ -448,8 +448,9 @@ source records/links disappear, so a Neo4j view can retain stale graph structure
 The [sync implementation](../../src-server/knowledge-store/neo4j-graph-sync.ts)
 also performs sequential per-record/link queries; large stores can need many
 round trips. See
-["Local Docker Neo4j quickstart"](../../examples/meeting-notes/README.md#local-docker-neo4j-quickstart-for-the-graph-view)
-in the plugin's own README for a copy-pasteable local setup, including a `docker run` one-liner.
+[the example's optional Neo4j developer surface](../../examples/meeting-notes/README.md#optional-neo4j-developer-surface)
+for its connection-registration and live-test prerequisites. A running database
+alone does not configure the Station process's graph connection.
 
 ### Ask: retrieval-grounded Q&A
 

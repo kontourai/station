@@ -48,12 +48,15 @@ for the current supported model services and engines and their setup details.
   files, artifacts, receipts, and exact execution correlation.
 - A **Session** is one bounded execution episode. A Task can have more than one
   Session over time.
+- A **turn** is one unit of input and execution within a Session. Continuing a
+  conversation can add a turn to its existing Session; it does not necessarily
+  create a new one.
 - A **direct chat** is an immediate conversation and does not silently create a
   Task.
 
 Example: “Explain this function” can be a direct chat. “Refactor this module,
-run its gates, and preserve the evidence” should be a Task. Each attempt or
-continuation is a Session attached to that Task.
+run its gates, and preserve the evidence” should be a Task. A Task can retain
+one Session across several turns and use another for a later attempt.
 
 ## Gates, Evidence, And Receipts
 

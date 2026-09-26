@@ -70,12 +70,19 @@ malformed identity never produce verified provenance.
 | `POST /.well-known/station/v1/pairing/request` and `/pairing/exchange` | Public, bounded | Public, bounded | Public, bounded |
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
+| `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
 | Every other HTTP route, including `/api/**`, `/agents/**`, `/acp/**`, `/events/**`, root chat/invoke/stream routes, mutations, and unknown future routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Allowed |
 | HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
+
+The account-authentication exception is specified in the
+[deployment authentication guide](../guides/deployment-authentication.md).
+With authentication unconfigured, that router reports unavailable (`501`),
+not a Device-gate authentication failure. This matrix does not extend the
+LAN/private-tailnet qualification above to a production OIDC deployment.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or

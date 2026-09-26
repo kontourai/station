@@ -34,7 +34,8 @@
         "docs/reference/session-api.md",
         "docs/design/orchestration-decomposition-map.md",
         "docs/guides/agents.md",
-        "docs/guides/acp.md"
+        "docs/guides/acp.md",
+        "docs/user/workspace-checkpoints.md"
       ],
       "modules": [
         "SessionQueryModule",
@@ -47,7 +48,8 @@
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",
         "OutboundDispatchModule",
-        "Session inventory Sources"
+        "Session inventory Sources",
+        "Workspace checkpoints"
       ],
       "questions": [
         "Where is the boundary between accepting a command and knowing an engine accepted it?",
@@ -63,7 +65,8 @@
         "docs/guides/workspace-pane-authoring.md",
         "docs/design/pane-host-contract.md",
         "docs/guides/commands.md",
-        "docs/guides/responsive-ui.md"
+        "docs/guides/responsive-ui.md",
+        "docs/user/work-board.md"
       ],
       "modules": [
         "DestinationRegistry",
@@ -72,7 +75,8 @@
         "WorkspacePaneHostAdmission",
         "WorkspacePaneHostActions",
         "CollaborativeEditorPane",
-        "MobileDeviceHost"
+        "MobileDeviceHost",
+        "Personal Work Board"
       ],
       "questions": [
         "Which interface owns navigation, and which owns the work behind a view?",
