@@ -2944,6 +2944,38 @@ export function validatePackagedReleaseManifest(
   };
 }
 
+/**
+ * Written only by the portable server archive builder
+ * (scripts/lib/portable-server-archive.mjs), whose trees ship dist-server and
+ * dist-ui prebuilt and carry no toolchain to rebuild them. install.sh's
+ * source release trees also have `.station-release.json` and no `.git`, but
+ * they are built on the host and never contain this marker.
+ */
+export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
+export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
+
+/** A prebuilt archive: marker, valid release provenance, and no checkout. */
+export function isPrebuiltArchiveRoot(root: string): boolean {
+  if (existsSync(join(root, '.git'))) return false;
+  try {
+    if (
+      readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
+      PREBUILT_ARCHIVE_MARKER_CONTENT
+    ) {
+      return false;
+    }
+    return (
+      validatePackagedReleaseManifest(
+        JSON.parse(
+          readFileSync(join(root, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
+        ),
+      ) !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
     const git = resolveGitInfo(CWD);
@@ -3031,6 +3063,17 @@ export async function buildApplication(
 ): Promise<BuildManifest> {
   const { instanceId, buildPaths: activeBuildPaths } =
     resolveBuildTarget(options);
+  if (isPrebuiltArchiveRoot(CWD)) {
+    throw new Error(
+      [
+        `This is a prebuilt Station archive (${CWD}): nothing to build.`,
+        hasCompleteBuildOutputs(activeBuildPaths)
+          ? `Instance ${instanceId} is already built (${activeBuildPaths.server}/, ${activeBuildPaths.ui}/).`
+          : `It ships a build only for its own instance, not for instance ${instanceId}.`,
+        'Run `station start` with no --build and no --instance.',
+      ].join('\n'),
+    );
+  }
   // station#1869: a supervisor (launchd/systemd KeepAlive) killed mid-build
   // leaves orphan candidate dirs under `.station/build-candidates/`. They do
   // not collide with a fresh `mkdtempSync`, but they accumulate, and a

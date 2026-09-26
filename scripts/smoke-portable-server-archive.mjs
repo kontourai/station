@@ -147,6 +147,25 @@ function runLauncher(launcher, args, env, cwd, timeout = 30_000) {
   return result.stdout.trim();
 }
 
+/** Runs a command that must fail, and returns what it printed. */
+function runLauncherExpectingFailure(launcher, args, env, cwd) {
+  const { command, args: argv, options } = launcherInvocation(launcher, args);
+  const result = spawnSync(command, argv, {
+    ...options,
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout: 60_000,
+    windowsHide: true,
+  });
+  const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
+  if (result.error) fail(`station ${shown}: ${result.error}`);
+  const output = `${result.stdout}${result.stderr}`.trim();
+  log(`$ station ${shown} -> exit ${result.status}:\n${redact(output)}`);
+  if (result.status === 0) fail(`station ${shown} was expected to refuse`);
+  return output;
+}
+
 /** A directory whose deepest archive member lands past MAX_PATH. */
 function longExtractionRoot(base, longestMember) {
   const launcherTail = `${sep}${PORTABLE_ARCHIVE_ROOT}${sep}runtime${sep}node.exe`;
@@ -227,23 +246,36 @@ async function choosePorts() {
 }
 
 /**
- * Boots through the archive's own CLI, as a user would: `station start`
- * spawns the server and the UI server with the bundled Node.js and returns
- * once they answer. The default instance is the one whose build the archive
- * ships (dist-server/, dist-ui/), so no build is attempted.
+ * Boots through the archive's own CLI exactly as a user would: a plain
+ * `station start`, no channel or instance given. The launcher takes the
+ * channel from the archive, the CLI takes that channel as the instance and
+ * finds the archive's prebuilt dist-server-<channel>/, so nothing is built.
+ * Ports are explicit (flags and environment): an unset port falls back to a
+ * channel default the owner's own Station uses.
  */
 async function bootAndProbe({ launcher, env, home, release }) {
   const stationHome = join(home, 'station-home');
   const { serverPort, uiPort } = await choosePorts();
-  const lifecycleEnv = { ...env, STATION_CHANNEL: release.channel };
-  const instance = ['--instance=default'];
+  const lifecycleEnv = {
+    ...env,
+    STATION_SERVER_PORT: String(serverPort),
+    STATION_UI_PORT: String(uiPort),
+  };
   let failure;
   try {
+    const refused = runLauncherExpectingFailure(
+      launcher,
+      ['build', `--base=${stationHome}`],
+      lifecycleEnv,
+      home,
+    );
+    if (!refused.includes('prebuilt Station archive')) {
+      fail(`station build did not refuse as a prebuilt archive:\n${refused}`);
+    }
     runLauncher(
       launcher,
       [
         'start',
-        ...instance,
         `--base=${stationHome}`,
         `--port=${serverPort}`,
         `--ui-port=${uiPort}`,
@@ -313,7 +345,7 @@ async function bootAndProbe({ launcher, env, home, release }) {
   }
   // Stop even after a failed probe, so a smoke never leaves a server behind.
   try {
-    runLauncher(launcher, ['stop', ...instance], lifecycleEnv, home);
+    runLauncher(launcher, ['stop'], lifecycleEnv, home);
   } catch (error) {
     failure ??= error;
   }
@@ -411,6 +443,15 @@ async function main() {
       readFileSync(join(root, '.station-release.json'), 'utf8'),
     );
     if (process.platform === 'linux') reportLinuxLibcFloor(root);
+    if (
+      readFileSync(join(root, 'lib', 'station-cli.mjs'), 'utf8').startsWith(
+        '#!',
+      )
+    ) {
+      fail(
+        'lib/station-cli.mjs still names an interpreter; it is only imported',
+      );
+    }
     const launcher = join(root, 'bin', WINDOWS ? 'station.cmd' : 'station');
     const home = join(work, 'home');
     const env = scrubbedEnvironment(home);

@@ -277,12 +277,11 @@ function stageLaunchers(projectRoot, stageRoot) {
  * externals are the server build's, so the CLI and the server resolve the
  * same staged node_modules closure.
  */
-async function bundleStationCli(projectRoot, stageRoot) {
-  const esbuild = await import('esbuild');
-  await esbuild.build({
+export function stationCliBundleOptions(projectRoot, outfile) {
+  return {
     absWorkingDir: projectRoot,
     entryPoints: [join(projectRoot, 'scripts', 'station-cli.ts')],
-    outfile: join(stageRoot, 'lib', 'station-cli.mjs'),
+    outfile,
     bundle: true,
     platform: 'node',
     target: 'node24',
@@ -295,8 +294,28 @@ async function bundleStationCli(projectRoot, stageRoot) {
       js: "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
     },
     logLevel: 'warning',
-  });
+  };
 }
+
+async function bundleStationCli(projectRoot, stageRoot) {
+  const esbuild = await import('esbuild');
+  const outfile = join(stageRoot, 'lib', 'station-cli.mjs');
+  await esbuild.build(stationCliBundleOptions(projectRoot, outfile));
+  // esbuild keeps the entry's `#!/usr/bin/env tsx` line. The bundle is only
+  // ever imported by bin/station.mjs, so it must not claim an interpreter.
+  const bundled = readFileSync(outfile, 'utf8');
+  writeFileSync(outfile, bundled.replace(/^#![^\n]*\n/, ''));
+}
+
+/**
+ * Tells the CLI (lifecycle.ts `isPrebuiltArchiveRoot`, which pins the same
+ * name and content) that this tree ships prebuilt, so `station build` and a
+ * missing instance build refuse instead of running npm.
+ */
+export const PREBUILT_ARCHIVE_MARKER = Object.freeze({
+  name: '.station-prebuilt-archive',
+  content: 'station-prebuilt-archive-v1\n',
+});
 
 /**
  * The build manifest `station start` compares the served identity against.
@@ -362,9 +381,11 @@ function treeFootprint(root) {
  *   bin/station.mjs         entry: release identity for --version, else the CLI
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
  *   runtime/                the pinned, digest-verified official Node.js
- *   dist-server/            the server bundle, stamped with this provenance,
+ *   .station-prebuilt-archive  tells the CLI there is nothing to build
+ *   dist-server-<channel>/  the server bundle, stamped with this provenance,
  *                           plus the station-build.json `station start` reads
- *   dist-ui/ schemas/       built UI and the server's data schemas
+ *   dist-ui-<channel>/      the built UI
+ *   schemas/                the server's data schemas
  *   node_modules/           the desktop stager's pruned runtime closure
  *
  * The runtime dependency closure is staged by the same function that stages
@@ -383,7 +404,10 @@ async function stagePortableServerTree({
   }
   // Removes and recreates stageRoot, then stages node_modules into it.
   stageDesktopServerRuntime({ projectRoot, outputRoot: stageRoot });
-  const serverDir = join(stageRoot, 'dist-server');
+  // Named for the release channel, as install.sh's `station build` names a
+  // release tree's build: the CLI takes the channel as its instance when no
+  // STATION_INSTANCE_ID is set, and reads dist-server-<instance>/.
+  const serverDir = join(stageRoot, `dist-server-${release.channel}`);
   // Rebuild rather than copy dist-server: the bundle bakes its build
   // identity, and a portable release must report its release channel, not
   // the `source-checkout` channel an ordinary checkout build stamps.
@@ -400,9 +424,11 @@ async function stagePortableServerTree({
   pruneNonRuntimeArtifacts(serverDir);
   writeServerBuildManifest(serverDir, release);
   await bundleStationCli(projectRoot, stageRoot);
-  cpSync(join(projectRoot, 'dist-ui'), join(stageRoot, 'dist-ui'), {
-    recursive: true,
-  });
+  cpSync(
+    join(projectRoot, 'dist-ui'),
+    join(stageRoot, `dist-ui-${release.channel}`),
+    { recursive: true },
+  );
   cpSync(join(projectRoot, 'schemas'), join(stageRoot, 'schemas'), {
     recursive: true,
   });
@@ -412,6 +438,10 @@ async function stagePortableServerTree({
     join(stageRoot, '.station-release.json'),
     `${JSON.stringify(release, null, 2)}\n`,
     { mode: 0o644 },
+  );
+  writeFileSync(
+    join(stageRoot, PREBUILT_ARCHIVE_MARKER.name),
+    PREBUILT_ARCHIVE_MARKER.content,
   );
   normalizeStagedTree(stageRoot, new Date(release.createdAt));
   return treeFootprint(stageRoot);

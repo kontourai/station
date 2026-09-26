@@ -3,13 +3,19 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  PREBUILT_ARCHIVE_MARKER_CONTENT,
+  PREBUILT_ARCHIVE_MARKER_FILENAME,
+} from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertBuildSourceIsCheckout,
   obtainNodeDistribution,
   PORTABLE_SERVER_TARGETS,
+  PREBUILT_ARCHIVE_MARKER,
   readPortableNodeRuntime,
   resolvePortableServerTarget,
+  stationCliBundleOptions,
 } from '../lib/portable-server-archive.mjs';
 import { SUPPORTED_NODE_MAJOR } from '../node-runtime-contract.mjs';
 
@@ -342,5 +348,33 @@ describe('assertBuildSourceIsCheckout', () => {
         ),
       }),
     ).toThrow(/uncommitted changes[\s\S]*new\.txt/);
+  });
+});
+
+describe('archive contract with the bundled CLI', () => {
+  it('writes the prebuilt marker the CLI recognises', () => {
+    expect(PREBUILT_ARCHIVE_MARKER).toEqual({
+      name: PREBUILT_ARCHIVE_MARKER_FILENAME,
+      content: PREBUILT_ARCHIVE_MARKER_CONTENT,
+    });
+  });
+
+  it('never minifies the CLI bundle', () => {
+    // lifecycle.ts runs `uiRequestHandler.toString()` in a separate `node -e`
+    // UI server that shims only esbuild's unminified `__name` helper; a
+    // minified bundle kills that server ("Timed out waiting for
+    // .../__station/identity").
+    const options = stationCliBundleOptions(repoRoot, '/tmp/station-cli.mjs');
+    for (const flag of [
+      'minify',
+      'minifyIdentifiers',
+      'minifySyntax',
+      'minifyWhitespace',
+    ]) {
+      expect(options).not.toHaveProperty(flag);
+    }
+    expect(options.entryPoints).toEqual([
+      join(repoRoot, 'scripts', 'station-cli.ts'),
+    ]);
   });
 });
