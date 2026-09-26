@@ -65,6 +65,7 @@ async function fixture(refuse: boolean) {
   });
   const violations: string[] = [];
   let withdraws = 0;
+  let candidatePolls = 0;
   let scope: SelfHostedBrokerScopeV1;
   const broker = createServer((request, response) => {
     let body = '';
@@ -105,6 +106,10 @@ async function fixture(refuse: boolean) {
             return;
           case '/broker/v1/connections/offers':
             pollObserved();
+            send(200, { offers: [] });
+            return;
+          case '/broker/v1/native/key-candidates/offers':
+            candidatePolls += 1;
             send(200, { offers: [] });
             return;
           case '/broker/v1/leases/withdraw':
@@ -324,6 +329,7 @@ async function fixture(refuse: boolean) {
       readyLine: () => readyLine,
       stationId: scope.stationId,
       withdraws: () => withdraws,
+      candidatePolls: () => candidatePolls,
       releaseRegistration: () => {
         if (!registration) throw new Error('Registration was not requested');
         registration.writeHead(200, { 'Content-Type': 'application/json' });
@@ -372,6 +378,7 @@ describe.skipIf(process.platform === 'win32')(
         // public handshake therefore proves local use is independent of it.
         run.releaseRegistration();
         await run.waitOfferPoll();
+        expect(run.candidatePolls()).toBeGreaterThan(0);
         await run.stop();
         const completion = await bounded(run.completion, 'shutdown');
         const diagnostic = run.output.finish();

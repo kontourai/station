@@ -50,9 +50,12 @@ export function registerCatalogTools(server: StationControlToolRegistry) {
           ),
         );
       } catch (error) {
+        const code = (error as { code?: unknown } | null)?.code;
         return jsonToolResult({
           success: false,
           message: error instanceof Error ? error.message : 'Install failed',
+          // #2377: a server-side typed refusal stays typed.
+          ...(typeof code === 'string' ? { code } : {}),
         });
       }
     },
