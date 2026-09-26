@@ -33,6 +33,7 @@ import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
+import { createChildDelegationContext } from '../../runtime/agents/delegation.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import {
   resolveStationControlCallerForRequest,
@@ -114,15 +115,11 @@ let peerServer: ReturnType<typeof serve>;
 let peerBaseUrl: string;
 const peerReceived: Array<{ path: string; body: any }> = [];
 const derivations: Array<string | null> = [];
-const DERIVED_LINEAGE = {
-  mode: 'isolated-child' as const,
-  depth: 1,
-  maxDepth: 2,
-  parentAgentSlug: 'planner',
-  parentConversationId: 'conversation-derived',
-  rootAgentSlug: 'planner',
-  rootConversationId: 'conversation-derived',
-};
+const DERIVED_LINEAGE = createChildDelegationContext({
+  agentSlug: 'planner',
+  conversationId: 'conversation-derived',
+  spec: { name: 'Planner', prompt: 'Plan' },
+});
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -463,8 +460,18 @@ async function callTool(
       arguments: args,
     });
     const text = response.result?.content?.[0]?.text;
+    let parsed: unknown = response;
+    if (typeof text === 'string') {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // A tool that reports a failure as prose (the dispatch tools) is
+        // kept readable instead of failing the parse.
+        parsed = { text };
+      }
+    }
     return {
-      result: typeof text === 'string' ? JSON.parse(text) : response,
+      result: parsed as any,
       hits: [...hits],
     };
   } finally {
