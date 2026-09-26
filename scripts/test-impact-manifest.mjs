@@ -619,6 +619,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/product-docs-source-links.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
