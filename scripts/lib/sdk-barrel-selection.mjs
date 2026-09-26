@@ -125,7 +125,7 @@ function parse(path, source, setParentNodes = false) {
   );
 }
 // Only these spellings can make a call a module reference.
-const CALL_REFERENCE = /\bimport\s*\(|\brequire\s*\(|\bvi\s*\.|\.glob\b/;
+const CALL_REFERENCE = /\bimport\s*\(|\brequire\s*\(|\bvi\b|\.glob\b/;
 
 function stringArgument(node) {
   const argument = node.arguments[0];
@@ -261,10 +261,28 @@ function collectModuleReferences(path, source) {
   const references = [];
   let opaque = false;
   const add = (specifier, names) => references.push({ specifier, names });
+  // Mock detection keys on the literal `vi.<method>(...)`. A file that
+  // aliases vi, imports vitest as a namespace or default, or uses `vi` any
+  // other way (`vi['importActual']`, passing it to a helper) can mock or
+  // reach a module this scan cannot see, so it depends on the whole SDK.
+  let viEscapes = false;
   for (const statement of file.statements) {
     if (ts.isImportDeclaration(statement)) {
       const specifier = statement.moduleSpecifier.text;
       const clause = statement.importClause;
+      if (specifier === 'vitest' && clause && !clause.isTypeOnly) {
+        const bindings = clause.namedBindings;
+        if (clause.name || (bindings && ts.isNamespaceImport(bindings)))
+          viEscapes = true;
+        else if (bindings)
+          for (const element of bindings.elements)
+            if (
+              element.name.text === 'vi'
+                ? element.propertyName !== undefined
+                : element.propertyName?.text === 'vi'
+            )
+              viEscapes = true;
+      }
       if (!clause) {
         add(specifier, null);
         continue;
@@ -310,6 +328,16 @@ function collectModuleReferences(path, source) {
   const factoryMocks = [];
   let loadsModules = false;
   const visit = (node) => {
+    // Import declarations were read above; their `vi` binding is not a use.
+    // Types (`typeof vi.fn`) are erased and never run.
+    if (ts.isImportDeclaration(node) || ts.isTypeNode(node)) return;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'vi'
+    )
+      return; // `vi.<method>`: the one form mock detection understands
+    if (ts.isIdentifier(node) && node.text === 'vi') viEscapes = true;
     if (ts.isCallExpression(node)) {
       const dynamicImport =
         node.expression.kind === ts.SyntaxKind.ImportKeyword;
@@ -331,6 +359,7 @@ function collectModuleReferences(path, source) {
     ts.forEachChild(node, visit);
   };
   if (CALL_REFERENCE.test(source)) visit(file);
+  if (viEscapes) opaque = true;
   // A factory mock replaces the module without evaluating it, so it adds no
   // dependency: the file's own named imports still resolve normally. That
   // holds only while the factory provably cannot reach the real module:
@@ -346,7 +375,10 @@ function collectModuleReferences(path, source) {
   for (const { specifier, factory } of factoryMocks)
     if (
       reachesOriginal ||
-      [...referencedIdentifiers(factory)].some((name) => tainted.has(name))
+      // `arguments` can carry importOriginal without a named parameter.
+      [...referencedIdentifiers(factory)].some(
+        (name) => name === 'arguments' || tainted.has(name),
+      )
     )
       add(specifier, null);
   return { references, opaque };
@@ -499,38 +531,70 @@ function calleeName(node) {
   return null;
 }
 
-function pureClassMembers(node) {
+function pureClassMembers(node, imported) {
   if (ts.getDecorators?.(node)?.length) return false;
   for (const clause of node.heritageClauses ?? [])
     for (const type of clause.types)
-      if (!pureExpression(type.expression)) return false;
+      if (!pureExpression(type.expression, imported)) return false;
   for (const member of node.members) {
     if (ts.isClassStaticBlockDeclaration(member)) return false;
     if (ts.getDecorators?.(member)?.length) return false;
     if (
       member.name &&
       ts.isComputedPropertyName(member.name) &&
-      !pureExpression(member.name.expression)
+      !pureExpression(member.name.expression, imported)
     )
       return false;
     if (
       ts.isPropertyDeclaration(member) &&
       hasModifier(member, ts.SyntaxKind.StaticKeyword) &&
       member.initializer &&
-      !pureExpression(member.initializer)
+      !pureExpression(member.initializer, imported)
     )
       return false;
   }
   return true;
 }
 
+/** The identifier an access chain starts from (`a` in `a.b[c]!`), if any. */
+function rootIdentifier(node) {
+  let current = node;
+  for (;;) {
+    if (ts.isIdentifier(current)) return current.text;
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isPropertyAccessExpression(current) ||
+      ts.isElementAccessExpression(current)
+    )
+      current = current.expression;
+    else return null;
+  }
+}
+
+/**
+ * Whether evaluating `node` touches an imported value beyond reading its
+ * binding: a property access (a getter), iteration, or handing it to an
+ * allowlisted call (`Object.freeze(imported)` mutates another module).
+ */
+function readsImported(node, imported) {
+  const root = rootIdentifier(node);
+  return root !== null && imported.has(root);
+}
+
 /**
  * Evaluating `node` at module top level cannot be observed outside the
  * module: no call except a small allowlist of standard constructors and
- * freezers, no assignment, no tagged template. Function and class bodies are
- * not evaluated, so they are not inspected.
+ * freezers, no assignment, no tagged template. Property access, spread and
+ * iteration, and allowlisted-call arguments count only when their operand is
+ * a literal or a local value — an imported value could run a getter or an
+ * iterator, or be mutated. Function and class bodies are not evaluated, so
+ * they are not inspected.
  */
-function pureExpression(node) {
+function pureExpression(node, imported = new Set()) {
   if (!node) return true;
   if (
     ts.isLiteralExpression(node) ||
@@ -547,60 +611,75 @@ function pureExpression(node) {
     case ts.SyntaxKind.ThisKeyword:
       return true;
   }
-  if (ts.isClassExpression(node)) return pureClassMembers(node);
+  if (ts.isClassExpression(node)) return pureClassMembers(node, imported);
   if (ts.isTemplateExpression(node))
-    return node.templateSpans.every((span) => pureExpression(span.expression));
+    return node.templateSpans.every((span) =>
+      pureExpression(span.expression, imported),
+    );
   if (
     ts.isParenthesizedExpression(node) ||
     ts.isAsExpression(node) ||
     ts.isSatisfiesExpression(node) ||
     ts.isTypeAssertionExpression(node) ||
     ts.isNonNullExpression(node) ||
-    ts.isSpreadElement(node) ||
     ts.isTypeOfExpression(node) ||
     ts.isVoidExpression(node)
   )
-    return pureExpression(node.expression);
+    return pureExpression(node.expression, imported);
+  if (ts.isSpreadElement(node))
+    return (
+      !readsImported(node.expression, imported) &&
+      pureExpression(node.expression, imported)
+    );
   if (ts.isPrefixUnaryExpression(node))
     return (
       node.operator !== ts.SyntaxKind.PlusPlusToken &&
       node.operator !== ts.SyntaxKind.MinusMinusToken &&
-      pureExpression(node.operand)
+      pureExpression(node.operand, imported)
     );
   if (ts.isBinaryExpression(node))
     return (
       !IMPURE_OPERATORS.has(node.operatorToken.kind) &&
-      pureExpression(node.left) &&
-      pureExpression(node.right)
+      pureExpression(node.left, imported) &&
+      pureExpression(node.right, imported)
     );
   if (ts.isConditionalExpression(node))
     return (
-      pureExpression(node.condition) &&
-      pureExpression(node.whenTrue) &&
-      pureExpression(node.whenFalse)
+      pureExpression(node.condition, imported) &&
+      pureExpression(node.whenTrue, imported) &&
+      pureExpression(node.whenFalse, imported)
     );
   if (ts.isPropertyAccessExpression(node))
-    return pureExpression(node.expression);
+    return (
+      !readsImported(node.expression, imported) &&
+      pureExpression(node.expression, imported)
+    );
   if (ts.isElementAccessExpression(node))
     return (
-      pureExpression(node.expression) && pureExpression(node.argumentExpression)
+      !readsImported(node.expression, imported) &&
+      pureExpression(node.expression, imported) &&
+      pureExpression(node.argumentExpression, imported)
     );
   if (ts.isArrayLiteralExpression(node))
     return node.elements.every(
-      (element) => ts.isOmittedExpression(element) || pureExpression(element),
+      (element) =>
+        ts.isOmittedExpression(element) || pureExpression(element, imported),
     );
   if (ts.isObjectLiteralExpression(node))
     return node.properties.every((property) => {
       if (
         property.name &&
         ts.isComputedPropertyName(property.name) &&
-        !pureExpression(property.name.expression)
+        !pureExpression(property.name.expression, imported)
       )
         return false;
       if (ts.isPropertyAssignment(property))
-        return pureExpression(property.initializer);
+        return pureExpression(property.initializer, imported);
       if (ts.isSpreadAssignment(property))
-        return pureExpression(property.expression);
+        return (
+          !readsImported(property.expression, imported) &&
+          pureExpression(property.expression, imported)
+        );
       return (
         ts.isShorthandPropertyAssignment(property) ||
         ts.isMethodDeclaration(property) ||
@@ -612,14 +691,89 @@ function pureExpression(node) {
     return (
       !node.questionDotToken &&
       PURE_CALLS.has(calleeName(node.expression)) &&
-      node.arguments.every(pureExpression)
+      node.arguments.every(
+        (argument) =>
+          pureExpression(argument, imported) &&
+          !readsImported(argument, imported),
+      )
     );
   if (ts.isNewExpression(node))
     return (
       PURE_CONSTRUCTORS.has(calleeName(node.expression)) &&
-      (node.arguments ?? []).every(pureExpression)
+      (node.arguments ?? []).every(
+        (argument) =>
+          pureExpression(argument, imported) &&
+          !readsImported(argument, imported),
+      )
     );
   return false;
+}
+
+/** Runtime (non-type) bindings a file imports, by local name. */
+function importedBindings(file) {
+  const names = new Set();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const clause = statement.importClause;
+    if (!clause || clause.isTypeOnly) continue;
+    if (clause.name) names.add(clause.name.text);
+    const bindings = clause.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings))
+      names.add(bindings.name.text);
+    else if (bindings)
+      for (const element of bindings.elements)
+        if (!element.isTypeOnly) names.add(element.name.text);
+  }
+  return names;
+}
+
+/**
+ * Whether one top-level statement's evaluation could be observed outside
+ * the module. `imported` grows with local aliases of imported values
+ * (`const a = imported.b`), so a later `Object.freeze(a)` still counts.
+ */
+function statementHasSideEffect(statement, imported) {
+  if (hasModifier(statement, ts.SyntaxKind.DeclareKeyword)) return false;
+  if (ts.isImportDeclaration(statement)) return !statement.importClause;
+  if (
+    ts.isExportDeclaration(statement) ||
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isTypeAliasDeclaration(statement) ||
+    ts.isFunctionDeclaration(statement) ||
+    ts.isEmptyStatement(statement) ||
+    ts.isImportEqualsDeclaration(statement)
+  )
+    return false;
+  if (ts.isClassDeclaration(statement))
+    return !pureClassMembers(statement, imported);
+  if (ts.isEnumDeclaration(statement))
+    return !statement.members.every((member) =>
+      pureExpression(member.initializer, imported),
+    );
+  if (ts.isModuleDeclaration(statement)) return true;
+  if (ts.isExportAssignment(statement))
+    return !pureExpression(statement.expression, imported);
+  if (ts.isVariableStatement(statement)) {
+    const pure = statement.declarationList.declarations.every(
+      (declaration) =>
+        // Destructuring can run a getter on the source object.
+        ts.isIdentifier(declaration.name) &&
+        pureExpression(declaration.initializer, imported),
+    );
+    for (const declaration of statement.declarationList.declarations)
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.initializer &&
+        readsImported(declaration.initializer, imported)
+      )
+        imported.add(declaration.name.text);
+    return !pure;
+  }
+  // A directive such as 'use strict'.
+  return !(
+    ts.isExpressionStatement(statement) &&
+    ts.isStringLiteral(statement.expression)
+  );
 }
 
 /**
@@ -629,54 +783,9 @@ function pureExpression(node) {
  */
 export function topLevelSideEffect(path, source) {
   const file = parse(path, source, true);
-  for (const statement of file.statements) {
-    if (hasModifier(statement, ts.SyntaxKind.DeclareKeyword)) continue;
-    if (ts.isImportDeclaration(statement)) {
-      if (!statement.importClause) return statement;
-      continue;
-    }
-    if (
-      ts.isExportDeclaration(statement) ||
-      ts.isInterfaceDeclaration(statement) ||
-      ts.isTypeAliasDeclaration(statement) ||
-      ts.isFunctionDeclaration(statement) ||
-      ts.isEmptyStatement(statement) ||
-      ts.isImportEqualsDeclaration(statement)
-    )
-      continue;
-    if (ts.isClassDeclaration(statement)) {
-      if (pureClassMembers(statement)) continue;
-      return statement;
-    }
-    if (ts.isEnumDeclaration(statement)) {
-      if (
-        statement.members.every((member) => pureExpression(member.initializer))
-      )
-        continue;
-      return statement;
-    }
-    if (ts.isModuleDeclaration(statement)) return statement;
-    if (ts.isExportAssignment(statement)) {
-      if (pureExpression(statement.expression)) continue;
-      return statement;
-    }
-    if (ts.isVariableStatement(statement)) {
-      const pure = statement.declarationList.declarations.every(
-        (declaration) =>
-          // Destructuring can run a getter on the source object.
-          ts.isIdentifier(declaration.name) &&
-          pureExpression(declaration.initializer),
-      );
-      if (pure) continue;
-      return statement;
-    }
-    if (
-      ts.isExpressionStatement(statement) &&
-      ts.isStringLiteral(statement.expression)
-    )
-      continue; // a directive such as 'use strict'
-    return statement;
-  }
+  const imported = importedBindings(file);
+  for (const statement of file.statements)
+    if (statementHasSideEffect(statement, imported)) return statement;
   return null;
 }
 
@@ -842,6 +951,7 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
     edges,
     opaque,
     resolveBarrelName,
+    resolveSpecifier: resolveFrom,
   };
 }
 
@@ -1024,6 +1134,125 @@ export function loadSdkImportGraph(root, { readFile = readFileSync } = {}) {
   });
 }
 
+/** Runtime module specifiers a module loads, as a comparable key. */
+function runtimeImportKey(path, source) {
+  const { references, opaque } = collectModuleReferences(path, source);
+  const specifiers = [...new Set(references.map((entry) => entry.specifier))];
+  return JSON.stringify([...specifiers.sort(), opaque]);
+}
+
+/**
+ * An SDK module (or barrel) whose top-level evaluation has a side effect
+ * that references a binding it imports from `changed` — `registry.add(fn)`
+ * with `fn` from the changed module. Every barrel importer evaluates that
+ * statement, so the change is observable without importing any of its
+ * names. Direct importers only; a call through an intermediate module's
+ * function is not traced.
+ */
+function topLevelUseOf(graph, changed) {
+  for (const [importer, fileEdges] of graph.edges) {
+    if (importer === changed) continue;
+    if (!isSdkSourceModule(importer) && !graph.barrels.has(importer)) continue;
+    const reaches = (edge) =>
+      edge.target === changed ||
+      (graph.barrels.has(edge.target) &&
+        (edge.names === null ||
+          edge.names.some((name) =>
+            graph.resolveBarrelName(edge.target, name).includes(changed),
+          )));
+    if (!fileEdges.some(reaches)) continue;
+    const file = parse(importer, graph.sources.get(importer), true);
+    const bound = new Set();
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      const clause = statement.importClause;
+      if (!clause || clause.isTypeOnly) continue;
+      const target = graph.resolveSpecifier(
+        importer,
+        statement.moduleSpecifier.text,
+      );
+      if (target === null || target === UNKNOWN) continue;
+      const whole = target === changed;
+      const viaBarrel = graph.barrels.has(target);
+      if (!whole && !viaBarrel) continue;
+      if (clause.name && whole) bound.add(clause.name.text);
+      const bindings = clause.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings))
+        bound.add(bindings.name.text);
+      else if (bindings)
+        for (const element of bindings.elements) {
+          if (element.isTypeOnly) continue;
+          const name = (element.propertyName ?? element.name).text;
+          if (whole || graph.resolveBarrelName(target, name).includes(changed))
+            bound.add(element.name.text);
+        }
+    }
+    if (bound.size === 0) continue;
+    const imported = importedBindings(file);
+    for (const statement of file.statements)
+      if (
+        statementHasSideEffect(statement, imported) &&
+        [...referencedIdentifiers(statement)].some((name) => bound.has(name))
+      )
+        return {
+          importer,
+          line:
+            file.getLineAndCharacterOfPosition(statement.getStart()).line + 1,
+        };
+  }
+  return null;
+}
+
+/** One changed module's disposition: refined with seeds, or whole-barrel. */
+function decideCandidate(root, base, path, graph, readBase) {
+  const whole = (reason) => ({ disposition: 'whole-barrel', reason });
+  const head = graph.sources.get(path);
+  let baseSource;
+  try {
+    baseSource = readBase(root, base, path);
+  } catch (error) {
+    return whole(
+      `base content unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (head === undefined) return whole('not readable');
+  for (const [label, source] of [
+    ['head', head],
+    ['base', baseSource],
+  ]) {
+    if (source === null || source === undefined) continue;
+    const effect = topLevelSideEffect(path, source);
+    if (effect) {
+      const line =
+        effect.getSourceFile().getLineAndCharacterOfPosition(effect.getStart())
+          .line + 1;
+      return whole(`top-level side effect at ${label} line ${line}`);
+    }
+  }
+  // Loading a different set of modules changes what every barrel importer
+  // evaluates (a side-effecting module, an import cycle through a barrel)
+  // even when the module's own statements are pure.
+  if (
+    baseSource !== null &&
+    baseSource !== undefined &&
+    runtimeImportKey(path, baseSource) !== runtimeImportKey(path, head)
+  )
+    return whole('runtime imports differ from the base');
+  const use = topLevelUseOf(graph, path);
+  if (use)
+    return whole(
+      `${use.importer} line ${use.line} uses it in a top-level side effect`,
+    );
+  const baseExportNames = new Set();
+  if (baseSource) {
+    const table = collectExports(path, baseSource);
+    for (const name of [...table.local, ...table.named.keys()])
+      baseExportNames.add(name);
+  }
+  const { seeds } = refinedSeedsFor(graph, path, { baseExportNames });
+  return { disposition: 'refined', seeds: seeds.length, seedPaths: seeds };
+}
+
 /**
  * Replace each refinable changed SDK module in `relatedPaths` with its seeds.
  *
@@ -1067,46 +1296,22 @@ export function refineSdkBarrelRelatedPaths(
     return { paths: [...paths].sort(), decisions };
   }
   for (const path of candidates) {
-    const head = graph.sources.get(path);
-    let baseSource;
-    let reason = null;
+    let decision;
     try {
-      baseSource = readBase(root, base, path);
+      decision = decideCandidate(root, base, path, graph, readBase);
     } catch (error) {
-      reason = `base content unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      // Refinement only narrows. An internal failure for one path selects
+      // MORE (plain related selection), never fails the lane.
+      decision = {
+        disposition: 'whole-barrel',
+        reason: `refinement failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
-    if (reason === null && head === undefined) reason = 'not readable';
-    if (reason === null) {
-      for (const [label, source] of [
-        ['head', head],
-        ['base', baseSource],
-      ]) {
-        if (source === null || source === undefined) continue;
-        const effect = topLevelSideEffect(path, source);
-        if (effect) {
-          const line =
-            effect
-              .getSourceFile()
-              .getLineAndCharacterOfPosition(effect.getStart()).line + 1;
-          reason = `top-level side effect at ${label} line ${line}`;
-          break;
-        }
-      }
-    }
-    if (reason !== null) {
-      paths.add(path);
-      decisions.push({ path, disposition: 'whole-barrel', reason });
-      continue;
-    }
-    const baseExportNames = new Set();
-    if (baseSource) {
-      const table = collectExports(path, baseSource);
-      for (const name of [...table.local, ...table.named.keys()])
-        baseExportNames.add(name);
-    }
-    const { seeds } = refinedSeedsFor(graph, path, { baseExportNames });
-    for (const seed of seeds) paths.add(seed);
-    decisions.push({ path, disposition: 'refined', seeds: seeds.length });
+    if (decision.disposition === 'refined')
+      for (const seed of decision.seedPaths) paths.add(seed);
+    else paths.add(path);
+    const { seedPaths: _seedPaths, ...reported } = decision;
+    decisions.push({ path, ...reported });
   }
   return { paths: [...paths].sort(), decisions };
 }

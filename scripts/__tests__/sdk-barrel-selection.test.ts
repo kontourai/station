@@ -190,6 +190,24 @@ describe('named barrel imports resolve to the declaring module', () => {
     );
   });
 
+  test('a renamed re-export resolves the SOURCE name, not the exported one', () => {
+    // The barrel exports mid's `a` under the name `b`; mid also exports a
+    // different `b`. An importer of `b` depends on x.ts, never y.ts.
+    const importer = 'src-ui/src/__tests__/renamed.test.ts';
+    const overrides = {
+      [ROOT_BARREL]: `${SDK_SOURCES[ROOT_BARREL]}\nexport { a as b } from './mid';`,
+      'packages/sdk/src/mid.ts':
+        "export { a } from './x';\nexport { b } from './y';",
+      'packages/sdk/src/x.ts': 'export const a = 1;',
+      'packages/sdk/src/y.ts': 'export const b = 2;',
+      [importer]: "import { b } from '@kontourai/station-sdk';",
+    };
+    expect(seedsFor('packages/sdk/src/x.ts', overrides)).toContain(importer);
+    expect(seedsFor('packages/sdk/src/y.ts', overrides)).not.toContain(
+      importer,
+    );
+  });
+
   test('transitive: test -> local module -> barrel named import -> client', () => {
     expect(seedsFor(SCHEDULER)).toContain('src-ui/src/views/schedule/utils.ts');
     expect(seedsFor(SCHEDULER)).not.toContain(
@@ -359,8 +377,42 @@ describe('factory mocks evaluate nothing real unless they can reach the original
       'a factory passed by reference',
       "const factory = () => ({ fetchBoard: vi.fn() });\nvi.mock('@kontourai/station-sdk', factory);",
     ],
+    [
+      'a factory reading `arguments`',
+      "vi.mock('@kontourai/station-sdk', function () { return { ...arguments[0] }; });",
+    ],
   ])('%s keeps the whole barrel', (_form, body) => {
     expect(selectedFor(SCHEDULER, body)).toBe(true);
+  });
+
+  test.each([
+    [
+      'element access on vi',
+      "vi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\nconst load = vi['import' + 'Actual'];",
+    ],
+    [
+      'an aliased vi import',
+      "import { vi as v } from 'vitest';\nv.mock('@kontourai/station-sdk');",
+    ],
+    [
+      'a namespace vitest import',
+      "import * as vitest from 'vitest';\nvitest.vi.mock('@kontourai/station-sdk');",
+    ],
+    [
+      'vi handed to a helper',
+      "import { vi } from 'vitest';\nvi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\ninstallMocks(vi);",
+    ],
+  ])(
+    'mock detection cannot see through %s, so the file keeps the whole SDK',
+    (_form, body) => {
+      expect(selectedFor(SCHEDULER, body)).toBe(true);
+    },
+  );
+
+  test('vi in a type position or as a direct property access is not an escape (control)', () => {
+    const body =
+      "import { vi } from 'vitest';\nvi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\nlet m: ReturnType<typeof vi.fn>;";
+    expect(selectedFor(SCHEDULER, body)).toBe(false);
   });
 });
 
@@ -397,6 +449,119 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
     );
     expect(result.decisions).toEqual([
       { path: SCHEDULER, disposition: 'refined', seeds: expect.any(Number) },
+    ]);
+  });
+
+  describe('changes a pure-statement scan cannot see', () => {
+    const REGISTRY = 'packages/sdk/src/voice/session-registry.ts';
+    const withRegistry = {
+      [REGISTRY]:
+        'export const voiceSessionAdapterRegistry = new VoiceSessionAdapterRegistry();',
+    };
+    const decide = (
+      headOverrides: Record<string, string>,
+      baseSource: string | null,
+    ) =>
+      refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+        base: 'merge-base',
+        loadGraph: () => fixtureGraph({ ...withRegistry, ...headOverrides }),
+        readBase: () => baseSource,
+      });
+
+    test.each([
+      [
+        'adds an import of a side-effecting module',
+        `import { voiceSessionAdapterRegistry } from '../voice/session-registry';\n${SDK_SOURCES[SCHEDULER]}`,
+        SDK_SOURCES[SCHEDULER],
+      ],
+      [
+        'adds a barrel self-import (a cycle)',
+        `import { fetchBoard } from '../index';\n${SDK_SOURCES[SCHEDULER]}`,
+        SDK_SOURCES[SCHEDULER],
+      ],
+      [
+        'removes an import',
+        SDK_SOURCES[SCHEDULER],
+        `import { getBoard } from './board';\n${SDK_SOURCES[SCHEDULER]}`,
+      ],
+    ])(
+      'a change that %s keeps whole-barrel selection',
+      (_label, head, base) => {
+        const result = decide({ [SCHEDULER]: head }, base);
+        expect(result.paths).toEqual([SCHEDULER]);
+        expect(result.decisions[0].reason).toMatch(/runtime imports differ/);
+      },
+    );
+
+    test('the same imports, edited body: still refined (control)', () => {
+      const result = decide(
+        {
+          [SCHEDULER]: `${SDK_SOURCES[SCHEDULER]}\nexport async function more() {}`,
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].disposition).toBe('refined');
+    });
+
+    test.each([
+      [
+        'directly',
+        "import { listJobs } from './client/scheduler';\nregisterAll(listJobs);",
+      ],
+      [
+        'through a barrel',
+        "import { listJobs } from './index';\nexport const registered = register(listJobs);",
+      ],
+    ])(
+      'a barrel-graph module calling into it at top level %s keeps whole-barrel',
+      (_label, source) => {
+        const result = decide(
+          { 'packages/sdk/src/registration.ts': source },
+          SDK_SOURCES[SCHEDULER],
+        );
+        expect(result.paths).toEqual([SCHEDULER]);
+        expect(result.decisions[0].reason).toMatch(
+          /registration\.ts line \d+ uses it in a top-level side effect/,
+        );
+      },
+    );
+
+    test('a top-level side effect that does not use it does not (control)', () => {
+      const result = decide(
+        {
+          'packages/sdk/src/registration.ts':
+            "import { listJobs } from './client/scheduler';\nregisterAll(other);\nexport const f = () => listJobs();",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].disposition).toBe('refined');
+    });
+  });
+
+  test('an internal refinement failure selects MORE for that path, not a failed lane', () => {
+    const result = refineSdkBarrelRelatedPaths('/repo', [SCHEDULER, BOARD], {
+      base: 'merge-base',
+      loadGraph: () => ({
+        ...graph,
+        resolveBarrelName: () => {
+          throw new Error('resolver bug');
+        },
+      }),
+      readBase: (_root: string, _base: string, path: string) =>
+        SDK_SOURCES[path] ?? null,
+    });
+    expect(result.paths).toEqual(expect.arrayContaining([SCHEDULER, BOARD]));
+    expect(result.decisions).toEqual([
+      {
+        path: SCHEDULER,
+        disposition: 'whole-barrel',
+        reason: 'refinement failed: resolver bug',
+      },
+      {
+        path: BOARD,
+        disposition: 'whole-barrel',
+        reason: 'refinement failed: resolver bug',
+      },
     ]);
   });
 
@@ -507,6 +672,14 @@ describe('topLevelSideEffect', () => {
       'a const enum-like object and arrow functions',
       'export const K = { a: 1 } as const;\nexport const f = () => globalThis.fetch;',
     ],
+    [
+      'freezing, spreading and iterating LOCAL values',
+      "const local = { a: 1 };\nconst list = ['a'];\nexport const f = Object.freeze(local);\nexport const all = [...list];\nexport const copy = { ...local };\nexport const m = new Map([[1, 2]]);\nexport const n = local.a;",
+    ],
+    [
+      'reading an imported binding without touching it',
+      "import { Base, value } from './b';\nexport const same = value;\nexport const pair = [value];",
+    ],
   ])('%s is pure', (_label, source) => {
     expect(topLevelSideEffect('m.ts', source)).toBeNull();
   });
@@ -524,6 +697,34 @@ describe('topLevelSideEffect', () => {
       "import { cfg } from './c';\nexport const { a } = cfg;",
     ],
     ['a top-level await', 'await ready;'],
+    [
+      'a property read of an imported value (a getter)',
+      "import { cfg } from './c';\nexport const a = cfg.value;",
+    ],
+    [
+      'an element read of an imported value',
+      "import { cfg } from './c';\nexport const a = cfg['value'];",
+    ],
+    [
+      'spreading an imported array (an iterator)',
+      "import { list } from './l';\nexport const all = [...list];",
+    ],
+    [
+      'spreading an imported object',
+      "import { obj } from './o';\nexport const copy = { ...obj };",
+    ],
+    [
+      'constructing a Map from an imported iterable',
+      "import { list } from './l';\nexport const m = new Map(list);",
+    ],
+    [
+      'freezing an imported object (mutates another module)',
+      "import { obj } from './o';\nexport const f = Object.freeze(obj);",
+    ],
+    [
+      'freezing a local alias of an imported object',
+      "import { obj } from './o';\nconst alias = obj;\nexport const f = Object.freeze(alias);",
+    ],
     ['a tagged template', 'export const q = gql`query`;'],
   ])('%s is a side effect', (_label, source) => {
     expect(topLevelSideEffect('m.ts', source)).not.toBeNull();
