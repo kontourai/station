@@ -24,7 +24,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   highestSymbolVersion,
@@ -295,7 +295,19 @@ async function bootAndProbe({ launcher, env, home, release }) {
     const temporaryHome = /Station home: (.+) \(--temp-home\)/.exec(
       ephemeral,
     )?.[1];
-    if (temporaryHome) rmSync(temporaryHome, { recursive: true, force: true });
+    if (!temporaryHome) {
+      fail('station start --temp-home did not announce its temporary home');
+    }
+    // A recursive delete driven by parsed output: only ever the shape the
+    // lifecycle creates (<tmp>/station/dev-home-*), never anything else.
+    const ownedHome = realpathSync(temporaryHome);
+    if (
+      !basename(ownedHome).startsWith('dev-home-') ||
+      basename(dirname(ownedHome)) !== 'station'
+    ) {
+      fail(`refusing to remove an unexpected temporary home: ${ownedHome}`);
+    }
+    rmSync(ownedHome, { recursive: true, force: true });
     const started = runLauncher(
       launcher,
       ['start', `--port=${serverPort}`, `--ui-port=${uiPort}`],
