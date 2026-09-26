@@ -111,6 +111,12 @@ interface StreamPrimaryAgentChatArgs {
   dedupStore?: ChatTurnDedupStore;
   /** Exact authorized orchestration coordinate from Station's internal relay only. */
   turnCorrelation?: AuthorizedTurnCorrelation;
+  /**
+   * #2589: the orchestration thread this turn relays for (the Station-agent
+   * adapter's, validated in chat.ts). Stamped on this turn's tool approvals
+   * so their registry notification is known to be on the agent-activity card.
+   */
+  orchestrationThreadId?: string;
   /** Private native-output capability from the authenticated internal relay. */
   nativeOutputGrant?: NativeOutputTurnContext;
   nativeForeground?: NativeForegroundRelayCompanion;
@@ -170,6 +176,7 @@ export function streamPrimaryAgentChat({
   dedupStore,
   projectSlug,
   turnCorrelation,
+  orchestrationThreadId,
   nativeOutputGrant,
   nativeForeground,
   nativeWorkspace,
@@ -252,6 +259,7 @@ export function streamPrimaryAgentChat({
         injectableStream,
         ctx.logger,
         () => operationContext.conversationId,
+        orchestrationThreadId,
       );
 
       operationContext = { ...restOptions, elicitation };

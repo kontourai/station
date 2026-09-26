@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the alert_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-alert-token",
+          "markdownDescription": "Enables the alert_token command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the alert_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-alert-token",
+          "markdownDescription": "Denies the alert_token command without any pre-configured scope."
+        },
+        {
           "description": "Enables the clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-clear",
@@ -403,10 +415,10 @@
           "markdownDescription": "Denies the take_launch_route command without any pre-configured scope."
         },
         {
-          "description": "Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`",
+          "description": "Read capability status, register the device for agent-activity delivery and notification alerts, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-alert-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`"
+          "markdownDescription": "Read capability status, register the device for agent-activity delivery and notification alerts, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.\n#### This default permission set includes:\n\n- `allow-status`\n- `allow-configure`\n- `allow-clear`\n- `allow-push-token`\n- `allow-alert-token`\n- `allow-open-live-update-settings`\n- `allow-take-launch-route`\n- `allow-register-listener`\n- `allow-remove-listener`"
         }
       ]
     }

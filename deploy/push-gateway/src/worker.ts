@@ -47,6 +47,8 @@ export interface Env {
   CHANNEL_PER_KEY_LIMITER?: RateLimiter;
   CHANNEL_GLOBAL_LIMITER?: RateLimiter;
   CHANNEL_DELETE_LIMITER?: RateLimiter;
+  /** Alert pushes per device token; the alert route answers 503 without it. */
+  ALERT_PER_TOKEN_LIMITER?: RateLimiter;
   /** The ChannelLedger Durable Object namespace (SQLite-backed). */
   CHANNEL_LEDGER?: LedgerNamespace;
 }
@@ -146,6 +148,9 @@ function apnsConfig(env: Env): ApnsGatewayConfig | null {
     channelGlobalLimiter,
     channelDeleteLimiter,
     ledger: ledgerClient(ledgerNamespace),
+    ...(env.ALERT_PER_TOKEN_LIMITER
+      ? { alertPerTokenLimiter: env.ALERT_PER_TOKEN_LIMITER }
+      : {}),
   };
 }
 

@@ -1,8 +1,9 @@
 /**
  * The production composition of notification delivery (#2586): the
  * preferences store, the audience resolver over the pairing registry and
- * the orchestration read check, the Web Push, desktop-host and (when native
- * push is on) FCM alert channels (#2588), and the router. Extracted from `configureRuntimeSupportServices` so a test can
+ * the orchestration read check, the Web Push, desktop-host, (when the push
+ * gateway is configured) iOS alert (#2589) and FCM alert (#2588) channels,
+ * and the router. Extracted from `configureRuntimeSupportServices` so a test can
  * drive the REAL wiring (which read authority a device resolves to, which
  * store the escalation re-check reads) rather than only its parts.
  */
@@ -13,6 +14,10 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
+import {
+  ApnsAlertChannel,
+  type ApnsAlertChannelOptions,
+} from '../../services/notifications/delivery/apns-alert-channel.js';
 import {
   createPairingAudienceResolver,
   isPersonalFamilyDevice,
@@ -53,6 +58,12 @@ export interface NotificationDeliveryWiringDeps {
   ): boolean;
   /** The store's records; the escalation re-check reads one back. */
   listNotifications(): Promise<Notification[]>;
+  /**
+   * #2589 iOS alerts through the push gateway: absent when the gateway URL
+   * is invalid. The channel lists only registrations with an alert token,
+   * so it is inert until a phone sends one.
+   */
+  apnsAlert?: Omit<ApnsAlertChannelOptions, 'logger'>;
   /**
    * Android native push (#2588): the push key, gateway and the send floor
    * shared with the agent-activity publisher. Absent when native push is off
@@ -103,6 +114,9 @@ export function wireNotificationDelivery(
     channels: [
       new WebPushChannel(deps.devicePairing, deps.webPushService, deps.logger),
       desktopHostChannel,
+      ...(deps.apnsAlert
+        ? [new ApnsAlertChannel({ ...deps.apnsAlert, logger: deps.logger })]
+        : []),
       ...(deps.fcmAlert
         ? [new FcmAlertChannel({ ...deps.fcmAlert, logger: deps.logger })]
         : []),

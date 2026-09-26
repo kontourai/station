@@ -48,6 +48,42 @@ describe('createElicitationCallback', () => {
   });
 });
 
+describe('createElicitationCallback: the Station-agent relay (#2589)', () => {
+  async function registeredMetadata(
+    conversationId: string,
+    orchestrationThreadId?: string,
+  ) {
+    const register = vi.fn().mockResolvedValue(true);
+    const callback = createElicitationCallback(
+      { name: 'Reviewer', tools: { autoApprove: [] } } as any,
+      new Map(),
+      { register } as any,
+      { inject: vi.fn() } as any,
+      { info: vi.fn() },
+      () => conversationId,
+      orchestrationThreadId,
+    );
+    await callback({ type: 'tool-approval', toolName: 'repo_write' });
+    return register.mock.calls[0]?.[1]?.metadata;
+  }
+
+  test('an approval in the relayed conversation names its orchestration thread', async () => {
+    expect(await registeredMetadata('thread-7', 'thread-7')).toMatchObject({
+      conversationId: 'thread-7',
+      orchestrationThreadId: 'thread-7',
+    });
+  });
+
+  test('a plain chat, or a relay thread that is not this conversation, names none', async () => {
+    expect(await registeredMetadata('c-1')).not.toHaveProperty(
+      'orchestrationThreadId',
+    );
+    expect(await registeredMetadata('c-1', 'thread-7')).not.toHaveProperty(
+      'orchestrationThreadId',
+    );
+  });
+});
+
 describe('writeSSEChunk', () => {
   test('resolves in the same macrotask turn as the write — no per-frame event-loop round trip', async () => {
     const writes: string[] = [];
