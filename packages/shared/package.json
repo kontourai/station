@@ -100,8 +100,8 @@
   "dependencies": {
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "^2.0.0",
-    "esbuild": "^0.28.1",
-    "jose": "6.2.4"
+    "@modelcontextprotocol/client": "^2.1.0",
+    "esbuild": "^0.28.2",
+    "jose": "6.2.12"
   }
 }
