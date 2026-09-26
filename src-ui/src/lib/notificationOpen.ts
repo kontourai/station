@@ -59,12 +59,11 @@ export interface NotificationOpenDeps {
 }
 
 async function defaultDeps(): Promise<NotificationOpenDeps> {
-  const [{ listen }, { invokeTauri }] = await Promise.all([
-    import('@tauri-apps/api/event'),
-    import('../platform/native/tauriInvoke'),
-  ]);
+  const { invokeTauri, listenTauri } = await import(
+    '../platform/native/tauriInvoke'
+  );
   return {
-    listen: (event, handler) => listen(event, () => handler()),
+    listen: listenTauri,
     take: () => invokeTauri<unknown>('take_notification_open_link'),
   };
 }
