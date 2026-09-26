@@ -420,11 +420,11 @@ describe('release availability driver', () => {
     // pnpm migration and belongs here -- it runs before `dependencies:ci`,
     // which needs pnpm on PATH -- but it has to be acknowledged rather than
     // absorbed, which is why this list is enumerated and not counted.
-    // The driver runs from the default-branch policy checkout (#2676); it
+    // The driver runs from the policy commit resolve pinned (#2676); it
     // carries no credential, and git history questions still read the tag
     // checkout, which stays the cwd.
     expect(job.steps[1].with).toEqual({
-      ref: `\${{ github.event.repository.default_branch }}`,
+      ref: `\${{ needs.resolve.outputs.policy_sha }}`,
       path: 'release-policy',
       'persist-credentials': false,
     });

@@ -11,8 +11,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { load } from 'js-yaml';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
   createNativeReleaseConfig,
@@ -444,12 +445,14 @@ type WorkflowStep = {
   run?: string;
   if?: string;
   'working-directory'?: string;
+  shell?: string;
   with?: Record<string, unknown>;
   'continue-on-error'?: boolean | string;
   env?: Record<string, unknown>;
 };
 type WorkflowJob = {
   steps?: WorkflowStep[];
+  defaults?: unknown;
   if?: string;
   needs?: string | string[];
   environment?: string;
@@ -459,10 +462,78 @@ type WorkflowJob = {
 };
 type Workflow = {
   on?: unknown;
+  defaults?: unknown;
   concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
   permissions?: Record<string, string>;
   jobs?: Record<string, WorkflowJob>;
 };
+
+const POLICY_INTERPRETER =
+  /(?:^|[\s;&|(])(node|bash|sh|python3?)\s+("[^"]*"|\S+)/g;
+const EXECUTABLE_PATH = /\.(?:mjs|cjs|js|ts|mts|sh|py)$/;
+const POLICY_PATH = /^(?:\$PWD\/)?release-policy\/([\w./-]+)$/;
+// The only shell variables allowed to name a program; each step that uses
+// one must assign it a release-policy path.
+const POLICY_VARIABLES = ['policy_script'];
+// The only run steps that execute tag code: installing the tag's own locked
+// dependency tree, which the policy scripts import from.
+const TAG_EXECUTED_RUNS = ['npm run dependencies:ci'];
+
+/** Per job, every repo program publish-release.yml runs; each must be policy. */
+function policyEntryScripts(): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const [jobName, job] of Object.entries(workflow(publish).jobs ?? {})) {
+    const invoked = new Set<string>();
+    for (const step of job.steps ?? []) {
+      if (typeof step.run !== 'string') continue;
+      if (TAG_EXECUTED_RUNS.includes(step.run)) continue;
+      const where = `${jobName}: ${step.name}`;
+      expect(step.run, where).not.toMatch(
+        /(?:^|[\s;&|(])(?:npm|pnpm|npx|yarn|eval|source|\.)\s|\b(?:ba)?sh\s+-c\b/,
+      );
+      // Any token that looks like a program file must be a policy path.
+      for (const raw of step.run.split(/[\s;|&()<>`]+/)) {
+        const token = raw.replace(/^[A-Za-z_]\w*=/, '').replace(/["']/g, '');
+        if (!EXECUTABLE_PATH.test(token)) continue;
+        const match = token.match(POLICY_PATH);
+        expect(match?.[1], `${where}: ${token}`).toBeDefined();
+        if (match) invoked.add(match[1]);
+      }
+      // Any interpreter's program argument must be inline code, a policy
+      // path, or a policy variable assigned in this step. This catches an
+      // extensionless or variable-built path such as `node "$dir/tool"`.
+      for (const [, interpreter, raw] of step.run.matchAll(
+        POLICY_INTERPRETER,
+      )) {
+        const argument = raw.replace(/"/g, '');
+        const variable = argument.match(/^\$\{?(\w+)\}?$/)?.[1];
+        if (interpreter === 'node' && ['-e', '-p'].includes(argument)) continue;
+        if (variable !== undefined && POLICY_VARIABLES.includes(variable)) {
+          expect(step.run, where).toMatch(
+            new RegExp(`(?:^|\\s)${variable}=release-policy/`),
+          );
+          continue;
+        }
+        expect(argument, `${where}: ${interpreter}`).toMatch(POLICY_PATH);
+      }
+    }
+    result[jobName] = [...invoked].sort();
+  }
+  return result;
+}
+
+/** The node programs a policy shell script runs, resolved beside itself. */
+function shellPolicyPrograms(script: string): string[] {
+  const source = readFileSync(resolve(root, script), 'utf8');
+  const programs = Array.from(
+    source.matchAll(/\bnode\s+"\$script_dir\/([\w.-]+\.mjs)"/g),
+    (match) => `scripts/${match[1]}`,
+  );
+  // Every node call goes through $script_dir; a cwd-relative one would run
+  // the tag's copy.
+  expect(source.match(/\bnode\s/g)?.length ?? 0, script).toBe(programs.length);
+  return [...new Set(programs)];
+}
 
 function workflow(file: string): Workflow {
   return load(file) as Workflow;
@@ -735,7 +806,11 @@ describe('native release workflow topology', () => {
         'Check out default-branch release policy',
       );
       expect(checkout.with).toMatchObject({
-        ref: githubExpression('github.event.repository.default_branch'),
+        ref: githubExpression(
+          jobName === 'resolve'
+            ? 'github.event.repository.default_branch'
+            : 'needs.resolve.outputs.policy_sha',
+        ),
         path: 'release-policy',
       });
     }
@@ -746,59 +821,53 @@ describe('native release workflow topology', () => {
     ]);
   });
 
-  it('executes every publish-time policy script from the default-branch checkout (#2676)', () => {
+  it('executes every publish-time policy script from the pinned default-branch checkout (#2676)', () => {
     // A tag's scripts are frozen forever, so the tag supplies release CONTENT
     // (release-assets/, manifests, git history) and every executed policy
     // script comes from release-policy/. This reads the PARSED run bodies, so
-    // a folded scalar or a variable holding the path is still seen.
-    const expectedPolicyScripts: Record<string, string[]> = {
+    // a folded scalar is seen. What a static scan CANNOT see: a program path
+    // assembled at runtime without a script extension and run by something
+    // other than an interpreter listed below (e.g. `./"$(cat f)"`), or tag
+    // files a policy script itself chooses to load as code.
+    const policyEntries = policyEntryScripts();
+    expect(policyEntries).toEqual({
       resolve: ['scripts/lib/native-release-config.mjs'],
       publish: [
+        'scripts/deploy-ledger.mjs',
         'scripts/lib/deploy-ledger-commit.mjs',
         'scripts/lib/tauri-updater-manifest.mjs',
-        'scripts/deploy-ledger.mjs',
         'scripts/publish-mobile-feed-transaction.sh',
         'scripts/release-artifacts.mjs',
         'scripts/release-sbom-predicates.mjs',
         'scripts/verify-release-checksums.sh',
       ],
       'release-availability': ['scripts/release-availability-driver.mjs'],
-    };
-    // The only run steps that execute tag code: installing the tag's own
-    // locked dependency tree, which the policy scripts import from.
-    const tagExecutedRuns = ['npm run dependencies:ci'];
-    const scriptPath =
-      /(\S*?)\b((?:scripts|ops|tools)\/[\w./-]+\.(?:mjs|cjs|js|ts|sh|py))\b/g;
-    const jobs = workflow(publish).jobs ?? {};
-    expect(Object.keys(jobs).sort()).toEqual(
-      Object.keys(expectedPolicyScripts).sort(),
-    );
-    for (const [jobName, job] of Object.entries(jobs)) {
-      const invoked = new Set<string>();
+    });
+
+    const parsed = workflow(publish);
+    expect(parsed.defaults).toBeUndefined();
+    for (const [jobName, job] of Object.entries(parsed.jobs ?? {})) {
+      // A job-level default working directory would silently re-root every
+      // relative path below, including `release-policy/...`.
+      expect(job.defaults, jobName).toBeUndefined();
       for (const step of job.steps ?? []) {
-        expect(step['working-directory'], jobName).toBeUndefined();
-        if (typeof step.run !== 'string') continue;
-        if (tagExecutedRuns.includes(step.run)) continue;
-        expect(step.run, `${jobName}: ${step.name}`).not.toMatch(
-          /\b(?:npm|pnpm|npx|yarn)\b/,
-        );
-        for (const [, prefix, path] of step.run.matchAll(scriptPath)) {
-          expect(prefix, `${jobName}: ${step.name}: ${path}`).toMatch(
-            /(?:^|["'=/$])release-policy\/$/,
-          );
-          invoked.add(path);
-        }
+        const where = `${jobName}: ${step.name ?? step.uses ?? step.run}`;
+        expect(step['working-directory'], where).toBeUndefined();
+        expect(step.shell, where).toBeUndefined();
+        // Only SHA-pinned remote actions: `./...` would run the tag's action.
+        if (step.uses !== undefined)
+          expect(step.uses, where).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/);
       }
-      expect([...invoked].sort(), jobName).toEqual(
-        [...expectedPolicyScripts[jobName]].sort(),
-      );
       const checkout = namedStep(
         job,
         'Check out default-branch release policy',
       );
       expect(checkout.uses).toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
       expect(checkout.with).toMatchObject({
-        ref: githubExpression('github.event.repository.default_branch'),
+        ref:
+          jobName === 'resolve'
+            ? githubExpression('github.event.repository.default_branch')
+            : githubExpression('needs.resolve.outputs.policy_sha'),
         path: 'release-policy',
       });
     }
@@ -811,6 +880,85 @@ describe('native release workflow topology', () => {
         'Check out default-branch release policy',
       ).with,
     ).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
+  });
+
+  it('runs one policy revision across every job (#2676)', () => {
+    // Only resolve reads the moving default branch; later jobs check out the
+    // exact commit it recorded, so the jobs cannot straddle a main push.
+    expect(
+      publish.match(/github\.event\.repository\.default_branch/g),
+    ).toHaveLength(1);
+    const resolveJob = workflowJob(publish, 'resolve');
+    expect(resolveJob.outputs?.policy_sha).toBe(
+      githubExpression('steps.source.outputs.policy_sha'),
+    );
+    const source = namedStep(resolveJob, 'Resolve tag to one immutable commit');
+    expect(source.run).toContain(
+      'policy_sha=$(git -C release-policy rev-parse HEAD)',
+    );
+    expect(source.run).toContain('[[ "$policy_sha" =~ ^[0-9a-f]{40}$ ]]');
+    expect(source.run).toContain('echo "policy_sha=$policy_sha"');
+    for (const jobName of ['publish', 'release-availability']) {
+      const job = workflowJob(publish, jobName);
+      expect([job.needs].flat(), jobName).toContain('resolve');
+    }
+  });
+
+  it('pins the bare packages policy scripts import from the tag install (#2676)', () => {
+    // Policy scripts run from release-policy/ but resolve bare imports from
+    // the TAG's node_modules (the only install in each job). An old tag can
+    // only supply what its lockfile installed, so a new bare import in any
+    // policy script can break publishing old tags. Adding one is a reviewed
+    // decision: update this list and confirm old tags install it. Imports
+    // are parsed with TypeScript's preProcessFile (static and dynamic
+    // `import`), not substring-matched.
+    const entries = new Set<string>();
+    for (const scripts of Object.values(policyEntryScripts()))
+      for (const script of scripts) {
+        if (script.endsWith('.mjs')) entries.add(script);
+        else
+          for (const program of shellPolicyPrograms(script))
+            entries.add(program);
+      }
+    // The shell entries' programs are part of the graph too.
+    expect([...entries]).toContain('scripts/native-update-feed.mjs');
+    const bare = new Map<string, Set<string>>();
+    const seen = new Set<string>();
+    const pending = [...entries].map((entry) => resolve(root, entry));
+    while (pending.length > 0) {
+      const file = pending.pop() as string;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const { importedFiles } = ts.preProcessFile(
+        readFileSync(file, 'utf8'),
+        true,
+        true,
+      );
+      for (const { fileName: specifier } of importedFiles) {
+        if (specifier.startsWith('node:')) continue;
+        if (specifier.startsWith('.')) {
+          const target = resolve(dirname(file), specifier);
+          expect(existsSync(target), `${file} -> ${specifier}`).toBe(true);
+          pending.push(target);
+          continue;
+        }
+        const importers = bare.get(specifier) ?? new Set<string>();
+        importers.add(relative(root, file));
+        bare.set(specifier, importers);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(entries.size);
+    expect(
+      Object.fromEntries(
+        [...bare].map(([specifier, importers]) => [
+          specifier,
+          [...importers].sort(),
+        ]),
+      ),
+    ).toEqual({
+      'ajv/dist/2020.js': ['scripts/lib/release-artifacts.mjs'],
+      semver: ['scripts/native-update-feed.mjs'],
+    });
   });
 
   it('does not expose write or provider credentials to setup and install steps', () => {
@@ -834,6 +982,19 @@ describe('native release workflow topology', () => {
         }
       }
     }
+    // No publish-release checkout leaves the job token in .git/config, where
+    // the tag-controlled `dependencies:ci` could read it. No exceptions: the
+    // resolve tag fetch passes its token in process-scoped config, and the
+    // ledger helper does the same with the app token.
+    const checkouts = Object.entries(workflow(publish).jobs ?? {}).flatMap(
+      ([jobName, job]) =>
+        (job.steps ?? [])
+          .filter((step) => step.uses?.startsWith('actions/checkout@'))
+          .map((step) => [jobName, step] as const),
+    );
+    expect(checkouts).toHaveLength(6);
+    for (const [jobName, step] of checkouts)
+      expect(step.with?.['persist-credentials'], jobName).toBe(false);
   });
 
   it('runs the pnpm production SBOM producer against the authoritative lock', () => {
