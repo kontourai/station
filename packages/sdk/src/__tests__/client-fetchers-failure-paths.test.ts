@@ -311,6 +311,87 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     );
   });
 
+  /**
+   * #2708: `readEnvelopeOrThrow` (behind every `client/integrations.ts`,
+   * `client/reviews.ts` and `client/workspace-pane-host-actions.ts` fetcher)
+   * throws the shared helper's `StationHttpError`, so the refusal keeps its
+   * status, code and details instead of arriving as a plain `Error` with the
+   * words only.
+   */
+  it('integrations: listIntegrations keeps status, code and details on a non-2xx refusal', async () => {
+    const details = { fieldErrors: { id: ['Unknown integration id.'] } };
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse(
+        {
+          success: false,
+          error: 'Validation failed',
+          code: 'station_control_scope_denied',
+          details,
+        },
+        403,
+      ),
+    );
+
+    const error = await listIntegrations('http://example.test').catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(StationHttpError);
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'station_control_scope_denied',
+      details,
+      message: 'Unknown integration id.',
+    });
+  });
+
+  it('integrations: a 2xx success:false keeps its observed status and code', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: false, error: { code: 'not_ready' } }),
+    } as Response);
+
+    const error = await listIntegrations('http://example.test').catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(StationHttpError);
+    expect(error).toMatchObject({
+      status: 200,
+      code: 'not_ready',
+      message: 'not_ready',
+    });
+  });
+
+  it('integrations: a non-JSON non-2xx keeps its status; a non-JSON 2xx stays a protocol error', async () => {
+    const notJson = async () => {
+      throw new SyntaxError('Unexpected token <');
+    };
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: notJson,
+    } as unknown as Response);
+    const gateway = await listIntegrations('http://example.test').catch(
+      (caught: unknown) => caught,
+    );
+    expect(gateway).toBeInstanceOf(StationHttpError);
+    expect(gateway).toMatchObject({
+      status: 502,
+      message: 'Request failed with HTTP 502',
+    });
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: notJson,
+    } as unknown as Response);
+    const malformed = await listIntegrations('http://example.test').catch(
+      (caught: unknown) => caught,
+    );
+    expect(malformed).not.toBeInstanceOf(StationHttpError);
+    expect(malformed).toMatchObject({ message: 'Expected JSON response' });
+  });
+
   it('orchestration: getProviderCommands surfaces the server error body on a non-2xx response', async () => {
     vi.mocked(fetch).mockResolvedValue(
       nonOkJsonResponse({ success: false, error: 'provider not found' }, 404),

@@ -24,6 +24,11 @@ import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import {
+  envelopeCode,
+  envelopeError,
+  envelopeMessage,
+} from './api-error-message';
 import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
 
@@ -415,10 +420,17 @@ export class StationHttpError extends Error {
    */
   readonly code?: string;
 
+  /**
+   * The envelope's `details`, exactly as sent (#2708) — for a validation
+   * refusal, `{ formErrors, fieldErrors }`. The message already carries the
+   * sentences; this keeps the structure for a caller that renders per field.
+   */
+  readonly details?: unknown;
+
   constructor(
     status: number,
     message?: string,
-    options?: { retryAfterMs?: number; code?: string },
+    options?: { retryAfterMs?: number; code?: string; details?: unknown },
   ) {
     super(message ?? `HTTP ${status}`);
     this.name = 'StationHttpError';
@@ -428,6 +440,9 @@ export class StationHttpError extends Error {
     }
     if (options?.code !== undefined) {
       this.code = options.code;
+    }
+    if (options?.details !== undefined) {
+      this.details = options.details;
     }
   }
 }
@@ -448,47 +463,26 @@ export class StationSseStallError extends Error {
 }
 
 /**
- * The one place that turns a Station response envelope into the sentence a
- * user reads (station#4-HOME-006).
- *
- * Station answers a failure in two shapes, and both are load-bearing: the
- * ordinary route envelope `{success:false, error:"…"}` (a string) and the
- * runtime's own auth refusal `{"error":{"code":"authentication_required"}}`
- * (an OBJECT, with no `success` key at all). A fetcher that assumes the
- * string shape renders `new Error(json.error).message` — literally
- * `[object Object]` — for the second, which is exactly what a user saw on
- * project create when a 401 was in flight.
- *
- * The precedence below is the audit's: an explicit string wins, then the
- * object's own `message`, then its `code`. `code` is a machine token
- * (`authentication_required`) rather than prose, and it is still shown rather
- * than swapped for a friendlier invention — it is what the server actually
- * computed. `fallback` is reached only when the body carried no reason at all.
+ * The sentence a user reads for a Station response envelope. A thin wrapper
+ * over `envelopeMessage` (`api-error-message.ts`), the one rule every client
+ * shares (#2708): validation `details` first, then a string `error`, an
+ * object `error`'s `message` then `code`, the top-level `message`, and only
+ * then `fallback`. The object shape is the runtime's own auth refusal
+ * (`{"error":{"code":"authentication_required"}}`), which would otherwise
+ * render as `[object Object]` (station#4-HOME-006).
  */
 export function envelopeErrorMessage(body: unknown, fallback: string): string {
-  const error = (body as { error?: unknown } | null | undefined)?.error;
-  if (typeof error === 'string' && error.trim()) return error;
-  if (error && typeof error === 'object') {
-    const detail = error as { message?: unknown; code?: unknown };
-    if (typeof detail.message === 'string' && detail.message.trim()) {
-      return detail.message;
-    }
-    if (typeof detail.code === 'string' && detail.code.trim()) {
-      return detail.code;
-    }
-  }
-  return fallback;
+  return envelopeMessage(body, fallback);
 }
 
 /**
- * The envelope's machine `code` (`{success:false, error, code}`), or
- * `undefined` when the body carried none — an old server, a proxy HTML page,
- * or a non-JSON body. Only an explicit non-empty string counts: absence is
- * the unverified signal, never a default.
+ * The envelope's machine `code` — top-level, else the object `error`'s own —
+ * or `undefined` when the body carried none: an old server, a proxy HTML
+ * page, or a non-JSON body. Only an explicit non-empty string counts: absence
+ * is the unverified signal, never a default. Wraps `envelopeCode`.
  */
 export function envelopeErrorCode(body: unknown): string | undefined {
-  const code = (body as { code?: unknown } | null | undefined)?.code;
-  return typeof code === 'string' && code.trim() ? code : undefined;
+  return envelopeCode(body);
 }
 
 /**
@@ -511,7 +505,7 @@ export async function readJsonBody(response: Response): Promise<unknown> {
  * unparseable or negative value yields `undefined`, which leaves the caller on
  * its ordinary backoff.
  */
-function parseRetryAfterMs(header: string | null): number | undefined {
+export function parseRetryAfterMs(header: string | null): number | undefined {
   if (header === null) return undefined;
   // Digits only, deliberately. `Number()` would accept far more than the
   // delta-seconds grammar this claims to parse — `'0x10'` as 16 seconds,
@@ -1889,34 +1883,33 @@ export function fetchSSE(
 
 /**
  * Parses a `{ success, data?, error?, message? }` envelope response and
- * either returns `data` or throws, mirroring the CLI's `requestJson`
- * error precedence (`error || message || 'Request failed with HTTP <status>'`)
- * — used by canonical fetchers whose only pre-#167 consumer already applied
- * this exact contract (e.g. via `packages/cli/src/commands/core-api.ts`'s
- * `requestJson`). Fetchers whose only pre-#167 consumer forwards the raw
- * envelope untouched (station-control's `api()` helper) do their own
- * lighter-weight parsing instead — see the docblock on each such fetcher.
+ * either returns `data` or throws. A non-2xx, or a 2xx whose body is not
+ * `success:true`, throws the `StationHttpError` from `envelopeError`
+ * (#2708): the observed status (a 2xx too), the shared message rule, the
+ * envelope's `code` and `details`, and `Retry-After`. A body that is not JSON
+ * keeps the status for a non-2xx; for a 2xx it is a protocol failure, not an
+ * envelope, and throws a plain `Error`.
+ *
+ * Fetchers whose only pre-#167 consumer forwards the raw envelope untouched
+ * (station-control's `api()` helper) do their own lighter-weight parsing
+ * instead — see the docblock on each such fetcher.
  */
 export async function readEnvelopeOrThrow<T>(
   response: Response,
 ): Promise<T | undefined> {
-  let payload: JsonEnvelope<T> | null = null;
+  const fallback = `Request failed with HTTP ${response.status}`;
+  let payload: unknown;
   try {
-    payload = (await response.json()) as JsonEnvelope<T>;
+    payload = await response.json();
   } catch {
-    if (!response.ok) {
-      throw new Error(`Request failed with HTTP ${response.status}`);
-    }
+    if (!response.ok) throw envelopeError(response, undefined, fallback);
     throw new Error('Expected JSON response');
   }
 
-  if (!response.ok || !payload.success) {
-    throw new Error(
-      envelopeFailureMessage(payload.error) ??
-        envelopeFailureMessage(payload.message) ??
-        `Request failed with HTTP ${response.status}`,
-    );
+  const envelope = payload as JsonEnvelope<T> | null;
+  if (!response.ok || !envelope?.success) {
+    throw envelopeError(response, payload, fallback);
   }
 
-  return payload.data;
+  return envelope.data;
 }
