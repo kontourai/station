@@ -43,11 +43,12 @@ stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
 nightly key; the authenticated GitHub-release path serves stable and beta
-only. Nightly has no public/runtime name split: the ring, the runtime, and the
-provenance channel are all `nightly`, and its version is the caller-supplied
-`X.Y.Z-nightly.<code>` reserved by `nightly-version-code`. `STATION_VERSION`
-accepts an exact `vX.Y.Z-nightly.N` so a rollback can name its target; builds
-order numerically on `N`.
+only. No nightly standalone release is published yet (#2675). Nightly has no
+public/runtime name split: the ring, the runtime, and the provenance channel
+are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
+reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
+`vX.Y.Z-nightly.N` so a rollback can name its target; builds order
+numerically on `N`.
 
 A portable nightly install and the Station Nightly desktop app are the same
 channel runtime: both default to `~/.station/instances/nightly` and ports

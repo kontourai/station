@@ -16,7 +16,6 @@ import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = resolve('scripts/package-portable-release.sh');
-const RING_CONFIG = resolve('config/channel-ports.json');
 const CREATED_AT = '2026-07-22T12:34:56.000Z';
 const roots: string[] = [];
 const REPOSITORY_LOCAL_GIT_ENV_KEYS = [
@@ -74,9 +73,6 @@ function createFixture(
   mkdirSync(join(root, 'scripts'));
   copyFileSync(SCRIPT, join(root, 'scripts/package-portable-release.sh'));
   chmodSync(join(root, 'scripts/package-portable-release.sh'), 0o755);
-  // The packager reads its installable rings from the packaged tree's config.
-  mkdirSync(join(root, 'config'));
-  copyFileSync(RING_CONFIG, join(root, 'config/channel-ports.json'));
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'tracked.txt'), 'portable\n');
   writeFileSync(join(root, 'untracked-secret.txt'), 'do not ship\n');
@@ -95,7 +91,7 @@ function createFixture(
   );
   run(
     'git',
-    ['add', 'package.json', 'scripts', 'config', 'tracked.txt'],
+    ['add', 'package.json', 'scripts', 'tracked.txt'],
     root,
     inheritedEnvironment,
   );
@@ -199,53 +195,6 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       prerelease: true,
       ref: 'v0.2.0-preview.3',
     });
-  });
-
-  it('creates a nightly ring manifest and installable nightly provenance from a caller-supplied version', () => {
-    const root = createFixture();
-    const output = packageFixture(
-      root,
-      'release-nightly',
-      process.env,
-      'v0.7.0-nightly.242704',
-    );
-    const ring = JSON.parse(
-      readFileSync(join(output, 'station-release-ring-nightly.json'), 'utf8'),
-    );
-    expect(ring).toMatchObject({
-      schemaVersion: 1,
-      channel: 'nightly',
-      prerelease: true,
-      ref: 'v0.7.0-nightly.242704',
-      sha: run('git', ['rev-parse', 'HEAD'], root),
-      archive: { name: 'station-portable.tar.gz' },
-    });
-    // Exactly the provenance install.sh and `station build` accept for the
-    // nightly runtime: ref equals the signed release tag v<version>.
-    const embedded = JSON.parse(
-      execFileSync(
-        'tar',
-        [
-          '-xOzf',
-          join(output, 'station-portable.tar.gz'),
-          'station/.station-release.json',
-        ],
-        { encoding: 'utf8' },
-      ),
-    );
-    expect(embedded).toEqual({
-      schemaVersion: 2,
-      sha: run('git', ['rev-parse', 'HEAD'], root),
-      ref: 'v0.7.0-nightly.242704',
-      createdAt: CREATED_AT,
-      channel: 'nightly',
-      releaseChannel: 'nightly',
-      prerelease: true,
-    });
-    // The staging identity stays separate: no staging artifacts here.
-    expect(() =>
-      readFileSync(join(output, 'station-nightly-portable-manifest.json')),
-    ).toThrow();
   });
 
   it('creates deterministic tracked-only bytes with exact provenance and checksum', () => {
@@ -405,27 +354,21 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(() => packageFixture(root, 'release-with-link')).toThrow();
   });
 
-  it.each([
-    'v01.2.3',
-    'v1.02.3',
-    'v1.2.03',
-    'v1.2.3-preview.0',
-    'v1.2.3-nightly.0',
-    'v1.2.3-nightly.01',
-    '1.2.3-nightly.4',
-    'main',
-  ])('rejects non-ring tag %s', (ref) => {
-    const root = createFixture();
-    expect(() =>
-      execFileSync('bash', [
-        join(root, 'scripts/package-portable-release.sh'),
-        '--output-dir',
-        join(root, 'release'),
-        '--ref',
-        ref,
-        '--sha',
-        run('git', ['rev-parse', 'HEAD'], root),
-      ]),
-    ).toThrow();
-  });
+  it.each(['v01.2.3', 'v1.02.3', 'v1.2.03', 'v1.2.3-preview.0', 'main'])(
+    'rejects non-ring tag %s',
+    (ref) => {
+      const root = createFixture();
+      expect(() =>
+        execFileSync('bash', [
+          join(root, 'scripts/package-portable-release.sh'),
+          '--output-dir',
+          join(root, 'release'),
+          '--ref',
+          ref,
+          '--sha',
+          run('git', ['rev-parse', 'HEAD'], root),
+        ]),
+      ).toThrow();
+    },
+  );
 });
