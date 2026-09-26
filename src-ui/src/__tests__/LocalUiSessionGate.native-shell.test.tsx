@@ -47,7 +47,7 @@ describe('LocalUiSessionGate native shell boundary', () => {
     expect(gateMounts).toEqual([]);
   });
 
-  test('the web client resolves its device session at the Station origin first', () => {
+  test('the web client mounts the device-session gate for the given apiBase', () => {
     platform.isTauri = false;
     render(
       <PlatformSessionGate apiBase="http://station.test">

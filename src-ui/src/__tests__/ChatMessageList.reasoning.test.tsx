@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#55: the STREAMING row renders reasoning through the shared
+ * archive#55: the STREAMING row renders reasoning through the shared
  * `ReasoningSection`, wired by `ChatMessageList`'s `renderReasoning`: it honours
  * the reader's show-reasoning setting, and the disclosure stays open while no
  * answer text has arrived and collapses once it has. The settled row's half
