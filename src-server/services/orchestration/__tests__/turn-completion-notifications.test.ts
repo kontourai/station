@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../event-bus.js';
 import {
-  anyPersonalOrchestrationStreamPresenceSubject,
   OrchestrationStreamPresence,
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
@@ -564,18 +563,18 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     disconnect();
   });
 
-  test('falls back to hasAnyConnection when the session has no resolvable owner (single-user-compat)', async () => {
-    resolveSessionPresenceSubject = () =>
-      anyPersonalOrchestrationStreamPresenceSubject();
-    const disconnect = presence.connect('some-other-connected-user');
+  test('schedules nothing for a session with no owner, connected or not: nobody may read it', async () => {
+    resolveSessionPresenceSubject = () => undefined;
     await emit('orchestration:event', { event: baseEvent() });
     expect(await notificationService.list()).toHaveLength(0);
 
-    disconnect();
+    // Someone else's live stream changes nothing either.
+    const disconnect = presence.connect('some-other-connected-user');
     await emit('orchestration:event', {
       event: baseEvent({ turnId: 'turn-2' }),
     });
-    expect(await notificationService.list()).toHaveLength(1);
+    expect(await notificationService.list()).toHaveLength(0);
+    disconnect();
   });
 
   test('does not let alpha presence suppress a bravo completion for the same user', async () => {

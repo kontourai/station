@@ -38,9 +38,14 @@ const CALLERS: Record<string, StationControlCaller> = {
   'beta-admin': bound('human:deployment:beta-admin'),
   'bearer-exposed': bound(OPERATOR, { assurance: 'bearer-exposed' }),
   'delegated-custody': bound(OPERATOR, { assurance: 'delegated-custody' }),
-  'legacy-owner': {
+  // A stand-in for any principal not eligible to elevate: no derivation
+  // produces one today, but the route must still refuse it.
+  'inferred-owner': {
     ...bound(OPERATOR),
-    principal: stationControlCallerPrincipal(OPERATOR, 'legacy-personal-owner'),
+    principal: Object.freeze({
+      ...stationControlCallerPrincipal(OPERATOR, 'session-owner'),
+      elevationEligible: false,
+    }),
   },
   'slug-lookup': bound(OPERATOR, { projectIdSource: 'slug-lookup' }),
   'no-project': {
@@ -153,7 +158,7 @@ describe('browser-agent routes: the authority chain', () => {
     [undefined, 'caller-required'],
     ['bearer-exposed', 'caller-not-bound'],
     ['delegated-custody', 'caller-not-bound'],
-    ['legacy-owner', 'principal-unverified'],
+    ['inferred-owner', 'principal-unverified'],
     ['slug-lookup', 'project-unverified'],
     ['no-project', 'project-unverified'],
     ['contributor', 'not-authorized'],
