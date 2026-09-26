@@ -335,6 +335,11 @@ describe('factory mocks evaluate nothing real unless they can reach the original
       "vi.mock('@kontourai/station-sdk', async (importOriginal) => ({ ...(await importOriginal()), fetchBoard: vi.fn() }));",
     ],
     [
+      // Named differently, so only the parameter itself gives it away.
+      'a factory taking the original under another name',
+      "vi.mock('@kontourai/station-sdk', async (original) => ({ ...(await original()), fetchBoard: vi.fn() }));",
+    ],
+    [
       'a factory plus vi.importActual elsewhere in the file',
       "vi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\nconst real = () => vi.importActual('./anything');",
     ],
