@@ -5,9 +5,10 @@
 //! generation descriptor, expiry, and short authentication string. A verified
 //! candidate proves possession of the advertised key only. Durable approval
 //! requires separate operator inputs and a host-locked profile/trust revision
-//! CAS; no command or active connection route uses this module yet.
+//! CAS; guarded native commands use these primitives, while active connection
+//! traffic remains a separate integration step.
 
-#![allow(dead_code)] // Native host integration is a separate step; no IPC surface is registered here.
+#![allow(dead_code)] // Guarded trust and grant lifecycle IPC is integrated; signaling remains separate.
 
 use crate::native_relay_proof_key::P256PublicJwk;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -798,6 +799,33 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         expected_store_revision: u64,
         operator_full_key_id: &str,
     ) -> CandidateResult<StationTrustMutationReceipt> {
+        self.revoke_with_precommit(
+            provider,
+            binding,
+            profile_revision,
+            expected_store_revision,
+            operator_full_key_id,
+            |_, _| Ok(()),
+        )
+    }
+
+    /// Revoke an Approved Station key after all operator and revision checks,
+    /// but before publishing the Revoked record, run `before_commit` while
+    /// both the saved-profile and trust-store locks are held. Native relay
+    /// uses this point to durably quarantine dependent client grants.
+    pub(crate) fn revoke_with_precommit<P, F>(
+        &mut self,
+        provider: &P,
+        binding: &TrustProfileBinding,
+        profile_revision: u64,
+        expected_store_revision: u64,
+        operator_full_key_id: &str,
+        before_commit: F,
+    ) -> CandidateResult<StationTrustMutationReceipt>
+    where
+        P: LockedTrustProfileProvider,
+        F: FnOnce(&LockedTrustProfileSnapshot, &[TrustProfileBinding]) -> CandidateResult<()>,
+    {
         provider.with_current_profile(binding, profile_revision, |snapshot| {
             if snapshot.binding != *binding || snapshot.revision != profile_revision {
                 return Err(CandidateError::ProfileStale);
@@ -829,6 +857,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 .ok_or(CandidateError::TrustStore)?;
             stored.status = Some(StationTrustStatus::Revoked);
             let receipt = receipt_from(&stored)?;
+            before_commit(&snapshot, &stored.approved_bindings)?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -1937,5 +1966,94 @@ mod tests {
             store.approved_descriptor_for_locked_profile(&snapshot),
             Err(CandidateError::ProfileStale)
         );
+    }
+
+    #[test]
+    fn revoke_precommit_runs_only_after_profile_operator_and_revision_checks() {
+        let backend = MemoryTrustBackend::default();
+        let candidate_binding = binding();
+        let trust_binding = trust_binding(&candidate_binding);
+        let profile = locked_profile(&candidate_binding);
+        let mut store = NativeStationTrustStore::with_backend(backend);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        store.approve(&profile, candidate, &code, &key_id).unwrap();
+
+        let mut staged = false;
+        assert_eq!(
+            store.revoke_with_precommit(
+                &profile,
+                &trust_binding,
+                candidate_binding.profile_revision + 1,
+                1,
+                &key_id,
+                |_, _| {
+                    staged = true;
+                    Ok(())
+                },
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        assert!(!staged, "stale profiles must not stage trust revocation");
+        assert_eq!(
+            store.revoke_with_precommit(
+                &profile,
+                &trust_binding,
+                candidate_binding.profile_revision,
+                2,
+                &key_id,
+                |_, _| {
+                    staged = true;
+                    Ok(())
+                },
+            ),
+            Err(CandidateError::TrustRevisionConflict)
+        );
+        assert!(
+            !staged,
+            "stale trust revisions must not stage trust revocation"
+        );
+        let wrong_key_id = if key_id.starts_with('A') {
+            "B".repeat(43)
+        } else {
+            "A".repeat(43)
+        };
+        assert_eq!(
+            store.revoke_with_precommit(
+                &profile,
+                &trust_binding,
+                candidate_binding.profile_revision,
+                1,
+                &wrong_key_id,
+                |_, _| {
+                    staged = true;
+                    Ok(())
+                },
+            ),
+            Err(CandidateError::OperatorConfirmationMismatch)
+        );
+        assert!(
+            !staged,
+            "invalid operator confirmation must not stage revocation"
+        );
+
+        let receipt = store
+            .revoke_with_precommit(
+                &profile,
+                &trust_binding,
+                candidate_binding.profile_revision,
+                1,
+                &key_id,
+                |snapshot, approved_bindings| {
+                    assert_eq!(snapshot.binding, trust_binding);
+                    assert_eq!(approved_bindings, &[trust_binding.clone()]);
+                    staged = true;
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert!(staged);
+        assert_eq!(receipt.status, StationTrustStatus::Revoked);
     }
 }

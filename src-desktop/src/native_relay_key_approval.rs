@@ -648,15 +648,31 @@ fn revoke(app: &AppHandle, request: RevokeRequest) -> Result<TrustStatusDto, Str
     let (binding, revision) = current_profile_binding(app, &request.profile_name)?;
     let provider = AppNativeTrustProfileProvider::existing_trust(app);
     let mut trust = NativeStationTrustStore::system();
-    let receipt = trust
-        .revoke(
-            &provider,
-            &binding,
-            revision,
-            request.expected_trust_revision,
-            &request.full_key_id,
-        )
-        .map_err(map_candidate_error)?;
+    let mut staged_cleanup = None;
+    let receipt = crate::native_relay_redemption::with_native_relay_route_operation_lock(|| {
+        let receipt = trust
+            .revoke_with_precommit(
+                &provider,
+                &binding,
+                revision,
+                request.expected_trust_revision,
+                &request.full_key_id,
+                |snapshot, approved_bindings| {
+                    staged_cleanup = Some(
+                        crate::native_relay_redemption::stage_locked_profile_routes_cleanup(
+                            snapshot,
+                            approved_bindings,
+                        )?,
+                    );
+                    Ok(())
+                },
+            )
+            .map_err(map_candidate_error)?;
+        Ok(receipt)
+    })?;
+    if let Some(staged_routes) = staged_cleanup.as_ref() {
+        crate::native_relay_redemption::retry_staged_profile_route_cleanup(app, staged_routes);
+    }
     let profile_name = binding.profile_owner_id.clone();
     Ok(status_from_receipt(&profile_name, binding, receipt))
 }
