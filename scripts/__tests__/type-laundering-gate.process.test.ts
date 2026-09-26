@@ -71,11 +71,14 @@ function runGate(checkout: string) {
   const result = spawnSync(process.execPath, [script], {
     cwd: checkout,
     encoding: 'utf8',
+    // Below the case timeout, so a hung gate surfaces as a spawn error.
+    timeout: CASE_TIMEOUT - 5_000,
     windowsHide: true,
     // The gate asks git for the upstream baseline; stop the lookup at the
     // temp base so a repository above $TMPDIR cannot supply one.
     env: { ...process.env, GIT_CEILING_DIRECTORIES: dirname(checkout) },
   });
+  expect(result.error).toBeUndefined();
   return {
     status: result.status,
     output: `${result.stdout ?? ''}${result.stderr ?? ''}`,

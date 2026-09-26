@@ -197,12 +197,18 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
       process.execPath,
       [
         '-e',
-        `const { Worker } = require('node:worker_threads'); new Worker(${JSON.stringify(join(scripts, 'probe.mjs'))});`,
+        // The parent exits with the worker's code, so the probe body's
+        // exitCode = 3 is observable here and a crash after the marker is not.
+        `const { Worker } = require('node:worker_threads'); new Worker(${JSON.stringify(join(scripts, 'probe.mjs'))}).on('exit', (code) => { process.exitCode = code; });`,
         '1.2.3',
       ],
       { encoding: 'utf8', timeout: 30_000, windowsHide: true },
     );
-    expect(result.stderr).toBe('');
+    expect(result.error).toBeUndefined();
+    expect({ status: result.status, stderr: result.stderr }).toEqual({
+      status: 3,
+      stderr: '',
+    });
     expect(result.stdout.trim()).toBe(MARKER);
   });
 });
