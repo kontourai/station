@@ -28,6 +28,13 @@ import { invokedDirectly } from '../lib/module-entry.mjs';
 const HELPER = resolve(import.meta.dirname, '../lib/module-entry.mjs');
 const MARKER = 'ENTRY-BODY-RAN';
 const makeTempDir = trackTempDirs();
+/**
+ * The OS temp dir is itself behind a symlink on macOS (/var -> /private/var),
+ * so each case starts from its real path: the space and `%` cases then differ
+ * from the entry path only by encoding, and the symlink cases only by the
+ * link they create.
+ */
+const realTempDir = () => realpathSync(makeTempDir('station-entry-'));
 
 const PROBE = [
   "import { invokedDirectly } from './lib/module-entry.mjs';",
@@ -84,17 +91,13 @@ function expectRawGuardSkipped(entry: string) {
 
 describe('invokedDirectly from a real node entry point (#2682)', () => {
   test('runs the body from a directory whose name has a space', () => {
-    const scripts = installProbes(
-      join(makeTempDir('station-entry-'), 'space probe'),
-    );
+    const scripts = installProbes(join(realTempDir(), 'space probe'));
     expectBodyRan(join(scripts, 'probe.mjs'));
     expectRawGuardSkipped(join(scripts, 'raw-probe.mjs'));
   });
 
   test('runs the body from a directory whose name has a percent sign', () => {
-    const scripts = installProbes(
-      join(makeTempDir('station-entry-'), '100%probe'),
-    );
+    const scripts = installProbes(join(realTempDir(), '100%probe'));
     expectBodyRan(join(scripts, 'probe.mjs'));
     expectRawGuardSkipped(join(scripts, 'raw-probe.mjs'));
   });
@@ -102,7 +105,7 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
   test.skipIf(process.platform === 'win32')(
     'runs the body when the checkout is reached through a symlinked directory',
     () => {
-      const base = makeTempDir('station-entry-');
+      const base = realTempDir();
       const real = join(base, 'real-checkout');
       installProbes(real);
       const link = join(base, 'linked-checkout');
@@ -115,7 +118,7 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
   test.skipIf(process.platform === 'win32')(
     'runs the body when the script itself is a symlink',
     () => {
-      const base = makeTempDir('station-entry-');
+      const base = realTempDir();
       const scripts = installProbes(join(base, 'checkout'));
       const link = join(base, 'probe-link.mjs');
       symlinkSync(join(scripts, 'probe.mjs'), link);
