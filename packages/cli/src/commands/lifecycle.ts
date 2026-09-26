@@ -2944,15 +2944,16 @@ export function validatePackagedReleaseManifest(
   };
 }
 
+/** Bound on every checkout HEAD read (stamp writer and checker). */
+const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
     const git = resolveGitInfo(CWD);
-    const sha = execSync('git rev-parse HEAD', {
-      cwd: git.gitRoot,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    }).trim();
+    // station#2689: the same scrubbed, bounded read `checkSourceBuildStamp`
+    // uses, so an inherited GIT_DIR cannot make the stamp this writes
+    // disagree with the HEAD it is later checked against.
+    const sha = readGitHeadSha(git.gitRoot, SOURCE_HEAD_READ_TIMEOUT_MS);
     const manifest = validateBuildManifest({
       sha,
       // Detached release checkouts report `HEAD`; the promotion runner can
@@ -3037,8 +3038,6 @@ export type SourceBuildStampCheck =
       stampSha: string;
       headSha: string;
     };
-
-const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
 
 export function checkSourceBuildStamp(
   instanceId: string,

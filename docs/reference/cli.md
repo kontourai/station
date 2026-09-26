@@ -1663,6 +1663,10 @@ the checkout's development instance: it is named with the checkout's
 development instance id and runs in that instance's home and on its ports.
 This covers `station service install`, `station setup local`, the launcher's
 `--service` flag, and its "Install and start a background service" choice.
+If that home already holds a service installed from this checkout (for
+example a `default` service from an earlier `setup local`), flagless commands
+address that service instead and say so; if it holds several, they refuse and
+list them so you can pass `--instance`.
 An explicit `--instance=<name>` other than that id, with no explicit home,
 is refused: `--instance=<dev id>` names the service after its home,
 `--instance=<name> --base=<dev home>` keeps an existing service where it is,

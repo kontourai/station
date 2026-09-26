@@ -4,11 +4,9 @@ import type {
   PairSavedStationResult,
 } from './environment.js';
 import {
-  CWD,
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
   resolveLifecycleHomeTarget,
-  resolveServiceInstanceId,
 } from './helpers.js';
 import {
   isLocalSelfAuthCandidate,
@@ -157,15 +155,14 @@ export async function runSetupCommand(
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       throw new Error('--port must be an integer from 1 to 65535.');
     }
-    // The home and its SOURCE come from the same resolution the service
-    // install performs on these args. `--base` is forwarded only when the
-    // user gave one (station#2689): synthesizing it turned an implicit
-    // development home into an explicit one, so the install named the
-    // service `default` inside `instances/dev/<dev id>`.
-    const homeTarget = resolveLifecycleHomeTarget({
+    // The home comes from the same resolution the service install performs
+    // on these args. `--base` is forwarded only when the user gave one
+    // (station#2689): synthesizing it made an implicit development home look
+    // explicit, so the install named the service `default` inside
+    // `instances/dev/<dev id>`.
+    const baseDir = resolveLifecycleHomeTarget({
       baseDir: valueFlag(flags, 'base'),
-    });
-    const baseDir = homeTarget.projectHome;
+    }).projectHome;
     const uiPort = valueFlag(flags, 'ui-port', String(DEFAULT_UI_PORT))!;
     const serviceArgs = [
       ...[...flags.entries()]
@@ -188,14 +185,10 @@ export async function runSetupCommand(
         configurationState: 'configured',
         verifiedBinding: true,
         localService: {
-          instanceId: resolveServiceInstanceId({
-            cwd: CWD,
-            homeSource: homeTarget.source,
-            instanceName: valueFlag(flags, 'instance'),
-            projectHome: baseDir,
-            serverPort: Number(port),
-            uiPort: Number(uiPort),
-          }),
+          // The service the install actually registered (station#2689): a
+          // re-run from a checkout keeps an existing `default` service, so
+          // the id is not re-derived here.
+          instanceId: installation.instanceId,
           baseDir,
           serverPort: Number(port),
           uiPort: Number(uiPort),

@@ -301,13 +301,26 @@ async function loadLifecycleModule(
   vi.doUnmock('node:fs');
 
   const gitRoot = options.gitRoot ?? TEST_CWD;
-  vi.doMock('@kontourai/station-shared/git', () => ({
-    resolveGitInfo: () => ({
-      branch: 'main',
-      gitRoot,
-      hash: '0123456',
-    }),
-  }));
+  vi.doMock('@kontourai/station-shared/git', async () => {
+    // The stamp writer reads HEAD through readGitHeadSha (station#2689). Route
+    // it onto this suite's `git rev-parse HEAD` execSync model, so each
+    // test's childProcessMock keeps owning the sha a build records.
+    const childProcess = await import('node:child_process');
+    return {
+      readGitHeadSha: (cwd: string) =>
+        String(
+          childProcess.execSync('git rev-parse HEAD', {
+            cwd,
+            encoding: 'utf-8',
+          }),
+        ).trim(),
+      resolveGitInfo: () => ({
+        branch: 'main',
+        gitRoot,
+        hash: '0123456',
+      }),
+    };
+  });
 
   const createConnection = options.netConnectMock ?? makeReadyTcpConnectMock();
   vi.doMock('node:net', async () => {

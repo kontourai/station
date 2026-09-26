@@ -23,7 +23,24 @@ import type { ServiceFs } from '../commands/service.js';
 
 const makeTempDir = trackTempDirs();
 
+/**
+ * A stateful stand-in for the systemd user manager: which units run, and a
+ * boot generation per install so a reinstall's readiness sees a new boot.
+ */
+const runningUnits = new Map<string, number>();
+let bootGeneration = 0;
+const unitInstance = (target: { unitName?: string }) =>
+  String(target.unitName).replace(/^station-(.*)\.service$/, '$1');
 const installSystemd = vi.fn();
+const startSystemd = vi.fn((target: { unitName?: string }) => {
+  runningUnits.set(unitInstance(target), ++bootGeneration);
+});
+const stopSystemd = vi.fn((target: { unitName?: string }) => {
+  runningUnits.delete(unitInstance(target));
+});
+const uninstallSystemd = vi.fn((target: { unitName?: string }) => {
+  runningUnits.delete(unitInstance(target));
+});
 
 const BOOTSTRAP_KEYS = [
   'STATION_CHANNEL',
@@ -78,25 +95,43 @@ async function loadCli(options: { menuChoice?: string } = {}) {
   vi.resetModules();
   vi.doMock('../commands/service-systemd.js', () => ({
     installSystemd,
-    startSystemd: vi.fn(),
-    stopSystemd: vi.fn(),
+    startSystemd,
+    stopSystemd,
     systemdRegistration: (instanceId: string) => ({
       platform: 'linux',
       unitName: `station-${instanceId}.service`,
       unitPath: `/nonexistent/station-${instanceId}.service`,
     }),
-    systemdStatus: vi.fn(),
-    uninstallSystemd: vi.fn(),
+    systemdStatus: (target: { unitName?: string }) => ({
+      active: runningUnits.has(unitInstance(target)),
+      enabled: true,
+      present: true,
+    }),
+    uninstallSystemd,
   }));
   vi.doMock('../commands/lifecycle.js', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../commands/lifecycle.js')>()),
-    collectInstanceStatus: vi.fn(async (instanceId: string) => ({
-      found: true,
-      healthy: true,
-      instanceId,
-      server: { pid: 10, reachable: true },
-      ui: { pid: 11, reachable: true },
-    })),
+    collectInstanceStatus: vi.fn(async (instanceId: string) =>
+      runningUnits.has(instanceId)
+        ? {
+            bootId: `boot-${runningUnits.get(instanceId)}`,
+            found: true,
+            healthy: true,
+            instanceId,
+            server: { pid: 10, reachable: true },
+            ui: { pid: 11, reachable: true },
+          }
+        : {
+            found: false,
+            healthy: false,
+            instanceId,
+            server: { pid: null, reachable: false },
+            ui: { pid: null, reachable: false },
+          },
+    ),
+    // `service uninstall` also stops the lifecycle instance; never touch the
+    // real checkout's instance records from here.
+    stop: vi.fn(),
   }));
   // The real service command, with its host-facing seams made hermetic.
   vi.doMock('../commands/service.js', async (importOriginal) => {
@@ -154,19 +189,26 @@ function installedService() {
 }
 
 beforeEach(() => {
+  runningUnits.clear();
   installSystemd.mockReset();
-  installSystemd.mockImplementation((instanceId, input) => ({
-    host: input.lifecycle.host,
-    installedAt: '',
-    instanceId,
-    nodePath: input.nodePath,
-    platform: 'linux',
-    repoPath: input.repoPath,
-    serverPort: input.lifecycle.serverPort,
-    uiPort: input.lifecycle.uiPort,
-    unitName: `station-${instanceId}.service`,
-    unitPath: `/nonexistent/station-${instanceId}.service`,
-  }));
+  startSystemd.mockClear();
+  stopSystemd.mockClear();
+  uninstallSystemd.mockClear();
+  installSystemd.mockImplementation((instanceId, input) => {
+    runningUnits.set(instanceId, ++bootGeneration);
+    return {
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      nodePath: input.nodePath,
+      platform: 'linux',
+      repoPath: input.repoPath,
+      serverPort: input.lifecycle.serverPort,
+      uiPort: input.lifecycle.uiPort,
+      unitName: `station-${instanceId}.service`,
+      unitPath: `/nonexistent/station-${instanceId}.service`,
+    };
+  });
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
@@ -184,6 +226,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
   vi.restoreAllMocks();
+  process.exitCode = undefined;
 });
 
 describe('source-checkout service entry points name the service after its dev home (station#2689)', () => {
@@ -290,5 +333,129 @@ describe('source-checkout service entry points name the service after its dev ho
       instanceId: 'default',
       baseDir: dev.devHome,
     });
+  });
+});
+
+// station#2689 delta review: before the dev-id rule, `setup local` (which
+// synthesized `--base=<dev home>`), a flagless `service install` and
+// launcher --service all installed `default` INTO the dev home. Flagless
+// commands must keep addressing that service, not orphan it.
+describe('an existing checkout service in the dev home keeps being the one addressed (station#2689)', () => {
+  /**
+   * Installed exactly as the old `setup local` did: `default`, `--base=<dev
+   * home>`, the bootstrap's ports. `viaSetup` also saves the `kontour`
+   * profile the old flow saved, through setup local's own explicit flags.
+   */
+  async function withLegacyDefaultService(viaSetup = false) {
+    const dev = bootstrapSourceCheckout();
+    const { runCli, readProfileStore } = await loadCli();
+    await runCli(
+      viaSetup
+        ? ['setup', 'local', '--instance=default', `--base=${dev.devHome}`]
+        : ['service', 'install', '--instance=default', `--base=${dev.devHome}`],
+    );
+    expect(installSystemd).toHaveBeenLastCalledWith(
+      'default',
+      expect.anything(),
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logs = console.log as unknown as ReturnType<typeof vi.fn>;
+    logs.mockClear();
+    const adopted = `Using Station user service default, already installed for this checkout in ${dev.devHome} (pass --instance to address another).`;
+    return { dev, runCli, readProfileStore, errors, logs, adopted };
+  }
+  const manifests = (home: string) =>
+    nodeFs
+      .readdirSync(join(home, 'service'))
+      .filter((name) => name.endsWith('.json'))
+      .sort();
+
+  test('flagless status reports the existing default service and says so', async () => {
+    const { dev, runCli, errors, logs, adopted } =
+      await withLegacyDefaultService();
+
+    await runCli(['service', 'status', '--json']);
+
+    const json = logs.mock.calls
+      .map(([line]) => String(line))
+      .find((line) => line.trimStart().startsWith('{'));
+    expect(JSON.parse(json!)).toMatchObject({
+      instance: { instanceId: 'default' },
+      manifest: { instanceId: 'default', baseDir: dev.devHome },
+    });
+    expect(errors.mock.calls.map(([line]) => line)).toContain(adopted);
+  });
+
+  test('flagless stop stops the existing default unit', async () => {
+    const { runCli, errors } = await withLegacyDefaultService();
+
+    await runCli(['service', 'stop']);
+
+    expect(stopSystemd).toHaveBeenCalledWith(
+      expect.objectContaining({ unitName: 'station-default.service' }),
+      expect.anything(),
+    );
+    expect(errors.mock.calls.join('\n')).not.toMatch(
+      /no service manifest found/,
+    );
+  });
+
+  test('flagless uninstall removes the existing default service instead of reconciling an absent dev id', async () => {
+    const { dev, runCli, logs } = await withLegacyDefaultService();
+
+    await runCli(['service', 'uninstall']);
+
+    expect(uninstallSystemd).toHaveBeenCalledWith(
+      expect.objectContaining({ unitName: 'station-default.service' }),
+      expect.anything(),
+    );
+    expect(manifests(dev.devHome)).toEqual([]);
+    const printed = logs.mock.calls.map(([line]) => String(line));
+    expect(printed).toContain('✓ Uninstalled Station user service default');
+    expect(printed.join('\n')).not.toMatch(/Reconciled absent/);
+  });
+
+  test('flagless reinstall replaces the default service rather than adding a second unit', async () => {
+    const { dev, runCli } = await withLegacyDefaultService();
+
+    await runCli(['service', 'install']);
+
+    expect(installSystemd).toHaveBeenCalledTimes(2);
+    expect(installSystemd).toHaveBeenLastCalledWith(
+      'default',
+      expect.anything(),
+    );
+    expect(manifests(dev.devHome)).toEqual(['default.json']);
+  });
+
+  test('re-running setup local keeps the default service and its saved profile', async () => {
+    const { dev, runCli, readProfileStore, errors, adopted } =
+      await withLegacyDefaultService(true);
+
+    await runCli(['setup', 'local']);
+    expect(errors.mock.calls.map(([line]) => line)).toContain(adopted);
+
+    expect(installSystemd).toHaveBeenLastCalledWith(
+      'default',
+      expect.anything(),
+    );
+    expect(manifests(dev.devHome)).toEqual(['default.json']);
+    expect(
+      readProfileStore().profiles.find((entry) => entry.name === 'kontour')
+        ?.localService,
+    ).toMatchObject({ instanceId: 'default', baseDir: dev.devHome });
+  });
+
+  test('several services for this checkout in one home refuse and list them', async () => {
+    const { dev, runCli } = await withLegacyDefaultService();
+    await runCli(['service', 'install', `--instance=${dev.devInstanceId}`]);
+    expect(manifests(dev.devHome)).toEqual([
+      'default.json',
+      `${dev.devInstanceId}.json`,
+    ]);
+
+    await expect(runCli(['service', 'status'])).rejects.toThrow(
+      `Several Station user services in ${dev.devHome} belong to this checkout: default, ${dev.devInstanceId}.\nPass --instance=<name> to choose one.`,
+    );
   });
 });

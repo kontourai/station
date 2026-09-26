@@ -154,6 +154,8 @@ export interface ServiceInstallResult extends ServiceManifest {
  * profile/default write fails. It is intentionally runtime-only.
  */
 export interface ServiceInstallReceipt {
+  /** The service this install registered; a caller records THIS id. */
+  instanceId: string;
   rollback: () => Promise<void>;
 }
 
@@ -607,6 +609,90 @@ export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
 }
 
 /**
+ * station#2689: the service a command addresses. A flagless command from a
+ * source checkout resolves to the checkout's development instance id
+ * (`resolveServiceInstanceId`) — but before that rule, the same commands (and
+ * `setup local`) installed `default` into this very home, so a manifest may
+ * already name a different service for this checkout. Manifests come first:
+ * exactly one in the home whose `repoPath` is this checkout is the service,
+ * whatever its name; several refuse; none falls back to the derived id.
+ * Only the implicit development case consults them — an explicit
+ * `--instance` or an explicit home is taken as stated, exactly as before.
+ */
+export function resolveServiceTarget(
+  lifecycle: ServiceLifecycleArgs,
+  fs: ServiceFs,
+): string {
+  const derived = resolveServiceInstanceId({
+    cwd: CWD,
+    homeSource: lifecycle.homeSource,
+    instanceName: lifecycle.instanceName,
+    projectHome: lifecycle.baseDir,
+    serverPort: lifecycle.serverPort,
+    uiPort: lifecycle.uiPort,
+  });
+  if (
+    lifecycle.instanceName?.trim() ||
+    lifecycle.homeSource !== 'default' ||
+    derived !== sourceCheckoutDevInstanceId()
+  ) {
+    return derived;
+  }
+  const owned = checkoutServiceManifests(fs, lifecycle.baseDir);
+  if (owned.length === 0) return derived;
+  if (owned.length > 1) {
+    throw new Error(
+      [
+        `Several Station user services in ${lifecycle.baseDir} belong to this checkout: ${owned.join(', ')}.`,
+        'Pass --instance=<name> to choose one.',
+      ].join('\n'),
+    );
+  }
+  const [existing] = owned as [string];
+  if (existing !== derived) {
+    // stderr: `status --json` owns stdout.
+    console.error(
+      `Using Station user service ${existing}, already installed for this checkout in ${lifecycle.baseDir} (pass --instance to address another).`,
+    );
+  }
+  return existing;
+}
+
+/**
+ * Instance ids of the manifests in `<home>/service/` recorded for THIS
+ * checkout (`repoPath` is what install writes: the checkout's realpath). A
+ * file that is not a readable JSON object naming its own id is skipped here;
+ * the chosen manifest is still read with full validation by the caller.
+ */
+function checkoutServiceManifests(fs: ServiceFs, baseDir: string): string[] {
+  const serviceDir = join(baseDir, 'service');
+  if (!fs.existsSync(serviceDir)) return [];
+  const repoPath = fs.realpathSync(CWD);
+  const owned: string[] = [];
+  for (const entry of fs.readdirSync(serviceDir)) {
+    const name = String(entry);
+    if (!name.endsWith('.json')) continue;
+    let manifest: Partial<ServiceManifest> | null = null;
+    try {
+      manifest = JSON.parse(
+        fs.readFileSync(join(serviceDir, name), 'utf8'),
+      ) as Partial<ServiceManifest>;
+    } catch {
+      continue;
+    }
+    if (
+      manifest &&
+      typeof manifest === 'object' &&
+      manifest.instanceId === name.slice(0, -'.json'.length) &&
+      manifest.repoPath === repoPath
+    ) {
+      owned.push(manifest.instanceId);
+    }
+  }
+  return owned.sort();
+}
+
+/**
  * station#2689: from a source checkout the launcher selects the development
  * channel and exports this checkout's derived instance id (see
  * `sourceCheckoutDevInstanceId`), so with no --home/--base/STATION_HOME the
@@ -764,14 +850,7 @@ export function inspectServiceInstallation(
   }
   const fs = dependencies.fs ?? nodeFs;
   const run = dependencies.run ?? defaultRun;
-  const instanceId = resolveServiceInstanceId({
-    cwd: CWD,
-    homeSource: lifecycle.homeSource,
-    instanceName: lifecycle.instanceName,
-    projectHome: lifecycle.baseDir,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  const instanceId = resolveServiceTarget(lifecycle, fs);
   assertServiceIdentityAvailable(instanceId);
   const registration =
     platform === 'darwin'
@@ -959,14 +1038,7 @@ export async function runServiceCommand(
   const run = dependencies.run ?? defaultRun;
   const hardenPaths =
     dependencies.hardenWindowsPaths ?? hardenWindowsPathsTrusted;
-  const instanceId = resolveServiceInstanceId({
-    cwd: CWD,
-    homeSource: lifecycle.homeSource,
-    instanceName: lifecycle.instanceName,
-    projectHome: lifecycle.baseDir,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  const instanceId = resolveServiceTarget(lifecycle, fs);
   assertServiceIdentityAvailable(instanceId);
   const manifestPath = join(lifecycle.baseDir, 'service', `${instanceId}.json`);
   const registration =
@@ -1267,6 +1339,7 @@ export async function runServiceCommand(
     }
     let rollbackPromise: Promise<void> | undefined;
     const receipt: ServiceInstallReceipt = {
+      instanceId,
       rollback: () => {
         if (rolledBack) return Promise.resolve();
         if (rollbackPromise) return rollbackPromise;

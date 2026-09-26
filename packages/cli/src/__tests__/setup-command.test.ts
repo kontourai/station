@@ -34,6 +34,7 @@ afterEach(() => {
 function dependencies() {
   return {
     installLocalService: vi.fn(async (_serviceArgs: string[]) => ({
+      instanceId: 'default',
       rollback: vi.fn(),
     })),
     pair: vi.fn(async (input) => {
@@ -86,7 +87,7 @@ describe('station setup', () => {
       writeFileSync(join(home, 'service-state', 'installed'), 'yes', {
         mode: 0o600,
       });
-      return { rollback: vi.fn() };
+      return { instanceId: 'default', rollback: vi.fn() };
     });
 
     await runSetupCommand(['local'], deps);
@@ -165,7 +166,7 @@ describe('station setup', () => {
         `${JSON.stringify({ schemaVersion: 1, pid: process.pid, createdAt: Date.now() })}\n`,
         { mode: 0o600 },
       );
-      return { rollback };
+      return { instanceId: 'default', rollback };
     });
 
     await expect(runSetupCommand(['local'], deps)).rejects.toThrow(
@@ -330,7 +331,7 @@ describe('station setup', () => {
           encoding: 'utf8',
           mode: 0o600,
         });
-        return { rollback: vi.fn() };
+        return { instanceId: 'default', rollback: vi.fn() };
       });
 
       await runSetupCommand(['local', `--port=${port}`], deps);
@@ -360,6 +361,7 @@ describe('station setup', () => {
       ),
     };
     deps.installLocalService.mockImplementationOnce(async () => ({
+      instanceId: 'default',
       rollback,
     }));
 
@@ -386,6 +388,7 @@ describe('station setup', () => {
       }),
     };
     deps.installLocalService.mockImplementationOnce(async () => ({
+      instanceId: 'default',
       rollback,
     }));
 

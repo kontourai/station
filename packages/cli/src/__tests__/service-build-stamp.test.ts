@@ -112,9 +112,10 @@ function readStampSha(root: string, instance = 'default'): string {
 
 interface LoadOptions {
   /**
-   * What the build's own provenance read (`git rev-parse HEAD` through
-   * execSync, after both bundles) reports — standing in for HEAD moving while
-   * the build ran, so the stamp it writes does not match HEAD afterwards.
+   * What the build's own provenance read — the first HEAD read after both
+   * bundles are built — reports, standing in for HEAD moving while the build
+   * ran, so the stamp it writes does not match HEAD afterwards. Every other
+   * HEAD read is real git.
    */
   stampWriterSha?: string;
 }
@@ -122,6 +123,7 @@ interface LoadOptions {
 async function loadAt(cwd: string, options: LoadOptions = {}) {
   vi.resetModules();
   const buildSteps: string[] = [];
+  let bundlesBuilt = false;
   vi.doMock('node:child_process', async (importOriginal) => {
     const actual = await importOriginal<typeof import('node:child_process')>();
     const execSync = ((
@@ -140,15 +142,29 @@ async function loadAt(cwd: string, options: LoadOptions = {}) {
           const dir = join(cwd, String(env.STATION_BUILD_UI_DIR));
           mkdirSync(dir, { recursive: true });
           writeFileSync(join(dir, 'index.html'), '<!doctype html>\n');
+          bundlesBuilt = true;
         }
         return '';
       }
-      if (command === 'git rev-parse HEAD' && options.stampWriterSha) {
-        return `${options.stampWriterSha}\n`;
-      }
       return actual.execSync(command, execOptions as never);
     }) as typeof actual.execSync;
-    return { ...actual, execSync };
+    const execFileSync = ((
+      file: string,
+      args: readonly string[],
+      execOptions?: object,
+    ) => {
+      if (
+        options.stampWriterSha &&
+        bundlesBuilt &&
+        file === 'git' &&
+        args.join(' ') === 'rev-parse --verify HEAD'
+      ) {
+        bundlesBuilt = false;
+        return `${options.stampWriterSha}\n`;
+      }
+      return actual.execFileSync(file, args, execOptions as never);
+    }) as typeof actual.execFileSync;
+    return { ...actual, execFileSync, execSync };
   });
   vi.doMock('../commands/helpers.js', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../commands/helpers.js')>()),
