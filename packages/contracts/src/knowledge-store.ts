@@ -16,7 +16,7 @@
 
 /** Scope tier of a store root. Org tier is deferred (ADR-0009) — not in the union on purpose. */
 export type KnowledgeRootScope =
-  | { kind: 'personal' } // exactly one per user
+  | { kind: 'personal' } // a scope tag; the registry can contain multiple personal roots
   | { kind: 'project'; projectSlug: string }; // one or more per project
 
 export interface KnowledgeStoreRoot {
@@ -31,7 +31,6 @@ export interface KnowledgeStoreRoot {
 
 // ── Record envelope (store-contract.md §1, §4, Addendum A.2/A.3, B.1) ──────
 
-/** The four original record types plus Addendum A's `snapshot` and Addendum C's `person`. */
 export type KitRecordType =
   | 'raw'
   | 'compiled'

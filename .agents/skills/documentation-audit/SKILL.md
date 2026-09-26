@@ -54,6 +54,19 @@ keyboard navigation for interactive learning pages, including deep links,
 failure states, and a narrow viewport. The reader must be able to move from a
 plain-language overview to exact code and evidence without guessing filenames.
 
+## Findings and follow-through
+
+Use the maintenance guide's [improvement workflow](../../../docs/guides/documentation.md#turn-findings-into-maintained-improvements).
+Reconcile findings with current code and open or folded GitHub issues. Within
+the task's authorization, file missing work with evidence, a suggested approach,
+behavioral acceptance cases, and the documentation owners to update. Otherwise
+retain a reviewable issue draft. Keep only evidence and links in audit records.
+
+When implementing a linked fix, replace the old limitation with the verified
+behavior in the same PR. Review diagrams, examples, learning/MCP inputs, and
+ledger claims as well as the main guide. An issue's closed state is not proof
+that either the behavior or its explanation has changed.
+
 ## Comments
 
 Remove narration and stale claims only after reading the surrounding caller

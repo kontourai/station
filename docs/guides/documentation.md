@@ -68,6 +68,28 @@ these kinds of flow and label optional or planned paths. Put a source/evidence
 route beside the diagram. Verify the rendering, labels, and narrow-screen
 reading order; valid Mermaid syntax alone is not a readability check.
 
+## Turn findings into maintained improvements
+
+Describe current behavior in the canonical guide, including limits that affect
+the reader. Track proposed fixes in GitHub. Search both open and closed issues
+before filing: a closed issue may have been folded into an active epic without
+being implemented. Check its disposition and current code before treating it
+as resolved or creating a duplicate.
+
+An actionable finding names the observed behavior, a source revision, the
+affected caller, evidence and its limits, a suggested approach, and acceptance
+cases. Distinguish a demonstrated defect from an architectural recommendation.
+Include the exact documentation owners the implementation must revisit: guides,
+READMEs, diagrams, examples, and shared learning/MCP inputs where affected.
+Issue creation follows the task's authorization and the repository's disclosure
+policy; the audit skill does not itself authorize external writes.
+
+The audit keeps evidence and issue links, not a competing status board. When
+the fix ships, update current explanations and remove or replace the resolved
+limitation in the same PR. Regenerate derived content and re-review affected
+ledger claims against the changed implementation. Preserve dated audit findings
+as history, linked to the fix; closing an issue alone does not verify new prose.
+
 ## Edit for clear language
 
 After checking technical accuracy, make a separate editorial pass through the

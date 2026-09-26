@@ -139,6 +139,8 @@
         "examples/meeting-notes/README.md"
       ],
       "modules": [
+        "KnowledgeStoreProvider",
+        "SqliteVecIndexProvider",
         "KnowledgeFileTransactions",
         "KnowledgeSourceObservation",
         "LearningReviewProjection"

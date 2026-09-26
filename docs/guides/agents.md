@@ -37,7 +37,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `name` | Display name |
 | `prompt` | System instructions (supports `{{key}}` template variables) |
 | `model` | Station-engine model preference; see resolution order below |
-| `execution.agentConnectionId` | Saved engine/model connection binding; resolved by the server |
+| `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
+| `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
 | `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
@@ -249,11 +250,14 @@ approval paths; these hooks do not establish external policy enforcement.
 | `packages/sdk/` | SDK: Query hooks, API utilities, Types |
 | `examples/*/` | Plugins: Components, ViewModels, styles |
 
-**Key rule**: Plugins import from `@kontourai/station-sdk` only.
+Use the public SDK and contracts for Station APIs. Plugins can also use their
+declared package dependencies; they must not import private app modules.
 
 ### Cross-Tab Navigation
 
-Plugins must use SDK hooks for navigating between layout tabs — never use raw `sessionStorage`, `window.history.pushState`, or `window.dispatchEvent` directly.
+Legacy Layout tabs use the SDK navigation hooks. This example runs inside the
+`my-layout` navigation provider; tab state belongs to that layout's scope.
+Workspace Pane placement has its own [host contract](workspace-pane-authoring.md).
 
 ```typescript
 import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
@@ -261,18 +265,18 @@ import { useNavigation, useLayoutNavigation } from '@kontourai/station-sdk';
 const nav = useNavigation();
 const { setTabState, getTabState } = useLayoutNavigation();
 
-// Navigate to another tab with state:
-setTabState('crm', 'selectedAccount=<id>');       // write state for target tab
-nav.setLayout('my-project', 'my-layout');          // navigate to layout
+// Select another tab in the current layout:
+setTabState('crm', new URLSearchParams({ selectedAccount: accountId }).toString());
+nav.setLayoutTab('my-layout', 'crm');
 
 // Read state on the receiving tab:
 const state = getTabState('crm');                  // read in useEffect([activeTab])
 const params = new URLSearchParams(state);
-const accountId = params.get('selectedAccount');
+const selectedAccountId = params.get('selectedAccount');
 ```
 
 **Rules:**
-- `setTabState(tabId, state)` writes to sessionStorage + syncs URL hash
+- `setTabState(tabId, state)` writes to sessionStorage for this layout; it updates the URL hash immediately only for the active tab. Tab selection restores that tab's stored hash.
 - `setLayout(projectSlug, layoutSlug)` handles client-side URL navigation
 - Receiving tab reads state via `getTabState(tabId)` in a `useEffect` triggered by `activeTab`
 - State format is URL search params string (e.g., `'event=abc&date=2026-01-01'`)
@@ -283,7 +287,9 @@ Start Station through `./station`, never through `npm run dev:server` /
 `dev:ui` directly — the CLI orchestrates the server and UI builds in the right
 order. Use a named instance on ports that cannot collide with the defaults
 (3141/3000 are reserved for the user's own testing) and `--temp-home` so the
-run does not touch `~/.station`:
+runtime data is isolated from the normal Station home. Shared client/instance
+metadata can still use `STATION_ROOT`; select a separate root consistently for
+start, stop, and client commands when those records also need isolation:
 
 ```bash
 ./station start --instance=layout-check --temp-home --clean --force \
@@ -325,7 +331,10 @@ log.api('message');  // Enable: localStorage.debug = 'app:*'
 
 ### Theming & Colors
 
-Never use hardcoded hex colors. Use CSS variables from `src-ui/src/index.css` (`--text-primary`, `--bg-secondary`, `--border-primary`, `--accent-primary`, `--accent-acp`, etc). For status colors use the Tailwind palette: green `#22c55e`, amber `#f59e0b`, red `#ef4444`. Buttons use `className="button button--secondary"`. See [frontend.md](../patterns/frontend.md) for details.
+Use the theme variables in `src-ui/src/index.css`, such as `--text-primary`,
+`--bg-secondary`, `--border-primary`, and `--accent-primary`. Status styles also
+use semantic theme tokens rather than hardcoded hex colors. Follow the owning
+component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling
 
@@ -372,19 +381,28 @@ resolve that binding. User-facing copy names the engine.
 
 ### Plugin Workflow
 
-```bash
-station plugin remove my-layout
-station plugin install ./examples/my-layout
-npm run dev:ui
-```
+Use the [plugin development workflow](plugins.md#development-workflow) for
+scaffolding, building, and installation. Select an isolated test Station and
+review its grants before activating the plugin. The source launcher owns the
+coordinated app start described above.
 
 ### Attention inbox
 
 `/notifications` is the Inbox: it puts active operator attention ahead of
-ordinary notification history. An approval uses its persisted notification's
-existing Allow/Deny action, `needs_input` sends a normal orchestration turn to
-the owning session, and `review_pending` only opens that session. The header
+ordinary notification history. An approval or `review_pending` item with an
+exact request reference opens the request's decision controls. An approval
+without that reference uses its persisted notification's Allow/Deny actions;
+`review_pending` without one opens the session. `needs_input` sends a normal
+orchestration turn to the owning session. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
-session; attention clears only when its authoritative source changes. This is
-not a Flow gate inbox (#612 remains outside this projection).
+session. Gate exceptions also suppress that session's lifecycle duplicate;
+gate route-back and blocked items remain separate and offer re-evaluation.
+The Inbox can accept a gate exception, while Survey/Flow gate-review items
+open the review workbench for decisions and continuation.
+
+The [attention projection](../../src-server/services/projects/attention-projection.ts)
+derives these items from their owning sources. Acknowledgement removes an item
+from the pending count while retaining it in history; it does not resolve the
+underlying approval or review. Hosted reads omit sources whose stores cannot
+enforce tenant ownership. See the [Session API attention contract](../reference/session-api.md#review-work-in-the-attention-inbox).

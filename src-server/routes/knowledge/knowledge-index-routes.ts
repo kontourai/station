@@ -1,50 +1,14 @@
 /**
- * K3 index-management routes — explicit, user/CLI-triggered rebuild + migration
- * verbs (`docs/design/knowledge-foundation.md`'s K3 section). These are the DRY
- * operation surface both the CLI (`station knowledge reindex`/`migrate`, Wave 4)
- * and station-control tool wiring (Wave 4) call through — never re-implemented
- * inline elsewhere. Neither route is ever invoked automatically on startup; both
- * require an explicit HTTP call.
+ * Explicit rebuild, migration, and search over Knowledge store roots.
+ * Resolve the embedder per request so configuration changes are observed.
+ * Rebuilds of session-backed roots require the local operator and run through
+ * the Station indexer; searches recheck the caller before releasing records.
  *
- * Dependency resolution mirrors `knowledge.ts`'s existing convention (services
- * passed in at route-creation time), with one deliberate deviation: the embedder
- * is injected as a `getEmbedder()` getter, not a resolved value, because the
- * active embedding *connection* can change after the server starts (a user may
- * add/enable/disable a provider connection at runtime) — capturing a snapshot at
- * route-construction time would silently go stale, echoing the
- * capture-by-value trap `configureRoutes` has hit before (archive#208/#210/#212).
- * `store` and `indexProvider`, by contrast, are long-lived instances constructed
- * once at startup and never reassigned afterward, so passing them directly (the
- * same way `providerService`/`projectService`/etc. are passed elsewhere in this
- * file family) is safe.
- *
- * Input validation (SEC-1): a caller-supplied `projectSlug` reaches
- * `migratePreIndexKnowledge`'s filesystem joins (both read and write side — see
- * `../knowledge-index/path-safety.ts`'s module doc), so it's validated here
- * BEFORE the module is called, returning 400 rather than letting an invalid
- * value reach a throw deeper in the stack. `rootId` never reaches a filesystem
- * path (the store resolves roots by registry id, not by joining `rootId` into a
- * path), but its shape is still validated defensively.
- *
- * Concurrency (SEC-2): both routes translate a `RebuildInProgressError` (thrown
- * by `SqliteVecIndexProvider.rebuildRoot`'s per-root lock or
- * `migratePreIndexKnowledge`'s global lock) into HTTP 409, distinct from the
- * generic 500 catch-all — a racing second caller gets a clear, actionable
- * "already in progress" response instead of an opaque failure.
- *
- * `s203-knowledge-meeting-notes` Wave 1 Task 2 adds a third verb, `POST
- * /index/search`, closing this plan's other flagged primitive gap: no HTTP route
- * exposed `KnowledgeIndexProvider.search` before this (the only pre-existing
- * `/api/knowledge/search` is the pre-index pre-K2 `KnowledgeService`/`lancedb-file`
- * route in `knowledge-cross-project.ts`, a different subsystem entirely). Same
- * honest-no-embedder 400 convention as `/index/rebuild`/`/migrate`. Every hit is
- * re-resolved against its `KnowledgeStoreAdapter` before it crosses the wire — K3's
- * own "never treat an index hit as the record" rule
- * (`packages/contracts/src/knowledge-index.ts`'s module doc) — a hit whose record no
- * longer resolves (deleted/retired since the index was last built) is dropped, not
- * returned bare.
+ * Search re-resolves title/category through the adapter but returns the
+ * index's cached excerpt. Existence/access checks are not content freshness.
+ * Validate path-bearing migration input before filesystem work; report an
+ * in-progress rebuild as 409 and retain per-root partial failures.
  */
-
 import type {
   IEmbeddingProvider,
   KnowledgeIndexProvider,

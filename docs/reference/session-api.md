@@ -170,19 +170,28 @@ turn-cutoff semantics. Both paths retain the source binding in the adoption
 ledger before native child creation and retain unresolved cleanup for recovery
 rather than blindly retrying an ambiguous fork.
 
-Codex continuation requires an available, authenticated local Codex adapter;
-native fork conformance is verified against Codex CLI 0.146.1. Forked Codex
+Codex continuation requires an available, authenticated local Codex adapter.
+The adapter validates the native fork and completed-turn cutoff; its fixture
+tests do not establish compatibility with a particular installed CLI version.
+This audit has not run a live native fork. Forked Codex
 sessions can replay inherited cumulative usage. Station marks continuation
 usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
 `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate read-only history roots. Each root contains the engine's
-`sessions` or `projects` directory, respectively. These overrides affect
-transcript observation only; they do not change the CLI's authentication or
-execution configuration. Without an override, observation uses `CODEX_HOME`
-or `CLAUDE_CONFIG_DIR`, then the engine's default home directory.
+can select separate history roots for observation. Each root contains the engine's
+`sessions` or `projects` directory, respectively. Discovery does not change the
+process environment or ordinary launch configuration. Continuation has an
+additional binding: Codex adoption and resume set the child process's
+`CODEX_HOME` to the verified source home, ahead of a credential-profile home.
+That home therefore also supplies the continued process's account/configuration.
+Claude continuation requires the source home to match the SDK's globally
+configured home; an independently overridden observation root is not enough.
+Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
+the engine's default home directory. See the
+[Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
+[Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
 ### The receipt envelope
 
@@ -459,18 +468,24 @@ completing; the diagnostic deliberately does not answer it for you.
 
 ## Review work in the attention inbox
 
-`/api/attention` carries every item whose meaning is "a human must decide",
-including the two that used to be reachable only from `/review-queue`:
+`/api/attention` projects supported attention sources for the caller, including
+the two that used to be reachable only from `/review-queue`:
 
 - `kind: 'proposed-change'` — one pending proposed change, derived from
   `status: 'pending'` on the proposed-change store. Its `source.proposedChangeId`
   is what the existing `POST /api/proposed-changes/:id/approve|reject` routes
   act on; the projection itself decides nothing.
-- `kind: 'gate-review'` — one paused Survey/Flow gate review session with
-  unresolved items, derived from `summary.unresolved > 0` on the same aggregate
+- `kind: 'gate-review'` — one Survey/Flow gate review session with items awaiting
+  a recorded decision, derived from `pendingDecisions > 0` on the same aggregate
   `GET /api/survey-flow-reviews` serves. It carries no decision affordance:
   continuation runs through the review workbench
   (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`).
+
+`pendingDecisions` is counted by the review service. It is not
+`summary.unresolved`: an escalated or resolved item can still lack a decision
+and keep continuation blocked. The
+[attention projection](../../src-server/services/projects/attention-projection.ts)
+also reports unreadable gate-review sources separately from an empty queue.
 
 Neither is projected for a hosted tenant read. The proposed-change store and
 the review aggregate carry no tenancy predicate, so a tenant-scoped read has no

@@ -88,6 +88,12 @@ implementation question requiring more evidence. Keep architectural refactors
 separate from behavior-neutral documentation/comment edits. Preserve an
 existing interface when it already hides the relevant complexity.
 
+GitHub owns follow-up implementation. The
+[abstraction review](../architecture/abstraction-review.md) links source-backed
+findings to existing owners and audit issues #2727–#2730. Issue acceptance names
+the documentation owners to revisit when the behavior changes. Keep evidence
+and links here; do not copy live issue status into a parallel checklist.
+
 ## Stages and exit conditions
 
 1. **Inventory and navigation.** Complete tracked-file library, overview-to-code
@@ -177,6 +183,43 @@ records a separate, executed classification difference between FCM and APNs.
 The FCM comment now states that difference; its emitted executable code is
 unchanged. Selecting a common suppression policy requires a behavior change,
 not an editorial cleanup.
+
+### Independent review and subsequent subsystem corrections
+
+Fresh-context review corrected two entry-point overclaims: Flow attachment
+requires explicit `metadata.flowDefinition` at the production caller, and
+Starter launch replay checks current readiness before returning saved work.
+The reviewer accepted the corrected delta separately from the original pass.
+
+The reader verifier executed a source-digest guard mutation: removing the
+comparison made the intended freshness assertion fail, and byte-identical
+restoration passed. It also reproduced an old-reader/new-build mismatch.
+Immutable source URLs and dependency-bound lazy payloads fix that scenario;
+an independent follow-up found a separate truncated-existing-asset case, which
+must be resolved before the reader's evidence contract is closed.
+
+The plugin guide and portable-format reference now distinguish actual secret
+storage from declarative secret slots, settings persistence from activation,
+legacy installation from retained portable materializations, and real consumer
+interfaces from generic provider registration. The remaining approval versus
+reconciliation wording is tracked in the fix round.
+
+Session/ACP documentation now follows canonical foreground execution, returned
+Session/Conversation identities, optional receipt durability, cursor-based ACP
+restoration, and current catalog/status fields. The diagnostic script was
+repaired and fixture-tested; no live provider execution is implied. Access
+documentation now describes published shared-work reads, authenticated SSH
+transport, bound Station-control authority, current scope exceptions, and the
+separate native route/key preparation state.
+
+Knowledge review added the missing store/index abstractions and corrected
+model-identity, excerpt freshness, explicit rebuilding, partial outcomes,
+migration recovery, and current example limitations. Thirteen focused files
+passed 156 tests; a later five-file UI/MCP/reader check passed 60. Nine
+comment-only source edits preserve identical executable output. Migration UI
+copy was corrected separately because a source read can recover a pending
+transaction. Live embedding, Neo4j, speech, and device outcomes remain outside
+those fixture checks.
 
 ### Browser and lease evidence, 2026-09-26
 

@@ -52,6 +52,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
+| [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
+| [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
@@ -706,6 +708,58 @@ real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
 surface; `client-project-identity.test.ts` covers the public wire consumer and
 incompatible/changed responses. Physical multi-machine and independent-human
 acceptance remain separate from these tests.
+
+## KnowledgeStoreProvider
+
+**Purpose and interface.** `KnowledgeStoreProvider` registers roots and their
+adapters, resolves a root by ID, and exposes the adapter that owns its records.
+It also publishes notifications after mutations through its wrapped adapters.
+It does not own semantic retrieval or watch arbitrary external file edits.
+
+**Current behavior.** Roots are persisted through the injected storage adapter.
+The built-in default-file and Obsidian adapters implement the checked-in Kit
+record contract; the conversation adapter is a read-only projection of Session
+history. Personal and Project are scope tags, not a universal uniqueness or
+authorization proof: the registry can allocate suffixed personal IDs, and the
+conversation root also has personal scope. The Settings card currently selects
+the first personal root. Root removal clears the cached adapter, but there is
+no atomic replacement operation exposed by this interface.
+
+**Follow the code.** [The provider](../../src-server/knowledge-store/knowledge-store-provider.ts)
+is constructed by [service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)
+and passed into the store/record routes. [The guide](../guides/knowledge.md)
+explains disk formats, setup, migration, and the separate index.
+[Provider tests](../../src-server/knowledge-store/__tests__/knowledge-store-provider.test.ts),
+[store-route tests](../../src-server/routes/knowledge/__tests__/knowledge-store.routes.test.ts),
+and [Settings tests](../../src-ui/src/__tests__/KnowledgeStoreSection.test.tsx)
+cover those interfaces; they do not establish live external-provider behavior.
+
+## SqliteVecIndexProvider
+
+**Purpose and interface.** `SqliteVecIndexProvider` owns a derived vector index:
+upsert/remove, scoped search, explicit root rebuild, and statistics. Callers
+supply the store and embedder for a rebuild. Runtime composition selects this
+built-in index for the store/index routes; the older `KnowledgeService` has a
+different, configured-provider interface.
+
+**Current behavior and limits.** One SQLite table contains partitions keyed by
+root ID. A rebuild reads and embeds source records before deleting that root's
+rows. Changing vector width recreates the whole table and clears all roots'
+rebuild timestamps. The index does not record embedding-model identity, so a
+same-width model change needs an explicit rebuild. The search route checks
+root access and re-reads each record, but combines its current title/category
+with the cached index excerpt; it does not compare that excerpt with the
+current body. A successful lookup therefore establishes neither text freshness
+nor an active lifecycle state.
+
+**Follow the code.** [Index implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts),
+[HTTP callers](../../src-server/routes/knowledge/knowledge-index-routes.ts),
+and [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+show the ownership and access checks. [Provider tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),
+[partition tests](../../src-server/knowledge-index/__tests__/partition-scoping.test.ts),
+and [lossless-rebuild tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts)
+use controlled records and embeddings. They do not guarantee equal ranking
+after a model/source change or prove live embedding-service availability.
 
 ## KnowledgeFileTransactions
 

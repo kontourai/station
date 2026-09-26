@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '317e456960ed6a6a628cc45d46b2f583f5020489f781160f7db0f5f6b68abe8d';
+  'b45bb8ba3caf5150bdd7e0ea4798895ce879960156209646e9d96b84fc333e9a';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -802,11 +802,33 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Knowledge and learning',
     summary:
       'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.',
-    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
+    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-knowledgestoreprovider: KnowledgeStoreProvider\n- architecture-sqlitevecindexprovider: SqliteVecIndexProvider\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
     tags: ['architecture', 'knowledge'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
     sourceAnchor: '',
+  },
+  {
+    id: 'architecture-knowledgestoreprovider',
+    title: 'KnowledgeStoreProvider',
+    summary:
+      'Interface, composition, invariants, and documented evidence for KnowledgeStoreProvider.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## KnowledgeStoreProvider\n\n**Purpose and interface.** `KnowledgeStoreProvider` registers roots and their\nadapters, resolves a root by ID, and exposes the adapter that owns its records.\nIt also publishes notifications after mutations through its wrapped adapters.\nIt does not own semantic retrieval or watch arbitrary external file edits.\n\n**Current behavior.** Roots are persisted through the injected storage adapter.\nThe built-in default-file and Obsidian adapters implement the checked-in Kit\nrecord contract; the conversation adapter is a read-only projection of Session\nhistory. Personal and Project are scope tags, not a universal uniqueness or\nauthorization proof: the registry can allocate suffixed personal IDs, and the\nconversation root also has personal scope. The Settings card currently selects\nthe first personal root. Root removal clears the cached adapter, but there is\nno atomic replacement operation exposed by this interface.\n\n**Follow the code.** [The provider](../../src-server/knowledge-store/knowledge-store-provider.ts)\nis constructed by [service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)\nand passed into the store/record routes. [The guide](../guides/knowledge.md)\nexplains disk formats, setup, migration, and the separate index.\n[Provider tests](../../src-server/knowledge-store/__tests__/knowledge-store-provider.test.ts),\n[store-route tests](../../src-server/routes/knowledge/__tests__/knowledge-store.routes.test.ts),\nand [Settings tests](../../src-ui/src/__tests__/KnowledgeStoreSection.test.tsx)\ncover those interfaces; they do not establish live external-provider behavior.',
+    tags: ['architecture', 'knowledge', 'KnowledgeStoreProvider'],
+    parentId: 'architecture-knowledge',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'knowledgestoreprovider',
+  },
+  {
+    id: 'architecture-sqlitevecindexprovider',
+    title: 'SqliteVecIndexProvider',
+    summary:
+      'Interface, composition, invariants, and documented evidence for SqliteVecIndexProvider.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## SqliteVecIndexProvider\n\n**Purpose and interface.** `SqliteVecIndexProvider` owns a derived vector index:\nupsert/remove, scoped search, explicit root rebuild, and statistics. Callers\nsupply the store and embedder for a rebuild. Runtime composition selects this\nbuilt-in index for the store/index routes; the older `KnowledgeService` has a\ndifferent, configured-provider interface.\n\n**Current behavior and limits.** One SQLite table contains partitions keyed by\nroot ID. A rebuild reads and embeds source records before deleting that root's\nrows. Changing vector width recreates the whole table and clears all roots'\nrebuild timestamps. The index does not record embedding-model identity, so a\nsame-width model change needs an explicit rebuild. The search route checks\nroot access and re-reads each record, but combines its current title/category\nwith the cached index excerpt; it does not compare that excerpt with the\ncurrent body. A successful lookup therefore establishes neither text freshness\nnor an active lifecycle state.\n\n**Follow the code.** [Index implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts),\n[HTTP callers](../../src-server/routes/knowledge/knowledge-index-routes.ts),\nand [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)\nshow the ownership and access checks. [Provider tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),\n[partition tests](../../src-server/knowledge-index/__tests__/partition-scoping.test.ts),\nand [lossless-rebuild tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts)\nuse controlled records and embeddings. They do not guarantee equal ranking\nafter a model/source change or prove live embedding-service availability.",
+    tags: ['architecture', 'knowledge', 'SqliteVecIndexProvider'],
+    parentId: 'architecture-knowledge',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'sqlitevecindexprovider',
   },
   {
     id: 'architecture-knowledgefiletransactions',

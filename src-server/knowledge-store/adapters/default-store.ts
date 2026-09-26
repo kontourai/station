@@ -1,22 +1,9 @@
 /**
- * `kit-default-store` — Station-owned adapter implementing the Knowledge Kit's
- * published on-disk file format (store-contract.md §8/§9 + Addendum A.6 `supersede`,
- * Addendum B.5 `retire`, Addendum H identity resolution) directly.
- *
- * This is a from-scratch, file-format-conformant implementation — it never imports
- * `@kontourai/flow-agents` Kit internals (ADR-0001; the Kit's package `exports` map
- * does not expose `kits/knowledge/adapters/**` for import, confirmed empirically —
- * see the s200-knowledge-store plan's Evidence section). Records are markdown files
- * with YAML frontmatter (`records/<id>.md`), a JSON graph index (`graph-index.json`),
- * and a JSON slug-alias index (`alias-index.json`), exactly as store-contract.md §9
- * specifies, so a human, the Kit's own CLI, or any other conformant reader can open
- * a store this adapter wrote.
- *
- * Contract version: written against `store-contract.md` as of `@kontourai/flow-agents`
- * **3.3.0** (Addendum H / §8.1 / non-MISSING_EVIDENCE error codes) — ahead of the `^2.2.0`
- * sidecar-tooling pin in this repo's `package.json`, which this adapter imports nothing
- * from and is therefore unaffected by. See `docs/design/knowledge-foundation.md`'s
- * "Contract version" note and archive#218 for the tracked upgrade of the sidecar pin.
+ * Station-owned implementation of the Knowledge Kit's published file format:
+ * records/<id>.md with graph and alias indexes. No Kit-private imports.
+ * The original format baseline was Kit 3.3.0; current behavior is defined by
+ * the checked-in knowledge-store contract and shared adapter tests.
+ * See docs/guides/knowledge.md#store-formats-and-external-edits.
  */
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';

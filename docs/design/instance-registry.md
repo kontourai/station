@@ -104,7 +104,7 @@ The sibling HTTP route this slice also adds
 (`src-server/routes/system/system-status-routes.ts`, `GET /api/system/instance`,
 station#1985/#1983) self-reports `component: 'command-station'` alongside
 whatever build/port fields it can determine — it does not read this registry
-file (see [Explicit non-goals of this slice](#explicit-non-goals-of-this-slice)).
+file (see [Producers, consumers, and remaining non-goals](#producers-consumers-and-remaining-non-goals)).
 It is documented here because both concepts share this design doc's context.
 
 - **Value space today: exactly `'command-station'`.** That is the server
