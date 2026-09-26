@@ -2,19 +2,63 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+const platform = vi.hoisted(() => ({ isTauri: false }));
+const gateMounts = vi.hoisted(() => [] as string[]);
+
+vi.mock('../platform/PlatformProfileContext', () => ({
+  usePlatformProfile: () => platform,
+}));
+// The real gate probes `apiBase` for a device session. Recording its mounts is
+// the observable: a gate that never mounts never probes.
+vi.mock('../components/LocalUiSessionGate', () => ({
+  LocalUiSessionGate: ({
+    apiBase,
+    children,
+  }: {
+    apiBase: string;
+    children: React.ReactNode;
+  }) => {
+    gateMounts.push(apiBase);
+    return <div data-testid="local-ui-session-gate">{children}</div>;
+  },
+}));
+
+import { PlatformSessionGate } from '../platform/PlatformSessionGate';
+
+afterEach(() => {
+  cleanup();
+  gateMounts.length = 0;
+});
 
 describe('LocalUiSessionGate native shell boundary', () => {
   test('never probes tauri://localhost as though it were an HTTP Station', () => {
-    const main = readFileSync(
-      resolve(import.meta.dirname, '../main.tsx'),
-      'utf8',
+    platform.isTauri = true;
+    render(
+      <PlatformSessionGate apiBase="tauri://localhost">
+        <p>protected tree</p>
+      </PlatformSessionGate>,
     );
-    expect(main).toContain('profile.isTauri ?');
-    expect(main).toContain('<PlatformSessionGate>');
-    expect(main).not.toContain(
-      '<LocalUiSessionGate apiBase={window.location.origin}>',
+
+    expect(screen.getByText('protected tree')).toBeTruthy();
+    expect(screen.queryByTestId('local-ui-session-gate')).toBeNull();
+    expect(gateMounts).toEqual([]);
+  });
+
+  test('the web client resolves its device session at the Station origin first', () => {
+    platform.isTauri = false;
+    render(
+      <PlatformSessionGate apiBase="http://station.test">
+        <p>protected tree</p>
+      </PlatformSessionGate>,
     );
+
+    expect(screen.getByTestId('local-ui-session-gate').textContent).toContain(
+      'protected tree',
+    );
+    expect(gateMounts).toEqual(['http://station.test']);
   });
 
   test('waits for local access resolution before seeding web boot data', () => {

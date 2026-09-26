@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
 import {
   panePreviewAccent,
   WorkspacePaneAvailabilityList,
@@ -717,34 +718,10 @@ describe('WorkspacePaneAvailabilityList', () => {
       for (const button of buttons) expect(button.parentElement).toBe(row);
     }
 
-    const indexCss = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '../../index.css'),
-      'utf8',
-    );
-    const mobileBlock = indexCss.slice(
-      indexCss.indexOf(
-        '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)',
-      ),
-    );
-    // The direct-child touch-floor combinator appears more than once in this
-    // block (`.responsive-surface-actions` has its own). Pick the rule whose
-    // selector list actually contains the arm that matches this component's
-    // container, rather than whichever comes first.
-    const COMBINATOR = '> :is(button, a, .button, [role="button"])';
-    const floorRules: { selectors: string; body: string }[] = [];
-    for (let at = mobileBlock.indexOf(COMBINATOR); at > -1; ) {
-      floorRules.push({
-        selectors: mobileBlock.slice(Math.max(0, at - 400), at),
-        body: mobileBlock.slice(at, mobileBlock.indexOf('\n  }', at)),
-      });
-      at = mobileBlock.indexOf(COMBINATOR, at + 1);
-    }
-    const sharedFloor = floorRules.find((rule) =>
-      rule.selectors.includes('[class*="__actions"]'),
-    );
+    const sharedFloor = sharedActionsTouchFloor();
     expect(sharedFloor, 'no shared __actions touch-floor rule').toBeDefined();
-    expect(sharedFloor?.body).toContain('min-height: 44px');
-    expect(sharedFloor?.body).toContain('min-width: 44px');
+    expect(sharedFloor?.['min-height']).toBe('44px');
+    expect(sharedFloor?.['min-width']).toBe('44px');
 
     // archive#3348. The state toggle is the card's other tap target and it
     // stays in `__heading` — it is the state badge, and the shared floor only

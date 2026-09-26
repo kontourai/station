@@ -877,6 +877,36 @@ describe('persisted detail remains authoritative while the collection reconciles
  * seam (`useAgentActions.updateAgent`, the same seam every other save
  * assertion in this file uses).
  */
+// archive#3662: an ABSENT engine binding is Station's own engine, not "no
+// engine", so the editor must offer the Model-connection choice for it. The
+// old predicate answered the other way and the one Agent shape that always
+// needs a Model connection was the shape never offered one.
+describe('an Agent with no engine binding edits as a Station-engine Agent (#3662)', () => {
+  test('an absent binding selects the Model-connection engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: '' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('model');
+  });
+
+  test('a binding to an external engine selects the CLI engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: 'claude' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('cli');
+  });
+});
+
 describe('the Model connection binding round-trips through Save (station#4521 item 2)', () => {
   test('reads the persisted binding into the form on load', () => {
     state.selectedId = 'station';
