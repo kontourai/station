@@ -232,3 +232,24 @@ describe('readEnvelopeFailure / envelopeError', () => {
     expect(envelopeErrorCode(undefined)).toBe(undefined);
   });
 });
+
+/**
+ * #2708 moved `StationHttpError` into `client/api-error-message.ts` (to keep
+ * the envelope rule and the error it builds out of an import cycle). Every
+ * `instanceof StationHttpError` in the product depends on each public path
+ * handing out the SAME constructor, so pin it.
+ */
+describe('StationHttpError identity', () => {
+  test('http.ts, the client barrel and the package root export one constructor', async () => {
+    const defining = await import('../client/api-error-message');
+    const http = await import('../client/http');
+    const clientBarrel = await import('../client/index');
+    const root = await import('../index');
+    expect(http.StationHttpError).toBe(defining.StationHttpError);
+    expect(clientBarrel.StationHttpError).toBe(defining.StationHttpError);
+    expect(root.StationHttpError).toBe(defining.StationHttpError);
+    expect(
+      envelopeError(new Response(null, { status: 403 }), {}, 'f'),
+    ).toBeInstanceOf(root.StationHttpError);
+  });
+});

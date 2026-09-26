@@ -228,13 +228,15 @@ describe('sdk envelope-read rule: baseline', () => {
     });
   });
 
-  test('a row below its ceiling is reported and does not fail', () => {
+  test('a row below its ceiling fails: the ratchet is two-sided', () => {
+    // A rule that silently stops counting reads 0 everywhere; a one-sided
+    // ratchet would pass that forever.
     expect(
       evaluateEnvelopeReads({}, files, {
         files: { 'packages/sdk/src/client/x.ts': 2 },
       }),
     ).toMatchObject({
-      ok: true,
+      ok: false,
       under: [{ file: 'packages/sdk/src/client/x.ts', count: 0, ceiling: 2 }],
     });
   });
@@ -291,7 +293,12 @@ describe('sdk envelope-read rule: the real tree', () => {
     const baseline = JSON.parse(readFileSync(ENVELOPE_BASELINE_PATH, 'utf8'));
     expect(
       evaluateEnvelopeReads(countEnvelopeReads(scanned), scanned, baseline),
-    ).toMatchObject({ ok: true, over: [], missingSentinels: [] });
+    ).toMatchObject({
+      ok: true,
+      over: [],
+      under: [],
+      missingSentinels: [],
+    });
   });
 });
 
@@ -357,7 +364,23 @@ describe('sdk-error-message ratchet at the process boundary', () => {
     [ENVELOPE_BASELINE_PATH]: `${JSON.stringify({ issue: '#2708', files: rows })}\n`,
   });
 
-  test('exits 0 on the baseline: a baselined envelope read within its row passes', () => {
+  test('exits 1 and asks for --update when a row falls below the baseline', () => {
+    const run = runRatchet(
+      repoWith({
+        ...cleanSentinels,
+        [BASELINED]: legacySource(1),
+        ...withBaseline({ [BASELINED]: 2 }),
+      }),
+    );
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(
+      'FAIL: envelope-read errors fell below the baseline',
+    );
+    expect(run.stderr).toContain(`${BASELINED}: 1 (baseline 2)`);
+    expect(run.stderr).toContain('--update');
+  });
+
+  test('exits 0 on the baseline: a baselined envelope read at its row passes', () => {
     const run = runRatchet(
       repoWith({
         ...cleanSentinels,

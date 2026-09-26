@@ -32,9 +32,12 @@
 // constructor call. Those sites existed when the rule was written, so it is a
 // per-file baseline (sdk-envelope-read-baseline.json) that may only fall:
 // later #2708 slices migrate clients and lower it with `--update`, which
-// refuses to raise a row or add a file. A count below its row is reported and
-// does not fail — two merges that each lower a row must not red whichever
-// gates next (the test-temp-dir-ratchet precedent).
+// refuses to raise a row or add a file. The ratchet is two-sided: a count
+// BELOW its row fails too, telling the author to run `--update`. Without that,
+// a rule that silently stops counting (a broken AST walk reads 0 everywhere)
+// would pass forever over a baseline nothing enforces any more. The cost is
+// that two merges that each lower the same row conflict on the baseline file,
+// which is a visible merge conflict rather than a silent pass.
 //
 // What the rule cannot see: a message computed into a variable first and
 // passed to `new Error(message)` (the read happens outside the call), an
@@ -377,7 +380,8 @@ export function evaluateEnvelopeReads(counts, files, baseline) {
     under,
     missingSentinels,
     total: Object.values(counts).reduce((sum, count) => sum + count, 0),
-    ok: over.length === 0 && missingSentinels.length === 0,
+    ok:
+      over.length === 0 && under.length === 0 && missingSentinels.length === 0,
   };
 }
 
@@ -488,19 +492,26 @@ function main(argv) {
     return 1;
   }
   if (envelope.under.length > 0) {
-    console.log(
-      'NOTE: envelope-read errors fell below the baseline; record the lower count with',
+    console.error(
+      'FAIL: envelope-read errors fell below the baseline (#2708). Tighten it with',
     );
-    console.log('`node scripts/sdk-error-message-ratchet.mjs --update`:');
+    console.error('`node scripts/sdk-error-message-ratchet.mjs --update`:');
     for (const row of envelope.under) {
-      console.log(`  ${row.file}: ${row.count} (baseline ${row.ceiling})`);
+      console.error(`  ${row.file}: ${row.count} (baseline ${row.ceiling})`);
     }
+    console.error(
+      'A migration lowers the row in the same change. A drop nobody made on',
+    );
+    console.error(
+      'purpose means the rule stopped counting — do not --update over it.',
+    );
+    return 1;
   }
   console.log(
     `OK: 0 hand-rolled refusal messages across ${files.length} SDK source files; every refusal reads details.fieldErrors.`,
   );
   console.log(
-    `OK: ${envelope.total} envelope-read error sites across ${clientFiles.length} client files, at or below the baseline (#2708).`,
+    `OK: ${envelope.total} envelope-read error sites across ${clientFiles.length} client files, exactly at the baseline (#2708).`,
   );
   return 0;
 }
