@@ -725,7 +725,6 @@ describe('Agent Routes', () => {
     const agentService = {
       getAgentCatalog: vi.fn().mockResolvedValue([]),
       listAgents: vi.fn().mockResolvedValue([]),
-      loadAgentSpec: vi.fn().mockResolvedValue({ name: 'Test' }),
       createAgent: vi
         .fn()
         .mockResolvedValue({ slug: 'test', spec: { name: 'Test' } }),
