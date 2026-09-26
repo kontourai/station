@@ -2387,6 +2387,42 @@ Creates a layout context for use in layout plugins. Used internally by `LayoutPr
 
 ---
 
+## Refused requests
+
+A client fetcher that reads a Station response envelope throws
+`StationHttpError` (exported from `@kontourai/station-sdk` and
+`@kontourai/station-sdk/client`) when the request is refused. Branch on its
+fields, never on the message text:
+
+```ts
+class StationHttpError extends Error {
+  readonly status: number;        // the observed HTTP status
+  readonly code?: string;         // the envelope's machine code
+  readonly details?: unknown;     // the envelope's `details`, as sent
+  readonly retryAfterMs?: number; // `Retry-After`, delta-seconds only
+}
+```
+
+- `status` is the status the response actually carried. A route that answers
+  `200` with `{ success: false }` produces a `StationHttpError` whose status
+  is `200`, so a status check such as `status === 404` stays exact.
+- `code` is the top-level `code`, else the object `error`'s own `code`
+  (the runtime's `{"error":{"code":"authentication_required"}}`). A blank or
+  non-string code is absent.
+- `details` is present when the body carried one. For a validation refusal it
+  is `{ formErrors, fieldErrors }`.
+- The message follows one order: the validation sentences in
+  `details.formErrors` and `details.fieldErrors`, a string `error`, the object
+  `error`'s `message`, then its `code`, the top-level `message`, and then the
+  fetcher's fallback. `apiErrorMessage(body, fallback)` applies the same rule
+  to a body a caller has already parsed.
+
+`readEnvelopeOrThrow(response)` throws this error for a non-2xx response or a
+body that is not `success: true`. A body that is not JSON keeps its status on
+a non-2xx; on a 2xx it is a protocol failure and throws a plain `Error`. The
+remaining client families move onto the same error in later releases, and
+their existing error subclasses stay (#2708).
+
 ## Utilities
 
 ### `ListenerManager`
