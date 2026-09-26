@@ -1704,6 +1704,34 @@ origins on an `origins` line.
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
 
+The unit's `PATH` is captured once, at install, from your login shell
+(`$SHELL -l`) plus the Node and system directories. A directory added to your
+profile later, or a Nix/home-manager generation that has since moved on, does
+not reach the service until it is reinstalled. For a managed install on macOS
+or Linux, `service status` (and the status `start`/`stop` print) re-reads your
+login-shell `PATH` and compares it with the `PATH` in the installed unit file
+on a `service PATH` line:
+
+- `current`: the unit carries exactly the directories, in the same order, that
+  a reinstall would capture now.
+- `drifted`: lists directories missing from the unit, directories no longer
+  captured, and the first difference when the shared directories are in a
+  different order (order decides which same-named binary wins). The reinstall
+  command follows, printed once even when scheduling is also stale, or an
+  explanation when no faithful command can be given.
+- `unknown`: the unit could not be read or sets no `PATH`, or your login shell
+  did not report its `PATH` within 5 seconds; nothing is compared.
+
+`--json` carries the same result as `servicePath`:
+`{ status, missing, stale, reordered?, reason? }`, where `reordered` is
+`{ position, unit, current }` with `position` counted from 0 within the shared
+directories. Drift is advice and does not change `healthy` or the exit code.
+The comparison reads the unit file Station wrote, not systemd drop-ins or the
+loaded job, and uses the environment of the shell that runs `status`. A
+reinstall command is prefixed with `STATION_ROOT=…` when the registration's
+recorded root differs from the one a shell without `STATION_ROOT` would
+derive.
+
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
 matching name. Both print the post-action status (or its JSON form). On macOS,

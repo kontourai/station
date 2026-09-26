@@ -246,6 +246,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Two bounded, short-lived Node probes prove per-process stdio caller
   // separation while sharing one fixture internal credential; no real services.
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
+  // #2377: one bounded Node child runs the stdio entry's credential install
+  // and the stdio tools' own REST helper against an in-process guard, proving
+  // a real pooled child reaches reads only; no real services.
+  'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
   // envelopes; every child exits after its one requested operation.

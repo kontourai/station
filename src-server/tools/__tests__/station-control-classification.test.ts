@@ -1,12 +1,13 @@
 /**
  * Classification completeness for the station-control tool surface
- * (S3 item 4): every tool the REAL MCP server registers must be explicitly
- * classified read-only or mutating in runtime-control-tools.ts. A new tool
- * that ships unclassified fails here (and would be gated as mutating by the
- * fail-safe default until classified).
+ * (S3 item 4, #2377 slice A): every tool the REAL MCP server registers has
+ * exactly one entry in the station-control authority table
+ * (`tools/station-control-policy.ts`), and the read-only / bounded-write /
+ * mutating lists in runtime-control-tools.ts are derived from it. A new tool
+ * that ships without an entry fails here (and would be gated as mutating by
+ * the fail-safe default, and refused by the server guard, until it has one).
  */
 
-import { McpServer } from '@modelcontextprotocol/server';
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -18,23 +19,15 @@ import {
   SC_MUTATING_TOOLS,
   SC_READ_ONLY_TOOLS,
 } from '../../runtime/tools/runtime-control-tools.js';
-import { registerAgentTools } from '../station-control-agent-tools.js';
-import { registerBoardTools } from '../station-control-board-tools.js';
-import { registerCatalogTools } from '../station-control-catalog-tools.js';
-import { StationControlToolRegistry } from '../station-control-mcp-server.js';
-import { registerNotifyTools } from '../station-control-notify-tools.js';
-import { registerOperationsTools } from '../station-control-operations-tools.js';
-import { registerPlatformTools } from '../station-control-platform-tools.js';
+import { createStationControlMcpServer } from '../station-control-mcp-server.js';
+import { STATION_CONTROL_TOOL_POLICY } from '../station-control-policy.js';
 
+/**
+ * The PRODUCTION server factory (every registrar it composes, including the
+ * Basis and session-inventory MCP App tools the old hand list missed).
+ */
 function registeredToolNames(): string[] {
-  const server = new McpServer({ name: 'test', version: '0.0.0' });
-  const registry = new StationControlToolRegistry(server);
-  registerAgentTools(registry);
-  registerBoardTools(registry);
-  registerCatalogTools(registry);
-  registerOperationsTools(registry);
-  registerPlatformTools(registry);
-  registerNotifyTools(registry);
+  const server = createStationControlMcpServer();
   const registeredTools = (server as unknown as Record<string, unknown>)
     ._registeredTools as Record<string, unknown> | undefined;
   expect(registeredTools).toBeDefined();
@@ -47,6 +40,16 @@ describe('station-control tool classification', () => {
     expect(names.length).toBeGreaterThan(30);
     const unclassified = names.filter((name) => !isClassifiedControlTool(name));
     expect(unclassified).toEqual([]);
+  });
+
+  test('the authority table names exactly the registered tools: none missing, none stale', () => {
+    const registered = registeredToolNames().sort();
+    expect(Object.keys(STATION_CONTROL_TOOL_POLICY).sort()).toEqual(registered);
+    // The two hand-list defects #2377 found, pinned by name.
+    for (const stale of ['list_layouts', 'get_layout'])
+      expect(isClassifiedControlTool(stale)).toBe(false);
+    for (const read of ['get_basis', 'get_task_basis', 'get_session_inventory'])
+      expect(classifyControlTool(read)).toBe('read-only');
   });
 
   test('read-only, bounded-write and mutating sets partition the surface', () => {
