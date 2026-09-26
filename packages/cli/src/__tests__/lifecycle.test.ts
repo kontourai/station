@@ -585,6 +585,31 @@ function ensureBuildOutputs(instanceId = 'default'): void {
   writeFileSync(join(TEST_CWD, ui, 'index.html'), '<!doctype html>');
 }
 
+/**
+ * Makes TEST_CWD a prebuilt portable archive (#2675): the builder's marker
+ * and the release provenance it writes, with the one shared build.
+ */
+function ensurePrebuiltArchive(): void {
+  ensureDir(TEST_CWD);
+  writeFileSync(
+    join(TEST_CWD, '.station-prebuilt-archive'),
+    'station-prebuilt-archive-v1\n',
+  );
+  writeFileSync(
+    join(TEST_CWD, '.station-release.json'),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      sha: '0123456789abcdef0123456789abcdef01234567',
+      ref: 'v0.0.0',
+      createdAt: '2026-09-26T00:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    })}\n`,
+  );
+  ensureBuildOutputs();
+}
+
 function writeBuildManifest(
   instanceId: string,
   overrides: Partial<{ branch: string; builtAt: string; sha: string }> = {},
@@ -2964,6 +2989,29 @@ describe('lifecycle instance state', () => {
 });
 
 describe('clean', () => {
+  it("removes the home but keeps a prebuilt archive's shared build", async () => {
+    ensurePrebuiltArchive();
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+
+    const { lifecycle } = await loadLifecycleModule();
+
+    await lifecycle.clean({
+      allowDefaultHomeClean: false,
+      force: true,
+      homeSource: '--base',
+      instanceName: 'smoke-a',
+      projectHome: TEST_ALT_HOME,
+      serverPort: 3242,
+      uiPort: 5274,
+    });
+
+    expect(existsSync(TEST_ALT_HOME)).toBe(false);
+    expect(
+      existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+    ).toBe(true);
+    expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
+  });
+
   it('removes only the explicit base directory and leaves the default home intact', async () => {
     ensureDir(TEST_CWD);
     ensureOwnerControlledStationHome(TEST_DEFAULT_HOME);
@@ -7679,6 +7727,38 @@ describe('lifecycle build + restart ergonomics', () => {
       expect(existsSync(join(TEST_CWD, 'dist-server-ephemeral'))).toBe(false);
       expect(existsSync(join(TEST_CWD, 'dist-ui-ephemeral'))).toBe(false);
       expect(existsSync(statePath)).toBe(false);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it("keeps a prebuilt archive's shared build when stopping a --temp-home instance", async () => {
+    ensurePrebuiltArchive();
+    const statePath = writeInstanceState({
+      instanceName: 'ephemeral',
+      homeSource: '--temp-home',
+      serverPid: 41001,
+      uiPid: null,
+      serverPort: 39901,
+      uiPort: 39902,
+    });
+
+    const { killProcessTree, killSpy } = makeKillMock([41001]);
+    const execSync = vi.fn(() => '');
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync },
+      platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+    });
+
+    try {
+      lifecycle.stop({ instanceName: 'ephemeral' });
+      expect(existsSync(statePath)).toBe(false);
+      // Every instance of an archive serves this one build; the next start
+      // needs it, and nothing in the archive can rebuild it.
+      expect(
+        existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+      ).toBe(true);
+      expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
     } finally {
       killSpy.mockRestore();
     }

@@ -2042,17 +2042,7 @@ function stopRecord(
   // A --temp-home instance is ephemeral; drop its per-instance build dirs too
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
   if (record.homeSource === '--temp-home') {
-    const buildPaths = resolveBuildPaths(record.instanceId);
-    // Finder can create .DS_Store during removal. Let Node retry transient
-    // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
-    for (const output of [buildPaths.server, buildPaths.ui]) {
-      rmSync(join(CWD, output), {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 100,
-      });
-    }
+    removeOwnedBuildOutputs(resolveBuildPaths(record.instanceId));
   }
   if (announce) {
     console.log('  ✓ Stopped');
@@ -2279,6 +2269,13 @@ export function isRunning(selector: StopOptions = {}): boolean {
 interface BuildPaths {
   server: string;
   ui: string;
+  /**
+   * True when these directories are not the instance's own: every instance
+   * of a prebuilt archive serves the archive's one build. A shared build is
+   * never removed, replaced or promoted over on an instance's behalf; see
+   * removeOwnedBuildOutputs and promoteCandidateBuild.
+   */
+  shared?: true;
 }
 
 const BUILD_MANIFEST_FILENAME = 'station-build.json';
@@ -2743,6 +2740,12 @@ function warnOnSharedHome(instanceId: string, projectHome: string): void {
 }
 
 export function resolveBuildPaths(instanceId: string): BuildPaths {
+  // A prebuilt archive ships one build and no toolchain to make another.
+  // Nothing in a build is instance-specific (buildApplication varies only its
+  // output directories), so every instance of an archive serves that build.
+  if (isPrebuiltArchiveRoot(CWD)) {
+    return { server: 'dist-server', ui: 'dist-ui', shared: true };
+  }
   if (instanceId === DEFAULT_INSTANCE_ID) {
     return { server: 'dist-server', ui: 'dist-ui' };
   }
@@ -2750,6 +2753,24 @@ export function resolveBuildPaths(instanceId: string): BuildPaths {
     server: `dist-server-${instanceId}`,
     ui: `dist-ui-${instanceId}`,
   };
+}
+
+/**
+ * Removes an instance's own build directories. The one place build outputs
+ * are deleted on an instance's behalf; a shared build is left untouched.
+ */
+function removeOwnedBuildOutputs(buildPaths: BuildPaths): void {
+  if (buildPaths.shared) return;
+  // Finder can create .DS_Store during removal. Let Node retry transient
+  // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
+  for (const output of [buildPaths.server, buildPaths.ui]) {
+    rmSync(join(CWD, output), {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  }
 }
 
 function getBuildManifestPath(buildPaths: BuildPaths): string {
@@ -2846,6 +2867,11 @@ function promoteCandidateBuild(
   candidate: BuildPaths,
   active: BuildPaths,
 ): void {
+  if (active.shared) {
+    throw new Error(
+      `Refusing to replace the shared build ${active.server}/ and ${active.ui}/ on one instance's behalf.`,
+    );
+  }
   // Both candidates and both backups live on the checkout filesystem, so
   // each rename is atomic. The pair cannot be one filesystem transaction;
   // explicit rollback restores both prior directories if any rename fails.
@@ -2975,6 +3001,38 @@ export function validatePackagedReleaseManifest(
 
 /** Bound on every checkout HEAD read (stamp writer and checker). */
 const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
+/**
+ * Written only by the portable server archive builder
+ * (scripts/lib/portable-server-archive.mjs), whose trees ship dist-server and
+ * dist-ui prebuilt and carry no toolchain to rebuild them. install.sh's
+ * source release trees also have `.station-release.json` and no `.git`, but
+ * they are built on the host and never contain this marker.
+ */
+export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
+export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
+
+/** A prebuilt archive: marker, valid release provenance, and no checkout. */
+export function isPrebuiltArchiveRoot(root: string): boolean {
+  if (existsSync(join(root, '.git'))) return false;
+  try {
+    if (
+      readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
+      PREBUILT_ARCHIVE_MARKER_CONTENT
+    ) {
+      return false;
+    }
+    return (
+      validatePackagedReleaseManifest(
+        JSON.parse(
+          readFileSync(join(root, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
+        ),
+      ) !== null
+    );
+  } catch {
+    return false;
+  }
+}
 
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
@@ -3144,6 +3202,15 @@ export async function buildApplication(
 ): Promise<BuildManifest> {
   const { instanceId, buildPaths: activeBuildPaths } =
     resolveBuildTarget(options);
+  if (isPrebuiltArchiveRoot(CWD)) {
+    throw new Error(
+      [
+        `This is a prebuilt Station archive (${CWD}): nothing to build.`,
+        `It ships its server and UI already built in ${activeBuildPaths.server}/ and ${activeBuildPaths.ui}/, which every instance uses.`,
+        'Run `station start` without --build.',
+      ].join('\n'),
+    );
+  }
   // station#1869: a supervisor (launchd/systemd KeepAlive) killed mid-build
   // leaves orphan candidate dirs under `.station/build-candidates/`. They do
   // not collide with a fresh `mkdtempSync`, but they accumulate, and a
@@ -4656,9 +4723,7 @@ export async function clean(
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
   rmSync(projectHome, { recursive: true, force: true });
-  const buildPaths = resolveBuildPaths(instanceId);
-  rmSync(join(CWD, buildPaths.server), { recursive: true, force: true });
-  rmSync(join(CWD, buildPaths.ui), { recursive: true, force: true });
+  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
   console.log('  ✓ Cleaned');
 }
 
