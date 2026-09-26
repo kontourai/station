@@ -30,9 +30,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { measureEntryBundle } from './ui-bundle-budget.mjs';
 
@@ -300,7 +300,7 @@ function report(outcome, env = process.env) {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   let outcome;
   try {
     outcome = runDeltaReport(defaultDeps());

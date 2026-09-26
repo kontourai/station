@@ -35,6 +35,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findFreePort } from '../lib/free-ports.mjs';
+import { invokedDirectly } from '../lib/module-entry.mjs';
 import { executeOwnedProcess } from '../lib/owned-process.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -368,7 +369,7 @@ export function summarize(engines) {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error('[bench] FAIL', error?.stack ?? error);
     process.exit(1);

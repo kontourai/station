@@ -35,8 +35,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const TEST_PATH = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/;
 const CODE_PATH = /\.[cm]?[jt]sx?$/;
@@ -273,10 +272,7 @@ function formatRealtimeWaitReport(result) {
   ].join('\n');
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     const strict = args.includes('--strict');

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const DEPENDENCIES_PATH = fileURLToPath(
   new URL('../config/plugin-scaffold-dependencies.json', import.meta.url),
@@ -106,7 +107,7 @@ export function verifyPublicPluginScaffoldDependencies() {
   );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const qualified = verifyPublicPluginScaffoldDependencies();
     for (const item of qualified) {

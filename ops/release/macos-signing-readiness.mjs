@@ -14,6 +14,7 @@ import {
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { signingIdentityRecordsFromSecurityOutput } from '../nightly/macos-signing-identity.mjs';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 export const KEYCHAIN_UNLOCK_LIFETIME_SECONDS = 105 * 60;
 export const PRIVATE_KEY_PROBE_TIMEOUT_MS = 60 * 1000;
@@ -462,5 +463,5 @@ export async function runMacosSigningReadinessCli({
     });
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1])
+if (invokedDirectly(import.meta.url))
   await runMacosSigningReadinessCli();

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
@@ -340,5 +339,4 @@ export function runCiFastCli({
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  process.exitCode = runCiFastCli();
+if (invokedDirectly(import.meta.url)) process.exitCode = runCiFastCli();

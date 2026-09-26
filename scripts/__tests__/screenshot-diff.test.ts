@@ -1201,6 +1201,12 @@ describe('screenshot-diff.mjs as a real child process (exit codes)', () => {
     mkdirSync(spacedDir, { recursive: true });
     const spacedScript = join(spacedDir, 'screenshot-diff.mjs');
     copyFileSync(SCRIPT_PATH, spacedScript);
+    // Its entry guard (#2682) lives beside it, as in the real checkout.
+    mkdirSync(join(spacedDir, 'lib'));
+    copyFileSync(
+      resolve(import.meta.dirname, '../lib/module-entry.mjs'),
+      join(spacedDir, 'lib', 'module-entry.mjs'),
+    );
     chmodSync(spacedScript, 0o755);
     // Node's ESM resolver walks up from the script looking for
     // `node_modules` to resolve its bare `pngjs` import — symlink the repo's

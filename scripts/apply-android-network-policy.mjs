@@ -2,7 +2,7 @@
 /** Preserve Station's explicit HTTP host support after Tauri regenerates Android. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export function manifestWithStationNetworkPolicy(source) {
   const applications = [...source.matchAll(/<application\b[^>]*>/g)];
@@ -25,10 +25,7 @@ export function manifestWithStationNetworkPolicy(source) {
   return source.replace(application, next);
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const path = resolve(
     import.meta.dirname,
     '../src-desktop/gen/android/app/src/main/AndroidManifest.xml',

@@ -67,14 +67,14 @@
 // fallback rather than just doing nothing visible.
 //
 // Follows the established ratchet family (pure exported functions + a
-// `main()` behind `import.meta.url === file://process.argv[1]`, `git
+// `main()` behind `invokedDirectly(import.meta.url)`, `git
 // ls-files`-scoped, SCOPE_SENTINELS so a pathspec that stops matching fails
 // instead of reporting vacuously green). Modeled directly on
 // `random-uuid-guard.mjs`.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * `ResponsiveDialogSurface`/`Dialog` and every consumer of them live under
@@ -328,6 +328,6 @@ function main() {
   );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }
