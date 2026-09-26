@@ -661,8 +661,9 @@ export function resolveServiceTarget(
 /**
  * Instance ids of the manifests in `<home>/service/` recorded for THIS
  * checkout (`repoPath` is what install writes: the checkout's realpath). A
- * file that is not a readable JSON object naming its own id is skipped here;
- * the chosen manifest is still read with full validation by the caller.
+ * manifest that does not parse refuses the command: it may be this checkout's
+ * own service, and skipping it would install a second unit beside it. The
+ * chosen manifest is still read with full validation by the caller.
  */
 function checkoutServiceManifests(fs: ServiceFs, baseDir: string): string[] {
   const serviceDir = join(baseDir, 'service');
@@ -677,8 +678,10 @@ function checkoutServiceManifests(fs: ServiceFs, baseDir: string): string[] {
       manifest = JSON.parse(
         fs.readFileSync(join(serviceDir, name), 'utf8'),
       ) as Partial<ServiceManifest>;
-    } catch {
-      continue;
+    } catch (error) {
+      throw new Error(
+        `Cannot tell which Station user service in ${serviceDir} belongs to this checkout: ${name} is not a readable service manifest (${error instanceof Error ? error.message : String(error)}).\nRepair or remove it, or pass --instance=<name> to choose a service explicitly.`,
+      );
     }
     if (
       manifest &&

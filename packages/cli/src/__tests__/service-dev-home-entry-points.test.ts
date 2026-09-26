@@ -470,6 +470,24 @@ describe('an existing checkout service in the dev home keeps being the one addre
     expect(errors).not.toHaveBeenCalled();
   });
 
+  test('an unreadable manifest in the dev home refuses instead of installing beside it', async () => {
+    const { dev, runCli } = await withLegacyDefaultService();
+    nodeFs.writeFileSync(
+      join(dev.devHome, 'service', 'default.json'),
+      '{not json',
+      { mode: 0o600 },
+    );
+
+    await expect(runCli(['service', 'install'])).rejects.toThrow(
+      `default.json is not a readable service manifest`,
+    );
+    expect(installSystemd).not.toHaveBeenCalledWith(
+      dev.devInstanceId,
+      expect.anything(),
+    );
+    expect(manifests(dev.devHome)).toEqual(['default.json']);
+  });
+
   test('several services for this checkout in one home refuse and list them', async () => {
     const { dev, runCli } = await withLegacyDefaultService();
     await runCli(['service', 'install', `--instance=${dev.devInstanceId}`]);
