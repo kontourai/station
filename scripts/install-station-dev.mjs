@@ -95,7 +95,7 @@ export function install({
   };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const result = install();
   if (!result.ok) {
     process.stderr.write(

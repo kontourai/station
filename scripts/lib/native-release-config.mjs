@@ -243,7 +243,7 @@ function assertKnownCliArguments(args) {
   }
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const args = process.argv.slice(2);
   assertKnownCliArguments(args);
   const tag = option('tag', args) ?? process.env.RELEASE_TAG;

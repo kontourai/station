@@ -217,6 +217,6 @@ function main(argv) {
   );
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main(process.argv.slice(2));
 }

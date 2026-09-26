@@ -1210,7 +1210,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
   };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   createMacosNotarizedArtifacts(
     parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
   ).catch((error) => {

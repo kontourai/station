@@ -181,6 +181,6 @@ function main() {
   );
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }

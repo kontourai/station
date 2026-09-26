@@ -272,7 +272,7 @@ export function containerSourceToFragment({ source, descriptor, sourceSha }) {
   };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   try {
     const output = resolve(option('--output'));
     const sourceSha = option('--source-sha');

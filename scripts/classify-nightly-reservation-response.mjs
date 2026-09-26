@@ -71,4 +71,4 @@ function main() {
   );
 }
 
-if (invokedDirectly(import.meta.url)) main();
+if (invokedDirectly(import.meta)) main();

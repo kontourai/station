@@ -226,6 +226,6 @@ function main(argv) {
   if (result.errors.length) process.exitCode = 1;
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main(process.argv.slice(2));
 }

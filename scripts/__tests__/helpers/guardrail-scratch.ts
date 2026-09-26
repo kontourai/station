@@ -119,8 +119,8 @@ export interface ScratchOptions {
  * `scripts/lib/module-entry.mjs` is always copied: it is the entry guard
  * (`invokedDirectly`) many guardrails import, so without it those gates would
  * die with `ERR_MODULE_NOT_FOUND` before reaching anything under test. It
- * realpaths both sides of the comparison, so for a gate that uses it, neither
- * the `mkdtempSync` path nor how `runGuardrail` spells the script can make
+ * answers from `import.meta.main`, so for a gate that uses it, neither the
+ * `mkdtempSync` path nor how `runGuardrail` spells the script can make
  * `main()` silently skip.
  */
 export function scratchRepo({

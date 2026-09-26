@@ -2,7 +2,7 @@
 // Regression gate for the shell contract in docs/design/shell-skeletons.md: one page header,
 // rendered by one component, for every route that has one. Follows
 // `scripts/state-primitives-ratchet.mjs`'s established architecture (pure exported functions;
-// `main()` gated behind `invokedDirectly(import.meta.url)`; checked-in numeric ceilings
+// `main()` gated behind `invokedDirectly(import.meta)`; checked-in numeric ceilings
 // that must only decrease; reasoned, staleness-checked exception lists) and carries two counted
 // signals.
 //
@@ -532,6 +532,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }

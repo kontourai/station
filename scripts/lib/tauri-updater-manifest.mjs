@@ -414,7 +414,7 @@ function assertKnownCliArguments(args) {
   }
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const args = process.argv.slice(2);
   assertKnownCliArguments(args);
   if (args.includes('--assert-not-regressing')) {

@@ -463,4 +463,4 @@ export async function runMacosSigningReadinessCli({
     });
 }
 
-if (invokedDirectly(import.meta.url)) await runMacosSigningReadinessCli();
+if (invokedDirectly(import.meta)) await runMacosSigningReadinessCli();

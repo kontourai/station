@@ -52,4 +52,4 @@ function main() {
   process.stdout.write(`${output}\n`);
 }
 
-if (invokedDirectly(import.meta.url)) main();
+if (invokedDirectly(import.meta)) main();

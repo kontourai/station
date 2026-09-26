@@ -335,7 +335,7 @@ export function inspectIosPackageRoot(root) {
   };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const rootIndex = process.argv.indexOf('--root');
   if (
     process.argv[2] !== 'ios' ||

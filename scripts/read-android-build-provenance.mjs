@@ -139,7 +139,7 @@ export function readAndroidBuildProvenance(archivePath) {
   return parseAndroidBuildProvenance(contents.toString('utf8'));
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const archivePath = process.argv[2];
   if (!archivePath) {
     console.error(

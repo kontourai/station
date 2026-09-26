@@ -347,6 +347,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }

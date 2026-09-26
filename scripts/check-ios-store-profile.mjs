@@ -332,7 +332,7 @@ export function verifyAppStoreProvisioningProfile(
   );
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const profileIndex = process.argv.indexOf('--station');
   const labelIndex = process.argv.indexOf('--label');
   const teamIndex = process.argv.indexOf('--expected-team');

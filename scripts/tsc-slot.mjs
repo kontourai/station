@@ -192,6 +192,6 @@ async function main(argv = process.argv.slice(2)) {
   require(compiler);
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   await main();
 }

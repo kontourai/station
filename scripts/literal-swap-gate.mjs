@@ -189,6 +189,6 @@ function main() {
   if (strict) process.exitCode = 1;
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }

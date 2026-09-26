@@ -8,17 +8,18 @@
  * and the script exits 0 having done nothing. That is how
  * `type-laundering-gate.mjs` was a silent no-op in the required Windows
  * portable-floor job. `scripts/lib/module-entry.mjs` (`invokedDirectly`)
- * compares realpathed native paths instead.
+ * answers from Node's own `import.meta.main` instead.
+ *
+ * It also rejects the helper's stale call shape, `invokedDirectly` given
+ * `import.meta.url` instead of `import.meta`: a string has no `main`, so that
+ * call throws at startup.
  *
  * This is a structural rule, so a structural scan is the proof of it. Why a
- * scan rather than a unit test of the helper: the helper reads the live
- * `process.argv` and realpaths real files, so a Windows argv/URL pair cannot
- * be fed to it on a POSIX host without adding a test-only injection seam, and
- * a helper test would still say nothing about a script that never calls the
- * helper. The scan reads every tracked or untracked, unignored code file, so
+ * scan rather than a unit test of the helper: a helper test says nothing
+ * about a script that never calls the helper. The scan reads every tracked or untracked, unignored code file, so
  * a new script is scanned before it is committed.
- * `type-laundering-gate.process.test.ts` proves the helper's behavior on a
- * spaced path end to end.
+ * `module-entry.process.test.ts` and `type-laundering-gate.process.test.ts`
+ * prove the helper's behavior end to end.
  *
  * The scan sees textual forms; an aliased `process.argv` or a URL built in a
  * helper is not caught. It steers authors to `invokedDirectly`; it is not a
@@ -46,6 +47,10 @@ const FORBIDDEN: ReadonlyArray<{ readonly name: string; readonly re: RegExp }> =
     {
       name: 'a URL constructed from argv[1]',
       re: new RegExp(String.raw`new URL\(\s*${ARGV1}`),
+    },
+    {
+      name: 'invokedDirectly given import.meta.url instead of import.meta',
+      re: /invokedDirectly\(\s*import\.meta\.url\s*\)/,
     },
     {
       name: 'the import.meta.url pathname compared with argv[1]',
@@ -87,19 +92,21 @@ function forbiddenEntryChecks(source: string): string[] {
 }
 
 /**
- * Samples are written with `ARGV` for `process.argv[1]` and `%{` for a
- * template placeholder, expanded at runtime, so this file does not itself
- * contain the forms it forbids.
+ * Samples are written with `ARGV` for `process.argv[1]`, `META_URL` for
+ * `import.meta.url`, and `%{` for a template placeholder, expanded at
+ * runtime, so this file does not itself contain the forms it forbids.
  */
 const expand = (sample: string) =>
   sample
     .replaceAll('ARGV', ['process', 'argv[1]'].join('.'))
-    .replaceAll('%{', '$' + '{');
+    .replaceAll('%{', '$' + '{')
+    .replaceAll('META_URL', ['import', 'meta', 'url'].join('.'));
 
 const TEMPLATE = FORBIDDEN[0].name;
 const CONCAT = FORBIDDEN[1].name;
 const URL_FROM_ARGV = FORBIDDEN[2].name;
-const PATHNAME = FORBIDDEN[3].name;
+const STALE_CALL = FORBIDDEN[3].name;
+const PATHNAME = FORBIDDEN[4].name;
 
 describe('entry checks are not built from process.argv[1] as URL text', () => {
   it.each([
@@ -123,6 +130,7 @@ describe('entry checks are not built from process.argv[1] as URL text', () => {
       "if (import.meta.url === new URL(ARGV, 'file:').href) {}",
       URL_FROM_ARGV,
     ],
+    ['stale helper call', 'if (invokedDirectly(META_URL)) main();', STALE_CALL],
     [
       'pathname on the right',
       'if (ARGV === new URL(import.meta.url).pathname) {}',
@@ -138,7 +146,7 @@ describe('entry checks are not built from process.argv[1] as URL text', () => {
   });
 
   it.each([
-    ['the shared helper', 'if (invokedDirectly(import.meta.url)) main();'],
+    ['the shared helper', 'if (invokedDirectly(import.meta)) main();'],
     [
       'a resolved-path comparison',
       "if (resolve(ARGV ?? '') === fileURLToPath(import.meta.url)) main();",
@@ -177,14 +185,15 @@ describe('entry checks are not built from process.argv[1] as URL text', () => {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw error;
       }
-      if (!source.includes('argv[1]')) continue;
+      if (!source.includes('argv[1]') && !source.includes('invokedDirectly'))
+        continue;
       for (const name of forbiddenEntryChecks(source)) {
         offenders.push(`${file}: ${name}`);
       }
     }
     expect(
       offenders,
-      'use invokedDirectly(import.meta.url) from scripts/lib/module-entry.mjs',
+      'use invokedDirectly(import.meta) from scripts/lib/module-entry.mjs',
     ).toEqual([]);
   });
 });

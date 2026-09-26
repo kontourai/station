@@ -84,6 +84,6 @@ export function checkDistFreshness({
   return failures.length === 0;
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   if (!checkDistFreshness()) process.exitCode = 1;
 }

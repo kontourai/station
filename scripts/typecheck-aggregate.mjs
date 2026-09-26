@@ -110,7 +110,7 @@ export async function runTypecheckAggregate(options = {}) {
   });
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const ok = await runTypecheckAggregate();
   if (!ok) process.exitCode = 1;
 }

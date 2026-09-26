@@ -544,7 +544,7 @@ export function writeCliNightlyVersion(packageJsonPath, version) {
   return version;
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const args = process.argv.slice(2);
   const cliVersionIndex = args.indexOf('--cli-version');
   if (cliVersionIndex !== -1) {

@@ -3,7 +3,7 @@
 // Error family instead of bespoke per-view variants). Follows the established
 // rename-inventory.mjs / noun-consistency-gate.mjs / unsaved-guard-gate.mjs
 // family (pure exported functions + a `main()` gated behind
-// `invokedDirectly(import.meta.url)`, `git ls-files`-scoped,
+// `invokedDirectly(import.meta)`, `git ls-files`-scoped,
 // reasoned + staleness-checked exclusion lists), but adds the one new
 // ingredient this program needs: a checked-in numeric baseline
 // (scripts/state-primitives-baseline.json) that must only decrease — the
@@ -1107,6 +1107,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }

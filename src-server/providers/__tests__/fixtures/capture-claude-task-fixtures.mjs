@@ -43,7 +43,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const backgroundAgentPrompt = (instruction) =>
@@ -407,13 +406,15 @@ function redactMessageShape(message) {
   return message;
 }
 
-// Same comparison as scripts/lib/module-entry.mjs (not imported across the
-// src-server/scripts boundary): realpath both sides, so a checkout path with a
-// space or a symlink does not turn this capture tool into a silent no-op.
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
-) {
+// Same rule as scripts/lib/module-entry.mjs (not imported across the
+// src-server/scripts boundary): Node's own `import.meta.main`, and a Node
+// without it fails loudly instead of silently skipping the capture.
+if (typeof import.meta.main !== 'boolean') {
+  throw new Error(
+    `import.meta.main is ${typeof import.meta.main}; this tool needs Node 24.2 or newer`,
+  );
+}
+if (import.meta.main) {
   const [scenario, out] = process.argv.slice(2);
   if (!scenario || !out) {
     console.error(

@@ -452,4 +452,4 @@ function main() {
   process.exitCode = 1;
 }
 
-if (invokedDirectly(import.meta.url)) main();
+if (invokedDirectly(import.meta)) main();

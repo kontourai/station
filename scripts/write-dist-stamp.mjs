@@ -30,7 +30,7 @@ export function writeDistStamp({
   return { path: target, stamp };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   const distDir = process.argv[2] ?? 'dist';
   const { path } = writeDistStamp({ distDir });
   console.log(`dist stamp written: ${path}`);

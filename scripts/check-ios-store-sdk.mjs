@@ -15,7 +15,7 @@ export function assertIosStoreSdk(version) {
   }
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   if (process.argv.length !== 3)
     throw new Error('Expected one iOS SDK version');
   assertIosStoreSdk(process.argv[2]);

@@ -782,7 +782,7 @@ async function main() {
   process.exitCode = result.exitCode;
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main().catch((error) => {
     process.stderr.write(`[load-reliability] ${error.message}\n`);
     process.exitCode = 1;

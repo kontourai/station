@@ -229,6 +229,6 @@ export async function runMacosSigningIdentityCli({
   return currentIdentity();
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   console.log(await runMacosSigningIdentityCli({ command: process.argv[2] }));
 }

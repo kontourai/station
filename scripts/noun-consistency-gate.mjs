@@ -963,6 +963,6 @@ function main() {
   process.exit(1);
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta)) {
   main();
 }
