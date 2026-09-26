@@ -547,6 +547,7 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
   ...[
     'packages/shared/src/release-manifest.mjs',
     'packages/shared/src/portable-server-targets.mjs',
+    'packages/shared/src/release-rings.generated.mjs',
   ].map((pattern) =>
     Object.freeze({
       pattern,
