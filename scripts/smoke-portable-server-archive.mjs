@@ -116,7 +116,10 @@ function launcherInvocation(launcher, args) {
           'System32',
           'cmd.exe',
         ),
-        args: ['/d', '/s', '/c', `"${launcher}" ${args.join(' ')}`.trim()],
+        // `/s` strips exactly one outer pair of quotes, so wrap the quoted
+        // launcher path and its arguments in one more, as Node's own
+        // `shell: true` does.
+        args: ['/d', '/s', '/c', `""${launcher}" ${args.join(' ')}"`],
         options: { windowsVerbatimArguments: true },
       }
     : { command: launcher, args, options: {} };
