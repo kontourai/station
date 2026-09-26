@@ -7,9 +7,9 @@ import {
   readSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, isAbsolute } from 'node:path';
 import { loadSelfHostedBrokerConnectorConfig } from '../src-server/runtime/bootstrap/self-hosted-connector-config.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Operator terminal only: public prepare file in, private invitation file out. */
 export async function writeNativeRelayInvitation(
@@ -62,10 +62,7 @@ export async function writeNativeRelayInvitation(
   });
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   writeNativeRelayInvitation(process.argv.slice(2)).then(
     () => {
       process.stdout.write('STATION_NATIVE_INVITATION_WRITTEN\n');
