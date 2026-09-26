@@ -23,7 +23,7 @@ test('rejects an oversized integration policy before an unbounded descriptor rea
   const originalRead = fs.readFileSync;
   let oversizedDescriptorReads = 0;
   try {
-    fs.readFileSync = ((file, ...args) => {
+    fs.readFileSync = ((file: fs.PathOrFileDescriptor, ...args: unknown[]) => {
       if (
         typeof file === 'number' &&
         fs.fstatSync(file).size > 2 * 1024 * 1024
@@ -71,7 +71,10 @@ test('bounds actual policy reads when the opened inode grows after its size chec
       }
       return stat;
     }) as typeof fs.fstatSync;
-    fs.readFileSync = ((fileOrFd, ...args) => {
+    fs.readFileSync = ((
+      fileOrFd: fs.PathOrFileDescriptor,
+      ...args: unknown[]
+    ) => {
       const value = Reflect.apply(originalWholeRead, fs, [fileOrFd, ...args]);
       if (typeof fileOrFd === 'number' && isTarget(fileOrFd)) {
         sourceBytesRead += Buffer.byteLength(value);

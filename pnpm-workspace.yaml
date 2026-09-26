@@ -22,7 +22,6 @@ allowBuilds:
   fsevents@2.3.3: true
   libxmljs2@0.37.0: false
   node-pty@1.1.0: true
-  fsevents@2.3.2: true
   protobufjs@7.6.5: false
   ssh2@1.17.0: false
 minimumReleaseAge: 1440

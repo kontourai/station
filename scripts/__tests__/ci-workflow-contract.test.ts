@@ -1154,7 +1154,7 @@ describe('CI verification workflow contracts', () => {
     // the baseline is bound to whichever renderer produced it — and the
     // fleet's kontour-linux runner is a WSL2 instance in a shared developer
     // desktop whose system libraries and fonts are unmanaged and unpinnable.
-    // A digest rather than the `v1.62.1-noble` tag: a rebuilt base image
+    // A digest rather than the `v1.63.0-noble` tag: a rebuilt base image
     // published under the same tag is a different renderer wearing the same
     // name. Bump it in lockstep with `@playwright/test`.
     expect(gallery).toContain('runs-on: ubuntu-22.04');
@@ -1200,7 +1200,7 @@ describe('CI verification workflow contracts', () => {
     // discovered by a nightly that nobody is watching closely.
     //
     // The oracle is the LOCKFILE, not `package.json`. The declared specifier is
-    // a caret range (`^1.62.1`), so comparing against the declaration would
+    // a caret range (`^1.63.0`), so comparing against the declaration would
     // miss exactly the case that matters — a resolved minor bump that installs
     // a Playwright the pinned image does not contain.
     const resolvedPlaywright = (

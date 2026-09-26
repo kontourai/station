@@ -384,9 +384,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+  'github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+  'github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =

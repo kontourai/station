@@ -493,7 +493,7 @@ describe('loadWorkspaceMetadata', () => {
       const file = files.get(path);
       if (file === undefined) throw new Error(`unexpected read: ${path}`);
       return file;
-    }) as typeof import('node:fs').readFileSync;
+    }) as unknown as typeof import('node:fs').readFileSync;
 
     const loaded = loadWorkspaceMetadata(root, {
       readFile,
