@@ -46,6 +46,22 @@ describe('install.sh generated blocks', () => {
     expect(uses[1]).not.toMatch(/PINNED_MANIFEST_SIGNING_KEYS[:=-]/);
   });
 
+  it('defines each generated channel name exactly once', () => {
+    // --check compares only the marker blocks, so a second definition after
+    // them would shadow the generated one without making the check fail.
+    const lines = readFileSync(INSTALL_SCRIPT_PATH, 'utf8')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => !line.startsWith('#'));
+    for (const definition of [
+      /^RELEASE_RINGS_JSON=/,
+      /^INSTALLABLE_RUNTIME_CHANNELS=/,
+      /^channel_constants\(\)/,
+    ]) {
+      expect(lines.filter((line) => definition.test(line))).toHaveLength(1);
+    }
+  });
+
   it('projects every installable ring and its channel ports into install.sh', () => {
     const script = readFileSync(INSTALL_SCRIPT_PATH, 'utf8');
     expect(Object.keys(rings)).toEqual(['stable', 'preview', 'nightly']);
