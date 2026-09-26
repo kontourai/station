@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   EventStore,
   SessionWorkItemObservationCorruptionError,
@@ -108,18 +108,111 @@ function open(
 }
 
 describe('EventStore Session work-item associations', () => {
-  test('uses metadata-only admission before a CASE-bounded association JSON fetch', () => {
-    const source = readFileSync(
-      new URL('../event-store.ts', import.meta.url),
-      'utf8',
-    );
-    expect(source).toContain(
-      'SELECT rowid AS row_id, association_id, session_id, conversation_id,',
-    );
-    expect(source).toContain(
-      "CASE\n                  WHEN typeof(association_json) = 'text'",
-    );
-    expect(source).toContain('END AS association_json');
+  test('never materializes an oversized association JSON, at rest or grown between admission and fetch', () => {
+    // Read cost is what crosses from SQLite into JS. Record the largest string
+    // any statement returns while the store lists observations: metadata
+    // admission must reject an oversized row before its JSON is selected, and
+    // the bounded content fetch must return NULL for a row that grew after
+    // admission instead of the grown bytes.
+    const oversizedJson = JSON.stringify({
+      retained: 'x'.repeat(2 * 1024 * 1024),
+    });
+    let largestReturnedString = 0;
+    const record = (rows: unknown) => {
+      for (const row of Array.isArray(rows) ? rows : [rows]) {
+        if (!row || typeof row !== 'object') continue;
+        for (const value of Object.values(row))
+          if (typeof value === 'string')
+            largestReturnedString = Math.max(
+              largestReturnedString,
+              value.length,
+            );
+      }
+    };
+    let afterMetadataRead: (() => void) | undefined;
+    const originalAll = StatementSync.prototype.all;
+    const originalGet = StatementSync.prototype.get;
+    vi.spyOn(StatementSync.prototype, 'all').mockImplementation(function (
+      this: StatementSync,
+      ...args: Parameters<StatementSync['all']>
+    ) {
+      const rows = originalAll.apply(this, args);
+      record(rows);
+      const grow = afterMetadataRead;
+      afterMetadataRead = undefined;
+      grow?.();
+      return rows;
+    });
+    vi.spyOn(StatementSync.prototype, 'get').mockImplementation(function (
+      this: StatementSync,
+      ...args: Parameters<StatementSync['get']>
+    ) {
+      const row = originalGet.apply(this, args);
+      record(row);
+      return row;
+    });
+    const writeAssociationJson = (path: string, value: string) => {
+      const writer = new DatabaseSync(path);
+      try {
+        writer
+          .prepare(
+            `UPDATE orchestration_session_work_item_associations
+                SET association_json = ? WHERE association_id = ?`,
+          )
+          .run(value, 'association-a');
+      } finally {
+        writer.close();
+      }
+    };
+    const list = (store: EventStore) =>
+      store.listSessionWorkItemObservations({
+        sessionId: 'session-a',
+        conversationId: 'session-a',
+      });
+
+    try {
+      const { store, path } = open();
+      try {
+        expect(
+          store.stageSessionWorkItemCandidate({
+            candidate: candidate(),
+            current: () => true,
+          }),
+        ).toEqual({ kind: 'staged' });
+        store.appendEvent(completion());
+        // Positive control: an admitted row's JSON does cross, in full.
+        largestReturnedString = 0;
+        expect(list(store)).toHaveLength(1);
+        expect(largestReturnedString).toBeGreaterThan(0);
+        expect(largestReturnedString).toBeLessThan(oversizedJson.length);
+
+        // Grown between the metadata read and the content fetch.
+        largestReturnedString = 0;
+        afterMetadataRead = () => writeAssociationJson(path, oversizedJson);
+        expect(() => list(store)).toThrow(
+          SessionWorkItemObservationCorruptionError,
+        );
+        expect(afterMetadataRead).toBeUndefined();
+        expect(largestReturnedString).toBeLessThan(oversizedJson.length);
+      } finally {
+        store.close();
+      }
+
+      // Oversized at rest, read by a fresh store.
+      writeAssociationJson(path, oversizedJson);
+      const reopened = new EventStore(path);
+      try {
+        largestReturnedString = 0;
+        expect(() => list(reopened)).toThrow(
+          SessionWorkItemObservationCorruptionError,
+        );
+        expect(largestReturnedString).toBeLessThan(oversizedJson.length);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   test('rolls the association and event back together, then retakes and commits', () => {
