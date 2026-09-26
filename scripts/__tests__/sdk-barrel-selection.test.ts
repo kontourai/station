@@ -94,10 +94,6 @@ const OUTSIDE_SOURCES: Record<string, string> = {
   'src-ui/src/__tests__/namespace.test.ts': `
     import * as sdk from '@kontourai/station-sdk';
   `,
-  'src-ui/src/__tests__/mocked.test.ts': `
-    import { fetchBoard } from '@kontourai/station-sdk';
-    vi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));
-  `,
   'src-ui/src/__tests__/mocked-client.test.ts': `
     vi.mock('../../../packages/sdk/src/client/index.js');
   `,
@@ -256,21 +252,17 @@ describe('forms that depend on the whole barrel stay selected', () => {
     expect(seedsFor(unrelated)).toContain(path);
   });
 
-  test('vi.mock of the root barrel, even with a named import of an unrelated name', () => {
-    expect(seedsFor(SCHEDULER)).toContain(
-      'src-ui/src/__tests__/mocked.test.ts',
-    );
-  });
-
-  test('vi.mock of any specifier resolving to a barrel (relative client barrel)', () => {
+  test('automock: vi.mock of a barrel specifier with no factory (relative client barrel)', () => {
     expect(seedsFor(SCHEDULER)).toContain(
       'src-ui/src/__tests__/mocked-client.test.ts',
     );
   });
 
   test.each([
-    ['vi.doMock', "vi.doMock('@kontourai/station-sdk', () => ({}));"],
+    ['vi.doMock automock', "vi.doMock('@kontourai/station-sdk');"],
+    ['vi.unmock', "vi.unmock('@kontourai/station-sdk');"],
     ['vi.importActual', "await vi.importActual('@kontourai/station-sdk');"],
+    ['vi.importMock', "await vi.importMock('@kontourai/station-sdk');"],
     ['require', "const sdk = require('@kontourai/station-sdk');"],
   ])('%s of the barrel', (_form, body) => {
     const path = 'src-ui/src/__tests__/extra-form.test.ts';
@@ -306,6 +298,64 @@ describe('forms that depend on the whole barrel stay selected', () => {
           "import { fetchBoard } from '@kontourai/station-sdk';\nconst m = await import('./' + name);",
       }),
     ).toContain(path);
+  });
+});
+
+describe('factory mocks evaluate nothing real unless they can reach the original', () => {
+  const path = 'src-ui/src/__tests__/factory-mock.test.ts';
+  const withFactory = (body: string) =>
+    `import { fetchBoard } from '@kontourai/station-sdk';\n${body}`;
+  const selectedFor = (changed: string, body: string) =>
+    seedsFor(changed, { [path]: withFactory(body) }).includes(path);
+
+  test.each([
+    [
+      'vi.mock',
+      "vi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));",
+    ],
+    [
+      'vi.doMock',
+      "vi.doMock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));",
+    ],
+    [
+      'a factory using a third-party import',
+      "import React from 'react';\nvi.mock('@kontourai/station-sdk', () => ({ Box: () => React.createElement('div') }));",
+    ],
+  ])(
+    'a factory-only %s is NOT selected for an unrelated module, and its named imports still resolve',
+    (_form, body) => {
+      expect(selectedFor(SCHEDULER, body)).toBe(false);
+      expect(selectedFor(BOARD, body)).toBe(true);
+    },
+  );
+
+  test.each([
+    [
+      'an importOriginal factory',
+      "vi.mock('@kontourai/station-sdk', async (importOriginal) => ({ ...(await importOriginal()), fetchBoard: vi.fn() }));",
+    ],
+    [
+      'a factory plus vi.importActual elsewhere in the file',
+      "vi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\nconst real = () => vi.importActual('./anything');",
+    ],
+    [
+      'a factory calling an imported repository helper',
+      "import { sdkMock } from './helpers/sdk-mock';\nvi.mock('@kontourai/station-sdk', () => sdkMock());",
+    ],
+    [
+      'a factory calling a local wrapper around an imported helper',
+      "import { sdkMock } from '@/test-utils/sdk-mock';\nconst build = () => ({ ...sdkMock() });\nvi.mock('@kontourai/station-sdk', () => build());",
+    ],
+    [
+      'a factory loading a helper module dynamically',
+      "vi.mock('@kontourai/station-sdk', async () => (await import('./helpers/sdk-mock')).sdkMock());",
+    ],
+    [
+      'a factory passed by reference',
+      "const factory = () => ({ fetchBoard: vi.fn() });\nvi.mock('@kontourai/station-sdk', factory);",
+    ],
+  ])('%s keeps the whole barrel', (_form, body) => {
+    expect(selectedFor(SCHEDULER, body)).toBe(true);
   });
 });
 

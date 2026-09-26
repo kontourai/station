@@ -63,7 +63,7 @@ describe('SDK barrel selection on the real corpus', () => {
     const wholeSet = new Set(whole);
     expect(refined.filter((seed) => !wholeSet.has(seed))).toEqual([]);
     expect(whole).toContain(AGENTS_ONLY_IMPORTER);
-    // Measured 2026-09-26: 322 refined seeds against 672 whole-barrel seeds.
+    // Measured 2026-09-26: 172 refined seeds against 524 whole-barrel seeds.
     // The bound is loose on purpose; the subset and the named control above
     // are what pin the direction.
     expect(refined.length).toBeLessThan(whole.length * 0.75);

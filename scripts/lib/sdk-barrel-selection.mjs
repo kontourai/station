@@ -35,8 +35,12 @@
  * from X. Everything this module cannot resolve with certainty stays whole:
  *
  * - namespace imports, side-effect imports, `export *` from a barrel, dynamic
- *   `import()`, `require()`, `vi.mock`/`vi.doMock`/`vi.importActual` (and
- *   friends) of a barrel, and `import.meta.glob` depend on the whole barrel;
+ *   `import()`, `require()`, `vi.importActual`/`vi.importMock`/`vi.unmock`,
+ *   an automock (`vi.mock(barrel)` with no factory), a factory that can reach
+ *   the real module (`importOriginal`, or a file that loads modules a
+ *   factory could call through), and `import.meta.glob` depend on the whole
+ *   barrel. A zero-parameter inline factory mock in a file that never
+ *   reaches the original evaluates nothing real, so it adds no dependency;
  * - a name the barrel declares itself, a name found in more than one star
  *   re-export, and a name that could come from a star re-export this module
  *   cannot enumerate, depend on the whole barrel;
@@ -138,6 +142,107 @@ function mockCall(node) {
   );
 }
 
+const ORIGINAL_ACCESS = /\b(?:importOriginal|importActual|importMock)\b/;
+
+/**
+ * `vi.mock(spec, factory)` / `vi.doMock(spec, factory)` whose factory is an
+ * inline function taking no parameter: it cannot receive `importOriginal`.
+ * Automock (no factory), `unmock`, and a factory passed by reference are not.
+ */
+function isFactoryMock(node) {
+  const callee = node.expression;
+  if (
+    !ts.isPropertyAccessExpression(callee) ||
+    !['mock', 'doMock'].includes(callee.name.text) ||
+    !mockCall(node)
+  )
+    return false;
+  const factory = node.arguments[1];
+  return Boolean(
+    factory &&
+      (ts.isArrowFunction(factory) || ts.isFunctionExpression(factory)) &&
+      factory.parameters.length === 0,
+  );
+}
+
+// Imports from these can reach repository code (and so a vi.importActual of
+// the SDK); third-party packages cannot name it.
+const REPOSITORY_SPECIFIER = /^(?:\.|@\/|@shared\/|@kontourai\/)/;
+
+/**
+ * Identifiers a node reads: not the `.name` of a property access, nor an
+ * object-literal or class member key (a shorthand property still reads).
+ */
+function referencedIdentifiers(node, into = new Set()) {
+  if (ts.isIdentifier(node)) into.add(node.text);
+  else if (ts.isPropertyAccessExpression(node))
+    referencedIdentifiers(node.expression, into);
+  else if (
+    (ts.isPropertyAssignment(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isPropertyDeclaration(node)) &&
+    ts.isIdentifier(node.name)
+  )
+    ts.forEachChild(node, (child) => {
+      if (child !== node.name) referencedIdentifiers(child, into);
+    });
+  // forEachChild stops at the first truthy callback result: return nothing.
+  else
+    ts.forEachChild(node, (child) => {
+      referencedIdentifiers(child, into);
+    });
+  return into;
+}
+
+/**
+ * Top-level names that can reach repository code: bindings imported from a
+ * repository specifier, and, to a fixpoint, top-level declarations whose
+ * text references one of them.
+ */
+function repositoryReachingNames(file) {
+  const tainted = new Set();
+  const declarations = [];
+  for (const statement of file.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      if (
+        !clause ||
+        clause.isTypeOnly ||
+        !REPOSITORY_SPECIFIER.test(statement.moduleSpecifier.text)
+      )
+        continue;
+      if (clause.name) tainted.add(clause.name.text);
+      const bindings = clause.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings))
+        tainted.add(bindings.name.text);
+      else if (bindings)
+        for (const element of bindings.elements)
+          if (!element.isTypeOnly) tainted.add(element.name.text);
+      continue;
+    }
+    const names = [];
+    if (ts.isVariableStatement(statement))
+      for (const declaration of statement.declarationList.declarations)
+        bindingNames(declaration.name, names);
+    else if (statement.name && ts.isIdentifier(statement.name))
+      names.push(statement.name.text);
+    if (names.length)
+      declarations.push({ names, reads: referencedIdentifiers(statement) });
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const { names, reads } of declarations) {
+      if (names.every((name) => tainted.has(name))) continue;
+      if ([...reads].some((name) => tainted.has(name))) {
+        for (const name of names) tainted.add(name);
+        changed = true;
+      }
+    }
+  }
+  return tainted;
+}
+
 function isImportMetaGlob(node) {
   const callee = node.expression;
   return (
@@ -202,15 +307,22 @@ function collectModuleReferences(path, source) {
     )
       add(statement.moduleReference.expression.text, null);
   }
+  const factoryMocks = [];
+  let loadsModules = false;
   const visit = (node) => {
     if (ts.isCallExpression(node)) {
       const dynamicImport =
         node.expression.kind === ts.SyntaxKind.ImportKeyword;
       const requireCall =
         ts.isIdentifier(node.expression) && node.expression.text === 'require';
+      if (dynamicImport || requireCall) loadsModules = true;
       if (dynamicImport || requireCall || mockCall(node)) {
         const specifier = stringArgument(node);
-        if (specifier !== null) add(specifier, null);
+        if (specifier !== null) {
+          if (isFactoryMock(node))
+            factoryMocks.push({ specifier, factory: node.arguments[1] });
+          else add(specifier, null);
+        }
         // A computed specifier can name any module; vitest cannot follow it
         // either, but this module does not guess.
         else if (dynamicImport || requireCall) opaque = true;
@@ -219,6 +331,24 @@ function collectModuleReferences(path, source) {
     ts.forEachChild(node, visit);
   };
   if (CALL_REFERENCE.test(source)) visit(file);
+  // A factory mock replaces the module without evaluating it, so it adds no
+  // dependency: the file's own named imports still resolve normally. That
+  // holds only while the factory provably cannot reach the real module:
+  // - any importOriginal/importActual/importMock spelling in the file, or any
+  //   import()/require() (a loaded helper could call vi.importActual), keeps
+  //   every mock in the file whole;
+  // - a factory that references a binding imported from repository code
+  //   (relative, alias, or @kontourai package), directly or through a
+  //   top-level declaration that does, keeps that mock whole: the helper
+  //   could call vi.importActual.
+  const reachesOriginal = ORIGINAL_ACCESS.test(source) || loadsModules;
+  const tainted = reachesOriginal ? null : repositoryReachingNames(file);
+  for (const { specifier, factory } of factoryMocks)
+    if (
+      reachesOriginal ||
+      [...referencedIdentifiers(factory)].some((name) => tainted.has(name))
+    )
+      add(specifier, null);
   return { references, opaque };
 }
 
