@@ -429,6 +429,10 @@ function createPortableArchive({ stageParent, target, outputDir }) {
   runTar([
     ...create,
     ...normalizedOwnershipArgs(),
+    // Finder can write a new `.DS_Store` into an open stage directory after
+    // normalizeStagedTree removed it, so the archive excludes them as well.
+    '--exclude',
+    '.DS_Store',
     '-C',
     stageParent,
     PORTABLE_ARCHIVE_ROOT,
