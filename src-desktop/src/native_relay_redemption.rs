@@ -3276,6 +3276,40 @@ mod tests {
     }
 
     #[test]
+    fn native_diagnostic_binding_is_exact_revision_and_secret_free() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let context = prepared.authority.0.lock().unwrap().clone();
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        let binding = diagnostic_binding_from_current("Local", 7, context.clone(), grant).unwrap();
+        let encoded = serde_json::to_value(&binding).unwrap();
+        assert_eq!(encoded["profileName"], "Local");
+        assert_eq!(encoded["profileRevision"], 7);
+        assert_eq!(encoded["scope"]["stationId"], STATION_ID);
+        assert_eq!(encoded["surface"]["clientInstanceId"], INSTANCE_ID);
+        assert!(encoded.get("credential").is_none());
+        assert!(encoded.get("privateKey").is_none());
+        assert!(encoded.get("brokerOrigin").is_none());
+
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        assert!(matches!(
+            diagnostic_binding_from_current("Other", 7, context.clone(), grant),
+            Err(NativeRedemptionError::StaleProfile)
+        ));
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        assert!(matches!(
+            diagnostic_binding_from_current("Local", 8, context, grant),
+            Err(NativeRedemptionError::StaleProfile)
+        ));
+        let mut revoked = prepared.authority.0.lock().unwrap().clone();
+        revoked.station_trust.status = NativeStationTrustStatus::Revoked;
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        assert!(matches!(
+            diagnostic_binding_from_current("Local", 7, revoked, grant),
+            Err(NativeRedemptionError::StaleProfile)
+        ));
+    }
+
+    #[test]
     fn native_signal_service_uses_fixed_proven_requests_and_returns_secret_free_dtos() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let grants = stored_signal_grant(&prepared);
@@ -5608,6 +5642,61 @@ pub(crate) struct NativeRelaySignalAnswer {
     pub(crate) expires_at: u64,
 }
 
+/// Host-derived, secret-free descriptor used only by the opt-in renderer
+/// diagnostic. The saved profile revision and approved Station key are read
+/// under the same profile/trust lock as signaling admission.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelayDiagnosticBinding {
+    profile_name: String,
+    profile_revision: u64,
+    scope: NativeRelayScopeV2,
+    surface: NativeRelayClientSurfaceV2,
+    trust_revision: u64,
+    station_id: String,
+    enrollment_id: String,
+    generation: u64,
+    signing_key: P256PublicJwk,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelayDiagnosticBindingInput {
+    profile_name: String,
+    expected_profile_revision: u64,
+}
+
+fn diagnostic_binding_from_current(
+    profile_name: &str,
+    expected_profile_revision: u64,
+    context: NativeRedemptionContext,
+    grant: NativeRelayClientGrantV2,
+) -> RedemptionResult<NativeRelayDiagnosticBinding> {
+    if context.profile.profile_name != profile_name
+        || context.profile.revision != expected_profile_revision
+        || context.station_trust.status != NativeStationTrustStatus::Approved
+        || grant.surface.kind != "station-native"
+        || grant.scope.station_id != context.profile.station_id
+        || grant.scope.enrollment_id != context.profile.enrollment_id
+        || grant.surface.app_identifier != context.profile.app_identifier
+        || grant.surface.channel != context.profile.channel.keyring_label()
+        || grant.surface.client_instance_id != context.profile.client_instance_id
+    {
+        return Err(NativeRedemptionError::StaleProfile);
+    }
+    Ok(NativeRelayDiagnosticBinding {
+        profile_name: context.profile.profile_name,
+        profile_revision: context.profile.revision,
+        scope: grant.scope,
+        surface: grant.surface,
+        trust_revision: context.station_trust.revision,
+        station_id: context.station_trust.station_id,
+        enrollment_id: context.station_trust.enrollment_id,
+        generation: context.station_trust.generation,
+        signing_key: context.station_trust.signing_key,
+    })
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct NativeRelaySignalOpenedWire {
@@ -6418,6 +6507,47 @@ pub(crate) async fn station_native_relay_grant_cleanup_retry(
 /// Opens a broker offer for the native signaling diagnostic only. The main
 /// local app WebView supplies a saved profile selector and bounded SDP; all
 /// grant credentials, proof signing, and broker routing stay in the host.
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_diagnostic_binding(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelayDiagnosticBindingInput,
+) -> Result<NativeRelayDiagnosticBinding, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if !valid_diagnostic_profile_name(&request.profile_name)
+        || request.expected_profile_revision == 0
+        || request.expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The native relay diagnostic profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+        let grants = native_relay_grant_vault();
+        let now = native_now_ms()
+            .map_err(|_| "Station could not verify native relay state.".to_owned())?;
+        contexts
+            .with_current_context(&request.profile_name, |context| {
+                validate_profile_context(&context)?;
+                let owner = NativeProofKeyOwner::new(
+                    &context.profile.app_identifier,
+                    context.profile.channel,
+                    &context.profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let record = grants.load_request_grant(&owner, &context, now, false)?;
+                diagnostic_binding_from_current(
+                    &request.profile_name,
+                    request.expected_profile_revision,
+                    context,
+                    record.grant,
+                )
+            })
+            .map_err(map_signal_diagnostic_error)
+    })
+    .await
+    .map_err(|_| "Station could not verify native relay diagnostic trust.".to_owned())?
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub(crate) async fn station_native_relay_signal_diagnostic_open(
     window: tauri::WebviewWindow,
