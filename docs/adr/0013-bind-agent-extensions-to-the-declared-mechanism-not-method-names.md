@@ -1,5 +1,17 @@
 # Bind agent extensions to the declared mechanism, never to method names
 
+**Reading status (2026-09-26 source review):** This decision retains the dated
+2026-08-03 ACP/Kiro investigation. Its vendor versions, wire observations, and
+ecosystem survey are not a current compatibility matrix. The inbound-request
+refusal slice has since landed: the
+[ACP adapter](../../src-server/providers/adapters/acp-adapter.ts) uses the
+[inbound extension policy](../../src-server/services/acp/acp-inbound-extension-policy.ts)
+rather than the old fabricated `{}` response. Statements below that say “until
+it lands” describe the earlier checkpoint. The declared/observed/working
+distinction and no-credential-bridging decision remain; completion of every
+other proposed binding and live vendor interoperability require their own
+evidence. The investigation and alternatives are preserved below.
+
 ## Context
 
 station#1815 asks how Station consumes ACP agent extensions — Kiro's

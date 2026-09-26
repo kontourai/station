@@ -4,6 +4,16 @@ Status: accepted, with the flag clause SUPERSEDED BY OWNER DECISION (see
 "Superseded: no flag, no aliases" below)
 Date: 2026-08-21
 
+**Current command route (2026-09-26 source review):** The retained migration
+helper is available through the repository launcher as
+`./station doctor --migrate-playbooks [--dry-run]`. The published CLI does not
+ship the server-side migration and directs callers to that launcher; see
+[the CLI owner](../../packages/cli/src/cli.ts). No migration was executed for
+this review. The supersession below is the decision; the later flag/alias
+sections preserve the earlier slices' historical design and are not current
+deployment instructions. Its vocabulary-count statement describes the dated
+checkpoint, not a fresh inventory of every reference in the repository.
+
 ## Superseded: no flag, no aliases (owner decision, slice 4)
 
 Everything below records the shape slices 1–2 were built to. Before slice 4 the
