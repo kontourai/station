@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { signingIdentityRecordsFromSecurityOutput } from '../nightly/macos-signing-identity.mjs';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
 
@@ -462,5 +463,4 @@ export async function runMacosSigningReadinessCli({
     });
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1])
-  await runMacosSigningReadinessCli();
+if (invokedDirectly(import.meta.url)) await runMacosSigningReadinessCli();

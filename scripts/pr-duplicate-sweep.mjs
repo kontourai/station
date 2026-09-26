@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const COMMENT_MARKER = '<!-- pr-duplicate-sweep -->';
 const CLOSING_RE = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
@@ -189,6 +190,6 @@ function main(argv) {
   for (const pr of targets) sweepPr(pr, argv, repoArgs);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main(process.argv.slice(2));
 }

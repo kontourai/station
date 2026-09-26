@@ -23,13 +23,22 @@
  * would make every gate silently do nothing and exit 0. A path that cannot be
  * resolved is a real problem and now says so.
  *
+ * ## Windows and percent-encoding
+ *
+ * Both sides are native paths (`fileURLToPath` decodes `%20` and turns
+ * `file:///C:/x` into `C:\x`), so neither a space in the checkout path nor a
+ * Windows drive path can make the comparison false. The string-built forms
+ * this replaced — a URL assembled from `process.argv[1]`, or
+ * `new URL(import.meta.url).pathname` compared against it — failed on both,
+ * and on Windows that made gates in the required portable-floor job exit 0
+ * without running. `scripts/__tests__/module-entry-guard.scan.test.ts` keeps
+ * those forms out of the tree.
+ *
  * ## The remaining gap (station#1853)
  *
- * 57 other files under `scripts/` still hand-roll this, 15 of them with the
- * `import.meta.url === ` + backtick-`file://${process.argv[1]}` template, which
- * breaks on symlinks *and* on percent-encoding (any space in a checkout path).
- * All are safe as invoked today; none is safe by construction. This helper
- * closes four call sites, not the class.
+ * Many scripts still hand-roll a path-based comparison
+ * (`resolve(argv[1]) === fileURLToPath(...)`, `pathToFileURL(argv[1]).href`).
+ * Those survive spaces and Windows paths but not a symlinked invocation path.
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

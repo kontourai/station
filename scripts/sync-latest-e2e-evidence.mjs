@@ -19,6 +19,7 @@ import {
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
 } from './lib/e2e-latest-evidence.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REPOSITORY = 'kontourai/station';
 const WORKFLOW = 'CI Extended';
@@ -534,7 +535,7 @@ export async function main(args = process.argv.slice(2)) {
   const result = await syncLatestE2EEvidence(parseSyncArgs(args));
   console.log(formatSyncResult(result));
 }
-if (import.meta.url === `file://${resolve(process.argv[1] ?? '')}`)
+if (invokedDirectly(import.meta.url))
   main().catch((error) => {
     console.error(`E2E evidence sync failed: ${error.message}`);
     process.exitCode = 1;

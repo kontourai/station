@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { assertIosStoreSdk } from './check-ios-store-sdk.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const CHECKED_IOS_ALLOWLIST = JSON.parse(
   readFileSync(
@@ -334,7 +335,7 @@ export function inspectIosPackageRoot(root) {
   };
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   const rootIndex = process.argv.indexOf('--root');
   if (
     process.argv[2] !== 'ios' ||

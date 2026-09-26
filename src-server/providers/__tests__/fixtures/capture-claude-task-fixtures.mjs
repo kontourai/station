@@ -43,6 +43,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const backgroundAgentPrompt = (instruction) =>
@@ -406,7 +407,13 @@ function redactMessageShape(message) {
   return message;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Same comparison as scripts/lib/module-entry.mjs (not imported across the
+// src-server/scripts boundary): realpath both sides, so a checkout path with a
+// space or a symlink does not turn this capture tool into a silent no-op.
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   const [scenario, out] = process.argv.slice(2);
   if (!scenario || !out) {
     console.error(

@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
@@ -1209,7 +1210,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
   };
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   createMacosNotarizedArtifacts(
     parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
   ).catch((error) => {

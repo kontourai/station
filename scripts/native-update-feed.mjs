@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import semver from 'semver';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const CUSTOM_FEED_FIELDS = [
   'VITE_NATIVE_APP_UPDATE_FEED_URL',
@@ -504,7 +505,7 @@ function main() {
   throw new Error(`Unknown command: ${command}`);
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   try {
     await main();
   } catch (error) {

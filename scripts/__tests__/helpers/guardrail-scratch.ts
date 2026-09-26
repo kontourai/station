@@ -116,13 +116,11 @@ export interface ScratchOptions {
  * A throwaway directory carrying the guardrail and a tree for it to walk,
  * `git init`ed and committed unless `git: false`.
  *
- * The path comes from `mkdtempSync` under the OS temp dir, which on macOS is
- * already symlink-resolved. That matters: several guardrails guard `main()`
- * with `import.meta.url === ` + backtick + `file://${process.argv[1]}`, a byte
- * comparison with no realpath and no URL escaping. Spawning them with the
- * RELATIVE `scripts/<name>.mjs` (as `runGuardrail` does) keeps that comparison
- * true; passing an absolute unresolved path would make the guard silently
- * false and the gate would exit 0 having done nothing.
+ * `scripts/lib/module-entry.mjs` is always copied: it is the entry guard
+ * (`invokedDirectly`) the guardrails import, so without it every gate would
+ * die with `ERR_MODULE_NOT_FOUND` before reaching anything under test. It
+ * realpaths both sides of the comparison, so neither the `mkdtempSync` path
+ * nor how `runGuardrail` spells the script can make `main()` silently skip.
  */
 export function scratchRepo({
   script,
@@ -148,7 +146,7 @@ export function scratchRepo({
   expect(readFileSync(join(dir, 'scripts', script), 'utf8')).toBe(
     readFileSync(join('scripts', script), 'utf8'),
   );
-  for (const lib of libs) {
+  for (const lib of new Set(['module-entry.mjs', ...libs])) {
     copyFileSync(join('scripts', 'lib', lib), join(dir, 'scripts', 'lib', lib));
   }
   for (const extra of extraScripts) {
@@ -226,8 +224,8 @@ export function runGuardrail(
 /**
  * Import the guardrail as an ordinary module rather than running it as the
  * entry point, so `process.argv[1]` is not the script and every one of these
- * gates' `import.meta.url === file://${process.argv[1]}`-style guards is
- * false.
+ * gates' entry guards (`invokedDirectly`, or a hand-rolled argv comparison)
+ * is false.
  *
  * This is what makes "the failure came from behind the entry guard" a
  * computed claim instead of a comment: a diagnostic that appears here as well
