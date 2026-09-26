@@ -189,9 +189,11 @@ export class SelfHostedBrokerBrowserClient {
    */
   async assertCredentialBoundToTrust(
     trustRecord: DeviceConnectionTrustRecord,
-  ): Promise<boolean | undefined> {
+  ): Promise<boolean> {
     const assertBound = this.#credentials.assertBoundToTrust;
-    if (!assertBound) return undefined;
+    // Preserve the browser-only lab credential path explicitly; other
+    // signaling adapters must provide a positive trust-binding decision.
+    if (!assertBound) return true;
     return assertBound.call(this.#credentials, trustRecord, {
       brokerOrigin: this.#brokerOrigin,
       browserOrigin: this.#browserOrigin,

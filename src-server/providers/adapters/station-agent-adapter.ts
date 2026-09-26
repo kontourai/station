@@ -38,6 +38,10 @@ import {
 } from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
+import {
+  runAsStationServer,
+  stationServerScopeHeaders,
+} from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type {
   EventBus,
@@ -53,8 +57,6 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
-  runAsStationServer,
-  stationServerScopeHeaders,
 } from '../../utils/internal-api-token.js';
 import {
   type ProviderAdapterShape,

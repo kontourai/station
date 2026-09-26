@@ -9,6 +9,7 @@ import {
   notificationDetail,
 } from '../../utils/notifications';
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
+import { NotificationEnvelopeControls } from './NotificationEnvelopeControls';
 
 /**
  * The full notifications page's row. archive#1780: the same annotation
@@ -58,6 +59,12 @@ export function NotificationCard({
             <div className="notification-card__detail">{notification.body}</div>
           )}
           {detail && <div className="notification-card__detail">{detail}</div>}
+          <NotificationEnvelopeControls
+            notification={notification}
+            detailClassName="notification-card__detail"
+            actionsClassName="notification-card__actions"
+            actionClassName="notification-card__action notification-card__action--ghost"
+          />
           {notice && (
             <div
               className="notification-card__detail notification-card__answerability"

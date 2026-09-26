@@ -55,15 +55,15 @@ import {
 } from '../tools/station-control-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 import {
-  enableStationServerSelfAttestation,
-  INTERNAL_SERVER_SELF_HEADER,
-  isStationServerSelfAttestation,
-} from '../utils/internal-api-token.js';
-import {
   getRuntimeAuthenticatedRequestPrincipal,
   withdrawInternalHomePossession,
 } from './runtime-request-security.js';
 import { bindStationControlRequestAuthority } from './station-control-request-authority.js';
+import {
+  enableStationServerSelfAttestation,
+  INTERNAL_SERVER_SELF_HEADER,
+  isStationServerSelfAttestation,
+} from './station-server-scope.js';
 
 /**
  * Internal requests that reach Station without a station-control caller and
@@ -163,7 +163,7 @@ const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider', 'monitor'] as const;
  * The fields of an edit body that could change what a job runs; the grant
  * check compares them with the job itself.
  */
-export function jobTargetChanges(
+function jobTargetChanges(
   body: unknown,
 ): Partial<Record<(typeof JOB_TARGET_FIELDS)[number], unknown>> {
   if (!body || typeof body !== 'object') return {};

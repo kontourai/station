@@ -376,6 +376,7 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
 import type { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
@@ -399,7 +400,6 @@ import {
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
-import { runAsStationServer } from '../../utils/internal-api-token.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';

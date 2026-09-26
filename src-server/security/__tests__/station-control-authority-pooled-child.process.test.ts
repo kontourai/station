@@ -21,19 +21,19 @@ import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { resolveStationControlCallerForRequest } from '../../runtime/mcp/station-control-caller.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import {
-  __resetStationServerSelfAttestationForTests,
-  getInternalApiToken,
-  INTERNAL_SERVER_SELF_HEADER,
-} from '../../utils/internal-api-token.js';
+import { getInternalApiToken } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import { createStationControlAuthorityGuard } from '../station-control-authority-guard.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  INTERNAL_SERVER_SELF_HEADER,
+} from '../station-server-scope.js';
 
 const run = promisify(execFile);
 const root = resolve(import.meta.dirname, '../../..');
 const probe = `
 import {api,installStationControlStdioCallerCredential} from './src-server/tools/station-control-shared.ts';
-import {runAsStationServer} from './src-server/utils/internal-api-token.ts';
+import {runAsStationServer} from './src-server/security/station-server-scope.ts';
 installStationControlStdioCallerCredential();
 const read=await api('/agents');
 const write=await api('/config/app',{method:'PUT',body:JSON.stringify({theme:'dark'})});

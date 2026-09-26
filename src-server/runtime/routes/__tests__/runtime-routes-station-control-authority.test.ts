@@ -15,6 +15,10 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  runAsStationServer,
+} from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -24,11 +28,9 @@ import {
   STATION_CONTROL_CALLER_TOKEN_HEADER,
 } from '../../../tools/station-control-shared.js';
 import {
-  __resetStationServerSelfAttestationForTests,
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  runAsStationServer,
 } from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,

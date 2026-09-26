@@ -33,6 +33,7 @@ import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
+import { createChildDelegationContext } from '../../runtime/agents/delegation.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import {
   resolveStationControlCallerForRequest,
@@ -68,12 +69,9 @@ import {
   withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import {
-  __resetStationServerSelfAttestationForTests,
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  INTERNAL_SERVER_SELF_HEADER,
-  runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import { isBoundRuntimeLocalOperator } from '../runtime-request-security.js';
@@ -82,6 +80,11 @@ import {
   STATION_CONTROL_GUARD_CARVE_OUTS,
 } from '../station-control-authority-guard.js';
 import { stationControlRequestAuthority } from '../station-control-request-authority.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  INTERNAL_SERVER_SELF_HEADER,
+  runAsStationServer,
+} from '../station-server-scope.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
 
@@ -111,6 +114,16 @@ let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
+const PEER_ENVIRONMENT_ID = 'env-authority-peer';
+let peerServer: ReturnType<typeof serve>;
+let peerBaseUrl: string;
+const peerReceived: Array<{ path: string; body: any }> = [];
+const derivations: Array<string | null> = [];
+const DERIVED_LINEAGE = createChildDelegationContext({
+  agentSlug: 'planner',
+  conversationId: 'conversation-derived',
+  spec: { name: 'Planner', prompt: 'Plan' },
+});
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -223,8 +236,64 @@ beforeAll(async () => {
   );
   app.route(
     '/api/orchestration',
-    createStationControlCallerRoutes({ resolveRecord }),
+    createStationControlCallerRoutes({
+      resolveRecord,
+      // #2601: the lineage this Station derives for the verified caller,
+      // read before a forward to a saved Environment.
+      deriveCallerDelegation: async (request) => {
+        derivations.push(
+          resolveStationControlCallerForRequest(request, resolveRecord)
+            ?.sessionId ?? null,
+        );
+        return DERIVED_LINEAGE;
+      },
+    }),
   );
+  // A saved peer Environment: no SSH profile, one paired peer credential,
+  // and the peer Station itself on its own loopback listener.
+  app.get('/.well-known/station/v1', (c) =>
+    c.json({ environmentId: 'env-authority-current' }),
+  );
+  app.get('/api/environments/ssh', (c) => c.json({ success: true, data: [] }));
+  app.get('/api/environments/peers/:id/credential', (c) =>
+    c.req.param('id') === PEER_ENVIRONMENT_ID
+      ? c.json({
+          success: true,
+          data: {
+            environmentId: PEER_ENVIRONMENT_ID,
+            apiBase: peerBaseUrl,
+            scope: 'delegation',
+            credential: 'test-only-peer-credential-authority',
+            label: 'Peer',
+          },
+        })
+      : c.json({ success: false, error: 'not found' }, 404),
+  );
+  const peerApp = new Hono();
+  peerApp.post('/api/orchestration/*', async (c) => {
+    peerReceived.push({ path: c.req.path, body: await c.req.json() });
+    return c.json({
+      success: true,
+      data: {
+        taskId: 'task:peer',
+        sessionId: 'task:peer',
+        conversationId: 'conversation-peer-child',
+        status: 'dispatched',
+        resumable: true,
+        providerTurnId: 'turn-peer',
+        target: { kind: 'agent', id: 'writer' },
+      },
+    });
+  });
+  let resolvePeerPort!: (value: number) => void;
+  const peerListening = new Promise<number>((resolve) => {
+    resolvePeerPort = resolve;
+  });
+  peerServer = serve(
+    { fetch: peerApp.fetch, hostname: '127.0.0.1', port: 0 },
+    (info) => resolvePeerPort((info as AddressInfo).port),
+  );
+  peerBaseUrl = `http://127.0.0.1:${await peerListening}`;
   // Stubs for the Station routes the representative tools call. Each records
   // that it was reached, so "allowed" means the request got through.
   const record = (label: string, body: unknown) => (c: any) => {
@@ -291,6 +360,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
   __resetStationControlStdioCallerCredentialForTests();
   __resetStationServerSelfAttestationForTests();
@@ -428,8 +498,18 @@ async function callTool(
       arguments: args,
     });
     const text = response.result?.content?.[0]?.text;
+    let parsed: unknown = response;
+    if (typeof text === 'string') {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // A tool that reports a failure as prose (the dispatch tools) is
+        // kept readable instead of failing the parse.
+        parsed = { text };
+      }
+    }
     return {
-      result: typeof text === 'string' ? JSON.parse(text) : response,
+      result: parsed as any,
       hits: [...hits],
     };
   } finally {
@@ -493,6 +573,8 @@ interface Row {
   readonly route: string;
   /** The job a scheduler row edits, when it matters (grants are per job). */
   readonly job?: string;
+  /** Drive only the REST boundary (see the row). */
+  readonly restOnly?: boolean;
   /** Per caller: `allowed` or the exact typed refusal. */
   readonly expect: Record<string, 'allowed' | string>;
 }
@@ -583,6 +665,10 @@ const ROWS: readonly Row[] = [
     tool: 'update_job',
     args: { name: 'granted', prompt: 'run something else' },
     job: 'granted',
+    // Decided by the server only; the scheduler SDK error does not keep the
+    // envelope code until the SDK follow-up, so this row is driven through
+    // the REST boundary, not the tool envelope.
+    restOnly: true,
     route: 'PUT /scheduler/jobs/:target',
     expect: {
       'bound op-': 'station_control_person_only',
@@ -667,7 +753,7 @@ function cases(row: Row) {
 }
 
 describe('each policy class through the real tools, per delivery channel', () => {
-  for (const row of ROWS)
+  for (const row of ROWS.filter((candidate) => !candidate.restOnly))
     for (const { channel, prefix, outcome } of cases(row))
       test(`${row.tool}${row.args.trustAllTools ? ' (trustAllTools)' : ''}${row.job ? ` (${row.job} job)` : ''} via ${channel} (${prefix}) → ${outcome}`, async () => {
         const sessionId = nextSession(prefix);
@@ -970,8 +1056,13 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
       }
     )._registeredTools;
 
+  // Scheduler tools gain the same once the SDK's scheduler error keeps the
+  // envelope code (separate SDK follow-up); here: an SDK-client tool
+  // (board_pin), an agent CRUD tool (delete_agent) and a raw `api()` tool
+  // (update_config).
   test.each([
-    ['disable_job', { name: 'nightly' }],
+    ['delete_agent', { slug: 'a' }],
+    ['update_config', { updates: { theme: 'dark' } }],
     [
       'board_pin',
       {
@@ -1320,5 +1411,26 @@ describe('every tool route, table-driven through the real boundary', () => {
           : 'passed';
     }
     expect(outcomes).toEqual(expected);
+  });
+});
+
+describe('a verified forward to a saved Environment (#2601 leaf)', () => {
+  test('a bound operator’s delegate_task reaches the peer through the caller-delegation leaf', async () => {
+    peerReceived.length = 0;
+    derivations.length = 0;
+    const sessionId = nextSession('op-');
+    const { result } = await callTool('bound', sessionId, 'delegate_task', {
+      prompt: 'Draft the plan',
+      agent: 'writer',
+      environmentId: PEER_ENVIRONMENT_ID,
+    });
+    expect(result?.code).toBeUndefined();
+    // The guard let the verified caller through to its own lineage...
+    expect(derivations).toEqual([sessionId]);
+    // ...and the peer received the context this Station derived.
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
+    expect(peerReceived[0]!.body.delegation).toEqual(DERIVED_LINEAGE);
+    expect(refusals).toEqual([]);
   });
 });

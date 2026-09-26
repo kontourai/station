@@ -6,6 +6,7 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
@@ -14,7 +15,6 @@ import {
   type WorkspacePaneHostActionActor,
 } from '../../services/plugins/workspace-pane-host-actions.js';
 import { executeExecutionTargetMessage } from '../../tools/station-control-delegation.js';
-import { runAsStationServer } from '../../utils/internal-api-token.js';
 
 /** One production bridge, shared by runtime composition and executable proof. */
 export function createRuntimeWorkspacePaneHostActions(input: {

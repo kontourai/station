@@ -1087,7 +1087,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     },
     // ACP has no protocol-level steer. The adapter still implements
     // steerTurn: Kiro `_session/steer` and Grok `_x.ai/interject` when
-    // those extension methods exist, else T3-style cancel + re-prompt on
+    // those extension methods exist, else a cancel + re-prompt fallback on
     // the same Station turn id.
     midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP

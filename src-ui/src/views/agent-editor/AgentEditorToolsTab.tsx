@@ -4,7 +4,7 @@ import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { Toggle } from '../../components/Toggle';
-import { AGENT_WORKFLOWS_CLI_COMMAND } from './agentWorkflowsCli';
+import { AgentEditorWorkflows } from './AgentEditorWorkflows';
 import type { AgentEditorFormProps } from './types';
 import {
   getIntegrationToolKey,
@@ -315,17 +315,12 @@ export function AgentEditorToolsTab({
         </span>
       </div>
       {/*
-        station#2693: agent workflow files have live routes
-        (`/agents/:slug/workflows/*`) and a CLI, but no UI — the management view
-        was deleted by the #2677 dead-surface sweep because nothing navigated to
-        it. Saying so beats leaving the capability invisible; the alternative
-        (rebuilding the view speculatively ahead of the #1563 editor redesign)
-        risks building something that redesign discards.
+        station#2693: workflow files were CLI-only between the #2677
+        dead-surface sweep (nothing navigated to the old view) and the #1563
+        editor redesign it waited for. The section below is the UI for the
+        live `/agents/:slug/workflows/*` routes; see AgentEditorWorkflows.
       */}
-      <p className="editor__tools-note">
-        Workflow files for this agent are managed from the command line:{' '}
-        <code>{AGENT_WORKFLOWS_CLI_COMMAND}</code>
-      </p>
+      <AgentEditorWorkflows slug={form.slug} locked={locked} />
     </div>
   );
 }

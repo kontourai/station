@@ -38,6 +38,7 @@ import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
+import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -57,7 +58,6 @@ import {
   withStationControlCallerContext,
 } from '../../../tools/station-control-shared.js';
 import {
-  __resetStationServerSelfAttestationForTests,
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,

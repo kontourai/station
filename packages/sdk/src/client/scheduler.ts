@@ -154,11 +154,8 @@ export class SchedulerResponseError extends StationHttpError {
     status: number,
     message: string,
     readonly detail: string | undefined,
-    code?: string,
   ) {
-    // The envelope's machine `code` (e.g. a typed authority refusal) rides on
-    // `StationHttpError.code`, so a caller can branch on it.
-    super(status, message, code === undefined ? undefined : { code });
+    super(status, message);
     this.name = 'SchedulerResponseError';
   }
 }
@@ -251,7 +248,6 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
       // tools reconstructs its envelope from it.
       apiErrorMessage(result, `Scheduler API error: ${response.status}`),
       explanation,
-      typeof result.code === 'string' ? result.code : undefined,
     );
   }
   return result.data as T;

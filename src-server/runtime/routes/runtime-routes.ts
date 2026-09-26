@@ -188,6 +188,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
@@ -374,6 +375,7 @@ import {
   resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -597,7 +599,6 @@ import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-cont
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -605,6 +606,11 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  createCallerDelegationDeriver,
+  createRequestDelegationResolver,
+  type RequestDelegationSources,
+} from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
@@ -2061,6 +2067,26 @@ export function configureRuntimeRoutes(
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );
+  // #2601: what a dispatch's delegation context is derived from: the verified
+  // caller's own session records and its Agent's policy (a registry default
+  // Agent with no stored spec takes the default policy).
+  const requestDelegationSources: RequestDelegationSources = {
+    isInternalRequest: isStationInternalRequest,
+    resolveCaller: (request) =>
+      resolveStationControlCallerForRequest(
+        request,
+        resolveStationControlCallerRecord,
+      ),
+    startedMetadata: (threadId) =>
+      context.orchestrationService.firstStartedMetadataOfThread(threadId),
+    sessionEngine: (threadId) =>
+      context.orchestrationService.firstStartedEngineOfThread(threadId),
+    loadAgentSpec: (agentSlug) => context.agentService.getAgent(agentSlug),
+    isRegistryDefaultAgent: async (agentSlug) =>
+      (
+        await loadOrCreateAgentRegistry(context.configLoader)
+      ).defaultAgents.some((agent) => String(agent.id) === agentSlug),
+  };
   // Who a session a non-orchestration route starts belongs to, decided
   // exactly as `/api/orchestration` decides it for a start (B2): a request
   // carrying Station's internal token is an agent, whose session is the
@@ -2080,6 +2106,9 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createStationControlCallerRoutes({
       resolveRecord: resolveStationControlCallerRecord,
+      deriveCallerDelegation: createCallerDelegationDeriver(
+        requestDelegationSources,
+      ),
     }),
   );
   context.app.route(
@@ -2744,11 +2773,27 @@ export function configureRuntimeRoutes(
   // Mobile devices (#1969 snapshots, #1970 live sessions, toolchain and
   // shares): personal operator hosts only, never a shared tenant.
   if (isPersonalHost) {
+    // The device helper address resolves through the settings registry —
+    // this Station's stored config, then the STATION_MOBILE_DEVICE_HUB_URL
+    // environment variable — instead of a direct env read, so the Settings
+    // row ("Device helper URL", with its provenance badge) and the Device
+    // pane's setup copy name the same source the runtime actually consults.
+    // Live config first (a user can change the setting between boots); the
+    // boot snapshot is the fallback when no live reader answers.
+    const configuredDeviceHub = resolveEffectiveAppSetting(
+      'mobileDeviceHubUrl',
+      { config: context.getLiveAppConfig?.() ?? context.appConfig },
+    );
+    const configuredDeviceHubUrl =
+      typeof configuredDeviceHub?.value === 'string' &&
+      configuredDeviceHub.value.trim()
+        ? configuredDeviceHub.value.trim()
+        : undefined;
     // #1970: Station's own supervised hub. An explicitly configured hub URL
     // still wins; the managed one is started on demand, never at boot.
     const devices = new DeviceToolchainService({
       stationHome: context.configLoader.getProjectHomeDir(),
-      configuredHubUrl: process.env.STATION_MOBILE_DEVICE_HUB_URL,
+      configuredHubUrl: configuredDeviceHubUrl,
     });
     deviceToolchainService = devices;
     // D12: devices belong to the operator; admins/owners of a Project use
@@ -2813,7 +2858,7 @@ export function configureRuntimeRoutes(
     const deviceHosts = createDeviceHostResolver({
       local: deviceHubEndpointFromToolchain(
         devices,
-        explicitDeviceHubEndpoint(process.env.STATION_MOBILE_DEVICE_HUB_URL),
+        explicitDeviceHubEndpoint(configuredDeviceHubUrl),
       ),
       remote: hostRegistry,
     });
@@ -3694,6 +3739,11 @@ export function configureRuntimeRoutes(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
+      // #2601: a dispatch's delegation context comes from its verified
+      // caller's own session, never from the tool arguments in its body.
+      resolveRequestDelegation: createRequestDelegationResolver(
+        requestDelegationSources,
       ),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(

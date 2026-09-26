@@ -266,6 +266,10 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
+  // #2601: before forwarding to a saved Environment, the dispatch code asks
+  // this Station for the lineage it derives for the verified caller. The
+  // route answers only from the forwarded credential.
+  get('/api/orchestration/station-control/caller/delegation'),
 ];
 
 /**
@@ -744,7 +748,7 @@ export const STATION_CONTROL_INFRASTRUCTURE_POLICY = {
 
 // ── typed refusals ─────────────────────────────────────────────────────────
 
-export const STATION_CONTROL_REFUSAL_CODES = [
+const STATION_CONTROL_REFUSAL_CODES = [
   'station_control_caller_required',
   'station_control_assurance_insufficient',
   'station_control_role_required',

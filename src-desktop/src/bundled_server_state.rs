@@ -96,12 +96,15 @@ pub enum ServerOwnership {
 /// A home-schema failure is deterministic, so retrying cannot repair it.
 pub const HOME_RESET_MARKER: &str = "STATION_HOME_RESET_REQUIRED";
 
+/// The reader-facing fail-closed sentence. The marker stays a detection key
+/// only: it names an internal constant nothing in the dialog can act on, and
+/// echoing it made the message read as if the string were the diagnosis.
 pub fn fail_closed_message(detail: Option<&str>) -> Option<String> {
     detail?.contains(HOME_RESET_MARKER).then(|| {
-        "Station's data folder was created by an incompatible version \
-         (STATION_HOME_RESET_REQUIRED). Restarting cannot fix this: move \
-         or reset the Station home shown in the error log, then restart \
-         Station."
+        "Station's data folder was created by an incompatible version, \
+         so Station cannot start. Restarting cannot fix this: move or \
+         reset the Station home shown in the error log, then start \
+         Station again."
             .to_string()
     })
 }
@@ -341,6 +344,21 @@ mod tests {
         assert_eq!(next.attempt, 1);
         assert_eq!(effect, vec![SupervisorEffect::None]);
         assert!(next.fail_closed);
+    }
+
+    #[test]
+    fn fail_closed_message_names_the_fix_without_the_internal_marker() {
+        let message = fail_closed_message(Some(
+            "STATION_HOME_RESET_REQUIRED: incompatible schema",
+        ))
+        .expect("a marker-carrying detail yields the fail-closed sentence");
+        assert!(!message.contains(HOME_RESET_MARKER));
+        assert!(message.contains("move or reset the Station home"));
+
+        // An ordinary failure is not a home-schema failure and gets no
+        // fail-closed sentence — the retry path owns it.
+        assert_eq!(fail_closed_message(Some("Error: EADDRINUSE")), None);
+        assert_eq!(fail_closed_message(None), None);
     }
 
     #[test]

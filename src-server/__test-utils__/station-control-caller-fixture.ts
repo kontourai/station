@@ -22,7 +22,7 @@ import {
   withStationControlCallerContext,
 } from '../tools/station-control-shared.js';
 
-export const BOUND_OPERATOR_CALLER: StationControlCaller = Object.freeze({
+const BOUND_OPERATOR_CALLER: StationControlCaller = Object.freeze({
   sessionId: 'fixture-operator-session',
   assurance: 'bound',
   principal: stationControlCallerPrincipal(
