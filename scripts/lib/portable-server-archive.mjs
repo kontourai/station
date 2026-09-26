@@ -297,9 +297,19 @@ export function stationCliBundleOptions(projectRoot, outfile) {
   };
 }
 
-async function bundleStationCli(projectRoot, stageRoot) {
-  const esbuild = await import('esbuild');
+/**
+ * @param {string} projectRoot
+ * @param {string} stageRoot
+ * @param {() => Promise<{ build: (options: object) => Promise<unknown> }>} [loadEsbuild]
+ */
+export async function bundleStationCli(
+  projectRoot,
+  stageRoot,
+  loadEsbuild = () => import('esbuild'),
+) {
+  const esbuild = await loadEsbuild();
   const outfile = join(stageRoot, 'lib', 'station-cli.mjs');
+  // Exactly the reviewed options: nothing is spread or added here.
   await esbuild.build(stationCliBundleOptions(projectRoot, outfile));
   // esbuild keeps the entry's `#!/usr/bin/env tsx` line. The bundle is only
   // ever imported by bin/station.mjs, so it must not claim an interpreter.

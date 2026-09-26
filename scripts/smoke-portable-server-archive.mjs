@@ -275,6 +275,22 @@ async function bootAndProbe({ launcher, env, home, release }) {
     if (!refused.includes('prebuilt Station archive')) {
       fail(`station build did not refuse as a prebuilt archive:\n${refused}`);
     }
+    // An ephemeral instance first: stopping a --temp-home instance removes
+    // the build it owned, and the archive's build is owned by none of them.
+    // The plain start below proves it survived.
+    const ephemeral = runLauncher(
+      launcher,
+      ['start', '--temp-home', `--port=${serverPort}`, `--ui-port=${uiPort}`],
+      lifecycleEnv,
+      home,
+      START_TIMEOUT_MS,
+    );
+    const stopEphemeral = /Stop with: station (stop --instance=\S+)/.exec(
+      ephemeral,
+    )?.[1];
+    if (!stopEphemeral) fail('station start --temp-home named no stop command');
+    runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
+    await waitUntilClosed([serverPort, uiPort]);
     const started = runLauncher(
       launcher,
       ['start', `--port=${serverPort}`, `--ui-port=${uiPort}`],
@@ -359,13 +375,15 @@ async function bootAndProbe({ launcher, env, home, release }) {
     failure ??= error;
   }
   if (failure) throw failure;
+  await waitUntilClosed([serverPort, uiPort]);
+}
+
+async function waitUntilClosed(ports) {
   const deadline = Date.now() + STOP_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (
-      (await refusesConnections(serverPort)) &&
-      (await refusesConnections(uiPort))
-    ) {
-      log(`stopped: ports ${serverPort} and ${uiPort} refuse connections`);
+    const closed = await Promise.all(ports.map(refusesConnections));
+    if (closed.every(Boolean)) {
+      log(`stopped: ports ${ports.join(' and ')} refuse connections`);
       return;
     }
     await new Promise((settle) => setTimeout(settle, POLL_MS));

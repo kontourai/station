@@ -2008,17 +2008,7 @@ function stopRecord(
   // A --temp-home instance is ephemeral; drop its per-instance build dirs too
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
   if (record.homeSource === '--temp-home') {
-    const buildPaths = resolveBuildPaths(record.instanceId);
-    // Finder can create .DS_Store during removal. Let Node retry transient
-    // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
-    for (const output of [buildPaths.server, buildPaths.ui]) {
-      rmSync(join(CWD, output), {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 100,
-      });
-    }
+    removeOwnedBuildOutputs(resolveBuildPaths(record.instanceId));
   }
   if (announce) {
     console.log('  ✓ Stopped');
@@ -2245,6 +2235,13 @@ export function isRunning(selector: StopOptions = {}): boolean {
 interface BuildPaths {
   server: string;
   ui: string;
+  /**
+   * True when these directories are not the instance's own: every instance
+   * of a prebuilt archive serves the archive's one build. A shared build is
+   * never removed, replaced or promoted over on an instance's behalf; see
+   * removeOwnedBuildOutputs and promoteCandidateBuild.
+   */
+  shared?: true;
 }
 
 const BUILD_MANIFEST_FILENAME = 'station-build.json';
@@ -2712,13 +2709,34 @@ export function resolveBuildPaths(instanceId: string): BuildPaths {
   // A prebuilt archive ships one build and no toolchain to make another.
   // Nothing in a build is instance-specific (buildApplication varies only its
   // output directories), so every instance of an archive serves that build.
-  if (instanceId === DEFAULT_INSTANCE_ID || isPrebuiltArchiveRoot(CWD)) {
+  if (isPrebuiltArchiveRoot(CWD)) {
+    return { server: 'dist-server', ui: 'dist-ui', shared: true };
+  }
+  if (instanceId === DEFAULT_INSTANCE_ID) {
     return { server: 'dist-server', ui: 'dist-ui' };
   }
   return {
     server: `dist-server-${instanceId}`,
     ui: `dist-ui-${instanceId}`,
   };
+}
+
+/**
+ * Removes an instance's own build directories. The one place build outputs
+ * are deleted on an instance's behalf; a shared build is left untouched.
+ */
+function removeOwnedBuildOutputs(buildPaths: BuildPaths): void {
+  if (buildPaths.shared) return;
+  // Finder can create .DS_Store during removal. Let Node retry transient
+  // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
+  for (const output of [buildPaths.server, buildPaths.ui]) {
+    rmSync(join(CWD, output), {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  }
 }
 
 function getBuildManifestPath(buildPaths: BuildPaths): string {
@@ -2815,6 +2833,11 @@ function promoteCandidateBuild(
   candidate: BuildPaths,
   active: BuildPaths,
 ): void {
+  if (active.shared) {
+    throw new Error(
+      `Refusing to replace the shared build ${active.server}/ and ${active.ui}/ on one instance's behalf.`,
+    );
+  }
   // Both candidates and both backups live on the checkout filesystem, so
   // each rename is atomic. The pair cannot be one filesystem transaction;
   // explicit rollback restores both prior directories if any rename fails.
@@ -4560,9 +4583,7 @@ export async function clean(
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
   rmSync(projectHome, { recursive: true, force: true });
-  const buildPaths = resolveBuildPaths(instanceId);
-  rmSync(join(CWD, buildPaths.server), { recursive: true, force: true });
-  rmSync(join(CWD, buildPaths.ui), { recursive: true, force: true });
+  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
   console.log('  ✓ Cleaned');
 }
 

@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
@@ -10,6 +16,7 @@ import {
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertBuildSourceIsCheckout,
+  bundleStationCli,
   obtainNodeDistribution,
   PORTABLE_SERVER_TARGETS,
   PREBUILT_ARCHIVE_MARKER,
@@ -357,6 +364,26 @@ describe('archive contract with the bundled CLI', () => {
       name: PREBUILT_ARCHIVE_MARKER_FILENAME,
       content: PREBUILT_ARCHIVE_MARKER_CONTENT,
     });
+  });
+
+  it('bundles with exactly the reviewed options and drops the tsx shebang', async () => {
+    const stageRoot = makeTempDir('portable-cli-bundle-');
+    const outfile = join(stageRoot, 'lib', 'station-cli.mjs');
+    const build = vi.fn(async (options: { outfile: string }) => {
+      mkdirSync(dirname(options.outfile), { recursive: true });
+      writeFileSync(
+        options.outfile,
+        '#!/usr/bin/env tsx\nexport const bundled = true;\n',
+      );
+    });
+    await bundleStationCli(repoRoot, stageRoot, async () => ({ build }));
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(build.mock.calls[0]?.[0]).toStrictEqual(
+      stationCliBundleOptions(repoRoot, outfile),
+    );
+    expect(readFileSync(outfile, 'utf8')).toBe(
+      'export const bundled = true;\n',
+    );
   });
 
   it('never minifies the CLI bundle', () => {
