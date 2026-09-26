@@ -35,9 +35,7 @@ function createRegistryHome(): {
 
 function writeLocalRegistry(home: string, root: string): void {
   const registryDir = join(root, 'registry');
-  const pluginDir = join(root, 'plugins', 'actual-plugin');
   mkdirSync(registryDir, { recursive: true });
-  mkdirSync(pluginDir, { recursive: true });
   writeFileSync(
     join(registryDir, 'plugins.json'),
     JSON.stringify({
@@ -45,10 +43,6 @@ function writeLocalRegistry(home: string, root: string): void {
       plugins: [{ id: 'curated-demo', source: '../plugins/actual-plugin' }],
       tools: [],
     }),
-  );
-  writeFileSync(
-    join(pluginDir, 'plugin.json'),
-    JSON.stringify({ name: 'actual-plugin', version: '1.0.0' }),
   );
   writeFileSync(
     join(home, 'config.json'),
