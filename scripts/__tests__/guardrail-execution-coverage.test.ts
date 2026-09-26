@@ -1,5 +1,6 @@
 /**
- * Every gate `verify:static:raw` composes is accounted for by name.
+ * Every gate `verify:static:raw`, the docs-truth lanes, and
+ * `verification:policy:gate` compose is accounted for by name.
  *
  * ## Why an exact-set assertion and not a grep
  *
@@ -71,6 +72,11 @@ function walkPackageScripts(): { gates: string[]; unmatchedLeaves: string[] } {
   };
   walk('verify:static:raw');
   for (const lane of DOCS_TRUTH_GATE_LANES) walk(lane.script);
+  // The required Windows portable-floor job runs this chain on its own
+  // (.github/workflows/windows-pr-verification.yml). Before it was seeded
+  // here, type-laundering-gate.mjs sat outside the partition while its entry
+  // check made it a silent no-op on Windows.
+  walk('verification:policy:gate');
   return {
     gates: [...gates].sort(),
     unmatchedLeaves: [...unmatchedLeaves].sort(),
@@ -129,6 +135,7 @@ const PROCESS_BOUNDARY_ACCEPT_RUNS = [
   'public-docs-hygiene.mjs',
   'release-platform-matrix.mjs',
   'stored-path-expansion-guard.mjs',
+  'test-fixture-policy.mjs',
 ];
 
 /**
@@ -177,6 +184,14 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'scripts/__tests__/test-path-import-gate.test.ts',
   ],
   [
+    'test-temp-dir-ratchet.mjs',
+    'scripts/__tests__/test-temp-dir-ratchet.test.ts',
+  ],
+  [
+    'type-laundering-gate.mjs',
+    'scripts/__tests__/type-laundering-gate.process.test.ts',
+  ],
+  [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
   ],
@@ -210,8 +225,16 @@ const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
     'invoked through tsx and writes generated conformance output; --check still resolves the generator, not a gate decision',
   ],
   [
+    'product-law-gate.mjs',
+    'runs a focused vitest child per product law (~14s here); executing it under test would run those law suites again as grandchildren. Its exit-code contract is proven in-process by product-laws.test.ts',
+  ],
+  [
     'prepare-verify-static.mjs',
     'a mutating preparation step that rebuilds packages/connect/dist and packages/cli/dist, not a gate with a verdict',
+  ],
+  [
+    'verification-policy-gate.mjs',
+    'silent on the accept path, so an accept run would need a broken-tree probe, and the gate imports most of the verification manifests (prepush, impact, resource, e2e); its rules are proven in-process by verification-policy-gate.test.ts. Follow-up: a process-boundary case',
   ],
   [
     'typecheck-aggregate.mjs',
@@ -219,7 +242,7 @@ const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
   ],
 ];
 
-describe('every gate verify:static:raw composes is accounted for', () => {
+describe('every gate the static and policy chains compose is accounted for', () => {
   const { gates: derived, unmatchedLeaves } = walkPackageScripts();
 
   it('reaches the far end of the chain', () => {
@@ -234,6 +257,8 @@ describe('every gate verify:static:raw composes is accounted for', () => {
     // Reached only through the docs-truth aggregate's own lane catalog, so
     // this is also the pin that the seed comes from that catalog.
     expect(derived).toContain('check-markdown-links.mjs');
+    // Reached only through the `verification:policy:gate` seed.
+    expect(derived).toContain('type-laundering-gate.mjs');
   });
 
   it('accounts for every leaf the gate pattern does not match', () => {

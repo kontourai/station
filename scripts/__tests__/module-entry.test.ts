@@ -142,6 +142,9 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
 
   test.each([
     ['no argv[1]', []],
+    // `.github/workflows/internal-testflight.yml` imports a script this way
+    // with the product version as the positional argument (ENOENT).
+    ['a version string as argv[1]', ['1.2.3']],
     // argv[1] is data here; 300 bytes is past NAME_MAX, so realpath fails
     // with ENAMETOOLONG rather than ENOENT.
     ['a long data argv[1]', ['x'.repeat(300)]],
@@ -166,6 +169,42 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
       expect(result.stdout.trim()).toBe('imported');
     },
   );
+
+  test('does not run the body, or throw, when imported from stdin with a positional argument', () => {
+    // `node -`: argv[1] is the literal `-`, and the next argument is data.
+    const scripts = installProbes(realTempDir());
+    const result = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-', '1.2.3'],
+      {
+        encoding: 'utf8',
+        input: `await import(${JSON.stringify(pathToFileURL(join(scripts, 'probe.mjs')).href)}); console.log('imported');`,
+        timeout: 30_000,
+        windowsHide: true,
+      },
+    );
+    expect({ status: result.status, stderr: result.stderr }).toEqual({
+      status: 0,
+      stderr: '',
+    });
+    expect(result.stdout.trim()).toBe('imported');
+  });
+
+  test("runs the body as a worker's entry module started by an eval parent", () => {
+    // A worker's argv[1] is its own entry path, not the parent's positional.
+    const scripts = installProbes(join(realTempDir(), 'space probe'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `const { Worker } = require('node:worker_threads'); new Worker(${JSON.stringify(join(scripts, 'probe.mjs'))});`,
+        '1.2.3',
+      ],
+      { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout.trim()).toBe(MARKER);
+  });
 });
 
 describe('invokedDirectly decisions', () => {
