@@ -2,6 +2,7 @@ import { REVIEW_EVIDENCE_OPERATOR_SURFACE } from '@kontourai/station-contracts/r
 import { SCHEDULER_OPERATOR_SURFACE } from '@kontourai/station-contracts/scheduler';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 
 /**
  * archive#167 Wave 3: characterization tests for `station-control-operations-tools.ts`'s
@@ -114,7 +115,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 describe('station-control operations tools (characterization)', () => {
