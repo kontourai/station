@@ -2423,8 +2423,18 @@ in later releases, keeping their subclasses (#2708).
   `message`, then its `code`, the top-level `message`, then the fetcher's
   fallback — followed by the validation sentences, each named by its field:
   `Validation failed: command Required, name Required`. The Station CLI prints
-  the same sentence. `apiErrorMessage(body, fallback)` applies this rule to a
-  body a caller has already parsed.
+  the same sentence. That form is for CLI and agent readers; field keys are
+  not copy.
+- To show a refusal to a person, read `details` with
+  `envelopeReasons(details)` from `@kontourai/station-sdk/client`: the
+  server's reason sentences, form-level first, each once, without keys.
+  `envelopeDetailsMessage(details)` returns the field-qualified part alone
+  (`command Required, name Required`), or `undefined`; the CLI builds its
+  message from it.
+- `apiErrorMessage(body, fallback)` and `envelopeErrorMessage(body,
+  fallback)` return the shown form for a body a caller has already parsed:
+  the reasons when there are any, else the summary. Their callers throw a
+  plain `Error` that keeps only this text.
 
 ## Utilities
 
