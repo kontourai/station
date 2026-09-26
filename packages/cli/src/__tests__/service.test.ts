@@ -1074,33 +1074,37 @@ describe('station service dispatch', () => {
       expect(installLaunchd).toHaveBeenCalledTimes(3);
     });
 
-    test('refuses when `station start` already owns the same dev home under the lifecycle id', async () => {
-      // `./station start` from this checkout registers the dev home as
-      // `default`; the dev-id service would be a second writer on it.
-      const devHome = makeTempDir('station-service-test-');
-      const { CWD, resolveLifecycleInstanceId } = await import(
-        '../commands/helpers.js'
-      );
-      const lifecycleId = resolveLifecycleInstanceId({
-        cwd: CWD,
-        projectHome: devHome,
-        serverPort: 3242,
-        uiPort: 5274,
-      });
-      ensureStationHomeSchemaSync(devHome);
-      upsertInstance(
-        lifecycleId,
-        { port: 4000, type: 'worktree', pid: process.pid, checkout: '/co' },
-        devHome,
-      );
+    test.each(['worktree', 'service'] as const)(
+      'refuses when a live %s entry already owns the same dev home under the lifecycle id',
+      async (type) => {
+        // `./station start` from this checkout, or another checkout's service
+        // in a shared dev home, holds it as `default`; the dev-id service would
+        // be a second writer on it.
+        const devHome = makeTempDir('station-service-test-');
+        const { CWD, resolveLifecycleInstanceId } = await import(
+          '../commands/helpers.js'
+        );
+        const lifecycleId = resolveLifecycleInstanceId({
+          cwd: CWD,
+          projectHome: devHome,
+          serverPort: 3242,
+          uiPort: 5274,
+        });
+        ensureStationHomeSchemaSync(devHome);
+        upsertInstance(
+          lifecycleId,
+          { port: 4000, type, pid: process.pid, checkout: '/co' },
+          devHome,
+        );
 
-      const failure = await install(devLifecycle(devHome));
+        const failure = await install(devLifecycle(devHome));
 
-      expect(failure?.message).toBe(
-        `Station home ${devHome} is in use by instance '${lifecycleId}' (pid ${process.pid}, type 'worktree', from /co), which service '${devInstanceId}' would share. Stop it first (\`station stop --instance=${lifecycleId}\` from its checkout).`,
-      );
-      expect(installLaunchd).not.toHaveBeenCalled();
-    });
+        expect(failure?.message).toBe(
+          `Station home ${devHome} is in use by instance '${lifecycleId}' (pid ${process.pid}, type '${type}', from /co), which service '${devInstanceId}' would share. Stop it first (\`station stop --instance=${lifecycleId}\` from its checkout).`,
+        );
+        expect(installLaunchd).not.toHaveBeenCalled();
+      },
+    );
   });
 
   test('reinstalls over its OWN live service entry (#3064 regression guard)', async () => {

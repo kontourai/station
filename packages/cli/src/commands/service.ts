@@ -1138,9 +1138,9 @@ export async function runServiceCommand(
     }
     // station#2689: a source-checkout service without --instance takes the
     // development instance id (resolveServiceInstanceId), but `station start`
-    // from the same checkout still registers this very home under the
-    // lifecycle id (`default`). The check above no longer sees that entry, so
-    // look it up too: a live one is a foreign writer on the same home.
+    // from the same checkout — or another checkout's service in a shared dev
+    // home — still holds this very home under the lifecycle id (`default`).
+    // The check above no longer sees that entry, so look it up too.
     const lifecycleInstanceId = resolveLifecycleInstanceId({
       cwd: CWD,
       instanceName: lifecycle.instanceName,
@@ -1154,11 +1154,10 @@ export async function runServiceCommand(
         : (readInstanceRegistry(lifecycle.baseDir).instances[
             lifecycleInstanceId
           ] ?? null);
-    if (
-      lifecycleEntry &&
-      lifecycleEntry.type !== 'service' &&
-      entryOwnedByLiveProcess(lifecycleEntry)
-    ) {
+    // Unlike the check above, a live SERVICE entry refuses too: it is not this
+    // unit's own supervisor (manifest-first resolution already chose that
+    // service when it belongs to this checkout), so it is a second writer.
+    if (lifecycleEntry && entryOwnedByLiveProcess(lifecycleEntry)) {
       throw new Error(
         `Station home ${lifecycle.baseDir} is in use by instance '${lifecycleInstanceId}' (pid ${lifecycleEntry.pid}, type '${lifecycleEntry.type}'${lifecycleEntry.checkout ? `, from ${lifecycleEntry.checkout}` : ''}), which service '${instanceId}' would share. Stop it first (\`station stop --instance=${lifecycleInstanceId}\` from its checkout).`,
       );
