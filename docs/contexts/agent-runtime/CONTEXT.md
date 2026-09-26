@@ -31,7 +31,7 @@ Station ownership of its native loop or every tool it executes.
 | Invoke an engine and compose services | [OrchestrationService](../../../src-server/services/orchestration/orchestration-service.ts) | Real provider caller and its cancellation path |
 | Record and read history | [EventStore](../../../src-server/services/orchestration/event-store.ts) | Persisted events, projections, and replay |
 | Change Session lifecycle | [SessionLifecycleModule](../../../src-server/services/orchestration/session-lifecycle-module.ts) | Transition ownership and concurrency with a new turn |
-| Attach an optional Flow run | [Flow integration](../../../src-server/services/flow/orchestration-flow-gate.ts) | Workspace definition, evidence, and completion verdict |
+| Attach an optional Flow run | [Flow policy owner](../../../src-server/services/orchestration/flow-policy-sidecar.ts) | Explicit `metadata.flowDefinition`, eligible definition, evidence, and completion verdict |
 
 A Session can contain several turns. `idle` means a finished turn between
 messages; `completed` closes the Session. Stopped, terminal, and resumable have

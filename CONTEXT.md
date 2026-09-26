@@ -51,9 +51,11 @@ are different facts. A receipt records a particular operation or decision;
 its presence alone does not establish that the work is correct.
 
 A configured **Flow run** owns its gates, route-backs, exceptions, and reports.
-Station's [Flow integration](src-server/services/flow/orchestration-flow-gate.ts)
-attaches a run when the workspace supplies a valid Flow definition. It does
-not make every ordinary chat a gated workflow. Command output, review records,
+At Session start, the [Flow policy owner](src-server/services/orchestration/flow-policy-sidecar.ts)
+attempts to attach a run only when the caller explicitly selects a non-retired
+definition through `metadata.flowDefinition`, with a working directory and
+Flow service available. A Flow definition merely existing in the workspace
+does not bind an ordinary chat. Command output, review records,
 and Veritas readiness can supply evidence through their respective bridges.
 The receiving gate still decides what that evidence satisfies.
 

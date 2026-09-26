@@ -27,9 +27,13 @@ requests the ordinary Task dispatcher once. If the Agent is deferred or
 unavailable, Station creates no Task and shows the recoverable readiness reason;
 retrying reuses the same project-scoped launch identity. After a launch starts,
 a response loss or indeterminate dispatch is **NOT_VERIFIED** — Station never
-retries that effect automatically. Replaying the same identity returns the
-durable Task/outcome or an indeterminate fence instead of creating a second
-Task. The exact Task remains reopenable, and its Session, run, and receipt
+retries that effect automatically. A replay checks current prerequisites and
+readiness before looking up the existing Task and launch record. Once those
+checks pass, the same identity returns the saved outcome or an indeterminate
+result instead of creating a second Task. If the engine became unavailable
+after the original launch, the retry can return a setup problem without the
+existing Task reference; restore readiness to retry the launch, or reopen the
+already created Task through the Project's Task list. Its Session, run, and receipt
 owners remain the source for progress rather than Task status. If correlation
 cannot be confirmed, the Task still opens with a retry link; retrying that link
 never creates another Task.

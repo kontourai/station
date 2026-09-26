@@ -14,7 +14,7 @@ code and detailed guides.
 
 ## Relationships
 
-- **Agent Runtime -> Evidence Governance**: Sessions emit execution events; where a Flow definition is configured, its run evaluates the relevant evidence. Session completion alone is not a gate verdict.
+- **Agent Runtime -> Evidence Governance**: Sessions emit execution events. A caller can explicitly request an eligible Flow definition; its bound run evaluates the relevant evidence. A definition's presence in the workspace does not create that binding, and Session completion alone is not a gate verdict.
 - **Agent Runtime -> Workspace Surfaces**: Sessions, turns, runs, approvals, and terminal state are rendered inside project layouts and session-context surfaces.
 - **Extension Ecosystem -> Agent Runtime**: Plugins contribute Agents, engine connections, skills, integrations, and supported providers. Delivery depends on engine capabilities and grants.
 - **Extension Ecosystem -> Workspace Surfaces**: Plugins can contribute layouts, layout tabs, Workspace Panes, built-in-compatible components, and MCP-UI panels.

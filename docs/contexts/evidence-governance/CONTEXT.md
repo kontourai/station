@@ -78,8 +78,11 @@ _Avoid_: compliance folder
 
 ## Implementation route
 
-- [Flow completion](../../../src-server/services/flow/orchestration-flow-gate.ts)
-  connects a Session to an available workspace definition and evaluates its gates.
+- [Flow policy](../../../src-server/services/orchestration/flow-policy-sidecar.ts)
+  attempts a Session binding only for an explicitly selected, non-retired
+  `metadata.flowDefinition`; a workspace definition alone is insufficient.
+  [Flow completion](../../../src-server/services/flow/orchestration-flow-gate.ts)
+  evaluates the resulting binding's gates.
 - [Readiness bridge](../../../src-server/services/flow/flow-readiness-bridge.ts)
   attaches the Veritas record using the claim semantics above.
 - [Readiness service](../../../src-server/services/evidence/veritas-readiness-service.ts)
