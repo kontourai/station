@@ -2,7 +2,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const RESOURCE =
   '      - path: PrivacyInfo.xcprivacy\n        buildPhase: resources\n';
@@ -23,10 +23,7 @@ function main(projectPath) {
   if (next !== current) writeFileSync(resolved, next, 'utf8');
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main(process.argv[2]);
   } catch (error) {

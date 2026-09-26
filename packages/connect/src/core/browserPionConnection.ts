@@ -17,13 +17,49 @@ import {
   raceOwnedLifetime,
   waitForBrowserTransport as waitFor,
 } from './browserTransportWait.js';
-import {
-  type BrokerBrowserAnswer,
-  SelfHostedBrokerBrowserClient,
+import type {
+  BrokerBrowserAnswer,
+  BrokerBrowserConnection,
 } from './selfHostedBrokerBrowserClient.js';
 
 const MAX_OPEN_CHANNELS = 32;
 const FINGERPRINT = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+const CLIENT_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
+const CONNECTION_NONCE = /^[A-Za-z0-9_-]{43}$/u;
+
+export interface BrowserPionConnectionIdentity {
+  readonly clientId: string;
+  readonly nonce: string;
+}
+export type BrowserPionConnectionIdentityProvider = (
+  signal: AbortSignal,
+) =>
+  | Readonly<BrowserPionConnectionIdentity>
+  | Promise<Readonly<BrowserPionConnectionIdentity>>;
+
+/**
+ * Credential custody and signaling belong to the adapter. The Pion consumer
+ * owns peer lifetime and independently verifies the Station answer proof.
+ * A host adapter must revalidate its current profile, trust and grant here;
+ * implementing this contract alone does not enable native route selection.
+ */
+export interface PionSignalingClient {
+  readonly scope: {
+    readonly stationId: string;
+    readonly enrollmentId: string;
+  };
+  assertCredentialBoundToTrust(
+    record: DeviceConnectionTrustRecord,
+  ): Promise<boolean>;
+  open(
+    connection: BrokerBrowserConnection & { readonly offerSdp: string },
+    signal: AbortSignal,
+  ): Promise<{ readonly expiresAt: number }>;
+  read(
+    connection: BrokerBrowserConnection,
+    signal: AbortSignal,
+  ): Promise<BrokerBrowserAnswer>;
+}
 
 export interface BrowserConnectionTrustStore {
   isCurrent(record: DeviceConnectionTrustRecord): Promise<boolean>;
@@ -63,15 +99,69 @@ function fingerprints(sdp: string) {
 function cloneIce(value: RTCConfiguration): RTCConfiguration {
   return structuredClone(value);
 }
+/** Copy a closed caller result before any peer/offer creation or async hop. */
+function copyConnectionIdentity(value: unknown): BrowserPionConnectionIdentity {
+  try {
+    if (
+      value === null ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+    )
+      throw new Error();
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== 2 ||
+      !keys.includes('clientId') ||
+      !keys.includes('nonce')
+    )
+      throw new Error();
+    const clientIdProperty = Object.getOwnPropertyDescriptor(value, 'clientId');
+    const nonceProperty = Object.getOwnPropertyDescriptor(value, 'nonce');
+    if (
+      !clientIdProperty ||
+      !nonceProperty ||
+      !('value' in clientIdProperty) ||
+      !('value' in nonceProperty) ||
+      !clientIdProperty.enumerable ||
+      !nonceProperty.enumerable
+    )
+      throw new Error();
+    const clientId: unknown = clientIdProperty.value;
+    const nonce: unknown = nonceProperty.value;
+    if (
+      typeof clientId !== 'string' ||
+      !CLIENT_ID.test(clientId) ||
+      typeof nonce !== 'string' ||
+      !CONNECTION_NONCE.test(nonce)
+    )
+      throw new Error();
+    const base64 = `${nonce.replaceAll('-', '+').replaceAll('_', '/')}=`;
+    const decoded = Uint8Array.from(atob(base64), (character) =>
+      character.charCodeAt(0),
+    );
+    if (decoded.byteLength !== 32 || base64url(decoded) !== nonce)
+      throw new Error();
+    return Object.freeze({ clientId, nonce });
+  } catch {
+    throw new Error('browser_connection_identity_invalid');
+  }
+}
 
 export function createBrowserPionConnection(input: {
-  broker: SelfHostedBrokerBrowserClient;
+  broker: PionSignalingClient;
   applicationOrigin: string;
   applicationChannelLabel?: string;
   trustRecord: DeviceConnectionTrustRecord;
   trustStore: BrowserConnectionTrustStore;
   ice: BrowserIceProvider;
   createPeer?: (configuration: RTCConfiguration) => RTCPeerConnection;
+  /**
+   * Optional host-pinned per-attempt identity. This callback only supplies
+   * closed identity values; it must not allocate a broker session or other
+   * resource. Its owned signal is aborted when the attempt is cancelled.
+   */
+  createConnectionIdentity?: BrowserPionConnectionIdentityProvider;
   now?: () => number;
 }) {
   const applicationOrigin = new URL(input.applicationOrigin).origin;
@@ -87,6 +177,7 @@ export function createBrowserPionConnection(input: {
   const broker = input.broker;
   const trustStore = input.trustStore;
   const iceProvider = input.ice;
+  const createConnectionIdentity = input.createConnectionIdentity;
   const trustRecord = structuredClone(input.trustRecord);
   const trust = copyStationConnectionTrust(trustRecord.trust);
   const brokerStationId = broker.scope.stationId;
@@ -172,14 +263,8 @@ export function createBrowserPionConnection(input: {
     const attemptGeneration = ++generation;
     const isOwned = () =>
       attemptController === owned && attemptGeneration === generation;
-    const assertGrantBinding = () => {
-      const assertion = broker.assertCredentialBoundToTrust;
-      // Direct broker stubs are the legacy fixture/lab path. Production
-      // routing grants always expose the binding guard through the client.
-      return typeof assertion === 'function'
-        ? assertion.call(broker, trustRecord)
-        : Promise.resolve(undefined);
-    };
+    const assertGrantBinding = () =>
+      broker.assertCredentialBoundToTrust(trustRecord);
     let peer: RTCPeerConnection | undefined;
     try {
       const trustedAtStart = await raceOwnedLifetime(
@@ -191,8 +276,18 @@ export function createBrowserPionConnection(input: {
         assertGrantBinding(),
         lifetime,
       );
-      if (grantBoundAtStart === false)
+      if (grantBoundAtStart !== true)
         throw new Error('browser_transport_grant_trust_retired');
+      let pinnedIdentity: BrowserPionConnectionIdentity | undefined;
+      if (createConnectionIdentity) {
+        lifetime.throwIfAborted();
+        if (!isOwned()) throw new Error('browser_transport_stale');
+        const identityOperation = Promise.resolve(
+          createConnectionIdentity(lifetime),
+        ).then(copyConnectionIdentity);
+        pinnedIdentity = await raceOwnedLifetime(identityOperation, lifetime);
+        if (!isOwned()) throw new Error('browser_transport_stale');
+      }
       const ice = iceProvider.capture();
       if (!ice.isCurrent()) throw new Error('browser_ice_configuration_stale');
       const iceAtCapture = ice;
@@ -246,10 +341,20 @@ export function createBrowserPionConnection(input: {
           const offerSdp = created.localDescription.sdp;
           // Connection proof nonces require secure-context Web Crypto.
           // Refuse unsupported clients before submitting an offer.
-          const connectionId = globalThis.crypto?.randomUUID?.();
-          if (!connectionId)
-            throw new Error('browser_relay_secure_context_required');
-          const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
+          let connectionIdentity: BrowserPionConnectionIdentity;
+          if (pinnedIdentity) {
+            connectionIdentity = pinnedIdentity;
+          } else {
+            const connectionId = globalThis.crypto?.randomUUID?.();
+            if (!connectionId)
+              throw new Error('browser_relay_secure_context_required');
+            const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
+            connectionIdentity = Object.freeze({
+              clientId: connectionId,
+              nonce,
+            });
+          }
+          const { clientId: connectionId, nonce } = connectionIdentity;
           // A grant is bound to the Station's independently approved signing
           // key and generation. Re-read trust immediately before spending the
           // routing credential, then compare the grant after that async hop.
@@ -264,7 +369,7 @@ export function createBrowserPionConnection(input: {
             assertGrantBinding(),
             lifetime,
           );
-          if (grantBound === false)
+          if (grantBound !== true)
             throw new Error('browser_transport_grant_trust_retired');
           const opened = await raceOwnedLifetime(
             broker.open({ clientId: connectionId, nonce, offerSdp }, lifetime),
@@ -288,7 +393,7 @@ export function createBrowserPionConnection(input: {
               assertGrantBinding(),
               lifetime,
             );
-            if (grantStillBound === false)
+            if (grantStillBound !== true)
               throw new Error('browser_transport_grant_trust_retired');
             const value = await raceOwnedLifetime(
               broker.read({ clientId: connectionId, nonce }, lifetime),

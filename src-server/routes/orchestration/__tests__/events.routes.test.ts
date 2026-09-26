@@ -22,6 +22,7 @@ import {
 } from '../../../__test-utils__/sse-helpers.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../projects/ui-commands.js';
 
 // archive#1205: this file's new real-service ownership-gate suite imports
 // the real `OrchestrationService`, which (via `EventStore`) touches several
@@ -555,6 +556,38 @@ describe('Event Routes (SSE)', () => {
       expect(payload).toContain('"marker":"after"');
       expect(payload).not.toContain('event: ui:navigate');
       expect(payload).not.toContain('private-target');
+    });
+
+    // #2377 slice B: a navigation a station-control agent asked for names
+    // its session's owner, and only that principal's connections receive it.
+    test('a navigation naming an audience reaches only that principal’s connections', async () => {
+      const relayTo = async (viewer: string) => {
+        const bus = new EventBus();
+        const app = createEventRoutes({
+          eventBus: bus,
+          getACPStatus: () => ({ connected: false, connections: [] }),
+          logger: mockLogger,
+          readAuthorityForRequest: () => personalAuthority(viewer),
+        });
+        const res = await app.request('/');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'before' });
+        bus.emit(SERVER_EVENTS.UI_NAVIGATE, {
+          path: '/agents/owner-target',
+          [UI_NAVIGATE_AUDIENCE_FIELD]: 'human:tailscale-serve:owner',
+        });
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'after' });
+        return readStreamUntil(res.body!, (text) =>
+          text.includes('"marker":"after"'),
+        );
+      };
+      const owner = await relayTo('human:tailscale-serve:owner');
+      expect(owner).toContain('event: ui:navigate');
+      expect(owner).toContain('owner-target');
+      const other = await relayTo('human:local:operator');
+      expect(other).toContain('"marker":"after"');
+      expect(other).not.toContain('event: ui:navigate');
+      expect(other).not.toContain('owner-target');
     });
 
     // archive#3567 second fix round FIX 2: fail-CLOSED, not fail-open, when

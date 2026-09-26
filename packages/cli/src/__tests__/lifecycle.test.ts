@@ -301,13 +301,26 @@ async function loadLifecycleModule(
   vi.doUnmock('node:fs');
 
   const gitRoot = options.gitRoot ?? TEST_CWD;
-  vi.doMock('@kontourai/station-shared/git', () => ({
-    resolveGitInfo: () => ({
-      branch: 'main',
-      gitRoot,
-      hash: '0123456',
-    }),
-  }));
+  vi.doMock('@kontourai/station-shared/git', async () => {
+    // The stamp writer reads HEAD through readGitHeadSha (station#2689). Route
+    // it onto this suite's `git rev-parse HEAD` execSync model, so each
+    // test's childProcessMock keeps owning the sha a build records.
+    const childProcess = await import('node:child_process');
+    return {
+      readGitHeadSha: (cwd: string) =>
+        String(
+          childProcess.execSync('git rev-parse HEAD', {
+            cwd,
+            encoding: 'utf-8',
+          }),
+        ).trim(),
+      resolveGitInfo: () => ({
+        branch: 'main',
+        gitRoot,
+        hash: '0123456',
+      }),
+    };
+  });
 
   const createConnection = options.netConnectMock ?? makeReadyTcpConnectMock();
   vi.doMock('node:net', async () => {
@@ -570,6 +583,31 @@ function ensureBuildOutputs(instanceId = 'default'): void {
   // `isInstalled()` be satisfied by an empty directory.
   writeFileSync(join(TEST_CWD, server, TEST_SERVER_ENTRY_FILENAME), '');
   writeFileSync(join(TEST_CWD, ui, 'index.html'), '<!doctype html>');
+}
+
+/**
+ * Makes TEST_CWD a prebuilt portable archive (#2675): the builder's marker
+ * and the release provenance it writes, with the one shared build.
+ */
+function ensurePrebuiltArchive(): void {
+  ensureDir(TEST_CWD);
+  writeFileSync(
+    join(TEST_CWD, '.station-prebuilt-archive'),
+    'station-prebuilt-archive-v1\n',
+  );
+  writeFileSync(
+    join(TEST_CWD, '.station-release.json'),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      sha: '0123456789abcdef0123456789abcdef01234567',
+      ref: 'v0.0.0',
+      createdAt: '2026-09-26T00:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    })}\n`,
+  );
+  ensureBuildOutputs();
 }
 
 function writeBuildManifest(
@@ -2395,7 +2433,48 @@ describe('lifecycle instance state', () => {
     await waiting;
     expect(failure).not.toBeNull();
     expect(failure!.message).toBe(
-      `Timed out waiting for ${url} (managed boot identity mismatch)`,
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "identity-sha", got "other-sha"; bootId expected "identity-boot", got "other-boot"; instanceId expected "smoke-b", got "someone-else"`,
+    );
+  });
+
+  it('names only the identity field that differed, with both values (station#2689)', async () => {
+    // The #2689 shape: no build stamp, so the supervisor expects sha
+    // 'unknown' while this very boot answers with its baked sha.
+    vi.useFakeTimers();
+    const bakedSha = '0d57e8277'.padEnd(40, '0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'default',
+              sha: bakedSha,
+              bootId: 'boot-1',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://127.0.0.1:3246/api/system/identity';
+
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'default', sha: 'unknown', bootId: 'boot-1' },
+        500,
+      )
+      .then(
+        () => null,
+        (error: Error) => error,
+      );
+    await vi.advanceTimersByTimeAsync(600);
+
+    // The parenthesised reason is unchanged, so run-e2e-suite's
+    // classifyStartFailure still reads this as a boot race.
+    expect((await waiting)?.message).toBe(
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "unknown", got "${bakedSha}"`,
     );
   });
 
@@ -2910,6 +2989,29 @@ describe('lifecycle instance state', () => {
 });
 
 describe('clean', () => {
+  it("removes the home but keeps a prebuilt archive's shared build", async () => {
+    ensurePrebuiltArchive();
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+
+    const { lifecycle } = await loadLifecycleModule();
+
+    await lifecycle.clean({
+      allowDefaultHomeClean: false,
+      force: true,
+      homeSource: '--base',
+      instanceName: 'smoke-a',
+      projectHome: TEST_ALT_HOME,
+      serverPort: 3242,
+      uiPort: 5274,
+    });
+
+    expect(existsSync(TEST_ALT_HOME)).toBe(false);
+    expect(
+      existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+    ).toBe(true);
+    expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
+  });
+
   it('removes only the explicit base directory and leaves the default home intact', async () => {
     ensureDir(TEST_CWD);
     ensureOwnerControlledStationHome(TEST_DEFAULT_HOME);
@@ -4181,6 +4283,7 @@ describe('upgrade', () => {
   it.each([
     { runtimeChannel: 'stable', releaseChannel: 'stable' },
     { runtimeChannel: 'beta', releaseChannel: 'preview' },
+    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
     async ({ runtimeChannel, releaseChannel }) => {
@@ -4194,11 +4297,15 @@ describe('upgrade', () => {
         `${JSON.stringify({
           schemaVersion: 2,
           sha: 'b'.repeat(40),
-          ref: releaseChannel === 'stable' ? 'v1.2.3' : 'v1.2.3-preview.4',
+          ref: {
+            stable: 'v1.2.3',
+            preview: 'v1.2.3-preview.4',
+            nightly: 'v1.2.3-nightly.242704',
+          }[releaseChannel],
           createdAt: '2026-07-22T00:00:00.000Z',
           channel: runtimeChannel,
           releaseChannel,
-          prerelease: releaseChannel === 'preview',
+          prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
@@ -4375,6 +4482,89 @@ describe('upgrade', () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it.each([
+    { state: { channel: 'canary', releaseChannel: 'canary' } },
+    {
+      state: { channel: 'nightly-staging', releaseChannel: 'nightly-staging' },
+    },
+    { state: { channel: 'beta', releaseChannel: 'nightly' } },
+  ])(
+    'rejects packaged install state for an unknown ring pairing $state.channel/$state.releaseChannel',
+    async ({ state }) => {
+      const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
+      const release = join(installRoot, 'releases', 'd'.repeat(64));
+      ensureDir(release);
+      writeFileSync(
+        join(release, '.station-release.json'),
+        `${JSON.stringify({
+          schemaVersion: 2,
+          sha: 'e'.repeat(40),
+          ref: 'v1.2.3-nightly.7',
+          createdAt: '2026-07-22T00:00:00.000Z',
+          channel: 'nightly',
+          releaseChannel: 'nightly',
+          prerelease: true,
+        })}\n`,
+      );
+      writeFileSync(
+        join(installRoot, '.station-release-state.json'),
+        `${JSON.stringify({
+          schemaVersion: 3,
+          ...state,
+          installRoot,
+          stationRoot: join(TEST_ROOT, 'root-unknown-ring'),
+          stationHome: join(TEST_ROOT, 'home-unknown-ring'),
+        })}\n`,
+        { mode: 0o600 },
+      );
+      const execFileSync = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: release,
+        childProcessMock: { execFileSync },
+      });
+
+      await expect(lifecycle.upgrade()).rejects.toThrow(
+        'packaged install state is malformed',
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts nightly packaged provenance and rejects unknown or mismatched rings', async () => {
+    const { lifecycle } = await loadLifecycleModule({});
+    const provenance = (overrides: Record<string, unknown>) => ({
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.7.0-nightly.242704',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+      ...overrides,
+    });
+    expect(lifecycle.validatePackagedReleaseManifest(provenance({}))).toEqual(
+      provenance({}),
+    );
+    for (const overrides of [
+      { channel: 'canary', releaseChannel: 'canary' },
+      // Staging bundles are evidence-only, never an installable ring.
+      {
+        channel: 'nightly-staging',
+        releaseChannel: 'nightly-staging',
+        ref: 'nightly-2026-09-25-1',
+      },
+      { channel: 'beta' },
+      { prerelease: false },
+      { ref: 'v0.7.0-preview.3' },
+      { ref: 'v0.7.0' },
+      { ref: 'v0.7.0-nightly.0' },
+    ])
+      expect(
+        lifecycle.validatePackagedReleaseManifest(provenance(overrides)),
+        JSON.stringify(overrides),
+      ).toBeNull();
   });
 
   it('rejects a packaged release whose provenance channel disagrees with persisted state', async () => {
@@ -5788,6 +5978,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
               Host: host,
               'X-Station-Internal-Token': 'caller-spoof',
               'X-Station-Proxy-Caller': 'local',
+              'X-Station-Orchestration-Thread': 'caller-spoof-thread',
             },
           },
           (res) => {
@@ -5809,6 +6000,10 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     expect(observed[0]?.['x-station-internal-token']).toBe(
       'test-only-internal-api-token',
     );
+    // #2589: never relayed, so no browser can name a relay thread.
+    expect(
+      observed.map((headers) => headers['x-station-orchestration-thread']),
+    ).toEqual([undefined, undefined, undefined]);
     expect(JSON.stringify(observed)).not.toContain('caller-spoof');
   });
 
@@ -7532,6 +7727,38 @@ describe('lifecycle build + restart ergonomics', () => {
       expect(existsSync(join(TEST_CWD, 'dist-server-ephemeral'))).toBe(false);
       expect(existsSync(join(TEST_CWD, 'dist-ui-ephemeral'))).toBe(false);
       expect(existsSync(statePath)).toBe(false);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it("keeps a prebuilt archive's shared build when stopping a --temp-home instance", async () => {
+    ensurePrebuiltArchive();
+    const statePath = writeInstanceState({
+      instanceName: 'ephemeral',
+      homeSource: '--temp-home',
+      serverPid: 41001,
+      uiPid: null,
+      serverPort: 39901,
+      uiPort: 39902,
+    });
+
+    const { killProcessTree, killSpy } = makeKillMock([41001]);
+    const execSync = vi.fn(() => '');
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync },
+      platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+    });
+
+    try {
+      lifecycle.stop({ instanceName: 'ephemeral' });
+      expect(existsSync(statePath)).toBe(false);
+      // Every instance of an archive serves this one build; the next start
+      // needs it, and nothing in the archive can rebuild it.
+      expect(
+        existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+      ).toBe(true);
+      expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
     } finally {
       killSpy.mockRestore();
     }

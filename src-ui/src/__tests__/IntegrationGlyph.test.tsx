@@ -14,11 +14,11 @@ describe('IntegrationGlyph (issue #691)', () => {
   // resolves, or resolves to the wrong mark, fails here.
   test.each([
     ['Station', 'station', '0 0 32 32'],
-    ['Claude Code', 'claude', '0 0 256 257'],
-    ['Codex', 'codex', '0 0 256 260'],
-    ['Pi', 'pi', '0 0 800 800'],
+    ['Claude Code', 'claude', '0 0 248 248'],
+    ['Codex', 'codex', '4 4 15.5 15.5'],
+    ['Pi', 'pi', '-195 -195 950 950'],
     ['Kiro', 'kiro', '0 0 1200 1200'],
-    ['OpenCode', 'opencode', '0 0 32 40'],
+    ['OpenCode', 'opencode', '128 96 256 320'],
   ])(
     'uses the shared bundled %s mark for its exact EngineId',
     async (name, key, viewBox) => {

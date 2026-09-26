@@ -33,7 +33,10 @@ afterEach(() => {
 
 function dependencies() {
   return {
-    installLocalService: vi.fn(async () => ({ rollback: vi.fn() })),
+    installLocalService: vi.fn(async (_serviceArgs: string[]) => ({
+      instanceId: 'default',
+      rollback: vi.fn(),
+    })),
     pair: vi.fn(async (input) => {
       const result = upsertProfile({
         name: input.name!,
@@ -56,10 +59,12 @@ describe('station setup', () => {
     const deps = dependencies();
     await runSetupCommand(['local', '--port=43141'], deps);
     expect(deps.installLocalService).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        '--port=43141',
-        expect.stringMatching(/^--base=/),
-      ]),
+      expect.arrayContaining(['--port=43141']),
+    );
+    // station#2689: the home is left to the install's own resolution, so its
+    // SOURCE (here STATION_HOME) survives; a synthesized --base erased it.
+    expect(deps.installLocalService.mock.calls[0]![0]).not.toContainEqual(
+      expect.stringMatching(/^--base=/),
     );
     expect(readProfileStore()).toMatchObject({
       defaultProfile: 'kontour',
@@ -82,7 +87,7 @@ describe('station setup', () => {
       writeFileSync(join(home, 'service-state', 'installed'), 'yes', {
         mode: 0o600,
       });
-      return { rollback: vi.fn() };
+      return { instanceId: 'default', rollback: vi.fn() };
     });
 
     await runSetupCommand(['local'], deps);
@@ -103,11 +108,7 @@ describe('station setup', () => {
       'http://192.0.2.40:43142',
     );
     expect(deps.installLocalService).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        '--host=192.0.2.40',
-        '--port=43142',
-        expect.stringMatching(/^--base=/),
-      ]),
+      expect.arrayContaining(['--host=192.0.2.40', '--port=43142']),
     );
 
     await runSetupCommand(
@@ -165,7 +166,7 @@ describe('station setup', () => {
         `${JSON.stringify({ schemaVersion: 1, pid: process.pid, createdAt: Date.now() })}\n`,
         { mode: 0o600 },
       );
-      return { rollback };
+      return { instanceId: 'default', rollback };
     });
 
     await expect(runSetupCommand(['local'], deps)).rejects.toThrow(
@@ -330,7 +331,7 @@ describe('station setup', () => {
           encoding: 'utf8',
           mode: 0o600,
         });
-        return { rollback: vi.fn() };
+        return { instanceId: 'default', rollback: vi.fn() };
       });
 
       await runSetupCommand(['local', `--port=${port}`], deps);
@@ -360,6 +361,7 @@ describe('station setup', () => {
       ),
     };
     deps.installLocalService.mockImplementationOnce(async () => ({
+      instanceId: 'default',
       rollback,
     }));
 
@@ -386,6 +388,7 @@ describe('station setup', () => {
       }),
     };
     deps.installLocalService.mockImplementationOnce(async () => ({
+      instanceId: 'default',
       rollback,
     }));
 

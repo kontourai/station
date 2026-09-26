@@ -8,6 +8,8 @@ import type {
 } from '@kontourai/station-contracts/connection-proof';
 import {
   copyStationConnectionTrust,
+  formatStationConnectionKeyConfirmationCode,
+  stationConnectionKeyConfirmationCode,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
 import { useEffect, useState } from 'react';
@@ -21,6 +23,7 @@ const KEY_ID = /^[A-Za-z0-9_-]{43}$/u;
 interface OperatorKeyReport {
   readonly trust: ApprovedStationConnectionTrust;
   readonly keyId: string;
+  readonly confirmationCode: string;
 }
 
 type TrustDecision = {
@@ -68,7 +71,8 @@ async function parseOperatorKeyReport(
   const keyId = await stationConnectionSigningKeyId(trust);
   if (keyId !== parsed.keyId)
     throw new Error('The Station key ID does not match its public key.');
-  return Object.freeze({ trust, keyId });
+  const confirmationCode = await stationConnectionKeyConfirmationCode(trust);
+  return Object.freeze({ trust, keyId, confirmationCode });
 }
 
 function sameKey(
@@ -104,7 +108,8 @@ function decideTrust(
     return {
       status: 'untrusted',
       label: 'No Station key is approved on this browser',
-      detail: 'Compare the full key ID below with the Station operator.',
+      detail:
+        'Compare the confirmation code and full key ID with the Station operator.',
       canApprove: true,
     };
   const status = stationRelayRouteTrustStatus(record, candidate);
@@ -331,7 +336,12 @@ export function BrowserStationTrustApproval() {
         <code>
           npm run --silent connection:key -- initialize --home=&lt;path&gt;
         </code>{' '}
-        and then inspect it. The operator can run{' '}
+        and then inspect it. For a shorter voice or chat comparison, ask the
+        operator to run{' '}
+        <code>
+          npm run --silent connection:key -- fingerprint --home=&lt;path&gt;
+        </code>
+        . Paste the public report from{' '}
         <code>
           npm run --silent connection:key -- inspect --home=&lt;path&gt;
         </code>
@@ -373,6 +383,12 @@ export function BrowserStationTrustApproval() {
           <span>Station ID: {candidate.trust.stationId}</span>
           <span>Enrollment ID: {candidate.trust.enrollmentId}</span>
           <span>Key generation: {candidate.trust.generation}</span>
+          <span>Confirmation code (compare through a separate channel):</span>
+          <code className="relay-route-trust-approval__key-id">
+            {formatStationConnectionKeyConfirmationCode(
+              candidate.confirmationCode,
+            )}
+          </code>
           <span>Full Station key ID (SHA-256 JWK thumbprint):</span>
           <code className="relay-route-trust-approval__key-id">
             {candidate.keyId}
@@ -393,9 +409,9 @@ export function BrowserStationTrustApproval() {
             }
           />
           <span>
-            I compared this full key ID with the Station operator through a
-            separate trusted channel, and did not take it from the broker
-            invitation.
+            I compared the confirmation code and full key ID with the Station
+            operator through a separate trusted channel. I did not take either
+            value from the broker invitation.
           </span>
         </label>
       )}

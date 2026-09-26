@@ -1,3 +1,5 @@
+import type { StationConnectionKeyCandidateV1 } from './connection-proof.js';
+
 /** Versioned routing metadata only; this contract carries no person or application authority. */
 export interface SelfHostedBrokerScopeV1 {
   stationId: string;
@@ -226,3 +228,41 @@ export const SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWAL_CONFLICT_VERSION =
   'station-broker-native-grant-renewal-conflict/v2' as const;
 export const SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_HEADER =
   'X-Station-Native-Proof' as const;
+
+/** Pre-grant discovery only: these proofs cannot redeem an invitation. */
+export interface SelfHostedBrokerNativeKeyCandidateProofV1 {
+  readonly publicKey: SelfHostedBrokerNativeRedemptionProofV2['publicKey'];
+  /** Fresh 32-byte base64url challenge, retained by the native host. */
+  readonly nonce: string;
+  /** ES256; typ station-broker-native-key-candidate+jws; action-specific purpose. */
+  readonly jws: string;
+}
+export interface SelfHostedBrokerNativeKeyCandidateRequestV1 {
+  readonly version: 'station-broker-native-key-candidate-request/v1';
+  readonly invitation: SelfHostedBrokerNativeRouteInvitationV2;
+  readonly proof: SelfHostedBrokerNativeKeyCandidateProofV1;
+}
+export interface SelfHostedBrokerNativeKeyCandidateReadV1 {
+  readonly version: 'station-broker-native-key-candidate-read/v1';
+  readonly invitation: SelfHostedBrokerNativeRouteInvitationV2;
+  readonly proof: SelfHostedBrokerNativeKeyCandidateProofV1;
+}
+/** Secret-free connector projection. No field establishes Station trust. */
+export interface SelfHostedBrokerNativeKeyCandidateOfferV1 {
+  readonly version: 'station-broker-native-key-candidate-offer/v1';
+  readonly invitationId: string;
+  readonly brokerOrigin: string;
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly stationSigningKeyId: string;
+  readonly stationSigningGeneration: number;
+  readonly challenge: string;
+  /** Broker queue deadline in Unix epoch milliseconds. */
+  readonly expiresAt: number;
+}
+export interface SelfHostedBrokerNativeKeyCandidateResultV1 {
+  readonly version: 'station-broker-native-key-candidate-result/v1';
+  readonly expiresAt: number;
+  /** Opaque, untrusted courier. Native host verifies before displaying it. */
+  readonly candidate: StationConnectionKeyCandidateV1 | null;
+}

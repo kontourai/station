@@ -52,9 +52,10 @@
  * definition, so it is out of scope here even though it exists on disk.
  */
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { assertWorkspacePackageProvenance } from './workspace-dependency-provenance.mjs';
 
 export function evaluateBundleBudget(measured, budget) {
@@ -264,10 +265,7 @@ export function uiBundleBudgetObserveOnly(env = process.env) {
   return env.STATION_UI_BUNDLE_BUDGET === 'observe';
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   if (!shouldEnforceUiBundleBudget()) {
     console.log(
       'Reference diagnostic UI build: ordinary first-paint bundle budget is not applicable.',

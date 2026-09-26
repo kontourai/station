@@ -19,6 +19,7 @@ import type {
   VerifiedPionApplicationRequestFacts,
   VirtualApplication,
 } from '../../services/connections/virtual-application.js';
+import type { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
 import {
   SelfHostedBrokerRuntime,
   type SelfHostedBrokerStatus,
@@ -65,6 +66,7 @@ export interface SelfHostedBrokerPionRuntimeInput {
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
   };
   issuer: { issue(binding: StationConnectionProofBinding): Promise<string> };
+  candidateIssuer?: ConnectionKeyCandidateIssuer;
   heartbeatMs: number;
   renewMs: number;
   pollMs: number;
@@ -130,6 +132,7 @@ export function createSelfHostedBrokerPionRuntime(
   const turn = Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
+  const candidateIssuer = input.candidateIssuer;
   const heartbeatMs = input.heartbeatMs;
   const renewMs = input.renewMs;
   const pollMs = input.pollMs;
@@ -479,7 +482,11 @@ export function createSelfHostedBrokerPionRuntime(
   const lifecycle = {
     register: (signal: AbortSignal) => connector.register(signal),
     renew: (signal: AbortSignal) => connector.renew(signal),
-    poll: (signal: AbortSignal) => connector.poll(signal),
+    poll: async (signal: AbortSignal) => {
+      if (candidateIssuer)
+        await connector.pollNativeKeyCandidates(candidateIssuer, signal);
+      return connector.poll(signal);
+    },
     withdraw: async (signal: AbortSignal) => {
       let withdrawError: unknown;
       let withdrawFailed = false;

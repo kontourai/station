@@ -77,7 +77,7 @@ describe('BrandIcon when the brand-mark chunk fails to load', () => {
         second.container
           .querySelector('[data-brand-key="codex"] svg')
           ?.getAttribute('viewBox'),
-      ).toBe('0 0 256 260'),
+      ).toBe('4 4 15.5 15.5'),
     );
   });
 });

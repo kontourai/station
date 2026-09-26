@@ -17,6 +17,7 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const PUBLISH_NPMRC_CANDIDATE_SCOPE =
   'NPM_CONFIG_USERCONFIG, HOME/.npmrc, RUNNER_TEMP/.npmrc, and GITHUB_WORKSPACE/.npmrc';
@@ -269,7 +270,7 @@ export function runPublishNpmrcCredentialCheck(options = {}) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   process.exitCode = runPublishNpmrcCredentialCheck({
     writeError: (message) => process.stderr.write(`${message}\n`),
     writeOutput: (message) => process.stdout.write(`${message}\n`),

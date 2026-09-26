@@ -426,6 +426,15 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'release availability reads the terminal workflow topology directly',
   }),
   Object.freeze({
+    pattern: 'scripts/publish-mobile-feed-transaction.sh',
+    tests: Object.freeze([
+      'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
+      'scripts/__tests__/release-workflow.test.ts',
+    ]),
+    reason:
+      'the feed transaction test runs this script; the release workflow test reads it',
+  }),
+  Object.freeze({
     pattern: '.github/workflows/codex-pr-review.yml',
     tests: Object.freeze(['scripts/__tests__/codex-review-workflow.test.ts']),
     reason:
@@ -616,6 +625,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
@@ -1014,6 +1024,31 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'install.sh',
     tests: ['scripts/__tests__/documentation-foundations.test.ts'],
     reason: 'channel-specific installation documentation source',
+  },
+  {
+    // install.sh is executed by these suites, never imported, and its channel
+    // and signing-key blocks are generated from the two config files (#2675).
+    // Supplemental: they ADD to each path's own selection.
+    pattern: 'install.sh',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/install-script-generated.test.ts',
+      'scripts/__tests__/install-script.test.ts',
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+    ],
+    reason: 'installer is run by its tests, not imported',
+  },
+  {
+    pattern: 'config/channel-ports.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh channel constants are generated from this config',
+  },
+  {
+    pattern: 'config/release-manifest-keys.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh pinned signing keys are generated from this config',
   },
   {
     pattern: 'config/channel-ports.json',

@@ -358,16 +358,19 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       REMOTE,
     );
     // Agent-originated: the station-control token and a delegation device.
-    for (const [label, response] of [
-      ['internal token', internal],
-      ['delegation device', delegated],
-    ] as const) {
-      expect(response.status, label).toBe(403);
-      expect(await readJson(response), label).toEqual({
-        success: false,
-        code: 'principal-unresolved',
-      });
-    }
+    // #2377 slice A: no station-control tool reaches this route, so the
+    // station-control authority guard refuses the internal token before the
+    // route's own `principal-unresolved` refusal can run.
+    expect(internal.status).toBe(403);
+    expect(await readJson(internal)).toMatchObject({
+      success: false,
+      code: 'station_control_route_unmapped',
+    });
+    expect(delegated.status).toBe(403);
+    expect(await readJson(delegated)).toEqual({
+      success: false,
+      code: 'principal-unresolved',
+    });
 
     // An off-box paired device is a person but not the operator, and this
     // device is shared with no Project: D12 refuses it before the lease.
