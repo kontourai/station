@@ -69,6 +69,20 @@ work still to complete.
 
 ## Maintaining the atlas
 
+The reader starts with a small navigation manifest. It fetches individual
+document/module bodies, the full-text search index, and the diagram renderer
+when needed. Document digests bind a fetched body to the manifest that selected
+it; a mismatched snapshot asks the reader to reload. Mobile navigation uses a
+native modal dialog so the reading content comes first and the background is
+inert while the menu is open.
+
+The [builder](../../scripts/build-learning-guide.mjs) owns these static artifacts,
+the [shared model](../../scripts/lib/documentation-model.mjs) owns section and
+catalog rules, and the [reader](atlas.js) owns navigation and presentation.
+The [browser checks](../../scripts/__tests__/learning-atlas.browser.test.ts)
+exercise lazy loading, source drill-down, search/history, mobile keyboard
+navigation, and every Mermaid diagram in the library.
+
 `atlas.json` owns only the concept grouping, reading routes, and learning
 questions. Module explanations remain in the module map; prose remains in its
 canonical document. The builder rejects unknown or multiply assigned modules,

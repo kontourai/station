@@ -138,6 +138,22 @@ export async function buildDiagramBundle() {
   return result.outputFiles[0].text;
 }
 
+export function learningClientData(data) {
+  return {
+    ...data,
+    documents: data.documents.map(
+      ({ html: _html, search: _search, ...doc }) => ({
+        ...doc,
+        contentUrl: `documents/${doc.path.split('/').map(encodeURIComponent).join('/')}.json`,
+      }),
+    ),
+    modules: data.modules.map(({ html: _html, ...module }) => ({
+      ...module,
+      contentUrl: `modules/${module.id}.json`,
+    })),
+  };
+}
+
 export async function buildLearningGuide({ check = false } = {}) {
   const tracked = git(['ls-files', '-z']).split('\0').filter(Boolean).sort();
   const files = new Set(
@@ -192,6 +208,7 @@ export async function buildLearningGuide({ check = false } = {}) {
     groups: catalog.groups,
     modules: modules.map(({ text, ...module }) => ({
       ...module,
+      digest: createHash('sha256').update(text).digest('hex'),
       ...renderLearningDocument(text, moduleMap, files, revision, sourceFiles),
     })),
     documents,
@@ -218,9 +235,37 @@ export async function buildLearningGuide({ check = false } = {}) {
       path.join(output, 'diagrams.js'),
       await buildDiagramBundle(),
     );
+    const clientData = learningClientData(data);
+    for (const [index, doc] of data.documents.entries()) {
+      const destination = path.join(
+        output,
+        decodeURIComponent(clientData.documents[index].contentUrl),
+      );
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(
+        destination,
+        JSON.stringify({
+          path: doc.path,
+          digest: doc.digest,
+          html: doc.html,
+          headings: doc.headings,
+        }),
+      );
+    }
+    await mkdir(path.join(output, 'modules'), { recursive: true });
+    for (const module of data.modules)
+      await writeFile(
+        path.join(output, 'modules', `${module.id}.json`),
+        JSON.stringify(module),
+      );
     await writeFile(
-      path.join(output, 'atlas-data.json'),
-      `${JSON.stringify(data)}\n`,
+      path.join(output, 'search-index.json'),
+      JSON.stringify(
+        data.documents.map(({ path: file, search }) => ({
+          path: file,
+          search,
+        })),
+      ),
     );
     await writeFile(
       path.join(output, 'inventory.json'),
@@ -233,6 +278,10 @@ export async function buildLearningGuide({ check = false } = {}) {
       await mkdir(path.dirname(destination), { recursive: true });
       await copyFile(path.join(root, file), destination);
     }
+    await writeFile(
+      path.join(output, 'atlas-data.json'),
+      `${JSON.stringify(clientData)}\n`,
+    );
   }
   console.log(
     `${check ? 'Validated' : 'Built'} learning atlas: ${catalog.groups.length} branches, ${modules.length} module sections, ${documents.length} Markdown documents. Semantic audit status remains separate.`,

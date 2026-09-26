@@ -9,15 +9,18 @@
   </head>
   <body>
     <a class="skip" href="#content">Skip to reading</a>
-    <header>
-      <a class="brand" href="#">Station <span>Learning atlas</span></a>
-      <p>Understand the whole. Follow a responsibility. Inspect the evidence.</p>
+    <header class="site-header">
+      <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">S</span>Station <span class="brand-divider"></span><span class="brand-subtitle"><span class="desktop-subtitle">Field guide</span><span class="mobile-subtitle">Preview</span></span></a>
+      <nav class="header-links" aria-label="Quick navigation"><a href="#doc=docs%2Farchitecture.md">System overview</a><a class="preview-label" href="#doc=docs%2Fplans%2Fdocumentation-code-audit.md"><span aria-hidden="true">●</span> Preview · audit in progress</a></nav>
+      <button id="open-navigation" type="button" aria-haspopup="dialog">Explore <span aria-hidden="true">☰</span></button>
     </header>
     <div class="workspace">
-      <aside aria-label="Learning navigation">
+      <aside class="sidebar" id="sidebar" aria-label="Learning navigation">
         <label for="search">Search concepts and all Markdown</label>
-        <input type="search" id="search" placeholder="Try recovery, plugins, or a filename" />
+        <input type="search" id="search" placeholder="Find a concept or document…" />
         <p id="search-status" role="status"></p>
+        <a class="overview-link" href="#">The big picture <span aria-hidden="true">↗</span></a>
+        <p class="nav-eyebrow">Explore the system</p>
         <nav id="tree" aria-label="Concept branches"></nav>
         <nav id="results" aria-label="Search results" hidden></nav>
         <details class="library">
@@ -29,13 +32,15 @@
       <main id="content" tabindex="-1">
         <nav id="breadcrumbs" aria-label="Breadcrumb"></nav>
         <div id="reading-status"></div>
+        <details id="compact-outline" hidden><summary>On this page</summary><nav aria-label="Compact document sections"></nav></details>
         <article id="article"><h1>Loading the learning atlas…</h1></article>
       </main>
-      <aside class="outline-panel" aria-label="On this page">
+      <aside class="outline-panel" aria-label="On this page" hidden>
         <h2>On this page</h2>
         <nav id="outline" aria-label="Document sections"></nav>
       </aside>
     </div>
+    <dialog id="navigation-dialog" aria-label="Explore Station"><div class="dialog-heading"><span>Explore Station</span><button type="button" id="close-navigation" aria-label="Close navigation">×</button></div></dialog>
     <noscript>This reader needs JavaScript for navigation. All content remains readable in the repository's Markdown files under docs/learn/README.md.</noscript>
   </body>
 </html>

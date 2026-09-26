@@ -1,5 +1,3 @@
-import { renderDiagrams } from './diagrams.js';
-
 const article = document.getElementById('article');
 const tree = document.getElementById('tree');
 const results = document.getElementById('results');
@@ -8,6 +6,32 @@ const breadcrumbs = document.getElementById('breadcrumbs');
 const readingStatus = document.getElementById('reading-status');
 const search = document.getElementById('search');
 let atlas;
+const readingCache = new Map();
+let searchIndex;
+let renderRevision = 0;
+
+async function loadReading(node) {
+  if (node.html) return node;
+  if (!readingCache.has(node.contentUrl)) {
+    readingCache.set(
+      node.contentUrl,
+      fetch(node.contentUrl).then(async (response) => {
+        if (!response.ok)
+          throw new Error(`Document returned HTTP ${response.status}`);
+        const content = await response.json();
+        if (
+          content.digest !== node.digest ||
+          (node.path ? content.path !== node.path : content.id !== node.id)
+        )
+          throw new Error(
+            'This document was rebuilt. Reload to open the current snapshot.',
+          );
+        return content;
+      }),
+    );
+  }
+  return readingCache.get(node.contentUrl);
+}
 
 function escapeText(value) {
   const element = document.createElement('span');
@@ -34,42 +58,75 @@ function moduleHref(id) {
 }
 
 function showOutline(headings, prefix) {
-  outline.innerHTML = headings
-    .filter((heading) => heading.level <= 3)
-    .map(
-      (heading) =>
-        `<a href="${prefix}&section=${encodeURIComponent(heading.id)}">${escapeText(heading.title)}</a>`,
-    )
-    .join('');
+  setOutline(
+    headings
+      .filter((heading) => heading.level <= 3)
+      .map(
+        (heading) =>
+          `<a href="${prefix}&section=${encodeURIComponent(heading.id)}">${escapeText(heading.title)}</a>`,
+      )
+      .join(''),
+  );
+}
+
+function setOutline(html) {
+  outline.innerHTML = html;
+  document.querySelector('.outline-panel').hidden = !html;
+  const compact = document.getElementById('compact-outline');
+  compact.hidden = !html;
+  compact.querySelector('nav').innerHTML = html;
+  document
+    .querySelector('.workspace')
+    .classList.toggle('has-outline', Boolean(html));
 }
 
 function overview() {
   breadcrumbs.innerHTML = 'Station / Explore';
   readingStatus.innerHTML = '';
-  outline.innerHTML = '';
-  article.innerHTML = `<h1>How Station fits together</h1>
-    <p>Start with a responsibility, then open an interface beneath it. Follow the implementation and evidence links to understand what happens—and what remains uncertain.</p>
-    <div class="doc-actions"><a href="${documentHref('docs/architecture.md')}">System overview</a><a href="${documentHref('docs/user/concepts.md')}">Product vocabulary</a><a href="${documentHref('docs/architecture/abstraction-review.md')}">Abstraction review</a></div>
-    <div class="notice"><p>This is a reading map of the current checkout. Its ${atlas.documents.length} documents and ${atlas.modules.length} module sections are an inventory, not an audit-completion score. Designs, historical records, and implementation evidence retain their own status.</p><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Read the audit scope and remaining work</a></div>
-    <div class="branches">${atlas.groups.map((group) => `<section class="branch"><h2><a href="${groupHref(group.id)}">${escapeText(group.title)}</a></h2><p>${escapeText(group.summary)}</p></section>`).join('')}</div>`;
+  setOutline('');
+  article.className = 'view-overview';
+  article.innerHTML = `<section class="hero">
+      <div class="hero-copy"><p class="eyebrow">THE STATION FIELD GUIDE</p><h1>How Station <em>fits together.</em></h1>
+      <p class="hero-description">Understand the big picture. Follow the work into its interfaces, decisions, and code. Find the places worth improving.</p>
+      <a class="primary-link" href="${documentHref('docs/architecture.md')}">Start with the overview <span aria-hidden="true">↗</span></a>
+      <p class="hero-caption">Built from the same documentation your agents read.</p></div>
+      <div class="learning-map"><div class="map-caption"><span>A FEW WAYS IN</span><span>Choose a branch ↗</span></div>
+        <div class="map-grid"><svg class="map-lines" viewBox="0 0 400 270" preserveAspectRatio="none" aria-hidden="true"><path d="M100 45V135H300V225M300 45V135H100V225" /></svg>
+          <a class="map-node" href="#branch=work"><span class="node-symbol" aria-hidden="true">▤</span><span>Projects & Tasks</span></a>
+          <a class="map-node" href="#branch=execution"><span class="node-symbol" aria-hidden="true">↗</span><span>Sessions & engines</span></a>
+          <div class="map-root"><span class="root-symbol" aria-hidden="true">S</span><div>Station<small>The agent workspace</small></div></div>
+          <a class="map-node" href="#branch=surfaces"><span class="node-symbol" aria-hidden="true">▦</span><span>Work surfaces</span></a>
+          <a class="map-node" href="#branch=evidence"><span class="node-symbol" aria-hidden="true">✓</span><span>Trust & evidence</span></a>
+        </div><p class="map-footer">A learning map, from concepts to implementation.</p>
+      </div>
+    </section>
+    <section class="reading-routes" aria-label="Suggested reading paths">
+      <a href="${documentHref('docs/user/concepts.md')}"><span class="route-number">01</span><div><strong>Get the big picture</strong><span>The concepts behind the workspace</span></div><span aria-hidden="true">↗</span></a>
+      <a href="${documentHref('docs/architecture.md#data-flow-chat-request')}"><span class="route-number">02</span><div><strong>Follow a real request</strong><span>From a message to an execution</span></div><span aria-hidden="true">↗</span></a>
+      <a href="${documentHref('docs/architecture/abstraction-review.md')}"><span class="route-number">03</span><div><strong>Question the design</strong><span>Boundaries, tradeoffs, and open questions</span></div><span aria-hidden="true">↗</span></a>
+    </section>
+    <section class="explore-section"><div class="section-heading"><div><p class="eyebrow">EXPLORE THE ARCHITECTURE</p><h2>Pick a part. Go deeper.</h2></div><span class="section-count">${atlas.groups.length} branches · ${atlas.modules.length} interfaces & notes</span></div>
+    <div class="branches">${atlas.groups.map((group, index) => `<a class="branch-card" href="${groupHref(group.id)}" aria-labelledby="branch-${group.id}-title"><div class="branch-top"><span class="branch-number">${String(index + 1).padStart(2, '0')}</span><span class="branch-arrow" aria-hidden="true">↗</span></div><h3 id="branch-${group.id}-title">${escapeText(group.title)}</h3><p>${escapeText(group.summary)}</p><div class="branch-meta">${group.modules.length} interfaces & notes <span>·</span> ${group.docs.length} reading routes</div></a>`).join('')}</div></section>
+    <details class="audit-note"><summary>About this preview and its review status</summary><p>The library contains ${atlas.documents.length} Markdown files. Inclusion is an inventory, not a completed semantic audit. Historical records and proposals retain their own status.</p><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Read the audit ledger and remaining work ↗</a></details>`;
 }
 
 function showGroup(group) {
   breadcrumbs.innerHTML = `<a href="#">Station</a> / ${escapeText(group.title)}`;
   readingStatus.innerHTML = '';
-  outline.innerHTML = '';
-  article.innerHTML = `<h1>${escapeText(group.title)}</h1><p>${escapeText(group.summary)}</p>
-    <h2>Questions to understand this boundary</h2><ul>${group.questions.map((question) => `<li>${escapeText(question)}</li>`).join('')}</ul>
-    <h2>Read the explanation</h2><ul>${group.docs.map((doc) => `<li>${documentLink(doc)}</li>`).join('')}</ul>
-    <h2>Open an interface</h2><p>These sections come directly from the canonical module map. They describe the interface, invariants, composition, and evidence; their presence does not certify that every claim has been re-audited.</p>
-    <ul>${group.modules
+  setOutline('');
+  article.className = 'view-branch';
+  article.innerHTML = `<p class="eyebrow">EXPLORE A RESPONSIBILITY</p><h1>${escapeText(group.title)}</h1><p class="lead">${escapeText(group.summary)}</p>
+    <div class="question-panel"><p class="eyebrow">QUESTIONS TO FOLLOW</p><ul>${group.questions.map((question) => `<li>${escapeText(question)}</li>`).join('')}</ul></div>
+    <h2>Start reading</h2><ul class="reading-list">${group.docs.map((doc) => `<li>${documentLink(doc)}</li>`).join('')}</ul>
+    <h2>Inside this part of the system</h2><p class="section-intro">Open an interface to explore its purpose, boundaries, implementation, and evidence.</p>
+    <ul class="module-list">${group.modules
       .map((title) => {
         const module = atlas.modules.find((entry) => entry.title === title);
-        return `<li><a href="${moduleHref(module.id)}">${escapeText(title)}</a></li>`;
+        return `<li><a href="${moduleHref(module.id)}"><span>${escapeText(title)}</span><span aria-hidden="true">↗</span></a></li>`;
       })
       .join('')}</ul>
-    <h2>Look for improvements</h2><p>Follow a real caller and its failure path. Identify what the caller must coordinate, where state lives, and whether the tests reach the same boundary. Separate a missing explanation from a missing abstraction.</p>
-    <a href="${documentHref('docs/architecture/abstraction-review.md')}">Open the abstraction review</a>`;
+    <div class="improvement-note"><h2>What could be better?</h2><p>Follow a real caller and its failure path. Look for responsibilities that leak across a boundary, unclear ownership, and evidence that leaves a gap.</p>
+    <a href="${documentHref('docs/architecture/abstraction-review.md')}">Open the abstraction review ↗</a></div>`;
 }
 
 function showDocument(doc, section, module) {
@@ -78,8 +135,9 @@ function showDocument(doc, section, module) {
     atlas.groups.find((entry) => entry.modules.includes(module.title));
   breadcrumbs.innerHTML = `<a href="#">Station</a> / ${group ? `<a href="${groupHref(group.id)}">${escapeText(group.title)}</a> / ` : ''}${escapeText(module?.title ?? doc.title)}`;
   const sourcePath = doc.path.split('/').map(encodeURIComponent).join('/');
-  readingStatus.innerHTML = `<div class="doc-actions"><a href="sources/${sourcePath}.txt">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
-    <p class="provenance">${escapeText(doc.path)} · ${escapeText(doc.review)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p>`;
+  readingStatus.innerHTML = `<p class="review-status"><strong>Full review pending.</strong> This page has not been verified in full against the code. <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="sources/${sourcePath}.txt">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
+    <p class="provenance">${escapeText(doc.path)} · ${escapeText(doc.review)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p></details>`;
+  article.className = 'view-document';
   article.innerHTML = module?.html ?? doc.html;
   const prefix = module ? moduleHref(module.id) : documentHref(doc.path);
   showOutline(module?.headings ?? doc.headings, prefix);
@@ -96,7 +154,9 @@ function showDocument(doc, section, module) {
   }
 }
 
-function render(event) {
+async function render(event) {
+  const revision = ++renderRevision;
+  const requestedHash = location.hash;
   const params = new URLSearchParams(
     location.hash === '#content' ? '' : location.hash.slice(1),
   );
@@ -110,17 +170,57 @@ function render(event) {
     const group = atlas.groups.find((entry) => entry.id === branch);
     if (group) showGroup(group);
     else showMissing();
-  } else if (doc) showDocument(doc, params.get('section'), module);
-  else if (params.size) showMissing();
+  } else if (doc) {
+    article.innerHTML =
+      '<p class="loading-message">Opening this part of the guide…</p>';
+    try {
+      const content = await loadReading(module ?? doc);
+      if (revision !== renderRevision || location.hash !== requestedHash)
+        return;
+      showDocument(
+        module ? doc : { ...doc, ...content },
+        params.get('section'),
+        module ? { ...module, ...content } : undefined,
+      );
+    } catch (error) {
+      if (revision !== renderRevision || location.hash !== requestedHash)
+        return;
+      readingStatus.innerHTML = '';
+      setOutline('');
+      article.innerHTML = `<h1>This page could not open</h1><p role="alert">${escapeText(error.message)}</p><p>Reload the page to refresh the documentation snapshot.</p>`;
+      return;
+    }
+  } else if (params.size) showMissing();
   else overview();
   const renderedHash = location.hash;
-  void renderDiagrams(article).then(() => {
-    if (location.hash !== renderedHash || !params.get('section')) return;
-    const target = [...article.querySelectorAll('[id]')].find(
-      (element) => element.id === params.get('section'),
-    );
-    target?.scrollIntoView({ block: 'start' });
-  });
+  const diagrams = article.querySelector('code.language-mermaid')
+    ? import('./diagrams.js').then(({ renderDiagrams }) =>
+        revision === renderRevision && location.hash === renderedHash
+          ? renderDiagrams(article)
+          : undefined,
+      )
+    : Promise.resolve();
+  void diagrams
+    .then(() => {
+      if (
+        revision !== renderRevision ||
+        location.hash !== renderedHash ||
+        !params.get('section')
+      )
+        return;
+      const target = [...article.querySelectorAll('[id]')].find(
+        (element) => element.id === params.get('section'),
+      );
+      target?.scrollIntoView({ block: 'start' });
+    })
+    .catch((error) => {
+      if (revision !== renderRevision || location.hash !== renderedHash) return;
+      const notice = document.createElement('p');
+      notice.className = 'notice';
+      notice.setAttribute('role', 'alert');
+      notice.textContent = `The diagram renderer could not load. Diagram source remains available. ${error.message}`;
+      readingStatus.append(notice);
+    });
   for (const link of tree.querySelectorAll('a')) {
     const active =
       link.getAttribute('href') ===
@@ -138,13 +238,14 @@ function render(event) {
 
 function showMissing() {
   breadcrumbs.innerHTML = '<a href="#">Station</a>';
-  outline.innerHTML = '';
+  setOutline('');
+  article.className = 'view-document';
   readingStatus.innerHTML = '';
   article.innerHTML =
     '<h1>That reading route is unavailable</h1><p>The document or concept may have moved since this link was created. Search the library or return to the overview.</p><a href="#">Explore Station</a>';
 }
 
-function searchLibrary() {
+async function searchLibrary() {
   const query = search.value.trim().toLowerCase();
   tree.hidden = Boolean(query);
   results.hidden = !query;
@@ -157,25 +258,66 @@ function searchLibrary() {
   const groups = atlas.groups.filter((group) =>
     `${group.title} ${group.summary}`.toLowerCase().includes(query),
   );
-  const docs = atlas.documents.filter((doc) =>
-    `${doc.path.toLowerCase()} ${doc.search}`.includes(query),
-  );
-  status.textContent = `${groups.length} concepts and ${docs.length} documents match. ${docs.length > 60 ? 'Showing the first 60 documents; narrow your search for more.' : ''}`;
-  results.innerHTML =
-    groups
-      .map(
-        (group) =>
-          `<a href="${groupHref(group.id)}">${escapeText(group.title)}<small>Concept branch</small></a>`,
-      )
-      .join('') +
-    docs
-      .slice(0, 60)
-      .map((doc) => documentLink(doc.path))
-      .join('');
+  status.textContent = 'Searching the guide…';
+  try {
+    searchIndex ??= fetch('search-index.json').then((response) => {
+      if (!response.ok)
+        throw new Error(`Search returned HTTP ${response.status}`);
+      return response.json();
+    });
+    const index = await searchIndex;
+    if (search.value.trim().toLowerCase() !== query) return;
+    const matches = new Set(
+      index
+        .filter((doc) =>
+          `${doc.path.toLowerCase()} ${doc.search}`.includes(query),
+        )
+        .map((doc) => doc.path),
+    );
+    const docs = atlas.documents.filter((doc) => matches.has(doc.path));
+    status.textContent = `${groups.length} concepts and ${docs.length} documents match. ${docs.length > 60 ? 'Showing the first 60 documents; narrow your search for more.' : ''}`;
+    results.innerHTML =
+      groups
+        .map(
+          (group) =>
+            `<a href="${groupHref(group.id)}">${escapeText(group.title)}<small>Concept branch</small></a>`,
+        )
+        .join('') +
+      docs
+        .slice(0, 60)
+        .map((doc) => documentLink(doc.path))
+        .join('');
+  } catch (error) {
+    if (search.value.trim().toLowerCase() !== query) return;
+    searchIndex = undefined;
+    status.textContent = `Search is unavailable: ${error.message}`;
+  }
 }
 
 async function start() {
   try {
+    const sidebar = document.getElementById('sidebar');
+    const dialog = document.getElementById('navigation-dialog');
+    const mobile = window.matchMedia('(max-width: 900px)');
+    const placeNavigation = () => {
+      if (dialog.open) dialog.close();
+      if (mobile.matches) dialog.append(sidebar);
+      else document.querySelector('.workspace').prepend(sidebar);
+    };
+    placeNavigation();
+    mobile.addEventListener('change', placeNavigation);
+    document
+      .getElementById('open-navigation')
+      .addEventListener('click', () => dialog.showModal());
+    document
+      .getElementById('close-navigation')
+      .addEventListener('click', () => dialog.close());
+    sidebar.addEventListener('click', (event) => {
+      if (event.target.closest('a') && dialog.open) dialog.close();
+    });
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
     const response = await fetch('atlas-data.json');
     if (!response.ok)
       throw new Error(`Atlas data returned HTTP ${response.status}`);
