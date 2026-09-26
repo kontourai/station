@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 106,
+  "pageLocalMediaQueryCeiling": 105,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -64,10 +64,6 @@
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,
       "reason": "Two-row wrap at mobile: the commit field takes its own line while Push stays beside it."
-    },
-    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": {
-      "count": 1,
-      "reason": "The inspector stacks BELOW the editor on mobile, so its collapsed strip becomes a horizontal icon bar rather than a tall orphaned column."
     },
     "src-ui/src/components/coding-layout/CodingLayout.css": {
       "count": 1,

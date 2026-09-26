@@ -14,7 +14,6 @@ import {
 import {
   type AgentConnectionView,
   type ConnectionConfig,
-  type ConnectionReadinessEvidence,
   EXECUTION_MODE,
   type ExecutionMode,
   type ModelOption,
@@ -79,37 +78,6 @@ export function connectionStatusLabel(status: string): string {
         status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
       );
   }
-}
-
-export function connectionEvidenceLabel(
-  evidence?: ConnectionReadinessEvidence,
-): string {
-  if (!evidence) return 'Evidence not reported';
-  if (
-    evidence.smoke.status === 'failed' &&
-    evidence.smoke.freshness === 'fresh'
-  ) {
-    return 'Smoke failed';
-  }
-  switch (evidence.level) {
-    case 'smoke-passed':
-      return 'Smoke passed';
-    case 'catalog-ready':
-      return 'Live catalog';
-    case 'prerequisite-ready':
-      return 'Prerequisites ready';
-    case 'discovered':
-      return 'Discovered';
-  }
-}
-
-export function connectionEvidenceDetail(
-  evidence?: ConnectionReadinessEvidence,
-): string {
-  if (!evidence) {
-    return 'Station has not reported readiness evidence for this connection.';
-  }
-  return [evidence.summary, evidence.action].filter(Boolean).join(' ');
 }
 
 export function prerequisiteStatusLabel(status: string): string {
@@ -584,27 +552,6 @@ export function resolveBindingStatus({
   };
 }
 
-export function resolveEffectiveCapabilityState({
-  agent,
-  chatState,
-  hasModelCatalog,
-  runtimeConnection,
-}: {
-  agent: AgentWithExecution | null | undefined;
-  chatState?: ChatBindingState | null;
-  hasModelCatalog: boolean;
-  runtimeConnection?: AgentConnectionView | ConnectionConfig | null;
-}): EffectiveCapabilityState {
-  return resolveBindingStatus({
-    agent,
-    chatState,
-    runtimeConnection,
-    globalModels: hasModelCatalog
-      ? [{ id: 'catalog', name: 'Catalog', originalId: 'catalog' }]
-      : [],
-  }).capabilityState;
-}
-
 type SessionExecutionSummary = {
   provider?: EngineId | null;
   model?: string | null;
@@ -617,25 +564,6 @@ type SessionExecutionSummary = {
 type SessionExecutionActivity = SessionExecutionSummary & {
   status?: string | null;
 } & ConversationActivityCarrier;
-
-export function isManagedRuntimeConnectionId(
-  agentConnectionId?: string | null,
-  agentConnections: ConnectionConfig[] = [],
-): boolean {
-  // archive#3662: an ABSENT binding is Station's own engine, not "no engine".
-  // The one caller uses this to decide whether to offer the Model-connection
-  // picker, and a Station-engine Agent is precisely the one that needs it.
-  if (!agentConnectionId) {
-    return true;
-  }
-  return (
-    connectionEngineId(
-      agentConnections.find(
-        (connection) => connection.id === agentConnectionId,
-      ),
-    ) === 'station'
-  );
-}
 
 /**
  * Whether a running turn can take more user input on the engine's live
@@ -695,38 +623,6 @@ export function defaultSelectableManagedRuntimeConnection(
         isAgentConnectionSelectable(connection),
     ) ?? null
   );
-}
-
-export function preferredConnectedRuntime(
-  agentConnections: ConnectionConfig[],
-): ConnectionConfig | null {
-  const connected = agentConnections.filter((connection) => {
-    if (
-      connection.kind !== 'agent' ||
-      !connection.enabled ||
-      !connection.capabilities.includes('agent-runtime')
-    ) {
-      return false;
-    }
-    // Strict "connected" (native external, non-station, non-acp)
-    // parity with the pre-rename executionClass literal — ACP connections
-    // have their own separate resolution path, never counted here.
-    const engineId = connectionEngineId(connection);
-    return (
-      engineId !== undefined && engineId !== 'station' && engineId !== 'acp'
-    );
-  });
-  const preferredIds = ['claude', 'codex'];
-  for (const id of preferredIds) {
-    const match = connected.find((connection) => connection.id === id);
-    if (match) return match;
-  }
-  return connected[0] ?? null;
-}
-
-export function executionStatusLabel(status?: string | null): string {
-  if (!status) return 'Not started';
-  return connectionStatusLabel(status);
 }
 
 /**

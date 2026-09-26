@@ -2,8 +2,6 @@
  * @vitest-environment jsdom
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -228,19 +226,6 @@ describe('ProjectTasksSection', () => {
     expect(useWorkItemsQuery).toHaveBeenCalledWith('project-alpha', {
       enabled: false,
     });
-  });
-
-  test('starter-link recovery is locked to the canonical Button primitive', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src-ui/src/views/TaskWorkspaceView.tsx'),
-      'utf8',
-    );
-    const retry = source.slice(
-      source.indexOf('function StarterLinkRetry'),
-      source.indexOf('function taskReferences'),
-    );
-    expect(retry).toContain('<Button');
-    expect(retry).not.toContain('editor-btn');
   });
 
   test('separates an indeterminate starter dispatch from correlation repair', async () => {

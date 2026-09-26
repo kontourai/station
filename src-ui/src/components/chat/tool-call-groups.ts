@@ -28,15 +28,13 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import {
-  type ContentPartBlock,
   isToolCallPart,
-  splitToolCallRuns,
   type ToolCallLike,
   type ToolCallRun,
 } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 
-export type { ContentPartBlock, ToolCallKind, ToolCallLike };
+export type { ToolCallKind, ToolCallLike };
 export { classifyToolName, isToolCallPart };
 
 interface KindNouns {
@@ -118,10 +116,6 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
    * is the only live surface once the run is batched. */
   progressMessage?: string;
 }
-
-type MessageBlock<P extends ToolCallLike = ToolCallLike> =
-  | ContentPartBlock<P>
-  | ToolCallGroup<P>;
 
 function classifyCall<P extends ToolCallLike>(
   part: P,
@@ -252,24 +246,4 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     cancelledCount,
     progressMessage,
   };
-}
-
-/**
- * Groups a message's content parts, collapsing consecutive tool-call parts
- * into `ToolCallGroup` blocks (classified + summarized) and passing every
- * other part through unchanged. Order is preserved; nothing is dropped.
- *
- * This composes `splitToolCallRuns` (structural) with `classifyToolCallRun`
- * (classification) — the full pipeline, used by this module's own tests and
- * by `ToolCallBatch`. The transcript's eager render path
- * (`MessageContent.tsx`/`StreamingMessage.tsx`) calls `splitToolCallRuns`
- * directly instead, deferring classification until a batch is actually
- * rendered — see the module doc comment above.
- */
-export function groupToolCallParts<P extends ToolCallLike>(
-  parts: P[] | undefined | null,
-): MessageBlock<P>[] {
-  return splitToolCallRuns(parts).map((block) =>
-    block.type === 'tool-call-run' ? classifyToolCallRun(block) : block,
-  );
 }

@@ -1,7 +1,5 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { createWorkspaceSpatialBoardPaneInstance } from '@kontourai/station-contracts/workspace-spatial-board';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -727,24 +725,6 @@ describe('SpatialBoardWorkspacePane', () => {
       expect(alert.textContent).toMatch(
         /Refresh the Board before trying again/,
       );
-  });
-
-  test('uses a container-scoped list-first compact fallback without animation', () => {
-    const css = readFileSync(
-      resolve(
-        process.cwd(),
-        'src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css',
-      ),
-      'utf8',
-    );
-    expect(css).toContain('.spatial-board__ordered');
-    expect(css).toContain('display: grid');
-    expect(css).not.toContain('transition:');
-    expect(css).toContain('container-type: inline-size');
-    expect(css).toContain('@container (max-width: 42rem)');
-    expect(css).toContain('grid-template-areas: "list" "toggle" "canvas"');
-    expect(css).toContain('[data-canvas-visible="true"]');
-    expect(css).toContain('flex-direction: column');
   });
 
   test('surfaces revision conflicts for every non-pin mutation seam', () => {

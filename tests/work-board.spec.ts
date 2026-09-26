@@ -50,7 +50,9 @@ test.describe
       expect(project.id).toBeTruthy();
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: /Add pane/i }).click();
+      await page
+        .getByRole('button', { name: '+ Add pane', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
       await expect(picker).toBeVisible({ timeout: 20_000 });
       await picker.getByRole('button', { name: /Open Work Board/i }).click();
@@ -191,6 +193,31 @@ test.describe
       ).toBeVisible();
       await expect(projectCard).toHaveCSS('width', '280px');
 
+      // The compact fallback is scoped to the BOARD's width, not the
+      // viewport's: a narrow board pane inside a wide desktop window must
+      // still go list-first. Only the pane is narrowed here, so no viewport
+      // media rule can supply the layout.
+      const board = page.getByRole('region', { name: 'Personal Work Board' });
+      const openCanvas = page.getByRole('button', { name: 'Open canvas' });
+      const orderedList = page.getByRole('list', {
+        name: 'Pinned work in order',
+      });
+      await expect(openCanvas).toBeHidden();
+      await board.evaluate((element) => {
+        (element as HTMLElement).style.width = '480px';
+      });
+      await expect(openCanvas).toBeVisible();
+      await expect(board.locator('.spatial-board__canvas')).toBeHidden();
+      const listBox = await orderedList.boundingBox();
+      const toggleBox = await openCanvas.boundingBox();
+      if (!listBox || !toggleBox)
+        throw new Error('compact board has no list or toggle box');
+      expect(listBox.y).toBeLessThan(toggleBox.y);
+      await board.evaluate((element) => {
+        (element as HTMLElement).style.width = '';
+      });
+      await expect(openCanvas).toBeHidden();
+
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(
         page.getByRole('button', { name: 'Open canvas' }),
@@ -326,7 +353,9 @@ test.describe
       });
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: /Add pane/i }).click();
+      await page
+        .getByRole('button', { name: '+ Add pane', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
       await expect(picker).toBeVisible({ timeout: 20_000 });
       await picker.getByRole('button', { name: /Open Work Board/i }).click();
