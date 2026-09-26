@@ -212,6 +212,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'terminal-shell': 'station',
   'mcp-ui-host': 'station',
   'surface-trust': 'station',
+  'device-helper-url': 'station',
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
   'default-workspace-isolation': 'station',
