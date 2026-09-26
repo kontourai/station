@@ -183,9 +183,9 @@ export const reviewEvidenceDuration = meter.createHistogram(
  * archive#1834: tool executions denied by the `beforeToolCall` gate. The
  * `reason` attribute is a closed vocabulary (stale_generation /
  * delegated_tool_blocked / policy_config_protection / guardian_denied /
- * delegation_deny_approvals / user_denied / unattended_grant_denied /
- * no_approval_channel / policy_evaluation_failed); tool names are deliberately
- * not an attribute.
+ * guardian_deferred_unattended / delegation_deny_approvals / user_denied /
+ * unattended_grant_denied / no_approval_channel / policy_evaluation_failed);
+ * tool names are deliberately not an attribute.
  */
 export const toolDenials = meter.createCounter('station.tool.denials', {
   description: 'Tool executions denied by the beforeToolCall gate, by reason',

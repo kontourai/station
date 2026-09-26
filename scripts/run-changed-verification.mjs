@@ -410,6 +410,15 @@ export function selectChangedVerification(
   const tests = new Map();
   const lanes = new Map();
   const relatedPaths = new Set();
+  // Related paths some test-naming edge names by EXACT path — ordinary or
+  // supplemental: a spawned-script edge, a derived path-read pin (#1807), a
+  // generator-input edge. Each of those tests asserts about precisely this
+  // file, so an empty related discovery leaves it covered. A glob edge never
+  // owns a path: a blanket scan (the `src-ui/src/**` copy ratchet, the
+  // `packages/sdk/src/client/**` portability scan) says nothing about one
+  // file's behaviour, so it must not turn "no suite covers this file" into a
+  // completed green (#2176).
+  const ownedRelatedPaths = new Set();
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -469,6 +478,11 @@ export function selectChangedVerification(
       for (const lane of edge.lanes ?? [])
         addReason(lanes, lane, `${edge.reason}: ${path}`);
     }
+    if (
+      relatedPaths.has(path) &&
+      edges.some((edge) => edge.pattern === path && edge.tests?.length)
+    )
+      ownedRelatedPaths.add(path);
   }
   if (!paths.length || (!tests.size && !lanes.size && !relatedPaths.size))
     addReason(lanes, 'test-full', 'empty executable selection escalated');
@@ -481,6 +495,7 @@ export function selectChangedVerification(
       .sort()
       .map((id) => ({ id, reasons: [...lanes.get(id)].sort() })),
     relatedPaths: [...relatedPaths].sort(),
+    ownedRelatedPaths: [...ownedRelatedPaths].sort(),
     escalated,
   };
 }
@@ -783,9 +798,18 @@ async function runVitest(
   } = {},
 ) {
   let plannedExecutions;
+  // How many suites related discovery named, observed rather than inferred
+  // from the plan: explicit tests in the same plan must not hide an empty
+  // discovery (#2176).
+  let relatedDiscoveryCount;
+  const discover = discoverRelated ?? discoverRelatedTestFiles;
   try {
     plannedExecutions = await planChangedVitestExecutions(root, selection, {
-      ...(discoverRelated ? { discoverRelated } : {}),
+      discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const files = await discover(discoveryRoot, relatedPaths);
+        relatedDiscoveryCount = files.length;
+        return files;
+      },
       ...(partition ? { partition } : {}),
       vitestPath,
     });
@@ -891,6 +915,7 @@ async function runVitest(
   return {
     executions,
     emptySelection: plannedExecutions.length === 0,
+    relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -1403,15 +1428,32 @@ export async function runChangedVerification(
     // Related discovery ran and named no suite. Record the fact durably in
     // the selection artifact so a reader sees a selection decision rather
     // than a silent zero-execution run.
-    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+    //
+    // #2176: an empty discovery escalates even when the plan still holds
+    // explicit tests. A test selected only through a glob edge (a copy
+    // ratchet over a whole tree) says nothing about the changed file, so
+    // letting it make the plan non-empty turned "no suite covers this file"
+    // into a completed green. Only a path an edge names exactly
+    // (`ownedRelatedPaths`) is covered without its graph.
+    //
+    // Granularity: discovery is ONE call over every related path, and it
+    // returns the union of suites, not a per-input answer. So this fires only
+    // when discovery returns nothing for the whole set; a diff where one path
+    // has importers and another has none is not detected. A per-path answer
+    // would cost one Vitest graph build per changed file.
+    const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
+    const uncovered =
+      vitestOutcome.emptySelection === true
+        ? executionSelection.relatedPaths
+        : vitestOutcome.relatedDiscoveryEmpty === true
+          ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
+          : [];
+    if (uncovered.length > 0 && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
-        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
       };
-      selection = escalateEmptyRelatedSelection(
-        selection,
-        executionSelection.relatedPaths,
-      );
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
     }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;

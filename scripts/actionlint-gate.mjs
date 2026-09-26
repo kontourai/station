@@ -304,6 +304,9 @@ const FORK_SMOKE_JOB = Object.freeze({
 });
 const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}`;
+// #2176: the whole-tree source scans run for same-repository pull requests
+// only. A fork candidate never reaches it (fork-smoke owns forks).
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];
@@ -329,6 +332,7 @@ const PRIMARY_ROUTER_JOBS = new Set([
   UI_BUNDLE_DELTA_JOB,
   'full-regression',
   'manual-completion-diagnostics',
+  'repo-scans',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
@@ -1707,6 +1711,106 @@ function isPinnedPnpmSetup(step) {
   );
 }
 
+/**
+ * #2176: `repo-scans` runs the candidate's own tests, as fast-checks does,
+ * so what it may do is pinned here rather than trusted: the exact
+ * same-repository guard, read-only contents, exactly one checkout — the
+ * pinned action, fetching exactly the pull request's head from its own
+ * repository with no credentials left behind — the pinned setup actions,
+ * exactly two commands (the dependency install and `npm run test:repo-scans`)
+ * and no `continue-on-error` anywhere, so a failed scan fails the check.
+ * It does not review what those commands run; the candidate's tests are
+ * candidate code, as in fast-checks.
+ */
+const REPO_SCANS_CHECKOUT_WITH = Object.freeze({
+  'fetch-depth': 1,
+  'persist-credentials': false,
+  repository: `\${{ github.event.pull_request.head.repo.full_name }}`,
+  ref: `\${{ github.event.pull_request.head.sha }}`,
+});
+
+function repoScansFindings(file, job) {
+  const findings = [];
+  const jobId = 'repo-scans';
+  if (job.if !== REPO_SCANS_CONDITION)
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must use the exact same-repository pull_request_target guard',
+    });
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must declare only permissions: { contents: read }',
+    });
+  // A red scan must be a red check: `continue-on-error` on the job or any
+  // step would report a failed scan as success.
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must not set continue-on-error on the job or a step',
+    });
+  // A skipped scan step leaves a green job: the step that runs the scans must
+  // be exactly { name, run } — no `if:`, no `env:`, no `working-directory:`.
+  const scanSteps = (job.steps ?? []).filter(
+    (step) => step?.run === 'npm run test:repo-scans',
+  );
+  if (
+    scanSteps.length !== 1 ||
+    JSON.stringify(Object.keys(scanSteps[0]).sort()) !==
+      JSON.stringify(['name', 'run'])
+  )
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    });
+  const checkouts = (job.steps ?? []).filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.startsWith('actions/checkout'),
+  );
+  const [checkout] = checkouts;
+  if (
+    checkouts.length !== 1 ||
+    checkout.uses !== CHECKOUT_ACTION ||
+    JSON.stringify(
+      Object.entries(checkout.with ?? {}).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+    ) !==
+      JSON.stringify(
+        Object.entries(REPO_SCANS_CHECKOUT_WITH).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      )
+  )
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    });
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      CHECKOUT_ACTION,
+      SETUP_NODE_ACTION,
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: undefined, run: 'npm run dependencies:ci' },
+      { name: 'Run repository source scans', run: 'npm run test:repo-scans' },
+    ]),
+  );
+  return findings;
+}
+
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
   return (job?.steps ?? [])
     .filter(
@@ -2018,6 +2122,8 @@ function primaryCiRouterFindings(file, document) {
 
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];
+  const scans = jobs['repo-scans'];
+  if (scans) findings.push(...repoScansFindings(file, scans));
   if (fast) {
     if (!hasExactSameRepositoryFastChecksGuard(file, 'fast-checks', fast.if))
       findings.push({

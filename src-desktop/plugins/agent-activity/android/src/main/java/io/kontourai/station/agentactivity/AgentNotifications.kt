@@ -33,8 +33,9 @@ internal const val EXTRA_TAP = "io.kontourai.station.agentactivity.TAP"
  */
 class AgentMessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
-    if (remoteMessage.data["station_kind"] == AGENT_ACTIVITY_KIND) {
-      AgentNotifications.receive(this, remoteMessage.data)
+    when (remoteMessage.data["station_kind"]) {
+      AGENT_ACTIVITY_KIND -> AgentNotifications.receive(this, remoteMessage.data)
+      STATION_NOTIFICATION_KIND -> StationNotifications.receive(this, remoteMessage.data)
     }
   }
 }
@@ -77,10 +78,10 @@ object AgentNotifications {
     index(context).getStringSet("registrations", emptySet()).orEmpty()
 
   // registrationId is validated as base64url, so it is safe in a file name.
-  private fun state(context: Context, registrationId: String): SharedPreferences =
+  internal fun state(context: Context, registrationId: String): SharedPreferences =
     context.getSharedPreferences("$INDEX_STORE.$registrationId", Context.MODE_PRIVATE)
 
-  private fun registration(context: Context, registrationId: String): Registration? {
+  internal fun registration(context: Context, registrationId: String): Registration? {
     if (registrationId !in registrationIds(context)) return null
     val prefs = state(context, registrationId)
     val stationId = prefs.getString("stationId", null) ?: return null
@@ -139,7 +140,10 @@ object AgentNotifications {
       // under an unsuffixed tag.
       val manager = manager(context)
       manager.activeNotifications
-        .filter { it.tag?.startsWith(ACTIVITY_TAG) == true || it.tag?.startsWith(ALERT_TAG) == true }
+        .filter {
+          it.tag?.startsWith(ACTIVITY_TAG) == true || it.tag?.startsWith(ALERT_TAG) == true ||
+            StationNotifications.isStationNotificationTag(it.tag)
+        }
         .forEach { manager.cancel(it.tag, it.id) }
     } else if (registrationId in registrationIds(context)) {
       remove(context, registrationId)
@@ -153,7 +157,8 @@ object AgentNotifications {
     index(context).edit().putStringSet("registrations", registrationIds(context) - registrationId).apply()
     cancelActivity(context, registrationId)
     val manager = manager(context)
-    manager.activeNotifications.filter { it.tag == alertTag(registrationId) }
+    manager.activeNotifications
+      .filter { it.tag == alertTag(registrationId) || it.tag?.startsWith(StationNotifications.tagPrefix(registrationId)) == true }
       .forEach { manager.cancel(it.tag, it.id) }
     state(context, registrationId).edit().clear().commit()
     context.deleteSharedPreferences("$INDEX_STORE.$registrationId")
@@ -451,7 +456,7 @@ object AgentNotifications {
    * notification's intent, so an updated card carries only its newest nonce
    * and a card that stops naming a session stops carrying one.
    */
-  private fun openApp(context: Context, id: Int, identity: String, route: SessionRoute?): PendingIntent? {
+  internal fun openApp(context: Context, id: Int, identity: String, route: SessionRoute?): PendingIntent? {
     val intent = tapIntent(context, identity) ?: return null
     val now = System.currentTimeMillis()
     if (route != null) {

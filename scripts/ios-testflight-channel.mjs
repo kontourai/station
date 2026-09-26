@@ -17,6 +17,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/stable/ios',
     environment: 'native-release',
     internalGroup: 'Internal Testers',
+    agentActivityBundleId: null,
   }),
   beta: Object.freeze({
     bundleId: 'io.kontourai.station.beta',
@@ -27,6 +28,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/beta/ios',
     environment: 'ios-beta',
     internalGroup: 'Station Beta Internal',
+    agentActivityBundleId: 'io.kontourai.station.beta.AgentActivity',
   }),
   nightly: Object.freeze({
     bundleId: 'io.kontourai.station.nightly',
@@ -37,6 +39,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/nightly/ios',
     environment: 'ios-nightly',
     internalGroup: 'Station Nightly Internal',
+    agentActivityBundleId: 'io.kontourai.station.nightly.AgentActivity',
   }),
 });
 

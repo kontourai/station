@@ -55,9 +55,11 @@ describe('useApprovalOsAlerts', () => {
     renderHook(() => useApprovalOsAlerts());
 
     await waitFor(() =>
+      // #2587: the channel is keyed by endpoint AND connection id, so two
+      // saved Stations sharing one endpoint no longer share a seen-set.
       expect(reconcile).toHaveBeenCalledWith(
         [{ id: 'n-1' }],
-        'http://station.one',
+        'http://station.one\n',
       ),
     );
   });

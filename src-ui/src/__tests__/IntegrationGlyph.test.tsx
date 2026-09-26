@@ -2,33 +2,41 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { AgentIcon } from '../components/icons/AgentIcon';
 import { BrandIcon, resolveBrandKey } from '../components/icons/BrandIcon';
 import { IntegrationGlyph } from '../components/icons/IntegrationGlyph';
 
 describe('IntegrationGlyph (issue #691)', () => {
+  // The inline marks load in their own chunk (epic #61), so each case waits
+  // for the SVG and identifies the mark by its viewBox: a lazy load that never
+  // resolves, or resolves to the wrong mark, fails here.
   test.each([
-    ['Station', 'station'],
-    ['Claude Code', 'claude'],
-    ['Codex', 'codex'],
-    ['Pi', 'pi'],
-    ['Kiro', 'kiro'],
-    ['OpenCode', 'opencode'],
-    ['Muse Code', 'muse'],
-    ['Cursor', 'cursor'],
-    ['Goose', 'goose'],
-    ['Qwen', 'qwen'],
-  ])('uses the shared bundled %s mark for its exact EngineId', (name, key) => {
-    const { container } = render(<BrandIcon name={name} engineId={key} />);
-    expect(
-      container
-        .querySelector('[data-brand-key]')
-        ?.getAttribute('data-brand-key'),
-    ).toBe(key);
-    expect(container.querySelector('svg, img')).not.toBeNull();
-  });
+    ['Station', 'station', '0 0 32 32'],
+    ['Claude Code', 'claude', '0 0 256 257'],
+    ['Codex', 'codex', '0 0 256 260'],
+    ['Pi', 'pi', '0 0 800 800'],
+    ['Kiro', 'kiro', '0 0 1200 1200'],
+    ['OpenCode', 'opencode', '0 0 32 40'],
+  ])(
+    'uses the shared bundled %s mark for its exact EngineId',
+    async (name, key, viewBox) => {
+      const { container } = render(<BrandIcon name={name} engineId={key} />);
+      expect(
+        container
+          .querySelector('[data-brand-key]')
+          ?.getAttribute('data-brand-key'),
+      ).toBe(key);
+      await waitFor(() =>
+        expect(
+          container
+            .querySelector(`[data-brand-key="${key}"] svg`)
+            ?.getAttribute('viewBox'),
+        ).toBe(viewBox),
+      );
+    },
+  );
 
   test.each([
     ['Muse Code', 'muse', '/provider-icons/muse.svg'],
@@ -69,7 +77,7 @@ describe('IntegrationGlyph (issue #691)', () => {
     expect(container.textContent).not.toContain('brand:kiro');
   });
 
-  test('an explicit brand token takes precedence over discovered local artwork', () => {
+  test('an explicit brand token takes precedence over discovered local artwork', async () => {
     const { container } = render(
       <IntegrationGlyph
         id="custom-runtime"
@@ -78,9 +86,11 @@ describe('IntegrationGlyph (issue #691)', () => {
         iconUrl="/integrations/custom-runtime/icon"
       />,
     );
-    expect(
-      container.querySelector('[data-brand-key="kiro"] svg'),
-    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-brand-key="kiro"] svg'),
+      ).not.toBeNull(),
+    );
     expect(container.querySelector('img')).toBeNull();
   });
 

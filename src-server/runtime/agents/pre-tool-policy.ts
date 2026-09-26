@@ -8,6 +8,7 @@ import type {
   InvocationContext,
   ToolCallContext,
   ToolCallDenial,
+  UnattendedGrantResolution,
 } from '../types.js';
 import { isDelegatedToolAllowed } from './delegation.js';
 import { type QuotedDenialText, stationDenial } from './denial-message.js';
@@ -17,6 +18,7 @@ type ToolDenialReason =
   | 'delegated_tool_blocked'
   | 'policy_config_protection'
   | 'guardian_denied'
+  | 'guardian_deferred_unattended'
   | 'delegation_deny_approvals'
   | 'unattended_grant_denied'
   | 'no_approval_channel'
@@ -66,9 +68,17 @@ interface StagedPreToolPolicyDeps {
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
     invocation: InvocationContext,
-  ) => Promise<boolean>;
+  ) => Promise<UnattendedGrantResolution>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   isGranted(tool: ToolCallContext): boolean;
+  /**
+   * #2613: the agent's explicit `tools.unattendedAutoApprove` opt-in. Asked
+   * only for a Station-engine call nobody can consent to — no interactive
+   * requester, or a delegated child that may not grant approvals — and only
+   * after the approval guardian: in enforce mode a guardian deny or defer
+   * both refuse the call before this is asked. Absent ⇒ no opt-in.
+   */
+  isUnattendedGranted?(tool: ToolCallContext): boolean;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
     info(message: string, meta?: Record<string, unknown>): void;
@@ -109,6 +119,53 @@ function deny(
       policyDenied: true,
     }),
   };
+}
+
+/**
+ * #2613: what an unattended denial tells the user to do. `tools.autoApprove`
+ * is not the remedy: a pattern written against the original MCP name
+ * (`station-control_*`) matches only in attended chat, so pointing there sent
+ * users to an edit that changes nothing here. The message names the explicit
+ * unattended opt-in instead.
+ */
+const UNATTENDED_REMEDY =
+  "Patterns in tools.autoApprove are for attended chat; to allow this tool with nobody present, add it to this agent's tools.unattendedAutoApprove list.";
+
+const CHILD_REMEDY =
+  "To allow it here, add it to this agent's tools.unattendedAutoApprove list.";
+
+/**
+ * The narrower remedy a scheduled job also has: the operator's standing
+ * grant for that one job (`/api/agents/unattended-grants`, consulted by
+ * `resolveUnattendedGrant`), which does not widen the agent everywhere.
+ */
+const SCHEDULED_JOB_REMEDY =
+  'To allow it for this scheduled job alone, an operator can instead record an unattended tool grant for the job through /api/agents/unattended-grants, keyed by the exact tool name above.';
+
+/** The per-job remedy is moot when the grant store itself cannot be read. */
+const SCHEDULED_JOB_STORE_UNAVAILABLE =
+  'The unattended grant store could not be read, so no per-job grant was checked.';
+
+/**
+ * The opt-in is honoured on Station's engine only, so an external (ACP or
+ * Claude) child is not sent to an edit that changes nothing there.
+ */
+function childDenialPredicate(interaction: 'managed' | 'external'): string {
+  const predicate =
+    'requires approval, and delegated child sessions cannot grant approvals.';
+  return interaction === 'managed' ? `${predicate} ${CHILD_REMEDY}` : predicate;
+}
+
+function unattendedGrantDenialPredicate(
+  invocation: InvocationContext,
+  resolution: UnattendedGrantResolution,
+): string {
+  const predicate = `was denied for this unattended run. ${UNATTENDED_REMEDY}`;
+  if (invocation.unattendedPrincipal?.kind !== 'scheduled-job')
+    return predicate;
+  return resolution === 'store-unavailable'
+    ? `${predicate} ${SCHEDULED_JOB_STORE_UNAVAILABLE}`
+    : `${predicate} ${SCHEDULED_JOB_REMEDY}`;
 }
 
 /** Station's own half of a config-protection denial, always present. */
@@ -162,6 +219,84 @@ function policyBlockQuotation(verdict: {
     return undefined;
   }
   return { source: 'config-protection hook', text: rendering.text };
+}
+
+/**
+ * #2613: a Station-engine call nobody can consent to — no interactive
+ * requester, or a delegated child that may not grant approvals. Only such a
+ * call reaches the unattended stages: the explicit `tools.unattendedAutoApprove`
+ * opt-in (matched in attended chat's form, since `tools.autoApprove` is matched
+ * on this path against the runtime name only) and the per-job standing grant.
+ * Attended calls never do (they `ask`), and neither do external engines, whose
+ * unattended chain is undelivered (see the KNOWN GAP in the evaluator).
+ */
+function nobodyPresent(
+  invocation: InvocationContext,
+  options: Parameters<StagedPreToolPolicyEvaluator>[2],
+): boolean {
+  if (options.interaction !== 'managed') return false;
+  return (
+    invocation.delegation?.denyApprovals === true ||
+    !options.hasInteractiveApproval
+  );
+}
+
+type GuardianOutcome =
+  | { kind: 'decided'; decision: PreToolPolicyDecision }
+  | { kind: 'undecided'; enforceDeferral?: string };
+
+/**
+ * The approval guardian's verdict. An enforce-mode deny blocks; an allow
+ * allows. Anything else leaves the call undecided — and in enforce mode that
+ * undecided verdict (a `defer`, including the guardian's own error and
+ * parse-failure fallbacks) is carried forward so an unattended call can treat
+ * it as a refusal (#2613).
+ */
+async function reviewWithGuardian(
+  deps: StagedPreToolPolicyDeps,
+  tool: ToolCallContext,
+  invocation: InvocationContext,
+): Promise<GuardianOutcome> {
+  const guardian = deps.approvalGuardian;
+  if (!guardian?.isEnabled()) return { kind: 'undecided' };
+  const review = await guardian.reviewToolCall({
+    agentName: deps.spec.name,
+    agentSlug: invocation.agentSlug,
+    conversationId: invocation.conversationId,
+    toolName: tool.toolName,
+    toolDescription: tool.toolDescription,
+    toolArgs: tool.toolArgs,
+  });
+  if (review.decision === 'allow') {
+    deps.logger.info('Approval guardian allowed tool execution', {
+      toolName: tool.toolName,
+      agentSlug: invocation.agentSlug,
+      reason: review.reason,
+    });
+    return { kind: 'decided', decision: { behavior: 'allow' } };
+  }
+  if (guardian.getMode() !== 'enforce') return { kind: 'undecided' };
+  if (review.decision === 'deny') {
+    deps.logger.warn('Approval guardian denied tool execution', {
+      toolName: tool.toolName,
+      agentSlug: invocation.agentSlug,
+      reason: review.reason,
+    });
+    // archive#3210: `review.reason` is LLM-authored, from a prompt that
+    // embeds the tool's own MCP-server-supplied description and its
+    // arguments. It is genuinely useful to the user, so it is preserved —
+    // but bounded and attributed, never presented as Station's verdict.
+    return {
+      kind: 'decided',
+      decision: deny(
+        'guardian_denied',
+        tool.toolName,
+        'was denied by the approval guardian.',
+        { source: 'approval guardian', text: review.reason ?? '' },
+      ),
+    };
+  }
+  return { kind: 'undecided', enforceDeferral: review.reason ?? '' };
 }
 
 /**
@@ -251,42 +386,36 @@ export function createStagedPreToolPolicyEvaluator(
 
     if (deps.isGranted(tool)) return { behavior: 'allow' };
 
-    if (deps.approvalGuardian?.isEnabled()) {
-      const review = await deps.approvalGuardian.reviewToolCall({
-        agentName: deps.spec.name,
-        agentSlug: invocation.agentSlug,
-        conversationId: invocation.conversationId,
-        toolName: tool.toolName,
-        toolDescription: tool.toolDescription,
-        toolArgs: tool.toolArgs,
-      });
-      if (review.decision === 'allow') {
-        deps.logger.info('Approval guardian allowed tool execution', {
+    const guardian = await reviewWithGuardian(deps, tool, invocation);
+    if (guardian.kind === 'decided') return guardian.decision;
+
+    if (nobodyPresent(invocation, options)) {
+      // #2613, owner decision "unattended stricter": with nobody present to
+      // resolve it, an enforce-mode guardian that did not approve refuses the
+      // call. This precedes BOTH unattended grants — the opt-in here and the
+      // per-job standing grant below — so neither can override it. Review
+      // mode, and attended chat (where a defer means ask the person), are
+      // unchanged.
+      if (guardian.enforceDeferral !== undefined) {
+        deps.logger.warn('Approval guardian deferred an unattended tool call', {
           toolName: tool.toolName,
           agentSlug: invocation.agentSlug,
-          reason: review.reason,
+          conversationId: invocation.conversationId,
+        });
+        return deny(
+          'guardian_deferred_unattended',
+          tool.toolName,
+          'was not run: the approval guardian did not approve it, and nobody is present to decide.',
+          { source: 'approval guardian', text: guardian.enforceDeferral },
+        );
+      }
+      if (deps.isUnattendedGranted?.(tool) === true) {
+        deps.logger.info('Unattended auto-approval allowed tool execution', {
+          toolName: tool.toolName,
+          agentSlug: invocation.agentSlug,
+          conversationId: invocation.conversationId,
         });
         return { behavior: 'allow' };
-      }
-      if (
-        review.decision === 'deny' &&
-        deps.approvalGuardian.getMode() === 'enforce'
-      ) {
-        deps.logger.warn('Approval guardian denied tool execution', {
-          toolName: tool.toolName,
-          agentSlug: invocation.agentSlug,
-          reason: review.reason,
-        });
-        // archive#3210: `review.reason` is LLM-authored, from a prompt that
-        // embeds the tool's own MCP-server-supplied description and its
-        // arguments. It is genuinely useful to the user, so it is preserved —
-        // but bounded and attributed, never presented as Station's verdict.
-        return deny(
-          'guardian_denied',
-          tool.toolName,
-          'was denied by the approval guardian.',
-          { source: 'approval guardian', text: review.reason ?? '' },
-        );
       }
     }
 
@@ -299,7 +428,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'delegation_deny_approvals',
         tool.toolName,
-        'requires approval, and delegated child sessions cannot grant approvals.',
+        childDenialPredicate(options.interaction),
       );
     }
 
@@ -334,9 +463,8 @@ export function createStagedPreToolPolicyEvaluator(
     if (options.hasInteractiveApproval) return { behavior: 'ask' };
 
     if (deps.resolveUnattendedGrant) {
-      if ((await deps.resolveUnattendedGrant(tool, invocation)) === true) {
-        return { behavior: 'allow' };
-      }
+      const resolution = await deps.resolveUnattendedGrant(tool, invocation);
+      if (resolution === true) return { behavior: 'allow' };
       deps.logger.warn('Unattended grant denied tool execution', {
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
@@ -345,7 +473,7 @@ export function createStagedPreToolPolicyEvaluator(
       return deny(
         'unattended_grant_denied',
         tool.toolName,
-        "was denied for this unattended run. Add it to the agent's tools.autoApprove list to grant it.",
+        unattendedGrantDenialPredicate(invocation, resolution),
       );
     }
     deps.logger.warn('No approval channel; denied tool execution', {
@@ -357,7 +485,7 @@ export function createStagedPreToolPolicyEvaluator(
     return deny(
       'no_approval_channel',
       tool.toolName,
-      "requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.",
+      `requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). ${UNATTENDED_REMEDY}`,
     );
   };
   return async (tool, invocation, options) => {
