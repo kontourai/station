@@ -10,8 +10,8 @@ import { JSON_SCHEMA, load } from 'js-yaml';
  * This is intentionally a canonical YAML subset, not a general YAML parser.
  * A governed workflow must declare an unquoted top-level `on` mapping. Push
  * and pull-request branch filters are parsed separately so the primary CI
- * workflow can admit candidate feedback without weakening post-merge-only
- * detectors. Scalar, sequence, inline-event, quoted-key, duplicate-key, and
+ * workflow's push, candidate, and merge-queue triggers are each checked
+ * against main. Scalar, sequence, inline-event, quoted-key, duplicate-key, and
  * unknown-filter forms fail closed. Every top-level semantic `on` spelling is
  * counted before the canonical declaration is admitted, so a duplicate cannot
  * override it.
@@ -148,46 +148,6 @@ function workflowTriggerDeclaration(workflowText) {
     mergeGroupIncludesMain: includesOnlyMain('merge_group'),
     mergeGroupTypes: typesByTrigger.get('merge_group'),
   };
-}
-
-export function workflowExecutionScope(workflowText) {
-  const { valid, triggers } = workflowTriggerDeclaration(workflowText);
-  if (!valid) return 'invalid';
-  return triggers.has('pull_request') ||
-    triggers.has('pull_request_target') ||
-    triggers.has('merge_group')
-    ? 'pull-request'
-    : 'post-merge';
-}
-
-export function collectPostMergeDetectorWorkflowFindings(workflowText) {
-  const { valid, triggers, pushIncludesMain } =
-    workflowTriggerDeclaration(workflowText);
-  const findings = [];
-  if (!valid) {
-    findings.push(
-      'Post-merge detector workflow must declare supported top-level triggers.',
-    );
-    return findings;
-  }
-  if (!triggers.has('push') || !pushIncludesMain) {
-    findings.push('Post-merge detector workflow must trigger on push to main.');
-  }
-  if (!triggers.has('workflow_dispatch')) {
-    findings.push(
-      'Post-merge detector workflow must support workflow_dispatch.',
-    );
-  }
-  if (
-    triggers.has('pull_request') ||
-    triggers.has('pull_request_target') ||
-    triggers.has('merge_group')
-  ) {
-    findings.push(
-      'Post-merge detector workflow must not trigger on pull_request.',
-    );
-  }
-  return findings;
 }
 
 export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {

@@ -4,13 +4,49 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   collectRouteErrorEgressFindings,
-  collectRouteErrorEgressFindingsForSources,
   findDirectRouteMessageEgress,
   findRouteErrorReexports,
   findUnsafeTransportErrorEgress,
 } from '../route-error-egress-gate.mjs';
 
 const FILE = 'src-server/routes/example.ts';
+const roots: string[] = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function fixture(files: Record<string, string>) {
+  const root = mkdtempSync(join(tmpdir(), 'route-error-gate-'));
+  roots.push(root);
+  for (const [path, contents] of Object.entries(files)) {
+    const absolute = join(root, path);
+    mkdirSync(join(absolute, '..'), { recursive: true });
+    writeFileSync(absolute, contents);
+  }
+  return root;
+}
+
+// The whole-tree collector also reads every transport boundary file and fails
+// closed when one is missing, so a route fixture tree carries empty copies.
+const EMPTY_TRANSPORT_BOUNDARIES = Object.fromEntries(
+  [
+    'src-server/runtime/conversation/stream-orchestrator.ts',
+    'src-server/services/terminal/terminal-ws-server.ts',
+    'src-server/voice/voice-session.ts',
+    'src-server/runtime/mcp/mcp-ui-frame-server.ts',
+  ].map((file) => [file, '']),
+);
+
+function collectForRoute(source: string, reviewed: Set<string>) {
+  return collectRouteErrorEgressFindings({
+    rootDir: fixture({ ...EMPTY_TRANSPORT_BOUNDARIES, [FILE]: source }),
+    reviewed,
+  });
+}
+
 const REVIEWED_SAFE_IDENTITY =
   'src-server/routes/example.ts :: route POST /safe :: result.message :: 1';
 
@@ -36,12 +72,7 @@ describe('route error egress gate', () => {
       REVIEWED_SAFE_IDENTITY,
       'src-server/routes/example.ts :: route POST /safe :: fallback.message :: 1',
     ]);
-    expect(
-      collectRouteErrorEgressFindingsForSources(
-        { [FILE]: source },
-        { reviewed: new Set([REVIEWED_SAFE_IDENTITY]) },
-      ),
-    ).toEqual([
+    expect(collectForRoute(source, new Set([REVIEWED_SAFE_IDENTITY]))).toEqual([
       'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /safe :: fallback.message :: 1.',
     ]);
   });
@@ -51,18 +82,8 @@ describe('route error egress gate', () => {
     const unsafeSource = `app.post('/safe', (c) => c.json({ error: error.message }));`;
     const reviewed = new Set([REVIEWED_SAFE_IDENTITY]);
 
-    expect(
-      collectRouteErrorEgressFindingsForSources(
-        { [FILE]: safeSource },
-        { reviewed },
-      ),
-    ).toEqual([]);
-    expect(
-      collectRouteErrorEgressFindingsForSources(
-        { [FILE]: unsafeSource },
-        { reviewed },
-      ),
-    ).toEqual([
+    expect(collectForRoute(safeSource, reviewed)).toEqual([]);
+    expect(collectForRoute(unsafeSource, reviewed)).toEqual([
       'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /safe :: error.message :: 1.',
       'Stale reviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /safe :: result.message :: 1.',
     ]);
@@ -188,12 +209,7 @@ describe('route error egress gate', () => {
       'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
       'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 2',
     ]);
-    expect(
-      collectRouteErrorEgressFindingsForSources(
-        { [FILE]: source },
-        { reviewed: new Set() },
-      ),
-    ).toEqual([
+    expect(collectForRoute(source, new Set())).toEqual([
       'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1.',
       'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 2.',
     ]);
@@ -336,25 +352,6 @@ describe('route error egress gate', () => {
   });
 
   describe('re-export resolution', () => {
-    const roots: string[] = [];
-
-    afterEach(() => {
-      for (const root of roots.splice(0)) {
-        rmSync(root, { recursive: true, force: true });
-      }
-    });
-
-    function fixture(files: Record<string, string>) {
-      const root = mkdtempSync(join(tmpdir(), 'route-error-gate-'));
-      roots.push(root);
-      for (const [path, contents] of Object.entries(files)) {
-        const absolute = join(root, path);
-        mkdirSync(join(absolute, '..'), { recursive: true });
-        writeFileSync(absolute, contents);
-      }
-      return root;
-    }
-
     const ROUTE_ERROR_SOURCE = 'export class RouteError extends Error {}\n';
     const ROUTE = `
       import { RouteError } from '../schemas/schemas.js';
