@@ -340,14 +340,15 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   starve it, and the count is cleared when the card sends or has nothing
   left to send.
   It does not retry a failed send (like Web Push); a 410 clears the
-  registration. It does not carry what the card already alerts for: an
-  `approval-request`, `turn-completed`, `turn-stopped` or `turn-failed`
-  whose record says it is about an orchestration session (`sessionKind`
-  `runtime` with a `sessionId`, and `requestKind` absent or
-  `orchestration`). A registry approval (`sessionKind` `managed`,
-  `requestKind` `registry`) is never on the card and is carried, as is any
-  record that does not identify itself as orchestration-backed. The iOS
-  alert channel (#2589) applies the same rule. On the
+  registration. It does not carry what the card already announces: the
+  same `isCardAlerted` rule as the iOS alert channel (see "What is carried"
+  under "iOS: notification alerts"), which requires the `onActivityCard`
+  mark the approval-inbox and turn-completion writers set only when the card
+  carries the event. So an orchestration approval or a Done or Failed turn
+  in a listed session, and the registry twin of a Station-agent approval,
+  are left to the card; an approval in an ephemeral session, a stopped
+  turn, and every other registry approval are carried. The known edges
+  listed there apply on Android too. On the
   phone (`StationNotifications.kt`) each urgency has its own notification
   channel; one Android notification per id per registration; a history of
   the newest `created_at` seen per id (64 ids) drops a duplicate or older
@@ -673,11 +674,12 @@ the route answers 503. The gateway is deployed by hand
   `turn.aborted`) is marked yet alerts nowhere. A finish also alerts only
   within two minutes of happening (`FINISH_ALERT_WINDOW_MS`), while a
   failed card send backs off for up to five minutes, so a finish whose card
-  lands late raises no alert either. The inbox keeps both. Only this
-  alert channel reads the stamp: the two records of a Station-agent
-  approval are still two notifications everywhere else. The exclusion
-  does not look at the phone: with Live Activities turned off, the
-  card-announced notifications raise no alert at all (the inbox keeps them).
+  lands late raises no alert either. The inbox keeps both. Only the two
+  phone alert channels (this one and Android's) read the stamp: the two
+  records of a Station-agent approval are still two notifications
+  everywhere else. The exclusion does not look at the phone: with Live
+  Activities (or the Android card) turned off, the card-announced
+  notifications raise no alert at all (the inbox keeps them).
   Info-level notifications are not carried either (fixed text for them would
   say nothing).
 - **Channel.** `ApnsAlertChannel` (`delivery/apns-alert-channel.ts`) is the
