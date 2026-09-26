@@ -29,4 +29,4 @@ Inspect every changed hunk for:
 - Fix a finding inline only when it is trivially behavior-neutral. Note the rest for the author or review.
 - Report in 1-3 sentences: whether anything changed, and any non-trivial item left for review.
 
-Run deslop before review, never instead of it. Nontrivial changes still need independent review under the layered-independence protocol (`docs/strategy/multi-agent-delivery-protocol.md`). The standing repo conventions this pass enforces on a diff are owned by [Code-health prevention](../../../../docs/guides/code-quality.md#code-health-prevention).
+Run deslop before review, never instead of it. Nontrivial changes still need independent review under the layered-independence protocol (`docs/strategy/multi-agent-delivery-protocol.md`). The standing repo conventions this pass enforces on a diff are owned by [Code-health prevention](../../../docs/guides/code-quality.md#code-health-prevention).
