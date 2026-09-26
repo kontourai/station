@@ -527,7 +527,6 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
-  'packages/cli/src/__tests__/install-registry.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ios-channel-icons.test.ts':
     'incidental: checks the committed iOS icon sets against their catalog, like generate-app-icons',
   'scripts/__tests__/server-build-portability.test.ts': TEMP_VIA_FIXTURE,
