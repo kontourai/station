@@ -1,5 +1,98 @@
 # @kontourai/station-shared
 
+## 0.8.0
+
+### Minor Changes
+
+- 519f361: Extend chat contracts and SDK clients with bounded file and conversation references, streamed delivery metadata, tool-purpose projections, and owner-bound workspace checkpoint preview/restore. Add the corresponding CLI checkpoint commands and shared runtime projection fields while preserving existing event and authorization boundaries.
+- 4aca094: Add read-only cloud setup preview and AWS EC2 template preparation. Report credential enrollment, workspace review, and unavailable execution handoff explicitly; do not provision resources or transfer authority.
+- 8d785cf: Add a versioned transport-only Station connection binding and maintained-JOSE
+  signing/one-shot verification helpers. These proofs bind an independently
+  approved signing key to one client challenge, enrollment generation, certificate
+  pair and exact connection descriptions; they do not grant application access.
+- 96290b2: Add the Device-local connection trust record and public-key validation helpers
+  for independent approval, generation-checked rotation and retained revocation.
+  These describe endpoint trust only and grant no account or Project access.
+- 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
+  
+  Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
+- ad2f0d3: Add the Muse background-work codes: `MUSE_LINGERING_CHILD_REAPED_CODE` and `MUSE_HELD_TURN_UNFINISHED_CODE` (`runtime.warning` codes for a held Muse turn's unreported background work), and `MUSE_TURN_SLOT_RELEASING_CODE` (a retryable send refusal while the previous Muse process is still exiting). Document that an adapter may suspend a turn's declared `idleLimitMs`.
+  
+  The runtime-event projection now reconciles `turn.completed.outputText` against ALL text the turn emitted, as the live chat path already does: an equal text adds nothing, and a strict extension appends only the missing suffix. This changes how reloaded transcripts render for more than Muse, in each case to match what the live view showed:
+  
+  - Muse, Codex and station-agent turns whose `outputText` is the whole turn's text no longer repeat the text written before a tool (or across several tool segments) in the final paragraph.
+  - Turns with reasoning between text segments (thinking-interleaved Claude) no longer repeat the text before the reasoning.
+  - When `outputText` extends the streamed text only by a trailing suffix (a coincidental prefix, text reported only at the terminal, or a trailing newline), that suffix is now appended rather than dropped.
+  
+  Turns whose `outputText` is only the final answer (Claude without interleaved reasoning) render as before.
+- ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
+- 09bd7e6: Add applied registry-policy and untrusted package-claim contracts, explicit Node signing/digest leaves, and root/dependency trust-review transport. Keep signer fingerprints distinct from publisher identity and preserve offline retained recovery.
+  
+  Release the fixed contracts/shared/SDK group together. Shared and CLI dependency floors must include the contracts release containing the new public leaves; unreleased same-version candidate tarballs require an explicit override throughout the consumer graph and do not prove npm availability.
+- 0c3d60e: Verify restored Git workspace contents through the bounded package codecs and emit a package-bound verification receipt. Check fresh local imports before target Project creation, preserving failed imports for explicit recovery and reporting platform limitations.
+
+### Patch Changes
+
+- b8417e5: Add bounded newest-first conversation history hydration and recover complete terminal text from a retained suffix. Expose full saved Station addresses and host-owned native profile editing without forwarding credentials to a changed origin.
+- e4d61c8: Wake API initialization readers directly, bound diagnostic telemetry, and separate MCP transport construction from custody while preserving the published API.
+  
+  Align plugin preview component and conflict kinds with the emitted layout contract and share those types with server and UI producers.
+  
+  Canonicalize newly allocated temporary homes before admission so read-only source observation shares the writer home identity.
+- f6f9497: Add a GCP development target to the shared read-only cloud preview, retaining explicit gaps for provisioning, credentials, and execution transfer. Document the isolated operator-run Compute Engine bootstrap.
+- d209461: Keep plugin builds from reinstalling a containing Station workspace. Root-managed
+  plugins use the managed dependency bootstrap; standalone nested plugins install
+  only into their own directory, preserving the host's lock and dependencies.
+- Updated dependencies [4f19d35]
+- Updated dependencies [058376c]
+- Updated dependencies [e172b3d]
+- Updated dependencies [519f361]
+- Updated dependencies [4aca094]
+- Updated dependencies [7ef36cc]
+- Updated dependencies [e4d61c8]
+- Updated dependencies [8d785cf]
+- Updated dependencies [797b975]
+- Updated dependencies [a8bbc67]
+- Updated dependencies [31278d5]
+- Updated dependencies [c3bf345]
+- Updated dependencies [96290b2]
+- Updated dependencies [debc0ee]
+- Updated dependencies [5f54657]
+- Updated dependencies [716480e]
+- Updated dependencies [1344781]
+- Updated dependencies [c3474f5]
+- Updated dependencies [eb1fd17]
+- Updated dependencies [ad2f0d3]
+- Updated dependencies [fa6338a]
+- Updated dependencies [5570767]
+- Updated dependencies [84031dd]
+- Updated dependencies [2f941ba]
+- Updated dependencies [4e39225]
+- Updated dependencies [984f9bc]
+- Updated dependencies [a777b37]
+- Updated dependencies [272c29b]
+- Updated dependencies [17c17a1]
+- Updated dependencies [ce6ec59]
+- Updated dependencies [4d38391]
+- Updated dependencies [e5dfb04]
+- Updated dependencies [eb6363d]
+- Updated dependencies [6e9c63e]
+- Updated dependencies [44c019b]
+- Updated dependencies [b6331e9]
+- Updated dependencies [687d586]
+- Updated dependencies [a2c21d7]
+- Updated dependencies [0d75052]
+- Updated dependencies [9ccd6e4]
+- Updated dependencies [a30cab6]
+- Updated dependencies [a30cab6]
+- Updated dependencies [a30cab6]
+- Updated dependencies [a30cab6]
+- Updated dependencies [be60151]
+- Updated dependencies [a30cab6]
+- Updated dependencies [09bd7e6]
+- Updated dependencies [0c3d60e]
+  - @kontourai/station-contracts@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes
