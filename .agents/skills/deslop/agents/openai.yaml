@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deslop"
+  short_description: "Behavior-neutral cleanup of AI slop in the current branch diff before review"
+  default_prompt: "Use $deslop to clean comment slop, defensive-check slop, type laundering, and style drift from this branch's diff against origin/main without changing behavior."
