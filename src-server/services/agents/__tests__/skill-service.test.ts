@@ -433,8 +433,8 @@ describe('SkillService', () => {
     );
     await service.discoverSkills(testDir);
     expect(service.getSkillCatalogPrompt()).toContain('my-skill');
-
     expect(service.getSkillCatalogPrompt([])).toBe('');
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   test('discoverSkills handles missing directories', async () => {
