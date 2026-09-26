@@ -393,6 +393,12 @@ async function main() {
   try {
     const members = archiveMembers(archive);
     const longestMember = Math.max(...members.map((member) => member.length));
+    const hostMetadata = members.filter((member) =>
+      /(?:^|\/)(?:\.DS_Store|\._[^/]*)$/.test(member),
+    );
+    if (hostMetadata.length > 0) {
+      fail(`archive carries build-host metadata: ${hostMetadata.join(', ')}`);
+    }
     const extractRoot = values['long-path']
       ? longExtractionRoot(join(work, 'x'), longestMember)
       : join(work, 'x');

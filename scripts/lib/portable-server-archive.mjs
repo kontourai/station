@@ -311,13 +311,21 @@ function writeServerBuildManifest(serverDir, release) {
   );
 }
 
-/** Every staged entry takes the release time, so rebuilds differ only in content. */
-function normalizeMtimes(root, time) {
+/**
+ * Every staged entry takes the release time, so rebuilds differ only in
+ * content. Finder's `.DS_Store` files, which appear in any directory a Mac
+ * user opens, are removed rather than shipped.
+ */
+function normalizeStagedTree(root, time) {
   const pending = [root];
   while (pending.length > 0) {
     const current = pending.pop();
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
+      if (entry.name === '.DS_Store') {
+        rmSync(path, { force: true });
+        continue;
+      }
       if (entry.isDirectory()) pending.push(path);
       utimesSync(path, time, time);
     }
@@ -405,7 +413,7 @@ async function stagePortableServerTree({
     `${JSON.stringify(release, null, 2)}\n`,
     { mode: 0o644 },
   );
-  normalizeMtimes(stageRoot, new Date(release.createdAt));
+  normalizeStagedTree(stageRoot, new Date(release.createdAt));
   return treeFootprint(stageRoot);
 }
 
