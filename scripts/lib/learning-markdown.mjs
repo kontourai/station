@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { headingId } from './documentation-model.mjs';
+import { isLearningSourcePath } from './learning-source-reader.mjs';
 
 const repository = 'https://github.com/kontourai/station';
 const textSourceExtension =
@@ -63,6 +64,8 @@ function resolveLearningLink(
       if (!safe.startsWith(prefix)) continue;
       const [pathname, ...fragmentParts] = safe.slice(prefix.length).split('#');
       const file = decodeURIComponent(pathname.split('?')[0]);
+      if (!isLearningSourcePath(file))
+        return { kind: 'invalid', reason: 'unsafe repository path' };
       if (files.has(file) || (sourceFiles.has(file) && isTextSource(file)))
         return {
           kind: 'local',
@@ -74,6 +77,8 @@ function resolveLearningLink(
       return { kind: 'external', href: safe };
     const [pathname, ...fragmentParts] = safe.split('#');
     const decoded = decodeURIComponent(pathname.split('?')[0]);
+    if (/[\\:\0]/.test(decoded))
+      return { kind: 'invalid', reason: 'unsafe repository path' };
     const destination = decoded
       ? path.posix.normalize(
           path.posix.join(path.posix.dirname(document), decoded),
@@ -184,7 +189,7 @@ export function renderLearningDocument(
   const observeIds = () => (tree) => {
     function visit(node) {
       const id = node.properties?.id;
-      if (typeof id === 'string' && !/^h[1-6]$/.test(node.tagName ?? '')) {
+      if (typeof id === 'string') {
         if (anchors.has(id)) duplicateAnchors.push(id);
         anchors.add(id);
         used.add(id);
@@ -205,8 +210,10 @@ export function renderLearningDocument(
           ? declared
           : headingId(title);
       let id = base;
-      let suffix = 0;
-      while (used.has(id)) id = `${base}-${++suffix}`;
+      if (declared !== base) {
+        let suffix = 0;
+        while (used.has(id)) id = `${base}-${++suffix}`;
+      }
       used.add(id);
       anchors.add(id);
       headings.push({ id, level, title });

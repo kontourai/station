@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { access, readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { renderLearningDocument } from './lib/learning-markdown.mjs';
+import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const MARKDOWN_FILE = /\.(?:md|mdx|markdown)$/i;
@@ -92,7 +91,7 @@ export async function findBrokenMarkdownLinks({
   revision = 'main',
   sourceFiles = files,
 }) {
-  const repositoryRoot = path.resolve(root);
+  const reader = createLearningSourceReader(root);
   const tracked = new Set(sourceFiles);
   const markdown = new Set(
     [...tracked].filter((file) => MARKDOWN_FILE.test(file)),
@@ -103,7 +102,7 @@ export async function findBrokenMarkdownLinks({
     if (documents.has(file) || missing.has(file)) return;
     let source;
     try {
-      source = await readFile(path.join(repositoryRoot, file), 'utf8');
+      source = reader.read(file).toString('utf8');
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       missing.add(file);
@@ -128,15 +127,7 @@ export async function findBrokenMarkdownLinks({
   return findBrokenRenderedMarkdownLinks({
     documents,
     files,
-    targetExists: async (file) => {
-      try {
-        await access(path.join(repositoryRoot, file));
-        return true;
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-        return false;
-      }
-    },
+    targetExists: (file) => reader.exists(file),
   });
 }
 

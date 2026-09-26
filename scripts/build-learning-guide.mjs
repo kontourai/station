@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -12,6 +12,7 @@ import { extractModules, validateCatalog } from './lib/documentation-model.mjs';
 import { compileDocumentationReviews } from './lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from './lib/immutable-snapshot.mjs';
 import { renderLearningDocument } from './lib/learning-markdown.mjs';
+import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export {
@@ -31,8 +32,14 @@ function git(args, cwd = root) {
 }
 
 export async function buildDiagramBundle() {
+  const reader = createLearningSourceReader(root);
   const result = await build({
-    entryPoints: [path.join(root, 'docs/learn/diagrams.js')],
+    stdin: {
+      contents: reader.read('docs/learn/diagrams.js').toString('utf8'),
+      resolveDir: path.join(root, 'docs/learn'),
+      sourcefile: 'docs/learn/diagrams.js',
+      loader: 'js',
+    },
     bundle: true,
     write: false,
     platform: 'browser',
@@ -62,6 +69,7 @@ export async function buildLearningGuide({
   check = false,
   root: inputRoot = root,
 } = {}) {
+  const reader = createLearningSourceReader(inputRoot);
   const tracked = git(['ls-files', '-z'], inputRoot)
     .split('\0')
     .filter(Boolean)
@@ -79,7 +87,7 @@ export async function buildLearningGuide({
     if (!sourceFiles.has(file))
       throw new Error(`Untracked source snapshot: ${file}`);
     if (!capturedSources.has(file))
-      capturedSources.set(file, await readFile(path.join(inputRoot, file)));
+      capturedSources.set(file, reader.read(file));
     return capturedSources.get(file);
   }
   const catalog = JSON.parse(
@@ -125,7 +133,8 @@ export async function buildLearningGuide({
     await findBrokenRenderedMarkdownLinks({
       documents: renderedDocuments,
       targetExists: (file) =>
-        trackedTargets.has(file.replace(/\/+$/, '') || '.'),
+        trackedTargets.has(file.replace(/\/+$/, '') || '.') &&
+        reader.exists(file),
     }),
   );
   for (const group of catalog.groups) {
@@ -237,9 +246,9 @@ export async function buildLearningGuide({
         capturedSources.get(file),
       );
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
-      await copyFile(
-        path.join(inputRoot, 'docs/learn', asset),
+      await writeFile(
         path.join(output, asset),
+        await captureSource(`docs/learn/${asset}`),
       );
     await writeFile(
       path.join(output, 'diagrams.js'),

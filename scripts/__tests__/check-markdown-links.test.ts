@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -207,5 +207,43 @@ describe('Markdown relative-link gate', () => {
         reason: 'outside repository',
       }),
     ]);
+  });
+
+  it('rejects decoded Windows separators, drive paths, and UNC paths before filesystem lookup', async () => {
+    const root = await fixtureRoot();
+    await writeFile(
+      path.join(root, 'README.md'),
+      [
+        '[backslash](..%5coutside.md#sentinel)',
+        '[drive](C%3A%5coutside.md#sentinel)',
+        '[drive relative](C%3Aoutside.md#sentinel)',
+        '[UNC](%5c%5cserver%5cshare%5coutside.md#sentinel)',
+      ].join('\n'),
+    );
+    const failures = await findBrokenMarkdownLinks({
+      files: ['README.md'],
+      root,
+    });
+    expect(failures).toHaveLength(4);
+    for (const failure of failures)
+      expect(failure.reason).toBe('unsafe repository path');
+    for (const file of [
+      '..\\outside.md',
+      'C:\\outside.md',
+      '//server/share/file.md',
+    ])
+      await expect(
+        findBrokenMarkdownLinks({ files: [file], root }),
+      ).rejects.toThrow('Unsafe learning source path');
+  });
+
+  it('refuses even in-repository symlinks as a deliberate input policy', async () => {
+    const root = await fixtureRoot();
+    await writeFile(path.join(root, 'target.md'), '# Safe\n');
+    await symlink('target.md', path.join(root, 'alias.md'));
+    await writeFile(path.join(root, 'README.md'), '[alias](alias.md#safe)\n');
+    await expect(
+      checkMarkdownLinks({ files: ['README.md'], root }),
+    ).rejects.toThrow('Learning source symlink is not allowed: alias.md');
   });
 });

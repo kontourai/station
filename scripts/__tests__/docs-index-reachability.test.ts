@@ -10,9 +10,11 @@ import {
   STATION_DOCS_TOPICS,
 } from '../../src-server/tools/station-docs-content.js';
 import {
+  buildLearningGuide,
   learningHref,
   renderLearningDocument,
 } from '../build-learning-guide.mjs';
+import { checkMarkdownLinks } from '../check-markdown-links.mjs';
 import { INDEXED_DIRECTORIES } from '../docs-index.mjs';
 import {
   compileStationDocs,
@@ -183,6 +185,152 @@ describe('docs index reachability', () => {
 });
 
 describe('learning atlas', () => {
+  it('refuses leaf and ancestor symlinks before publishing captured Markdown, source, or reader assets', async () => {
+    const directory = makeTempDir('station-reader-confinement-');
+    const root = join(directory, 'repo');
+    await fs.mkdir(join(root, 'docs/architecture'), { recursive: true });
+    await fs.mkdir(join(root, 'docs/learn'), { recursive: true });
+    await fs.mkdir(join(root, 'evidence'), { recursive: true });
+    await fs.mkdir(join(directory, 'outside'), { recursive: true });
+    const original = Buffer.from('# Sentinel\n\nIN_REPOSITORY_BYTES\n');
+    const outside = Buffer.from('# Sentinel\n\nCONTROLLED_OUTSIDE_BYTES\n');
+    const source = Buffer.from(
+      'export const fixture = "IN_REPOSITORY_BYTES";\n',
+    );
+    await fs.writeFile(join(root, '.gitignore'), '.kontourai/\n');
+    await fs.writeFile(
+      join(root, 'README.md'),
+      '# Fixture\n\n[Markdown](evidence/linked.md#sentinel) [Source](evidence/source.ts)\n',
+    );
+    await fs.writeFile(join(root, 'evidence/linked.md'), original);
+    await fs.writeFile(join(root, 'evidence/source.ts'), source);
+    await fs.writeFile(join(directory, 'outside/linked.md'), outside);
+    await fs.writeFile(join(directory, 'outside/source.ts'), outside);
+    await fs.writeFile(join(directory, 'outside/index.html'), outside);
+    await fs.writeFile(
+      join(root, 'docs/architecture/module-map.md'),
+      '## Fixture module\n',
+    );
+    await fs.writeFile(
+      join(root, 'docs/learn/atlas.json'),
+      JSON.stringify({
+        version: 1,
+        groups: [
+          {
+            id: 'fixture',
+            title: 'Fixture',
+            summary: 'Source boundary',
+            docs: ['README.md'],
+            modules: ['Fixture module'],
+            questions: ['Which bytes?'],
+          },
+        ],
+      }),
+    );
+    await fs.writeFile(
+      join(root, 'docs/learn/review-ledger.json'),
+      JSON.stringify({ version: 1, records: [] }),
+    );
+    for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
+      await fs.writeFile(
+        join(root, 'docs/learn', asset),
+        '/* in-repository reader fixture */',
+      );
+    const git = (args: string[]) =>
+      execFileSync('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    git(['init', '--quiet']);
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.hooksPath=/dev/null',
+      'commit',
+      '--quiet',
+      '-m',
+      'Committed confinement baseline',
+    ]);
+    expect(git(['status', '--porcelain'])).toBe('');
+    const sourceFiles = git(['ls-files', '-z']).split('\0').filter(Boolean);
+    const files = sourceFiles.filter((file) => file.endsWith('.md'));
+    const check = () => checkMarkdownLinks({ files, sourceFiles, root });
+    await check();
+    const baseline = await buildLearningGuide({ root });
+    const sourcePath = join(
+      root,
+      '.kontourai/docs-learning',
+      baseline.sourceSnapshots['evidence/linked.md'],
+    );
+    expect(await fs.readFile(sourcePath)).toEqual(original);
+
+    for (const [file, target] of [
+      ['evidence/linked.md', join(directory, 'outside/linked.md')],
+      ['evidence/source.ts', join(directory, 'outside/source.ts')],
+      ['docs/learn/index.html', join(directory, 'outside/index.html')],
+    ]) {
+      const location = join(root, file);
+      const before = await fs.readFile(location);
+      await fs.unlink(location);
+      await fs.symlink(target, location);
+      try {
+        // Reader assets are not Markdown links; the real generator still must
+        // refuse their bytes when copying the completed site's static files.
+        if (!file.startsWith('docs/learn/'))
+          await expect(check()).rejects.toThrow(
+            'Learning source symlink is not allowed',
+          );
+        await expect(buildLearningGuide({ root })).rejects.toThrow(
+          'Learning source symlink is not allowed',
+        );
+        expect(await fs.readFile(sourcePath)).toEqual(original);
+      } finally {
+        expect(await fs.readlink(location)).toBe(target);
+        await fs.unlink(location);
+        await fs.writeFile(location, before);
+      }
+      expect(await fs.readFile(location)).toEqual(before);
+      expect(git(['status', '--porcelain'])).toBe('');
+    }
+
+    await fs.rename(join(root, 'evidence'), join(root, 'retained-evidence'));
+    await fs.symlink(join(directory, 'outside'), join(root, 'evidence'), 'dir');
+    try {
+      await expect(check()).rejects.toThrow(
+        'Learning source symlink is not allowed',
+      );
+      await expect(buildLearningGuide({ root })).rejects.toThrow(
+        'Learning source symlink is not allowed',
+      );
+      expect(await fs.readFile(sourcePath)).toEqual(original);
+    } finally {
+      expect(await fs.readlink(join(root, 'evidence'))).toBe(
+        join(directory, 'outside'),
+      );
+      await fs.unlink(join(root, 'evidence'));
+      await fs.rename(join(root, 'retained-evidence'), join(root, 'evidence'));
+    }
+    expect(git(['status', '--porcelain'])).toBe('');
+    await check();
+    const restored = await buildLearningGuide({ root });
+    expect(restored.sourceSnapshots).toEqual(baseline.sourceSnapshots);
+    expect(await fs.readFile(sourcePath)).toEqual(original);
+    expect(await fs.readFile(join(directory, 'outside/linked.md'))).toEqual(
+      outside,
+    );
+    const outsideDigest = createHash('sha256').update(outside).digest('hex');
+    await expect(
+      fs.stat(join(root, '.kontourai/docs-learning/sources', outsideDigest)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('fails the real generator on a removed local heading and passes after restoring its committed bytes', async () => {
     const root = makeTempDir('station-anchor-generator-');
     await fs.mkdir(join(root, 'docs/learn'), { recursive: true });
@@ -689,5 +837,21 @@ describe('learning atlas', () => {
     expect(rendered.html).toContain('&lt;a id=&quot;unsafe&quot;');
     expect(rendered.html).toContain('&lt;a id=&quot;literal&quot;');
     expect(rendered.html).toContain('&lt;span id=&quot;fenced&quot;');
+  });
+
+  it('reserves the generated footnote heading ID before user headings', () => {
+    const rendered = renderLearningDocument(
+      '# Footnote label\n\nReference[^one].\n\n[^one]: Body.',
+      'README.md',
+      new Set(['README.md']),
+      'current',
+    );
+    expect(rendered.headings).toEqual([
+      { id: 'footnote-label-1', level: 1, title: 'Footnote label' },
+      { id: 'footnote-label', level: 2, title: 'Footnotes' },
+    ]);
+    expect(rendered.html).toContain('aria-describedby="footnote-label"');
+    expect(rendered.html).toContain('<h2 id="footnote-label">Footnotes</h2>');
+    expect(rendered.duplicateAnchors).toEqual([]);
   });
 });
