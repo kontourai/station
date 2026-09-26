@@ -2463,7 +2463,9 @@ station registry plugins install <id> [--api-base=<url>]
 station registry plugins uninstall <id> [--api-base=<url>]
 ```
 
-Without a URL argument, fetches and displays the registry. The URL is read from
+Without a URL argument, fetches and displays the registry. It does not report
+installed state: the running Station owns that, and
+`station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
 file.

@@ -62,30 +62,6 @@ afterEach(async () => {
 });
 
 describe('install-registry helpers', () => {
-  test('reports a corrupt alias store instead of listing a fabricated empty mapping', async () => {
-    const { root, home, aliasesPath } = createRegistryHome();
-    writeLocalRegistry(home, root);
-    writeFileSync(aliasesPath, '{ not json');
-    process.env.STATION_HOME = home;
-    const { showOrSaveRegistry } = await import(
-      '../commands/install-registry.js'
-    );
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const exit = vi
-      .spyOn(process, 'exit')
-      .mockImplementation((() => undefined) as never);
-
-    await showOrSaveRegistry();
-
-    expect(error).toHaveBeenCalledWith(
-      'Registry install aliases are unavailable',
-    );
-    expect(exit).toHaveBeenCalledWith(1);
-    expect(readFileSync(aliasesPath, 'utf-8')).toBe('{ not json');
-    error.mockRestore();
-    exit.mockRestore();
-  });
-
   describe('registryUrl reads from the same file `station config set` writes (station#3239)', () => {
     test('`station registry <url>` persists to config/app.json, and a later read of the same process sees it', async () => {
       const { home } = createRegistryHome();
@@ -161,29 +137,41 @@ describe('install-registry helpers', () => {
     });
   });
 
-  test.each([
-    [],
-    null,
-    'aliases',
-    { 'curated-demo': '' },
-    { 'curated-demo': 1 },
-    { 'curated-demo': null },
-    { 'curated-demo': {} },
-    { 'curated-demo': 'actual-plugin' },
-    { 'curated demo': { pluginName: 'actual-plugin', registryKey: 'r' } },
-    { 'curated-demo': { pluginName: 'actual/plugin', registryKey: 'r' } },
-    { 'curated-demo': { pluginName: 'actual-plugin ', registryKey: 'r' } },
-    { 'curated-demo': { pluginName: 'actual-plugin\u0000', registryKey: 'r' } },
-    Object.fromEntries([
-      ['a'.repeat(65), { pluginName: 'actual-plugin', registryKey: 'r' }],
-    ]),
+  // The running Station owns installed state: its listing marks an entry
+  // installed only for an alias record it wrote for THIS registry
+  // (json-manifest-registry.ts). The CLI browse does not guess from the
+  // alias store or the plugins directory, whose records it cannot validate
+  // against the server's registry key; `station registry plugins list`
+  // reports the server's answer.
+  test.each<[label: string, aliases: string | undefined]>([
+    ['a plugin directory with no alias record', undefined],
+    ['a corrupt alias store', '{ not json'],
+    [
+      'an alias record without a registryKey',
+      JSON.stringify({ 'curated-demo': { pluginName: 'actual-plugin' } }),
+    ],
+    [
+      'an alias record owned by a different registry',
+      JSON.stringify({
+        'curated-demo': {
+          pluginName: 'actual-plugin',
+          registryKey: '/elsewhere/registry-a/plugins.json',
+        },
+      }),
+    ],
   ])(
-    'refuses an invalid or noncanonical alias store without echoing identities or mutating it: %j',
-    async (invalidAliases) => {
+    'lists the registry without claiming installed state from %s',
+    async (_label, aliases) => {
       const { root, home, aliasesPath } = createRegistryHome();
       writeLocalRegistry(home, root);
-      const originalBytes = JSON.stringify(invalidAliases, null, 2);
-      writeFileSync(aliasesPath, originalBytes);
+      for (const name of ['actual-plugin', 'curated-demo']) {
+        mkdirSync(join(home, 'plugins', name), { recursive: true });
+        writeFileSync(
+          join(home, 'plugins', name, 'plugin.json'),
+          JSON.stringify({ name, version: '1.0.0' }),
+        );
+      }
+      if (aliases !== undefined) writeFileSync(aliasesPath, aliases);
       process.env.STATION_HOME = home;
       const { showOrSaveRegistry } = await import(
         '../commands/install-registry.js'
@@ -196,95 +184,14 @@ describe('install-registry helpers', () => {
 
       await showOrSaveRegistry();
 
-      expect(error.mock.calls).toEqual([
-        ['Registry install aliases are unavailable'],
-      ]);
-      expect(exit).toHaveBeenCalledWith(1);
+      expect(error).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
       const output = log.mock.calls.flat().join('\n');
-      expect(output).not.toContain('Available Plugins');
-      expect(output).not.toContain('curated demo');
-      expect(output).not.toContain('actual/plugin');
-      expect(readFileSync(aliasesPath, 'utf-8')).toBe(originalBytes);
-      log.mockRestore();
-      error.mockRestore();
-      exit.mockRestore();
+      expect(output).toContain('  curated-demo (curated-demo@?)');
+      expect(output).not.toContain('[installed]');
+      expect(output).toContain('station registry plugins list');
     },
   );
-
-  test('browses a local manifest and marks a curated registry id as installed via alias mapping', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-registry-cli-'));
-    cleanupDirs.push(root);
-    const projectHome = join(root, 'home');
-    const registryDir = join(root, 'registry');
-    const installedPluginDir = join(projectHome, 'plugins', 'actual-plugin');
-    mkdirSync(projectHome, { recursive: true });
-    writeFileSync(
-      join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
-    );
-    mkdirSync(registryDir, { recursive: true });
-    mkdirSync(installedPluginDir, { recursive: true });
-
-    const manifestPath = join(registryDir, 'plugins.json');
-    writeFileSync(
-      manifestPath,
-      JSON.stringify(
-        {
-          version: 1,
-          plugins: [
-            {
-              id: 'curated-demo',
-              displayName: 'Curated Demo',
-              version: '1.0.0',
-              description: 'Registry entry',
-              source: '../plugins/actual-plugin',
-            },
-          ],
-          tools: [],
-        },
-        null,
-        2,
-      ),
-    );
-    writeFileSync(
-      join(projectHome, 'config.json'),
-      JSON.stringify({ registryUrl: manifestPath }, null, 2),
-    );
-    writeFileSync(
-      join(installedPluginDir, 'plugin.json'),
-      JSON.stringify({ name: 'actual-plugin', version: '1.0.0' }, null, 2),
-    );
-
-    process.env.STATION_HOME = projectHome;
-    mkdirSync(join(projectHome, 'config'), { recursive: true });
-    // The shape the server's registry install writes
-    // (src-server/providers/registries/registry-install-aliases.ts).
-    writeFileSync(
-      join(projectHome, 'config', 'registry-installs.json'),
-      JSON.stringify(
-        {
-          'curated-demo': {
-            pluginName: 'actual-plugin',
-            registryKey: manifestPath,
-          },
-        },
-        null,
-        2,
-      ),
-    );
-    const { showOrSaveRegistry } = await import(
-      '../commands/install-registry.js'
-    );
-
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await showOrSaveRegistry();
-
-    const output = log.mock.calls.flat().join('\n');
-    expect(output).toContain('Curated Demo (curated-demo@1.0.0) [installed]');
-
-    log.mockRestore();
-  });
 
   test.each<[label: string, plugins: unknown[], message: string]>([
     [

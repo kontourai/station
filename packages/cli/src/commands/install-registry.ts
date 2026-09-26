@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -12,7 +11,7 @@ import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { withRequestTimeout } from './core-api.js';
-import { PLUGINS_DIR, PROJECT_HOME } from './helpers.js';
+import { PROJECT_HOME } from './helpers.js';
 
 interface RegistryManifestPlugin {
   id: string;
@@ -24,10 +23,6 @@ interface RegistryManifestPlugin {
 
 interface RegistryManifest {
   plugins: RegistryManifestPlugin[];
-}
-
-function getRegistryInstallsPath(): string {
-  return join(PROJECT_HOME, 'config', 'registry-installs.json');
 }
 
 /** Official registry, GitHub-hosted, used when none is configured. */
@@ -155,58 +150,6 @@ function saveRegistryUrl(registryUrl: string): void {
   console.log(`  ✓ Registry URL saved: ${registryUrl}`);
 }
 
-class RegistryInstallAliasesUnavailableError extends Error {
-  constructor() {
-    super('Registry install aliases are unavailable');
-    this.name = 'RegistryInstallAliasesUnavailableError';
-  }
-}
-
-function emptyRegistryInstallAliases(): Record<string, string> {
-  return Object.create(null) as Record<string, string>;
-}
-
-/**
- * Registry id -> installed plugin directory name, read from the alias store
- * the server's registry install writes
- * (`src-server/providers/registries/registry-install-aliases.ts`): each value
- * is a record carrying `pluginName` alongside its registry ownership.
- */
-function readRegistryInstallAliases(): Record<string, string> {
-  let raw: string;
-  try {
-    raw = readFileSync(getRegistryInstallsPath(), 'utf-8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return emptyRegistryInstallAliases();
-    }
-    throw new RegistryInstallAliasesUnavailableError();
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new RegistryInstallAliasesUnavailableError();
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new RegistryInstallAliasesUnavailableError();
-  }
-
-  const aliases = emptyRegistryInstallAliases();
-  for (const [registryId, record] of Object.entries(parsed)) {
-    const pluginName =
-      typeof record === 'object' && record !== null
-        ? (record as { pluginName?: unknown }).pluginName
-        : undefined;
-    if (!isCanonicalPluginId(registryId) || !isCanonicalPluginId(pluginName)) {
-      throw new RegistryInstallAliasesUnavailableError();
-    }
-    aliases[registryId] = pluginName;
-  }
-  return aliases;
-}
-
 function parseRegistryManifest(raw: unknown): RegistryManifest {
   if (!raw || typeof raw !== 'object') {
     throw new Error('Malformed registry manifest: expected an object');
@@ -292,24 +235,18 @@ export async function showOrSaveRegistry(registryUrl?: string): Promise<void> {
       return;
     }
 
-    const installed = new Set<string>();
-    const aliases = readRegistryInstallAliases();
-    if (existsSync(PLUGINS_DIR)) {
-      for (const entry of readdirSync(PLUGINS_DIR, { withFileTypes: true })) {
-        if (entry.isDirectory()) installed.add(entry.name);
-      }
-    }
-
+    // Installed state is not shown here. The running Station owns it (which
+    // registry installed what, under which plugin name), and
+    // `station registry plugins list` reports it from there.
     console.log('Available Plugins:\n');
     for (const plugin of plugins) {
-      const installedPluginName = aliases[plugin.id] || plugin.id;
-      const status = installed.has(installedPluginName) ? ' [installed]' : '';
       console.log(
-        `  ${plugin.displayName || plugin.id} (${plugin.id}@${plugin.version || '?'})${status}`,
+        `  ${plugin.displayName || plugin.id} (${plugin.id}@${plugin.version || '?'})`,
       );
       if (plugin.description) console.log(`    ${plugin.description}`);
     }
     console.log(`\n  Install with: station registry install <id>`);
+    console.log('  Installed state: station registry plugins list');
   } catch (error: any) {
     console.error(error.message);
     process.exit(1);
