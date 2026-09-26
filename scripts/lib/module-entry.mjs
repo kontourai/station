@@ -21,7 +21,17 @@
  * An earlier draft wrapped this in `catch { return false }` — fail-*open* in
  * the one module written to prevent fail-open, since an unresolvable entry path
  * would make every gate silently do nothing and exit 0. A path that cannot be
- * resolved is a real problem and now says so.
+ * resolved is a real problem and says so, with one exact exception.
+ *
+ * When `realpathSync(argv[1])` fails with ENOENT or ENOTDIR, the answer is
+ * `false`. Under `node -e` / `--input-type=module -e`, `argv[1]` is the first
+ * positional argument (a version string such as `1.2.3` in
+ * `.github/workflows/internal-testflight.yml`), not a script path, so a module
+ * imported there must not crash at import. That is not fail-open: node only
+ * runs a script it could open, so a directly invoked gate's `argv[1]` always
+ * exists, and a path that does not exist cannot be this module. Every other
+ * error (EACCES, ELOOP, …) still throws, and the module-side realpath stays
+ * strict.
  *
  * ## Windows and percent-encoding
  *
@@ -47,5 +57,12 @@ import { fileURLToPath } from 'node:url';
 export function invokedDirectly(moduleUrl) {
   const entry = process.argv[1];
   if (!entry) return false;
-  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
+  let resolvedEntry;
+  try {
+    resolvedEntry = realpathSync(entry);
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return false;
+    throw error;
+  }
+  return resolvedEntry === realpathSync(fileURLToPath(moduleUrl));
 }

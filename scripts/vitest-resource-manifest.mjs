@@ -357,6 +357,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that made it a silent no-op is proven, not just the scanner. Two bounded
   // single-shot children.
   'scripts/__tests__/type-laundering-gate.process.test.ts',
+  // Imports converted scripts under `node --input-type=module -e` with a
+  // positional argument, the internal-testflight.yml shape, to prove the
+  // entry helper does not crash at import. Three bounded single-shot children.
+  'scripts/__tests__/module-entry.process.test.ts',
   // Repo-wide `git ls-files` scan (one child) for URL-string entry checks
   // built from process.argv[1]; repo-scans job, same shape as the file above.
   'scripts/__tests__/module-entry-guard.scan.test.ts',
