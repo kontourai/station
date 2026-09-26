@@ -22,9 +22,11 @@ const CLI_BUNDLE = join('packages', 'cli', 'dist', 'station.mjs');
  * (the bundle suite's own esbuild invocation, not npm lifecycle scripts).
  * Present output is left alone. Returns whether a build ran.
  */
-export function ensureCliBundle(
-  { root = REPO_ROOT, exists = existsSync, build = buildCliBundle } = {},
-) {
+export function ensureCliBundle({
+  root = REPO_ROOT,
+  exists = existsSync,
+  build = buildCliBundle,
+} = {}) {
   if (exists(join(root, CLI_BUNDLE))) return false;
   build(root);
   return true;
@@ -43,9 +45,10 @@ function buildCliBundle(root) {
  * @param {{ run?: (args: string[]) => Promise<number>, ensureCli?: () => boolean }} [options]
  * @returns {Promise<number>} the focused runner's exit code, unchanged
  */
-export async function runRepoScans(
-  { run = runFocusedTests, ensureCli = () => ensureCliBundle() } = {},
-) {
+export async function runRepoScans({
+  run = runFocusedTests,
+  ensureCli = () => ensureCliBundle(),
+} = {}) {
   ensureCli();
   return run([...REPO_SCAN_SUITES]);
 }
