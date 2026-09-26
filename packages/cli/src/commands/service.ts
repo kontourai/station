@@ -15,14 +15,20 @@ import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resol
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
+  DEFAULT_INSTANCE_ID,
   type LifecycleHomeSource,
   resolveLifecycleInstanceId,
+  resolveServiceInstanceId,
+  sourceCheckoutDevInstanceId,
 } from './helpers.js';
 import {
   buildApplication,
+  checkSourceBuildStamp,
   collectInstanceStatus,
+  describeSourceBuildStampProblem,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampNeedsRebuild,
   stop,
 } from './lifecycle.js';
 import {
@@ -155,6 +161,8 @@ export interface ServiceInstallResult extends ServiceManifest {
  * profile/default write fails. It is intentionally runtime-only.
  */
 export interface ServiceInstallReceipt {
+  /** The service this install registered; a caller records THIS id. */
+  instanceId: string;
   rollback: () => Promise<void>;
 }
 
@@ -282,13 +290,37 @@ async function prepareServiceBuild(
   // generated hash for custom home/ports) — never re-derived here, or the
   // preflight builds the wrong instance's artifacts and the cold build lands
   // back inside the readiness window.
-  if (!isBuildStale(resolveBuildPaths(instanceId))) return;
-  await buildApplication({
-    baseDir: lifecycle.baseDir,
-    instanceName: instanceId,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  // station#2689: an mtime-current bundle is not enough. Without a stamp that
+  // matches HEAD the supervised boot expects a different sha than the server
+  // reports, and the install burns its whole readiness budget on "managed
+  // boot identity mismatch" before rolling back. Rebuild through
+  // buildApplication (which writes the stamp), exactly as for a stale bundle
+  // and as the supervisor does, then refuse before any backend mutation if
+  // the stamp still cannot back the boot.
+  const before = checkSourceBuildStamp(instanceId);
+  const build =
+    isBuildStale(resolveBuildPaths(instanceId)) ||
+    sourceBuildStampNeedsRebuild(before);
+  if (build) {
+    await buildApplication({
+      baseDir: lifecycle.baseDir,
+      instanceName: instanceId,
+      serverPort: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+    });
+  }
+  const stampProblem = describeSourceBuildStampProblem(
+    build ? checkSourceBuildStamp(instanceId) : before,
+  );
+  if (stampProblem) {
+    const buildCommand =
+      instanceId === DEFAULT_INSTANCE_ID
+        ? 'station build'
+        : `station build --instance=${instanceId}`;
+    throw new Error(
+      `Cannot install Station user service ${instanceId}: ${stampProblem}${build ? ' (after rebuilding)' : ''}. Run \`${buildCommand}\` in ${CWD}, then rerun \`station service install\`.`,
+    );
+  }
 }
 
 /**
@@ -560,6 +592,122 @@ export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
   return accepted.join(':');
 }
 
+/**
+ * station#2689: the service a command addresses. A flagless command from a
+ * source checkout resolves to the checkout's development instance id
+ * (`resolveServiceInstanceId`) — but before that rule, the same commands (and
+ * `setup local`) installed `default` into this very home, so a manifest may
+ * already name a different service for this checkout. Manifests come first:
+ * exactly one in the home whose `repoPath` is this checkout is the service,
+ * whatever its name; several refuse; none falls back to the derived id.
+ * Only the implicit development case consults them — an explicit
+ * `--instance` or an explicit home is taken as stated, exactly as before.
+ */
+function resolveServiceTarget(
+  lifecycle: ServiceLifecycleArgs,
+  fs: ServiceFs,
+): string {
+  const derived = resolveServiceInstanceId({
+    cwd: CWD,
+    homeSource: lifecycle.homeSource,
+    instanceName: lifecycle.instanceName,
+    projectHome: lifecycle.baseDir,
+    serverPort: lifecycle.serverPort,
+    uiPort: lifecycle.uiPort,
+  });
+  if (
+    lifecycle.instanceName?.trim() ||
+    lifecycle.homeSource !== 'default' ||
+    derived !== sourceCheckoutDevInstanceId()
+  ) {
+    return derived;
+  }
+  const owned = checkoutServiceManifests(fs, lifecycle.baseDir);
+  if (owned.length === 0) return derived;
+  if (owned.length > 1) {
+    throw new Error(
+      [
+        `Several Station user services in ${lifecycle.baseDir} belong to this checkout: ${owned.join(', ')}.`,
+        'Pass --instance=<name> to choose one.',
+      ].join('\n'),
+    );
+  }
+  const [existing] = owned as [string];
+  if (existing !== derived) {
+    // stderr: `status --json` owns stdout.
+    console.error(
+      `Using Station user service ${existing}, already installed for this checkout in ${lifecycle.baseDir} (pass --instance to address another).`,
+    );
+  }
+  return existing;
+}
+
+/**
+ * Instance ids of the manifests in `<home>/service/` recorded for THIS
+ * checkout (`repoPath` is what install writes: the checkout's realpath). A
+ * manifest that does not parse refuses the command: it may be this checkout's
+ * own service, and skipping it would install a second unit beside it. The
+ * chosen manifest is still read with full validation by the caller.
+ */
+function checkoutServiceManifests(fs: ServiceFs, baseDir: string): string[] {
+  const serviceDir = join(baseDir, 'service');
+  if (!fs.existsSync(serviceDir)) return [];
+  const repoPath = fs.realpathSync(CWD);
+  const owned: string[] = [];
+  for (const entry of fs.readdirSync(serviceDir)) {
+    const name = String(entry);
+    if (!name.endsWith('.json')) continue;
+    let manifest: Partial<ServiceManifest> | null = null;
+    try {
+      manifest = JSON.parse(
+        fs.readFileSync(join(serviceDir, name), 'utf8'),
+      ) as Partial<ServiceManifest>;
+    } catch (error) {
+      throw new Error(
+        `Cannot tell which Station user service in ${serviceDir} belongs to this checkout: ${name} is not a readable service manifest (${error instanceof Error ? error.message : String(error)}).\nRepair or remove it, or pass --instance=<name> to choose a service explicitly.`,
+      );
+    }
+    if (
+      manifest &&
+      typeof manifest === 'object' &&
+      manifest.instanceId === name.slice(0, -'.json'.length) &&
+      manifest.repoPath === repoPath
+    ) {
+      owned.push(manifest.instanceId);
+    }
+  }
+  return owned.sort();
+}
+
+/**
+ * station#2689: from a source checkout the launcher selects the development
+ * channel and exports this checkout's derived instance id (see
+ * `sourceCheckoutDevInstanceId`), so with no --home/--base/STATION_HOME the
+ * home is `<STATION_ROOT>/instances/dev/<that id>`. With no --instance the
+ * service simply takes that id (`resolveServiceInstanceId`). An EXPLICIT
+ * --instance naming anything else contradicts that home — it would bind a
+ * machine-wide unit name such as `default` to one worktree's development
+ * home — so the install refuses and says how to state what was meant.
+ */
+function assertInstallDoesNotBorrowDevHome(
+  instanceId: string,
+  lifecycle: ServiceLifecycleArgs,
+): void {
+  if (!lifecycle.instanceName?.trim()) return;
+  if (lifecycle.homeSource !== 'default') return;
+  const devInstanceId = sourceCheckoutDevInstanceId();
+  if (!devInstanceId || instanceId === devInstanceId) return;
+  throw new Error(
+    [
+      `Refusing to install Station user service ${instanceId} into this source checkout's development home ${lifecycle.baseDir}.`,
+      `That home belongs to the development instance ${devInstanceId}; it was chosen because no --home, --base, or STATION_HOME was given.`,
+      `  --instance=${devInstanceId}  names the service after the home it runs in.`,
+      `  --instance=${instanceId} --base=${lifecycle.baseDir}  keeps an existing ${instanceId} service where it is.`,
+      `  --instance=${instanceId} --home=<dir>  moves the ${instanceId} service to its own durable home (data in the current home is not copied).`,
+    ].join('\n'),
+  );
+}
+
 export function assertServiceIdentityAvailable(instanceId: string): void {
   const unitName = `station-${instanceId}.service`;
   const labels = [
@@ -730,13 +878,7 @@ export function inspectServiceInstallation(
   }
   const fs = dependencies.fs ?? nodeFs;
   const run = dependencies.run ?? defaultRun;
-  const instanceId = resolveLifecycleInstanceId({
-    cwd: CWD,
-    instanceName: lifecycle.instanceName,
-    projectHome: lifecycle.baseDir,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  const instanceId = resolveServiceTarget(lifecycle, fs);
   assertServiceIdentityAvailable(instanceId);
   const registration =
     platform === 'darwin'
@@ -924,13 +1066,7 @@ export async function runServiceCommand(
   const run = dependencies.run ?? defaultRun;
   const hardenPaths =
     dependencies.hardenWindowsPaths ?? hardenWindowsPathsTrusted;
-  const instanceId = resolveLifecycleInstanceId({
-    cwd: CWD,
-    instanceName: lifecycle.instanceName,
-    projectHome: lifecycle.baseDir,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  const instanceId = resolveServiceTarget(lifecycle, fs);
   assertServiceIdentityAvailable(instanceId);
   const manifestPath = join(lifecycle.baseDir, 'service', `${instanceId}.json`);
   const registration =
@@ -964,6 +1100,7 @@ export async function runServiceCommand(
 
   if (action === 'install') {
     assertSupportedNodeVersion();
+    assertInstallDoesNotBorrowDevHome(instanceId, lifecycle);
     // Establish the home identity FIRST, while the home is still fresh — before
     // the registry write below makes it non-empty. Writing instances.json into
     // an unestablished home would otherwise trip the fresh-home schema guard
@@ -1005,7 +1142,8 @@ export async function runServiceCommand(
     // ONE-OWNER PRE-CHECK (station#3047): refuse before any backend mutation
     // when the registry id is held by a LIVE process this install does not
     // own — ordinarily a CLI `station start` under the shared default id
-    // (both surfaces resolve ids through resolveLifecycleInstanceId).
+    // (both surfaces resolve ids through resolveLifecycleInstanceId, except
+    // the development-checkout case handled just below).
     // Proceeding used to upsert-merge over that entry, inheriting the CLI
     // process's pid/birth into a `type: 'service'` chimera that flipped
     // Desktop's home-ownership decision. Dead entries do not refuse — the
@@ -1024,6 +1162,32 @@ export async function runServiceCommand(
     ) {
       throw new Error(
         `Instance id '${instanceId}' is owned by a live process (pid ${registryEntry.pid}, type '${registryEntry.type}'${registryEntry.checkout ? `, from ${registryEntry.checkout}` : ''}). Stop it first (\`station stop --instance=${instanceId}\` from its checkout) or install under a distinct --instance name.`,
+      );
+    }
+    // station#2689: a source-checkout service without --instance takes the
+    // development instance id (resolveServiceInstanceId), but `station start`
+    // from the same checkout — or another checkout's service in a shared dev
+    // home — still holds this very home under the lifecycle id (`default`).
+    // The check above no longer sees that entry, so look it up too.
+    const lifecycleInstanceId = resolveLifecycleInstanceId({
+      cwd: CWD,
+      instanceName: lifecycle.instanceName,
+      projectHome: lifecycle.baseDir,
+      serverPort: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+    });
+    const lifecycleEntry =
+      lifecycleInstanceId === instanceId
+        ? null
+        : (readInstanceRegistry(lifecycle.baseDir).instances[
+            lifecycleInstanceId
+          ] ?? null);
+    // Unlike the check above, a live SERVICE entry refuses too: it is not this
+    // unit's own supervisor (manifest-first resolution already chose that
+    // service when it belongs to this checkout), so it is a second writer.
+    if (lifecycleEntry && entryOwnedByLiveProcess(lifecycleEntry)) {
+      throw new Error(
+        `Station home ${lifecycle.baseDir} is in use by instance '${lifecycleInstanceId}' (pid ${lifecycleEntry.pid}, type '${lifecycleEntry.type}'${lifecycleEntry.checkout ? `, from ${lifecycleEntry.checkout}` : ''}), which service '${instanceId}' would share. Stop it first (\`station stop --instance=${lifecycleInstanceId}\` from its checkout).`,
       );
     }
     // service run builds stale artifacts before it can publish an identity.
@@ -1202,6 +1366,7 @@ export async function runServiceCommand(
     }
     let rollbackPromise: Promise<void> | undefined;
     const receipt: ServiceInstallReceipt = {
+      instanceId,
       rollback: () => {
         if (rolledBack) return Promise.resolve();
         if (rollbackPromise) return rollbackPromise;
