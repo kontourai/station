@@ -189,6 +189,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -5261,6 +5262,23 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
+      // #2377 slice B: a station-control agent's hits follow its session
+      // owner's access to each root. Every other caller is unchanged.
+      mayReadHitRoot: (request, root) => {
+        const ownerId = agentOwnerIdForRequest(request);
+        if (ownerId === undefined) return true;
+        if (ownerId === null) return false;
+        // Re-read record by record as the owner (`bindRequestReadAuthority`).
+        if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return true;
+        if (root.scope.kind === 'project')
+          return agentOwnerMayUseProject(
+            request,
+            root.scope.projectSlug,
+            'view',
+          );
+        // The personal store is the operator's own.
+        return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      },
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),

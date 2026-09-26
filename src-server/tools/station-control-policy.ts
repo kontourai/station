@@ -505,9 +505,14 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...DISPATCH,
     routes: [...DISPATCH_ROUTES, NAVIGATE_ROUTE],
   },
+  // Decision 2: the saved SSH environments are the operator's Station-wide
+  // configuration (the same view `get_ssh_environment` gives), so listing
+  // them is an operator-wide read. The LEAF stays open wider than this entry
+  // until slice C: every dispatch tool reaches `GET /api/environments/ssh`
+  // while resolving an SSH target, with any verified caller, so the guard
+  // admits any verified caller there. A caller-less request is refused.
   list_delegation_environments: {
-    ...READ,
-    // Its leaf is shared with dispatch (slice C).
+    ...OPERATOR_READ,
     tightenedBy: ['C'],
     routes: [get('/api/environments/ssh')],
   },
@@ -573,9 +578,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // ── operations: config, analytics, knowledge ───────────────────────────
   get_config: { ...READ, routes: [get('/config/app')] },
   update_config: { ...OPERATOR_MUTATION, routes: [put('/config/app')] },
-  // The owner's own usage receipts.
+  // Decision 2: `GET /api/analytics/usage` answers from the Station-wide
+  // usage aggregate (every person's totals and per-agent rows); it reads no
+  // principal, so it is an operator-wide read. The owner-scoped leaf
+  // (`/api/analytics/usage-rollup`) has a different shape; pointing the tool
+  // at it is a follow-up.
   get_usage: {
-    ...SELF_READ,
+    ...OPERATOR_READ,
     routes: [get('/api/analytics/usage')],
   },
   // Decision 2: achievements are computed from every person's lifetime
@@ -588,8 +597,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...OPERATOR_MUTATION,
     routes: [post('/api/knowledge/index/rebuild')],
   },
-  // Session-backed hits are re-read as the owner; local-source records need
-  // the local operator in person.
+  // Hits are filtered by their root before any record is read
+  // (`runtime-routes.ts`, `mayReadHitRoot`): a conversation-backed root is
+  // re-read record by record as the owner; a Project root needs the owner's
+  // Project `view` (the same rule as the Project routes); the personal store
+  // is the operator's, so only an operator-owned session reads it.
   search_knowledge: {
     ...SELF_READ,
     routes: [post('/api/knowledge/index/search')],
@@ -641,8 +653,12 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [post('/api/plugin-proposals')],
   },
   validate_plugin: { ...READ, routes: [post('/api/plugins/validate')] },
+  // Decision 2: the route is operator-only (`operatorOnly`): it lists every
+  // installed plugin and runs `git fetch` in each. It keys on the operator's
+  // principal id, which an operator-owned session at any assurance now
+  // resolves to, so the table must hold it to a bound operator.
   check_plugin_updates: {
-    ...READ,
+    ...OPERATOR_READ,
     routes: [get('/api/plugins/check-updates')],
   },
   update_plugin: {

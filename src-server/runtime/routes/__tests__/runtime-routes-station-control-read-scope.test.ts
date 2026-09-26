@@ -35,12 +35,14 @@ import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-r
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -131,6 +133,36 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         method: 'session.started',
         createdAt: NOW,
         metadata: { userId },
+      });
+    }
+    // One answered turn in each person's chat, so a Basis read has a real
+    // answer to find.
+    for (const threadId of ['a-chat', 'b-chat']) {
+      store.upsertSession({
+        threadId,
+        provider: 'claude',
+        status: 'closed',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      store.appendEvent({
+        eventId: `${threadId}:turn-start`,
+        threadId,
+        turnId: `${threadId}-turn`,
+        provider: 'claude',
+        method: 'turn.started',
+        createdAt: NOW,
+        prompt: 'question',
+      });
+      store.appendEvent({
+        eventId: `${threadId}:turn-done`,
+        threadId,
+        turnId: `${threadId}-turn`,
+        provider: 'claude',
+        method: 'turn.completed',
+        createdAt: NOW,
+        finishReason: 'stop',
+        outputText: 'An exact public answer.',
       });
     }
     const orchestration = new OrchestrationService({
@@ -243,6 +275,42 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       error() {},
     } as never);
 
+    // Installed plugins: B has been granted sight of one of them.
+    for (const name of ['alpha-plugin', 'beta-plugin']) {
+      const dir = join(home, 'plugins', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'plugin.json'),
+        JSON.stringify({ name, version: '1.0.0', displayName: name }),
+      );
+    }
+    await new PluginVisibilityService(home).grant(B, 'beta-plugin');
+
+    // Knowledge roots: A's Project, B's Project and the personal store, each
+    // with one record, all in the one Station-wide index.
+    const knowledge = new KnowledgeStoreProvider(new FileStorageAdapter(home));
+    for (const [scope, marker] of [
+      [{ kind: 'project', projectSlug: 'a-project' }, 'A-PROJECT-NOTE'],
+      [{ kind: 'project', projectSlug: 'b-project' }, 'B-PROJECT-NOTE'],
+      [{ kind: 'personal' }, 'OPERATOR-PERSONAL-NOTE'],
+    ] as const) {
+      const storeRoot = join(home, 'knowledge', marker);
+      mkdirSync(storeRoot, { recursive: true });
+      const root = await knowledge.createRoot({
+        scope,
+        adapterId: 'kit-default-store',
+        storeRoot,
+        displayName: marker,
+      });
+      await (await knowledge.adapterFor(root.id)).create({
+        type: 'raw',
+        title: marker,
+        body: `${marker} knowledge body`,
+        category: 'reference',
+        provenance: { agent: 'read-scope-test' },
+      });
+    }
+
     const eventBus = new EventBus();
     const app = new Hono();
     const context = deepStub({
@@ -268,6 +336,13 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       agentStats: new Map(),
       agentStatus: new Map(),
       memoryAdapters: new Map([['default', memory]]),
+      knowledgeStoreProvider: knowledge,
+      resolveEmbeddingProvider: () => ({
+        id: 'stub-embedder',
+        displayName: 'Stub embedder',
+        dimensions: () => 4,
+        embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
+      }),
       metricsLog: [],
       monitoringEvents: [],
       queryEventsFromDisk: (start: number, end: number, userId: string) =>
@@ -640,6 +715,146 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         String((await asTool(BOUND_OPERATOR, path))?.code ?? ''),
       ]).not.toEqual([path, expect.stringMatching(/^station_control_/)]);
     }
+  });
+
+  // ── slice B review: every owner-scoped read, EXECUTED ─────────────────
+
+  test('get_basis: B’s callers find the answer basis of B’s turn, never of A’s', async () => {
+    await setup();
+    const basis = (caller: Caller, chat: string) =>
+      asTool(
+        caller,
+        `/api/orchestration/sessions/${chat}/turns/${chat}-turn/basis`,
+      );
+    for (const [label, caller] of Object.entries(B_CALLERS)) {
+      const own = await basis(caller, 'b-chat');
+      const other = await basis(caller, 'a-chat');
+      expect([label, own.success, other.success, other.error]).toEqual([
+        label,
+        true,
+        false,
+        'Basis not found',
+      ]);
+    }
+    expect((await basis(BOUND_OPERATOR, 'a-chat')).success).toBe(true);
+  });
+
+  test('search_knowledge: B’s agent finds only roots B may read; the personal store is the operator’s', async () => {
+    const { base } = await setup();
+    // Station's indexer builds the one shared index from every root.
+    const rebuilt = await fetch(`${base}/api/knowledge/index/rebuild`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    expect(rebuilt.status, await rebuilt.clone().text()).toBe(200);
+    const titles = async (caller: Caller) => {
+      const body = await asTool(caller, '/api/knowledge/index/search', {
+        method: 'POST',
+        body: JSON.stringify({ query: 'knowledge body', topK: 20 }),
+      });
+      expect(body.success, JSON.stringify(body)).toBe(true);
+      return ((body.data ?? []) as { title: string }[])
+        .map((hit) => hit.title)
+        .sort();
+    };
+    for (const [label, caller] of Object.entries(B_CALLERS))
+      expect([label, await titles(caller)]).toEqual([
+        label,
+        ['B-PROJECT-NOTE'],
+      ]);
+    // C is not an account: every Project root, as in its own requests; not
+    // the operator's personal store.
+    expect(await titles(C_BEARER)).toEqual([
+      'A-PROJECT-NOTE',
+      'B-PROJECT-NOTE',
+    ]);
+    const everything = [
+      'A-PROJECT-NOTE',
+      'B-PROJECT-NOTE',
+      'OPERATOR-PERSONAL-NOTE',
+    ];
+    expect(await titles(DELEGATED_OPERATOR)).toEqual(everything);
+    expect(await titles(BOUND_OPERATOR)).toEqual(everything);
+  });
+
+  test('list_plugins: B’s callers see the plugins B was granted, never the rest', async () => {
+    await setup();
+    for (const [label, caller] of Object.entries(B_CALLERS)) {
+      const listed = JSON.stringify(await asTool(caller, '/api/plugins'));
+      expect([
+        label,
+        listed.includes('beta-plugin'),
+        listed.includes('alpha-plugin'),
+      ]).toEqual([label, true, false]);
+    }
+    const operatorList = JSON.stringify(
+      await asTool(BOUND_OPERATOR, '/api/plugins'),
+    );
+    expect(operatorList).toContain('alpha-plugin');
+  });
+
+  test('update_plugin / remove_plugin: B’s agent can name only a plugin B can see', async () => {
+    await setup();
+    const propose = (pluginName: string) =>
+      asTool(B_CALLERS['bearer-exposed B']!, '/api/plugin-proposals', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'update',
+          pluginName,
+          rationale: 'a newer version is out',
+        }),
+      });
+    expect(await propose('alpha-plugin')).toMatchObject({
+      success: false,
+      code: 'plugin-not-installed',
+    });
+    expect(await propose('beta-plugin')).toMatchObject({ success: true });
+  });
+
+  test('review reads: B’s callers read reviews only in Projects B may view', async () => {
+    await setup();
+    for (const [label, caller] of Object.entries(B_CALLERS)) {
+      const other = await asTool(caller, '/api/projects/a-project/reviews');
+      const own = await asTool(caller, '/api/projects/b-project/reviews');
+      expect([label, own, other]).toEqual([
+        label,
+        { success: true, data: [] },
+        { success: false, error: 'Project not found' },
+      ]);
+    }
+  });
+
+  test('L2: an owner-less session on a dispatch read gets a typed refusal, not an internal error', async () => {
+    await setup();
+    expect(
+      await asTool(NO_OWNER, '/api/orchestration/sessions/read-model'),
+    ).toMatchObject({ success: false, code: 'station_control_role_required' });
+  });
+
+  test('get_usage, check_plugin_updates and the SSH environment list are operator-wide reads', async () => {
+    await setup();
+    for (const path of ['/api/analytics/usage', '/api/plugins/check-updates']) {
+      expect([
+        path,
+        (await asTool(B_CALLERS['bound B']!, path)).code,
+        (await asTool(DELEGATED_OPERATOR, path)).code,
+        (await asTool('raw-token', path)).code,
+      ]).toEqual([
+        path,
+        'station_control_role_required',
+        'station_control_assurance_insufficient',
+        'station_control_caller_required',
+      ]);
+    }
+    // M2: the list leaf is shared with dispatch (slice C), which reaches it
+    // with any verified caller; only a caller-less request is refused there.
+    expect((await asTool('raw-token', '/api/environments/ssh')).code).toBe(
+      'station_control_caller_required',
+    );
   });
 
   test('a caller-less request still reads what belongs to no person', async () => {

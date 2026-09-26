@@ -59,6 +59,11 @@ const DECISION_2_OPERATOR_READS = [
   'get_job_logs',
   'get_achievements',
   'get_ssh_environment',
+  // Slice B review: Station-wide usage totals (H1), the operator-only
+  // plugin update scan (M1) and the saved SSH environment list (M2).
+  'get_usage',
+  'check_plugin_updates',
+  'list_delegation_environments',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -75,7 +80,6 @@ const DECISION_2_PRINCIPAL_READS = [
   'list_projects',
   'get_project',
   'list_project_layouts',
-  'get_usage',
   'search_knowledge',
   'get_review_request',
   'list_review_receipts',
@@ -388,12 +392,11 @@ describe('station-control authority table: shared leaves', () => {
     // Slice B: its status poll, get_review_request, now needs a recorded
     // owner too, so it no longer loosens this entry.
   };
-  // Every dispatch tool shares the SSH list with a caller-less read
-  // (list_delegation_environments). Slice B: the Project read (get_project)
-  // and navigate_to are principal-scoped, so they no longer admit the
-  // caller-less request dispatch refuses.
-  for (const name of SLICE_C_DISPATCH)
-    EXPECTED_WEAKENED[name] = ['GET /api/environments/ssh'];
+  // Slice B review (M2): the SSH environment list is an operator-wide read,
+  // but every dispatch tool reaches the same leaf with any verified caller,
+  // so the leaf is only as strict as dispatch until slice C. No read loosens
+  // a dispatch tool any more.
+  EXPECTED_WEAKENED.list_delegation_environments = ['GET /api/environments/ssh'];
 
   test('the complete list of tool routes the guard enforces more loosely than the tool', () => {
     const weakened: Record<string, string[]> = {};

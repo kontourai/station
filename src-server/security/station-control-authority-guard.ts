@@ -45,10 +45,12 @@
  * 2. {@link STATION_CONTROL_GUARD_CARVE_OUTS}, by exact method and path.
  */
 import type { MiddlewareHandler } from 'hono';
+import { PrincipalUnresolvedError } from '../services/identity/principal-resolver.js';
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
   type StationControlRefusal,
+  stationControlRefusal,
   stationControlRefusalBody,
 } from '../tools/station-control-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
@@ -253,7 +255,29 @@ export function createStationControlAuthorityGuard(
         body,
       ),
     });
-    if (!refusal) return next();
+    if (!refusal) {
+      await next();
+      // Slice B: a request that acts for no principal (caller-less, or a
+      // session with no recorded owner) may still reach a leaf whose route
+      // resolves the request principal (a dispatch read such as
+      // `GET /api/orchestration/sessions/read-model`). That resolution
+      // throws `PrincipalUnresolvedError`, which the app's error handler
+      // would answer as an internal error. Answer it with the typed refusal
+      // instead: it is a statement about the caller, not a server fault.
+      if (c.error instanceof PrincipalUnresolvedError) {
+        const typed = stationControlRefusal(
+          caller
+            ? 'station_control_role_required'
+            : 'station_control_caller_required',
+        );
+        options.onRefusal?.(typed, method, path);
+        c.res = new Response(JSON.stringify(stationControlRefusalBody(typed)), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return;
+    }
     options.onRefusal?.(refusal, method, path);
     return c.json(stationControlRefusalBody(refusal), 403);
   };
