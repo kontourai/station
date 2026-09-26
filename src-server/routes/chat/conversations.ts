@@ -1573,7 +1573,17 @@ export function createConversationRoutes(
     // the authority-gated projection below.
     let messages: ConversationMessage[] = [];
     let absence: 'not-found' | 'no-messages' | undefined;
-    if (adapter && !hosted) {
+    // #2377 slice B: the memory store serves a transcript by conversation id
+    // alone. A station-control agent reads only a conversation its session's
+    // owner owns (a bound operator caller is not scoped); anyone else's
+    // falls through to the owner-scoped runtime projection below, which
+    // answers as if the store held nothing.
+    const storeReadable =
+      !adapter ||
+      !isPrincipalScopedAgentRequest(request) ||
+      (await adapter.getConversation(conversationId))?.userId ===
+        authority.userId;
+    if (adapter && !hosted && storeReadable) {
       // archive#4080 follow-up: the conventional-userId-then-
       // conversation-lookup fallback is the ONE shared definition of "which
       // store serves this conversation" — see
