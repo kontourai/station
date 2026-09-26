@@ -603,7 +603,7 @@ export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
  * Only the implicit development case consults them — an explicit
  * `--instance` or an explicit home is taken as stated, exactly as before.
  */
-export function resolveServiceTarget(
+function resolveServiceTarget(
   lifecycle: ServiceLifecycleArgs,
   fs: ServiceFs,
 ): string {
