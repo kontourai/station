@@ -753,6 +753,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
+  // #2663: real lookup against a temp HOME — may spawn a fake `$SHELL -ic`,
+  // and launches a fake `muse` through the production MuseAdapter spawn.
+  'src-server/runtime/bootstrap/__tests__/native-engine-adoption.path-resolution.process.test.ts',
   // station#3218: builds the store-integrity probe exactly as
   // `esbuild.config.mjs` does and runs that bundle as a REAL child against
   // real corrupt bytes, so its 0/1/2/3 exit contract is proven by an actual
