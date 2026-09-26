@@ -19,6 +19,10 @@ import type { BrokerNativeOfferAdapter } from './self-hosted-broker-connector.js
 
 // The signed proof contract bounds each exact SDP digest input at 64 KiB.
 const SDP_LIMIT = 64 * 1024;
+const ECHO_WAIT_MS = 3_000;
+const ECHO_POLL_MS = 40;
+const ECHO_MESSAGE_LIMIT = 8;
+const ECHO_MESSAGE_BYTES_LIMIT = 65_536;
 const FINGERPRINT = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const PROOF_NONCE = /^[A-Za-z0-9_-]{43}$/;
 
@@ -264,6 +268,47 @@ export function createNativeV2PionDiagnosticAdapter(
         return {
           answerSdp: peer.answer.sdp,
           stationProof,
+          collectDiagnosticEcho: async (responseSignal: AbortSignal) => {
+            const deadline = Date.now() + ECHO_WAIT_MS;
+            while (true) {
+              responseSignal.throwIfAborted();
+              assertOperationCurrent();
+              const messages = peer!.readMessages();
+              if (
+                messages.length > ECHO_MESSAGE_LIMIT ||
+                messages.some(
+                  (message) =>
+                    typeof message !== 'string' ||
+                    Buffer.byteLength(message) > ECHO_MESSAGE_BYTES_LIMIT,
+                )
+              )
+                throw new Error('native_pion_diagnostic_echo_unbounded');
+              const totalBytes = messages.reduce(
+                (total, message) => total + Buffer.byteLength(message),
+                0,
+              );
+              if (totalBytes > ECHO_MESSAGE_LIMIT * ECHO_MESSAGE_BYTES_LIMIT)
+                throw new Error('native_pion_diagnostic_echo_unbounded');
+              if (messages.length > 0) return Object.freeze([...messages]);
+              if (Date.now() >= deadline) return Object.freeze([]);
+              await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(done, ECHO_POLL_MS);
+                const aborted = () => {
+                  clearTimeout(timer);
+                  responseSignal.removeEventListener('abort', aborted);
+                  reject(responseSignal.reason);
+                };
+                function done() {
+                  responseSignal.removeEventListener('abort', aborted);
+                  resolve();
+                }
+                responseSignal.addEventListener('abort', aborted, {
+                  once: true,
+                });
+                if (responseSignal.aborted) aborted();
+              });
+            }
+          },
           dispose,
         };
       } catch (error) {
