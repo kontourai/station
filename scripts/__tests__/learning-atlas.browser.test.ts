@@ -54,6 +54,22 @@ async function pageAt(width: number, suffix = '') {
   contexts.push(context);
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
+    const sourcePath =
+      url.pathname.startsWith('/sources/') && url.pathname.endsWith('.txt')
+        ? decodeURIComponent(url.pathname.slice('/sources/'.length, -4))
+        : null;
+    if (
+      url.origin === 'http://atlas.test' &&
+      sourcePath &&
+      atlas.sourcePaths.includes(sourcePath)
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/plain; charset=utf-8',
+        body: await readFile(sourcePath, 'utf8'),
+      });
+      return;
+    }
     const asset =
       url.origin === 'http://atlas.test' &&
       assets.get(url.pathname === '/' ? '/index.html' : url.pathname);
@@ -91,6 +107,20 @@ test('a reader follows a concept into its exact module, searches, and returns th
       `${atlas.revision}/docs/architecture/module-map.md#sessioncommandmodule$`,
     ),
   );
+  const sourceLink = page.getByRole('article').getByRole('link', {
+    name: 'src-server/services/orchestration/__tests__/session-command-module.test.ts',
+    exact: true,
+  });
+  await browserExpect(sourceLink).toHaveAttribute(
+    'href',
+    'sources/src-server/services/orchestration/__tests__/session-command-module.test.ts.txt',
+  );
+  await sourceLink.click();
+  await browserExpect(page.locator('body')).toContainText(
+    'createSessionCommandModule',
+  );
+  await page.goBack();
+  await browserExpect(page.getByRole('article')).toContainText('indeterminate');
   await page.getByRole('searchbox').fill('docs/reference/station-docs.md');
   await browserExpect(page.getByRole('status')).toContainText(
     '1 documents match',
@@ -138,6 +168,10 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
   await page.keyboard.press('Enter');
   await browserExpect(page.locator('#content')).toBeFocused();
   await browserExpect(page.getByRole('article')).toContainText('indeterminate');
+  await page.reload();
+  await browserExpect(
+    page.getByRole('article').getByRole('heading'),
+  ).toHaveText('SessionCommandModule');
   await page.goto(
     'http://atlas.test/#doc=docs%2Farchitecture.md&section=data-flow-chat-request',
   );

@@ -17,9 +17,10 @@ python3 -m http.server 41781 --bind 127.0.0.1 --directory .kontourai/docs-learni
 Open `http://127.0.0.1:41781`. Choose a concept in the expandable navigation,
 open an interface beneath it, or search the full Markdown library. Documents
 are rendered from their checked-in text; links between documents stay in the
-reader. Code links open the recorded Git revision on GitHub. Local unpublished
-changes may not exist there yet; use the displayed repository path in your
-editor for those changes.
+reader. References to tracked source files open local text snapshots, and each
+document offers its original Markdown. This works before a branch is published.
+GitHub links are a secondary route to the recorded revision and require that
+revision to exist on the remote. Rebuild to refresh the local snapshots.
 
 The atlas includes every tracked Markdown file, including hidden directories,
 READMEs, historical records, changesets, and fixture instructions. Inclusion is

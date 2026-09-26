@@ -18,8 +18,20 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
 const repository = 'https://github.com/kontourai/station';
+const textSource =
+  /\.(?:[cm]?[jt]sx?|rs|json|ya?ml|toml|sh|py|css|html|mdx?|markdown)$/i;
 
-export function learningHref(href, document, files, revision) {
+function sourceSnapshotHref(file) {
+  return `sources/${file.split('/').map(encodeURIComponent).join('/')}.txt`;
+}
+
+export function learningHref(
+  href,
+  document,
+  files,
+  revision,
+  sourceFiles = new Set(),
+) {
   const safe = defaultUrlTransform(href);
   if (!safe || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(safe)) return safe;
   const [pathname, fragment = ''] = safe.split('#');
@@ -35,6 +47,8 @@ export function learningHref(href, document, files, revision) {
     return '';
   if (files.has(destination))
     return `#doc=${encodeURIComponent(destination)}${fragment ? `&section=${encodeURIComponent(fragment)}` : ''}`;
+  if (sourceFiles.has(destination) && textSource.test(destination))
+    return sourceSnapshotHref(destination);
   const encoded = destination.split('/').map(encodeURIComponent).join('/');
   return `${repository}/blob/${revision}/${encoded}${fragment ? `#${encodeURIComponent(fragment)}` : ''}`;
 }
@@ -82,7 +96,9 @@ export function renderLearningDocument(
         ? createElement(
             'a',
             {
-              href: `${repository}/blob/${revision}/${String(children).split('/').map(encodeURIComponent).join('/')}`,
+              href: textSource.test(String(children))
+                ? sourceSnapshotHref(String(children))
+                : `${repository}/blob/${revision}/${String(children).split('/').map(encodeURIComponent).join('/')}`,
             },
             createElement('code', null, children),
           )
@@ -93,7 +109,8 @@ export function renderLearningDocument(
       {
         remarkPlugins: [remarkGfm],
         components,
-        urlTransform: (href) => learningHref(href, document, files, revision),
+        urlTransform: (href) =>
+          learningHref(href, document, files, revision, sourceFiles),
       },
       source,
     ),
@@ -178,6 +195,16 @@ export async function buildLearningGuide({ check = false } = {}) {
       ...renderLearningDocument(text, moduleMap, files, revision, sourceFiles),
     })),
     documents,
+    sourcePaths: [
+      ...new Set([
+        ...files,
+        ...documents.flatMap((doc) =>
+          [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map(
+            (match) => decodeURIComponent(match[1]),
+          ),
+        ),
+      ]),
+    ].sort(),
   };
   if (!check) {
     const output = path.join(root, '.kontourai/docs-learning');
@@ -199,6 +226,13 @@ export async function buildLearningGuide({ check = false } = {}) {
       path.join(output, 'inventory.json'),
       `${JSON.stringify({ revision, documents: documents.map(({ path: file, digest, review }) => ({ path: file, digest, review })) }, null, 2)}\n`,
     );
+    for (const file of data.sourcePaths) {
+      if (!sourceFiles.has(file))
+        throw new Error(`Untracked source snapshot: ${file}`);
+      const destination = path.join(output, 'sources', `${file}.txt`);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(path.join(root, file), destination);
+    }
   }
   console.log(
     `${check ? 'Validated' : 'Built'} learning atlas: ${catalog.groups.length} branches, ${modules.length} module sections, ${documents.length} Markdown documents. Semantic audit status remains separate.`,

@@ -119,8 +119,8 @@ existing interface when it already hides the relevant complexity.
 ## Foundation implemented in this tranche
 
 - A local reader with ten concept branches, 65 current module sections,
-  full-library search, document outlines, source links, and keyboard/deep-link
-  navigation. Its inventory now includes 393 Markdown files.
+  full-library search, document outlines, local Markdown/code snapshots, and
+  keyboard/deep-link navigation. Its inventory now includes 393 Markdown files.
 - The same canonical manual and architecture sections compile into 91 static
   MCP topics. Existing IDs remain; parent filtering exposes the tree. Payloads
   carry source locations and a documentation digest. Runtime retrieval remains

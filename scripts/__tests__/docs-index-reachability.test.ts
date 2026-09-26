@@ -203,6 +203,15 @@ describe('learning atlas', () => {
     expect(
       learningHref('../src-server/index.ts', 'docs/guide.md', files, 'abc'),
     ).toBe('https://github.com/kontourai/station/blob/abc/src-server/index.ts');
+    expect(
+      learningHref(
+        '../src-server/index.ts',
+        'docs/guide.md',
+        files,
+        'abc',
+        new Set(['src-server/index.ts']),
+      ),
+    ).toBe('sources/src-server/index.ts.txt');
     expect(learningHref('../../outside', 'docs/guide.md', files, 'abc')).toBe(
       '',
     );

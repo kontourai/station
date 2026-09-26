@@ -78,7 +78,7 @@ function showDocument(doc, section, module) {
     atlas.groups.find((entry) => entry.modules.includes(module.title));
   breadcrumbs.innerHTML = `<a href="#">Station</a> / ${group ? `<a href="${groupHref(group.id)}">${escapeText(group.title)}</a> / ` : ''}${escapeText(module?.title ?? doc.title)}`;
   const sourcePath = doc.path.split('/').map(encodeURIComponent).join('/');
-  readingStatus.innerHTML = `<div class="doc-actions"><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
+  readingStatus.innerHTML = `<div class="doc-actions"><a href="sources/${sourcePath}.txt">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
     <p class="provenance">${escapeText(doc.path)} · ${escapeText(doc.review)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p>`;
   article.innerHTML = module?.html ?? doc.html;
   const prefix = module ? moduleHref(module.id) : documentHref(doc.path);
@@ -97,11 +97,9 @@ function showDocument(doc, section, module) {
 }
 
 function render(event) {
-  if (location.hash === '#content') {
-    document.getElementById('content').focus();
-    return;
-  }
-  const params = new URLSearchParams(location.hash.slice(1));
+  const params = new URLSearchParams(
+    location.hash === '#content' ? '' : location.hash.slice(1),
+  );
   const branch = params.get('branch');
   const module = atlas.modules.find(
     (entry) => entry.id === params.get('module'),
@@ -200,6 +198,12 @@ async function start() {
     document.getElementById('provenance').textContent =
       `${atlas.documents.length} Markdown files · ${atlas.revision.slice(0, 12)}${atlas.dirty ? ' + local changes' : ''} · built ${atlas.builtAt}`;
     search.addEventListener('input', searchLibrary);
+    document.querySelector('.skip').addEventListener('click', (event) => {
+      event.preventDefault();
+      const content = document.getElementById('content');
+      content.focus();
+      content.scrollIntoView({ block: 'start' });
+    });
     window.addEventListener('hashchange', render);
     render();
   } catch (error) {
