@@ -3,26 +3,19 @@
  * server's core-update route run after `git pull`, before spawning
  * `npm run dependencies:install`. Driven against real temp trees.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   OWNED_DEPENDENCY_INSTALL_SCRIPT,
   ownedDependencyInstallerUnavailable,
 } from '../owned-dependency-installer';
 
-const roots: string[] = [];
-
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function tree(options: { manifest?: string; lifecycle?: boolean } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'owned-installer-'));
-  roots.push(root);
+  const root = makeTempDir('owned-installer-');
   if (options.manifest !== undefined) {
     writeFileSync(join(root, 'package.json'), options.manifest);
   }

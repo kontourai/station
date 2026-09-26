@@ -40,10 +40,6 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { resolveGitInfo } from '@kontourai/station-shared/git';
 import {
-  OWNED_DEPENDENCY_INSTALL_SCRIPT,
-  ownedDependencyInstallerUnavailable,
-} from '@kontourai/station-shared/owned-dependency-installer';
-import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
   readInstanceRegistry,
@@ -56,6 +52,10 @@ import {
   appendLifecycleEvent,
   type StopIntent,
 } from '@kontourai/station-shared/lifecycle-events';
+import {
+  OWNED_DEPENDENCY_INSTALL_SCRIPT,
+  ownedDependencyInstallerUnavailable,
+} from '@kontourai/station-shared/owned-dependency-installer';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,

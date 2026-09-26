@@ -19,13 +19,13 @@ import type {
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
 import {
-  DEFAULT_SERVER_PORT,
-  DEFAULT_UI_PORT,
-} from '@kontourai/station-shared/ports';
-import {
   OWNED_DEPENDENCY_INSTALL_SCRIPT,
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
+import {
+  DEFAULT_SERVER_PORT,
+  DEFAULT_UI_PORT,
+} from '@kontourai/station-shared/ports';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
