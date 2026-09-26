@@ -57,6 +57,10 @@ import {
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
 import {
+  STATION_RELEASE_RINGS,
+  type StationReleaseRing,
+} from '@kontourai/station-shared/ports';
+import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
@@ -1129,9 +1133,35 @@ interface PackagedReleaseManifest {
   sha: string;
   ref: string;
   createdAt: string;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
+  channel: PackagedRuntimeChannel;
+  releaseChannel: PackagedReleaseChannel;
   prerelease: boolean;
+}
+
+type PackagedReleaseChannel = StationReleaseRing;
+type PackagedRuntimeChannel =
+  (typeof STATION_RELEASE_RINGS)[PackagedReleaseChannel]['runtimeChannel'];
+
+/**
+ * The installable packaged rings come from config/channel-ports.json (via the
+ * generated STATION_RELEASE_RINGS); a Nightly-staging bundle is evidence-only
+ * and deliberately absent. A prerelease ring's tag is `vX.Y.Z-<ring>.N`.
+ */
+function packagedReleaseTag(ring: PackagedReleaseChannel): RegExp {
+  const label = STATION_RELEASE_RINGS[ring].prerelease
+    ? `-${ring}\\.(?:[1-9]\\d*)`
+    : '';
+  return new RegExp(
+    `^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)${label}$`,
+  );
+}
+
+function isPackagedReleaseChannel(
+  value: unknown,
+): value is PackagedReleaseChannel {
+  return (
+    typeof value === 'string' && Object.hasOwn(STATION_RELEASE_RINGS, value)
+  );
 }
 
 export interface InstanceStateRecord {
@@ -2923,17 +2953,12 @@ export function validatePackagedReleaseManifest(
     !Number.isFinite(Date.parse(candidate.createdAt)) ||
     new Date(Date.parse(candidate.createdAt)).toISOString() !==
       candidate.createdAt ||
-    (candidate.channel !== 'stable' && candidate.channel !== 'beta') ||
-    (candidate.releaseChannel !== 'stable' &&
-      candidate.releaseChannel !== 'preview') ||
+    !isPackagedReleaseChannel(candidate.releaseChannel) ||
     candidate.channel !==
-      (candidate.releaseChannel === 'preview' ? 'beta' : 'stable') ||
-    candidate.prerelease !== (candidate.releaseChannel === 'preview') ||
-    (candidate.releaseChannel === 'stable'
-      ? !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate.ref)
-      : !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/.test(
-          candidate.ref,
-        ))
+      STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
+    candidate.prerelease !==
+      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
+    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
   ) {
     return null;
   }
@@ -2942,9 +2967,9 @@ export function validatePackagedReleaseManifest(
     sha: candidate.sha,
     ref: candidate.ref,
     createdAt: candidate.createdAt,
-    channel: candidate.channel,
+    channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
     releaseChannel: candidate.releaseChannel,
-    prerelease: candidate.prerelease,
+    prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
   };
 }
 
@@ -4812,8 +4837,8 @@ export function homeRestore(
 
 interface PackagedInstallState {
   schemaVersion: 3;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
+  channel: PackagedRuntimeChannel;
+  releaseChannel: PackagedReleaseChannel;
   installRoot: string;
   stationHome: string;
   stationRoot: string;
@@ -4851,10 +4876,8 @@ function readSafePackagedInstallState(path: string): PackagedInstallState {
   }
   if (
     value.schemaVersion !== 3 ||
-    !(
-      (value.channel === 'stable' && value.releaseChannel === 'stable') ||
-      (value.channel === 'beta' && value.releaseChannel === 'preview')
-    )
+    !isPackagedReleaseChannel(value.releaseChannel) ||
+    value.channel !== STATION_RELEASE_RINGS[value.releaseChannel].runtimeChannel
   ) {
     throw new Error('packaged install state is malformed');
   }
@@ -4905,7 +4928,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta); the
+  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {

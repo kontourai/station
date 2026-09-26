@@ -4235,6 +4235,7 @@ describe('upgrade', () => {
   it.each([
     { runtimeChannel: 'stable', releaseChannel: 'stable' },
     { runtimeChannel: 'beta', releaseChannel: 'preview' },
+    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
     async ({ runtimeChannel, releaseChannel }) => {
@@ -4248,11 +4249,15 @@ describe('upgrade', () => {
         `${JSON.stringify({
           schemaVersion: 2,
           sha: 'b'.repeat(40),
-          ref: releaseChannel === 'stable' ? 'v1.2.3' : 'v1.2.3-preview.4',
+          ref: {
+            stable: 'v1.2.3',
+            preview: 'v1.2.3-preview.4',
+            nightly: 'v1.2.3-nightly.242704',
+          }[releaseChannel],
           createdAt: '2026-07-22T00:00:00.000Z',
           channel: runtimeChannel,
           releaseChannel,
-          prerelease: releaseChannel === 'preview',
+          prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
@@ -4429,6 +4434,89 @@ describe('upgrade', () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it.each([
+    { state: { channel: 'canary', releaseChannel: 'canary' } },
+    {
+      state: { channel: 'nightly-staging', releaseChannel: 'nightly-staging' },
+    },
+    { state: { channel: 'beta', releaseChannel: 'nightly' } },
+  ])(
+    'rejects packaged install state for an unknown ring pairing $state.channel/$state.releaseChannel',
+    async ({ state }) => {
+      const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
+      const release = join(installRoot, 'releases', 'd'.repeat(64));
+      ensureDir(release);
+      writeFileSync(
+        join(release, '.station-release.json'),
+        `${JSON.stringify({
+          schemaVersion: 2,
+          sha: 'e'.repeat(40),
+          ref: 'v1.2.3-nightly.7',
+          createdAt: '2026-07-22T00:00:00.000Z',
+          channel: 'nightly',
+          releaseChannel: 'nightly',
+          prerelease: true,
+        })}\n`,
+      );
+      writeFileSync(
+        join(installRoot, '.station-release-state.json'),
+        `${JSON.stringify({
+          schemaVersion: 3,
+          ...state,
+          installRoot,
+          stationRoot: join(TEST_ROOT, 'root-unknown-ring'),
+          stationHome: join(TEST_ROOT, 'home-unknown-ring'),
+        })}\n`,
+        { mode: 0o600 },
+      );
+      const execFileSync = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: release,
+        childProcessMock: { execFileSync },
+      });
+
+      await expect(lifecycle.upgrade()).rejects.toThrow(
+        'packaged install state is malformed',
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts nightly packaged provenance and rejects unknown or mismatched rings', async () => {
+    const { lifecycle } = await loadLifecycleModule({});
+    const provenance = (overrides: Record<string, unknown>) => ({
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.7.0-nightly.242704',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+      ...overrides,
+    });
+    expect(lifecycle.validatePackagedReleaseManifest(provenance({}))).toEqual(
+      provenance({}),
+    );
+    for (const overrides of [
+      { channel: 'canary', releaseChannel: 'canary' },
+      // Staging bundles are evidence-only, never an installable ring.
+      {
+        channel: 'nightly-staging',
+        releaseChannel: 'nightly-staging',
+        ref: 'nightly-2026-09-25-1',
+      },
+      { channel: 'beta' },
+      { prerelease: false },
+      { ref: 'v0.7.0-preview.3' },
+      { ref: 'v0.7.0' },
+      { ref: 'v0.7.0-nightly.0' },
+    ])
+      expect(
+        lifecycle.validatePackagedReleaseManifest(provenance(overrides)),
+        JSON.stringify(overrides),
+      ).toBeNull();
   });
 
   it('rejects a packaged release whose provenance channel disagrees with persisted state', async () => {
