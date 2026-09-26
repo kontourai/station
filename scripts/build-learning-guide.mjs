@@ -20,8 +20,43 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
 const repository = 'https://github.com/kontourai/station';
-const textSource =
-  /\.(?:[cm]?[jt]sx?|rs|json|ya?ml|toml|sh|py|css|html|mdx?|markdown)$/i;
+const textSourceExtension =
+  /\.(?:[cm]?[jt]sx?|rs|swift|go|kt|kts|java|c|cc|cpp|cxx|h|hpp|m|mm|cs|fsx?|jsonc?|jsonl|sarif|ya?ml|toml|xml|plist|entitlements|xcprivacy|xcconfig|pbxproj|xcworkspacedata|xcsettings|xcscheme|storyboard|gradle|properties|pro|lock|mod|sum|ini|conf|cfg|sh|bash|zsh|fish|ps1|bat|cmd|nsh|py|rb|sql|graphql|proto|css|scss|html|svg|mdx?|markdown|txt|csv|patch)$/i;
+const textSourceNames = new Set([
+  'Dockerfile',
+  'Containerfile',
+  'Makefile',
+  'GNUmakefile',
+  'Caddyfile',
+  'Podfile',
+  'Gemfile',
+  'justfile',
+  'Justfile',
+  'gradlew',
+  'station',
+  'CODEOWNERS',
+  'SPDX-LICENSE',
+  '.dockerignore',
+  '.editorconfig',
+  '.env.example',
+  '.gitattributes',
+  '.gitignore',
+  '.gitkeep',
+  '.gitleaksignore',
+  '.npmrc',
+  '.nvmrc',
+  '.yarnrc',
+]);
+
+function isTextSource(file) {
+  const name = path.posix.basename(file);
+  return (
+    textSourceExtension.test(name) ||
+    textSourceNames.has(name) ||
+    /^(?:LICENSE|COPYING|NOTICE)(?:-[A-Z0-9.-]+)?$/.test(name) ||
+    /^\.githooks\/[^/.]+$/.test(file)
+  );
+}
 
 function sourceSnapshotHref(file) {
   return `sources/${file.split('/').map(encodeURIComponent).join('/')}.txt`;
@@ -42,7 +77,7 @@ export function learningHref(
     const file = decodeURIComponent(pathname);
     if (files.has(file))
       return `#doc=${encodeURIComponent(file)}${fragment ? `&section=${encodeURIComponent(decodeURIComponent(fragment))}` : ''}`;
-    if (sourceFiles.has(file) && textSource.test(file))
+    if (sourceFiles.has(file) && isTextSource(file))
       return sourceSnapshotHref(file);
   }
   if (!safe || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(safe)) return safe;
@@ -59,7 +94,7 @@ export function learningHref(
     return '';
   if (files.has(destination))
     return `#doc=${encodeURIComponent(destination)}${fragment ? `&section=${encodeURIComponent(fragment)}` : ''}`;
-  if (sourceFiles.has(destination) && textSource.test(destination))
+  if (sourceFiles.has(destination) && isTextSource(destination))
     return sourceSnapshotHref(destination);
   const encoded = destination.split('/').map(encodeURIComponent).join('/');
   return `${repository}/blob/${revision}/${encoded}${fragment ? `#${encodeURIComponent(fragment)}` : ''}`;
@@ -108,7 +143,7 @@ export function renderLearningDocument(
         ? createElement(
             'a',
             {
-              href: textSource.test(String(children))
+              href: isTextSource(String(children))
                 ? sourceSnapshotHref(String(children))
                 : `${repository}/blob/${revision}/${String(children).split('/').map(encodeURIComponent).join('/')}`,
             },

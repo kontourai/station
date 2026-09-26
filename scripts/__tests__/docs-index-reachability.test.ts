@@ -446,6 +446,107 @@ describe('learning atlas', () => {
     ).toBe('https://example.com/guide');
   });
 
+  it('routes tracked native and extensionless text locally through links and inline source references', () => {
+    const sources = new Set([
+      'Dockerfile',
+      'station',
+      'justfile',
+      '.githooks/pre-push',
+      '.githooks/commit-msg',
+      '.gitignore',
+      '.npmrc',
+      '.nvmrc',
+      '.env.example',
+      'LICENSE',
+      'scripts/__tests__/fixtures/sbom/SPDX-LICENSE',
+      'patches/native/LICENSE-APACHE',
+      'patches/native/LICENSE-MIT',
+      'scripts/templates/android/StationAndroidInsetsBridge.kt',
+      'src-desktop/Cargo.lock',
+      'src-desktop/Info.ios.plist',
+      'src-desktop/gen/android/app/build.gradle.kts',
+      'native/Bridge.swift',
+      'native/Bridge.h',
+      'native/Bridge.mm',
+      'native/bridge.go',
+      'native/go.mod',
+      'native/go.sum',
+      'native/Main.java',
+      'native/project.pbxproj',
+      'native/App.entitlements',
+      'native/PrivacyInfo.xcprivacy',
+      'native/gradlew',
+      'native/Podfile',
+      'native/gradle.properties',
+      'native/proguard-rules.pro',
+      'native/config.xml',
+      'native/Runner.cs',
+      'scripts/check.ps1',
+    ]);
+    const files = new Set(['docs/guide.md']);
+    for (const file of sources) {
+      const local = `sources/${file}.txt`;
+      expect(
+        learningHref(`../${file}`, 'docs/guide.md', files, 'current', sources),
+        file,
+      ).toBe(local);
+      for (const revision of ['main', 'current'])
+        expect(
+          learningHref(
+            `https://github.com/kontourai/station/blob/${revision}/${file}`,
+            'docs/guide.md',
+            files,
+            'current',
+            sources,
+          ),
+          file,
+        ).toBe(local);
+      const historical = `https://github.com/kontourai/station/blob/older/${file}`;
+      expect(
+        learningHref(historical, 'docs/guide.md', files, 'current', sources),
+      ).toBe(historical);
+      expect(
+        renderLearningDocument(
+          `\`${file}\``,
+          'docs/guide.md',
+          files,
+          'current',
+          sources,
+        ).html,
+      ).toContain(`href="${local}"`);
+    }
+  });
+
+  it('keeps binary assets and untracked text outside local source snapshots', () => {
+    const sources = new Set([
+      'icons/icon.png',
+      'icons/icon.icns',
+      'icons/icon.ico',
+      'photo.jpg',
+      'font.woff2',
+      'archive.jar',
+      'manual.pdf',
+      '.DS_Store',
+      '.githooks/icon.png',
+    ]);
+    const files = new Set(['README.md']);
+    for (const file of [...sources, 'untracked.swift']) {
+      const remote = `https://github.com/kontourai/station/blob/current/${file}`;
+      expect(learningHref(file, 'README.md', files, 'current', sources)).toBe(
+        remote,
+      );
+      expect(
+        renderLearningDocument(
+          `\`${file}\``,
+          'README.md',
+          files,
+          'current',
+          sources,
+        ).html,
+      ).not.toContain('href="sources/');
+    }
+  });
+
   it('renders useful Markdown, duplicate heading anchors, and inert raw HTML', () => {
     const rendered = renderLearningDocument(
       '# Guide\n\n## Recovery\n\n## Recovery\n\n| State | Meaning |\n| --- | --- |\n| Pending | Not complete |\n\n<script>alert(1)</script>\n\n[Unsafe](javascript:alert)\n\n```mermaid\ngraph LR\nA-->B\n```',

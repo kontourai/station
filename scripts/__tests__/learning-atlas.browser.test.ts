@@ -331,7 +331,13 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
   const hash = (bytes: string | Buffer) =>
     createHash('sha256').update(bytes).digest('hex');
   const code = Buffer.from('export const evidence = "original café";\r\n');
-  const guide = '# Snapshot guide\n\n[Supporting code](owner.ts)\n';
+  const nativeSources = {
+    'native/Bridge.kt': Buffer.from('class StationBridge\n'),
+    'native/Bridge.swift': Buffer.from('struct StationBridge {}\n'),
+    Dockerfile: Buffer.from('FROM node:24\n'),
+  };
+  const guide =
+    '# Snapshot guide\n\n[Supporting code](owner.ts)\n\n[Native bridge](native/Bridge.kt)\n\n[Container build](Dockerfile)\n\n`native/Bridge.swift`\n\n[Binary icon](icon.png)\n\n[Historical bridge](https://github.com/kontourai/station/blob/older/native/Bridge.kt)\n';
   const moduleMap = '# Modules\n\n## Snapshot module\n\n`owner.ts`\n';
   const records = [
     ['README.md', guide],
@@ -351,6 +357,8 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
     'README.md': guide,
     'docs/architecture/module-map.md': moduleMap,
     'owner.ts': code,
+    ...nativeSources,
+    'icon.png': Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]),
     'docs/learn/atlas.json': JSON.stringify({
       version: 1,
       groups: [
@@ -393,6 +401,12 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
     const originalUrl = original.sourceSnapshots['owner.ts'];
     expect(originalUrl).toBe(`sources/${hash(code)}/owner.ts.txt`);
     expect(await readFile(join(output, originalUrl))).toEqual(code);
+    for (const [file, bytes] of Object.entries(nativeSources)) {
+      const sourceUrl = `sources/${hash(bytes)}/${file}.txt`;
+      expect(original.sourceSnapshots[file]).toBe(sourceUrl);
+      expect(await readFile(join(output, sourceUrl))).toEqual(bytes);
+    }
+    expect(original.sourceSnapshots['icon.png']).toBeUndefined();
 
     context = await browser.newContext();
     await context.route('http://snapshot.test/**', async (route) => {
@@ -418,6 +432,26 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
     await browserExpect(cached.locator('.review-status')).toContainText(
       'Reviewed against code',
     );
+    await browserExpect(
+      cached.getByRole('link', { name: 'Binary icon' }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/kontourai/station/blob/${original.revision}/icon.png`,
+    );
+    await browserExpect(
+      cached.getByRole('link', { name: 'Historical bridge' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/kontourai/station/blob/older/native/Bridge.kt',
+    );
+    await cached.getByRole('link', { name: 'Native bridge' }).click();
+    await browserExpect(cached.locator('body')).toHaveText(
+      'class StationBridge\n',
+    );
+    await cached.goBack();
+    await cached.getByRole('link', { name: 'Container build' }).click();
+    await browserExpect(cached.locator('body')).toHaveText('FROM node:24\n');
+    await cached.goBack();
     const lazy = await context.newPage();
     await lazy.goto('http://snapshot.test/');
     await browserExpect(
