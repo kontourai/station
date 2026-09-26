@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 import {
   registerPluginValidateRoutes,
   validatePluginSource,
@@ -58,7 +59,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 describe('station-control platform tools (characterization)', () => {
@@ -231,61 +233,35 @@ describe('station-control platform tools (characterization)', () => {
     });
   });
 
-  test('create_integration posts the payload with kind:mcp and forwards the created envelope', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }, 201));
-    const tools = await registerTools();
-
-    const result = await tools.create_integration({
-      id: 'demo-server',
-      transport: 'stdio',
-      command: 'node',
-      args: ['server.js'],
-    });
-
-    expect(result).toEqual({
-      content: [
-        { type: 'text', text: JSON.stringify({ success: true }, null, 2) },
-      ],
-    });
-    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE}/integrations`);
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          id: 'demo-server',
-          transport: 'stdio',
-          command: 'node',
-          args: ['server.js'],
-          kind: 'mcp',
-        }),
-      }),
-    );
-  });
-
-  test('create_integration forwards the error envelope when creation fails', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ success: false, error: 'id already exists' }, 400),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.create_integration({
-      id: 'demo-server',
-      transport: 'stdio',
-    });
-
-    expect(result).toEqual({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            { success: false, error: 'id already exists' },
-            null,
-            2,
-          ),
-        },
-      ],
-    });
-  });
+  // #2377 slice A (owner decision 1): adding an integration or a provider
+  // runs code on this host or stores credentials, so it is a person's step.
+  // The tool refuses before calling Station, even for a bound operator
+  // caller, and says what to do instead.
+  test.each([
+    [
+      'create_integration',
+      { id: 'demo-server', transport: 'stdio', command: 'node' },
+    ],
+    ['install_registry_integration', { id: 'github' }],
+    ['create_provider', { type: 'ollama', name: 'local', config: {} }],
+  ] as const)(
+    '%s is a person’s step: refused before any request',
+    async (name, args) => {
+      const tools = await registerTools();
+      const result = await (tools[name] as ToolHandler)(args);
+      const payload = JSON.parse(result.content[0].text) as {
+        success: boolean;
+        code: string;
+        error: string;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code: 'station_control_person_only',
+      });
+      expect(payload.error).toMatch(/Ask the person to do it in Station/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   test('delete_integration issues the DELETE request and forwards the bare-success envelope', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }));
@@ -328,37 +304,6 @@ describe('station-control platform tools (characterization)', () => {
     });
     expect(fetchMock.mock.calls[0][0]).toBe(
       `${API_BASE}/api/registry/integrations`,
-    );
-  });
-
-  test('install_registry_integration posts the id and forwards the install-result envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ success: true, message: 'Installed' }),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.install_registry_integration({ id: 'github' });
-
-    expect(result).toEqual({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            { success: true, message: 'Installed' },
-            null,
-            2,
-          ),
-        },
-      ],
-    });
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${API_BASE}/api/registry/integrations/install`,
-    );
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ id: 'github' }),
-      }),
     );
   });
 

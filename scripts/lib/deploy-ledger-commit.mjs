@@ -83,13 +83,14 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, realpathSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEPLOY_LEDGER_JSON_PATH,
   DEPLOY_LEDGER_MD_PATH,
 } from '../deploy-ledger.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 
 export const LEDGER_COMMIT_MAX_ATTEMPTS = 3;
 const REMOTE = 'origin';
@@ -319,13 +320,10 @@ function main(argv) {
   }
 }
 
-// realpathSync both sides: an unresolved argv[1] under a symlinked workspace
+// invokedDirectly realpaths both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
 // feature exists to close.
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

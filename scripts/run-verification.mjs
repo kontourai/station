@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   coordinateVerification,
   defaultCoordinatorRoot,
@@ -616,5 +614,4 @@ async function main() {
   process.exitCode = await runVerificationCli(process.argv.slice(2));
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  void main();
+if (invokedDirectly(import.meta.url)) void main();

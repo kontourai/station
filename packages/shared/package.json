@@ -42,6 +42,7 @@
     "./mcp": "./src/mcp.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
+    "./owned-dependency-installer": "./src/owned-dependency-installer.ts",
     "./node-http-compat": "./src/node-http-compat.mjs",
     "./parsers": "./src/parsers.ts",
     "./portability": "./src/portability.ts",

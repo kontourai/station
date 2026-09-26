@@ -1,6 +1,5 @@
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import {
   decodeProvisioningProfile,
@@ -8,6 +7,7 @@ import {
 } from './check-ios-store-profile.mjs';
 import { EXTENSION_TARGET } from './ensure-ios-agent-activity-extension.mjs';
 import { IOS_TESTFLIGHT_CHANNELS } from './ios-testflight-channel.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REQUIRED = [
   'profile',
@@ -112,6 +112,17 @@ function assertSigningInputs(profile, identity) {
     );
 }
 
+// The manual-signing block storeSigningTemplate owns. `tauri ios init` may
+// render some of these itself (DEVELOPMENT_TEAM from APPLE_DEVELOPMENT_TEAM);
+// rendered copies are dropped so the spec keeps exactly one of each key.
+const SIGNING_SETTING_KEYS = [
+  'CODE_SIGN_STYLE',
+  'CODE_SIGN_IDENTITY',
+  'DEVELOPMENT_TEAM',
+  'PROVISIONING_PROFILE',
+  'PROVISIONING_PROFILE_SPECIFIER',
+];
+
 export function storeSigningTemplate({
   template,
   profile,
@@ -128,7 +139,27 @@ export function storeSigningTemplate({
     throw new Error(
       'iOS project template has no supported app signing marker.',
     );
-  return template.replace(
+  // `tauri ios init` renders DEVELOPMENT_TEAM from APPLE_DEVELOPMENT_TEAM
+  // (and may render other signing settings in the future). The template owns
+  // the manual-signing block below, so drop rendered copies first: a second
+  // copy of any key is a duplicate YAML key, which xcodegen silently
+  // tolerates but the strict parse in the Live Activity steps refuses
+  // (Nightly 246002). More than one copy means another settings block
+  // carries signing: refuse rather than re-sign it by hand.
+  let unsigned = template;
+  for (const key of SIGNING_SETTING_KEYS) {
+    const copies =
+      unsigned.match(new RegExp(`^      ${key}: .*$(?:\r?\n|$)`, 'gm')) ?? [];
+    if (copies.length > 1)
+      throw new Error(
+        `iOS project template signs another settings block with ${key}; reconcile it by hand.`,
+      );
+    unsigned = unsigned.replace(
+      new RegExp(`^      ${key}: .*$(?:\r?\n|$)`, 'gm'),
+      '',
+    );
+  }
+  return unsigned.replace(
     marker,
     `${marker}      CODE_SIGN_STYLE: Manual\n      CODE_SIGN_IDENTITY: ${JSON.stringify(identity)}\n      DEVELOPMENT_TEAM: ${profile.team}\n      PROVISIONING_PROFILE: ${JSON.stringify(profile.uuid)}\n      PROVISIONING_PROFILE_SPECIFIER: ${JSON.stringify(profile.name)}\n`,
   );
@@ -382,18 +413,7 @@ export function mobileCargoConfig(endpoint, { liveActivity = false } = {}) {
   return `[env]\nSTATION_MOBILE_DEFAULT_ENDPOINT = { value = ${JSON.stringify(parsed.origin)}, force = true }\n${liveActivityLine}`;
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule() && process.argv[2] === 'agent-activity') {
+if (invokedDirectly(import.meta.url) && process.argv[2] === 'agent-activity') {
   const values = parseAgentActivityOptions(process.argv.slice(3));
   const { app, extension } = writeIosAgentActivitySigning({
     profile: values['extension-profile'],
@@ -408,7 +428,7 @@ if (isMainModule() && process.argv[2] === 'agent-activity') {
   process.stdout.write(
     `${JSON.stringify({ app: app.uuid, extension: extension.uuid })}\n`,
   );
-} else if (isMainModule()) {
+} else if (invokedDirectly(import.meta.url)) {
   const values = parseOptions(process.argv.slice(2));
   writeIosStoreSigningConfig({
     profile: values.profile,

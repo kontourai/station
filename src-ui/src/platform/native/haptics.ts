@@ -31,10 +31,10 @@ export interface StreamingHapticDecision {
 }
 
 /**
- * Pure throttle + hydrate-skip for assistant stream growth. Port of the
- * t3code selection pattern: skip the first observation after a conversation
- * change (historical hydrate), then pulse at most once per throttle window
- * when text grows or a new stream starts.
+ * Pure throttle + hydrate-skip for assistant stream growth: skip the first
+ * observation after a conversation change (that growth is history loading,
+ * not a live reply), then pulse at most once per throttle window when text
+ * grows or a new stream starts.
  */
 export function decideStreamingHaptic(
   input: StreamingHapticDecisionInput,

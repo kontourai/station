@@ -23,6 +23,10 @@ pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_redemption;
 #[cfg(not(mobile))]
+mod native_station_key_custody;
+#[cfg(not(mobile))]
+mod native_relay_key_approval;
+#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
 mod service_state;
@@ -4951,6 +4955,190 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_legacy(path)
 }
 
+/// Reconstructs Station-key approval authority from the current native profile
+/// while holding the same interprocess lock used by profile writers. A broker
+/// offer or renderer-supplied route cannot supply this snapshot.
+#[cfg(not(mobile))]
+struct AppNativeTrustProfileProvider<'a> {
+    app: &'a AppHandle,
+}
+
+#[cfg(not(mobile))]
+impl<'a> AppNativeTrustProfileProvider<'a> {
+    pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+
+    pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+#[cfg(not(mobile))]
+impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
+    fn with_current_profile<T, F>(
+        &self,
+        expected_binding: &native_station_key_custody::TrustProfileBinding,
+        expected_profile_revision: u64,
+        operation: F,
+    ) -> native_station_key_custody::CandidateResult<T>
+    where
+        F: FnOnce(
+            native_station_key_custody::LockedTrustProfileSnapshot,
+        ) -> native_station_key_custody::CandidateResult<T>,
+    {
+        use native_station_key_custody::CandidateError;
+
+        let path = station_profiles_path(self.app).map_err(|_| CandidateError::ProfileStale)?;
+        let _lock = lock_station_profiles_for_app(self.app, &path)
+            .map_err(|_| CandidateError::ProfileStale)?;
+        let contents =
+            read_station_profile_store(&path).map_err(|_| CandidateError::ProfileStale)?;
+        let store =
+            parse_station_profile_store(&contents).map_err(|_| CandidateError::ProfileStale)?;
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            expected_binding,
+            expected_profile_revision,
+            &self.app.config().identifier,
+            native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
+        )?;
+        operation(snapshot)
+    }
+}
+
+#[cfg(not(mobile))]
+fn native_trust_profile_snapshot_in_store(
+    store: &CredentialProfileStore,
+    expected_binding: &native_station_key_custody::TrustProfileBinding,
+    expected_profile_revision: u64,
+    app_identifier: &str,
+    channel: &str,
+) -> native_station_key_custody::CandidateResult<
+    native_station_key_custody::LockedTrustProfileSnapshot,
+> {
+    use native_station_key_custody::{CandidateError, LockedTrustProfileSnapshot};
+
+    let profile = store
+        .profiles
+        .iter()
+        .find(|profile| profile.name == expected_binding.profile_owner_id)
+        .ok_or(CandidateError::ProfileStale)?;
+    let route = profile
+        .relay_route
+        .as_ref()
+        .ok_or(CandidateError::ProfileStale)?;
+    let actual = native_station_key_custody::TrustProfileBinding {
+        profile_owner_id: profile.name.clone(),
+        app_identifier: app_identifier.to_owned(),
+        channel: channel.to_owned(),
+        client_instance_id: profile
+            .client_instance_id
+            .clone()
+            .ok_or(CandidateError::ProfileStale)?,
+        broker_origin: route.broker_origin.clone(),
+        station_id: route.station_id.clone(),
+        enrollment_id: route.enrollment_id.clone(),
+    };
+    if store.revision != expected_profile_revision
+        || actual != *expected_binding
+        || profile.configuration_state != "unconfigured"
+        || profile.setup_source != "manual"
+        || profile.credential_ref.is_some()
+    {
+        return Err(CandidateError::ProfileStale);
+    }
+    Ok(LockedTrustProfileSnapshot {
+        binding: actual,
+        revision: store.revision,
+    })
+}
+
+#[cfg(all(test, not(mobile)))]
+mod native_trust_profile_snapshot_tests {
+    use super::*;
+    use native_station_key_custody::{CandidateError, TrustProfileBinding};
+
+    fn saved_route() -> CredentialProfileStore {
+        parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":7,"defaultProfile":null,
+              "profiles":[{"schemaVersion":1,"name":"Zach's Station",
+                "endpoint":"https://station.example",
+                "clientInstanceId":"33333333-3333-4333-8333-333333333333",
+                "relayRoute":{"brokerOrigin":"https://broker.example",
+                  "stationId":"11111111-1111-4111-8111-111111111111",
+                  "enrollmentId":"22222222-2222-4222-8222-222222222222"},
+                "setupSource":"manual","configurationState":"unconfigured",
+                "createdAt":1,"updatedAt":2}],"projectProfiles":{}
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn binding() -> TrustProfileBinding {
+        TrustProfileBinding {
+            profile_owner_id: "Zach's Station".to_owned(),
+            app_identifier: "io.kontourai.station".to_owned(),
+            channel: "stable".to_owned(),
+            client_instance_id: "33333333-3333-4333-8333-333333333333".to_owned(),
+            broker_origin: "https://broker.example".to_owned(),
+            station_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            enrollment_id: "22222222-2222-4222-8222-222222222222".to_owned(),
+        }
+    }
+
+    #[test]
+    fn trust_snapshot_requires_exact_current_saved_route_and_revision() {
+        let store = saved_route();
+        let expected = binding();
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            &expected,
+            7,
+            "io.kontourai.station",
+            "stable",
+        )
+        .unwrap();
+        assert_eq!(snapshot.binding, expected);
+        assert_eq!(snapshot.revision, 7);
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &expected,
+                6,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut wrong_route = expected.clone();
+        wrong_route.broker_origin = "https://other-broker.example".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &wrong_route,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut renamed = expected;
+        renamed.profile_owner_id = "zach's station".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &renamed,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+    }
+}
+
 #[cfg(test)]
 fn lock_station_profiles(path: &std::path::Path) -> Result<StationProfileLock, String> {
     let self_pid = std::process::id();
@@ -5126,14 +5314,24 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_with_host(
+    let result = station_profile_store_write_with_host(
         &AppProfileWriteHost(app),
         authority,
         pending,
         contents,
         expected_revision,
         pairing_handle,
-    )
+    );
+    #[cfg(not(mobile))]
+    {
+        let app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
+                log::warn!("could not resume native relay grant cleanup after profile write: {error:?}");
+            }
+        });
+    }
+    result
 }
 
 // Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
@@ -5181,7 +5379,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
         }
         #[cfg(mobile)]
         {
@@ -10832,6 +11031,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -10847,6 +11047,18 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
@@ -10908,6 +11120,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
+            #[cfg(not(mobile))]
+            {
+                let app = app.handle().clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) =
+                        native_relay_redemption::retry_pending_cleanup_for_app(&app)
+                    {
+                        log::warn!("could not resume native relay grant cleanup at startup: {error:?}");
+                    }
+                });
+            }
             #[cfg(all(not(mobile), feature = "webdriver"))]
             seed_webdriver_credential_fixture(&app.config().identifier)?;
             if let Some(raw) = &invalid_log_level {

@@ -68,8 +68,9 @@ import { execFile } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { transferBaselineShaFromPath } from './orchestration-transfer-gate.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -822,7 +823,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
   return 0;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   main().then(
     (code) => {
       process.exitCode = code;

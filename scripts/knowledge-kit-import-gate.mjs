@@ -51,6 +51,7 @@
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // Matches `@kontourai/flow-agents/kits`, `/build`, or `/src` — i.e. any
 // subpath past the package's declared `exports` map (`"."` and
@@ -191,6 +192,6 @@ function main() {
   process.exit(0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

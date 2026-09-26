@@ -1,0 +1,134 @@
+/**
+ * The excluded-names gate, run the way CI runs it: as a child process over a
+ * throwaway git repository, asserting the real exit status. The scan is
+ * `git grep` over TRACKED files, so fixtures are committed, not just written.
+ *
+ * Fixture text is assembled from pieces for the same reason the gate's
+ * pattern is: a literal name in this file would trip the gate over this
+ * repository, and the tempting fix — exempting the test — would blind the
+ * gate to a real regression here.
+ */
+
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { EXCLUDED_NAMES_PATTERN } from '../excluded-names-gate.mjs';
+
+const gate = fileURLToPath(
+  new URL('../excluded-names-gate.mjs', import.meta.url),
+);
+const NAME = ['T', '3'].join('');
+const makeTempDir = trackTempDirs();
+
+function scratchRepo(files: Record<string, string>): string {
+  const dir = makeTempDir('station-excluded-names-');
+  const git = (...args: string[]) =>
+    spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true });
+  git('init', '-q');
+  git('config', 'user.email', 'gate@test.invalid');
+  git('config', 'user.name', 'gate');
+  for (const [name, content] of Object.entries(files)) {
+    writeFileSync(join(dir, name), content);
+  }
+  git('add', '-A');
+  git('commit', '-q', '-m', 'fixture');
+  return dir;
+}
+
+function runGate(cwd: string) {
+  return spawnSync(process.execPath, [gate], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
+describe('excluded-names gate', () => {
+  it('exits non-zero and names the file and line for each spelling it bans', () => {
+    const lower = NAME.toLowerCase();
+    const spellings = [
+      `${NAME} Code`,
+      `${NAME}  Code`,
+      `${lower}code`,
+      `${lower}-code`,
+      `${lower}_code`,
+      `${lower}.code`,
+      `${NAME}Code`,
+      `${NAME} Tools Inc.`,
+      `${NAME}Tools`,
+      `${lower}-tools`,
+      `/home/me/.${lower}/worktrees`,
+      `path.join(homedir(), '.${lower}')`,
+      `cd $HOME/.${lower}`,
+      `C:\\Users\\me\\.${lower}\\x`,
+      `~/.${lower}`,
+      `stored in ~/.${lower} by default`,
+      `under $HOME/.${lower}.`,
+      `rm -rf ~/.${lower} && echo done`,
+      `(see ~/.${lower})`,
+      `a ${NAME}-style fallback`,
+      `${NAME}'s relay`,
+      `https://${lower}.gg/`,
+      `github.com/${['ping', 'dotgg'].join('')}/repo`,
+    ];
+    // One committed file per spelling, the spelling on line 2, so the output
+    // must name every file: a spelling the pattern misses is a missing line.
+    const files: Record<string, string> = {
+      'clean.ts': 'export const ok = 1;\n',
+    };
+    spellings.forEach((spelling, index) => {
+      files[`s${index}.md`] = `intro\n${spelling}\n`;
+    });
+    const result = runGate(scratchRepo(files));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`FAIL: ${spellings.length} line(s)`);
+    spellings.forEach((spelling, index) => {
+      expect(result.stderr, spelling).toContain(`s${index}.md:2:`);
+    });
+    expect(result.stderr).not.toContain('clean.ts');
+  });
+
+  it('exits zero on a repository without the names', () => {
+    const lower = NAME.toLowerCase();
+    const dir = scratchRepo({
+      'a.ts': `export const size = '${lower}.micro';\n`,
+      'b.md': [
+        `The ${NAME} instance family and T1/T2/${NAME} test rows are fine.`,
+        `${NAME} CPU-credit mode uses Standard credits.`,
+        `A cache at ~/.${lower}x/ is some other tool's directory.`,
+        `A file named report.${lower} or ~/.${lower}-backup is not the directory.`,
+        `${NAME}s and ${NAME}-medium are instance sizes.`,
+        '',
+      ].join('\n'),
+    });
+    const result = runGate(dir);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('OK: no excluded product names');
+  });
+
+  it('ignores an untracked file: the scan covers what is committed', () => {
+    const dir = scratchRepo({ 'a.ts': 'export const ok = 1;\n' });
+    writeFileSync(join(dir, 'scratch.md'), `${NAME} Code\n`);
+    expect(runGate(dir).status).toBe(0);
+  });
+
+  it('fails closed when it cannot scan', () => {
+    const notARepo = makeTempDir('station-excluded-names-');
+    const result = runGate(notARepo);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('could not scan');
+  });
+
+  it('does not match its own source or this test, so neither needs an exemption', () => {
+    const pattern = new RegExp(EXCLUDED_NAMES_PATTERN, 'i');
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const result = runGate(repoRoot);
+    expect(result.stderr).not.toContain('excluded-names-gate');
+    expect(result.status).toBe(0);
+    expect(pattern.test(`${NAME} Code`)).toBe(true);
+  });
+});

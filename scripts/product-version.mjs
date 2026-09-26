@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const PRODUCT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const CARGO_PACKAGE_VERSION =
@@ -138,7 +139,7 @@ export function syncProductVersion(root = process.cwd()) {
   return checkProductVersion(root);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.length !== 1 || !['--check', '--sync'].includes(args[0])) {
     throw new Error('Usage: product-version.mjs --check|--sync');

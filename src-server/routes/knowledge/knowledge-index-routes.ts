@@ -49,7 +49,10 @@ import type {
   IEmbeddingProvider,
   KnowledgeIndexProvider,
 } from '@kontourai/station-contracts/knowledge-index';
-import type { KnowledgeStoreProvider } from '@kontourai/station-contracts/knowledge-store';
+import type {
+  KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
+} from '@kontourai/station-contracts/knowledge-store';
 import { Hono } from 'hono';
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
@@ -83,6 +86,15 @@ interface KnowledgeIndexRouteDeps {
    * roots are unaffected.
    */
   mayBuildSessionBackedRoot?: (request: Request) => boolean;
+  /**
+   * #2377 slice B: whether this request may see a search hit from `root`,
+   * decided BEFORE the record is read (a hit carries its title and excerpt).
+   * The index is Station-wide; a conversation-backed root re-reads each
+   * record as the caller, but a Project or personal root's records are not
+   * per-caller, so a station-control agent needs its session owner's access
+   * to the root's scope. Absent: every root passes, as before.
+   */
+  mayReadHitRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
 }
 
 interface RebuildRootReport {
@@ -300,7 +312,18 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>
       >();
       const results: KnowledgeSearchResult[] = [];
+      const rootReadable = new Map<string, boolean>();
       for (const hit of hits) {
+        if (deps.mayReadHitRoot) {
+          let readable = rootReadable.get(hit.rootId);
+          if (readable === undefined) {
+            const root = await deps.store.getRoot(hit.rootId);
+            // An unregistered root decides nothing: fail closed.
+            readable = !!root && deps.mayReadHitRoot(c.req.raw, root);
+            rootReadable.set(hit.rootId, readable);
+          }
+          if (!readable) continue;
+        }
         let adapter = resolvedAdapters.get(hit.rootId);
         if (!adapter) {
           try {

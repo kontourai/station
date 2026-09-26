@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
 const INVENTORY = join(ROOT, 'docs/ui/focus-outline-exceptions.json');
@@ -94,7 +95,7 @@ export function validateFocusOutlineInventory(
   return { total: discovered.length };
 }
 
-if (process.argv[1]?.endsWith('focus-visible-ratchet.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const result = validateFocusOutlineInventory();
   console.log(
     `Focus-visible ratchet: ${result.total} reviewed outline suppressions; new exceptions are blocked.`,

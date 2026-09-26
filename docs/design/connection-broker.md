@@ -115,12 +115,12 @@ Reuse those owners; keep discovery metadata separate from secret custody and
 inbound grants separate from outbound grants. A device's successful connection
 does not prove the server can reach the same endpoint.
 
-[T3 Connect at the inspected revision](https://github.com/pingdotgg/t3code/blob/18d8cbfd920d0a53e5b5206456585aea767e852c/docs/internals/t3-connect.md)
-separates its hosted broker from normal traffic. Its environment supervises
-cloudflared; the client uses the tunnel endpoint after bootstrap. Credential
-renewal may need the broker again. Its relay implementation depends on its own
-contracts, client runtime, Effect, Clerk and Cloudflare provisioning. Reuse
-mechanisms and failure cases rather than importing that application wholesale.
+Prior art: an existing self-hosted product separates its hosted broker from
+normal traffic. Its environment supervises cloudflared; the client uses the
+tunnel endpoint after bootstrap. Credential renewal may need the broker again.
+Its relay implementation depends on its own contracts, client runtime and
+hosted identity and tunnel provisioning. Reuse mechanisms and failure cases
+from it rather than importing that application wholesale.
 
 Station's current public proof uses a credential-derived HMAC. A broker must
 not gain verification by receiving that operator credential. Add a separately
