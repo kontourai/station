@@ -146,7 +146,7 @@ const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider', 'monitor'] as const;
  * The fields of an edit body that could change what a job runs; the grant
  * check compares them with the job itself.
  */
-export function jobTargetChanges(
+function jobTargetChanges(
   body: unknown,
 ): Partial<Record<(typeof JOB_TARGET_FIELDS)[number], unknown>> {
   if (!body || typeof body !== 'object') return {};

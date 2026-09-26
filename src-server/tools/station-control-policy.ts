@@ -700,7 +700,7 @@ export const STATION_CONTROL_INFRASTRUCTURE_POLICY = {
 
 // ── typed refusals ─────────────────────────────────────────────────────────
 
-export const STATION_CONTROL_REFUSAL_CODES = [
+const STATION_CONTROL_REFUSAL_CODES = [
   'station_control_caller_required',
   'station_control_assurance_insufficient',
   'station_control_role_required',

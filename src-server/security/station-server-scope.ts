@@ -50,7 +50,7 @@ export function enableStationServerSelfAttestation(): void {
 }
 
 /** The attestation, or `undefined` in any process that never minted one. */
-export function stationServerSelfAttestation(): string | undefined {
+function stationServerSelfAttestation(): string | undefined {
   return (globalThis as ServerSelfGlobal)[SERVER_SELF_ATTESTATION_KEY];
 }
 
