@@ -4,9 +4,9 @@ import { expandTilde } from '../../utils/paths.js';
 /**
  * station#2072: per-connection env + config-home overrides for the Claude
  * and Codex CLI adapters, so an agent connection can route through a local
- * model proxy (CLIProxyAPI/VibeProxy) the way T3 Code's provider instances
- * do. This module owns the ONE validation + expansion implementation used
- * by BOTH consumers: the write-time sanitizer
+ * model proxy (CLIProxyAPI/VibeProxy) configured per connection. This
+ * module owns the ONE validation + expansion implementation used by BOTH
+ * consumers: the write-time sanitizer
  * (`connection-service-helpers.ts`'s `sanitizeRuntimeConfig`) and the
  * spawn-time resolver (`station-runtime.ts`'s `getConnectionEnv` adapter
  * closures), so a value that persisted cannot drift from the value a spawn

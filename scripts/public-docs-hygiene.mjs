@@ -28,7 +28,7 @@ export const MARKETING_FILES = Object.freeze([
 // protocol references, compatibility notes, and required attribution may name
 // third parties when the name is part of the technical truth.
 const MARKETING_EXTERNAL_BRAND =
-  /\b(?:Anthropic|Bedrock|Claude(?: Code)?|Codex|Copilot|Cursor|Kiro|Ollama|OpenAI|OpenCode|T3 Code|Windsurf|Zed)\b/gi;
+  /\b(?:Anthropic|Bedrock|Claude(?: Code)?|Codex|Copilot|Cursor|Kiro|Ollama|OpenAI|OpenCode|Windsurf|Zed)\b/gi;
 
 // The privacy subset also backs scripts/repo-docs-hygiene.mjs, which sweeps
 // EVERY tracked doc rather than the public manifest's nine — these patterns

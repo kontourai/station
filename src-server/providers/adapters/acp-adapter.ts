@@ -409,7 +409,7 @@ export interface AcpSessionRecord {
   command: string;
   args?: string[];
   /**
-   * Bumps on each `session/prompt` this Station turn owns. A T3-style
+   * Bumps on each `session/prompt` this Station turn owns. A
    * cancel+reprompt steer increments it so the cancelled prompt's settlement
    * cannot complete or fail the still-open turn.
    */
