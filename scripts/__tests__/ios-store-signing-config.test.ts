@@ -59,6 +59,49 @@ describe('iOS App Store signing config', () => {
     );
   });
 
+  test('drops a Tauri-rendered DEVELOPMENT_TEAM instead of duplicating it', () => {
+    // Nightly 246002: `tauri ios init` renders DEVELOPMENT_TEAM from
+    // APPLE_DEVELOPMENT_TEAM, so the signing template input already carries
+    // one. Appending the manual block beside it is a duplicate YAML key,
+    // which xcodegen tolerates but the strict parse in the Live Activity
+    // steps refuses.
+    const template = storeSigningTemplate({
+      template:
+        'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.nightly\n      DEVELOPMENT_TEAM: TEAMID1234\n',
+      profile: {
+        name: 'Station Nightly App Store',
+        team: 'TEAMID1234',
+        uuid: 'profile-uuid',
+      },
+      identity: 'Apple Distribution: Example (TEAMID1234)',
+      bundleId: 'io.kontourai.station.nightly',
+    });
+    expect(
+      template
+        .split('\n')
+        .filter((line) => line.startsWith('      DEVELOPMENT_TEAM:')),
+    ).toHaveLength(1);
+    expect(template).toContain('DEVELOPMENT_TEAM: TEAMID1234');
+    // The signed spec parses strictly with unique keys.
+    const document = YAML.parseDocument(template);
+    expect(document.errors).toEqual([]);
+  });
+
+  test('refuses a template that signs another settings block', () => {
+    expect(() =>
+      storeSigningTemplate({
+        template:
+          'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n      DEVELOPMENT_TEAM: TEAMID1234\ntargets:\n  other:\n    settings:\n      DEVELOPMENT_TEAM: OTHERTEAM\n',
+        profile: {
+          name: 'Station App Store',
+          team: 'ABCDE12345',
+          uuid: 'profile-uuid',
+        },
+        identity: 'Apple Distribution: Example (ABCDE12345)',
+      }),
+    ).toThrow(/reconcile it by hand/);
+  });
+
   test('rejects multiline identity injection', () => {
     expect(() =>
       storeSigningTemplate({
