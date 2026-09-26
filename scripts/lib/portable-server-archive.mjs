@@ -287,8 +287,9 @@ async function bundleStationCli(projectRoot, stageRoot) {
     platform: 'node',
     target: 'node24',
     format: 'esm',
-    minify: true,
-    keepNames: true,
+    // Not minified: lifecycle.ts hands `uiRequestHandler.toString()` to a
+    // separate `node -e` UI server, and shims only esbuild's unminified
+    // `__name` helper there. Minified helper names break that process.
     external: STATION_SERVER_EXTERNALS,
     banner: {
       js: "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
