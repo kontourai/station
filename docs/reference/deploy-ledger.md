@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-26T17:33:59Z | nightly-android | 0.1.11-nightly.2460.4 | `719e004` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36254706366) |
 | 2026-09-26T17:18:51Z | nightly-npm | 0.6.0-nightly.2460.36254706366 | `719e004` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36254706366) |
 | 2026-09-26T16:24:11Z | nightly-desktop | 0.1.11-nightly.2460.3 | `3c43c43` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36252766737) |
 | 2026-09-26T16:24:09Z | nightly-android | 0.1.11-nightly.2460.3 | `3c43c43` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36252766737) |
@@ -162,6 +163,26 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-26T17:33:59Z · nightly-android · 0.1.11-nightly.2460.4
+
+- Ship SHA: `719e0042f6f2941fbc47b402c1df60de2bfc4915`
+- Artifact built at: `2026-09-26T16:33:38.109Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36254706366)
+
+### Changelog
+
+Commits since `3c43c43` ([full sha](https://github.com/kontourai/station/commit/3c43c43a71ba9908bcb1030326491320a0b90d1f)):
+
+**Features**
+
+- [#2685](https://github.com/kontourai/station/pull/2685) feat(station-control): per-call authority for every station-control tool (#2377 slice A)
+
+**Fixes**
+
+- [#2695](https://github.com/kontourai/station/pull/2695) fix(service): report service PATH drift in status, with a faithful reinstall hint
+- [#2693](https://github.com/kontourai/station/pull/2693) fix(ci): build the CLI before the repository source scans
 
 ## 2026-09-26T17:18:51Z · nightly-npm · 0.6.0-nightly.2460.36254706366
 
