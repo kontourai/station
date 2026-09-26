@@ -54,9 +54,9 @@ describe('install.sh generated blocks', () => {
       .map((line) => line.trim())
       .filter((line) => !line.startsWith('#'));
     for (const definition of [
-      /^RELEASE_RINGS_JSON=/,
-      /^INSTALLABLE_RUNTIME_CHANNELS=/,
-      /^channel_constants\(\)/,
+      /^(?:(?:export|readonly)\s+)?RELEASE_RINGS_JSON=/,
+      /^(?:(?:export|readonly)\s+)?INSTALLABLE_RUNTIME_CHANNELS=/,
+      /^channel_constants\s*\(\s*\)/,
     ]) {
       expect(lines.filter((line) => definition.test(line))).toHaveLength(1);
     }

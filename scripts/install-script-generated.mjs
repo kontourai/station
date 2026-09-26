@@ -8,9 +8,9 @@
 //
 // `--sync` rewrites the blocks in place; `--check` fails when install.sh no
 // longer matches what this script would write.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { CHANNEL_PORTS, RELEASE_RINGS } from './channel-ports.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -124,12 +124,13 @@ export function syncInstallScript(path = INSTALL_SCRIPT_PATH) {
   if (rendered !== actual) writeFileSync(path, rendered);
 }
 
-// pathToFileURL percent-encodes the path the way import.meta.url does; a raw
-// `file://${argv[1]}` differs for any path with a space, and --check would
-// then exit 0 without checking anything.
+// Compare real paths: import.meta.url is percent-encoded and symlink-resolved,
+// so a raw `file://${argv[1]}` differs for a path with a space or a symlinked
+// checkout, and --check would exit 0 without checking anything (#2682).
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+  realpathSync(fileURLToPath(import.meta.url)) ===
+    realpathSync(resolve(process.argv[1]))
 ) {
   if (process.argv[2] === '--sync') syncInstallScript();
   else if (process.argv[2] === '--check') checkInstallScript();
