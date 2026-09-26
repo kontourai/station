@@ -76,10 +76,12 @@ import {
   runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { isBoundRuntimeLocalOperator } from '../runtime-request-security.js';
 import {
   createStationControlAuthorityGuard,
   STATION_CONTROL_GUARD_CARVE_OUTS,
 } from '../station-control-authority-guard.js';
+import { stationControlRequestAuthority } from '../station-control-request-authority.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
 
@@ -112,6 +114,15 @@ const refusals: string[] = [];
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
+/**
+ * Slice B: what the guard recorded for the last request each read stub
+ * received — who it acts for, and whether it still reads as the local
+ * operator in person.
+ */
+const observed = new Map<
+  string,
+  { owner: string | null | undefined; localOperator: boolean }
+>();
 const makeTempDir = trackTempDirs({ lifetime: 'file' });
 let grants: UnattendedGrantStore;
 /** The jobs the scheduler would list; `granted` has a live grant. */
@@ -247,6 +258,30 @@ beforeAll(async () => {
     );
   });
   app.post('/api/providers', record('POST /api/providers', ok));
+  // Slice B read stubs: each records who the request acts for.
+  const observe = (label: string) => (c: any) => {
+    hits.push(label);
+    const authority = stationControlRequestAuthority(c.req.raw);
+    observed.set(label, {
+      owner:
+        authority?.kind === 'caller'
+          ? (authority.caller.principal?.id ?? null)
+          : authority?.kind === 'caller-less'
+            ? null
+            : undefined,
+      localOperator: isBoundRuntimeLocalOperator(c.req.raw),
+    });
+    return c.json({ success: true, data: { items: [], hasMore: false } });
+  };
+  app.get(
+    '/agents/:slug/conversations',
+    observe('GET /agents/:slug/conversations'),
+  );
+  app.get('/api/diagnostics/logs', observe('GET /api/diagnostics/logs'));
+  app.get(
+    '/scheduler/jobs/:target/logs',
+    observe('GET /scheduler/jobs/:target/logs'),
+  );
   app.post('/api/board/pin', record('POST /api/board/pin', ok));
   app.post(
     '/api/notifications/agent',
@@ -267,6 +302,7 @@ beforeEach(() => {
   hits.length = 0;
   refusals.length = 0;
   lastHeaders.clear();
+  observed.clear();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -564,6 +600,43 @@ const ROWS: readonly Row[] = [
       'bound person-': 'station_control_role_required',
     },
   },
+  // Slice B (decision 2): a principal-scoped read needs a session with a
+  // recorded owner; a caller-less request reads only what belongs to no one.
+  {
+    tool: 'list_conversations',
+    args: { agent: 'station' },
+    route: 'GET /agents/:slug/conversations',
+    expect: {
+      'bound person-': 'allowed',
+      'delegated-custody person-': 'allowed',
+      'bearer-exposed person-': 'allowed',
+      'bound ownerless-': 'station_control_role_required',
+      'pooled none': 'station_control_caller_required',
+    },
+  },
+  {
+    tool: 'read_logs',
+    args: {},
+    route: 'GET /api/diagnostics/logs',
+    expect: {
+      'bound op-': 'allowed',
+      'bearer-exposed person-': 'allowed',
+      'pooled none': 'allowed',
+    },
+  },
+  {
+    // Decision 2: an operator-wide read.
+    tool: 'get_job_logs',
+    args: { name: 'nightly' },
+    route: 'GET /scheduler/jobs/:target/logs',
+    expect: {
+      'bound op-': 'allowed',
+      'bound person-': 'station_control_role_required',
+      'delegated-custody op-': 'station_control_assurance_insufficient',
+      'bearer-exposed op-': 'station_control_assurance_insufficient',
+      'pooled none': 'station_control_caller_required',
+    },
+  },
   {
     tool: 'board_pin',
     args: {
@@ -613,6 +686,49 @@ describe('each policy class through the real tools, per delivery channel', () =>
           expect(typeof result.error).toBe('string');
         }
       });
+});
+
+describe('slice B: who a tool call acts for, per delivery channel', () => {
+  // Decision 2: an agent reads as its session's owner at every assurance,
+  // and only a bound operator caller still reads as the operator in person
+  // (the internal token's home-possession, which unredacted logs key on).
+  const CASES: readonly [Channel, string, string | null, boolean][] = [
+    ['bound', 'op-', LOCAL_OPERATOR_PRINCIPAL_ID, true],
+    ['delegated-custody', 'op-', LOCAL_OPERATOR_PRINCIPAL_ID, false],
+    ['bearer-exposed', 'op-', LOCAL_OPERATOR_PRINCIPAL_ID, false],
+    ['bound', 'person-', 'human:local:someone-else', false],
+    ['delegated-custody', 'person-', 'human:local:someone-else', false],
+    ['bearer-exposed', 'person-', 'human:local:someone-else', false],
+    ['bound', 'ownerless-', null, false],
+    ['pooled', 'none', null, false],
+  ];
+  for (const [channel, prefix, owner, localOperator] of CASES)
+    test(`read_logs via ${channel} (${prefix}) acts for ${owner ?? 'no one'}; local operator: ${localOperator}`, async () => {
+      const { hits: reached } = await callTool(
+        channel,
+        nextSession(prefix),
+        'read_logs',
+        {},
+      );
+      expect(reached).toEqual(['GET /api/diagnostics/logs']);
+      expect(observed.get('GET /api/diagnostics/logs')).toEqual({
+        owner,
+        localOperator,
+      });
+    });
+
+  test('the raw internal token alone acts for no one and is not the operator in person', async () => {
+    const response = await rest(
+      'GET',
+      '/api/diagnostics/logs',
+      internalHeaders(),
+    );
+    expect(response.status).toBe(200);
+    expect(observed.get('GET /api/diagnostics/logs')).toEqual({
+      owner: null,
+      localOperator: false,
+    });
+  });
 });
 
 describe('the server enforces the same refusal for each channel’s forwarded credential', () => {
