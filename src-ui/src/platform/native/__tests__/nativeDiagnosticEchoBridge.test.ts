@@ -26,18 +26,49 @@ const binding = {
 
 describe('native diagnostic Tauri bridge', () => {
   it('maps only host-derived scope and exact saved profile signaling fields', async () => {
-    const invoke = vi.fn(async (command: string) => {
-      if (command === 'station_native_relay_diagnostic_binding') return binding;
-      if (command === 'station_native_relay_signal_diagnostic_open')
-        return { expiresAt: Date.now() + 20_000 };
-      if (command === 'station_native_relay_signal_diagnostic_read')
-        return {
-          answerSdp: null,
-          stationProof: null,
-          expiresAt: Date.now() + 20_000,
-        };
-      throw new Error(`unexpected command ${command}`);
-    });
+    // Model the Tauri invoke argument decoder: every Rust command takes one
+    // named `request` parameter, so a flattened object must fail here.
+    const invoke = vi.fn(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (!args || Object.keys(args).length !== 1 || !args.request)
+          throw new Error(
+            'Tauri command is missing its named request argument',
+          );
+        const request = args.request as Record<string, unknown>;
+        if (command === 'station_native_relay_diagnostic_binding') {
+          if (
+            request.profileName !== 'Workstation' ||
+            request.expectedProfileRevision !== 12
+          )
+            throw new Error('Tauri binding request is invalid');
+          return binding;
+        }
+        if (command === 'station_native_relay_signal_diagnostic_open') {
+          if (
+            request.profileName !== 'Workstation' ||
+            request.expectedProfileRevision !== 12 ||
+            request.nonce !== 'nonce-01' ||
+            request.offerSdp !== 'bounded-offer-sdp'
+          )
+            throw new Error('Tauri open request is invalid');
+          return { expiresAt: Date.now() + 20_000 };
+        }
+        if (command === 'station_native_relay_signal_diagnostic_read') {
+          if (
+            request.profileName !== 'Workstation' ||
+            request.expectedProfileRevision !== 12 ||
+            request.nonce !== 'nonce-01'
+          )
+            throw new Error('Tauri read request is invalid');
+          return {
+            answerSdp: null,
+            stationProof: null,
+            expiresAt: Date.now() + 20_000,
+          };
+        }
+        throw new Error(`unexpected command ${command}`);
+      },
+    );
     const bridge = await createNativeDiagnosticEchoBridge('Workstation', 12, {
       invoke,
     });
@@ -69,18 +100,33 @@ describe('native diagnostic Tauri bridge', () => {
       1,
       'station_native_relay_diagnostic_binding',
       {
-        profileName: 'Workstation',
-        expectedProfileRevision: 12,
+        request: {
+          profileName: 'Workstation',
+          expectedProfileRevision: 12,
+        },
       },
     );
     expect(invoke).toHaveBeenNthCalledWith(
       2,
       'station_native_relay_signal_diagnostic_open',
       {
-        profileName: 'Workstation',
-        expectedProfileRevision: 12,
-        nonce: 'nonce-01',
-        offerSdp: 'bounded-offer-sdp',
+        request: {
+          profileName: 'Workstation',
+          expectedProfileRevision: 12,
+          nonce: 'nonce-01',
+          offerSdp: 'bounded-offer-sdp',
+        },
+      },
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      3,
+      'station_native_relay_signal_diagnostic_read',
+      {
+        request: {
+          profileName: 'Workstation',
+          expectedProfileRevision: 12,
+          nonce: 'nonce-01',
+        },
       },
     );
     expect(JSON.stringify(invoke.mock.calls)).not.toContain('grantSecret');
@@ -96,13 +142,19 @@ describe('native diagnostic Tauri bridge', () => {
 
   it('authoritatively retires the trust snapshot when persisted approval is revoked', async () => {
     let statusReads = 0;
-    const invoke = vi.fn(async (command: string) => {
-      if (command !== 'station_native_relay_diagnostic_binding')
-        throw new Error('unexpected command');
-      statusReads++;
-      if (statusReads > 1) throw new Error('Station trust revoked');
-      return binding;
-    });
+    const invoke = vi.fn(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command !== 'station_native_relay_diagnostic_binding')
+          throw new Error('unexpected command');
+        if (!args || Object.keys(args).length !== 1 || !args.request)
+          throw new Error(
+            'Tauri command is missing its named request argument',
+          );
+        statusReads++;
+        if (statusReads > 1) throw new Error('Station trust revoked');
+        return binding;
+      },
+    );
     const bridge = await createNativeDiagnosticEchoBridge('Workstation', 12, {
       invoke,
     });
@@ -112,5 +164,25 @@ describe('native diagnostic Tauri bridge', () => {
       await bridge.trust.recheck(snapshot!, 'before-remote-description'),
     ).toBe(false);
     expect(bridge.trust.current()).toBeNull();
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      'station_native_relay_diagnostic_binding',
+      {
+        request: {
+          profileName: 'Workstation',
+          expectedProfileRevision: 12,
+        },
+      },
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      'station_native_relay_diagnostic_binding',
+      {
+        request: {
+          profileName: 'Workstation',
+          expectedProfileRevision: 12,
+        },
+      },
+    );
   });
 });

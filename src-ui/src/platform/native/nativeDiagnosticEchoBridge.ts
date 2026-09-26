@@ -116,10 +116,9 @@ export async function createNativeDiagnosticEchoBridge(
     throw new Error('native_diagnostic_profile_invalid');
   const request = { profileName, expectedProfileRevision: profileRevision };
   const initial = validateBinding(
-    (await invoke.invoke(
-      'station_native_relay_diagnostic_binding',
+    (await invoke.invoke('station_native_relay_diagnostic_binding', {
       request,
-    )) as DiagnosticBindingDto,
+    })) as DiagnosticBindingDto,
     profileName,
     profileRevision,
   );
@@ -132,10 +131,9 @@ export async function createNativeDiagnosticEchoBridge(
   let current: ApprovedStationConnectionTrust | null = trust;
   const fetchCurrent = async () =>
     validateBinding(
-      (await invoke.invoke(
-        'station_native_relay_diagnostic_binding',
+      (await invoke.invoke('station_native_relay_diagnostic_binding', {
         request,
-      )) as DiagnosticBindingDto,
+      })) as DiagnosticBindingDto,
       profileName,
       profileRevision,
     );
@@ -157,9 +155,11 @@ export async function createNativeDiagnosticEchoBridge(
       const receipt = (await invoke.invoke(
         'station_native_relay_signal_diagnostic_open',
         {
-          ...request,
-          nonce: input.nonce,
-          offerSdp: input.offerSdp,
+          request: {
+            ...request,
+            nonce: input.nonce,
+            offerSdp: input.offerSdp,
+          },
         },
       )) as { expiresAt: number };
       signal.throwIfAborted();
@@ -180,8 +180,10 @@ export async function createNativeDiagnosticEchoBridge(
       const answer = (await invoke.invoke(
         'station_native_relay_signal_diagnostic_read',
         {
-          ...request,
-          nonce: input.nonce,
+          request: {
+            ...request,
+            nonce: input.nonce,
+          },
         },
       )) as {
         answerSdp: string | null;
