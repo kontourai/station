@@ -490,6 +490,15 @@ describe('station-control-mcp-route', () => {
     const app = createStationControlMcpRoutes({
       port: TEST_PORT,
       hostedTenantRegistry: twoTenantRegistry,
+      // #2377 slice B: get_basis reads as the calling session's owner, so a
+      // session with no recorded owner is refused before any REST hop. Each
+      // tenant's session has one here, so the hop this test observes runs.
+      resolveCallerRecord: (sessionId) => ({
+        principal: {
+          id: `human:tailscale-serve:${sessionId}`,
+          source: 'session-owner',
+        },
+      }),
     });
     const tokenFor = (tenant: 'alpha' | 'bravo') =>
       mintStationControlMcpToken(`thread-${tenant}`, 'url-token', undefined, {
