@@ -11,8 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import {
-  clearPluginProviders,
   getProvider,
+  replacePluginProviders,
 } from '../../../providers/registries/registry.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
@@ -237,7 +237,7 @@ test('retained recovery reaches separate trusted approval without exposing pendi
     expect(readFileSync(providerWitness, 'utf8')).toBe('imported');
   } finally {
     closePluginActivationSession(session);
-    clearPluginProviders();
+    await replacePluginProviders([]);
     store.close();
     rmSync(home, { recursive: true, force: true });
   }

@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
-import { clearPluginProviders } from '../../../providers/registries/registry.js';
+import { replacePluginProviders } from '../../../providers/registries/registry.js';
 import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { withPluginContentLock } from '../../../services/plugins/plugin-content-integrity.js';
@@ -168,7 +168,7 @@ test('trusted approval retains an independent content lease through a real delay
   } finally {
     finishImport();
     await updating;
-    clearPluginProviders();
+    await replacePluginProviders([]);
     delete testGlobal.__stationTrustedProviderLeaseProbe;
     await rm(root, { recursive: true, force: true });
   }
