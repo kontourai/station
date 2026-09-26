@@ -114,6 +114,17 @@ pub(crate) struct P256PublicJwk {
 }
 
 impl P256PublicJwk {
+    /// Build a public JWK from coordinates that a separate trust-store read
+    /// has already validated as an on-curve P-256 descriptor.
+    pub(crate) fn from_verified_p256_coordinates(x: String, y: String) -> Self {
+        Self {
+            kty: "EC".to_owned(),
+            crv: "P-256".to_owned(),
+            x,
+            y,
+        }
+    }
+
     pub(crate) fn kty(&self) -> &str {
         &self.kty
     }

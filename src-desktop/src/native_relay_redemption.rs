@@ -1,19 +1,21 @@
 //! Host-owned native broker invitation redemption and v2 grant custody.
 //!
-//! This service is intentionally crate-private and has no Tauri command. Its
-//! authority provider must supply the current owner-only profile snapshot and
-//! an independently approved Station signing-key record. That provider does
-//! not exist in the native shell yet; this module keeps that missing boundary
-//! explicit instead of accepting renderer-created trust or signing input.
-//! A secret-free keyring index quarantines grants awaiting broker retirement;
-//! its crate-private retry path is cleanup-only. No Tauri command or active
-//! signaling consumer is registered from this module.
+//! Main-window commands accept only a profile name, expected revision, and
+//! invitation. The authority provider reloads the owner-only profile and its
+//! independently approved Station signing key; neither trust nor keyring
+//! identity comes from the renderer. A secret-free keyring index quarantines
+//! grants awaiting broker retirement and supports restart-safe cleanup. This
+//! module does not register an active signaling or application-data consumer.
 
 use crate::native_relay_proof_key::{
     NativeBrokerRedemptionChallenge, NativeBrokerRedemptionInvitation, NativeBrokerRequestBody,
     NativeBrokerRequestIdentity, NativeBrokerRequestProofChallenge, NativeProofKeyChannel,
     NativeProofKeyOwner, NativeProofKeyPublicMetadata, NativeRelayProofKeyVault, P256PublicJwk,
     ProofKeyError,
+};
+use crate::native_station_key_custody::{
+    LockedTrustProfileSnapshot, NativeStationTrustStore, StationTrustApprovedDescriptor,
+    TrustProfileBinding,
 };
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -34,6 +36,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+use tauri::AppHandle;
 use zeroize::Zeroizing;
 
 const REDEEM_PATH: &str = "/broker/v1/native/grants/redeem";
@@ -53,10 +56,12 @@ const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS: u64 = 12 * 60 * 60 * 1000;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_GRANT_INDEX_ENTRIES: usize = 10_000;
+const MAX_BACKGROUND_CLEANUP_RETRIES: usize = 8;
 const GRANT_ACCOUNT_PREFIX: &str = "relay-native-client-grant:v2:";
 const GRANT_INDEX_PREFIX: &str = "relay-native-client-grant:index:v2:";
 const GRANT_CLEANUP_RECORD_PREFIX: &str = "relay-native-client-grant:cleanup:v2:";
 const GRANT_CLEANUP_INDEX_PREFIX: &str = "relay-native-client-grant:cleanup-index:v2:";
+const GRANT_CLEANUP_OWNER_INDEX_PREFIX: &str = "relay-native-client-grant:cleanup-owners:v1:";
 const BROKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 static NATIVE_GRANT_VAULT_LOCK: Mutex<()> = Mutex::new(());
@@ -70,6 +75,7 @@ pub(crate) enum NativeRedemptionError {
     StationTrustRequired,
     InvitationInvalid,
     InvitationExpired,
+    StationTrustUnavailable,
     ProofKey,
     ProofKeyMissing,
     BrokerTransport,
@@ -251,6 +257,109 @@ pub(crate) trait NativeRedemptionContextProvider: Send + Sync {
     ) -> RedemptionResult<T>;
 }
 
+/// Production authority is reconstructed from the current owner-only saved
+/// profile and the OS-keyring approval record. The profile lock remains held
+/// through `operation`; only a validated public P-256 descriptor crosses the
+/// trust-store seam.
+pub(crate) struct AppNativeRedemptionContextProvider {
+    app: AppHandle,
+}
+
+fn with_locked_saved_relay_profile<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    operation: impl FnOnce(
+        NativeRelayProfileSnapshot,
+        LockedTrustProfileSnapshot,
+    ) -> RedemptionResult<T>,
+) -> RedemptionResult<T> {
+    let path =
+        super::station_profiles_path(app).map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let _profile_lock = super::lock_station_profiles_for_app(app, &path)
+        .map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let contents = super::read_station_profile_store(&path)
+        .map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let store = super::parse_station_profile_store(&contents)
+        .map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let app_identifier = app.config().identifier.clone();
+    let channel_name = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
+    let channel = match channel_name {
+        "stable" => NativeProofKeyChannel::Stable,
+        "beta" => NativeProofKeyChannel::Beta,
+        "nightly" => NativeProofKeyChannel::Nightly,
+        "dev" => NativeProofKeyChannel::Dev,
+        _ => return Err(NativeRedemptionError::InvalidProfile),
+    };
+    let profile = snapshot_from_saved_profile(&store, profile_name, &app_identifier, channel)?;
+    let binding = TrustProfileBinding {
+        profile_owner_id: profile.profile_name.clone(),
+        app_identifier: profile.app_identifier.clone(),
+        channel: profile.channel.keyring_label().to_owned(),
+        client_instance_id: profile.client_instance_id.clone(),
+        broker_origin: profile.broker_origin.clone(),
+        station_id: profile.station_id.clone(),
+        enrollment_id: profile.enrollment_id.clone(),
+    };
+    operation(
+        profile.clone(),
+        LockedTrustProfileSnapshot {
+            binding,
+            revision: profile.revision,
+        },
+    )
+}
+
+impl AppNativeRedemptionContextProvider {
+    pub(crate) fn new(app: AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+impl NativeRedemptionContextProvider for AppNativeRedemptionContextProvider {
+    fn with_current_context<T>(
+        &self,
+        profile_name: &str,
+        operation: impl FnOnce(NativeRedemptionContext) -> RedemptionResult<T>,
+    ) -> RedemptionResult<T> {
+        with_locked_saved_relay_profile(&self.app, profile_name, |profile, locked_snapshot| {
+            let mut trust_store = NativeStationTrustStore::system();
+            let approved = trust_store
+                .approved_descriptor_for_locked_profile(&locked_snapshot)
+                .map_err(|error| match error {
+                    crate::native_station_key_custody::CandidateError::TrustStore => {
+                        NativeRedemptionError::StationTrustUnavailable
+                    }
+                    _ => NativeRedemptionError::StationTrustRequired,
+                })?;
+            operation(NativeRedemptionContext {
+                station_trust: approved_station_trust(&profile, approved)?,
+                profile,
+            })
+        })
+    }
+}
+
+fn approved_station_trust(
+    profile: &NativeRelayProfileSnapshot,
+    approved: StationTrustApprovedDescriptor,
+) -> RedemptionResult<ApprovedNativeStationTrust> {
+    if approved.station_id != profile.station_id
+        || approved.enrollment_id != profile.enrollment_id
+        || approved.revision == 0
+    {
+        return Err(NativeRedemptionError::StationTrustRequired);
+    }
+    Ok(ApprovedNativeStationTrust {
+        revision: approved.revision,
+        status: NativeStationTrustStatus::Approved,
+        station_endpoint: profile.station_endpoint.clone(),
+        station_id: approved.station_id,
+        enrollment_id: approved.enrollment_id,
+        generation: approved.generation,
+        signing_key: approved.signing_key,
+    })
+}
+
 /// Typed invitation from the share surface. Its secret uses zeroizing memory;
 /// broker origin and all identity fields are checked against host state before
 /// any request is sent.
@@ -430,6 +539,34 @@ pub(crate) struct NativeGrantCleanupIndexEntry {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeGrantCleanupOwnerIndex {
+    schema_version: u8,
+    owners: Vec<NativeProofKeyOwner>,
+}
+
+/// Safe-to-display cleanup status. It deliberately omits the grant-secret
+/// digest and owner keyring identity.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelayGrantCleanupStatus {
+    pub(crate) cleanup_id: String,
+    pub(crate) route: NativeRelayGrantRoute,
+    pub(crate) staged_at: u64,
+    pub(crate) record_present: bool,
+    pub(crate) broker_retired: bool,
+    pub(crate) local_cleanup_required: bool,
+    pub(crate) local_cleanup_complete: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelayGrantStatusItem {
+    pub(crate) metadata: NativeRelayGrantMetadata,
+    pub(crate) expired: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct NativeGrantCleanupIndex {
     schema_version: u8,
     entries: Vec<NativeGrantCleanupIndexEntry>,
@@ -472,6 +609,16 @@ pub(crate) struct NativeRelayGrantMetadata {
     pub(crate) expires_at: u64,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelayGrantState {
+    pub(crate) profile_name: String,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) grants: Vec<NativeRelayGrantStatusItem>,
+    pub(crate) cleanups: Vec<NativeRelayGrantCleanupStatus>,
+}
+
 pub(crate) trait NativeGrantBackend: Send {
     fn get(&mut self, account: &str) -> RedemptionResult<Option<Zeroizing<String>>>;
     fn set(&mut self, account: &str, value: &str) -> RedemptionResult<()>;
@@ -479,6 +626,19 @@ pub(crate) trait NativeGrantBackend: Send {
 }
 
 pub(crate) trait NativeGrantCustody: Send + Sync {
+    fn register_cleanup_owner(&self, owner: &NativeProofKeyOwner) -> RedemptionResult<()>;
+    fn metadata_for_context(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantStatusItem>>;
+    fn stage_context_cleanup(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>>;
     fn store(
         &self,
         owner: &NativeProofKeyOwner,
@@ -550,6 +710,208 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         Self {
             backend: Mutex::new(backend),
         }
+    }
+
+    pub(crate) fn registered_cleanup_owners(
+        &self,
+        app_identifier: &str,
+        channel: &str,
+    ) -> RedemptionResult<Vec<NativeProofKeyOwner>> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        Ok(read_native_grant_cleanup_owner_index(&mut *backend, app_identifier, channel)?.owners)
+    }
+
+    pub(crate) fn cleanup_statuses_for_channel(
+        &self,
+        app_identifier: &str,
+        channel: &str,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let owners = read_native_grant_cleanup_owner_index(&mut *backend, app_identifier, channel)?;
+        let mut statuses = Vec::new();
+        for owner in owners.owners {
+            statuses.extend(
+                read_native_grant_cleanup_index(&mut *backend, &owner)?
+                    .entries
+                    .into_iter()
+                    .map(cleanup_status),
+            );
+        }
+        Ok(statuses)
+    }
+
+    pub(crate) fn register_cleanup_owner(
+        &self,
+        owner: &NativeProofKeyOwner,
+    ) -> RedemptionResult<()> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        register_cleanup_owner_locked(&mut *backend, owner)
+    }
+
+    pub(crate) fn metadata_for_context(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantStatusItem>> {
+        validate_profile_context(context)?;
+        if !profile_matches_owner(&context.profile, owner) {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        self.metadata_for_profile_route(
+            owner,
+            &context.profile.broker_origin,
+            &context.profile.station_id,
+            &context.profile.enrollment_id,
+            now,
+        )
+    }
+
+    pub(crate) fn metadata_for_profile_route(
+        &self,
+        owner: &NativeProofKeyOwner,
+        broker_origin: &str,
+        station_id: &str,
+        enrollment_id: &str,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantStatusItem>> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let cleanup = read_native_grant_cleanup_index(&mut *backend, owner)?;
+        let index = read_native_grant_index(&mut *backend, owner)?;
+        let mut metadata = Vec::new();
+        for entry in index.into_iter().filter(|entry| {
+            entry.route.broker_origin == broker_origin
+                && entry.route.station_id == station_id
+                && entry.route.enrollment_id == enrollment_id
+        }) {
+            if cleanup.entries.iter().any(|item| item.route == entry.route) {
+                continue;
+            }
+            let binding = NativeRelayGrantBinding {
+                owner: owner.clone(),
+                route: entry.route,
+            };
+            let account = native_grant_account(&binding)?;
+            let encoded = backend
+                .get(&account)?
+                .ok_or(NativeRedemptionError::GrantStore)?;
+            let stored: StoredNativeRelayGrantV2 =
+                serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+            validate_indexed_grant(owner, &stored, &binding, now)?;
+            metadata.push(NativeRelayGrantStatusItem {
+                metadata: native_grant_metadata(binding.route, &stored.grant),
+                expired: stored.grant.expires_at <= now,
+            });
+        }
+        Ok(metadata)
+    }
+
+    pub(crate) fn cleanup_statuses_for_profile_route(
+        &self,
+        owner: &NativeProofKeyOwner,
+        broker_origin: &str,
+        station_id: &str,
+        enrollment_id: &str,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        Ok(read_native_grant_cleanup_index(&mut *backend, owner)?
+            .entries
+            .into_iter()
+            .filter(|entry| {
+                entry.route.broker_origin == broker_origin
+                    && entry.route.station_id == station_id
+                    && entry.route.enrollment_id == enrollment_id
+            })
+            .map(cleanup_status)
+            .collect())
+    }
+
+    pub(crate) fn stage_context_cleanup(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+        validate_profile_context(context)?;
+        if !profile_matches_owner(&context.profile, owner) {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        stage_profile_route_cleanup_locked(
+            &mut *backend,
+            owner,
+            &context.profile.broker_origin,
+            &context.profile.station_id,
+            &context.profile.enrollment_id,
+            now,
+        )
+    }
+
+    pub(crate) fn stage_removed_profile_route_cleanup(
+        &self,
+        owner: &NativeProofKeyOwner,
+        broker_origin: &str,
+        station_id: &str,
+        enrollment_id: &str,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+        if !canonical_broker_origin(broker_origin)
+            || !valid_uuid(station_id)
+            || !valid_uuid(enrollment_id)
+        {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        stage_profile_route_cleanup_locked(
+            &mut *backend,
+            owner,
+            broker_origin,
+            station_id,
+            enrollment_id,
+            now,
+        )
     }
 
     fn store(
@@ -982,7 +1344,11 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
                         && stored.binding == binding
                         && native_grant_secret_digest(&stored.grant) == entry.grant_secret_digest
                     {
-                        validate_native_grant(owner, &stored.grant, entry.staged_at)?;
+                        validate_native_grant(
+                            owner,
+                            &stored.grant,
+                            native_grant_validation_time(&stored.grant, entry.staged_at)?,
+                        )?;
                         return Ok(Some(NativeGrantCleanupPending {
                             entry,
                             grant: stored.grant,
@@ -999,7 +1365,11 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
             owner: owner.clone(),
             route: entry.route.clone(),
         };
-        let route = validate_native_grant(owner, &stored.grant, stored.staged_at)?;
+        let route = validate_native_grant(
+            owner,
+            &stored.grant,
+            native_grant_validation_time(&stored.grant, stored.staged_at)?,
+        )?;
         if stored.schema_version != 1
             || stored.cleanup_id != cleanup_id
             || stored.binding != binding
@@ -1103,6 +1473,28 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
 }
 
 impl<B: NativeGrantBackend> NativeGrantCustody for NativeRelayGrantVault<B> {
+    fn register_cleanup_owner(&self, owner: &NativeProofKeyOwner) -> RedemptionResult<()> {
+        NativeRelayGrantVault::register_cleanup_owner(self, owner)
+    }
+
+    fn metadata_for_context(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantStatusItem>> {
+        NativeRelayGrantVault::metadata_for_context(self, owner, context, now)
+    }
+
+    fn stage_context_cleanup(
+        &self,
+        owner: &NativeProofKeyOwner,
+        context: &NativeRedemptionContext,
+        now: u64,
+    ) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+        NativeRelayGrantVault::stage_context_cleanup(self, owner, context, now)
+    }
+
     fn store(
         &self,
         owner: &NativeProofKeyOwner,
@@ -1244,6 +1636,46 @@ pub(crate) fn native_relay_grant_vault() -> NativeRelayGrantVault<OsNativeGrantB
     NativeRelayGrantVault::new(OsNativeGrantBackend)
 }
 
+/// Best-effort restart/profile-write recovery. Each failed entry remains in
+/// the owner-indexed durable quarantine for an explicit host retry.
+pub(crate) fn retry_pending_cleanup_for_app(app: &AppHandle) -> RedemptionResult<()> {
+    let app_identifier = app.config().identifier.clone();
+    let channel = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
+    let grants = native_relay_grant_vault();
+    let owners = grants.registered_cleanup_owners(&app_identifier, channel)?;
+    let context = AppNativeRedemptionContextProvider::new(app.clone());
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport::new();
+    let service = NativeRelayRedemptionService::new(
+        &context,
+        &proof_keys,
+        &http,
+        &grants,
+        native_now_ms_or_zero,
+    );
+    let mut remaining = MAX_BACKGROUND_CLEANUP_RETRIES;
+    for owner in owners {
+        for cleanup_id in service.pending_cleanup_ids(&owner)? {
+            if remaining == 0 {
+                return Ok(());
+            }
+            // Failure is intentionally retained and surfaced by cleanup
+            // status; one unavailable broker must not starve sibling entries.
+            let _ = service.retry_pending_cleanup(&owner, &cleanup_id);
+            remaining -= 1;
+        }
+    }
+    Ok(())
+}
+
+fn native_now_ms_or_zero() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct NativeRelayGrantIndexEntry {
@@ -1301,6 +1733,103 @@ fn read_native_grant_index(
     Ok(entries)
 }
 
+fn validate_indexed_grant(
+    owner: &NativeProofKeyOwner,
+    stored: &StoredNativeRelayGrantV2,
+    binding: &NativeRelayGrantBinding,
+    now: u64,
+) -> RedemptionResult<()> {
+    if stored.schema_version != 1 || stored.binding != *binding {
+        return Err(NativeRedemptionError::GrantStore);
+    }
+    let route = validate_native_grant(
+        owner,
+        &stored.grant,
+        native_grant_validation_time(&stored.grant, now)?,
+    )?;
+    if route != binding.route {
+        return Err(NativeRedemptionError::GrantStore);
+    }
+    Ok(())
+}
+
+fn native_grant_validation_time(
+    grant: &NativeRelayClientGrantV2,
+    now: u64,
+) -> RedemptionResult<u64> {
+    grant
+        .expires_at
+        .checked_sub(1)
+        .map(|last_live_second| now.min(last_live_second))
+        .ok_or(NativeRedemptionError::GrantInvalid)
+}
+
+fn cleanup_status(entry: NativeGrantCleanupIndexEntry) -> NativeRelayGrantCleanupStatus {
+    NativeRelayGrantCleanupStatus {
+        cleanup_id: entry.cleanup_id,
+        route: entry.route,
+        staged_at: entry.staged_at,
+        record_present: entry.record_present,
+        broker_retired: entry.broker_retired,
+        local_cleanup_required: entry.local_cleanup_required,
+        local_cleanup_complete: entry.local_cleanup_complete,
+    }
+}
+
+fn stage_profile_route_cleanup_locked(
+    backend: &mut impl NativeGrantBackend,
+    owner: &NativeProofKeyOwner,
+    broker_origin: &str,
+    station_id: &str,
+    enrollment_id: &str,
+    now: u64,
+) -> RedemptionResult<Vec<NativeRelayGrantCleanupStatus>> {
+    let matches_profile = |route: &NativeRelayGrantRoute| {
+        route.broker_origin == broker_origin
+            && route.station_id == station_id
+            && route.enrollment_id == enrollment_id
+    };
+    let mut quarantined = read_native_grant_cleanup_index(backend, owner)?.entries;
+    let active = read_native_grant_index(backend, owner)?;
+    let active: Vec<_> = active
+        .into_iter()
+        .filter(|entry| matches_profile(&entry.route))
+        .collect();
+    let already_quarantined = quarantined
+        .iter()
+        .any(|entry| matches_profile(&entry.route));
+    if active.is_empty() && !already_quarantined {
+        return Ok(Vec::new());
+    }
+    register_cleanup_owner_locked(backend, owner)?;
+    for entry in active {
+        if quarantined
+            .iter()
+            .any(|cleanup| cleanup.route == entry.route)
+        {
+            continue;
+        }
+        let binding = NativeRelayGrantBinding {
+            owner: owner.clone(),
+            route: entry.route.clone(),
+        };
+        let account = native_grant_account(&binding)?;
+        let encoded = backend
+            .get(&account)?
+            .ok_or(NativeRedemptionError::GrantStore)?;
+        let stored: StoredNativeRelayGrantV2 =
+            serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+        validate_indexed_grant(owner, &stored, &binding, now)?;
+        let cleanup = stage_native_grant_cleanup_locked(backend, owner, &stored.grant, true, now)?;
+        quarantined.push(cleanup);
+    }
+    Ok(quarantined
+        .into_iter()
+        .filter(|entry| matches_profile(&entry.route))
+        .map(cleanup_status)
+        .collect())
+}
+
 fn write_native_grant_index(
     backend: &mut impl NativeGrantBackend,
     owner: &NativeProofKeyOwner,
@@ -1349,6 +1878,101 @@ fn native_grant_cleanup_index_account(owner: &NativeProofKeyOwner) -> String {
         owner.channel_label(),
         owner.client_instance_id()
     )
+}
+
+fn native_grant_cleanup_owner_index_account(
+    app_identifier: &str,
+    channel: &str,
+) -> RedemptionResult<String> {
+    if !valid_app_identifier(app_identifier)
+        || !matches!(channel, "stable" | "beta" | "nightly" | "dev")
+    {
+        return Err(NativeRedemptionError::InvalidProfile);
+    }
+    let app_hash = URL_SAFE_NO_PAD.encode(digest(&SHA256, app_identifier.as_bytes()));
+    Ok(format!(
+        "{GRANT_CLEANUP_OWNER_INDEX_PREFIX}{channel}:{app_hash}"
+    ))
+}
+
+fn read_native_grant_cleanup_owner_index(
+    backend: &mut impl NativeGrantBackend,
+    app_identifier: &str,
+    channel: &str,
+) -> RedemptionResult<NativeGrantCleanupOwnerIndex> {
+    let account = native_grant_cleanup_owner_index_account(app_identifier, channel)?;
+    let Some(encoded) = backend.get(&account)? else {
+        return Ok(NativeGrantCleanupOwnerIndex {
+            schema_version: 1,
+            owners: Vec::new(),
+        });
+    };
+    let index: NativeGrantCleanupOwnerIndex =
+        serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+    let mut identities = std::collections::HashSet::new();
+    if index.schema_version != 1
+        || index.owners.len() > MAX_GRANT_INDEX_ENTRIES
+        || index.owners.iter().any(|owner| {
+            if owner.app_identifier() != app_identifier || owner.channel_label() != channel {
+                return true;
+            }
+            let client_instance_id = owner.client_instance_id();
+            NativeProofKeyOwner::new(app_identifier, channel_enum(channel), &client_instance_id)
+                .is_err()
+                || !identities.insert(client_instance_id)
+        })
+    {
+        return Err(NativeRedemptionError::GrantStore);
+    }
+    Ok(index)
+}
+
+fn channel_enum(channel: &str) -> NativeProofKeyChannel {
+    match channel {
+        "stable" => NativeProofKeyChannel::Stable,
+        "beta" => NativeProofKeyChannel::Beta,
+        "nightly" => NativeProofKeyChannel::Nightly,
+        _ => NativeProofKeyChannel::Dev,
+    }
+}
+
+fn write_native_grant_cleanup_owner_index_confirmed(
+    backend: &mut impl NativeGrantBackend,
+    app_identifier: &str,
+    channel: &str,
+    expected: &NativeGrantCleanupOwnerIndex,
+) -> RedemptionResult<()> {
+    let account = native_grant_cleanup_owner_index_account(app_identifier, channel)?;
+    let encoded = serde_json::to_string(expected).map_err(|_| NativeRedemptionError::GrantStore)?;
+    if backend.set(&account, &encoded).is_ok() {
+        return Ok(());
+    }
+    match backend.get(&account) {
+        Ok(Some(actual)) if actual.as_str() == encoded => Ok(()),
+        _ => Err(NativeRedemptionError::GrantStore),
+    }
+}
+
+fn register_cleanup_owner_locked(
+    backend: &mut impl NativeGrantBackend,
+    owner: &NativeProofKeyOwner,
+) -> RedemptionResult<()> {
+    let channel = owner.channel_label();
+    let mut index =
+        read_native_grant_cleanup_owner_index(backend, owner.app_identifier(), channel)?;
+    if !index.owners.contains(owner) {
+        if index.owners.len() >= MAX_GRANT_INDEX_ENTRIES {
+            return Err(NativeRedemptionError::GrantStore);
+        }
+        index.owners.push(owner.clone());
+        write_native_grant_cleanup_owner_index_confirmed(
+            backend,
+            owner.app_identifier(),
+            channel,
+            &index,
+        )?;
+    }
+    Ok(())
 }
 
 fn native_grant_cleanup_record_account(
@@ -1482,7 +2106,8 @@ fn stage_native_grant_cleanup_locked(
     local_cleanup_required: bool,
     now: u64,
 ) -> RedemptionResult<NativeGrantCleanupIndexEntry> {
-    let route = validate_native_grant(owner, grant, now)?;
+    register_cleanup_owner_locked(backend, owner)?;
+    let route = validate_native_grant(owner, grant, native_grant_validation_time(grant, now)?)?;
     let binding = NativeRelayGrantBinding {
         owner: owner.clone(),
         route: route.clone(),
@@ -2235,6 +2860,64 @@ pub(crate) fn snapshot_from_saved_profile(
     Ok(snapshot)
 }
 
+/// Persist a route quarantine for every v2 grant whose exact host owner/route
+/// disappears from profiles.json. This runs under the caller's existing
+/// profiles.json lock and performs no network I/O.
+pub(crate) fn stage_removed_profile_routes(
+    app: &AppHandle,
+    current: &super::CredentialProfileStore,
+    next: &super::CredentialProfileStore,
+) -> Result<(), String> {
+    let app_identifier = app.config().identifier.clone();
+    let channel_label = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
+    let channel = match channel_label {
+        "stable" => NativeProofKeyChannel::Stable,
+        "beta" => NativeProofKeyChannel::Beta,
+        "nightly" => NativeProofKeyChannel::Nightly,
+        "dev" => NativeProofKeyChannel::Dev,
+        _ => return Err("Station could not identify its native relay channel.".into()),
+    };
+    let vault = native_relay_grant_vault();
+    let now = native_now_ms()?;
+    for profile in &current.profiles {
+        let Some(route) = profile.relay_route.as_ref() else {
+            continue;
+        };
+        let Some(client_instance_id) = profile.client_instance_id.as_deref() else {
+            continue;
+        };
+        let same_owner_route_remains = next.profiles.iter().any(|candidate| {
+            candidate.relay_route.as_ref() == Some(route)
+                && candidate.client_instance_id.as_deref() == Some(client_instance_id)
+        });
+        if same_owner_route_remains {
+            continue;
+        }
+        let owner = NativeProofKeyOwner::new(&app_identifier, channel, client_instance_id)
+            .map_err(|_| {
+                "Station could not bind removed relay cleanup to this installation.".to_owned()
+            })?;
+        vault
+            .stage_removed_profile_route_cleanup(
+                &owner,
+                &route.broker_origin,
+                &route.station_id,
+                &route.enrollment_id,
+                now,
+            )
+            .map_err(|_| "Station could not quarantine a removed native relay grant.".to_owned())?;
+    }
+    Ok(())
+}
+
+fn native_now_ms() -> Result<u64, String> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .ok_or_else(|| "Station's system clock is invalid.".to_owned())
+}
+
 fn grant_index_account(owner: &NativeProofKeyOwner) -> String {
     let app_hash = URL_SAFE_NO_PAD.encode(digest(&SHA256, owner.app_identifier().as_bytes()));
     format!(
@@ -2824,6 +3507,97 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_owner_index_is_readback_verified_before_broker_request() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        backend.shared.lock().unwrap().fail_set_number = Some(1);
+        let grants = NativeRelayGrantVault::new(backend.clone());
+        let never = NeverTransport(AtomicBool::new(false));
+        let service = NativeRelayRedemptionService::new(
+            &*prepared.authority,
+            &prepared.proof_keys,
+            &never,
+            &grants,
+            || NOW,
+        );
+        let failure = service.redeem("Local", 7, prepared.invitation).unwrap_err();
+        assert_eq!(failure.primary, NativeRedemptionError::GrantStore);
+        assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::NotAttempted);
+        assert!(!never.0.load(Ordering::SeqCst));
+        let shared = backend.shared.lock().unwrap();
+        assert!(shared.values.is_empty());
+    }
+
+    #[test]
+    fn cleanup_owner_registry_survives_vault_recreation_without_secrets() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        let first = NativeRelayGrantVault::new(backend.clone());
+        first.register_cleanup_owner(&prepared.owner).unwrap();
+        drop(first);
+        let restarted = NativeRelayGrantVault::new(backend.clone());
+        assert_eq!(
+            restarted
+                .registered_cleanup_owners("io.kontourai.station", "stable")
+                .unwrap(),
+            vec![prepared.owner.clone()]
+        );
+        let account =
+            native_grant_cleanup_owner_index_account("io.kontourai.station", "stable").unwrap();
+        let encoded = backend
+            .shared
+            .lock()
+            .unwrap()
+            .values
+            .get(&account)
+            .unwrap()
+            .clone();
+        assert!(!encoded.contains(&"S".repeat(43)));
+        assert!(!encoded.contains("grant_secret"));
+    }
+
+    #[test]
+    fn wrong_owner_cannot_retry_or_clear_another_installations_cleanup() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        let grants = NativeRelayGrantVault::new(backend.clone());
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        grants.store(&prepared.owner, &grant, NOW).unwrap();
+        let pending = grants
+            .stage_cleanup(&prepared.owner, &grant, true, NOW)
+            .unwrap();
+        let wrong_owner = NativeProofKeyOwner::new(
+            "io.kontourai.station",
+            NativeProofKeyChannel::Stable,
+            "44444444-4444-4444-8444-444444444444",
+        )
+        .unwrap();
+        let never = NeverTransport(AtomicBool::new(false));
+        let service = NativeRelayRedemptionService::new(
+            &*prepared.authority,
+            &prepared.proof_keys,
+            &never,
+            &grants,
+            || NOW,
+        );
+        assert_eq!(
+            service.retry_pending_cleanup(&wrong_owner, &pending.cleanup_id),
+            Err(NativeRedemptionError::GrantMissing)
+        );
+        assert!(!never.0.load(Ordering::SeqCst));
+        let original = grants
+            .pending_cleanups(&prepared.owner)
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.cleanup_id == pending.cleanup_id)
+            .unwrap();
+        assert!(!original.broker_retired);
+        assert!(backend.shared.lock().unwrap().values.contains_key(
+            &native_grant_cleanup_record_account(&prepared.owner, &pending.cleanup_id,).unwrap()
+        ));
+    }
+
+    #[test]
     fn invitation_origin_and_expiry_are_checked_before_proof_or_http() {
         assert!(!canonical_station_origin("ftp://localhost"));
         assert!(canonical_station_origin("http://localhost"));
@@ -3330,7 +4104,8 @@ mod tests {
     fn index_only_pending_cleanup_survives_restart_and_stays_manual_revoke_only() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let backend = MemoryNativeGrantBackend::default();
-        backend.shared.lock().unwrap().fail_set_number = Some(2);
+        // Owner registry, cleanup index, then cleanup record.
+        backend.shared.lock().unwrap().fail_set_number = Some(3);
         let first_vault = NativeRelayGrantVault::new(backend.clone());
         let grant = sample_grant(&prepared, NOW + 3_600_000);
         let route = native_route_for_grant(&grant);
@@ -3440,10 +4215,10 @@ mod tests {
         oversized_server.join().unwrap();
 
         let (origin, slow_server) = spawn_server(|_| {
-            std::thread::sleep(Duration::from_millis(250));
+            std::thread::sleep(Duration::from_millis(750));
             (200, b"{}".to_vec())
         });
-        let short = UreqNativeBrokerTransport::with_timeout(Duration::from_millis(50));
+        let short = UreqNativeBrokerTransport::with_timeout(Duration::from_millis(300));
         assert!(matches!(
             short.redeem(&origin, b"{}"),
             Err(NativeRedemptionError::BrokerTransport)
@@ -3452,12 +4227,15 @@ mod tests {
     }
 
     #[test]
-    fn grant_keyring_index_rolls_back_failed_secret_write_and_explicit_revoke_removes_secret() {
+    fn grant_index_write_failure_keeps_only_cleanup_quarantine() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let backend = MemoryNativeGrantBackend::default();
-        backend.shared.lock().unwrap().fail_set_number = Some(2);
+        // Owner registry, quarantine index, cleanup record, presence marker,
+        // then the active grant index.
+        backend.shared.lock().unwrap().fail_set_number = Some(5);
         let vault = NativeRelayGrantVault::new(backend);
         let grant = sample_grant(&prepared, NOW + 3_600_000);
+        let route = native_route_for_grant(&grant);
         assert_eq!(
             vault
                 .store(&prepared.owner, &grant, NOW)
@@ -3467,22 +4245,33 @@ mod tests {
         );
         let backend = vault.backend.lock().unwrap();
         let shared = backend.shared.lock().unwrap();
+        let active_account = native_grant_account(&NativeRelayGrantBinding {
+            owner: prepared.owner.clone(),
+            route: route.clone(),
+        })
+        .unwrap();
+        assert!(!shared.values.contains_key(&active_account));
         assert!(shared
             .values
-            .values()
-            .all(|value| !value.contains(&"S".repeat(43))));
+            .keys()
+            .all(|account| !account.starts_with(GRANT_ACCOUNT_PREFIX)));
         assert!(shared
             .values
             .iter()
             .filter(|(account, _)| account.starts_with(GRANT_INDEX_PREFIX))
             .all(|(_, value)| value == "[]"));
+        assert!(shared
+            .values
+            .values()
+            .any(|value| value.contains(&"S".repeat(43))));
     }
 
     #[test]
     fn cleanup_index_write_failure_aborts_before_active_grant_publication() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let backend = MemoryNativeGrantBackend::default();
-        backend.shared.lock().unwrap().fail_set_number = Some(1);
+        // The owner index is written first; failure at #2 targets quarantine.
+        backend.shared.lock().unwrap().fail_set_number = Some(2);
         let vault = NativeRelayGrantVault::new(backend);
         let grant = sample_grant(&prepared, NOW + 3_600_000);
         let route = native_route_for_grant(&grant);
@@ -3514,7 +4303,8 @@ mod tests {
     fn cleanup_record_write_failure_leaves_index_only_quarantine_for_manual_revoke() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let backend = MemoryNativeGrantBackend::default();
-        backend.shared.lock().unwrap().fail_set_number = Some(2);
+        // Owner registry, quarantine index, then cleanup record.
+        backend.shared.lock().unwrap().fail_set_number = Some(3);
         let vault = NativeRelayGrantVault::new(backend);
         let grant = sample_grant(&prepared, NOW + 3_600_000);
         let route = native_route_for_grant(&grant);
@@ -3737,6 +4527,54 @@ mod tests {
             },
             expires_at,
         }
+    }
+
+    #[test]
+    fn profile_route_status_and_revoke_quarantine_survive_vault_restart() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let backend = MemoryNativeGrantBackend::default();
+        let vault = NativeRelayGrantVault::new(backend.clone());
+        let context = prepared.authority.0.lock().unwrap().clone();
+        let grant = sample_grant(&prepared, NOW + 3_600_000);
+        vault.store(&prepared.owner, &grant, NOW).unwrap();
+
+        let status = vault
+            .metadata_for_context(&prepared.owner, &context, NOW)
+            .unwrap();
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].metadata.route, native_route_for_grant(&grant));
+        assert!(!status[0].expired);
+
+        let cleanups = vault
+            .stage_context_cleanup(&prepared.owner, &context, NOW)
+            .unwrap();
+        assert_eq!(cleanups.len(), 1);
+        assert!(!cleanups[0].broker_retired);
+        assert!(vault
+            .metadata_for_context(&prepared.owner, &context, NOW)
+            .unwrap()
+            .is_empty());
+
+        drop(vault);
+        let restarted = NativeRelayGrantVault::new(backend);
+        assert_eq!(
+            restarted
+                .registered_cleanup_owners("io.kontourai.station", "stable")
+                .unwrap(),
+            vec![prepared.owner.clone()]
+        );
+        assert_eq!(
+            restarted
+                .cleanup_statuses_for_profile_route(
+                    &prepared.owner,
+                    "https://broker.example",
+                    STATION_ID,
+                    ENROLLMENT_ID,
+                )
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
 
@@ -3982,6 +4820,10 @@ where
             &before.profile.client_instance_id,
         )
         .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+        // Persist the secret-free owner identity before any broker can issue
+        // a credential. Every post-request compensation path can then be
+        // discovered after a profile edit or process restart.
+        self.grants.register_cleanup_owner(&owner)?;
         let public = match self.proof_keys.restore(&owner) {
             Ok(public) => public,
             Err(ProofKeyError::Missing) => {
@@ -4143,4 +4985,225 @@ where
         }
         commit_result.map_err(NativeRedemptionFailure::from)
     }
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_redeem(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+    invitation: NativeRelayInvitationV2,
+) -> Result<NativeRelayGrantMetadata, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty() || profile_name.len() > 256 {
+        return Err("The selected Station profile name is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let proof_keys = NativeRelayProofKeyVault::new();
+        let http = UreqNativeBrokerTransport::new();
+        let grants = native_relay_grant_vault();
+        let service = NativeRelayRedemptionService::new(
+            &context,
+            &proof_keys,
+            &http,
+            &grants,
+            native_now_ms_or_zero,
+        );
+        service
+            .redeem(&profile_name, expected_profile_revision, invitation)
+            .map_err(|failure| {
+                format!(
+                    "Station could not redeem the native relay invitation ({:?}).",
+                    failure.primary
+                )
+            })
+    })
+    .await
+    .map_err(|_| "Station could not redeem the native relay invitation.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_status(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+) -> Result<NativeRelayGrantState, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty() || profile_name.len() > 256 {
+        return Err("The selected Station profile name is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let grants = native_relay_grant_vault();
+        context
+            .with_current_context(&profile_name, |current| {
+                validate_profile_context(&current)?;
+                let owner = NativeProofKeyOwner::new(
+                    &current.profile.app_identifier,
+                    current.profile.channel,
+                    &current.profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                Ok(NativeRelayGrantState {
+                    profile_name: current.profile.profile_name.clone(),
+                    station_id: current.profile.station_id.clone(),
+                    enrollment_id: current.profile.enrollment_id.clone(),
+                    grants: grants.metadata_for_context(
+                        &owner,
+                        &current,
+                        native_now_ms_or_zero(),
+                    )?,
+                    cleanups: grants.cleanup_statuses_for_profile_route(
+                        &owner,
+                        &current.profile.broker_origin,
+                        &current.profile.station_id,
+                        &current.profile.enrollment_id,
+                    )?,
+                })
+            })
+            .map_err(|_| "Station could not read native relay grant status.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not read native relay grant status.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_revoke(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<NativeRelayGrantState, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty() || profile_name.len() > 256 {
+        return Err("The selected Station profile name is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let grants = native_relay_grant_vault();
+        let (owner, broker_origin, station_id, enrollment_id, staged) = context
+            .with_current_context(&profile_name, |current| {
+                validate_profile_context(&current)?;
+                if current.profile.revision != expected_profile_revision {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let owner = NativeProofKeyOwner::new(
+                    &current.profile.app_identifier,
+                    current.profile.channel,
+                    &current.profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let staged =
+                    grants.stage_context_cleanup(&owner, &current, native_now_ms_or_zero())?;
+                Ok((
+                    owner,
+                    current.profile.broker_origin.clone(),
+                    current.profile.station_id.clone(),
+                    current.profile.enrollment_id.clone(),
+                    staged,
+                ))
+            })
+            .map_err(|_| "Station could not stage native relay grant revocation.".to_owned())?;
+        let proof_keys = NativeRelayProofKeyVault::new();
+        let http = UreqNativeBrokerTransport::new();
+        let service = NativeRelayRedemptionService::new(
+            &context,
+            &proof_keys,
+            &http,
+            &grants,
+            native_now_ms_or_zero,
+        );
+        for entry in staged {
+            let _ = service.retry_pending_cleanup(&owner, &entry.cleanup_id);
+        }
+        Ok(NativeRelayGrantState {
+            profile_name,
+            station_id: station_id.clone(),
+            enrollment_id: enrollment_id.clone(),
+            grants: Vec::new(),
+            cleanups: grants
+                .cleanup_statuses_for_profile_route(
+                    &owner,
+                    &broker_origin,
+                    &station_id,
+                    &enrollment_id,
+                )
+                .map_err(|_| "Station could not read native relay cleanup status.".to_owned())?,
+        })
+    })
+    .await
+    .map_err(|_| "Station could not revoke native relay grants.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_cleanup_pending(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+) -> Result<Vec<NativeRelayGrantCleanupStatus>, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let app_identifier = app.config().identifier.clone();
+        let channel = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
+        native_relay_grant_vault()
+            .cleanup_statuses_for_channel(&app_identifier, channel)
+            .map_err(|_| "Station could not read pending native relay cleanup.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not read pending native relay cleanup.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_cleanup_retry(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    cleanup_id: String,
+) -> Result<Vec<NativeRelayGrantCleanupStatus>, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if !valid_uuid(&cleanup_id) {
+        return Err("The native relay cleanup identifier is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let app_identifier = app.config().identifier.clone();
+        let channel = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
+        let grants = native_relay_grant_vault();
+        let owners = grants
+            .registered_cleanup_owners(&app_identifier, channel)
+            .map_err(|_| "Station could not read pending native relay cleanup.".to_owned())?;
+        let mut matching = Vec::new();
+        for owner in owners {
+            if grants
+                .pending_cleanups(&owner)
+                .map_err(|_| "Station could not read pending native relay cleanup.".to_owned())?
+                .iter()
+                .any(|entry| entry.cleanup_id == cleanup_id)
+            {
+                matching.push(owner);
+            }
+        }
+        if matching.len() != 1 {
+            return Err("The native relay cleanup is unavailable or ambiguous.".to_owned());
+        }
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let proof_keys = NativeRelayProofKeyVault::new();
+        let http = UreqNativeBrokerTransport::new();
+        let service = NativeRelayRedemptionService::new(
+            &context,
+            &proof_keys,
+            &http,
+            &grants,
+            native_now_ms_or_zero,
+        );
+        service
+            .retry_pending_cleanup(&matching[0], &cleanup_id)
+            .map_err(|_| {
+                "Station could not retry native relay cleanup; it remains pending.".to_owned()
+            })?;
+        grants
+            .cleanup_statuses_for_channel(&app_identifier, channel)
+            .map_err(|_| "Station could not read pending native relay cleanup.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not retry native relay cleanup.".to_owned())?
 }

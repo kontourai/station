@@ -9,6 +9,7 @@
 
 #![allow(dead_code)] // Native host integration is a separate step; no IPC surface is registered here.
 
+use crate::native_relay_proof_key::P256PublicJwk;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use ring::agreement::{
@@ -497,6 +498,18 @@ pub(crate) struct StationTrustPublicState {
     pub(crate) key_id: Option<String>,
 }
 
+/// Safe public key projection of a current Approved record. Call only while
+/// the saved-profile lock represented by the supplied snapshot is held.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StationTrustApprovedDescriptor {
+    pub(crate) revision: u64,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) generation: u64,
+    pub(crate) key_id: String,
+    pub(crate) signing_key: P256PublicJwk,
+}
+
 pub(crate) trait StationTrustBackend: Send {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>>;
     fn write(&mut self, account: &str, value: &str) -> CandidateResult<()>;
@@ -565,6 +578,49 @@ impl<B: StationTrustBackend> NativeStationTrustStore<B, TestStationTrustClock> {
 }
 
 impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C> {
+    /// Read only a descriptor whose exact approved binding matches the
+    /// caller's profile snapshot. The caller must retain the corresponding
+    /// saved-profile interprocess lock through this method and its callback.
+    pub(crate) fn approved_descriptor_for_locked_profile(
+        &mut self,
+        snapshot: &LockedTrustProfileSnapshot,
+    ) -> CandidateResult<StationTrustApprovedDescriptor> {
+        if snapshot.revision == 0
+            || snapshot.revision > JS_SAFE_INTEGER_MAX
+            || snapshot.binding.station_id.is_empty()
+        {
+            return Err(CandidateError::ProfileStale);
+        }
+        let _guard = STATION_TRUST_OPERATION
+            .lock()
+            .map_err(|_| CandidateError::TrustStore)?;
+        let account = trust_account(&snapshot.binding)?;
+        let stored = self.read_record(&account, &snapshot.binding.station_id)?;
+        if stored.status != Some(StationTrustStatus::Approved)
+            || !stored.approved_bindings.contains(&snapshot.binding)
+        {
+            return Err(CandidateError::ProfileStale);
+        }
+        let trust = stored.trust.as_ref().ok_or(CandidateError::TrustStore)?;
+        if trust.station_id != snapshot.binding.station_id
+            || trust.enrollment_id != snapshot.binding.enrollment_id
+        {
+            return Err(CandidateError::ProfileStale);
+        }
+        let key_id = signing_key_id(&trust.signing_key)?;
+        Ok(StationTrustApprovedDescriptor {
+            revision: stored.revision,
+            station_id: trust.station_id.clone(),
+            enrollment_id: trust.enrollment_id.clone(),
+            generation: trust.generation,
+            key_id,
+            signing_key: P256PublicJwk::from_verified_p256_coordinates(
+                trust.signing_key.x.clone(),
+                trust.signing_key.y.clone(),
+            ),
+        })
+    }
+
     pub(crate) fn current_state<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -575,47 +631,56 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             if snapshot.binding != *binding || snapshot.revision != profile_revision {
                 return Err(CandidateError::ProfileStale);
             }
-            let _guard = STATION_TRUST_OPERATION
-                .lock()
-                .map_err(|_| CandidateError::TrustStore)?;
-            let account = trust_account(binding)?;
-            let stored = self.read_record(&account, &binding.station_id)?;
-            let route_approved = stored.approved_bindings.contains(binding);
-            let trust_matches_route = stored
+            self.public_state_for_locked_profile(&snapshot)
+        })
+    }
+
+    /// Read secret-free trust state while the caller retains the profile lock
+    /// represented by `snapshot`; this avoids recursively acquiring that lock.
+    pub(crate) fn public_state_for_locked_profile(
+        &mut self,
+        snapshot: &LockedTrustProfileSnapshot,
+    ) -> CandidateResult<StationTrustPublicState> {
+        let _guard = STATION_TRUST_OPERATION
+            .lock()
+            .map_err(|_| CandidateError::TrustStore)?;
+        let account = trust_account(&snapshot.binding)?;
+        let stored = self.read_record(&account, &snapshot.binding.station_id)?;
+        let route_approved = stored.approved_bindings.contains(&snapshot.binding);
+        let trust_matches_route = stored
+            .trust
+            .as_ref()
+            .is_some_and(|trust| trust.enrollment_id == snapshot.binding.enrollment_id);
+        let effective_status = stored
+            .status
+            .filter(|_| route_approved && trust_matches_route);
+        let public = if effective_status.is_some() {
+            stored
                 .trust
                 .as_ref()
-                .is_some_and(|trust| trust.enrollment_id == binding.enrollment_id);
-            let effective_status = stored
-                .status
-                .filter(|_| route_approved && trust_matches_route);
-            let public = if effective_status.is_some() {
-                stored
-                    .trust
-                    .as_ref()
-                    .map(|trust| {
-                        Ok((
-                            trust.enrollment_id.clone(),
-                            trust.generation,
-                            signing_key_id(&trust.signing_key)?,
-                        ))
-                    })
-                    .transpose()?
-            } else {
-                None
-            };
-            if effective_status.is_some() != public.is_some() {
-                return Err(CandidateError::TrustStore);
-            }
-            Ok(StationTrustPublicState {
-                revision: stored.revision,
-                status: effective_status,
-                station_id: binding.station_id.clone(),
-                enrollment_id: public
-                    .as_ref()
-                    .map(|(enrollment_id, _, _)| enrollment_id.clone()),
-                generation: public.as_ref().map(|(_, generation, _)| *generation),
-                key_id: public.map(|(_, _, key_id)| key_id),
-            })
+                .map(|trust| {
+                    Ok((
+                        trust.enrollment_id.clone(),
+                        trust.generation,
+                        signing_key_id(&trust.signing_key)?,
+                    ))
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        if effective_status.is_some() != public.is_some() {
+            return Err(CandidateError::TrustStore);
+        }
+        Ok(StationTrustPublicState {
+            revision: stored.revision,
+            status: effective_status,
+            station_id: snapshot.binding.station_id.clone(),
+            enrollment_id: public
+                .as_ref()
+                .map(|(enrollment_id, _, _)| enrollment_id.clone()),
+            generation: public.as_ref().map(|(_, generation, _)| *generation),
+            key_id: public.map(|(_, _, key_id)| key_id),
         })
     }
 
@@ -1820,5 +1885,57 @@ mod tests {
         assert_eq!(receipt.revision, 2);
         assert_eq!(receipt.generation, 4);
         assert_eq!(receipt.key_id, rotated_key);
+    }
+
+    #[test]
+    fn approved_descriptor_read_requires_exact_durable_approved_binding() {
+        let backend = MemoryTrustBackend::default();
+        let candidate_binding = binding();
+        let trust_binding = trust_binding(&candidate_binding);
+        let profile = locked_profile(&candidate_binding);
+        let mut store = NativeStationTrustStore::with_backend(backend);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        store.approve(&profile, candidate, &code, &key_id).unwrap();
+
+        let snapshot = LockedTrustProfileSnapshot {
+            binding: trust_binding.clone(),
+            revision: candidate_binding.profile_revision,
+        };
+        let approved = store
+            .approved_descriptor_for_locked_profile(&snapshot)
+            .unwrap();
+        assert_eq!(approved.station_id, candidate_binding.station_id);
+        assert_eq!(approved.enrollment_id, candidate_binding.enrollment_id);
+        assert_eq!(approved.generation, 3);
+        assert_eq!(approved.key_id, key_id);
+        assert_eq!(approved.signing_key.kty(), "EC");
+        assert_eq!(approved.signing_key.crv(), "P-256");
+
+        let mut wrong_binding = trust_binding.clone();
+        wrong_binding.profile_owner_id = "different-profile".into();
+        let wrong_snapshot = LockedTrustProfileSnapshot {
+            binding: wrong_binding,
+            revision: candidate_binding.profile_revision,
+        };
+        assert_eq!(
+            store.approved_descriptor_for_locked_profile(&wrong_snapshot),
+            Err(CandidateError::ProfileStale)
+        );
+
+        store
+            .revoke(
+                &profile,
+                &trust_binding,
+                candidate_binding.profile_revision,
+                1,
+                &key_id,
+            )
+            .unwrap();
+        assert_eq!(
+            store.approved_descriptor_for_locked_profile(&snapshot),
+            Err(CandidateError::ProfileStale)
+        );
     }
 }

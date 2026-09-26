@@ -299,7 +299,10 @@ pub(crate) async fn station_native_relay_key_approval_status(
         .map_err(|_| "Station could not read native relay-key trust.".to_owned())?
 }
 
-fn require_main_app_window(window: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
+pub(super) fn require_main_app_window(
+    window: &WebviewWindow,
+    app: &AppHandle,
+) -> Result<(), String> {
     if !renderer_mount_label_admitted(window.label()) {
         return Err(
             "Native relay-key approval is available only from Station's main window.".into(),

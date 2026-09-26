@@ -5314,14 +5314,24 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_with_host(
+    let result = station_profile_store_write_with_host(
         &AppProfileWriteHost(app),
         authority,
         pending,
         contents,
         expected_revision,
         pairing_handle,
-    )
+    );
+    #[cfg(not(mobile))]
+    {
+        let app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
+                log::warn!("could not resume native relay grant cleanup after profile write: {error:?}");
+            }
+        });
+    }
+    result
 }
 
 // Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
@@ -5369,7 +5379,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
         }
         #[cfg(mobile)]
         {
@@ -11043,6 +11054,11 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_key_approval::station_native_relay_key_approval_approve,
         native_relay_key_approval::station_native_relay_key_approval_revoke,
         native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
@@ -11104,6 +11120,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
+            #[cfg(not(mobile))]
+            {
+                let app = app.handle().clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) =
+                        native_relay_redemption::retry_pending_cleanup_for_app(&app)
+                    {
+                        log::warn!("could not resume native relay grant cleanup at startup: {error:?}");
+                    }
+                });
+            }
             #[cfg(all(not(mobile), feature = "webdriver"))]
             seed_webdriver_credential_fixture(&app.config().identifier)?;
             if let Some(raw) = &invalid_log_level {
