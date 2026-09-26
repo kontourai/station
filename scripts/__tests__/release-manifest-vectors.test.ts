@@ -325,6 +325,12 @@ const VECTORS: Vector[] = [
     expected: 'manifest signing key fixture-rogue is not pinned',
   },
   {
+    name: 'pinned key bytes under an unpinned key id',
+    envelope: () =>
+      signEnvelope(platformPayload(), 'fixture-unknown', nightlyKey.privateKey),
+    expected: 'manifest signing key fixture-unknown is not pinned',
+  },
+  {
     name: 'the nightly key signing a stable manifest',
     envelope: () =>
       signEnvelope(
