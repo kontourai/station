@@ -12,165 +12,39 @@
  * the full registered tool surface, so a new tool cannot ship unclassified.
  */
 
-// Read-only station-control tools safe for auto-approve.
-const SC_READ_ONLY_TOOL_NAMES = [
-  'list_agents',
-  'get_agent',
-  'list_skills',
-  'list_registry_skills',
-  'list_integrations',
-  'get_integration',
-  'list_registry_integrations',
-  'list_providers',
-  'list_jobs',
-  'list_scheduler_providers',
-  'get_scheduler_stats',
-  'get_scheduler_status',
-  'preview_schedule',
-  'get_job_logs',
-  'system_status',
-  // Reads Station's own server logs (redacted for remote/paired callers;
-  // unredacted for the local operator) — a pure read over local diagnostics.
-  'read_logs',
-  // Reads monitoring events (a different store from read_logs); the route it
-  // calls applies the per-user and tenant filters, so this is a read.
-  'read_monitoring_events',
-  'list_models',
-  'list_delegation_environments',
-  'navigate_to',
-  'list_projects',
-  'get_project',
-  'list_project_layouts',
-  'list_layouts',
-  'get_layout',
-  'list_conversations',
-  'get_conversation_messages',
-  'get_config',
-  'list_plugins',
-  'check_plugin_updates',
-  // #2323 S1: reads a local plugin folder in place and writes nothing (no
-  // staging copy, no build); no Station state changes and nothing it
-  // returns can authorize an install.
-  'validate_plugin',
-  'get_usage',
-  'get_achievements',
-  // archive#1880: semantic search over the K3 knowledge index — embeds the
-  // query and reads the index + re-resolves records through the store
-  // adapters; writes nothing (unlike reindex_knowledge/migrate_knowledge
-  // below, which rebuild the index).
-  'search_knowledge',
-  // archive#1136: a pure profile+state read (SshEnvironmentService#get),
-  // no connect/reconnect side effect — unlike list_delegation_targets/
-  // get_task below, which may reconnect a verified SSH environment.
-  'get_ssh_environment',
-  // archive#2901 review evidence: pure reads over review requests and their
-  // durable receipts. The `run_independent_review` verb that CREATES them is
-  // classified mutating below.
-  'get_review_request',
-  'list_review_receipts',
-  'get_review_receipt',
-  // archive#4079: a pure board-face read (BoardStore#read); the
-  // pin/unpin/move verbs that write to it are classified mutating below.
-  'board_read',
-];
+import {
+  STATION_CONTROL_TOOL_POLICY,
+  type StationControlToolClass,
+} from '../../tools/station-control-policy.js';
 
 /**
- * Mutating station-control tools: agent/skill/project/config/
- * scheduler create-update-delete, integration/plugin install, and agent
- * dispatch (`send_message`, `run_job` — they trigger autonomous work, the
- * same set the delegation child deny-list already treats as privileged).
+ * #2377 slice A: the three lists are DERIVED from the one station-control
+ * authority table (`tools/station-control-policy.ts`, `toolClass`), never
+ * kept by hand beside it. A hand list drifted twice: `list_layouts`/
+ * `get_layout` stayed classified after their tools were removed, and the
+ * Basis and session-inventory tools were never added, so the fail-safe
+ * default gated three reads as mutations.
+ *
+ * - read-only: list/get/navigate/status — safe for auto-approve, never
+ *   policy-gated.
+ * - bounded-write (#2584): writes something bounded and owner-directed, so
+ *   it is auto-approved for every agent and is not a platform mutation
+ *   (`notify_user`: one redacted, capped, rate-limited inbox record for the
+ *   calling session's own readers).
+ * - mutating: platform create/update/delete, installs, scheduler actions,
+ *   config writes, agent dispatch — subject to the platform-mutation gate in
+ *   policy-opted workspaces.
  */
-const SC_MUTATING_TOOL_NAMES = [
-  // agents + conversations
-  'create_agent',
-  'update_agent',
-  'delete_agent',
-  'delete_conversation',
-  // skills
-  'install_skill',
-  'uninstall_skill',
-  'update_skill',
-  'track_skill_run',
-  'record_skill_outcome',
-  // integrations / providers / plugins
-  'create_integration',
-  'delete_integration',
-  'install_registry_integration',
-  'create_provider',
-  'install_plugin',
-  // #2323 S5: these three RECORD a proposal and change nothing a plugin
-  // runs. Still mutating, deliberately: each writes a durable record and an
-  // inbox row, which is what this list means, and the cost is bounded — the
-  // platform-mutation gate applies only in policy-opted workspaces, where the
-  // owner chose to approve every write. Auto-approving them as read-only
-  // would call a writer a reader.
-  'propose_plugin_install',
-  'update_plugin',
-  'remove_plugin',
-  // scheduler
-  'add_job',
-  'update_job',
-  'run_job',
-  'enable_job',
-  'disable_job',
-  'delete_job',
-  // app config
-  'update_config',
-  // agent dispatch
-  'send_message',
-  // Read-oriented, but selected SSH discovery may reconnect the verified
-  // environment before returning its secret-free capability catalog.
-  'list_delegation_targets',
-  'list_delegated_tasks',
-  'delegate_task',
-  // May reconnect a verified SSH environment before reading task state.
-  'get_task',
-  'get_task_events',
-  'continue_task',
-  'respond_to_task_request',
-  'interrupt_task',
-  // knowledge index management (s201-knowledge-retrieval) — rebuild/migrate
-  // both write to the sqlite-vec index and/or a new store root, never
-  // read-only
-  'reindex_knowledge',
-  'migrate_knowledge',
-  // archive#1136: environment MANAGEMENT verbs — create/connect/disconnect/
-  // remove a saved SSH environment via SshEnvironmentService. Same tier as
-  // `create_agent`/`delete_agent`: create/destroy/state-changing actions on
-  // persistent, credentialed configuration, subject to the platform-mutation
-  // gate like every other write verb in this list (`get_ssh_environment`
-  // above is the read-only sibling).
-  'create_ssh_environment',
-  'connect_ssh_environment',
-  'disconnect_ssh_environment',
-  'remove_ssh_environment',
-  // archive#2901 review evidence: `run_independent_review` starts a review and
-  // writes a durable receipt, so it belongs with the other create/dispatch
-  // verbs. Its `get_*`/`list_*` siblings are read-only and listed above.
-  'run_independent_review',
-  // archive#4079: board-face writes (BoardStore#pin/unpin/move) —
-  // persistent state that survives a restart, same tier as scheduler/agent
-  // CRUD above.
-  'board_pin',
-  'board_unpin',
-  'board_move',
-];
+function toolNamesOfClass(toolClass: StationControlToolClass): string[] {
+  return Object.entries(STATION_CONTROL_TOOL_POLICY)
+    .filter(([, policy]) => policy.toolClass === toolClass)
+    .map(([name]) => name);
+}
 
-/**
- * #2584: tools that DO write, but whose write is bounded and owner-directed,
- * so they are auto-approved for every agent (authored, default, delegated
- * and unattended runs alike) and are not platform mutations. They are not
- * readers, and are not listed as such.
- *
- * - `notify_user`: one inbox record addressed to the calling session's own
- *   readers, redacted, capped and rate-limited per session and per Station
- *   by its route. An approval prompt would wait for the away user it exists
- *   to reach.
- *
- * (`navigate_to` has a UI side effect too and stays in the read-only list
- * above; moving it is out of this change's scope.)
- */
-const SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES = ['notify_user'];
+const SC_READ_ONLY_TOOL_NAMES = toolNamesOfClass('read-only');
+const SC_MUTATING_TOOL_NAMES = toolNamesOfClass('mutating');
+const SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES =
+  toolNamesOfClass('bounded-write');
 
 const SC_TOOL_NAME_PREFIXES = ['station-control_', 'stationControl_'];
 
@@ -207,7 +81,7 @@ export function bareControlToolName(toolName: string): string {
   return toolName;
 }
 
-type ControlToolClass = 'read-only' | 'bounded-write' | 'mutating';
+type ControlToolClass = StationControlToolClass;
 
 /**
  * Classify a station-control tool name (prefixed or bare). Unknown names

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REQUIRED_STATIC_WORKSPACES = [
   {
@@ -64,8 +65,7 @@ export function prepareVerifyStatic({
   }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     prepareVerifyStatic();
   } catch (error) {

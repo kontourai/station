@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { canonicalJson } from './release-cohort.mjs';
 
 const ANDROID_PUBLISHER =
@@ -229,7 +229,7 @@ async function main(argv = process.argv.slice(2)) {
   const observation = await queryGooglePlayInternal(json(argv[1]));
   process.stdout.write(`${JSON.stringify(observation, null, 2)}\n`);
 }
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

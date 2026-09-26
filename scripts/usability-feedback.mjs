@@ -13,13 +13,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import {
   ACCOUNT_DISABLED_REASON,
   ACCOUNT_DISABLED_STATUS,
   accountsAbsent,
   renderAccountDisabledMarkdown,
 } from './lib/account-requirement.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** What the semantic image review needs that a CI runner does not have. */
 export const IMAGE_REVIEW_ACCOUNT = 'a funded image-review API credential';
@@ -526,10 +526,7 @@ async function main() {
   console.log(renderFeedback(report));
   process.exitCode = feedbackExitCode(checks, visual);
 }
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-)
+if (invokedDirectly(import.meta.url))
   main().catch((error) => {
     console.error(error.message);
     process.exitCode = 2;

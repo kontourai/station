@@ -40,6 +40,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REPORT_MARKER = '<!-- starved-pr-report -->';
 export const HOLD_MARKER = '<!-- starved-ok:';
@@ -203,4 +204,4 @@ export function main(argv = process.argv.slice(2)) {
   );
 }
 
-if (process.argv[1]?.endsWith('starved-pr-report.mjs')) main();
+if (invokedDirectly(import.meta.url)) main();

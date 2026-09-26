@@ -13,6 +13,7 @@ export {
   type BrowserIceSnapshot,
   type BrowserPionConnectionSnapshot,
   createBrowserPionConnection,
+  type PionSignalingClient,
 } from './browserPionConnection.js';
 export {
   delayBrowserTransport,

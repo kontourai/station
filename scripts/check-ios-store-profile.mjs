@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const APP_STORE_PROFILE_REQUIREMENT =
   'APPLE_PROVISIONING_PROFILE_BASE64 must contain an App Store distribution provisioning profile';
@@ -331,7 +332,7 @@ export function verifyAppStoreProvisioningProfile(
   );
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   const profileIndex = process.argv.indexOf('--station');
   const labelIndex = process.argv.indexOf('--label');
   const teamIndex = process.argv.indexOf('--expected-team');

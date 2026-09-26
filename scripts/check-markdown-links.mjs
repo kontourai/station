@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const MARKDOWN_LINK = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
 const EXTERNAL_TARGET = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
@@ -87,7 +87,7 @@ export async function checkMarkdownLinks({ files, root = process.cwd() }) {
   throw new Error(`Broken relative Markdown links:\n${detail}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   const files = process.argv.slice(2);
 
   try {

@@ -15,6 +15,7 @@ import {
 import { dirname, isAbsolute } from 'node:path';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
+import { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { createSelfHostedBrokerPionRuntime } from './self-hosted-broker-pion-runtime.js';
 import type {
@@ -557,6 +558,7 @@ function factoryCreateRuntime(
       turn: { ...snapshot.turn },
       trust,
       issuer,
+      candidateIssuer: new ConnectionKeyCandidateIssuer(store),
       heartbeatMs: 5_000,
       renewMs: 10_000,
       pollMs: 1_000,

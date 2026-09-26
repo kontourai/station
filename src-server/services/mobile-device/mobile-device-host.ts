@@ -23,7 +23,7 @@ const MAX_DEVICES = 256;
 const IOS_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const ANDROID_ID = /^[a-zA-Z0-9_.-]{1,256}$/;
 const MAX_ACTION_RESPONSE_BYTES = 64 * 1024;
-/** A cold simulator/emulator boot can take minutes (t3code allows three). */
+/** A cold simulator/emulator boot can take minutes; allow three. */
 const BOOT_TIMEOUT_MS = 180_000;
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 

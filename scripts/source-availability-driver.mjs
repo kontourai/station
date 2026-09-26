@@ -9,6 +9,7 @@ import {
   mergedIssueFacts,
   validatePushRange,
 } from './lib/github-merged-issue-facts.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REPOSITORY = 'kontourai/station';
 const labelNames = (labels = []) =>
@@ -131,7 +132,7 @@ export async function runSourceAvailability(
     : { kind: 'projected', outcomes };
 }
 
-if (process.argv[1]?.endsWith('source-availability-driver.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   // GitHub workflow supplies this narrow REST adapter; command exits nonzero
   // before a mutation on malformed/ambiguous discovery facts.

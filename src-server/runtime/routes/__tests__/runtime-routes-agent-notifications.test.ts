@@ -63,6 +63,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const HOSTED_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
+const OPERATOR_CREDENTIAL = 'test-only-operator-credential-notifications';
 const makeTempDir = trackTempDirs();
 
 describe('configureRuntimeRoutes: agent notifications', () => {
@@ -133,10 +134,16 @@ describe('configureRuntimeRoutes: agent notifications', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
-        verifyCredential: () => false,
-        authorizeCredential: () => false,
-        verifyOperatorCredential: () => false,
-        resolveGrantedScope: () => undefined,
+        verifyCredential: (credential: string) =>
+          credential === OPERATOR_CREDENTIAL,
+        authorizeCredential: (credential: string) =>
+          credential === OPERATOR_CREDENTIAL,
+        verifyOperatorCredential: (credential: string) =>
+          credential === OPERATOR_CREDENTIAL,
+        resolveGrantedScope: (credential: string) =>
+          credential === OPERATOR_CREDENTIAL
+            ? 'orchestration:read orchestration:operate'
+            : undefined,
         identifyDevice: () => undefined,
         devicePairing: deepStub({}),
       }),
@@ -222,9 +229,26 @@ describe('configureRuntimeRoutes: agent notifications', () => {
       body,
     });
     expect(agent.status).toBe(403);
-    const operator = await fetch(`${base}/notifications`, {
+    // #2377 slice A: the operator's client authenticates with its own
+    // credential (the UI proxy never forwards the internal token as a local
+    // caller). A bare internal token without the agent marker is not "the
+    // operator": no station-control tool reaches this route, so the
+    // station-control authority guard refuses it before the route runs.
+    const bareInternal = await fetch(`${base}/notifications`, {
       method: 'POST',
       headers: internal(),
+      body,
+    });
+    expect(bareInternal.status).toBe(403);
+    expect(await bareInternal.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    const operator = await fetch(`${base}/notifications`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+      },
       body,
     });
     expect(operator.status).toBe(201);
