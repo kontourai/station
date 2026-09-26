@@ -2395,7 +2395,48 @@ describe('lifecycle instance state', () => {
     await waiting;
     expect(failure).not.toBeNull();
     expect(failure!.message).toBe(
-      `Timed out waiting for ${url} (managed boot identity mismatch)`,
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "identity-sha", got "other-sha"; bootId expected "identity-boot", got "other-boot"; instanceId expected "smoke-b", got "someone-else"`,
+    );
+  });
+
+  it('names only the identity field that differed, with both values (station#2689)', async () => {
+    // The #2689 shape: no build stamp, so the supervisor expects sha
+    // 'unknown' while this very boot answers with its baked sha.
+    vi.useFakeTimers();
+    const bakedSha = '0d57e8277'.padEnd(40, '0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'default',
+              sha: bakedSha,
+              bootId: 'boot-1',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://127.0.0.1:3246/api/system/identity';
+
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'default', sha: 'unknown', bootId: 'boot-1' },
+        500,
+      )
+      .then(
+        () => null,
+        (error: Error) => error,
+      );
+    await vi.advanceTimersByTimeAsync(600);
+
+    // The parenthesised reason is unchanged, so run-e2e-suite's
+    // classifyStartFailure still reads this as a boot race.
+    expect((await waiting)?.message).toBe(
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "unknown", got "${bakedSha}"`,
     );
   });
 

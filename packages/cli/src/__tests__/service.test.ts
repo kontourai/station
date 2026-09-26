@@ -26,6 +26,7 @@ const buildApplication = vi.fn();
 const collectInstanceStatus = vi.fn();
 const isBuildStale = vi.fn();
 const resolveBuildPaths = vi.fn();
+const sourceBuildStampProblem = vi.fn();
 const stop = vi.fn();
 const installLaunchd = vi.fn();
 const launchdRegistration = vi.fn();
@@ -54,6 +55,7 @@ vi.mock('../commands/lifecycle.js', () => ({
   collectInstanceStatus,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampProblem,
   stop,
 }));
 vi.mock('../commands/service-launchd.js', () => ({
@@ -112,6 +114,7 @@ beforeEach(() => {
   process.exitCode = undefined;
   vi.clearAllMocks();
   isBuildStale.mockReturnValue(false);
+  sourceBuildStampProblem.mockReturnValue(null);
   resolveBuildPaths.mockReturnValue({ server: 'dist-server', ui: 'dist-ui' });
   collectInstanceStatus.mockResolvedValue({
     found: true,
@@ -944,6 +947,89 @@ describe('station service dispatch', () => {
       type: 'worktree',
       pid: process.pid,
       checkout: '/other/checkout',
+    });
+  });
+
+  // station#2689: from a source checkout the launcher selects the development
+  // channel and exports the checkout's derived dev identity, so a home left to
+  // its default is that dev instance's home. `--instance=default` there used
+  // to register a machine-wide `default` unit against one worktree's dev home.
+  describe('development-home guard (station#2689)', () => {
+    const devInstanceId = 'dev-release-0d57e82-1a2b3c4d';
+    const devLifecycle = (baseDir: string, instanceName?: string) => ({
+      ...lifecycle(baseDir),
+      homeSource: 'default' as const,
+      instanceName,
+    });
+    const install = async (
+      input: ReturnType<typeof devLifecycle> | ReturnType<typeof lifecycle>,
+    ) => {
+      const { runServiceCommand } = await import('../commands/service.js');
+      return runServiceCommand(['install'], input, {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      });
+    };
+
+    beforeEach(() => {
+      vi.stubEnv('STATION_CHANNEL', 'development');
+      vi.stubEnv('STATION_INSTANCE_ID', devInstanceId);
+      // Readiness must observe whichever instance id this install resolved.
+      collectInstanceStatus.mockImplementation(async (instanceId: string) => ({
+        found: true,
+        healthy: true,
+        instanceId,
+        server: { pid: 10, reachable: true },
+        ui: { pid: 11, reachable: true },
+      }));
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    test('refuses a non-dev instance name on the implicit dev home before touching it', async () => {
+      const devHome = join(
+        makeTempDir('station-service-test-'),
+        'instances',
+        'dev',
+        devInstanceId,
+      );
+
+      const failure = await install(devLifecycle(devHome, 'default')).then(
+        () => null,
+        (error: Error) => error,
+      );
+
+      expect(failure?.message).toContain(
+        `Refusing to install Station user service default into this source checkout's development home ${devHome}.`,
+      );
+      expect(failure?.message).toContain('--home=<dir>');
+      expect(failure?.message).toContain(`--instance=${devInstanceId}`);
+      // Refused before the home schema was established or a backend touched.
+      expect(nodeFs.existsSync(devHome)).toBe(false);
+      expect(installLaunchd).not.toHaveBeenCalled();
+    });
+
+    test('still installs the dev instance under its own name, an explicit home, or a non-dev channel', async () => {
+      const devHome = makeTempDir('station-service-test-');
+      await install(devLifecycle(devHome, devInstanceId));
+      expect(installLaunchd).toHaveBeenLastCalledWith(
+        devInstanceId,
+        expect.anything(),
+      );
+
+      const explicitHome = makeTempDir('station-service-test-');
+      await install({ ...lifecycle(explicitHome), instanceName: 'default' });
+      expect(installLaunchd).toHaveBeenLastCalledWith(
+        'default',
+        expect.anything(),
+      );
+
+      vi.stubEnv('STATION_CHANNEL', 'stable');
+      const stableHome = makeTempDir('station-service-test-');
+      await install(devLifecycle(stableHome, 'default'));
+      expect(installLaunchd).toHaveBeenCalledTimes(3);
     });
   });
 

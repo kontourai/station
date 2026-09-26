@@ -11,6 +11,7 @@ import {
   findListeningPidsForPorts,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampProblem,
   start,
   stop,
 } from './lifecycle.js';
@@ -153,7 +154,12 @@ export async function superviseService(
   const collect = dependencies.collect ?? collectInstanceStatus;
   const needsBuildForInstance =
     dependencies.needsBuildForInstance ??
-    ((name: string) => isBuildStale(resolveBuildPaths(name)));
+    // station#2689: a bundle whose build stamp is missing or names another
+    // sha boots into "managed boot identity mismatch" on every restart, the
+    // same KeepAlive loop as a stale bundle, so it is rebuilt the same way.
+    ((name: string) =>
+      isBuildStale(resolveBuildPaths(name)) ||
+      sourceBuildStampProblem(name) !== null);
   const exit = dependencies.exit ?? ((code) => process.exit(code));
   const publishServiceLiveness =
     dependencies.publishServiceLiveness ??

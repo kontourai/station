@@ -3008,6 +3008,40 @@ export function readBuildManifest(
   }
 }
 
+/**
+ * station#2689: why this source checkout's build stamp cannot back a managed
+ * boot, or null when it can. `start()` pins the supervisor's expected sha to
+ * `station-build.json` (`'unknown'` when absent) while the server reports its
+ * esbuild-baked sha, so a bundle built by `npm run build` — which never writes
+ * the stamp — fails every boot with "managed boot identity mismatch". A stamp
+ * whose sha differs from HEAD records a build of other sources.
+ *
+ * Scoped to source checkouts (`.git` present). A packaged release has no
+ * checkout HEAD to compare against; its provenance is `.station-release.json`,
+ * validated by the packaged install/upgrade path, and is not judged here.
+ */
+export function sourceBuildStampProblem(instanceId: string): string | null {
+  if (!existsSync(join(CWD, '.git'))) return null;
+  const manifestPath = getBuildManifestPath(resolveBuildPaths(instanceId));
+  const stamp = readBuildManifest(instanceId);
+  if (!stamp) {
+    return `build stamp ${manifestPath} is missing or invalid (a plain \`npm run build\` does not write it)`;
+  }
+  let headSha: string;
+  try {
+    headSha = resolveSourceBuildManifest().sha;
+  } catch {
+    // No verdict rather than a problem: a supervisor whose PATH lacks git
+    // would otherwise rebuild (and fail to stamp) on every restart, although
+    // the present stamp may well match the bundle it serves.
+    return null;
+  }
+  if (stamp.sha !== headSha) {
+    return `build stamp ${manifestPath} records sha ${stamp.sha}, but the checkout HEAD is ${headSha}`;
+  }
+  return null;
+}
+
 function resolveBuildTarget(options: BuildOptions = {}) {
   const serverPort = options.serverPort ?? DEFAULT_SERVER_PORT;
   const uiPort = options.uiPort ?? DEFAULT_UI_PORT;
@@ -3379,6 +3413,10 @@ export async function waitForIdentity(
   let extensionsUsed = 0;
   let lastFailure = 'No response received';
   let lastKind: IdentityWaitFailureKind | null = null;
+  // station#2689: which triple fields differed on the last mismatch, and both
+  // values. Kept out of `lastFailure` so the parenthesised reason stays the
+  // exact phrase `classifyStartFailure` (scripts/run-e2e-suite.mjs) matches.
+  let lastMismatchDetail = '';
   while (true) {
     if (Date.now() >= deadline) {
       // Last-attempt-only by design: a mismatch followed by a refused connect
@@ -3428,6 +3466,7 @@ export async function waitForIdentity(
         }
         lastFailure = 'managed boot identity mismatch';
         lastKind = 'identity-mismatch';
+        lastMismatchDetail = describeIdentityMismatch(expected, actual);
       } else {
         lastFailure = `${response.status} ${response.statusText}`.trim();
         lastKind = classifyIdentityWaitStatus(response.status);
@@ -3443,7 +3482,29 @@ export async function waitForIdentity(
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
-  throw new Error(`Timed out waiting for ${url} (${lastFailure})`);
+  throw new Error(
+    `Timed out waiting for ${url} (${lastFailure})${
+      lastKind === 'identity-mismatch' ? `: ${lastMismatchDetail}` : ''
+    }`,
+  );
+}
+
+const IDENTITY_TRIPLE_FIELDS = ['sha', 'bootId', 'instanceId'] as const;
+
+/** `sha expected "a", got "b"; …` for each identity field that differed. */
+function describeIdentityMismatch(
+  expected: { instanceId: string; sha: string; bootId: string },
+  actual: Partial<typeof expected>,
+): string {
+  const show = (value: unknown) => JSON.stringify(value) ?? 'nothing';
+  return IDENTITY_TRIPLE_FIELDS.filter(
+    (field) => actual[field] !== expected[field],
+  )
+    .map(
+      (field) =>
+        `${field} expected ${show(expected[field])}, got ${show(actual[field])}`,
+    )
+    .join('; ');
 }
 
 async function probeIdentityOnce(

@@ -12,10 +12,14 @@ import {
 import { sanitizePath } from '@kontourai/station-shared/launch-path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
-import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  runtimeChannelFromEnvironment,
+  spawnedStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
+  DEFAULT_INSTANCE_ID,
   type LifecycleHomeSource,
   resolveLifecycleInstanceId,
 } from './helpers.js';
@@ -24,6 +28,7 @@ import {
   collectInstanceStatus,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampProblem,
   stop,
 } from './lifecycle.js';
 import {
@@ -275,13 +280,29 @@ async function prepareServiceBuild(
   // generated hash for custom home/ports) — never re-derived here, or the
   // preflight builds the wrong instance's artifacts and the cold build lands
   // back inside the readiness window.
-  if (!isBuildStale(resolveBuildPaths(instanceId))) return;
-  await buildApplication({
-    baseDir: lifecycle.baseDir,
-    instanceName: instanceId,
-    serverPort: lifecycle.serverPort,
-    uiPort: lifecycle.uiPort,
-  });
+  if (isBuildStale(resolveBuildPaths(instanceId))) {
+    await buildApplication({
+      baseDir: lifecycle.baseDir,
+      instanceName: instanceId,
+      serverPort: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+    });
+  }
+  // station#2689: an mtime-current bundle is not enough. Without a stamp that
+  // matches HEAD the supervised boot expects a different sha than the server
+  // reports, and the install burns its whole readiness budget on "managed
+  // boot identity mismatch" before rolling back. Refuse before any backend
+  // mutation instead.
+  const stampProblem = sourceBuildStampProblem(instanceId);
+  if (stampProblem) {
+    const build =
+      instanceId === DEFAULT_INSTANCE_ID
+        ? 'station build'
+        : `station build --instance=${instanceId}`;
+    throw new Error(
+      `Cannot install Station user service ${instanceId}: ${stampProblem}. Run \`${build}\` in ${CWD}, then rerun \`station service install\`.`,
+    );
+  }
 }
 
 /**
@@ -574,6 +595,32 @@ export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
     );
   }
   return sanitized.accepted.join(':');
+}
+
+/**
+ * station#2689: from a source checkout the launcher selects the development
+ * channel and writes this checkout's derived identity to STATION_INSTANCE_ID
+ * (scripts/source-bootstrap.ts), so with no --home/--base/STATION_HOME the
+ * default home is `<STATION_ROOT>/instances/dev/<that id>`. A service
+ * registered under any OTHER name (e.g. `--instance=default`) would bind a
+ * machine-wide unit name to one worktree's development home. Refuse rather
+ * than install that silently; the dev instance's own name stays allowed.
+ */
+function assertInstallDoesNotBorrowDevHome(
+  instanceId: string,
+  lifecycle: ServiceLifecycleArgs,
+): void {
+  if (lifecycle.homeSource !== 'default') return;
+  if (runtimeChannelFromEnvironment(process.env) !== 'dev') return;
+  const devInstanceId = process.env.STATION_INSTANCE_ID?.trim();
+  if (instanceId === devInstanceId) return;
+  throw new Error(
+    [
+      `Refusing to install Station user service ${instanceId} into this source checkout's development home ${lifecycle.baseDir}.`,
+      `That home belongs to the development instance ${devInstanceId ?? '(unknown)'}; it was chosen because no --home, --base, or STATION_HOME was given.`,
+      `Pass --home=<dir> (or --base=<dir>) to give the service its own durable home${devInstanceId ? `, or --instance=${devInstanceId} to run this checkout's development instance as a service` : ''}.`,
+    ].join('\n'),
+  );
 }
 
 export function assertServiceIdentityAvailable(instanceId: string): void {
@@ -939,6 +986,7 @@ export async function runServiceCommand(
 
   if (action === 'install') {
     assertSupportedNodeVersion();
+    assertInstallDoesNotBorrowDevHome(instanceId, lifecycle);
     // Establish the home identity FIRST, while the home is still fresh — before
     // the registry write below makes it non-empty. Writing instances.json into
     // an unestablished home would otherwise trip the fresh-home schema guard

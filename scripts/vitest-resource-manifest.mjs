@@ -275,6 +275,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2923: imports commands/service.ts, whose production command probe
   // uses spawnSync; the direct-import detector cannot see that child seam.
   'packages/cli/src/__tests__/service.test.ts',
+  // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
+  // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
+  'packages/cli/src/__tests__/service-build-stamp.test.ts',
   // station#2928: the offline ConfigLoader path writes a real Station home
   // through the mutation-identity boundary, not an in-memory config double.
   'packages/cli/src/__tests__/config.test.ts',
