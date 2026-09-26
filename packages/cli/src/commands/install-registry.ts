@@ -1,20 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
-  closeSync,
   existsSync,
-  constants as fsConstants,
-  fsyncSync,
   mkdirSync,
-  openSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { withRequestTimeout } from './core-api.js';
 import { PLUGINS_DIR, PROJECT_HOME } from './helpers.js';
@@ -37,27 +32,6 @@ function getRegistryInstallsPath(): string {
 
 /** Official registry, GitHub-hosted, used when none is configured. */
 const DEFAULT_REGISTRY_REF = 'kontourai/station-registry';
-
-/**
- * Registry entries install into a directory named by the plugin manifest's
- * `name`. Aliases, registry manifests, and local plugin manifests therefore
- * share the plugin contract's canonical path-safe identity.
- */
-const INVALID_INSTALLED_PLUGIN_NAME =
-  'Installed plugin manifest has an invalid plugin name';
-
-function isCanonicalRegistryPluginId(value: unknown): value is string {
-  return isCanonicalPluginId(value);
-}
-
-function assertCanonicalRegistryPluginId(
-  value: unknown,
-  message: string,
-): asserts value is string {
-  if (!isCanonicalRegistryPluginId(value)) {
-    throw new Error(message);
-  }
-}
 
 /**
  * Resolve a registry reference to a fetchable manifest URL. A GitHub repo can
@@ -181,17 +155,10 @@ function saveRegistryUrl(registryUrl: string): void {
   console.log(`  ✓ Registry URL saved: ${registryUrl}`);
 }
 
-export class RegistryInstallAliasesUnavailableError extends Error {
+class RegistryInstallAliasesUnavailableError extends Error {
   constructor() {
     super('Registry install aliases are unavailable');
     this.name = 'RegistryInstallAliasesUnavailableError';
-  }
-}
-
-export class RegistryInstallAliasesPersistenceError extends Error {
-  constructor() {
-    super('Registry install aliases could not be persisted');
-    this.name = 'RegistryInstallAliasesPersistenceError';
   }
 }
 
@@ -199,12 +166,10 @@ function emptyRegistryInstallAliases(): Record<string, string> {
   return Object.create(null) as Record<string, string>;
 }
 
-function readRegistryInstallAliases(
-  aliasesPath = getRegistryInstallsPath(),
-): Record<string, string> {
+function readRegistryInstallAliases(): Record<string, string> {
   let raw: string;
   try {
-    raw = readFileSync(aliasesPath, 'utf-8');
+    raw = readFileSync(getRegistryInstallsPath(), 'utf-8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return emptyRegistryInstallAliases();
@@ -224,228 +189,12 @@ function readRegistryInstallAliases(
 
   const aliases = emptyRegistryInstallAliases();
   for (const [registryId, pluginName] of Object.entries(parsed)) {
-    if (
-      !isCanonicalRegistryPluginId(registryId) ||
-      !isCanonicalRegistryPluginId(pluginName)
-    ) {
+    if (!isCanonicalPluginId(registryId) || !isCanonicalPluginId(pluginName)) {
       throw new RegistryInstallAliasesUnavailableError();
     }
     aliases[registryId] = pluginName;
   }
   return aliases;
-}
-
-function syncAliasDirectory(directory: string): void {
-  if (process.platform === 'win32') return;
-  const descriptor = openSync(directory, fsConstants.O_RDONLY);
-  let primaryFailed = false;
-  let primaryError: unknown;
-  try {
-    fsyncSync(descriptor);
-  } catch (error) {
-    primaryFailed = true;
-    primaryError = error;
-  }
-
-  let closeFailed = false;
-  try {
-    closeSync(descriptor);
-  } catch {
-    closeFailed = true;
-  }
-
-  if (primaryFailed) {
-    throw primaryError;
-  }
-  if (closeFailed) {
-    throw new RegistryInstallAliasesPersistenceError();
-  }
-}
-
-function writeRegistryInstallAliases(
-  aliasesPath: string,
-  aliases: Record<string, string>,
-): void {
-  const temporaryPath = `${aliasesPath}.${process.pid}.${randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  let primaryFailed = false;
-  let primaryError: unknown;
-  try {
-    descriptor = openSync(
-      temporaryPath,
-      fsConstants.O_WRONLY |
-        fsConstants.O_CREAT |
-        fsConstants.O_EXCL |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    writeFileSync(descriptor, JSON.stringify(aliases, null, 2), 'utf-8');
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    renameSync(temporaryPath, aliasesPath);
-    syncAliasDirectory(dirname(aliasesPath));
-  } catch (error) {
-    primaryFailed = true;
-    primaryError = error;
-  }
-
-  let cleanupFailed = false;
-  if (descriptor !== undefined) {
-    try {
-      closeSync(descriptor);
-    } catch {
-      cleanupFailed = true;
-    }
-  }
-  try {
-    rmSync(temporaryPath, { force: true });
-  } catch {
-    cleanupFailed = true;
-  }
-
-  if (primaryFailed) {
-    throw primaryError;
-  }
-  if (cleanupFailed) {
-    throw new RegistryInstallAliasesPersistenceError();
-  }
-}
-
-function assertRegistryAliasAvailable(
-  aliases: Record<string, string>,
-  registryId: string,
-  pluginName: string,
-): void {
-  const existingTarget = aliases[registryId];
-  if (existingTarget && existingTarget !== pluginName) {
-    throw new Error(
-      `Registry item '${registryId}' already points to plugin '${existingTarget}', not '${pluginName}'`,
-    );
-  }
-
-  for (const [existingRegistryId, existingPluginName] of Object.entries(
-    aliases,
-  )) {
-    if (
-      existingRegistryId !== registryId &&
-      existingPluginName === pluginName
-    ) {
-      throw new Error(
-        `Plugin '${pluginName}' is already linked to registry item '${existingRegistryId}'`,
-      );
-    }
-  }
-}
-
-export function recordRegistryInstall(
-  registryId: string,
-  pluginName: string,
-): void {
-  assertCanonicalRegistryPluginId(
-    registryId,
-    'Registry install requires a canonical registry plugin id',
-  );
-  assertCanonicalRegistryPluginId(
-    pluginName,
-    'Registry install requires a canonical installed plugin name',
-  );
-  if (registryId === pluginName) {
-    return;
-  }
-
-  ensureStationHomeSchemaSync(PROJECT_HOME);
-  const aliasesPath = getRegistryInstallsPath();
-  mkdirSync(dirname(aliasesPath), { recursive: true });
-  const release = acquireFileMutationLock(`${aliasesPath}.mutation`);
-  try {
-    const aliases = readRegistryInstallAliases(aliasesPath);
-    assertRegistryAliasAvailable(aliases, registryId, pluginName);
-    aliases[registryId] = pluginName;
-    writeRegistryInstallAliases(aliasesPath, aliases);
-  } finally {
-    release();
-  }
-}
-
-function isGitPluginSource(source: string): boolean {
-  return (
-    source.startsWith('git@') ||
-    source.endsWith('.git') ||
-    (source.startsWith('https://') &&
-      (source.includes('.git') ||
-        source.includes('gitlab') ||
-        source.includes('github')))
-  );
-}
-
-function sourceProtocol(source: string): string | null {
-  if (source.startsWith('git@')) {
-    return null;
-  }
-  if (process.platform === 'win32' && /^[a-zA-Z]:[\\/]/.test(source)) {
-    return null;
-  }
-  if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(source)) {
-    return null;
-  }
-  try {
-    return new URL(source).protocol;
-  } catch {
-    return null;
-  }
-}
-
-function assertSupportedRegistrySource(source: string): void {
-  const protocol = sourceProtocol(source);
-  if (!protocol) {
-    return;
-  }
-
-  if (protocol !== 'https:') {
-    throw new Error(`Unsupported plugin source protocol: ${protocol}`);
-  }
-
-  if (!isGitPluginSource(source)) {
-    throw new Error(
-      'Unsupported plugin source URL: registry installs must use a git HTTPS source or a contained local path',
-    );
-  }
-}
-
-function assertPathInside(root: string, candidate: string): void {
-  const rootPath = resolve(root);
-  const candidatePath = resolve(candidate);
-  if (
-    candidatePath !== rootPath &&
-    !candidatePath.startsWith(`${rootPath}${sep}`)
-  ) {
-    throw new Error(`Registry source '${candidate}' escapes the registry root`);
-  }
-}
-
-function localRegistryRoot(registryUrl: string): string {
-  const manifestDir = dirname(resolve(registryUrl));
-  return resolve(manifestDir, '..');
-}
-
-function normalizeRegistrySource(source: string, registryUrl: string): string {
-  assertSupportedRegistrySource(source);
-
-  if (source.startsWith('git@') || source.startsWith('https://')) {
-    return source;
-  }
-  if (registryUrl.startsWith('/') || registryUrl.startsWith('.')) {
-    const root = localRegistryRoot(registryUrl);
-    const resolvedSource = isAbsolute(source)
-      ? resolve(source)
-      : resolve(dirname(registryUrl), source);
-    assertPathInside(root, resolvedSource);
-    return resolvedSource;
-  }
-  const resolvedSource = new URL(source, registryUrl).toString();
-  assertSupportedRegistrySource(resolvedSource);
-  return resolvedSource;
 }
 
 function parseRegistryManifest(raw: unknown): RegistryManifest {
@@ -466,7 +215,7 @@ function parseRegistryManifest(raw: unknown): RegistryManifest {
       );
     }
     const plugin = entry as Record<string, unknown>;
-    if (!isCanonicalRegistryPluginId(plugin.id)) {
+    if (!isCanonicalPluginId(plugin.id)) {
       throw new Error(
         `Malformed registry manifest: plugins[${index}].id must be a canonical plugin identifier`,
       );
@@ -505,68 +254,6 @@ async function fetchRegistryManifest(
   return parseRegistryManifest(await response.json());
 }
 
-function readLocalPluginName(source: string): string | null {
-  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(source)) {
-    return null;
-  }
-  const manifestPath = join(source, 'plugin.json');
-  if (!existsSync(manifestPath)) {
-    return null;
-  }
-  try {
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-      name?: unknown;
-    };
-    assertCanonicalRegistryPluginId(
-      manifest.name,
-      INVALID_INSTALLED_PLUGIN_NAME,
-    );
-    return manifest.name;
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === INVALID_INSTALLED_PLUGIN_NAME
-    ) {
-      throw error;
-    }
-    throw new Error(INVALID_INSTALLED_PLUGIN_NAME);
-  }
-}
-
-export async function resolveRegistryPluginSource(
-  id: string | undefined,
-): Promise<string> {
-  if (!id) {
-    throw new Error('registry install requires a plugin id');
-  }
-  assertCanonicalRegistryPluginId(
-    id,
-    'registry install requires a canonical plugin id',
-  );
-  ensureStationHomeSchemaSync(PROJECT_HOME);
-
-  const registryUrl = readConfiguredRegistryUrl();
-  if (!registryUrl) {
-    throw new Error(
-      'No registry URL configured. Set one with: station registry <url> ' +
-        '(or station config set registryUrl <url>).',
-    );
-  }
-
-  const manifest = await fetchRegistryManifest(registryUrl);
-  const plugin = manifest.plugins.find((entry) => entry.id === id);
-  if (!plugin) {
-    throw new Error(`Plugin '${id}' not found in registry`);
-  }
-
-  const source = normalizeRegistrySource(plugin.source, registryUrl);
-  const pluginName = readLocalPluginName(source);
-  if (pluginName) {
-    assertRegistryAliasAvailable(readRegistryInstallAliases(), id, pluginName);
-  }
-  return source;
-}
-
 export async function showOrSaveRegistry(registryUrl?: string): Promise<void> {
   ensureStationHomeSchemaSync(PROJECT_HOME);
   const url = registryUrl || readConfiguredRegistryUrl();
@@ -585,8 +272,8 @@ export async function showOrSaveRegistry(registryUrl?: string): Promise<void> {
 
   console.log(`📋 Fetching registry from ${url}...\n`);
   try {
-    // Reuse the install path's fetcher: same manifest validation and actionable
-    // error message, and no curl subprocess (works on Windows, no external dep).
+    // In-process fetch with manifest validation and an actionable error
+    // message; no curl subprocess (works on Windows, no external dep).
     const manifest = await fetchRegistryManifest(url);
     const plugins = manifest.plugins || [];
 

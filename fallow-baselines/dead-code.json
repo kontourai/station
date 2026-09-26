@@ -73,8 +73,6 @@
     "packages/cli/src/commands/core-api.ts:printResolvedTarget",
     "packages/cli/src/commands/helpers.ts:AGENTS_DIR",
     "packages/cli/src/commands/helpers.ts:getDefaultProjectHome",
-    "packages/cli/src/commands/install-registry.ts:RegistryInstallAliasesUnavailableError",
-    "packages/cli/src/commands/install-registry.ts:RegistryInstallAliasesPersistenceError",
     "packages/cli/src/commands/lifecycle.ts:normalizeLifecycleHost",
     "packages/cli/src/commands/lifecycle.ts:STARTUP_READINESS_MAX_TIMEOUT_MS",
     "packages/cli/src/commands/operate/render.ts:fleetEvidencePhrase",
