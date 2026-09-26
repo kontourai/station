@@ -7,6 +7,7 @@ import {
   DEFAULT_CHILD_BLOCKED_TOOLS,
   isDelegatedToolAllowed,
 } from '../delegation.js';
+import { verifyDelegationContextAttestation } from '../delegation-attestation.js';
 
 describe('delegation helpers', () => {
   test('creates child delegation context with inherited root metadata', () => {
@@ -191,6 +192,59 @@ describe('delegation helpers', () => {
         maxDepth: 2,
       },
     });
+  });
+
+  test('#2601: send_message carries an attestation the route verifies; a model-written one never survives', async () => {
+    const execute = async (args: Record<string, unknown>) => args;
+    const [wrapped] = wrapDelegationAwareTools(
+      [
+        {
+          name: 'station-control_send_message',
+          description: 'Send a message',
+          parameters: {},
+          execute,
+        } as any,
+      ],
+      {
+        agentSlug: 'planner',
+        toolId: 'station-control',
+        spec: {
+          name: 'Planner',
+          prompt: 'Plan well',
+          delegation: { maxDepth: 2 },
+        },
+      },
+    );
+
+    const stamped = (await wrapped.execute?.(
+      {
+        agent: 'writer',
+        message: 'Draft this',
+        _delegation: { rootConversationId: 'someone-else' },
+        _delegationAttestation: 'model-written',
+      },
+      { conversationId: 'conv-parent', userId: 'user-1' },
+    )) as Record<string, any>;
+    expect(stamped._delegation.rootConversationId).toBe('conv-parent');
+    expect(
+      verifyDelegationContextAttestation(
+        stamped._delegation,
+        stamped._delegationAttestation,
+      ),
+    ).toBe(true);
+
+    // Outside a conversation the runtime derives nothing, and vouches for
+    // nothing: the model's context arrives unattested, so the route drops it.
+    const unstamped = (await wrapped.execute?.(
+      {
+        agent: 'writer',
+        message: 'Draft this',
+        _delegation: { rootConversationId: 'someone-else' },
+        _delegationAttestation: 'model-written',
+      },
+      { userId: 'user-1' },
+    )) as Record<string, any>;
+    expect(unstamped._delegationAttestation).toBeUndefined();
   });
 
   test('wraps delegate_task as a child while blocking recursive delegation', async () => {
