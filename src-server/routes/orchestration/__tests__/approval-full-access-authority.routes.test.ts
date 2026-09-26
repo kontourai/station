@@ -87,12 +87,12 @@ async function fixture() {
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
+  const engine = new GateTestAdapter();
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    adapterRegistry: createGateTestRegistry(engine),
     eventBus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   cleanups.push(async () => {
     await service.shutdown();
@@ -102,6 +102,20 @@ async function fixture() {
     type: 'startSession',
     input: { threadId: THREAD, provider: 'claude' },
   });
+  // Owned by the routes' caller, as an engine records it: a session with no
+  // recorded owner accepts no one's command.
+  engine.events.push({
+    eventId: `${THREAD}-owner`,
+    provider: 'claude',
+    threadId: THREAD,
+    createdAt: new Date().toISOString(),
+    method: 'session.started',
+    sessionId: THREAD,
+    metadata: { userId: 'operator' },
+  } as never);
+  await vi.waitFor(() =>
+    expect(store.findSessionOwnerUserId(THREAD)).toBe('operator'),
+  );
 
   // An Agent store whose `builder` Agent starts at `previousDefault`.
   let previousDefault: string | undefined;
@@ -254,9 +268,11 @@ async function fixture() {
 
 /**
  * Station's own internal principal: the per-boot token, the `local` caller
- * marker and a direct loopback socket. The UI's requests and an agent's
- * station-control tool calls both arrive this way; only the tool's origin
- * marker tells them apart (#2436 review).
+ * marker and a direct loopback socket. An agent's station-control tool calls
+ * arrive this way, with the tool's origin marker; any holder of the token can
+ * omit that marker, so it only ever restricts (#2436 review, #2493 review F1).
+ * The operator's UI does not: its proxy hop is marked `remote` and carries
+ * the browser's own credential.
  */
 function internalRequestInit(agent: boolean, init: RequestInit) {
   return [
@@ -337,6 +353,39 @@ test('a pick without its compare-and-set basis is refused, never recorded uncond
   expect(f.executeForegroundMessage).not.toHaveBeenCalled();
   expect(f.continueForegroundMessage).not.toHaveBeenCalled();
 });
+
+test.each(['bypassPermissions', 'full-access', 'yolo'])(
+  "#2569: an ACP agent's own full-access mode %s needs the same grant as never",
+  async (mode) => {
+    const f = await fixture();
+    const phone = f.pair('Phone');
+    const chat = await f.post(phone.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode } } },
+    });
+    expect(chat).toEqual({ status: 403, body: REFUSAL });
+    const continued = await f.post(
+      phone.credential,
+      `/api/orchestration/chat/${THREAD}/continue`,
+      { message: 'go', model: { options: { mode } } },
+    );
+    expect(continued).toEqual({ status: 403, body: REFUSAL });
+    expect(f.executeForegroundMessage).not.toHaveBeenCalled();
+    expect(f.continueForegroundMessage).not.toHaveBeenCalled();
+
+    // An ordinary advertised mode needs nothing, and the operator is not
+    // refused a full-access one (the fixture's executor then throws).
+    await f.post(phone.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode: 'plan' } } },
+    });
+    await f.post(f.operator.credential, '/api/orchestration/chat', {
+      message: 'go',
+      target: { agent: 'opencode', model: { options: { mode } } },
+    });
+    expect(f.executeForegroundMessage).toHaveBeenCalledTimes(2);
+  },
+);
 
 test('the operator in person needs no grant', async () => {
   const f = await fixture();
@@ -458,7 +507,7 @@ test('a device the operator granted may set an Agent default to full access', as
   ).toBeLessThan(300);
 });
 
-test("an agent's station-control call cannot record full access or save it as an Agent default; the UI's own call can", async () => {
+test("an agent's station-control call, marked or not, cannot record full access or save it as an Agent default", async () => {
   const f = await fixture();
   const command = () => ({
     type: 'setApprovalMode',
@@ -481,9 +530,21 @@ test("an agent's station-control call cannot record full access or save it as an
   expect(f.recorded()).toEqual([]);
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 
-  // The same internal principal without the agent marker is the UI.
+  // #2493 review F1: the marker only restricts. Without it the request is
+  // still Station's internal principal, which any holder of the per-boot
+  // token (an agent's tool among them) can present; the operator's UI
+  // reaches Station through the proxy with its own credential instead.
   expect(
-    (await f.internal(false, '/api/orchestration/commands', command())).status,
-  ).toBe(200);
-  expect(f.recorded()).toEqual(['never']);
+    await f.internal(false, '/api/orchestration/commands', command()),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(
+    await f.internal(
+      false,
+      '/api/agents/builder',
+      { execution: { approvalMode: 'never' } },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(f.recorded()).toEqual([]);
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
 });

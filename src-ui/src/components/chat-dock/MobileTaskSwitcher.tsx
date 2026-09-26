@@ -31,7 +31,6 @@ import {
 import {
   clearSnooze,
   groupMobileActivity,
-  type MobileActivityGroupId,
   readSnoozes,
   type SnoozeMap,
   snoozeKeyFor,
@@ -41,26 +40,8 @@ import {
 const FOCUSABLE =
   'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
-/**
- * Which entry point opened the sheet.
- *
- * `'activity'` (the header's activity button) leads with what is running or has
- * just come back; `'tasks'` (the chat-title chevron) is the full switcher. Same
- * sheet, same rows — only the default scope differs, so there is one list
- * implementation rather than two near-identical ones.
- */
-export type MobileTaskSwitcherMode = 'tasks' | 'activity';
-
-const ACTIVITY_GROUPS: MobileActivityGroupId[] = [
-  'active',
-  'external',
-  'settled',
-  'snoozed',
-];
-
 export function MobileTaskSwitcher({
   open,
-  mode = 'tasks',
   tasks,
   openChatSessionIds,
   activeChatSessionId,
@@ -74,8 +55,6 @@ export function MobileTaskSwitcher({
   onOpenFailed,
   onCloseChat,
   onAcknowledgeConversation,
-  backgroundTaskCount,
-  onOpenBackgroundTasks,
   now,
   agents,
   pending = false,
@@ -83,7 +62,6 @@ export function MobileTaskSwitcher({
   onRetryLoad,
 }: {
   open: boolean;
-  mode?: MobileTaskSwitcherMode;
   tasks: HomeTaskItem[];
   openChatSessionIds?: string[];
   activeChatSessionId: string | null;
@@ -111,13 +89,6 @@ export function MobileTaskSwitcher({
   onCloseChat?: (id: string) => void;
   /** Marks the rendered conversation version as seen before opening it. */
   onAcknowledgeConversation?: (item: HomeTaskItem) => void;
-  /**
-   * station#1301 slice 1: the active chat's running-background-task count
-   * and its opener. Both omitted render no row (a test/host with no active
-   * chat has nothing to count).
-   */
-  backgroundTaskCount?: number;
-  onOpenBackgroundTasks?: () => void;
   /** Injectable clock for the recency boundary; defaults to wall time. */
   now?: number;
   /**
@@ -149,7 +120,6 @@ export function MobileTaskSwitcher({
     [openMembership, tasks],
   );
   const [snoozed, setSnoozed] = useState<SnoozeMap>({});
-  const [showEverything, setShowEverything] = useState(mode === 'tasks');
   const returnFocusRef = useRef<HTMLElement[]>([]);
   // Found by station#1245's sweep, not listed on the issue: this sheet is
   // hand-rolled rather than a `ResponsiveDialogSurface` (see the history-layer
@@ -166,12 +136,6 @@ export function MobileTaskSwitcher({
     restoreReturnFocus(chain, panel);
   }, [onClose]);
 
-  // Each opening starts from its entry point's own scope — a previous
-  // "show all" must not leak into the next activity-button tap.
-  useEffect(() => {
-    if (open) setShowEverything(mode === 'tasks');
-  }, [mode, open]);
-
   // Read snoozes when the sheet opens rather than on every render: the map is
   // in localStorage and lapsed entries are pruned on read.
   useEffect(() => {
@@ -183,21 +147,8 @@ export function MobileTaskSwitcher({
     [collectionTasks, now, snoozed],
   );
   const visibleGroups = useMemo(
-    () =>
-      (showEverything
-        ? groups
-        : groups.filter((group) => ACTIVITY_GROUPS.includes(group.id))
-      ).filter((group) => group.items.length > 0),
-    [groups, showEverything],
-  );
-  const hiddenCount = useMemo(
-    () =>
-      showEverything
-        ? 0
-        : groups
-            .filter((group) => !ACTIVITY_GROUPS.includes(group.id))
-            .reduce((total, group) => total + group.items.length, 0),
-    [groups, showEverything],
+    () => groups.filter((group) => group.items.length > 0),
+    [groups],
   );
 
   useLayoutEffect(() => {
@@ -250,17 +201,9 @@ export function MobileTaskSwitcher({
 
   if (!open) return null;
 
-  const isActivity = mode === 'activity' && !showEverything;
   // 'Switch task' is the established accessible name for this sheet and is what
-  // the e2e suite and any name-driven caller already target — renaming it would
-  // be churn for no user benefit. Activity mode gets its own name because it is
-  // a genuinely different scope.
-  const heading = isActivity ? 'Activity' : 'Switch task';
-  // "Active" matches the group label the list actually renders: since
-  // station#3227 A6 the Active group is the shared lane model's "not
-  // finished" (including idle-but-open work), so "Running…" would promise a
-  // narrower scope than the rows below it deliver.
-  const eyebrow = isActivity ? 'Active and just finished' : 'Chats and tasks';
+  // the e2e suite and any name-driven caller already target.
+  const heading = 'Switch task';
 
   // Portaled to <body>: this sheet used to render inside the ChatDock
   // subtree, whose `position: fixed; z-index: 100` root creates a stacking
@@ -287,27 +230,15 @@ export function MobileTaskSwitcher({
       >
         <header className="mobile-task-switcher__header">
           <div>
-            <p>{eyebrow}</p>
+            <p>Chats and tasks</p>
             <h2>{heading}</h2>
           </div>
           <ResponsiveDialogCloseButton
-            label={isActivity ? 'Close activity' : 'Close task switcher'}
+            label="Close task switcher"
             onClick={closeAndRestoreFocus}
           />
         </header>
         <div className="mobile-task-switcher__list chat-dock-inbox--touch">
-          {isActivity && onOpenBackgroundTasks && (
-            <button
-              type="button"
-              className="mobile-task-switcher__background-tasks-row"
-              onClick={() => {
-                closeAndRestoreFocus();
-                onOpenBackgroundTasks();
-              }}
-            >
-              {`Background tasks (${backgroundTaskCount ?? 0})`}
-            </button>
-          )}
           {loadError && visibleGroups.length === 0 ? (
             <ErrorState
               variant="compact"
@@ -329,12 +260,7 @@ export function MobileTaskSwitcher({
               <SkeletonList count={3} />
             </div>
           ) : visibleGroups.length === 0 ? (
-            <Empty
-              variant="compact"
-              label={
-                isActivity ? 'Nothing running right now.' : 'No chats yet.'
-              }
-            />
+            <Empty variant="compact" label="No chats yet." />
           ) : null}
           {loadError && visibleGroups.length > 0 && (
             <p role="status">
@@ -357,6 +283,7 @@ export function MobileTaskSwitcher({
             now={now ?? Date.now()}
             agents={agents}
             showGroupCounts
+            snoozeMenuOnly
             onActivate={(task) => {
               // station#3687: acknowledge only after the click did something,
               // and say so when it could not (same contract as the desktop
@@ -409,15 +336,6 @@ export function MobileTaskSwitcher({
                 onCloseChat?.(task.chatSessionId);
             }}
           />
-          {hiddenCount > 0 && (
-            <button
-              type="button"
-              className="mobile-task-switcher__show-all"
-              onClick={() => setShowEverything(true)}
-            >
-              {`Show all chats (${hiddenCount} more)`}
-            </button>
-          )}
         </div>
       </section>
     </div>,

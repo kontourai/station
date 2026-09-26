@@ -33,9 +33,19 @@ const reviewInputSchema = z
   );
 
 type Identity = (c: any) => string | undefined;
+/**
+ * What a route needs of the checkout. Only `/open` acts on the current branch;
+ * every other route addresses a pull request by number (#2474). `repository`
+ * is the one the URL names, so an umbrella project can find its checkout.
+ */
+export interface PullRequestContextRequest {
+  requireBranchState: boolean;
+  repository?: { host: string; owner: string; name: string };
+}
+
 export function createPullRequestRoutes(
   providers: () => IPullRequestProvider[],
-  context: (c: any) => Promise<any>,
+  context: (c: any, request: PullRequestContextRequest) => Promise<any>,
   options: {
     operatorIdentityForRequest: Identity;
     isRequestPrincipalCurrent?: (request: Request) => boolean;
@@ -47,10 +57,20 @@ export function createPullRequestRoutes(
   // could never fix it.
   const resolve = async (
     c: any,
+    // Explicit at every call site: a new route must decide whether it acts on
+    // the current branch, not inherit either answer by default.
+    requireBranchState: boolean,
   ): Promise<
     { refused: string } | { provider: IPullRequestProvider; context: any }
   > => {
-    const resolution = await context(c);
+    const resolution = await context(c, {
+      requireBranchState,
+      repository: {
+        host: c.req.param('host'),
+        owner: c.req.param('owner'),
+        name: c.req.param('repo'),
+      },
+    });
     if (!resolution?.available)
       return {
         refused: resolution?.reason ?? 'Pull request context is unavailable',
@@ -98,7 +118,7 @@ export function createPullRequestRoutes(
     ),
   });
   app.get('/context', async (c) => {
-    const resolution = await context(c);
+    const resolution = await context(c, { requireBranchState: false });
     if (!resolution?.available) {
       return c.json({
         success: true,
@@ -131,12 +151,14 @@ export function createPullRequestRoutes(
           owner: resolution.context.repository.owner,
           name: resolution.context.repository.name,
         },
-        branch: resolution.context.branch,
+        ...(resolution.context.branch
+          ? { branch: resolution.context.branch }
+          : {}),
       },
     });
   });
   app.get('/:provider/:host/:owner/:repo', async (c) => {
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -155,7 +177,7 @@ export function createPullRequestRoutes(
     });
   });
   app.get('/:provider/:host/:owner/:repo/:ref', async (c) => {
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     return c.json({
@@ -169,7 +191,7 @@ export function createPullRequestRoutes(
   app.get('/:provider/:host/:owner/:repo/:ref/review', async (c) => {
     if (!current(c))
       return c.json({ success: false, error: 'Station access changed' }, 403);
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     if (!/^[1-9]\d*$/.test(param(c, 'ref')))
@@ -207,7 +229,7 @@ export function createPullRequestRoutes(
           { success: false, error: 'Operator authentication required' },
           403,
         );
-      const x = await resolve(c);
+      const x = await resolve(c, false);
       if ('refused' in x)
         return c.json({ success: false, error: x.refused }, 404);
       if (!/^[1-9]\d*$/.test(param(c, 'ref')))
@@ -255,7 +277,7 @@ export function createPullRequestRoutes(
         { success: false, error: 'Operator authentication required' },
         403,
       );
-    const x = await resolve(c);
+    const x = await resolve(c, true);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -276,7 +298,7 @@ export function createPullRequestRoutes(
         { success: false, error: 'Operator authentication required' },
         403,
       );
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -301,7 +323,7 @@ export function createPullRequestRoutes(
         { success: false, error: 'Operator authentication required' },
         403,
       );
-    const x = await resolve(c);
+    const x = await resolve(c, false);
     if ('refused' in x)
       return c.json({ success: false, error: x.refused }, 404);
     pullRequestOps.add(1, {
@@ -330,7 +352,7 @@ export function createPullRequestRoutes(
           { success: false, error: 'Operator authentication required' },
           403,
         );
-      const x = await resolve(c);
+      const x = await resolve(c, false);
       if ('refused' in x)
         return c.json({ success: false, error: x.refused }, 404);
       const input = getBody(c);

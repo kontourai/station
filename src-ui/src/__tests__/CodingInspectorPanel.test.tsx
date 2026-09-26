@@ -353,6 +353,17 @@ describe('CodingInspectorPanel — copyable setup command', () => {
     await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
   });
 
+  // The command is a fallback the UI cannot perform itself; the note has to
+  // say why (CLI missing, Station runs it for you otherwise) so the bare
+  // command does not read as "leave the app" with no reason given.
+  test('the copy-command fallback says why it exists', () => {
+    renderNoCliCta();
+
+    const note = screen.getByText(/cannot run the setup for you/);
+    expect(note.textContent).toContain('downloads the CLI');
+    expect(note.textContent).toContain('.veritas/');
+  });
+
   // ONE failure case here, not the primitive's matrix. Which clipboard states
   // resolve `false` (absent, no `writeText`, rejected, throwing) is
   // `copyToClipboard`'s own contract, pinned in

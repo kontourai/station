@@ -282,6 +282,7 @@ describe('repo hook wiring', () => {
     .join('\n');
 
   it('runs governance, readiness and the scoped typecheck at push time', () => {
+    expect(commands).toContain('lint:check');
     expect(commands).toContain('proof:repo-governance');
     expect(commands).toContain('veritas:readiness');
     expect(commands).toContain('check-prepush-typecheck.mjs');
@@ -305,5 +306,22 @@ describe('repo hook wiring', () => {
   it('reaches the aggregate only through the scope guard', () => {
     expect(commands).not.toContain('typecheck-aggregate.mjs');
     expect(commands).not.toMatch(/npm run (--silent )?typecheck\b/);
+  });
+
+  it('leaves moving-main composition freshness to the required merge queue', () => {
+    expect(commands).not.toContain('git fetch');
+    expect(commands).not.toContain('check-merge-base-fresh.mjs');
+    expect(commands).not.toContain('STATION_ALLOW_STALE_BASE');
+  });
+
+  it('keeps the hook to seconds-scale checks', () => {
+    // full:regression stays the sole completion receipt and ci:fast stays the
+    // bounded feedback lane; a hook that runs either becomes a hook people
+    // route around with --no-verify. Comments may name them; commands may not.
+    // The UI bundle build left the hook for the same reason (#1703): CI's
+    // candidate budget step and the merge queue already enforce it.
+    expect(commands).not.toMatch(
+      /full:regression|ci:fast|test:full|verify:static|build:ui/,
+    );
   });
 });

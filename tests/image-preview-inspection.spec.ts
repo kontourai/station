@@ -189,6 +189,15 @@ for (const theme of ['light', 'dark']) {
       firstButton.y + firstButton.height / 2,
       1,
     );
+    // Download rides the zoom row as a 44px icon link rather than a row of
+    // its own, and fits the narrow viewport with the controls.
+    const download = (await panel
+      .getByRole('link', { name: /^Download / })
+      .boundingBox())!;
+    expect(download.y).toBe(toolbarTop);
+    expect(download.x + download.width).toBeLessThanOrEqual(390);
+    expect(download.height).toBeGreaterThanOrEqual(44);
+    expect(download.width).toBeGreaterThanOrEqual(44);
     await expect(panel.getByText('Pinch to zoom. Drag to pan.')).toBeVisible();
     const view = panel.getByRole('region', { name: 'Image viewport' });
     await view.focus();

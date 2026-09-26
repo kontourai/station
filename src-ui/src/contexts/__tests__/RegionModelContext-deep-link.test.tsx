@@ -284,7 +284,10 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     await expectFreshSurfaceThenOnly('s9');
   });
 
-  test('preserves dock ordering on desktop and folds to Activity on bottom-only devices', async () => {
+  // The bottom-only half was "folds to Activity" (Activity in `right`, Chat's
+  // region hidden) until the phone layer: a phone now opens a deep-linked
+  // surface OVER Chat, in Chat's region, so Back returns to the conversation.
+  test('preserves dock ordering on desktop and opens Activity over Chat on bottom-only devices', async () => {
     setUrl('/?dock=open&surface=activity');
     const desktop = render(<Harness />);
     await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
@@ -308,15 +311,34 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     setUrl('/?dock=open&surface=activity');
     render(<Harness />);
 
-    await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
-    await waitFor(() => expect(window.location.search).toBe(''));
-    expect(model?.regions.right.visible).toBe(true);
-    expect(model?.regions.bottom.visible).toBe(false);
-    expect(model?.lastShownRegion).toBe('right');
-    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+    await waitFor(() =>
+      expect(model?.regions.bottom).toMatchObject({
+        panes: ['chat', 'activity'],
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+    // The deep link's own params are consumed; the dock stays open.
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get('surface')).toBe(
+        null,
+      ),
+    );
+    expect(model?.regions.right.panes).toEqual([]);
+    expect(model?.lastShownRegion).toBe('bottom');
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    expect(model?.phoneLayer).toEqual({
+      region: 'bottom',
+      surfaceId: 'activity',
+    });
   });
 
-  test('folding a maximized Chat away on a bottom-only device keeps lastDockMaximized', async () => {
+  // Was "folding a maximized Chat away keeps lastDockMaximized": before the
+  // phone layer, showing Activity on a phone hid Chat's region, and the
+  // assertion was that the close kept the maximize memory (archive#945). The
+  // layer no longer closes Chat's region, so the memory is kept by never
+  // being touched, and Back returns to the maximized Chat.
+  test('showing Activity over a maximized Chat on a bottom-only device keeps the maximize and its memory', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       value: 390,
@@ -335,14 +357,21 @@ describe('RegionModelProvider surface deep-link adoption', () => {
     act(() => model?.showSurface('activity'));
 
     await waitFor(() =>
-      expect(navigationStore.getSnapshot().isDockOpen).toBe(false),
+      expect(model?.regions.bottom.occupant).toBe('activity'),
     );
-    expect(model?.regions.bottom.visible).toBe(false);
-    expect(
-      new URLSearchParams(window.location.search).get('maximize'),
-    ).toBeNull();
-    // archive#945: a close forwards the live maximize state so the next
-    // `setDockState(true, lastDockMaximized)` restores it.
+    expect(model?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: true,
+    });
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    act(() => window.history.back());
+    await waitFor(() => expect(model?.regions.bottom.occupant).toBe('chat'));
+    expect(model?.regions.bottom.maximized).toBe(true);
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
@@ -749,14 +778,18 @@ describe('a delivered surface intent is never delivered a second time', () => {
       ),
     );
 
-    // A bottom-only device has one dock slot, so `RegionShells` renders only
-    // the folded region's shell: revealing Chat genuinely UNMOUNTS Activity,
-    // taking every consumption record inside it. Asserted on the DOM rather
-    // than on region state, because a still-mounted shell would make the rest
-    // of this test vacuous.
+    // On a bottom-only device Activity opens OVER Chat (the phone layer), as
+    // a tab of Chat's region, so its landmark is Chat's shell and the thing
+    // that mounts and unmounts is the Activity PANE — which is what holds
+    // the taken intent (`ActivityDockPane`). Revealing Chat selects Chat's
+    // tab, and the region host mounts only the selected pane: Activity
+    // genuinely UNMOUNTS, taking every consumption record inside it.
+    // Asserted on the DOM rather than on region state, because a
+    // still-mounted pane would make the rest of this test vacuous.
     act(() => revealSurface?.('chat'));
-    await waitFor(() => expect(activityShellLandmark()).toBeNull());
-    expect(screen.queryByTestId('sessions-view')).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId('sessions-view')).toBeNull(),
+    );
     // `findBy`: since #2045 Chat's pane renders through the region host's
     // lazy boundary rather than an eagerly stubbed shell.
     expect(await screen.findByTestId('chat-shell')).toBeTruthy();
@@ -766,7 +799,9 @@ describe('a delivered surface intent is never delivered a second time', () => {
     // Reveal Activity generically — the sidebar, the palette, ⌘⇧A and "All
     // activity" all land here, carrying no session.
     act(() => revealSurface?.('activity'));
-    await waitFor(() => expect(activityShellLandmark()).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByTestId('sessions-view')).not.toBeNull(),
+    );
     await expectFreshSurfaceThenOnly('s9');
   });
 

@@ -123,6 +123,9 @@ regexes = [
 paths = [
   '''(^|/)packages/contracts/src/native-push\.ts$''',
   '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/AgentSealTest\.kt$''',
+  '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/StationNotificationsTest\.kt$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationAgentActivitySharedTests/CardOpenerTests\.swift$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin\.swift$''',
 ]
 
 [[allowlists]]

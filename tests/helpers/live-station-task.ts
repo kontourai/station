@@ -354,7 +354,9 @@ export async function createTaskFromProject(
     data: { isRepo: boolean; branch?: string };
   }>(
     page,
-    `/api/coding/git/status?path=${encodeURIComponent(workingDirectory)}`,
+    // Coding reads are confined to a named Project since #2471; a bare path
+    // is refused `project-required` (400).
+    `/api/coding/git/status?projectSlug=${encodeURIComponent(slug)}&path=${encodeURIComponent(workingDirectory)}`,
   );
   expect(gitStatus).toMatchObject({
     success: true,

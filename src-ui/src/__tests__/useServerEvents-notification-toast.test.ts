@@ -113,3 +113,39 @@ describe('handleNotificationDeliveredToast (station#1100 review fix, HIGH)', () 
     );
   });
 });
+
+describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', () => {
+  beforeEach(() => show.mockReset());
+
+  test('adds the agent attribution and an Open action', async () => {
+    handleNotificationDeliveredToast({
+      id: 'n-1',
+      category: 'agent-done',
+      title: 'Tests pass on fix-login',
+      body: 'All green.',
+      metadata: {
+        envelope: {
+          v: 1,
+          source: {
+            kind: 'agent',
+            sessionId: 'session-1',
+            agent: 'builder',
+            assurance: 'bound',
+          },
+          audience: { kind: 'session-readers', sessionId: 'session-1' },
+          urgency: 'done',
+          interrupt: 'default',
+        },
+      },
+    });
+
+    await vi.waitFor(() => expect(show).toHaveBeenCalledTimes(1));
+    const [message, , duration, actions, metadata] = show.mock.calls[0];
+    expect(message).toBe('Tests pass on fix-login — All green.');
+    expect(duration).toBe(NOTIFICATION_TOAST_DISPLAY_MS);
+    expect(actions?.map((action: { label: string }) => action.label)).toEqual([
+      'Open',
+    ]);
+    expect(metadata.detail).toBe('from builder · session session-1');
+  });
+});

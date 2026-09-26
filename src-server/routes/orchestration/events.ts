@@ -105,7 +105,14 @@ export interface EventRouteDeps {
     data: unknown,
     c: Context,
   ) => boolean | Promise<boolean>;
-  connectPairedDevice?: (request: Request) => ClientConnectionLease | undefined;
+  /**
+   * Leases this stream's client-session presence for the caller (a paired
+   * device's document, or an operator tab), held until the stream closes
+   * and refreshed by each keepalive write. Absent or undefined: untracked.
+   */
+  connectClientSession?: (
+    request: Request,
+  ) => ClientConnectionLease | undefined;
   isPairedDeviceConnectionCurrent?: (request: Request) => boolean;
   writeSse?: (
     stream: any,
@@ -133,7 +140,7 @@ export function createEventRoutes({
   canReadAnswerNarrativeEvent,
   canReadPluginEvent,
   canReadPluginDraftEvent,
-  connectPairedDevice,
+  connectClientSession,
   isPairedDeviceConnectionCurrent,
   writeSse,
 }: EventRouteDeps) {
@@ -207,7 +214,7 @@ export function createEventRoutes({
       let unsub: (() => void) | undefined;
       let keepAlive: ReturnType<typeof setInterval> | undefined;
       try {
-        clientLease = connectPairedDevice?.(c.req.raw);
+        clientLease = connectClientSession?.(c.req.raw);
         if (c.req.raw.signal.aborted) return;
         // Subscribe before the first frame is written. Response headers therefore
         // cannot become browser-visible until this connection is ready to observe

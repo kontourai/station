@@ -45,132 +45,156 @@ vi.mock('@kontourai/station-connect', () => ({
   // a stable connected status is the neutral answer here.
   useConnectionStatus: () => ({ status: 'connected' }),
 }));
-vi.mock('@kontourai/station-sdk', () => ({
-  authenticatedFetch: vi.fn(),
-  StationReadOnlyError: class extends Error {},
-  useEngineConnectionsQuery: () => ({ data: [] }),
-  useAnswerSharesQuery: () => ({ data: [] }),
-  // #2067: the plugin-visibility section. The ORDINARY operator case — a
-  // directory in hand with one paired person — because the state under test
-  // here is the settings catalog, and a refusal would legitimately render
-  // nothing and make the enumeration disagree for a reason unrelated to the
-  // catalog.
-  //
-  // #2182 review M-b adds the REFUSED case, driven by `pluginVisibilityRefused`:
-  // the route's answer to a non-operator, which is how the real query reports
-  // one (no data, a forbidden error, settled).
-  usePluginVisibilityQuery: () =>
-    pluginVisibilityRefused
-      ? {
-          data: undefined,
-          error: new Error('forbidden'),
-          isError: true,
-          isLoading: false,
-          isPending: false,
-        }
-      : pluginVisibilityFailed
+vi.mock('@kontourai/station-sdk', async () => {
+  const { defaultNotificationPreferences } = await import(
+    '@kontourai/station-contracts/notification-preferences'
+  );
+  return {
+    authenticatedFetch: vi.fn(),
+    // #2586: the notification-delivery section. The ORDINARY case — defaults
+    // in hand, nothing in flight — because the state under test here is the
+    // settings catalog; without these the section fails into its own error
+    // state and adds a second "Retry" that the save-retry tests collide with.
+    useNotificationPreferencesQuery: () => ({
+      data: defaultNotificationPreferences(),
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    }),
+    useUpdateNotificationPreferencesMutation: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+    }),
+    usePatchNotificationPreferencesMutation: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+    }),
+    usePairedDevicesQuery: () => ({ data: [] }),
+    StationReadOnlyError: class extends Error {},
+    useEngineConnectionsQuery: () => ({ data: [] }),
+    useAnswerSharesQuery: () => ({ data: [] }),
+    // #2067: the plugin-visibility section. The ORDINARY operator case — a
+    // directory in hand with one paired person — because the state under test
+    // here is the settings catalog, and a refusal would legitimately render
+    // nothing and make the enumeration disagree for a reason unrelated to the
+    // catalog.
+    //
+    // #2182 review M-b adds the REFUSED case, driven by `pluginVisibilityRefused`:
+    // the route's answer to a non-operator, which is how the real query reports
+    // one (no data, a forbidden error, settled).
+    usePluginVisibilityQuery: () =>
+      pluginVisibilityRefused
         ? {
-            // A settled failure that is NOT a refusal: what an operator sees
-            // when the one request (the query does not retry) hits a 5xx.
             data: undefined,
-            error: new Error('network down'),
+            error: new Error('forbidden'),
             isError: true,
             isLoading: false,
             isPending: false,
-            refetch: vi.fn(),
           }
-        : {
-            data: {
-              principals: [
-                {
-                  id: 'human:device:paired',
-                  display: 'Paired device',
-                  revoked: false,
-                  plugins: [],
-                  operator: false,
-                },
-              ],
+        : pluginVisibilityFailed
+          ? {
+              // A settled failure that is NOT a refusal: what an operator sees
+              // when the one request (the query does not retry) hits a 5xx.
+              data: undefined,
+              error: new Error('network down'),
+              isError: true,
+              isLoading: false,
+              isPending: false,
+              refetch: vi.fn(),
+            }
+          : {
+              data: {
+                principals: [
+                  {
+                    id: 'human:device:paired',
+                    display: 'Paired device',
+                    revoked: false,
+                    plugins: [],
+                    operator: false,
+                  },
+                ],
+              },
             },
+    usePluginsQuery: () => ({ data: [] }),
+    useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
+    // Discriminates on the refusal, not on "any error": a failure that is not
+    // a refusal must stay distinguishable, or the failed-operator case below
+    // would be indistinguishable from a non-operator.
+    isPluginVisibilityForbidden: (error: unknown) =>
+      error instanceof Error && error.message === 'forbidden',
+    useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
+    // #2144 slice 3: the hook takes the selected project's slug, and the
+    // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
+    // on whatever the project overrides). The mock keys on the slug for the
+    // same reason the cache does — serving the Station answer for a project
+    // read is the exact confusion the key exists to prevent.
+    useConfigProvenanceQuery: (slug?: string) => ({
+      data: slug ? projectProvenance : configProvenance,
+    }),
+    useProjectsQuery: () => ({ data: projectList }),
+    useProjectQuery: (slug: string) => ({
+      data: slug ? projectRecord : undefined,
+    }),
+    useUpdateProjectMutation: () => ({ mutateAsync: updateProjectAsync }),
+    // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
+    // hook read the shared `['config']` query and its write path so the offered
+    // choice cannot contradict a setting changed since the inventory was
+    // fetched. Both are reached before the disclosure's own early return, so
+    // this factory has to answer them even though the surface renders nothing
+    // in this file. The shapes are the ORDINARY case — config in hand, nothing
+    // in flight, no error — because the state under test here is the settings
+    // catalog, and a loading or failed telemetry read would make the decision
+    // hook derive an unsettled state that is not what any assertion below is
+    // about.
+    useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
+    useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useInvalidateQuery: () => invalidateQuery,
+    useSystemStatusForApiBaseQuery: () => ({
+      data: {
+        build: {},
+        prerequisites: [
+          {
+            id: 'node',
+            name: 'Node',
+            description: 'ready',
+            status: 'installed',
+            category: 'required',
           },
-  usePluginsQuery: () => ({ data: [] }),
-  useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
-  // Discriminates on the refusal, not on "any error": a failure that is not
-  // a refusal must stay distinguishable, or the failed-operator case below
-  // would be indistinguishable from a non-operator.
-  isPluginVisibilityForbidden: (error: unknown) =>
-    error instanceof Error && error.message === 'forbidden',
-  useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
-  // #2144 slice 3: the hook takes the selected project's slug, and the
-  // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
-  // on whatever the project overrides). The mock keys on the slug for the
-  // same reason the cache does — serving the Station answer for a project
-  // read is the exact confusion the key exists to prevent.
-  useConfigProvenanceQuery: (slug?: string) => ({
-    data: slug ? projectProvenance : configProvenance,
-  }),
-  useProjectsQuery: () => ({ data: projectList }),
-  useProjectQuery: (slug: string) => ({
-    data: slug ? projectRecord : undefined,
-  }),
-  useUpdateProjectMutation: () => ({ mutateAsync: updateProjectAsync }),
-  // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
-  // hook read the shared `['config']` query and its write path so the offered
-  // choice cannot contradict a setting changed since the inventory was
-  // fetched. Both are reached before the disclosure's own early return, so
-  // this factory has to answer them even though the surface renders nothing
-  // in this file. The shapes are the ORDINARY case — config in hand, nothing
-  // in flight, no error — because the state under test here is the settings
-  // catalog, and a loading or failed telemetry read would make the decision
-  // hook derive an unsettled state that is not what any assertion below is
-  // about.
-  useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
-  useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useInvalidateQuery: () => invalidateQuery,
-  useSystemStatusForApiBaseQuery: () => ({
-    data: {
-      build: {},
-      prerequisites: [
+        ],
+      },
+      isLoading: false,
+    }),
+    useFeaturePreviewsQuery: () => ({
+      isLoading: false,
+      error: null,
+      data: [
         {
-          id: 'node',
-          name: 'Node',
-          description: 'ready',
-          status: 'installed',
-          category: 'required',
+          id: 'probe-preview',
+          label: 'Probe preview',
+          description: 'An engine-offered preview.',
+          enabled: false,
         },
       ],
-    },
-    isLoading: false,
-  }),
-  useFeaturePreviewsQuery: () => ({
-    isLoading: false,
-    error: null,
-    data: [
-      {
-        id: 'probe-preview',
-        label: 'Probe preview',
-        description: 'An engine-offered preview.',
-        enabled: false,
-      },
-    ],
-    refetch: vi.fn(),
-  }),
-  useUpdateFeaturePreviewMutation: () => ({
-    isPending: false,
-    error: null,
-    mutate: vi.fn(),
-  }),
-  useKnowledgeAdaptersQuery: () => ({ data: [] }),
-  useKnowledgeRootsQuery: () => ({ data: [] }),
-  useCreateKnowledgeRootMutation: () => ({
-    mutate: vi.fn(),
-    isPending: false,
-    isError: false,
-  }),
-  useValidateKnowledgeRootMutation: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
-}));
+      refetch: vi.fn(),
+    }),
+    useUpdateFeaturePreviewMutation: () => ({
+      isPending: false,
+      error: null,
+      mutate: vi.fn(),
+    }),
+    useKnowledgeAdaptersQuery: () => ({ data: [] }),
+    useKnowledgeRootsQuery: () => ({ data: [] }),
+    useCreateKnowledgeRootMutation: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+    }),
+    useValidateKnowledgeRootMutation: () => ({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }),
+  };
+});
 const updateAppLogLevel = vi.fn();
 vi.mock('@kontourai/station-sdk/app-config', () => ({ updateAppLogLevel }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -506,8 +530,10 @@ describe('settings catalog completeness', () => {
     // that MOVED into the new chat section are not a change to this count:
     // the same ids, in a different `view`. #1973: +1 (device-hosts, the
     // operator's SSH device hosts). #90 D9: +1 (chat-auto-float-browser,
-    // the float-over-chat's auto-show preference).
-    expect(SETTINGS_CATALOG).toHaveLength(56);
+    // the float-over-chat's auto-show preference). #2511: +1
+    // (open-last-station, mobile-only, so not in this desktop render).
+    // Device helper URL: +1 (the local helper the Device pane dials).
+    expect(SETTINGS_CATALOG).toHaveLength(58);
   });
 
   /**

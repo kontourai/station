@@ -294,6 +294,8 @@ export interface DeviceSettings {
    * default on so a fresh mobile install feels alive without a settings hunt.
    */
   hapticsEnabled: boolean;
+  /** Reopen this phone's last explicitly selected Station on its next launch. */
+  openLastStationOnLaunch: boolean;
   /**
    * archive#2652: chapter/step reached in the guided first run on this device.
    * Never had a prior key — the guided first run is new.
@@ -860,6 +862,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: 'bottom',
   }),
   defineDeviceSetting({
+    key: 'openLastStationOnLaunch',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Open last Station on launch',
+    help: 'On this phone, Station reconnects to the Station you last selected when the app opens.',
+    description:
+      'When off, the app opens the shared default Station instead. This takes effect on the next launch and never changes the shared default.',
+    defaultValue: true,
+  }),
+  defineDeviceSetting({
     key: 'hapticsEnabled',
     scope: 'device',
     descriptor: { kind: 'boolean' },
@@ -1024,6 +1036,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatShowToolDetails',
   'chatFontSize',
   'hapticsEnabled',
+  'openLastStationOnLaunch',
   'developerToolsEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];

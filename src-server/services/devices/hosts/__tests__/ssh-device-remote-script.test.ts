@@ -151,6 +151,8 @@ function fakeHubTree(): string {
       "let delay = 0; try { delay = Number(readFileSync(process.env.HOME + '/.hub-delay', 'utf8')) || 0; } catch {}",
       "const server = http.createServer((req, res) => { res.end('hub:' + req.url); });",
       "server.listen(0, '127.0.0.1', () => setTimeout(() => console.log('Local: http://localhost:' + server.address().port), delay));",
+      // ...or slow to die on SIGTERM (~/.hub-term-delay, read at signal time).
+      "process.on('SIGTERM', () => { let wait = 0; try { wait = Number(readFileSync(process.env.HOME + '/.hub-term-delay', 'utf8')) || 0; } catch {} setTimeout(() => process.exit(0), wait); });",
     ].join('\n'),
   );
   writeFileSync(
@@ -373,10 +375,18 @@ describe('the device-host program', () => {
     // (and records it at once). B's hub is slow to report its port, so A's
     // session ends — its hub stopped under it — while B's record is the
     // pid-only one written at spawn.
+    //
+    // #2501: A's hub must outlive B's record write, or A can exit (and run
+    // its cleanup) before B has written anything — the read below then hits
+    // ENOENT, and the test no longer shows that A's cleanup spares B's
+    // record. A lingering hub puts A's exit after B's write every time.
     writeFileSync(join(home, '.hub-delay'), '2000');
+    writeFileSync(join(home, '.hub-term-delay'), '750');
     const secretB = randomBytes(32).toString('hex');
     const b = start(secretB);
     expect(await a.exited).toBe(4);
+    // Only A's hub needed to linger; B's own stop below should be prompt.
+    rmSync(join(home, '.hub-term-delay'), { force: true });
     // A's exit left B's record alone.
     const early = JSON.parse(readFileSync(record, 'utf8'));
     expect(typeof early.pid).toBe('number');

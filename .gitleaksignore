@@ -36,3 +36,6 @@ ed19e3a3d7095b97e31eb3b2a372787ff5172ba3:src-server/services/connections/__tests
 # absent; the current source assembles the vector from parts so future commits
 # do not repeat the token-shaped literal. Exempt this historical location only.
 c7b354a90db1e78e1203e2bff4e2bf9e1408fe29:src-desktop/src/native_station_key_custody.rs:jwt:421
+# #2583: a doc comment describing the agent dedupe-key format matched
+# generic-api-key at one historical location; the comment was reworded next.
+1a6db6c227a4b373629bb89de31e3987b96c44c4:packages/contracts/src/notification.ts:generic-api-key:91

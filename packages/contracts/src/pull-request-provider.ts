@@ -41,8 +41,14 @@ export function narrowMergeMethods(
 export interface PullRequestRepositoryContext {
   repository: { owner: string; name: string; remote: string };
   workingDirectory: string;
-  branch: string;
-  baseRef: string;
+  /**
+   * The checkout's branch and the base a new pull request targets. Present
+   * only when the checkout is on a branch pushed to its upstream — what
+   * opening a pull request from it requires. A read of an existing pull
+   * request resolves without them (#2474).
+   */
+  branch?: string;
+  baseRef?: string;
   /**
    * Where a new pull request opens FROM, as the forge names it: the
    * branch the checkout's branch is pushed to (its upstream, which may be
@@ -86,8 +92,11 @@ export type PullRequestClientContext =
       provider: string;
       host: string;
       repository: { owner: string; name: string };
-      /** Branch observed from this request's recorded checkout/session worktree. */
-      branch: string;
+      /**
+       * Branch observed from this request's recorded checkout/session
+       * worktree; absent when it is detached or not pushed to its upstream.
+       */
+      branch?: string;
     }
   | {
       available: false;

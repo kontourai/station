@@ -1,6 +1,7 @@
 import {
   applyChildWorkDelta,
   type ChildWorkDelta,
+  type ChildWorkItem,
   type ChildWorkRegistryState,
   type ChildWorkSessionView,
   childWorkDeltaFromLegacyClaudeTaskNotification,
@@ -10,12 +11,13 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { settledChildWorkFromHistory } from './child-work-history.js';
 
 /**
  * #2456: the server's process-local child-work registry.
  *
  * Fed at the projection seam with every live event, it folds
- * `child-work.updated` deltas — and, until #2457, the Claude adapter's legacy
+ * `child-work.updated` deltas — and, for pre-#2457 Claude history, the legacy
  * `claude-code` `task/registry` / `task/settled` tuples, through the same
  * contract translator the client uses — through the contract's one reducer,
  * and serves the per-session view that rides on
@@ -24,10 +26,9 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * persisted replay still delivers every delta, but the snapshot fallback only
  * sends session summaries, and before this the set was simply lost there.
  *
- * Process-local on purpose, like `TurnProgressTracker`: an engine's children
- * do not survive this process (the adapter holding them dies with it), so a
- * registry rebuilt from the log after a restart would report children
- * nobody is running.
+ * Running work is process-local, like `TurnProgressTracker`: an engine's
+ * children do not survive the adapter process. Durable terminal outcomes are
+ * restored separately on cold reads without reviving that running set.
  *
  * #2456 fix round (R2): every engine session gets a view, derived at READ
  * time from the engine capability matrix, not only sessions this process saw
@@ -52,24 +53,79 @@ export const STATION_UNMAPPED_SUBAGENT_ENGINES: Readonly<
   Record<string, string>
 > = {};
 
+export interface ChildWorkProjectionOptions {
+  /**
+   * Called once per child whose fold moves it from `running` to a terminal
+   * status, with the provider of the event that settled it. A later
+   * correction of that terminal (an `unresolved` the engine's real outcome
+   * replaces) is not a second settle and is not reported again.
+   */
+  onChildSettled?: (item: ChildWorkItem, provider: string) => void;
+}
+
+/** How many exited threads the projection remembers (see `exited`). */
+const CHILD_WORK_EXITED_THREADS_MAX = 256;
+
 export class ChildWorkProjection {
   private state: ChildWorkRegistryState = createEmptyChildWorkRegistry();
-  /** reporterThreadId → createdAt of the last child-work delta it reported. */
+  /** reporterThreadId → createdAt of the last current or durable report. */
   private readonly observedAt = new Map<string, string>();
+  private readonly historicalSeeded = new Set<string>();
+
+  /**
+   * #2457: bounded set of exited reporters. A late settle remains durable
+   * history, but cannot recreate live state after the session ended. A new
+   * session.started releases the fence for that thread.
+   */
+  private readonly exited = new Set<string>();
+
+  constructor(private readonly options: ChildWorkProjectionOptions = {}) {}
+
+  threadsNeedingHistoricalSeed(threadIds: readonly string[]): string[] {
+    return threadIds.filter((threadId) => !this.historicalSeeded.has(threadId));
+  }
+
+  /** Restore durable terminal outcomes, without reviving pre-restart work. */
+  seedHistoricalSettled(
+    threadId: string,
+    events: readonly CanonicalRuntimeEvent[],
+  ): void {
+    if (this.historicalSeeded.has(threadId)) return;
+    const { settlements, lastReportAt } = settledChildWorkFromHistory(
+      threadId,
+      events,
+    );
+    for (const settlement of settlements)
+      this.state = applyChildWorkDelta(this.state, settlement);
+    if (lastReportAt && !this.observedAt.has(threadId))
+      this.observedAt.set(threadId, lastReportAt);
+    this.historicalSeeded.add(threadId);
+  }
 
   /** Folds one live event. */
   observe(event: CanonicalRuntimeEvent): void {
     if (event.method === 'session.exited') {
       this.forgetThread(event.threadId);
+      this.exited.delete(event.threadId);
+      this.exited.add(event.threadId);
+      if (this.exited.size > CHILD_WORK_EXITED_THREADS_MAX) {
+        const oldest = this.exited.values().next().value;
+        if (oldest !== undefined) this.exited.delete(oldest);
+      }
       return;
     }
+    if (event.method === 'session.started') {
+      this.exited.delete(event.threadId);
+      return;
+    }
+    if (this.exited.has(event.threadId)) return;
     const delta =
       event.method === 'child-work.updated'
         ? event.delta
         : event.method === 'extension.notification'
-          ? // Until #2457 the Claude adapter still reports through its legacy
-            // task tuples; the contract's one translator turns them into the
-            // same deltas the client folds.
+          ? // Replay only: before #2457 the Claude adapter reported through
+            // these legacy task tuples; the contract's one translator turns
+            // them into the same deltas the client folds.
             childWorkDeltaFromLegacyClaudeTaskNotification(
               event,
               event.threadId,
@@ -83,7 +139,7 @@ export class ChildWorkProjection {
         ? delta.item.reporterThreadId
         : delta.reporterThreadId;
     if (reporter !== event.threadId) return;
-    this.apply(delta, event.createdAt);
+    this.apply(delta, event.createdAt, event.provider);
   }
 
   /**
@@ -118,12 +174,14 @@ export class ChildWorkProjection {
     const observedAt = this.observedAt.get(threadId);
     if (observedAt === undefined && cell?.state !== 'declared')
       return undefined;
+    const children = childWorkForReporter(this.state, threadId).filter(
+      (item) => item.producer === 'engine-subagent',
+    );
+    const settled = children.filter((item) => item.status !== 'running');
     return {
       observability: 'reported',
-      running: childWorkForReporter(this.state, threadId).filter(
-        (item) =>
-          item.producer === 'engine-subagent' && item.status === 'running',
-      ),
+      running: children.filter((item) => item.status === 'running'),
+      ...(settled.length > 0 ? { settled } : {}),
       observedAt: observedAt ?? now,
     };
   }
@@ -133,8 +191,22 @@ export class ChildWorkProjection {
     this.observedAt.delete(threadId);
   }
 
-  private apply(delta: ChildWorkDelta, createdAt: string): void {
+  private apply(
+    delta: ChildWorkDelta,
+    createdAt: string,
+    provider: string,
+  ): void {
     const next = applyChildWorkDelta(this.state, delta);
+    if (next !== this.state && this.options.onChildSettled) {
+      for (const [key, item] of Object.entries(next.items)) {
+        if (
+          item.status !== 'running' &&
+          this.state.items[key]?.status === 'running'
+        ) {
+          this.options.onChildSettled(item, provider);
+        }
+      }
+    }
     if (delta.kind !== 'not-reported') {
       // Observed even when the fold was a no-op: a repeated snapshot is still
       // a fresh report that the set is what it was.

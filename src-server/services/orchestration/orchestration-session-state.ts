@@ -36,6 +36,7 @@ import {
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
@@ -282,9 +283,7 @@ function foldFirstSendOutcome<
 >(folded: L, outcome: FirstSendOutcome | undefined): L {
   if (
     !outcome ||
-    folded.lifecycleState === 'failed' ||
-    folded.lifecycleState === 'completed' ||
-    folded.lifecycleState === 'canceled'
+    sessionLifecycleOutcome(folded.lifecycleState) !== undefined
   ) {
     return folded;
   }
@@ -472,6 +471,10 @@ export function buildOrchestrationSessionSummary(options: {
   turnProgress?: TurnProgressObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
+  /** Durable current execution child, supplied by a lineage-aware reader. */
+  currentSessionId?: string;
+  /** Current unresolved requests; present even when the set is empty. */
+  openRequestIds?: readonly string[];
   /**
    * #2456: the child-work projection's process-local read, handed over like
    * `turnProgress` — never reconstructed from events. A READER rather than a
@@ -530,6 +533,7 @@ export function buildOrchestrationSessionSummary(options: {
     extractDisplayTitle(events) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
     events,
@@ -623,9 +627,22 @@ export function buildOrchestrationSessionSummary(options: {
           lastEventMethod: lastEvent.method,
         }
       : {}),
+    ...(lastRuntimeError
+      ? { lastRuntimeErrorMessage: lastRuntimeError.message }
+      : {}),
+    ...(lastEvent?.method === 'turn.aborted' &&
+    lastEvent.recoveryTerminal !== true
+      ? { lastTurnAbortReason: lastEvent.reason }
+      : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
+      : {}),
+    ...(options.currentSessionId
+      ? { currentSessionId: options.currentSessionId }
+      : {}),
+    ...(options.openRequestIds
+      ? { openRequestIds: [...options.openRequestIds] }
       : {}),
     ...(delegation ? { delegation } : {}),
     ...(inputOrigin ? { inputOrigin } : {}),
@@ -1990,9 +2007,10 @@ function deriveAgentRunStatus(options: {
         //
         // `isTerminalAgentRunStatus` is the SAME predicate
         // `deriveLifecycleTransition` expresses as
-        // `isSessionLifecycleStateStopped(from)`; the two folds must answer
-        // this event identically or they diverge exactly as archive#3451/#3581
-        // catalogue.
+        // `isSessionLifecycleStateAtRest(from)` (#2540: an `idle` session's
+        // finished turn is a completed run, via `sessionLifecycleOutcome`);
+        // the two folds must answer this event identically or they diverge
+        // exactly as archive#3451/#3581 catalogue.
         if (status && isTerminalAgentRunStatus(status)) break;
         const impliedFailed =
           !status &&
@@ -2037,10 +2055,7 @@ function deriveAgentRunStatus(options: {
 function agentRunStatusFromSessionState(
   state: SessionLifecycleState | undefined,
 ): AgentRunStatus | null {
-  if (state === 'canceled') return 'cancelled';
-  if (state === 'completed') return 'completed';
-  if (state === 'failed') return 'failed';
-  return null;
+  return state ? (sessionLifecycleOutcome(state) ?? null) : null;
 }
 
 function isTerminalAgentRunStatus(status: AgentRunStatus): boolean {

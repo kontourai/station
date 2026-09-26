@@ -8,7 +8,16 @@ const profileStorage = vi.hoisted(() => ({
   hydrate: vi.fn(async () => {
     lifecycle.push('hydrate');
   }),
-  authorizeDefaultProfile: vi.fn(async () => {
+  authorizeDefaultProfile: vi.fn(
+    async (_forgetRememberedSelection?: boolean) => {
+      lifecycle.push('authorize');
+      return true;
+    },
+  ),
+  // #2511: mobile launch reopens this device's remembered Station (falling
+  // back to the shared default) while `openLastStationOnLaunch` is on, its
+  // default.
+  authorizeRememberedProfile: vi.fn(async () => {
     lifecycle.push('authorize');
     return true;
   }),
@@ -50,7 +59,7 @@ describe('PlatformBootstrap native default authorization', () => {
     vi.clearAllMocks();
   });
 
-  it('authorizes the native default before native children render', async () => {
+  it('authorizes the launch Station before native children render', async () => {
     let releaseHydration: (() => void) | undefined;
     profileStorage.hydrate.mockImplementationOnce(
       () =>
@@ -74,5 +83,7 @@ describe('PlatformBootstrap native default authorization', () => {
     releaseHydration?.();
     await screen.findByText('native child');
     expect(lifecycle).toEqual(['hydrate', 'authorize', 'child']);
+    expect(profileStorage.authorizeRememberedProfile).toHaveBeenCalledOnce();
+    expect(profileStorage.authorizeDefaultProfile).not.toHaveBeenCalled();
   });
 });

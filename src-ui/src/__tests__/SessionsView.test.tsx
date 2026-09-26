@@ -118,6 +118,16 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
+// The linked-pull-request panel is lazy; this stub echoes the conversation id
+// the detail pane hands it, so a test can see WHICH id reaches it.
+vi.mock('../components/pull-requests/ConversationPullRequestLinks', () => ({
+  ConversationPullRequestLinks: ({
+    conversationId,
+  }: {
+    conversationId: string;
+  }) => <div data-testid="pull-request-links-for">{conversationId}</div>,
+}));
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -126,147 +136,164 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-vi.mock('@kontourai/station-sdk', () => ({
-  AdoptSessionError: class AdoptSessionError extends Error {
-    failureClass: string;
-    retryable: boolean;
-    cause?: unknown;
-    constructor(input: {
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  // Bind the REAL scope guard + identity classifier: the launcher submits a
+  // per-invocation envelope through them.
+  const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    isApiRequestScope: real.isApiRequestScope,
+    projectIdentityReadFailure: real.projectIdentityReadFailure,
+    AdoptSessionError: class AdoptSessionError extends Error {
       failureClass: string;
-      message: string;
       retryable: boolean;
       cause?: unknown;
-    }) {
-      super(input.message);
-      this.failureClass = input.failureClass;
-      this.retryable = input.retryable;
-      this.cause = input.cause;
-    }
-  },
-  createAdoptOrchestrationSessionIntent: () => adoptionIntent,
-  getStarterWork: (starterId: string, apiBase?: string) =>
-    getStarterWork(starterId, apiBase),
-  // Delegation waits for this Project's authoritative routing defaults.
-  useProjectQuery: (slug: string) => ({
-    data: slug === 'station' ? { slug, name: 'Station' } : undefined,
-    isSuccess: slug === 'station',
-    isError: false,
-    refetch: vi.fn(),
-  }),
-  // The open-chats refactor (archive#2683) renders shared membership metadata.
-  useAgentsQuery: () => ({ data: [], isLoading: false }),
-  useOrchestrationSessionsQuery: (config?: unknown) => {
-    orchestrationSessionsQueryConfig.push(config);
-    return {
-      data: sessions,
-      isLoading: false,
-      error: sessionsQueryError,
-      refetch: refetchSessions,
-    };
-  },
-  usePairedDevicesQuery,
-  usePullRequestContextQuery: () => ({ data: { available: false } }),
-  usePullRequestsQuery: () => ({ data: undefined }),
-  useWorkflowTasksQuery: (projectSlug: string | null | undefined) => ({
-    data: projectSlug ? (workflowTasksByProject[projectSlug] ?? []) : [],
-  }),
-  useSessionFlowRunQuery,
-  useSessionBuilderRunQuery,
-  useOrchestrationCommandReceiptsQuery: () => ({
-    data: [],
-    isLoading: false,
-    isError: false,
-  }),
-  // #790: peer-credential read the DelegationLauncher performs when open;
-  // undefined models the 403 a non-operator browser session receives.
-  usePeerCredentialsQuery: () => ({
-    data: undefined,
-    isSuccess: false,
-    isError: true,
-  }),
-  useDelegationOptionsQuery: () => ({
-    data: {
-      environment: {
-        id: 'env-current',
-        name: 'Current environment',
-        kind: 'current',
-      },
-      targets: [
-        {
-          id: 'codex',
-          kind: 'agent-app',
-          name: 'Codex',
-          ready: true,
-          defaultModel: 'gpt-5.6-sol',
-          models: [],
-          capabilities: {
-            resume: true,
-            interrupt: true,
-            approvals: true,
-            modelSelection: true,
-          },
-        },
-        {
-          id: 'reviewer',
-          kind: 'station-agent',
-          name: 'Reviewer',
-          ready: true,
-          models: [],
-          capabilities: {
-            resume: true,
-            interrupt: true,
-            approvals: false,
-            modelSelection: false,
-          },
-        },
-      ],
+      constructor(input: {
+        failureClass: string;
+        message: string;
+        retryable: boolean;
+        cause?: unknown;
+      }) {
+        super(input.message);
+        this.failureClass = input.failureClass;
+        this.retryable = input.retryable;
+        this.cause = input.cause;
+      }
     },
-    error: null,
-    isFetching: false,
-    refetch: vi.fn(),
-  }),
-  useSshEnvironmentsQuery: () => ({ data: [] }),
-  useDelegateOrchestrationTaskMutation: () => ({
-    mutateAsync: delegateTask,
-    reset: resetDelegation,
-    isPending: false,
-    error: null,
-  }),
-  sendOrchestrationTurn: (input: unknown) => sendTurn(input),
-  resolveOrchestrationRequest: (input: unknown) => resolveRequest(input),
-  interruptOrchestrationTurn: (input: unknown) => interruptTurn(input),
-  launchContinueSessionStarter: (input: unknown) =>
-    launchContinueSessionStarter(input),
-  adoptOrchestrationSession: (input: unknown) => adoptSession(input),
-  dispatchOrchestrationCommandWithReceipt: (command: unknown) =>
-    discardDraftCommand(command),
-  useAttentionQuery: () => ({
-    data: attentionQueryState.isLoading
-      ? undefined
-      : { items: attentionItems, pendingCount: attentionItems.length },
-    isLoading: attentionQueryState.isLoading,
-    isError: attentionQueryState.isError,
-    error: attentionQueryState.error,
-    refetch: attentionRefetch,
-  }),
-  useAcknowledgeAttentionItemMutation: () => ({
-    isPending: false,
-    error: null,
-    mutate: acknowledgeAttentionItem,
-    mutateAsync: acknowledgeAttentionItem,
-  }),
-  evaluateFlowGate: (input: unknown) => evaluateGate(input),
-  acceptFlowException: (input: unknown) => acceptException(input),
-  useNotificationActionMutation: () => ({
-    isPending: false,
-    mutate: notificationAction,
-  }),
-  useDismissNotificationMutation: () => ({
-    isPending: false,
-    mutate: dismissNotification,
-  }),
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-}));
+    createAdoptOrchestrationSessionIntent: () => adoptionIntent,
+    getStarterWork: (starterId: string, apiBase?: string) =>
+      getStarterWork(starterId, apiBase),
+    // Delegation waits for this Project's authoritative routing defaults.
+    useProjectQuery: (slug: string) => ({
+      data: slug === 'station' ? { slug, name: 'Station' } : undefined,
+      isSuccess: slug === 'station',
+      isError: false,
+      refetch: vi.fn(),
+    }),
+    // #480/#1964 placement: the delegation launcher reads the portable
+    // identity through the scoped wrapper; this suite never places on a peer,
+    // so the read stays unavailable and placement stays legacy.
+    useProjectIdentityQuery: () => ({
+      data: undefined,
+      isSuccess: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }),
+    // The open-chats refactor (archive#2683) renders shared membership metadata.
+    useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useOrchestrationSessionsQuery: (config?: unknown) => {
+      orchestrationSessionsQueryConfig.push(config);
+      return {
+        data: sessions,
+        isLoading: false,
+        error: sessionsQueryError,
+        refetch: refetchSessions,
+      };
+    },
+    usePairedDevicesQuery,
+    usePullRequestContextQuery: () => ({ data: { available: false } }),
+    usePullRequestsQuery: () => ({ data: undefined }),
+    useWorkflowTasksQuery: (projectSlug: string | null | undefined) => ({
+      data: projectSlug ? (workflowTasksByProject[projectSlug] ?? []) : [],
+    }),
+    useSessionFlowRunQuery,
+    useSessionBuilderRunQuery,
+    useOrchestrationCommandReceiptsQuery: () => ({
+      data: [],
+      isLoading: false,
+      isError: false,
+    }),
+    // #790: peer-credential read the DelegationLauncher performs when open;
+    // undefined models the 403 a non-operator browser session receives.
+    usePeerCredentialsQuery: () => ({
+      data: undefined,
+      isSuccess: false,
+      isError: true,
+    }),
+    useDelegationOptionsQuery: () => ({
+      data: {
+        environment: {
+          id: 'env-current',
+          name: 'Current environment',
+          kind: 'current',
+        },
+        targets: [
+          {
+            id: 'codex',
+            kind: 'agent-app',
+            name: 'Codex',
+            ready: true,
+            defaultModel: 'gpt-5.6-sol',
+            models: [],
+            capabilities: {
+              resume: true,
+              interrupt: true,
+              approvals: true,
+              modelSelection: true,
+            },
+          },
+          {
+            id: 'reviewer',
+            kind: 'station-agent',
+            name: 'Reviewer',
+            ready: true,
+            models: [],
+            capabilities: {
+              resume: true,
+              interrupt: true,
+              approvals: false,
+              modelSelection: false,
+            },
+          },
+        ],
+      },
+      error: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    }),
+    useSshEnvironmentsQuery: () => ({ data: [] }),
+    useDelegateOrchestrationTaskMutation: () => ({
+      mutateAsync: delegateTask,
+      reset: resetDelegation,
+      isPending: false,
+      error: null,
+    }),
+    sendOrchestrationTurn: (input: unknown) => sendTurn(input),
+    resolveOrchestrationRequest: (input: unknown) => resolveRequest(input),
+    interruptOrchestrationTurn: (input: unknown) => interruptTurn(input),
+    launchContinueSessionStarter: (input: unknown) =>
+      launchContinueSessionStarter(input),
+    adoptOrchestrationSession: (input: unknown) => adoptSession(input),
+    dispatchOrchestrationCommandWithReceipt: (command: unknown) =>
+      discardDraftCommand(command),
+    useAttentionQuery: () => ({
+      data: attentionQueryState.isLoading
+        ? undefined
+        : { items: attentionItems, pendingCount: attentionItems.length },
+      isLoading: attentionQueryState.isLoading,
+      isError: attentionQueryState.isError,
+      error: attentionQueryState.error,
+      refetch: attentionRefetch,
+    }),
+    useAcknowledgeAttentionItemMutation: () => ({
+      isPending: false,
+      error: null,
+      mutate: acknowledgeAttentionItem,
+      mutateAsync: acknowledgeAttentionItem,
+    }),
+    evaluateFlowGate: (input: unknown) => evaluateGate(input),
+    acceptFlowException: (input: unknown) => acceptException(input),
+    useNotificationActionMutation: () => ({
+      isPending: false,
+      mutate: notificationAction,
+    }),
+    useDismissNotificationMutation: () => ({
+      isPending: false,
+      mutate: dismissNotification,
+    }),
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
+});
 
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
@@ -841,6 +868,34 @@ describe('SessionsView', () => {
     ).toMatch(/ · 1$/);
   });
 
+  test('a successor Session shows its conversation’s linked pull requests, not its own thread’s', async () => {
+    // A context reset or handoff child is not a conversation id: the server
+    // refuses it ("Conversation unavailable"), so the panel must be handed
+    // the durable conversation id; a Session with none falls back to its
+    // own thread (a one-Session conversation).
+    sessions = [
+      {
+        ...sessions[0],
+        threadId: 'conv-1:session:2',
+        conversationId: 'conv-1',
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+    expect(
+      (await screen.findByTestId('pull-request-links-for')).textContent,
+    ).toBe('conv-1');
+  });
+
+  test('a Session with no conversation id shows its own thread’s linked pull requests', async () => {
+    sessions = [{ ...sessions[0], conversationId: undefined }];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+    expect(
+      (await screen.findByTestId('pull-request-links-for')).textContent,
+    ).toBe(String(sessions[0]!.threadId));
+  });
+
   test('exposes bounded-history controls and an upgrade-required state', async () => {
     historyState = {
       hasMore: true,
@@ -1109,13 +1164,18 @@ describe('SessionsView', () => {
 
     await waitFor(() =>
       expect(delegateTask).toHaveBeenCalledWith({
-        prompt: 'Audit the compact task controls',
-        target: {
-          environment: { kind: 'current' },
-          agent: 'codex',
-          workspace: { kind: 'project', projectSlug: 'station' },
+        input: {
+          prompt: 'Audit the compact task controls',
+          target: {
+            environment: { kind: 'current' },
+            agent: 'codex',
+            workspace: { kind: 'project', projectSlug: 'station' },
+          },
+          parentTaskId: 'task:mobile-browser-12345678',
         },
-        parentTaskId: 'task:mobile-browser-12345678',
+        // No host scope in this suite: the per-invocation Home address is
+        // the launcher prop, with no scope attached.
+        apiBase: 'http://test.local',
       }),
     );
     await waitFor(() => expect(refetchSessions).toHaveBeenCalled());

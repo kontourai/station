@@ -91,7 +91,11 @@ Time-window pruning must use observed event timestamps, not ingest filenames.
 Collapsed payloads should construct their bodies only after expansion. Browser
 geometry requires the real component, styles, and normal user actions; CSS-text
 checks cannot prove that a target is visible or clickable. Helpers used only by
-tests cannot establish that their intended caller still exists.
+tests cannot establish that their intended caller still exists. Each contract
+has one primary test owner at the strongest boundary; a second layer needs its
+own distinct risk, such as a transport or lifecycle failure the owner cannot
+reach. Prefer extending a table-driven case or shared fixture over adding a
+near-duplicate test.
 
 The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
 `stored` is a localStorage observation and there is no alternative assertion.
@@ -113,6 +117,7 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 | Restored conversation fixtures | `tests/helpers/runtime-conversation-fixture.ts` | An explicit backend `/open` result and canonical conversation event window, independently of client storage seeds. The caller declares continuation authority. |
 | Unknown API reads | `tests/helpers/fixture-audit.ts`, `station-shell-fixtures.ts` | Explicit method/response shapes; omitted requests fail the audited test instead of returning false empty inventories. |
 | User interaction policy | `npm run test:fixtures:check` | Detects known source patterns that bypass Playwright actionability. The `test:fixtures:guard` command runs this check plus its known-bad, fixture, recovery, and profile-schema tests inside `verification:policy:gate` and therefore `ci:fast`. |
+| Test temp directories | `src-server/__test-utils__/temp-dirs.ts`, `npm run test-temp-dir:ratchet` | `trackTempDirs()` removes each directory in an after-hook, so a failing test does not leak it into the shared temp dir. The ratchet holds raw `mkdtemp` calls per test file at its baseline inside `verification:policy:gate`; lower a row with `--update` after migrating a file. |
 | Critical assertion strength | `npm run test:mutation:smoke` | Baseline green, known injected defect caught by the named assertion, source restored, restored green. |
 | Journey diagnosis | `npm run test:journeys:profile -- --samples=3` | Raw browser CPU/heap profiles, React commit counts, DOM mutations, storage calls, and timings on three actual journeys. No uncalibrated latency threshold. |
 
@@ -213,7 +218,7 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (twelve-minute) per-push feedback after focused
+Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
 evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
@@ -272,6 +277,13 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts          # focused spec wit
 npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # focused test name
 npm run test:connected-agents         # focused connected-agents server suite
 ```
+
+New or materially changed test files state their measured wall cost in the
+pull request (the `test:focused` duration line is the receipt). A file that
+needs seconds must name the contract no cheaper layer proves; prefer splitting
+by owner boundary over widening a slow file. Weighted capacity planning and
+the resource manifest stay the scheduling authority — this disclosure is
+review evidence, not a separate budget system.
 
 ### Pre-push orchestration transfer gate
 
@@ -342,7 +354,9 @@ screenshot bucket replaces stale green evidence truthfully. CI artifacts cannot
 modify a checkout themselves: run `npm run sync:e2e:latest` (or pass
 `-- --run-id <id>` / `-- --status <conclusion>`) to download and validate the
 latest compatible completed CI Extended artifact. Never paste the directory's
-image bytes or broad logs into agent context.
+image bytes or broad logs into agent context. For a change that alters rendered
+UI, inspected before/after screenshots belong in the pull request body itself;
+CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
@@ -620,6 +634,27 @@ from the container. It does not prove any of them renders — nothing in this
 repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
+
+`.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
+on pull requests, in the same container (#2428), so a PR that moves a screen
+finds out before it merges instead of reddening the next nightly. Its
+`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
+base commit and skips the capture only when every changed path is one the
+capture never reads (docs, agent instructions, other workflows, desktop Rust,
+test files). The scope is an exclusion list because the capture boots the
+whole product through `./station start`, not just `src-ui/`. When the diff
+fails, the job summary prints the exact refresh commands: download the run's
+`gallery-pr-<run>-<attempt>` artifact, then
+`npm run screenshot:baseline -- --gallery=<download dir>`, and commit the
+baseline on its own. The check's re-run on that commit catches a baseline
+from any other renderer, as long as the PR does not also change the capture or
+diff scripts; the nightly on main, running trusted code, remains the
+authoritative check. The baseline writer refuses a capture whose screen name is
+not a slug or whose file resolves outside the gallery directory, because for a
+fork PR the artifact is produced by the fork's code. A capture that did not
+complete is reported separately and must not be re-baselined. The check
+compares the PR head against its own baseline, so combinations of PRs are
+still only caught nightly.
 
 Two consequences worth stating plainly:
 
@@ -918,7 +953,7 @@ set (defined in `scripts/lib/verification-receipt.mjs`): receipt
 See `docs/reference/verification-receipts.md` for the field-by-field table.
 
 `ci:fast` is bounded diagnostic feedback, not completion evidence: it has a
-twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
+fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
 `origin/main`) in its request identity, runs the affected selection before a
 fixed bounded static invariant set. A selector exit 3 is reported as a
 diagnostic defer after those invariants, never completion evidence; the
@@ -977,6 +1012,15 @@ and fix it at source rather than requeueing until green. If the same failure
 appears on unrelated candidates, main itself is red, so fix main first. Flaky
 tests go through the quarantine policy below.
 
+Queue operations have three standing rules. Never `gh pr update-branch` a
+bot-owned pull request (dependency or release automation): your push replaces
+the bot as the triggering actor and breaks author-scoped exemptions, so let the
+bot rebase or re-cut instead. Before re-arming after a red candidate, confirm
+the queue candidate's tree (`potentialMergeCommit`) actually contains the pushed
+change; arming within seconds of a push can build the previous candidate. A
+`DIRTY` merge state with a clean `git merge origin/main` is GitHub's recompute,
+not a real conflict: merge, re-verify, push, and arm again.
+
 ### Real-time waits in tests
 
 A test that waits a fixed amount of real time and then asserts passes on an
@@ -1030,7 +1074,12 @@ escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mj
 commit* both passed and failed it. A test that fails every time is a defect to
 fix or revert, never a quarantine entry. Diagnose first; quarantine is for the
 window between a diagnosed flake and its fix, not for a red lane nobody has
-read.
+read. Reproduce in the failing shard's file order first, then the file alone:
+an order-only failure is shared-state leakage from an earlier file, not a
+property of the failing test. `npm run test:prepush:repeat` supplies the
+twenty-attempt pass-rate receipt for an isolation A/B, and on a shared host the
+[shared-host flake triage](../strategy/multi-agent-delivery-protocol.md#4-shared-host-flake-triage-before-diagnosing-anything)
+ladder comes before any diagnosis of the test itself.
 
 **What it does.** The merge-queue shards pass `--exclude-quarantined`, which
 drops the listed files from every queue corpus group. Nightly's canonical

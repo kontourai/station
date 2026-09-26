@@ -5,10 +5,16 @@
  * AgentActivityModel.kt; contract: docs/design/notification-delivery.md).
  *
  * Privacy: the only session content that reaches a card is its display title
- * and its project's name, both truncated. Nothing here reads transcripts,
- * prompts, tool output, code or paths — the input type does not carry them.
+ * and its project's name, both truncated, plus the session id and project
+ * slug a tap opens (#2515) — identifiers, sent only inside the sealed card.
+ * Nothing here reads transcripts, prompts, tool output, code or paths — the
+ * input type does not carry them.
  */
 import { createHash } from 'node:crypto';
+import {
+  isNativePushSessionReference,
+  NATIVE_PUSH_SESSION_REFERENCE_FIELDS,
+} from '@kontourai/station-contracts/native-push';
 import {
   type SessionAttentionSubject,
   sessionAttentionDisposition,
@@ -123,6 +129,8 @@ export interface AgentActivitySnapshot {
   sessionId: string;
   title: string;
   project: string;
+  /** The session's project slug, when it has one; only used to open it. */
+  projectSlug?: string;
   phase: AgentActivityPhase;
   /** Epoch ms the session entered `phase`. */
   enteredAt: number;
@@ -138,10 +146,49 @@ export interface AgentActivitySnapshot {
 export interface AgentActivityAlertEntry {
   /** Stable across rebuilds and restarts; see {@link agentActivityEntryId}. */
   id: string;
+  /** What a tap on a single-session alert opens; see {@link agentActivitySessionReference}. */
+  session?: AgentActivitySessionReference;
   phase: AgentActivityPhase;
   title: string;
   project: string;
   enteredAt: number;
+}
+
+/** A session a tap opens: sent only when both parts pass the contract grammar. */
+export interface AgentActivitySessionReference {
+  sessionId: string;
+  projectSlug?: string;
+}
+
+/**
+ * The reference a tap on this session opens, or undefined when its id (or
+ * its project slug) falls outside `NATIVE_PUSH_SESSION_REFERENCE_PATTERN`:
+ * the phone would refuse it, so it is not sent and the tap opens the app
+ * where it was. A session with no project is referenced by id alone.
+ */
+function agentActivitySessionReference(session: {
+  sessionId: string;
+  projectSlug?: string;
+}): AgentActivitySessionReference | undefined {
+  if (!isNativePushSessionReference(session.sessionId)) return undefined;
+  if (session.projectSlug === undefined || session.projectSlug === '')
+    return { sessionId: session.sessionId };
+  if (!isNativePushSessionReference(session.projectSlug)) return undefined;
+  return { sessionId: session.sessionId, projectSlug: session.projectSlug };
+}
+
+function sessionReferenceFields(
+  kind: keyof typeof NATIVE_PUSH_SESSION_REFERENCE_FIELDS,
+  reference: AgentActivitySessionReference | undefined,
+): Record<string, string> {
+  if (!reference) return {};
+  const names = NATIVE_PUSH_SESSION_REFERENCE_FIELDS[kind];
+  return {
+    [names.sessionId]: reference.sessionId,
+    ...(reference.projectSlug
+      ? { [names.projectSlug]: reference.projectSlug }
+      : {}),
+  };
 }
 
 export interface AgentActivityCard {
@@ -150,6 +197,8 @@ export interface AgentActivityCard {
   /** Plugin row strings, in display order; may be cut to fit when sealed. */
   rows: string[];
   topPhase?: AgentActivityPhase;
+  /** The session the first row names; a tap on the card opens it. */
+  hero?: AgentActivitySessionReference;
   active: boolean;
   /** Absolute expiry the card carries (`activity_expires_at`). */
   expiresAt: number;
@@ -238,6 +287,9 @@ export function buildAgentActivityCard(input: {
     activity_attention_count: String(attentionCount),
   };
   const topPhase = ordered[0]?.phase;
+  const hero = ordered[0]
+    ? agentActivitySessionReference(ordered[0])
+    : undefined;
   const alertables = eligible
     .filter(
       (s) =>
@@ -248,20 +300,27 @@ export function buildAgentActivityCard(input: {
       (a, b) =>
         b.enteredAt - a.enteredAt || a.sessionId.localeCompare(b.sessionId),
     )
-    .map((s) => ({
-      id: agentActivityEntryId({ stationId, ...s }),
-      phase: s.phase,
-      title: clean(s.title, TITLE_MAX) || 'Untitled session',
-      project: clean(s.project, PROJECT_MAX),
-      enteredAt: s.enteredAt,
-    }));
+    .map((s) => {
+      const session = agentActivitySessionReference(s);
+      return {
+        id: agentActivityEntryId({ stationId, ...s }),
+        ...(session ? { session } : {}),
+        phase: s.phase,
+        title: clean(s.title, TITLE_MAX) || 'Untitled session',
+        project: clean(s.project, PROJECT_MAX),
+        enteredAt: s.enteredAt,
+      };
+    });
   return {
     base,
     rows,
     ...(topPhase ? { topPhase } : {}),
+    ...(hero ? { hero } : {}),
     active,
     expiresAt,
-    contentKey: JSON.stringify({ base, rows, topPhase }),
+    // The hero is part of what the phone renders: two sessions with the same
+    // title and project must not share a card whose tap opens the old one.
+    contentKey: JSON.stringify({ base, rows, topPhase, hero }),
     alertables,
   };
 }
@@ -287,6 +346,7 @@ export function agentActivityAlertFields(
         first.project ? `${first.title} · ${first.project}` : first.title,
         ALERT_BODY_MAX,
       ),
+      ...sessionReferenceFields('alert', first.session),
     };
   }
   const attention = entries.filter((e) => needsUser(e.phase)).length;
@@ -340,6 +400,9 @@ export function composeAgentActivityPlaintext(
     card.rows.slice(0, rowCount).forEach((row, index) => {
       fields[`activity_line_${index}`] = row;
     });
+    // The reference names row 0, so it goes when that row does.
+    if (rowCount > 0)
+      Object.assign(fields, sessionReferenceFields('activity', card.hero));
     fields.activity_active_count = card.base.activity_active_count ?? '0';
     fields.activity_attention_count = card.base.activity_attention_count ?? '0';
     fields.activity_expires_at = String(card.expiresAt);

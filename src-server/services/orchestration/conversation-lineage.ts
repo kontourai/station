@@ -13,7 +13,9 @@ import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   foldedSessionLifecycleState,
+  isSessionLifecycleStateAtRest,
   isSessionLifecycleStateStopped,
+  isSessionLifecycleStateTerminal,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -128,6 +130,14 @@ interface ConversationLineageDeps {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #2540: whether this engine applies a model override on an ordinary turn
+   * of a LIVE session (`modelLaunch.overridePerTurn`). A follow-up that asks
+   * for a different model on an engine that cannot take it per turn needs a
+   * successor started with that model, not the idle session. Absent means
+   * the idle session is reused as-is.
+   */
+  perTurnModelOverride?: (provider: EngineId) => boolean;
   readSessionMessages: (
     threadId: string,
     authority: SessionReadScope,
@@ -171,7 +181,11 @@ export class ConversationLineage {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: EngineId; connectionId?: string },
+    requested: {
+      provider: EngineId;
+      connectionId?: string;
+      modelOverride?: string;
+    },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -266,7 +280,33 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
-    if (!isSessionLifecycleStateStopped(lifecycle)) {
+    // #2540: a turn's outcome does not end its session. After a finished
+    // (`idle`), failed or stopped (`canceled`) turn the follow-up runs in the
+    // same session — its engine is still resident, or dispatch restarts it in
+    // place from its resume cursor — so no second engine contends for the
+    // native thread. A successor is reserved only when the session cannot
+    // take the turn: it was explicitly closed (terminal `completed`), or its
+    // engine binding can no longer take one — `closed` or `dead` (dispatch
+    // cannot restart such a row), or `error` (engines that mark a failed turn
+    // that way, Claude and ACP, refuse further turns on it; Codex keeps its
+    // session `ready` through a failed turn, and continues in place).
+    const bindingEnded =
+      detail.session.status === 'closed' ||
+      detail.session.status === 'dead' ||
+      detail.session.status === 'error';
+    // Likewise a model switch the live session cannot apply to a turn: the
+    // successor starts with the requested model, as every follow-up did
+    // before sessions stayed reusable.
+    const requestedModel = requested.modelOverride?.trim();
+    const needsModelRestart =
+      !!requestedModel &&
+      requestedModel !== detail.session.model?.trim() &&
+      this.deps.perTurnModelOverride?.(requested.provider) === false;
+    if (
+      !isSessionLifecycleStateTerminal(lifecycle) &&
+      !bindingEnded &&
+      !needsModelRestart
+    ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -423,8 +463,10 @@ export class ConversationLineage {
       }
       return projectConversationContextBoundary(existing);
     }
+    // #2540: at rest — an `idle` session (a finished turn) qualifies like a
+    // stopped one; its explicit stop leaves it `idle`, not `canceled`.
     if (
-      !isSessionLifecycleStateStopped(
+      !isSessionLifecycleStateAtRest(
         foldedSessionLifecycleState(detail.session.lifecycleState),
       ) ||
       detail.session.hasActiveTurn
@@ -620,7 +662,7 @@ export class ConversationLineage {
       detail.session.lifecycleState,
     );
     if (
-      !isSessionLifecycleStateStopped(lifecycle) ||
+      !isSessionLifecycleStateAtRest(lifecycle) ||
       detail.session.hasActiveTurn
     ) {
       throw new Error(
@@ -985,7 +1027,11 @@ const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
 
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
-  requested: { provider: EngineId; connectionId?: string },
+  requested: {
+    provider: EngineId;
+    connectionId?: string;
+    modelOverride?: string;
+  },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
 ): { resumeCursor?: unknown; resumeModel?: string; transcriptSeed?: string } {

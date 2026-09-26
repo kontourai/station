@@ -293,6 +293,7 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
     'Last-progress times and quiet-turn observations for active sessions',
   updatedAt: 'When each item last changed',
   lifecycleLabel: 'Each item’s current state',
+  activeReason: 'Whether a Running item has an open turn or background work',
   unanswerableNotice: 'Why an item is waiting on something it cannot answer',
   failureNotice:
     'Why an item failed or was stopped, when a reason was recorded',

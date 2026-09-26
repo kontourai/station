@@ -80,6 +80,12 @@ export interface WorkspaceFilePreviewPaneState {
   lineRange?: WorkspaceFilePreviewLineRange;
   wrap: boolean;
   markdownMode?: 'rendered' | 'source';
+  /**
+   * The session whose directory the preview reads (#2476): a file a model
+   * named in an isolated worktree previews from that worktree. Absent: the
+   * project checkout. Older builds drop a state carrying it.
+   */
+  thread?: string;
 }
 
 export type WorkspaceFilePreviewStatus =
@@ -122,6 +128,12 @@ export interface WorkspaceFilePreviewRequest {
   path: string;
   /** An optional bounded, one-based inclusive line selection. */
   lineRange?: WorkspaceFilePreviewLineRange;
+  /**
+   * The session whose own directory (an isolated worktree) to read instead of
+   * the project checkout. Refused, never substituted, when the caller may not
+   * read that session.
+   */
+  thread?: string;
 }
 
 export interface WorkspaceFilePreview {
@@ -257,6 +269,13 @@ export function parseWorkspaceOpenFilePreviewIntent(
   }
 }
 
+function parseThread(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !value || value.length > 200)
+    throw new Error('thread must be a session thread id');
+  return value;
+}
+
 /** Parse untrusted transport input without normalizing its filesystem path. */
 export function parseWorkspaceFilePreviewRequest(
   value: unknown,
@@ -268,12 +287,18 @@ export function parseWorkspaceFilePreviewRequest(
   ) {
     throw new Error('path is required');
   }
-  if (Object.keys(value).some((key) => key !== 'path' && key !== 'lineRange')) {
+  if (
+    Object.keys(value).some(
+      (key) => key !== 'path' && key !== 'lineRange' && key !== 'thread',
+    )
+  ) {
     throw new Error('unknown preview request field');
   }
+  const thread = parseThread(value.thread);
   return {
     path: value.path,
     lineRange: parseLineRange(value.lineRange),
+    ...(thread ? { thread } : {}),
   };
 }
 
@@ -292,6 +317,8 @@ export const WORKSPACE_FILE_EXISTENCE_MAX_PATHS = 64;
  */
 export interface WorkspaceFileExistenceRequest {
   paths: string[];
+  /** As on a preview request: the session whose directory to check. */
+  thread?: string;
 }
 
 export interface WorkspaceFileExistence {
@@ -306,16 +333,20 @@ export function parseWorkspaceFileExistenceRequest(
   if (!isRecord(value) || !Array.isArray(value.paths)) {
     throw new Error('paths is required');
   }
-  if (Object.keys(value).some((key) => key !== 'paths')) {
+  if (Object.keys(value).some((key) => key !== 'paths' && key !== 'thread')) {
     throw new Error('unknown existence request field');
   }
+  const thread = parseThread(value.thread);
   if (value.paths.length > WORKSPACE_FILE_EXISTENCE_MAX_PATHS) {
     throw new Error('too many paths');
   }
   if (!value.paths.every(isWorkspaceFilePreviewRelativePath)) {
     throw new Error('paths must be workspace-relative');
   }
-  return { paths: [...new Set(value.paths)] };
+  return {
+    paths: [...new Set(value.paths)],
+    ...(thread ? { thread } : {}),
+  };
 }
 
 /** Strictly admits only the declared state fields from browser persistence. */
@@ -332,7 +363,8 @@ export function parseWorkspaceFilePreviewPaneState(
         key !== 'path' &&
         key !== 'lineRange' &&
         key !== 'wrap' &&
-        key !== 'markdownMode',
+        key !== 'markdownMode' &&
+        key !== 'thread',
     ) ||
     value.version !== WORKSPACE_FILE_PREVIEW_PANE_VERSION ||
     !isIdentity(value.projectSlug) ||
@@ -345,6 +377,7 @@ export function parseWorkspaceFilePreviewPaneState(
     return null;
   try {
     const lineRange = parseLineRange(value.lineRange);
+    const thread = parseThread(value.thread);
     return {
       version: WORKSPACE_FILE_PREVIEW_PANE_VERSION,
       projectSlug: value.projectSlug,
@@ -354,6 +387,7 @@ export function parseWorkspaceFilePreviewPaneState(
       ...(value.markdownMode
         ? { markdownMode: value.markdownMode as 'rendered' | 'source' }
         : {}),
+      ...(thread ? { thread } : {}),
     };
   } catch {
     return null;

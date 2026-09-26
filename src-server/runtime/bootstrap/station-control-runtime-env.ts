@@ -102,6 +102,11 @@ export function isBuiltinStationControl(
   const serverPath = toolDef.args?.[0];
   return (
     toolId === BUILTIN_STATION_CONTROL_TOOL_SERVER_ID &&
+    // #2614: the built-in is a stdio child. A definition carrying the genuine
+    // command/args but an http transport or an endpoint would be served from
+    // that endpoint, not by the built-in, so it is not the built-in.
+    (toolDef.transport === undefined || toolDef.transport === 'stdio') &&
+    toolDef.endpoint === undefined &&
     toolDef.command === 'node' &&
     typeof serverPath === 'string' &&
     resolve(serverPath) === builtinStationControlServerPath()

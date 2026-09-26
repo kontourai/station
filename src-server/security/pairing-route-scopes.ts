@@ -166,7 +166,13 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // only what that credential's own person stored and the mutate tier changes
   // only their own records — no leaf here reaches another principal.
   '/api/me',
+  // #2585: focus presence. The one leaf is an explicit read-tier rule below.
+  '/api/presence',
   '/api/mobile-devices',
+  // #2586: `/api/notifications` is deliberately NOT a family here. Its
+  // leaves (preferences, deliveries) are exact operate-tier rules below;
+  // anything else under it stays unmapped and is refused (fail closed)
+  // rather than inheriting a family tier nobody chose for it.
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -376,6 +382,42 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #2586: reading the preferences discloses which projects and agents a
+  // person muted and their devices' ids; writing them decides what may
+  // interrupt every device. Both sit on the operate tier.
+  ...(['GET', 'PUT', 'PATCH'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/notifications/preferences:${method.toLowerCase()}`,
+      method,
+      prefix: '/api/notifications/preferences',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // The caller's own decided-alert feed carries notification content. The
+  // route further derives the surface from the caller: a personal-family
+  // paired device reads only device:<its id>; the local operator reads the
+  // local:desktop-<id> its installation header names. Anyone else is refused.
+  {
+    id: '/api/notifications/deliveries:get',
+    method: 'GET',
+    prefix: '/api/notifications/deliveries',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // #2585: a client reporting its OWN document focus. The route derives the
+  // surface from this credential and writes nothing else, so a read-only
+  // paired device — which still receives notifications — must reach it.
+  {
+    id: '/api/presence/focus:report',
+    method: 'POST',
+    prefix: '/api/presence/focus',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -661,6 +703,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/api/browser-agent',
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  // #2584 `notify_user`'s REST side: Station's own station-control tool code
+  // is its only caller (the route answers 404 to anything that is not the
+  // internal principal, then re-verifies the forwarded caller credential).
+  // Declared so no credential reaches it by default; a paired credential
+  // that did would need the operate tier notification writes already take.
+  {
+    id: '/api/notifications/agent:orchestration-operate',
+    method: '*',
+    prefix: '/api/notifications/agent',
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Terminal termination kills a PTY process. It must match the dedicated
@@ -2103,22 +2157,31 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/attachment-staging/:stageId',
     },
     // archive#4075 stage 3 slice 2: the session-agnostic presence roster.
-    // It DOES disclose which principal ids currently hold an open
-    // `/events` stream (bounded, no session/thread enumeration) — but the
-    // family's own `/events` stream, already at this same read tier, is
-    // strictly MORE disclosing to the identical caller: personal-mode
-    // session reads are `ownerlessSessionAccess: 'single-user-compat'`
-    // (`SessionAuthorization.canReadSession`), so any orchestration:read
-    // credential already sees full session/turn content for effectively
-    // every session on this Station. A roster of who is currently
-    // connected is a strict subset of what that same credential already
-    // reads, so this takes the family default rather than a raised tier.
+    // It discloses which principal ids currently hold an open `/events`
+    // stream (bounded, no session/thread enumeration), and the route lists
+    // only principals whose sessions the caller may already read (its own
+    // id, plus its personal conversation account's owners). This family's
+    // `/events` stream, at the same read tier, already streams those
+    // principals' sessions in full to the same caller, so who among them is
+    // connected is strictly less than what the credential reads: the family
+    // default tier is enough. (This no longer rests on ownerless sessions
+    // being readable by every personal caller; none is readable at all.)
     { method: 'GET', path: '/api/orchestration/presence/summary' },
     // Station #90 lane D: the verified-caller projection for station-control
     // stdio children. Internal-only at the route: every non-internal
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #2601: the child delegation context this Station derives for the
+    // verified station-control caller, read by the tools before forwarding to
+    // a saved Environment. Internal-only at the route exactly like its sibling
+    // above: every non-internal principal gets a 404 whatever its scope, and
+    // an internal request without a verified per-session token gets
+    // `{ delegation: null }`, so a paired credential learns nothing.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/caller/delegation',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -3169,6 +3232,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/notifications' },
     { method: 'DELETE', path: '/notifications/:id' },
     { method: 'POST', path: '/notifications/:id/action/:actionId' },
+    // #2587: records the caller's own read marker on a notification it can
+    // already read; the surface id is derived from the credential.
+    { method: 'POST', path: '/notifications/:id/read' },
     { method: 'POST', path: '/notifications/:id/snooze' },
     { method: 'DELETE', path: '/notifications/activity' },
     { method: 'GET', path: '/notifications/providers' },

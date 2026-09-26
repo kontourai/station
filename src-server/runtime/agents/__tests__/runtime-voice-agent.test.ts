@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { SC_READ_ONLY_TOOLS } from '../../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../../tools/runtime-control-tools.js';
 import {
   bootstrapRuntimeVoiceAgent,
   createRuntimeVoiceAgentSpec,
@@ -17,7 +17,7 @@ describe('createRuntimeVoiceAgentSpec', () => {
       prompt: expect.stringContaining('hands-free voice assistant'),
       tools: {
         mcpServers: ['station-control', 'github', 'slack', 'jira'],
-        autoApprove: SC_READ_ONLY_TOOLS,
+        autoApprove: SC_AUTO_APPROVED_TOOLS,
         available: ['*'],
       },
     });
