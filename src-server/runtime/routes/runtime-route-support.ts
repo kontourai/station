@@ -583,6 +583,7 @@ export function configureRuntimeSupportServices(
     context.logger.warn(
       'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
     );
+
   // #2586: every notification past the in-app feed goes through the
   // delivery router (audience → policy → channels). Off exactly where Web
   // Push was: hosted paired-device records have no tenant binding.
@@ -601,8 +602,15 @@ export function configureRuntimeSupportServices(
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     listNotifications: () => notificationService.list(),
+    // #2589 iOS alerts and #2588 Android alerts through the push gateway;
+    // each channel is dormant until a phone of its platform registers.
     ...(pushGateway
       ? {
+          apnsAlert: {
+            devicePairing: context.environmentSecurityService.devicePairing,
+            signingKey: pushSigningKeyStore,
+            gateway: pushGateway,
+          },
           fcmAlert: {
             devicePairing: context.environmentSecurityService.devicePairing,
             signingKey: pushSigningKeyStore,
@@ -623,6 +631,7 @@ export function configureRuntimeSupportServices(
       sendUrl: '',
       liveActivityUrl: '',
       channelsUrl: '',
+      alertUrl: '',
       audience: '',
     },
     enabled: webPushEnabled && pushGateway !== null,

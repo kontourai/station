@@ -18,6 +18,10 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
+  isPrincipalScopedAgentRequest,
+  stationControlRequestAuthority,
+} from '../../security/station-control-request-authority.js';
+import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
   createBrowserProjectAuthorizer,
@@ -71,6 +75,7 @@ import type { LoadedDeploymentAuthentication } from '../../services/identity/dep
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
+  isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import {
@@ -185,6 +190,7 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -1508,11 +1514,40 @@ export function configureRuntimeRoutes(
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
     next: () => Promise<void>,
   ) => {
-    conversationRequestAuthorities.set(
-      c.req.raw,
-      conversationReadAuthorityForContext(c),
-    );
+    let authority: ReturnType<typeof conversationReadAuthorityForContext>;
+    try {
+      authority = conversationReadAuthorityForContext(c);
+    } catch (error) {
+      // #2377 slice B: a station-control request that acts for no principal
+      // (caller-less, or a session with no recorded owner) reaches only the
+      // reads that are not principal-scoped (`GET /agents`, say); the guard
+      // refused every principal-scoped one before this. It binds no
+      // authority, so a route that asks for one still fails closed.
+      if (
+        error instanceof PrincipalUnresolvedError &&
+        isPrincipalScopedAgentRequest(c.req.raw)
+      )
+        return next();
+      throw error;
+    }
+    conversationRequestAuthorities.set(c.req.raw, authority);
     await next();
+  };
+  /**
+   * #2377 slice B: the principal a principal-scoped station-control request
+   * acts for (its session's recorded owner), `null` when it acts for no one
+   * (caller-less, or no recorded owner), and `undefined` for every other
+   * request (the operator's clients, devices, a bound operator caller,
+   * Station's own server code), which keeps its own rules.
+   */
+  const agentOwnerIdForRequest = (
+    request: Request,
+  ): string | null | undefined => {
+    if (!isPrincipalScopedAgentRequest(request)) return undefined;
+    const agent = stationControlRequestAuthority(request);
+    return agent?.kind === 'caller'
+      ? (agent.caller.principal?.id ?? null)
+      : null;
   };
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
   // (below, at the Task-room `requestAuthority` deps literal) receives only a
@@ -2307,6 +2342,8 @@ export function configureRuntimeRoutes(
       pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
       logger: context.logger,
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      canSeePlugin: (c, pluginId) =>
+        canSeePluginForRequest(c as never, pluginId),
     }),
   );
   // #2323 S4: whether a Project folder still holds an installed local
@@ -3141,6 +3178,7 @@ export function configureRuntimeRoutes(
     '/api/ui',
     createUICommandRoutes(context.eventBus, {
       isHostedDeployment: () => hostedTenantRegistry !== undefined,
+      navigationAudience: agentOwnerIdForRequest,
     }),
   );
   context.app.route(
@@ -4286,7 +4324,57 @@ export function configureRuntimeRoutes(
     }
     if (account && account.kind !== 'absent')
       throw new ProjectMembershipRefusal('forbidden');
+    // #2377 slice B (decision 2): a station-control tool call sees the
+    // Projects its session's owner would see. An account principal's own
+    // requests are admitted by membership (above), so work acting for one is
+    // too, through the same authority: `current()` reads the principal the
+    // Project guards record from the orchestration resolver, which answers
+    // with the session's recorded owner. The operator and a device principal
+    // are unrestricted in their own requests and stay so. A caller-less or
+    // owner-less agent request never reaches a Project read (the guard
+    // refuses it); if one did, it fails closed here.
+    const ownerId = agentOwnerIdForRequest(request);
+    if (ownerId !== undefined) {
+      if (ownerId === null) throw new ProjectMembershipRefusal('forbidden');
+      if (isDeploymentAccountPrincipalId(ownerId)) {
+        if (!context.projectMembership)
+          throw new ProjectMembershipRefusal('forbidden');
+        return projectMembershipAuthority(request);
+      }
+    }
     return undefined;
+  };
+  /**
+   * #2377 slice B: whether a station-control agent request may take
+   * `action` in the Project named by `projectRef` (its id or slug), for a
+   * surface outside the Project routes (the Task board). The same rule as
+   * `authenticatedProjectMember`: an agent acting for an account principal
+   * holds exactly that principal's membership; any other owner is
+   * unrestricted, as in its own requests. Any other request: allowed here.
+   */
+  const agentOwnerMayUseProject = (
+    request: Request,
+    projectRef: string,
+    action: 'view' | 'edit',
+  ): boolean => {
+    const ownerId = agentOwnerIdForRequest(request);
+    if (ownerId === undefined) return true;
+    if (ownerId === null) return false;
+    if (!isDeploymentAccountPrincipalId(ownerId)) return true;
+    if (!context.projectMembership) return false;
+    try {
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(ownerId)
+        .some(
+          ({ scope, member }) =>
+            (scope.localProjectId === projectRef ||
+              scope.localProjectSlug === projectRef) &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    } catch {
+      return false;
+    }
   };
   const requireAuthenticatedProjectRead = async (
     request: Request,
@@ -4319,10 +4407,16 @@ export function configureRuntimeRoutes(
         c.req.raw,
         resolveOrchestrationRequestPrincipal(c),
       );
-      const restricted = await requireAuthenticatedProjectRead(
-        c.req.raw,
-        c.req.param('slug'),
-      );
+      // #2377 slice B scopes an agent's Project READS; what an agent may
+      // write or run in a Project is dispatch's (slice C), so its non-read
+      // requests keep today's path here.
+      const agentWrite =
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        isPrincipalScopedAgentRequest(c.req.raw);
+      const restricted = agentWrite
+        ? false
+        : await requireAuthenticatedProjectRead(c.req.raw, c.req.param('slug'));
       if (
         restricted &&
         c.req.method !== 'GET' &&
@@ -5218,6 +5312,23 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
+      // #2377 slice B: a station-control agent's hits follow its session
+      // owner's access to each root. Every other caller is unchanged.
+      mayReadHitRoot: (request, root) => {
+        const ownerId = agentOwnerIdForRequest(request);
+        if (ownerId === undefined) return true;
+        if (ownerId === null) return false;
+        // Re-read record by record as the owner (`bindRequestReadAuthority`).
+        if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return true;
+        if (root.scope.kind === 'project')
+          return agentOwnerMayUseProject(
+            request,
+            root.scope.projectSlug,
+            'view',
+          );
+        // The personal store is the operator's own.
+        return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      },
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -5375,6 +5486,7 @@ export function configureRuntimeRoutes(
       queryEventsFromDisk: context.queryEventsFromDisk,
       projectHomeDir: context.configLoader.getProjectHomeDir(),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
+      eventOwnerForRequest: agentOwnerIdForRequest,
       canReadMonitoringEvent: (event, authority) => {
         const sessionId = monitoringSessionIdentity(event);
         return sessionId
@@ -5619,6 +5731,8 @@ export function configureRuntimeRoutes(
         orchestrationService: context.orchestrationService,
         taskGraphService: context.taskGraphService,
         readAuthorityForRequest: conversationReadAuthorityForRequest,
+        mayUseTaskBoard: (projectId, request, action) =>
+          agentOwnerMayUseProject(request, projectId, action),
       }),
     ),
   );

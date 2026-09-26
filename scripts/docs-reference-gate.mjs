@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { posix } from 'node:path';
 import { TextDecoder } from 'node:util';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
 
@@ -400,6 +401,6 @@ export function runDocsReferenceGate({
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   process.exitCode = runDocsReferenceGate();
 }

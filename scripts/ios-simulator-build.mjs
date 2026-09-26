@@ -13,8 +13,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ENTITLEMENTS = 'station_iOS/StationSimulator.entitlements';
@@ -312,10 +312,7 @@ export function verifyIosSimulator(
   return app;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   if (process.platform !== 'darwin')
     throw new Error('iOS simulator builds require macOS and Xcode.');
   if (process.argv[2] === 'prepare') prepareIosSimulator();

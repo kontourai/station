@@ -2,8 +2,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { npmBuildInvocation } from './lib/desktop-build-command.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -87,6 +87,13 @@ export const SHELL_E2E_LANES = [
     name: 'device-pane',
     spec: 'tests/tauri-shell/device-pane.e2e.ts',
   },
+  {
+    // Explicit macOS/keyring lane: uses an isolated real Keychain account,
+    // loopback broker and Station signer, with exact owned cleanup.
+    name: 'native-relay-key-approval',
+    spec: 'tests/tauri-shell/native-relay-candidate-approval.e2e.ts',
+    manual: true,
+  },
 ];
 
 function main() {
@@ -125,7 +132,7 @@ function main() {
     ?.slice('--lane='.length);
   const lanes = requested
     ? SHELL_E2E_LANES.filter((lane) => lane.name === requested)
-    : SHELL_E2E_LANES;
+    : SHELL_E2E_LANES.filter((lane) => !lane.manual);
   if (lanes.length === 0) {
     throw new Error(
       `Unknown Tauri shell lane '${requested}'. Known lanes: ${SHELL_E2E_LANES.map((lane) => lane.name).join(', ')}.`,
@@ -142,10 +149,7 @@ function main() {
   }
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

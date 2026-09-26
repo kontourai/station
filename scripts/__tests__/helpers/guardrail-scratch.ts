@@ -116,13 +116,9 @@ export interface ScratchOptions {
  * A throwaway directory carrying the guardrail and a tree for it to walk,
  * `git init`ed and committed unless `git: false`.
  *
- * The path comes from `mkdtempSync` under the OS temp dir, which on macOS is
- * already symlink-resolved. That matters: several guardrails guard `main()`
- * with `import.meta.url === ` + backtick + `file://${process.argv[1]}`, a byte
- * comparison with no realpath and no URL escaping. Spawning them with the
- * RELATIVE `scripts/<name>.mjs` (as `runGuardrail` does) keeps that comparison
- * true; passing an absolute unresolved path would make the guard silently
- * false and the gate would exit 0 having done nothing.
+ * Every guardrail gates `main()` behind `invokedDirectly(import.meta.url)`
+ * (#2682), so `scripts/lib/module-entry.mjs` is always copied beside it; a
+ * fixture without it would fail at import, not exercise the gate.
  */
 export function scratchRepo({
   script,
@@ -148,7 +144,7 @@ export function scratchRepo({
   expect(readFileSync(join(dir, 'scripts', script), 'utf8')).toBe(
     readFileSync(join('scripts', script), 'utf8'),
   );
-  for (const lib of libs) {
+  for (const lib of new Set(['module-entry.mjs', ...libs])) {
     copyFileSync(join('scripts', 'lib', lib), join(dir, 'scripts', 'lib', lib));
   }
   for (const extra of extraScripts) {
@@ -226,8 +222,7 @@ export function runGuardrail(
 /**
  * Import the guardrail as an ordinary module rather than running it as the
  * entry point, so `process.argv[1]` is not the script and every one of these
- * gates' `import.meta.url === file://${process.argv[1]}`-style guards is
- * false.
+ * gates' `invokedDirectly(import.meta.url)` entry guards is false.
  *
  * This is what makes "the failure came from behind the entry guard" a
  * computed claim instead of a comment: a diagnostic that appears here as well

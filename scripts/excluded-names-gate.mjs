@@ -12,6 +12,7 @@
 // file that became binary through a stray control byte is caught separately
 // by content-integrity-gate.mjs, which scans without -I.
 import { execFileSync } from 'node:child_process';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const NAME = ['t', '3'].join('');
 const ORG = ['ping', 'dotgg'].join('');
@@ -97,6 +98,6 @@ export function runGate({
 }
 
 // Run only as a script, not when the gate's own test imports it.
-if (process.argv[1]?.endsWith('excluded-names-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(runGate());
 }

@@ -48,6 +48,7 @@ import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
 import { sseOps } from '../../telemetry/metrics.js';
+import { UI_NAVIGATE_AUDIENCE_FIELD } from '../projects/ui-commands.js';
 import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 
 export interface EventRouteDeps {
@@ -276,7 +277,7 @@ export function createEventRoutes({
             return;
           }
           if (isUiNavigateEvent(evt.event)) {
-            if (canRelayUiNavigateEvent(authority)) relay(evt);
+            if (canRelayUiNavigateEvent(authority, evt.data)) relay(evt);
             return;
           }
           if (isAnswerAssessmentEvent(evt.event)) {
@@ -494,9 +495,19 @@ function canRelayApprovalEvent(
  * `authority.mode`, the other from `hostedTenantRegistry` directly. They
  * agree today only because both close over the same `hostedTenantRegistry`
  * in `runtime-routes.ts`.
+ *
+ * #2377 slice B: a navigation a station-control agent asked for carries its
+ * session owner (`audiencePrincipalId`, set by `ui-commands.ts` from the
+ * guard's record, never from the request body) and reaches only that
+ * principal's own connections. One the operator's own client sent carries
+ * none and is delivered as above.
  */
 function canRelayUiNavigateEvent(
   authority: SessionReadAuthority | undefined,
+  data?: Record<string, unknown>,
 ): boolean {
-  return authority !== undefined && !isHostedSessionReadAuthority(authority);
+  if (authority === undefined || isHostedSessionReadAuthority(authority))
+    return false;
+  const audience = data?.[UI_NAVIGATE_AUDIENCE_FIELD];
+  return audience === undefined || audience === authority.userId;
 }

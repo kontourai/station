@@ -5,12 +5,25 @@ import {
   DirectWebDriver,
   SCRIPT_TIMEOUT_MS,
 } from '../../tests/tauri-shell/direct-webdriver';
-import { tauriShellBinaryCandidates } from '../run-tauri-shell-e2e.mjs';
+import {
+  SHELL_E2E_LANES,
+  tauriShellBinaryCandidates,
+} from '../run-tauri-shell-e2e.mjs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), 'utf8');
 
 describe('Tauri embedded WebDriver boundary', () => {
+  test('keeps the real-keyring relay lane explicit', () => {
+    const relay = SHELL_E2E_LANES.find(
+      (lane) => lane.name === 'native-relay-key-approval',
+    );
+    expect(relay?.manual).toBe(true);
+    expect(
+      SHELL_E2E_LANES.filter((lane) => !lane.manual).map((lane) => lane.name),
+    ).toEqual(['plugin-host-security', 'device-pane']);
+  });
+
   test('keeps the automation server optional, explicit, and out of releases', () => {
     const cargo = read('src-desktop/Cargo.toml');
     const rust = read('src-desktop/src/lib.rs');

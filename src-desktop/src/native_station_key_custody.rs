@@ -41,6 +41,12 @@ static STATION_TRUST_OPERATION: Mutex<()> = Mutex::new(());
 
 pub(crate) trait StationTrustClock: Send + Sync {
     fn now_seconds(&self) -> CandidateResult<u64>;
+
+    fn now_millis(&self) -> CandidateResult<u64> {
+        self.now_seconds()?
+            .checked_mul(1000)
+            .ok_or(CandidateError::Stale)
+    }
 }
 
 pub(crate) struct SystemStationTrustClock;
@@ -51,6 +57,14 @@ impl StationTrustClock for SystemStationTrustClock {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .map_err(|_| CandidateError::Stale)
+    }
+
+    fn now_millis(&self) -> CandidateResult<u64> {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+            .ok_or(CandidateError::Stale)
     }
 }
 
@@ -313,8 +327,14 @@ impl VerifiedStationKeyCandidate {
     pub(crate) fn confirmation_code(&self) -> &str {
         &self.claims.confirmation_code
     }
+    pub(crate) fn expires_at(&self) -> u64 {
+        self.claims.exp
+    }
     pub(crate) fn profile_owner_id(&self) -> &str {
         &self.profile_binding.profile_owner_id
+    }
+    pub(crate) fn profile_binding(&self) -> &TrustProfileBinding {
+        &self.profile_binding
     }
     pub(crate) fn profile_revision(&self) -> u64 {
         self.profile_revision
@@ -466,6 +486,17 @@ pub(crate) struct StationTrustMutationReceipt {
     pub(crate) key_id: String,
 }
 
+/// Secret-free durable state suitable for renderer display.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct StationTrustPublicState {
+    pub(crate) revision: u64,
+    pub(crate) status: Option<StationTrustStatus>,
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: Option<String>,
+    pub(crate) generation: Option<u64>,
+    pub(crate) key_id: Option<String>,
+}
+
 pub(crate) trait StationTrustBackend: Send {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>>;
     fn write(&mut self, account: &str, value: &str) -> CandidateResult<()>;
@@ -483,7 +514,7 @@ pub(crate) struct NativeStationTrustStore<
     clock: C,
 }
 
-struct OsStationTrustBackend;
+pub(crate) struct OsStationTrustBackend;
 
 impl StationTrustBackend for OsStationTrustBackend {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
@@ -534,6 +565,60 @@ impl<B: StationTrustBackend> NativeStationTrustStore<B, TestStationTrustClock> {
 }
 
 impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C> {
+    pub(crate) fn current_state<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        binding: &TrustProfileBinding,
+        profile_revision: u64,
+    ) -> CandidateResult<StationTrustPublicState> {
+        provider.with_current_profile(binding, profile_revision, |snapshot| {
+            if snapshot.binding != *binding || snapshot.revision != profile_revision {
+                return Err(CandidateError::ProfileStale);
+            }
+            let _guard = STATION_TRUST_OPERATION
+                .lock()
+                .map_err(|_| CandidateError::TrustStore)?;
+            let account = trust_account(binding)?;
+            let stored = self.read_record(&account, &binding.station_id)?;
+            let route_approved = stored.approved_bindings.contains(binding);
+            let trust_matches_route = stored
+                .trust
+                .as_ref()
+                .is_some_and(|trust| trust.enrollment_id == binding.enrollment_id);
+            let effective_status = stored
+                .status
+                .filter(|_| route_approved && trust_matches_route);
+            let public = if effective_status.is_some() {
+                stored
+                    .trust
+                    .as_ref()
+                    .map(|trust| {
+                        Ok((
+                            trust.enrollment_id.clone(),
+                            trust.generation,
+                            signing_key_id(&trust.signing_key)?,
+                        ))
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
+            if effective_status.is_some() != public.is_some() {
+                return Err(CandidateError::TrustStore);
+            }
+            Ok(StationTrustPublicState {
+                revision: stored.revision,
+                status: effective_status,
+                station_id: binding.station_id.clone(),
+                enrollment_id: public
+                    .as_ref()
+                    .map(|(enrollment_id, _, _)| enrollment_id.clone()),
+                generation: public.as_ref().map(|(_, generation, _)| *generation),
+                key_id: public.map(|(_, _, key_id)| key_id),
+            })
+        })
+    }
+
     pub(crate) fn current_revision<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -559,6 +644,27 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         operator_code: &str,
         operator_full_key_id: &str,
     ) -> CandidateResult<StationTrustMutationReceipt> {
+        let deadline_ms = candidate
+            .expires_at()
+            .checked_mul(1000)
+            .ok_or(CandidateError::Stale)?;
+        self.approve_until(
+            provider,
+            candidate,
+            operator_code,
+            operator_full_key_id,
+            deadline_ms,
+        )
+    }
+
+    pub(crate) fn approve_until<P: LockedTrustProfileProvider>(
+        &mut self,
+        provider: &P,
+        candidate: VerifiedStationKeyCandidate,
+        operator_code: &str,
+        operator_full_key_id: &str,
+        operator_deadline_ms: u64,
+    ) -> CandidateResult<StationTrustMutationReceipt> {
         let confirmed = candidate.confirm_operator(operator_code, operator_full_key_id)?;
         let candidate = confirmed.candidate;
         let binding = candidate.profile_binding.clone();
@@ -572,10 +678,24 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 .lock()
                 .map_err(|_| CandidateError::TrustStore)?;
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
+            ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
             let account = trust_account(&binding)?;
             let mut stored = self.read_record(&account, &binding.station_id)?;
             if stored.revision != expected_store_revision {
                 return Err(CandidateError::TrustRevisionConflict);
+            }
+            if stored.status == Some(StationTrustStatus::Approved)
+                && stored.approved_bindings.contains(&binding)
+            {
+                let floor = stored
+                    .generation_floor
+                    .as_ref()
+                    .ok_or(CandidateError::TrustStore)?;
+                if candidate.claims.candidate.generation <= floor.generation
+                    || candidate.claims.key_id == floor.key_id
+                {
+                    return Err(CandidateError::GenerationRollback);
+                }
             }
             apply_generation_floor(
                 &mut stored,
@@ -599,6 +719,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             // Recheck while both host profile and trust-store locks remain held,
             // immediately before committing the OS-keyring record.
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
+            ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -631,7 +752,9 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 return Err(CandidateError::ProfileStale);
             }
             let trust = stored.trust.as_ref().ok_or(CandidateError::TrustStore)?;
-            if signing_key_id(&trust.signing_key)? != operator_full_key_id {
+            if trust.enrollment_id != binding.enrollment_id
+                || signing_key_id(&trust.signing_key)? != operator_full_key_id
+            {
                 return Err(CandidateError::OperatorConfirmationMismatch);
             }
             stored.revision = stored
@@ -695,6 +818,13 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         }
         Ok(())
     }
+}
+
+fn ensure_operator_deadline(now_ms: u64, deadline_ms: u64) -> CandidateResult<()> {
+    if now_ms >= deadline_ms {
+        return Err(CandidateError::Stale);
+    }
+    Ok(())
 }
 
 fn trust_account(binding: &TrustProfileBinding) -> CandidateResult<String> {
@@ -1485,6 +1615,41 @@ mod tests {
     }
 
     #[test]
+    fn operator_approval_outlives_network_poll_but_not_signed_candidate() {
+        let profile = locked_profile(&binding());
+        let first_backend = MemoryTrustBackend::default();
+        let first_clock = TestStationTrustClock::new(NOW);
+        let mut first =
+            NativeStationTrustStore::with_backend_and_clock(first_backend.clone(), first_clock);
+        let candidate = verified_for_store(0, 3);
+        let approval_deadline_ms = candidate.expires_at() * 1000;
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        // The courier's polling window is ten seconds, while the verified
+        // operator candidate remains valid until its signed sixty-second exp.
+        first.clock.set(NOW + 11);
+        let approved = first
+            .approve_until(&profile, candidate, &code, &key_id, approval_deadline_ms)
+            .unwrap();
+        assert_eq!(approved.revision, 1);
+        assert_eq!(first_backend.0.lock().unwrap().len(), 1);
+
+        let expired_backend = MemoryTrustBackend::default();
+        let expired_clock = TestStationTrustClock::new(NOW);
+        let mut expired =
+            NativeStationTrustStore::with_backend_and_clock(expired_backend.clone(), expired_clock);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        expired.clock.set(NOW + 60);
+        assert_eq!(
+            expired.approve_until(&profile, candidate, &code, &key_id, approval_deadline_ms,),
+            Err(CandidateError::Stale)
+        );
+        assert!(expired_backend.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn stored_off_curve_p256_point_is_rejected_on_reload() {
         let backend = MemoryTrustBackend::default();
         let profile_binding = binding();
@@ -1575,5 +1740,85 @@ mod tests {
             Err(CandidateError::GenerationRollback)
         );
         assert_eq!(store.current_revision(&profile, &trust_binding, 7), Ok(1));
+    }
+
+    #[test]
+    fn approved_route_requires_a_newer_generation_and_new_signing_key_to_rotate() {
+        let backend = MemoryTrustBackend::default();
+        let route = binding();
+        let profile = locked_profile(&route);
+        let trust_binding = trust_binding(&route);
+        let account = trust_account(&trust_binding).unwrap();
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+
+        let original = verified_for_store(0, 3);
+        let original_code = original.confirmation_code().to_owned();
+        let original_key_id = original.key_id().to_owned();
+        let mut same_key = original.clone();
+        same_key.expected_trust_revision = 1;
+        let mut higher_generation_old_key = original.clone();
+        higher_generation_old_key.expected_trust_revision = 1;
+        let approved = store
+            .approve(&profile, original, &original_code, &original_key_id)
+            .unwrap();
+        assert_eq!(approved.revision, 1);
+        let committed = backend.0.lock().unwrap().get(&account).unwrap().clone();
+
+        let same_code = same_key.confirmation_code().to_owned();
+        assert_eq!(
+            store.approve(&profile, same_key, &same_code, &original_key_id),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        // Even a higher advertised generation cannot rotate trust while
+        // reusing the already-approved Station signing key.
+        higher_generation_old_key.claims.candidate.generation = 4;
+        let old_key_code = higher_generation_old_key.confirmation_code().to_owned();
+        assert_eq!(
+            store.approve(
+                &profile,
+                higher_generation_old_key,
+                &old_key_code,
+                &original_key_id,
+            ),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let same_generation_new_key = verified_for_store(1, 3);
+        let same_generation_code = same_generation_new_key.confirmation_code().to_owned();
+        let same_generation_key = same_generation_new_key.key_id().to_owned();
+        assert_ne!(same_generation_key, original_key_id);
+        assert_eq!(
+            store.approve(
+                &profile,
+                same_generation_new_key,
+                &same_generation_code,
+                &same_generation_key,
+            ),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let older = verified_for_store(1, 2);
+        let older_code = older.confirmation_code().to_owned();
+        let older_key = older.key_id().to_owned();
+        assert_eq!(
+            store.approve(&profile, older, &older_code, &older_key),
+            Err(CandidateError::GenerationRollback)
+        );
+        assert_eq!(backend.0.lock().unwrap().get(&account), Some(&committed));
+
+        let rotated = verified_for_store(1, 4);
+        let rotated_code = rotated.confirmation_code().to_owned();
+        let rotated_key = rotated.key_id().to_owned();
+        assert_ne!(rotated_key, original_key_id);
+        let receipt = store
+            .approve(&profile, rotated, &rotated_code, &rotated_key)
+            .unwrap();
+        assert_eq!(receipt.revision, 2);
+        assert_eq!(receipt.generation, 4);
+        assert_eq!(receipt.key_id, rotated_key);
     }
 }

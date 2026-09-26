@@ -11,6 +11,7 @@ import {
   sep,
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   nodeMajor,
   SUPPORTED_NODE_MAJOR,
@@ -390,10 +391,7 @@ export function runLocalVerification({
   return result.signal ? 1 : (result.status ?? 1);
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     process.exitCode = runLocalVerification();
   } catch (error) {

@@ -30,6 +30,7 @@
   "scripts": {
     "broker:self-hosted": "tsx scripts/self-hosted-broker.ts",
     "connector:identity": "tsx scripts/self-hosted-connector-identity.ts",
+    "connector:invite": "tsx scripts/native-relay-invite.ts",
     "dependencies:check": "node scripts/dependency-lifecycle.mjs check",
     "dependencies:propose": "node scripts/dependency-lifecycle.mjs propose",
     "dependencies:install": "node scripts/dependency-lifecycle.mjs install",

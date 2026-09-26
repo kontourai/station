@@ -29,7 +29,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -39,6 +38,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { iosTestFlightChannel } from './ios-testflight-channel.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -321,18 +321,7 @@ function main(args) {
   );
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

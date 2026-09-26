@@ -5,6 +5,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { DockMoreAction } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import {
   type ChatDockMobileDockToggle,
   ChatDockMobileHeader,
@@ -83,6 +84,7 @@ function renderHeader(
     onSelectRegionPane?: ReturnType<typeof vi.fn<(id: string) => void>>;
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
+    copyActions?: DockMoreAction[];
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -146,6 +148,7 @@ function renderHeader(
         onSelectRegionPane: overrides.onSelectRegionPane,
         onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
         backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
+        copyActions: overrides.copyActions,
       }}
     />,
   );
@@ -387,6 +390,57 @@ describe('the ⋯ sheet’s Background tasks row (#2510)', () => {
     await screen.findByRole('menuitem', { name: 'Chat settings' });
     expect(
       screen.queryByRole('menuitem', { name: /^Background tasks/ }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * Desktop More-menu parity: the dock header's clipboard rows (Copy thread ID,
+ * Copy session ID once diverged) live in the desktop ⋯ menu via
+ * `useDockCopyActions`, and a coarse device has no tooltip to carry these
+ * identities — the ⋯ sheet is their only home. Omitting the rows fails the
+ * first two tests; rendering them with no actions fails the third.
+ */
+describe('the ⋯ sheet’s copy rows (mobile parity)', () => {
+  test('renders clipboard rows and runs them through sheet dismissal', async () => {
+    const onSelectThread = vi.fn<(trigger: HTMLElement) => void>();
+    const onSelectSession = vi.fn<(trigger: HTMLElement) => void>();
+    renderHeader({
+      copyActions: [
+        {
+          key: 'copy-thread-id',
+          label: 'Copy thread ID',
+          onSelect: onSelectThread,
+        },
+        {
+          key: 'copy-session-id',
+          label: 'Copy session ID',
+          onSelect: onSelectSession,
+        },
+      ],
+    });
+    await openActions();
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Copy thread ID' }),
+    );
+    expect(onSelectThread).toHaveBeenCalledOnce();
+    // The sheet dismisses itself like every other row.
+    expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+    await openActions();
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Copy session ID' }),
+    );
+    expect(onSelectSession).toHaveBeenCalledOnce();
+  });
+  test('offers no copy rows before the conversation binds', async () => {
+    renderHeader();
+    await openActions();
+    await screen.findByRole('menuitem', { name: 'Chat settings' });
+    expect(
+      screen.queryByRole('menuitem', { name: 'Copy thread ID' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Copy session ID' }),
     ).toBeNull();
   });
 });

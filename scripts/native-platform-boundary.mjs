@@ -5,6 +5,7 @@
 // fallback deterministic.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/default.json';
@@ -451,4 +452,4 @@ function main() {
   process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (invokedDirectly(import.meta.url)) main();

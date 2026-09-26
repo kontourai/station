@@ -19,8 +19,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { sanitizePath } from '@kontourai/station-shared/launch-path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const SUPPORTED_CLIENT_COMMANDS = Object.freeze([
   'claude',
@@ -447,10 +447,7 @@ async function main() {
   });
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

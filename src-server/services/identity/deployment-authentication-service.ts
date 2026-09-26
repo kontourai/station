@@ -39,6 +39,16 @@ export function deploymentAccountPrincipal(
   return humanPrincipal('deployment', boundedSubject, displayName);
 }
 
+/**
+ * Whether a principal id is one {@link deploymentAccountPrincipal} mints: the
+ * `deployment` provider no other ingress produces. Such a principal's own
+ * requests are admitted to Projects by membership, so work acting for it
+ * (#2377 slice B: a station-control tool call) must be too.
+ */
+export function isDeploymentAccountPrincipalId(principalId: string): boolean {
+  return principalId.startsWith('human:deployment:');
+}
+
 export type ResolvedDeploymentAuthentication =
   | Exclude<DeploymentAuthenticationResult, { kind: 'authenticated' }>
   | {

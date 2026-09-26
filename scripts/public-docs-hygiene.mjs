@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { loadPublicDocs } from './build-github-pages.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ABSOLUTE_DEVELOPER_PATH =
   /(?:^|[\s`"'(])(?:\/(?:Users|home|private(?:\/(?:tmp|var))?|tmp|var|opt|Volumes)(?=\/|\b)|[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/gim;
@@ -134,5 +134,5 @@ export async function runPublicDocsHygiene() {
   return 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+if (invokedDirectly(import.meta.url))
   process.exitCode = await runPublicDocsHygiene();
