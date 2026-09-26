@@ -6,6 +6,7 @@ on:
       - 'install.sh'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
+      - 'config/channel-ports.json'
       - 'packages/cli/src/commands/lifecycle.ts'
       - '.github/workflows/install-smoke.yml'
       - '.github/workflows/release.yml'

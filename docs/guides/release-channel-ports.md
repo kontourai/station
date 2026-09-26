@@ -31,6 +31,15 @@ The owned launcher exports the exact channel, home, and install root on every
 later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
 run `STATION_CHANNEL=beta` instead.
 
+`config/channel-ports.json` is the single source for these values: its
+`channels` hold each runtime's ports and home, and its `releaseRings` map
+each installable ring to the runtime it installs as (`preview` installs as
+`beta`), whether it is a prerelease, and its launcher. `install.sh` must stay
+one standalone file, so `scripts/install-script-generated.mjs` projects that
+table (and the pinned signing keys from `config/release-manifest-keys.json`)
+into generated blocks; `npm run install-script:check` fails when they are
+stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
+
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
 nightly key; the authenticated GitHub-release path serves stable and beta

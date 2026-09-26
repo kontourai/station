@@ -16,6 +16,7 @@ import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT = resolve('scripts/package-portable-release.sh');
+const RING_CONFIG = resolve('config/channel-ports.json');
 const CREATED_AT = '2026-07-22T12:34:56.000Z';
 const roots: string[] = [];
 const REPOSITORY_LOCAL_GIT_ENV_KEYS = [
@@ -73,6 +74,9 @@ function createFixture(
   mkdirSync(join(root, 'scripts'));
   copyFileSync(SCRIPT, join(root, 'scripts/package-portable-release.sh'));
   chmodSync(join(root, 'scripts/package-portable-release.sh'), 0o755);
+  // The packager reads its installable rings from the packaged tree's config.
+  mkdirSync(join(root, 'config'));
+  copyFileSync(RING_CONFIG, join(root, 'config/channel-ports.json'));
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'tracked.txt'), 'portable\n');
   writeFileSync(join(root, 'untracked-secret.txt'), 'do not ship\n');
@@ -91,7 +95,7 @@ function createFixture(
   );
   run(
     'git',
-    ['add', 'package.json', 'scripts', 'tracked.txt'],
+    ['add', 'package.json', 'scripts', 'config', 'tracked.txt'],
     root,
     inheritedEnvironment,
   );

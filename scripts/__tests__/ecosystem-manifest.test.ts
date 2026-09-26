@@ -701,26 +701,10 @@ function installedTag(fixture: InstallFixture, ring = 'stable'): string {
 }
 
 describe('pinned manifest signing keys', () => {
-  it('embeds exactly the checked-in signing-key table in install.sh', () => {
+  // install.sh embeds this table through a generated block; its freshness
+  // and single assignment are checked in install-script-generated.test.ts.
+  it('pins exactly the real release/nightly key pair', () => {
     const config = JSON.parse(readFileSync(keyTablePath, 'utf8'));
-    const expectedLine = `PINNED_MANIFEST_SIGNING_KEYS='${JSON.stringify(config)}'`;
-    const script = readFileSync(installer, 'utf8');
-    const block = script.match(
-      /# BEGIN PINNED MANIFEST SIGNING KEYS\n([^\n]*)\n# END PINNED MANIFEST SIGNING KEYS\n/,
-    );
-    expect(block?.[1], `install.sh must embed:\n${expectedLine}`).toBe(
-      expectedLine,
-    );
-    // Exactly one assignment, and the verifier is its only reader: a second
-    // assignment (or an env/default expansion) could silently replace it.
-    const uses = script
-      .split('\n')
-      .filter((line) => line.includes('PINNED_MANIFEST_SIGNING_KEYS'))
-      .filter((line) => !line.startsWith('# '));
-    expect(uses).toHaveLength(2);
-    expect(uses[0]).toBe(expectedLine);
-    expect(uses[1]).toContain(' "$PINNED_MANIFEST_SIGNING_KEYS" ');
-    expect(uses[1]).not.toMatch(/PINNED_MANIFEST_SIGNING_KEYS[:=-]/);
     // The table the installer carries is the real release/nightly pair.
     expect(
       config.keys.map((entry: { keyId: string; channels: string[] }) => [

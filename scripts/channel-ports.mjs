@@ -7,6 +7,45 @@ const contract = JSON.parse(
 );
 export const CHANNEL_PORTS = contract.channels;
 
+/**
+ * The installable release rings (#2675): each names the runtime channel it
+ * installs as, whether it is a prerelease, and its owned launcher. A
+ * prerelease ring's tags are `vX.Y.Z-<ring>.N`; the one non-prerelease ring
+ * owns the unlabelled `vX.Y.Z`. Validated here so every generated consumer
+ * (shared TypeScript, install.sh) rejects a malformed table the same way.
+ */
+export const RELEASE_RINGS = validateReleaseRings(contract.releaseRings);
+
+function validateReleaseRings(rings) {
+  if (!rings || typeof rings !== 'object' || Array.isArray(rings))
+    throw new Error('config/channel-ports.json releaseRings must be an object');
+  const runtimes = new Set();
+  let unlabelled = 0;
+  for (const [ring, entry] of Object.entries(rings)) {
+    const keys = Object.keys(entry ?? {}).sort();
+    if (
+      !/^[a-z]+$/.test(ring) ||
+      JSON.stringify(keys) !==
+        JSON.stringify(['launcher', 'prerelease', 'runtimeChannel']) ||
+      typeof entry.prerelease !== 'boolean' ||
+      !/^station(-[a-z]+)?$/.test(entry.launcher) ||
+      entry.runtimeChannel === 'development' ||
+      !Object.hasOwn(CHANNEL_PORTS, entry.runtimeChannel) ||
+      runtimes.has(entry.runtimeChannel)
+    )
+      throw new Error(
+        `Invalid release ring in config/channel-ports.json: ${ring}`,
+      );
+    runtimes.add(entry.runtimeChannel);
+    if (!entry.prerelease) unlabelled += 1;
+  }
+  if (unlabelled !== 1)
+    throw new Error(
+      'config/channel-ports.json releaseRings must have exactly one non-prerelease ring',
+    );
+  return rings;
+}
+
 export function channelPorts(channel) {
   const ports = CHANNEL_PORTS[channel];
   if (!ports) throw new Error(`Unknown Station channel: ${channel}`);
@@ -25,6 +64,17 @@ function sharedTypeScript() {
       `    serverPort: ${allocation.serverPort},`,
       `    consentPort: ${allocation.consentPort},`,
       `    instanceDirectory: '${allocation.instanceDirectory}',`,
+      '  },',
+    );
+  }
+  lines.push('} as const;', '');
+  lines.push('export const STATION_RELEASE_RINGS_DATA = {');
+  for (const [ring, entry] of Object.entries(RELEASE_RINGS)) {
+    lines.push(
+      `  ${ring}: {`,
+      `    runtimeChannel: '${entry.runtimeChannel}',`,
+      `    prerelease: ${entry.prerelease},`,
+      `    launcher: '${entry.launcher}',`,
       '  },',
     );
   }

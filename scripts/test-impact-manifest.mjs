@@ -854,6 +854,31 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'channel-specific installation documentation source',
   },
   {
+    // install.sh is executed by these suites, never imported, and its channel
+    // and signing-key blocks are generated from the two config files (#2675).
+    // Supplemental: they ADD to each path's own selection.
+    pattern: 'install.sh',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/install-script-generated.test.ts',
+      'scripts/__tests__/install-script.test.ts',
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+    ],
+    reason: 'installer is run by its tests, not imported',
+  },
+  {
+    pattern: 'config/channel-ports.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh channel constants are generated from this config',
+  },
+  {
+    pattern: 'config/release-manifest-keys.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh pinned signing keys are generated from this config',
+  },
+  {
     pattern: 'config/channel-ports.json',
     tests: ['scripts/__tests__/documentation-foundations.test.ts'],
     reason: 'channel-specific getting-started documentation source',

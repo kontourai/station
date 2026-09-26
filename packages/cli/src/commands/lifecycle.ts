@@ -53,6 +53,10 @@ import {
   type StopIntent,
 } from '@kontourai/station-shared/lifecycle-events';
 import {
+  STATION_RELEASE_RINGS,
+  type StationReleaseRing,
+} from '@kontourai/station-shared/ports';
+import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
@@ -1120,33 +1124,29 @@ interface PackagedReleaseManifest {
   prerelease: boolean;
 }
 
-type PackagedRuntimeChannel = 'stable' | 'beta' | 'nightly';
-type PackagedReleaseChannel = 'stable' | 'preview' | 'nightly';
+type PackagedReleaseChannel = StationReleaseRing;
+type PackagedRuntimeChannel =
+  (typeof STATION_RELEASE_RINGS)[PackagedReleaseChannel]['runtimeChannel'];
 
 /**
- * The installable packaged rings and the runtime each maps to. Preview is the
- * only ring whose runtime has a different name (beta); a Nightly-staging
- * bundle is evidence-only and deliberately absent.
+ * The installable packaged rings come from config/channel-ports.json (via the
+ * generated STATION_RELEASE_RINGS); a Nightly-staging bundle is evidence-only
+ * and deliberately absent. A prerelease ring's tag is `vX.Y.Z-<ring>.N`.
  */
-const PACKAGED_RUNTIME_FOR_RELEASE: Record<
-  PackagedReleaseChannel,
-  PackagedRuntimeChannel
-> = { stable: 'stable', preview: 'beta', nightly: 'nightly' };
-
-const PACKAGED_RELEASE_TAG: Record<PackagedReleaseChannel, RegExp> = {
-  stable: /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/,
-  preview:
-    /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/,
-  nightly:
-    /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-nightly\.(?:[1-9]\d*)$/,
-};
+function packagedReleaseTag(ring: PackagedReleaseChannel): RegExp {
+  const label = STATION_RELEASE_RINGS[ring].prerelease
+    ? `-${ring}\\.(?:[1-9]\\d*)`
+    : '';
+  return new RegExp(
+    `^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)${label}$`,
+  );
+}
 
 function isPackagedReleaseChannel(
   value: unknown,
 ): value is PackagedReleaseChannel {
   return (
-    typeof value === 'string' &&
-    Object.hasOwn(PACKAGED_RUNTIME_FOR_RELEASE, value)
+    typeof value === 'string' && Object.hasOwn(STATION_RELEASE_RINGS, value)
   );
 }
 
@@ -2941,9 +2941,10 @@ export function validatePackagedReleaseManifest(
       candidate.createdAt ||
     !isPackagedReleaseChannel(candidate.releaseChannel) ||
     candidate.channel !==
-      PACKAGED_RUNTIME_FOR_RELEASE[candidate.releaseChannel] ||
-    candidate.prerelease !== (candidate.releaseChannel !== 'stable') ||
-    !PACKAGED_RELEASE_TAG[candidate.releaseChannel].test(candidate.ref)
+      STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
+    candidate.prerelease !==
+      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
+    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
   ) {
     return null;
   }
@@ -2952,9 +2953,9 @@ export function validatePackagedReleaseManifest(
     sha: candidate.sha,
     ref: candidate.ref,
     createdAt: candidate.createdAt,
-    channel: PACKAGED_RUNTIME_FOR_RELEASE[candidate.releaseChannel],
+    channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
     releaseChannel: candidate.releaseChannel,
-    prerelease: candidate.prerelease,
+    prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
   };
 }
 
@@ -4742,7 +4743,7 @@ function readSafePackagedInstallState(path: string): PackagedInstallState {
   if (
     value.schemaVersion !== 3 ||
     !isPackagedReleaseChannel(value.releaseChannel) ||
-    value.channel !== PACKAGED_RUNTIME_FOR_RELEASE[value.releaseChannel]
+    value.channel !== STATION_RELEASE_RINGS[value.releaseChannel].runtimeChannel
   ) {
     throw new Error('packaged install state is malformed');
   }
