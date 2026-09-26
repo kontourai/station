@@ -3,15 +3,13 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 
 // End to end: a violating source in a checkout must make the real
@@ -25,18 +23,15 @@ const VOICE_SESSION = 'src-server/voice/voice-session.ts';
 const EXPECTED_BLOCK =
   '- repo-governance: Raw outward or durable error coercion: src-server/voice/voice-session.ts :: route ON error :: String(failure).';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 afterEach(() => {
   vi.unstubAllEnvs();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 function copyTrackedTree() {
-  // realpath: the lane's entry check compares resolved paths, and macOS
-  // tmpdir() is a symlink into /private.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'proof-family-e2e-')));
-  roots.push(root);
+  // Resolved so the lane runs from a canonical path; macOS tmpdir() is a
+  // symlink into /private.
+  const root = realpathSync(makeTempDir('proof-family-e2e-'));
   // Hooks export GIT_DIR, GIT_INDEX_FILE and friends; inheriting them would
   // list some other repository or index instead of this checkout.
   const listing = spawnSync('git', ['ls-files', '-z'], {
