@@ -10,7 +10,10 @@ import {
   signStationConnectionProof,
 } from '@kontourai/station-shared/connection-proof';
 import { describe, expect, test, vi } from 'vitest';
-import { createBrowserPionConnection } from '../core/browserPionConnection.js';
+import {
+  createBrowserPionConnection,
+  type PionSignalingClient,
+} from '../core/browserPionConnection.js';
 import { createSelfHostedApplicationTransport } from '../core/selfHostedApplicationTransport.js';
 import { SelfHostedBrokerBrowserClient } from '../core/selfHostedBrokerBrowserClient.js';
 
@@ -143,6 +146,7 @@ function brokerStub(
   let nonce = '';
   const broker = {
     scope: { stationId: trust.stationId, enrollmentId: trust.enrollmentId },
+    assertCredentialBoundToTrust: vi.fn(async () => true),
     open: vi.fn(async (c: { clientId: string; nonce: string }) => {
       clientId = c.clientId;
       nonce = c.nonce;
@@ -170,7 +174,7 @@ function brokerStub(
       } as const;
     }),
   };
-  return broker;
+  return broker satisfies PionSignalingClient;
 }
 
 const iceProvider = () => ({
@@ -178,6 +182,150 @@ const iceProvider = () => ({
 });
 
 describe('browser relay consumer (public boundary)', () => {
+  test.each([1, 2, 3])(
+    'undefined host trust guard at check %i fails closed before application publication',
+    async (failedCheck) => {
+      const { keys, trust, trustRecord } = await trustFixture();
+      const base = brokerStub(trust, keys, ANSWER);
+      let checks = 0;
+      const peer = fakePeer(OFFER, []);
+      const adapter: PionSignalingClient = {
+        ...base,
+        // Deliberately violate the static contract to model an untyped adapter.
+        assertCredentialBoundToTrust: async () =>
+          ++checks === failedCheck ? (undefined as unknown as boolean) : true,
+      };
+      const owner = createBrowserPionConnection({
+        broker: adapter,
+        applicationOrigin: 'https://app.example',
+        trustRecord,
+        trustStore: { isCurrent: async () => true },
+        ice: iceProvider(),
+        createPeer: () => peer as unknown as RTCPeerConnection,
+      });
+      await expect(owner.connect(new AbortController().signal)).rejects.toThrow(
+        'browser_transport_grant_trust_retired',
+      );
+      expect(checks).toBe(failedCheck);
+      expect(peer.setRemoteDescription).not.toHaveBeenCalled();
+      if (failedCheck < 3) expect(base.open).not.toHaveBeenCalled();
+      expect(base.read).not.toHaveBeenCalled();
+    },
+  );
+
+  test('browser client explicitly accepts legacy lab custody and preserves a custody refusal', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const browserOrigin = 'https://browser.example';
+    const credentials = {
+      capture: () => ({
+        id: 'legacy-lab',
+        secret: 'x'.repeat(43),
+        isCurrent: () => true,
+      }),
+    };
+    const input = {
+      brokerOrigin: 'https://broker.example',
+      browserOrigin,
+      scope: {
+        stationId: trust.stationId,
+        enrollmentId: trust.enrollmentId,
+        routingGeneration: 1,
+        browserOrigin,
+      },
+      credentials,
+    };
+    const legacy: PionSignalingClient = new SelfHostedBrokerBrowserClient(
+      input,
+    );
+    await expect(
+      legacy.assertCredentialBoundToTrust(trustRecord),
+    ).resolves.toBe(true);
+    const guarded: PionSignalingClient = new SelfHostedBrokerBrowserClient({
+      ...input,
+      credentials: { ...credentials, assertBoundToTrust: async () => false },
+    });
+    await expect(
+      guarded.assertCredentialBoundToTrust(trustRecord),
+    ).resolves.toBe(false);
+  });
+
+  test('host-style signaling adapter opens an application channel then fences changed trust', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const channels: unknown[] = [];
+    const peer = fakePeer(OFFER, channels);
+    let trustCurrent = true;
+    const adapter: PionSignalingClient = brokerStub(trust, keys, ANSWER);
+    const owner = createBrowserPionConnection({
+      broker: adapter,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => trustCurrent },
+      ice: iceProvider(),
+      createPeer: () => peer as unknown as RTCPeerConnection,
+    });
+    const snapshot = await owner.connect(new AbortController().signal);
+    await expect(
+      owner.openApplicationChannel(snapshot, new AbortController().signal),
+    ).resolves.toBeDefined();
+    expect(peer.setRemoteDescription).toHaveBeenCalledWith({
+      type: 'answer',
+      sdp: ANSWER,
+    });
+    trustCurrent = false;
+    await expect(
+      owner.openApplicationChannel(snapshot, new AbortController().signal),
+    ).rejects.toThrow(/stale/);
+    expect(await owner.isCurrent(snapshot)).toBe(false);
+    owner.close();
+  });
+
+  test.each(['abort', 'retire'] as const)(
+    'host-style signaling %s rejects a pending open and never reads its late answer',
+    async (action) => {
+      const { keys, trust, trustRecord } = await trustFixture();
+      const base = brokerStub(trust, keys, ANSWER);
+      let release!: (value: { expiresAt: number }) => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<{ expiresAt: number }>((resolve) => {
+        release = resolve;
+      });
+      let requestSignal: AbortSignal | undefined;
+      const adapter: PionSignalingClient = {
+        ...base,
+        open: async (_input, signal) => {
+          requestSignal = signal;
+          entered();
+          return gate;
+        },
+      };
+      const peer = fakePeer(OFFER, []);
+      const owner = createBrowserPionConnection({
+        broker: adapter,
+        applicationOrigin: 'https://app.example',
+        trustRecord,
+        trustStore: { isCurrent: async () => true },
+        ice: iceProvider(),
+        createPeer: () => peer as unknown as RTCPeerConnection,
+      });
+      const caller = new AbortController();
+      const pending = owner.connect(caller.signal);
+      const rejected = expect(pending).rejects.toThrow(/cancelled|stale/);
+      await started;
+      if (action === 'abort') caller.abort(new Error('cancelled'));
+      else owner.close();
+      await rejected;
+      expect(requestSignal?.aborted).toBe(true);
+      release({ expiresAt: Date.now() + 60_000 });
+      await Promise.resolve();
+      expect(base.read).not.toHaveBeenCalled();
+      expect(peer.setRemoteDescription).not.toHaveBeenCalled();
+      expect(peer.close).toHaveBeenCalled();
+    },
+  );
+
   test('grant trust rotation after an async trust read refuses broker signaling', async () => {
     const { keys, trust, trustRecord } = await trustFixture();
     const base = brokerStub(trust, keys, ANSWER);
@@ -193,7 +341,7 @@ describe('browser relay consumer (public boundary)', () => {
     };
     const createPeer = vi.fn(() => fakePeer(OFFER, []) as never);
     const connection = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -215,7 +363,7 @@ describe('browser relay consumer (public boundary)', () => {
     let peerRef: ReturnType<typeof fakePeer> | undefined;
     const broker = brokerStub(trust, keys, ANSWER);
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -241,6 +389,7 @@ describe('browser relay consumer (public boundary)', () => {
     };
     const broker = {
       scope: { stationId: trust.stationId, enrollmentId: trust.enrollmentId },
+      assertCredentialBoundToTrust: vi.fn(async () => true),
       open: async () => ({ expiresAt: Date.now() + 60_000 }),
       read: async (c: { clientId: string; nonce: string }) => {
         const binding: StationConnectionProofBinding = {
@@ -263,7 +412,7 @@ describe('browser relay consumer (public boundary)', () => {
       },
     };
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -283,7 +432,7 @@ describe('browser relay consumer (public boundary)', () => {
     let peerRef: ReturnType<typeof fakePeer> | undefined;
     const broker = brokerStub(trust, keys, 'v=0\r\nno-fingerprint\r\n');
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -308,7 +457,7 @@ describe('browser relay consumer (public boundary)', () => {
     });
     const broker = brokerStub(trust, keys, ANSWER);
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: () => gate },
@@ -341,12 +490,13 @@ describe('browser relay consumer (public boundary)', () => {
     const brokerInner = brokerStub(trust, keys, ANSWER);
     const broker = {
       scope: brokerInner.scope,
+      assertCredentialBoundToTrust: brokerInner.assertCredentialBoundToTrust,
       open: brokerInner.open,
       read: brokerInner.read,
     };
     let first = true;
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -378,7 +528,7 @@ describe('browser relay consumer (public boundary)', () => {
     const channels: unknown[] = [];
     const broker = brokerStub(trust, keys, ANSWER);
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -412,7 +562,7 @@ describe('browser relay consumer (public boundary)', () => {
     const broker = brokerStub(trust, keys, ANSWER);
     let failTrust = false;
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: {
@@ -441,7 +591,7 @@ describe('browser relay consumer (public boundary)', () => {
 
     let failChannel = false;
     const conn2 = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -468,7 +618,7 @@ describe('browser relay consumer (public boundary)', () => {
     const channels: unknown[] = [];
     const broker = brokerStub(trust, keys, ANSWER);
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -664,7 +814,7 @@ describe('browser relay consumer (public boundary)', () => {
     const channels: { label: string }[] = [];
     const broker = brokerStub(trust, keys, ANSWER);
     const conn = createBrowserPionConnection({
-      broker: broker as never,
+      broker,
       applicationOrigin: 'https://app.example',
       trustRecord,
       trustStore: { isCurrent: async () => true },
@@ -720,7 +870,7 @@ test('missing secure-context UUID refuses before broker submission and closes pe
   const broker = brokerStub(trust, keys, ANSWER);
   const peer = fakePeer(OFFER, []);
   const connection = createBrowserPionConnection({
-    broker: broker as never,
+    broker,
     applicationOrigin: 'https://app.example',
     trustRecord,
     trustStore: { isCurrent: async () => true },

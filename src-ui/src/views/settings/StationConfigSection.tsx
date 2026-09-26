@@ -44,11 +44,13 @@ import type { SettingsSectionId } from './settings-catalog';
  */
 export const STATION_SETTING_KEYS_BY_SECTION = {
   // The machine: which shell a terminal starts, which origin an MCP UI may be
-  // served from, whether Veritas evidence may raise a surface's trust here.
+  // served from, whether Veritas evidence may raise a surface's trust here,
+  // and the local device helper the Device pane dials.
   'host-runtime': [
     'terminalShell',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
+    'mobileDeviceHubUrl',
   ],
   // Where this Station gets agents, skills, plugins and layouts.
   sources: [

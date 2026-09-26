@@ -1,16 +1,15 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { useRunSkill, useSkillDetailReader } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   activeChatsStore,
   useActiveChatActions,
 } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { loadSlashCommands } from '../slashCommands/load';
 import { getAllCommands, getCommand } from '../slashCommands/registry';
-import '../slashCommands/builtins';
-import '../slashCommands/tools';
 import type { BindingStatus } from '../utils/execution';
 import {
   assignSkillVariableArgs,
@@ -26,6 +25,12 @@ export function useSlashCommandHandler() {
   const queryClient = useQueryClient();
   const runSkillMutation = useRunSkill();
   const readSkillDetail = useSkillDetailReader();
+
+  // Warm the built-in commands once a chat input exists, so the first typed
+  // `/command` does not wait on the chunk. Dispatch still awaits the load.
+  useEffect(() => {
+    loadSlashCommands().catch(() => undefined);
+  }, []);
 
   return useCallback(
     async (
@@ -165,6 +170,16 @@ export function useSlashCommandHandler() {
       }
 
       // 3. Check registered commands
+      try {
+        await loadSlashCommands();
+      } catch (error) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+        });
+        cleanup();
+        return true;
+      }
       const handler = getCommand(cmd);
       if (handler) {
         cleanup();

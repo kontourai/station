@@ -1138,11 +1138,23 @@ describe('Orchestration Routes', () => {
       target: { kind: 'agent', id: 'claude' },
       resolution: {},
     });
+    // #2601: what is stamped is the resolver's answer, not the body's claim.
+    const resolvedDelegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'derived-parent',
+      rootAgentSlug: 'derived-root',
+    };
+    const resolveRequestDelegation = vi
+      .fn()
+      .mockResolvedValue(resolvedDelegation);
     const app = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => 'bound-user',
       executeForegroundMessage,
+      resolveRequestDelegation,
     });
     const common = {
       message: 'Run later',
@@ -1174,12 +1186,40 @@ describe('Orchestration Routes', () => {
         await app.request('/chat/delegated', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...common,
+            delegation,
+            delegationAttestation: 'attestation',
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(resolveRequestDelegation).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      { delegation, attestation: 'attestation' },
+    );
+    const forwarded = executeForegroundMessage.mock.lastCall![0];
+    expect(forwarded.delegation).toEqual(resolvedDelegation);
+    expect(forwarded).not.toHaveProperty('delegationAttestation');
+
+    // Without a resolver, no claimed context is ever stamped.
+    const unresolved = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      executeForegroundMessage,
+    });
+    expect(
+      (
+        await unresolved.request('/chat/delegated', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...common, delegation }),
         })
       ).status,
     ).toBe(200);
-    expect(executeForegroundMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({ delegation }),
+    expect(executeForegroundMessage.mock.lastCall![0]).not.toHaveProperty(
+      'delegation',
     );
   });
 

@@ -1,13 +1,13 @@
 /**
  * Consent-gated, pinned installs of the device tools (#1970, D11).
  *
- * Adapted from t3code's `apps/server/src/device/DeviceToolchain.ts` and
- * `deviceToolMaintenance.ts` (MIT, © 2026 T3 Tools Inc.): stage into a temp
- * sibling, write a sentinel only after the install is verified, then rename
- * into place; read versions without installing or starting anything; reclaim
- * obsolete installs only when nothing runs from them. Station differs in
- * three ways: the install is `npm ci` from a pinned lockfile, so npm checks
- * every fetched tarball against its pinned sha512 before extracting it;
+ * An install is staged into a temp sibling, gets a sentinel only after it is
+ * verified, and is then renamed into place, so a half-finished install is
+ * never mistaken for a usable one; versions are read without installing or
+ * starting anything; obsolete installs are reclaimed only when nothing runs
+ * from them. Three further safeguards: the install is `npm ci` from a pinned
+ * lockfile, so npm checks every fetched tarball against its pinned sha512
+ * before extracting it;
  * lifecycle scripts never run (`--ignore-scripts`); and Station verifies the
  * result itself rather than trusting npm's exit code: the tree's shape and
  * recorded integrities against the lockfile, and the tool's own package

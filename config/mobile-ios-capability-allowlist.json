@@ -1,6 +1,9 @@
 {
-  "signedBundlePaths": ["."],
-  "machOPaths": ["{executable}"],
+  "signedBundlePaths": [".", "PlugIns/StationAgentActivity.appex"],
+  "machOPaths": [
+    "{executable}",
+    "PlugIns/StationAgentActivity.appex/StationAgentActivity"
+  ],
   "embeddedRpathTargets": [],
   "privacyManifestPaths": [
     "PrivacyInfo.xcprivacy",

@@ -240,9 +240,16 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
   );
   const result = (await response.json()) as {
     success: boolean;
+    error?: string;
+    detail?: string;
   };
   if (!result.success) {
-    throw new Error('Failed to reconnect ACP connection');
+    // The route attaches a sanitized, bounded `detail` (acp.ts) beside its
+    // generic `error`; the shared helper does not read that field, so the
+    // actionable sentence would be dropped and the reader would only ever
+    // see "could not be reconnected".
+    const base = apiErrorMessage(result, 'Failed to reconnect ACP connection');
+    throw new Error(result.detail ? `${base} ${result.detail}` : base);
   }
   return true;
 }

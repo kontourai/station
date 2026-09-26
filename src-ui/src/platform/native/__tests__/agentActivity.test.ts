@@ -348,6 +348,26 @@ describe('agent activity controller', () => {
   });
 });
 
+describe('agent activity request contract', () => {
+  it('builds an Android request the Station route accepts (isValidNativePushRequest)', async () => {
+    // Imported through a variable so the UI typecheck does not pull the
+    // server module in, as authenticatedTransport.test.ts does.
+    const storePath =
+      '../../../../../src-server/services/notifications/native-push-registration-store.js';
+    const { isValidNativePushRequest } = (await import(storePath)) as {
+      isValidNativePushRequest: (value: unknown) => boolean;
+    };
+    // An FCM token is 20+ characters on the route.
+    const h = harness({ token: 'f'.repeat(152) });
+    await h.ready();
+    await h.controller.enable(target);
+
+    expect(h.registered).toHaveLength(1);
+    expect(h.registered[0]?.request.platform).toBe('android');
+    expect(isValidNativePushRequest(h.registered[0]?.request)).toBe(true);
+  });
+});
+
 /** A second controller over the same phone and store whose Station now answers with a new id. */
 function harnessResponse(
   h: ReturnType<typeof harness>,

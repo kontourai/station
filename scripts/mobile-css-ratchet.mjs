@@ -27,6 +27,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // These are layout/state primitives, not page homes. Keep the allowlist at
 // file granularity: exempting index.css (or a whole component directory) would
@@ -187,4 +188,4 @@ export function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (invokedDirectly(import.meta.url)) main();

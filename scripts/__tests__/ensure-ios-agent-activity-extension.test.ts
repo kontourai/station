@@ -121,6 +121,15 @@ describe('iOS agent-activity extension project spec', () => {
       expect(plistString(once.infoPlist, 'StationApsEnvironment')).toBe(
         apsEnvironment,
       );
+      // ActivityKit refuses to start an activity for an app that does not
+      // declare support, so the enabled Info.plist must.
+      expect(once.infoPlist).toMatch(
+        /<key>NSSupportsLiveActivities<\/key>\s*<true\/>/,
+      );
+      // Only the budget key's absence is deliberate (see the script).
+      expect(once.infoPlist).not.toContain(
+        'NSSupportsLiveActivitiesFrequentUpdates',
+      );
       // Re-running with the other environment moves both together.
       const other =
         apsEnvironment === 'production' ? 'development' : 'production';
@@ -135,12 +144,31 @@ describe('iOS agent-activity extension project spec', () => {
       ).toBe(other);
       expect(plistString(again.infoPlist, 'StationApsEnvironment')).toBe(other);
       expect(again.infoPlist.match(/StationApsEnvironment/g)).toHaveLength(1);
+      expect(
+        again.infoPlist.match(/<key>NSSupportsLiveActivities<\/key>/g),
+      ).toHaveLength(1);
       // The rest of the Info.plist is untouched.
       expect(plistString(again.infoPlist, 'NSCameraUsageDescription')).toBe(
         plistString(appInfoPlist, 'NSCameraUsageDescription'),
       );
     },
   );
+
+  test('replaces a declared-false Live Activity support with true', () => {
+    const declinedPlist = appInfoPlist.replace(
+      /\n?<\/dict>\s*<\/plist>\s*$/,
+      '\n\t<key>NSSupportsLiveActivities</key>\n\t<false/>\n</dict>\n</plist>\n',
+    );
+    expect(declinedPlist).toContain('<false/>');
+    const { infoPlist } = ensureIosAgentActivity(
+      { project: renderedProject, infoPlist: declinedPlist },
+      { appBundleId: 'io.kontourai.station', apsEnvironment: 'production' },
+    );
+    expect(infoPlist).toMatch(
+      /<key>NSSupportsLiveActivities<\/key>\s*<true\/>/,
+    );
+    expect(infoPlist?.match(/NSSupportsLiveActivities/g)).toHaveLength(1);
+  });
 
   test('refuses an environment without its Info.plist copy, and the reverse', () => {
     expect(() =>

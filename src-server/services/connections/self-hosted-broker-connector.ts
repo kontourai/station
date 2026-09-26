@@ -1,9 +1,14 @@
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeKeyCandidateOfferV1,
   SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
-import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
+import {
+  stationConnectionSigningKeyId,
+  verifyStationConnectionKeyCandidate,
+} from '@kontourai/station-shared/connection-proof';
+import type { ConnectionKeyCandidateIssuer } from '../ssh/connection-key-candidate-issuer.js';
 import type {
   BrokerNativeOffer,
   BrokerOffer,
@@ -200,6 +205,89 @@ export class SelfHostedBrokerConnector {
         answered++;
       }
       return { observed, answered };
+    });
+  }
+  /** Explicit pre-grant discovery lane; issuing a candidate grants no trust or connection. */
+  async pollNativeKeyCandidates(
+    issuer: ConnectionKeyCandidateIssuer,
+    signal: AbortSignal,
+  ) {
+    return this.#runAdmission(signal, async (currentSignal) => {
+      this.#active();
+      currentSignal.throwIfAborted();
+      const descriptor = this.trust.current();
+      if (
+        !descriptor ||
+        descriptor.stationId !== this.#scope.stationId ||
+        descriptor.enrollmentId !== this.#scope.enrollmentId ||
+        !this.trust.isCurrent(descriptor)
+      )
+        throw new Error('broker_connector_trust_unavailable');
+      const keyId = await stationConnectionSigningKeyId(descriptor);
+      let answered = 0;
+      let refused = 0;
+      while (answered < 1) {
+        currentSignal.throwIfAborted();
+        if (!this.trust.isCurrent(descriptor))
+          throw new Error('broker_connector_trust_retired');
+        let offers: SelfHostedBrokerNativeKeyCandidateOfferV1[];
+        try {
+          offers = await this.client.nativeKeyCandidateOffers(currentSignal);
+        } catch (error) {
+          if (error instanceof BrokerTransientRequestError)
+            throw new BrokerOfferReadTransientError(error);
+          throw error;
+        }
+        if (!offers.length) break;
+        const offer = offers[0]!;
+        if (
+          offer.stationSigningKeyId !== keyId ||
+          offer.stationSigningGeneration !== descriptor.generation ||
+          offer.expiresAt <= Date.now()
+        ) {
+          await this.client.refuseNativeKeyCandidate(offer, currentSignal);
+          refused++;
+          break;
+        }
+        const issued = await issuer.issue({
+          brokerOrigin: offer.brokerOrigin,
+          expectedStationId: descriptor.stationId,
+          expectedEnrollmentId: descriptor.enrollmentId,
+          challenge: offer.challenge,
+          clientInstanceId: offer.surface.clientInstanceId,
+          clientKeyThumbprint: offer.surface.keyThumbprint,
+        });
+        const verified = await verifyStationConnectionKeyCandidate(
+          issued.candidate,
+          {
+            brokerOrigin: offer.brokerOrigin,
+            stationId: descriptor.stationId,
+            enrollmentId: descriptor.enrollmentId,
+            challenge: offer.challenge,
+            clientInstanceId: offer.surface.clientInstanceId,
+            clientKeyThumbprint: offer.surface.keyThumbprint,
+          },
+        );
+        currentSignal.throwIfAborted();
+        if (
+          !this.trust.isCurrent(descriptor) ||
+          issued.keyId !== keyId ||
+          verified.claims.keyId !== keyId ||
+          verified.claims.candidate.generation !== descriptor.generation
+        )
+          throw new Error('broker_connector_trust_retired');
+        const accepted = await this.client.answerNativeKeyCandidate(
+          offer,
+          issued.candidate,
+          currentSignal,
+        );
+        if (accepted) answered++;
+        else {
+          refused++;
+          break;
+        }
+      }
+      return { answered, refused };
     });
   }
   /** Explicit native-v2 lane; the legacy `poll()` callback never sees it. */

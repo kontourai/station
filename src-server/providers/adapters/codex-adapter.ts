@@ -58,7 +58,11 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
+import {
+  buildCliRuntimePrerequisites,
+  type CliCommandResult,
+  runCliCommand,
+} from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -151,6 +155,19 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * Readiness seams, injectable so the installed branch and the probe's
+   * environment are exercised on any host (a host without `codex` would
+   * otherwise short-circuit before the login probe runs). Default to
+   * `findCliBinary` and `runCliCommand`.
+   */
+  findBinary?: (command: string) => string | null;
+  runCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+  ) => Promise<CliCommandResult | null>;
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
@@ -754,11 +771,23 @@ export class CodexAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // The `codex login status` probe runs under the connection env, as every
+    // `codex app-server` child of this connection does — so a configured
+    // configHome (→ CODEX_HOME) is the account readiness reports on. The
+    // app-home / credential-profile layer is not modelled: resolving it can
+    // create profile directories, which a readiness read must not do.
+    const connectionEnv = await this.resolveConnectionEnv();
+    const runCommand = this.options.runCommand ?? runCliCommand;
     return buildCliRuntimePrerequisites({
       command: 'codex',
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      runCommand: (command, args, signal) =>
+        runCommand(command, args, signal, connectionEnv),
+      ...(this.options.findBinary
+        ? { findBinary: this.options.findBinary }
+        : {}),
       installStep: 'Install the Codex CLI and ensure `codex` is on PATH.',
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,

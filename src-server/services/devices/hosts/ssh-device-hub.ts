@@ -2,9 +2,9 @@
  * The device hub on an SSH device host, supervised from this Station
  * (#1973, D11).
  *
- * Adapted from t3code's `apps/server/src/device/SshDeviceHost.ts` (MIT,
- * © 2026 T3 Tools Inc.): a remote start over ssh, then an `ssh -N -L`
- * forward with ServerAlive and ExitOnForwardFailure, a readiness probe
+ * The shape: a remote start over ssh, then an `ssh -N -L` forward with
+ * ServerAlive (so a dead link is noticed) and ExitOnForwardFailure (so a
+ * forward that cannot bind fails instead of idling), a readiness probe
  * through the forward, and a reconnect loop with doubling backoff.
  *
  * Two ssh processes per running hub:

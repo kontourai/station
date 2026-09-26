@@ -131,23 +131,22 @@ until push lands.
 
 ## Decision: push through a Kontour-operated push gateway
 
-Decided September 23, 2026 by the owner: follow
-[T3 Code](https://github.com/pingdotgg/t3code), which ships this for a
-self-hosted product today, adapted where Station differs.
+Decided September 23, 2026 by the owner: follow the pattern an existing
+self-hosted product already ships today, adapted where Station differs.
 
 - **Why a hosted service at all.** Push credentials belong to whoever publishes
   the app (the Firebase project and the APNs key are bound to its package and
   bundle IDs), so a self-hosted Station cannot send to the published app
-  directly. T3 runs a hosted relay (`infra/relay/src/agentActivity/`).
+  directly, and the publisher has to run a hosted service that does.
 - **Named "push gateway", not relay.** In Station, relay and
   [broker](connection-broker.md) name the path a Device uses to *reach* a
   Station. The push gateway does the opposite job, Station to phone through
   Google or Apple, and only the app's publisher can run it. The broker design
   already kept notifications apart ("a separate payload policy and delivery
   grant").
-- **Stateless, Station-signed.** T3's relay links servers to Clerk user
-  accounts, stores device tokens and builds each card itself. Station has no
-  hosted accounts, and a Station already knows its paired phones, so the
+- **Stateless, Station-signed.** The gateway does not link Stations to hosted
+  user accounts, store device tokens, or build cards. Station has no hosted
+  accounts, and a Station already knows its paired phones, so the
   gateway (`deploy/push-gateway`) keeps nothing: every request is signed by the
   Station's own P-256 push key (ES256, body hash bound into the token, at most
   120 s lifetime). The gateway verifies it, rate limits per key and globally,
@@ -175,7 +174,8 @@ transcripts, code or tool output (the same rule as the
 [connection broker](connection-broker.md)), and it is end-to-end encrypted
 to the phone: the gateway and Google see only routing data.
 
-**What doing without hosted accounts costs**, compared with T3: no single card
+**What doing without hosted accounts costs**, compared with an account-backed
+relay: no single card
 merging several Stations (each Station owns its own card), revocation happens
 at the Station rather than centrally, and the gateway cannot restrict senders
 to known people, so abuse is bounded by rate limits and the phone-side check
@@ -732,16 +732,16 @@ the route answers 503. The gateway is deployed by hand
 
 | Slice | State |
 |---|---|
-| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
+| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake. That device verification predates the 2026-09-25 rewrite of the card model and notifier, which is verified by JVM unit tests, a one-off randomized comparison against the previous code (not kept in the repo), and an old-versus-new comparison on an Android 16 (API 36) emulator: channels, cards, alerts, dedupe, stale and clock-skewed pushes, swipe and tap re-arm matched. Status-bar promotion and real FCM delivery were not exercised after the rewrite |
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
 | Station notifications on Android (#2588: gateway kind, `FcmAlertChannel`, `StationNotifications.kt`) | built; the channel is tested through the production delivery wiring against the gateway's own verifier and request parser, and the phone opens the shared known-answer vector in a JVM unit test. Not yet verified on a device or emulator, and the gateway change is not yet deployed |
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
-| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when an Android build reports `remote-push` enabled (it has all four `STATION_FIREBASE_*` values). Registrations are kept per Station; the card key goes from the Station's response straight to the plugin and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token changed or the registration is a day old |
+| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when the host reports `remote-push` enabled: an Android build with all four `STATION_FIREBASE_*` values, or an iOS build with the Live Activity plugin (`STATION_IOS_LIVE_ACTIVITY=1`), where it also stays hidden until the plugin's `status` reports the build signed for push (`pushConfigured`) on iOS 18. iOS registers `{ token, packageName, platform: 'ios', apnsEnvironment }` from the plugin's push-to-start token and the environment it names, and asks for no notification permission. Registrations are kept per Station; the card key goes from the Station's response straight to the plugin (on iOS, into the keychain group shared with the widget) and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token (or its APNs environment) changed or the registration is a day old. The iOS path is unit-tested against the plugin's reply shapes only; no device has run it |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
 | APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation. The Durable Object is chosen for correctness (a strongly consistent single writer: Workers KV's eventual consistency could let the sweep miss a fresh record and delete a live channel); the sweep's cadence and per-run caps are shaped by the Workers Free plan's 50-subrequest limit, and Free's CPU limit is not yet verified. The ledger also keeps a guard of six accepted starts per device per UTC day against a runaway honest Station (not an abuse bound; the per-key and global limiters are); an end may carry the fixed alert. Live on a gateway deployed with the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets set, dark without them; the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only |
 | iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
-| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half, and no workflow (TestFlight included) enables it. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
-| iOS enablement and App Store signing (#2513 slice D) | not started; owner-gated: the App ID's push and broadcast capabilities, profiles for the app and `<app id>.AgentActivity`, and the APNs secrets |
+| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half; only the Beta and Nightly TestFlight builds enable it (slice D). The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
+| iOS enablement and App Store signing (#2513 slice D) | enabled in CI for Beta and Nightly; not yet verified on a device. The Beta and Nightly App IDs have Push Notifications and Broadcast. Their App Store profiles carry `aps-environment=production`, and `<app id>.AgentActivity` has its own profile in the `ios-beta` and `ios-nightly` environments. The gateway has its APNs secrets. `testflight-delivery.yml` builds both halves for those channels. It declares `NSSupportsLiveActivities` in the shipped app `Info.plist`, and signs the extension with its own profile. It audits the embedded widget, both profiles, both sets of entitlements, and the compiled plugin class in the IPA ([mobile-release.md](../guides/mobile-release.md#live-activity-in-beta-and-nightly)). Stable builds neither. No TestFlight run has built the Live Activity yet, and no installed build has shown a Live Activity |
 | iOS notification alerts, fixed text (#2589) | built. The Station side is dormant until a phone sends an alert token. Gateway `/v1/apns/alert` is live on a gateway deployed with the APNs secrets set and the `ALERT_PER_TOKEN_LIMITER` binding (without the binding it answers 503); the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only. Also built: the optional `alertToken` on the iOS registration, `ApnsAlertChannel` in the delivery router, and the plugin's `alert_token` command (off with the rest of the plugin; the delegate hook is tested on macOS only and needs device verification before enabling). See the enablement checklist in "iOS: notification alerts" |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes

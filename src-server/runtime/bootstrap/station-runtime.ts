@@ -376,6 +376,7 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
 import type { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import type { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
@@ -1328,9 +1329,11 @@ export class StationRuntime {
           if (!this.orchestrationService) {
             throw new Error('Station orchestration is unavailable');
           }
-          return continueExecutionTargetMessage(
-            input,
-            this.orchestrationService,
+          // #2377: a Discord message is a person's turn Station drives
+          // itself; its loopback calls run as server code.
+          const orchestrationService = this.orchestrationService;
+          return runAsStationServer(() =>
+            continueExecutionTargetMessage(input, orchestrationService),
           );
         },
         readTranscript: ({ sessionId, turnId }) =>

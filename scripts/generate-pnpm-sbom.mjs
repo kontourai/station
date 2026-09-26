@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { npmPurl } from './lib/dependency-lifecycle-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   pnpmImporterManifest,
   readPnpmDependencyGraph,
@@ -105,10 +105,7 @@ export function generatePnpmSbom(root) {
   });
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const index = process.argv.indexOf('--output-file');
     if (index < 0 || !process.argv[index + 1])

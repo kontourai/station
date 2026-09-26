@@ -6,6 +6,7 @@
  * `tools.browser: false`.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test } from 'vitest';
@@ -26,17 +27,28 @@ function Harness({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   onForm(form);
   return (
-    <AgentEditorToolsTab
-      form={form}
-      setForm={setForm}
-      locked={locked}
-      availableTools={[]}
-      integrationTools={{}}
-      expandedIntegrations={expanded}
-      setExpandedIntegrations={setExpanded}
-      onNavigate={() => {}}
-      onOpenAddModal={() => {}}
-    />
+    // The Tools tab mounts the workflows section, whose SDK hooks need an
+    // observer even when the queries are disabled (an unsaved agent has no
+    // slug, so nothing fetches).
+    <QueryClientProvider
+      client={
+        new QueryClient({
+          defaultOptions: { queries: { retry: false, gcTime: 0 } },
+        })
+      }
+    >
+      <AgentEditorToolsTab
+        form={form}
+        setForm={setForm}
+        locked={locked}
+        availableTools={[]}
+        integrationTools={{}}
+        expandedIntegrations={expanded}
+        setExpandedIntegrations={setExpanded}
+        onNavigate={() => {}}
+        onOpenAddModal={() => {}}
+      />
+    </QueryClientProvider>
   );
 }
 

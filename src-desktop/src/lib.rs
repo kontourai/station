@@ -9,6 +9,8 @@ mod bundled_server_state;
 mod channel_ports_generated;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(not(mobile))]
+mod desktop_installation;
 mod notification_watch;
 #[cfg(not(mobile))]
 mod local_access_watch;
@@ -20,6 +22,8 @@ mod desktop_companion;
 pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_redemption;
+#[cfg(not(mobile))]
+mod native_station_key_custody;
 #[cfg(not(mobile))]
 mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
@@ -167,10 +171,33 @@ fn android_build_carries_firebase_identity(values: [Option<&str>; 4]) -> bool {
         .all(|value| value.is_some_and(|value| !value.trim().is_empty()))
 }
 
-/// Closed-app push is the Android agent-activity plugin (FCM through the
-/// Kontour push gateway). Enabled means this build CAN register; whether a
-/// Station sends anything depends on the person turning it on.
-fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapabilityStatus {
+/// The iOS plugin's native half is compiled only with
+/// STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs); the plugin
+/// crate is a dependency on mobile targets only.
+fn ios_live_activity_built() -> bool {
+    #[cfg(target_os = "ios")]
+    return tauri_plugin_station_agent_activity::IOS_LIVE_ACTIVITY_BUILT;
+    #[cfg(not(target_os = "ios"))]
+    return false;
+}
+
+/// Closed-app push is the agent-activity plugin: FCM through the Kontour push
+/// gateway on Android, Live Activities over APNs on iOS. Enabled means this
+/// build CAN register; whether a Station sends anything depends on the person
+/// turning it on. On iOS the plugin's own `status` still says whether the
+/// build is signed for push, which the web layer checks before offering it.
+fn remote_push_capability(
+    android: bool,
+    firebase_identity: bool,
+    ios_live_activity: bool,
+) -> NativeCapabilityStatus {
+    if ios_live_activity {
+        return NativeCapabilityStatus {
+            id: "remote-push",
+            state: "enabled",
+            reason: "This iOS build carries the Live Activity plugin; agent activity on this phone can be turned on in Settings when the build is signed for push.",
+        };
+    }
     match (android, firebase_identity) {
         (true, true) => NativeCapabilityStatus {
             id: "remote-push",
@@ -185,7 +212,7 @@ fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapab
         (false, _) => NativeCapabilityStatus {
             id: "remote-push",
             state: "unsupported",
-            reason: "Closed-app push is available only in the Android app; iOS Live Activities and APNs are not built yet.",
+            reason: "Closed-app push needs the Android app or an iOS build with the Live Activity half.",
         },
     }
 }
@@ -291,6 +318,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
             option_env!("STATION_FIREBASE_PROJECT_ID"),
             option_env!("STATION_FIREBASE_SENDER_ID"),
         ]),
+        ios_live_activity_built(),
     ));
 
     NativeCapabilityReport {
@@ -4925,6 +4953,177 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_legacy(path)
 }
 
+/// Reconstructs Station-key approval authority from the current native profile
+/// while holding the same interprocess lock used by profile writers. A broker
+/// offer or renderer-supplied route cannot supply this snapshot.
+#[cfg(not(mobile))]
+struct AppNativeTrustProfileProvider<'a>(&'a AppHandle);
+
+#[cfg(not(mobile))]
+impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
+    fn with_current_profile<T, F>(
+        &self,
+        expected_binding: &native_station_key_custody::TrustProfileBinding,
+        expected_profile_revision: u64,
+        operation: F,
+    ) -> native_station_key_custody::CandidateResult<T>
+    where
+        F: FnOnce(
+            native_station_key_custody::LockedTrustProfileSnapshot,
+        ) -> native_station_key_custody::CandidateResult<T>,
+    {
+        use native_station_key_custody::CandidateError;
+
+        let path = station_profiles_path(self.0).map_err(|_| CandidateError::ProfileStale)?;
+        let _lock = lock_station_profiles_for_app(self.0, &path)
+            .map_err(|_| CandidateError::ProfileStale)?;
+        let contents =
+            read_station_profile_store(&path).map_err(|_| CandidateError::ProfileStale)?;
+        let store =
+            parse_station_profile_store(&contents).map_err(|_| CandidateError::ProfileStale)?;
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            expected_binding,
+            expected_profile_revision,
+            &self.0.config().identifier,
+            native_app_channel(&self.0.config().identifier, cfg!(debug_assertions)),
+        )?;
+        operation(snapshot)
+    }
+}
+
+#[cfg(not(mobile))]
+fn native_trust_profile_snapshot_in_store(
+    store: &CredentialProfileStore,
+    expected_binding: &native_station_key_custody::TrustProfileBinding,
+    expected_profile_revision: u64,
+    app_identifier: &str,
+    channel: &str,
+) -> native_station_key_custody::CandidateResult<
+    native_station_key_custody::LockedTrustProfileSnapshot,
+> {
+    use native_station_key_custody::{CandidateError, LockedTrustProfileSnapshot};
+
+    let profile = store
+        .profiles
+        .iter()
+        .find(|profile| profile.name == expected_binding.profile_owner_id)
+        .ok_or(CandidateError::ProfileStale)?;
+    let route = profile
+        .relay_route
+        .as_ref()
+        .ok_or(CandidateError::ProfileStale)?;
+    let actual = native_station_key_custody::TrustProfileBinding {
+        profile_owner_id: profile.name.clone(),
+        app_identifier: app_identifier.to_owned(),
+        channel: channel.to_owned(),
+        client_instance_id: profile
+            .client_instance_id
+            .clone()
+            .ok_or(CandidateError::ProfileStale)?,
+        broker_origin: route.broker_origin.clone(),
+        station_id: route.station_id.clone(),
+        enrollment_id: route.enrollment_id.clone(),
+    };
+    if store.revision != expected_profile_revision
+        || actual != *expected_binding
+        || profile.configuration_state != "unconfigured"
+        || profile.setup_source != "manual"
+        || profile.credential_ref.is_some()
+    {
+        return Err(CandidateError::ProfileStale);
+    }
+    Ok(LockedTrustProfileSnapshot {
+        binding: actual,
+        revision: store.revision,
+    })
+}
+
+#[cfg(all(test, not(mobile)))]
+mod native_trust_profile_snapshot_tests {
+    use super::*;
+    use native_station_key_custody::{CandidateError, TrustProfileBinding};
+
+    fn saved_route() -> CredentialProfileStore {
+        parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":7,"defaultProfile":null,
+              "profiles":[{"schemaVersion":1,"name":"Zach's Station",
+                "endpoint":"https://station.example",
+                "clientInstanceId":"33333333-3333-4333-8333-333333333333",
+                "relayRoute":{"brokerOrigin":"https://broker.example",
+                  "stationId":"11111111-1111-4111-8111-111111111111",
+                  "enrollmentId":"22222222-2222-4222-8222-222222222222"},
+                "setupSource":"manual","configurationState":"unconfigured",
+                "createdAt":1,"updatedAt":2}],"projectProfiles":{}
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn binding() -> TrustProfileBinding {
+        TrustProfileBinding {
+            profile_owner_id: "Zach's Station".to_owned(),
+            app_identifier: "io.kontourai.station".to_owned(),
+            channel: "stable".to_owned(),
+            client_instance_id: "33333333-3333-4333-8333-333333333333".to_owned(),
+            broker_origin: "https://broker.example".to_owned(),
+            station_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            enrollment_id: "22222222-2222-4222-8222-222222222222".to_owned(),
+        }
+    }
+
+    #[test]
+    fn trust_snapshot_requires_exact_current_saved_route_and_revision() {
+        let store = saved_route();
+        let expected = binding();
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            &expected,
+            7,
+            "io.kontourai.station",
+            "stable",
+        )
+        .unwrap();
+        assert_eq!(snapshot.binding, expected);
+        assert_eq!(snapshot.revision, 7);
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &expected,
+                6,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut wrong_route = expected.clone();
+        wrong_route.broker_origin = "https://other-broker.example".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &wrong_route,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut renamed = expected;
+        renamed.profile_owner_id = "zach's station".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &renamed,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+    }
+}
+
 #[cfg(test)]
 fn lock_station_profiles(path: &std::path::Path) -> Result<StationProfileLock, String> {
     let self_pid = std::process::id();
@@ -6650,6 +6849,18 @@ async fn notification_watch_start(
 
     log::info!("Station notification watch started");
     Ok(())
+}
+
+/// The persisted id of this desktop installation, for the delivery surface
+/// `local:desktop-<id>` (#2587). See `desktop_installation`.
+#[cfg(not(mobile))]
+#[tauri::command]
+fn desktop_installation_id(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("resolve the desktop config directory: {error}"))?;
+    desktop_installation::read_or_create(&dir)
 }
 
 #[tauri::command]
@@ -10828,6 +11039,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write,
         notification_watch_start,
         notification_watch_stop,
+        desktop_installation_id,
         open_local_browser_preview,
         open_external_link,
         discover_local_browser_preview_target,
@@ -17609,14 +17821,17 @@ mod tests {
     }
 
     #[test]
-    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity() {
-        let state = |android, identity| remote_push_capability(android, identity).state;
+    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity_or_an_ios_live_activity_build() {
+        let state = |android, identity| remote_push_capability(android, identity, false).state;
         assert_eq!(state(true, true), "enabled");
         assert_eq!(state(true, false), "unsupported");
         assert_eq!(state(false, true), "unsupported");
         assert_eq!(state(false, false), "unsupported");
+        assert_eq!(remote_push_capability(false, false, true).state, "enabled");
+        // Off every host this test runs on: only an iOS build sets it.
+        assert!(!ios_live_activity_built());
         assert_eq!(
-            remote_push_capability(true, false).reason,
+            remote_push_capability(true, false, false).reason,
             "This build has no push configuration."
         );
 

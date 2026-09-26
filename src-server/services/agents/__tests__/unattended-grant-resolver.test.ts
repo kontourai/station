@@ -132,7 +132,9 @@ describe('makeUnattendedGrantResolver', () => {
 
     await expect(
       resolve(tool, { agentSlug: 'planner', unattendedPrincipal: voice }),
-    ).resolves.toBe(false);
+      // A denial (only literal `true` authorizes), reported distinctly so the
+      // user is not told to record a grant in a store that cannot be read.
+    ).resolves.toBe('store-unavailable');
 
     expect(logger.error).toHaveBeenCalledWith(
       'unattended grant store unavailable; denying',

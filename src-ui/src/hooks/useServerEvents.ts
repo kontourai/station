@@ -69,13 +69,29 @@ export function handleNotificationDeliveredToast(
   if (!title) return;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
-  toastStore.show(
-    title + (body ? ` — ${body}` : ''),
-    undefined,
-    NOTIFICATION_TOAST_DISPLAY_MS,
-    undefined,
-    metadata,
-  );
+  const showPlainToast = () =>
+    toastStore.show(
+      title + (body ? ` — ${body}` : ''),
+      undefined,
+      NOTIFICATION_TOAST_DISPLAY_MS,
+      undefined,
+      metadata,
+    );
+  if (metadata?.envelope) {
+    // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
+    // that fails to load (offline, a deploy replaced it) must not cost the
+    // user the toast itself.
+    void import('../lib/notification-envelope-toast')
+      .then((module) =>
+        module.showEnvelopeNotificationToast(
+          data,
+          NOTIFICATION_TOAST_DISPLAY_MS,
+        ),
+      )
+      .catch(showPlainToast);
+    return;
+  }
+  showPlainToast();
 }
 
 /** Apply an authorized personal-mode ui:navigate event through the shared seam. */

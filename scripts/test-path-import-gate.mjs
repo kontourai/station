@@ -35,10 +35,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
 import ts from 'typescript';
 import { SECURITY_CODEQL_CONFIG } from './actionlint-gate.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** The CodeQL `paths-ignore` globs, parsed from the one declared config. */
 export function codeqlIgnoreGlobs(config = SECURITY_CODEQL_CONFIG) {
@@ -311,6 +311,6 @@ function main() {
   );
 }
 
-if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { NIGHTLY_BUILDS_PER_DAY } from './lib/nightly-build-identity.mjs';
 import { verifyTauriUpdaterSignature } from './lib/release-artifacts.mjs';
 import {
@@ -1073,10 +1074,7 @@ async function main(argv = process.argv.slice(2)) {
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   return receipt;
 }
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

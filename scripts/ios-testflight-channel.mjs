@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { realpathSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { writeFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // `icon` is the desktop bundle master the overlay hands Tauri (bundle.icon);
 // it never reaches the iOS asset catalog. `iosIconSet` is the committed
@@ -17,6 +17,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/stable/ios',
     environment: 'native-release',
     internalGroup: 'Internal Testers',
+    agentActivityBundleId: null,
   }),
   beta: Object.freeze({
     bundleId: 'io.kontourai.station.beta',
@@ -27,6 +28,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/beta/ios',
     environment: 'ios-beta',
     internalGroup: 'Station Beta Internal',
+    agentActivityBundleId: 'io.kontourai.station.beta.AgentActivity',
   }),
   nightly: Object.freeze({
     bundleId: 'io.kontourai.station.nightly',
@@ -37,6 +39,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/nightly/ios',
     environment: 'ios-nightly',
     internalGroup: 'Station Nightly Internal',
+    agentActivityBundleId: 'io.kontourai.station.nightly.AgentActivity',
   }),
 });
 
@@ -116,18 +119,7 @@ function main(args) {
   });
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main(process.argv.slice(2));
   } catch (error) {

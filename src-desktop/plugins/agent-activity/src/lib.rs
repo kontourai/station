@@ -22,6 +22,11 @@ use tauri::{
     Runtime,
 };
 
+/// Whether this build carries the iOS native half (STATION_IOS_LIVE_ACTIVITY=1).
+/// The cfg is set by this crate's build script only, so the app reads it here
+/// to report `remote-push` honestly.
+pub const IOS_LIVE_ACTIVITY_BUILT: bool = cfg!(all(target_os = "ios", station_ios_live_activity));
+
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "io.kontourai.station.agentactivity";
 

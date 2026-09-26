@@ -11,6 +11,7 @@
 // Station use and the old target selector, with explicit vendor-tool exceptions.
 
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 const SELF = new Set([
@@ -187,6 +188,6 @@ function main() {
   return 0;
 }
 
-if (process.argv[1]?.endsWith('station-vocabulary-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main());
 }

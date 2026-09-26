@@ -9,6 +9,7 @@ import {
   isApprovalNotification,
   notificationDetail,
 } from '../../utils/notifications';
+import { NotificationEnvelopeControls } from './NotificationEnvelopeControls';
 
 /**
  * One row of "Recent activity".
@@ -68,6 +69,12 @@ export function NotificationHistoryItem({
           </div>
         )}
         {detail && <div className="notification-history__detail">{detail}</div>}
+        <NotificationEnvelopeControls
+          notification={notification}
+          detailClassName="notification-history__detail"
+          actionsClassName="notification-history__actions"
+          actionClassName="notification-history__action"
+        />
         {notice && (
           <div
             id={noticeId}

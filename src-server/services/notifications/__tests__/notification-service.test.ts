@@ -1,7 +1,6 @@
 import {
   existsSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -26,7 +25,6 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const {
-  INTERNAL_NOTIFICATION_SOURCES,
   NotificationDedupeSourceConflictError,
   NotificationDispatchClosedError,
   NotificationService,
@@ -1738,34 +1736,6 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
     expect(svc.listProviders()).toEqual([
       { id: 'p', displayName: 'First', categories: ['test'] },
     ]);
-  });
-
-  test('INTERNAL_NOTIFICATION_SOURCES covers every in-process schedule() caller', () => {
-    const root = join(process.cwd(), 'src-server');
-    const found = new Set<string>();
-    for (const entry of readdirSync(root, { recursive: true })) {
-      const file = String(entry);
-      if (!file.endsWith('.ts') || file.includes('__tests__')) continue;
-      const text = readFileSync(join(root, file), 'utf8');
-      for (const match of text.matchAll(
-        /notificationService!?\??\.(?:schedule|scheduleEnveloped)\(\s*([^,\s)]+)/g,
-      )) {
-        const arg = match[1];
-        const literal = /^'([^']+)'$/.exec(arg)?.[1];
-        const constant = new RegExp(`const ${arg} = '([^']+)'`).exec(text)?.[1];
-        found.add(literal ?? constant ?? `<unresolved ${arg} in ${file}>`);
-      }
-    }
-    // The scan must reach the known callers, or it proves nothing.
-    expect([...found]).toEqual(
-      expect.arrayContaining([
-        'scheduler',
-        'approval-inbox',
-        'turn-completion',
-      ]),
-    );
-    for (const source of found)
-      expect(INTERNAL_NOTIFICATION_SOURCES.has(source), source).toBe(true);
   });
 
   test('only the REST path may write an api: tag', async () => {

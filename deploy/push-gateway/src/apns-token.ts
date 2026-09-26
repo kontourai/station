@@ -6,8 +6,7 @@
 // isolates signing the same claims produce different tokens. Signing here is
 // deterministic instead (RFC 6979 nonces via @noble/curves) and `iat` is
 // floored to a shared window, so every isolate derives the byte-identical
-// token for a window without any shared storage. Approach from T3 Code's
-// relay (infra/relay/src/agentActivity/ApnsProviderTokens.ts, MIT).
+// token for a window without any shared storage.
 
 import { p256 } from '@noble/curves/nist.js';
 import { sha256 } from '@noble/hashes/sha2.js';

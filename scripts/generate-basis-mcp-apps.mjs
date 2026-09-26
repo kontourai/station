@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { BASIS_MCP_APP_MANIFEST } from './basis-mcp-app-manifest.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const REPAIR_COMMAND = 'npm run basis:mcp:generate';
@@ -192,5 +193,5 @@ export async function generateBasisMcpApps(options = {}) {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === import.meta.filename)
+if (invokedDirectly(import.meta.url))
   await generateBasisMcpApps({ check: process.argv.includes('--check') });

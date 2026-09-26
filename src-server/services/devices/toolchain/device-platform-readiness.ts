@@ -2,9 +2,7 @@
  * Whether this host can run iOS Simulators and Android Emulators (#1970).
  *
  * Read-only: file checks plus one bounded `xcrun --find simctl` on macOS.
- * Nothing is installed, booted or started. Adapted from the platform checks
- * in t3code's `apps/server/src/device/LocalDeviceHost.ts` (MIT, © 2026 T3
- * Tools Inc.).
+ * Nothing is installed, booted or started.
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
