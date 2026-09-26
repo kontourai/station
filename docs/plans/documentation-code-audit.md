@@ -114,6 +114,7 @@ existing interface when it already hides the relevant complexity.
 | The streaming diagram includes a handler absent from composition | `createStreamingPipeline` composes Reasoning, ToolCall, Metadata, and Completion | Remove TextDeltaHandler from the diagram and link the composition owner |
 | Monitoring prose conflates observations with the durable orchestration stream | `MonitoringEmitter` uses an EventEmitter and best-effort persistence | Name the separate channel and its durability limit |
 | The MCP carries an independent prose copy with stale vocabulary and abstraction claims | The former `station-docs-content.ts` described Provider as user-facing, every Project as directory-backed, and core as having no domain logic | Move shipped prose to canonical Markdown, correct those claims, generate manual and architecture topics with content identity |
+| The Task introduction implies Session history is not persistent | `src-server/services/orchestration/event-store.ts` and its reopen/history tests | Distinguish durable work identity from an execution episode without denying persisted Session history |
 
 ## Foundation implemented in this tranche
 
@@ -140,6 +141,22 @@ existing interface when it already hides the relevant complexity.
 
 This is the foundation and initial correction tranche. It does not close the
 repository-wide semantic audit or comment review.
+
+### Code-health disposition
+
+The foundation review found no introduced unused exports/types or duplication.
+Two introduced complexity findings are retained as advisory: `validateCatalog`
+and `compileStationDocs`. They validate a finite static input contract and
+assemble one content snapshot; neither handles live Station state. The catch
+tests cover missing/duplicate/unknown module assignments, missing source
+sections, headings inside code fences, and divergence between canonical prose
+and the actual shipped payload. A real stdio client also retrieved a generated
+architecture topic from the compiled bundle without credentials.
+
+Splitting the validation conditions solely to lower a function score would
+relocate the same obligations. Revisit the boundaries when another consumer or
+new catalog shape adds a separate responsibility. These findings do not certify
+the prose's semantic accuracy; that remains the program's open review work.
 
 ## Veritas adoption
 

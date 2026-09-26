@@ -90,7 +90,7 @@ Every engine, Station's own or external, reports through one canonical event mod
 
 ## Tasks and the task workspace
 
-A task is a durable, user-addressable work identity belonging to a project. Unlike a session, it survives restarts and is not tied to one execution episode. A task may correlate an exact session, or none at all.
+A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 

@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'ff75180daad8a2d454cf21132f220cdf004ae37cdd8e309145700ec5ee98c4d6';
+  '317e456960ed6a6a628cc45d46b2f583f5020489f781160f7db0f5f6b68abe8d';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -169,7 +169,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'task workspace',
       'references',
     ],
-    body: 'A task is a durable, user-addressable work identity belonging to a project. Unlike a session, it survives restarts and is not tied to one execution episode. A task may correlate an exact session, or none at all.\n\nA task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.\n\nThe task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.\n\nA task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.',
+    body: 'A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.\n\nA task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.\n\nThe task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.\n\nA task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.',
     parentId: 'manual',
     sourcePath: 'docs/reference/station-docs.md',
     sourceAnchor: 'tasks-and-the-task-workspace',
