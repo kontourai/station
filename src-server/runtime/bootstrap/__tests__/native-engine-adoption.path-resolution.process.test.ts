@@ -4,14 +4,12 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 /**
  * #2663: native-engine adoption must find a CLI where the engine spawn and
@@ -33,12 +31,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * `MuseAdapter` spawn.
  */
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 function tempRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-native-adoption-path-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-native-adoption-path-');
 }
 
 /** A `muse` that records the path it was executed as, then completes. */
@@ -163,9 +159,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 describe('native-engine adoption resolves CLIs like the engine spawn (#2663)', () => {
