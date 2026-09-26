@@ -10,6 +10,10 @@ import {
 import { cp, readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import {
+  assertSafeContextText,
+  ContextSafetyError,
+} from '../../../services/orchestration/context-safety.js';
 import { PluginIncarnationError } from '../../../services/plugins/plugin-incarnation.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
 
@@ -1009,8 +1013,18 @@ describe('Plugin Routes', () => {
     pluginRegistryProvider.listInstalled.mockResolvedValue([
       { id: 'test-plugin', version: '1.0.0', installed: true },
     ]);
+    // The refusal the real scanner throws for a blocked prompt file.
+    let refusal: unknown;
+    try {
+      assertSafeContextText('Hidden\u200Bmarker', {
+        source: "plugin 'test-plugin' prompt files",
+      });
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ContextSafetyError);
     scanPluginPromptGeneration.mockImplementationOnce(() => {
-      throw new Error('context-safety refusal');
+      throw refusal;
     });
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
@@ -1023,10 +1037,10 @@ describe('Plugin Routes', () => {
       method: 'POST',
     });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     expect(await json(response)).toEqual({
       success: false,
-      error: 'context-safety refusal',
+      error: (refusal as ContextSafetyError).message,
     });
   });
 
