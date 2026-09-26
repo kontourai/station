@@ -139,7 +139,12 @@ function brokerStub(
   trust: ApprovedStationConnectionTrust,
   keys: CryptoKeyPair,
   answerSdp: string,
-  opts?: { expiresAt?: number; delayMs?: number },
+  opts?: {
+    expiresAt?: number;
+    delayMs?: number;
+    proofConnectionId?: string;
+    proofNonce?: string;
+  },
 ) {
   const expiresAt = opts?.expiresAt ?? Date.now() + 60_000;
   let clientId = '';
@@ -159,8 +164,8 @@ function brokerStub(
         stationId: trust.stationId,
         enrollmentId: trust.enrollmentId,
         generation: trust.generation,
-        connectionId: clientId,
-        clientNonce: nonce,
+        connectionId: opts?.proofConnectionId ?? clientId,
+        clientNonce: opts?.proofNonce ?? nonce,
         clientFingerprint: FP_OFFER,
         stationFingerprint: FP_STATION,
         offerSha256: await connectionDescriptionDigest(OFFER),
@@ -377,6 +382,197 @@ describe('browser relay consumer (public boundary)', () => {
     expect(snap.stationId).toBe(trust.stationId);
     expect(peerRef!.setRemoteDescription).toHaveBeenCalledOnce();
     expect(await conn.isCurrent(snap)).toBe(true);
+  });
+
+  test('pinned caller identity is copied before peer creation and verifies the Station answer', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const clientId = randomUUID();
+    const nonce = 'A'.repeat(43);
+    const suppliedIdentity = { clientId, nonce };
+    const channels: unknown[] = [];
+    const broker = brokerStub(trust, keys, ANSWER);
+    const peer = fakePeer(OFFER, channels);
+    const createConnectionIdentity = vi.fn(() => suppliedIdentity);
+    const createPeer = vi.fn(() => {
+      // Mutating the provider's object after it returns cannot change the
+      // closed snapshot already copied by the Pion owner.
+      suppliedIdentity.clientId = randomUUID();
+      suppliedIdentity.nonce = 'B'.repeat(43);
+      return peer as never;
+    });
+    const connection = createBrowserPionConnection({
+      broker,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createConnectionIdentity,
+      createPeer,
+    });
+
+    const snapshot = await connection.connect(new AbortController().signal);
+    expect(createConnectionIdentity).toHaveBeenCalledOnce();
+    expect(createConnectionIdentity.mock.invocationCallOrder[0]!).toBeLessThan(
+      createPeer.mock.invocationCallOrder[0]!,
+    );
+    expect(snapshot.connectionId).toBe(clientId);
+    expect(broker.open).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId, nonce, offerSdp: OFFER }),
+      expect.any(AbortSignal),
+    );
+    expect(broker.read).toHaveBeenCalledWith(
+      { clientId, nonce },
+      expect.any(AbortSignal),
+    );
+    expect(peer.setRemoteDescription).toHaveBeenCalledOnce();
+    connection.close();
+  });
+
+  test('a Station proof bound to a replaced pinned client ID fails before remote description', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const clientId = randomUUID();
+    const nonce = 'A'.repeat(43);
+    const broker = brokerStub(trust, keys, ANSWER, {
+      proofConnectionId: randomUUID(),
+    });
+    const peer = fakePeer(OFFER, []);
+    const connection = createBrowserPionConnection({
+      broker,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createConnectionIdentity: () => ({ clientId, nonce }),
+      createPeer: () => peer as never,
+    });
+
+    await expect(
+      connection.connect(new AbortController().signal),
+    ).rejects.toThrow();
+    expect(broker.open).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId, nonce }),
+      expect.any(AbortSignal),
+    );
+    expect(peer.setRemoteDescription).not.toHaveBeenCalled();
+    connection.close();
+  });
+
+  test('malformed caller identity fails closed without browser-random downgrade', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const broker = brokerStub(trust, keys, ANSWER);
+    const createPeer = vi.fn(() => fakePeer(OFFER, []) as never);
+    const connection = createBrowserPionConnection({
+      broker,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createConnectionIdentity: () =>
+        ({
+          clientId: randomUUID(),
+          nonce: 'A'.repeat(43),
+          fallback: true,
+        }) as never,
+      createPeer,
+    });
+
+    await expect(
+      connection.connect(new AbortController().signal),
+    ).rejects.toThrow('browser_connection_identity_invalid');
+    expect(createPeer).not.toHaveBeenCalled();
+    expect(broker.open).not.toHaveBeenCalled();
+  });
+
+  test('cancellation aborts pinned identity acquisition and late identity cannot reach broker', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    let resolveIdentity!: (identity: {
+      clientId: string;
+      nonce: string;
+    }) => void;
+    let markProviderCalled!: () => void;
+    let identitySignal: AbortSignal | undefined;
+    const providerCalled = new Promise<void>((resolve) => {
+      markProviderCalled = resolve;
+    });
+    const identityPromise = new Promise<{ clientId: string; nonce: string }>(
+      (resolve) => {
+        resolveIdentity = resolve;
+      },
+    );
+    const broker = brokerStub(trust, keys, ANSWER);
+    const createPeer = vi.fn(() => fakePeer(OFFER, []) as never);
+    const connection = createBrowserPionConnection({
+      broker,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createConnectionIdentity: (signal) => {
+        identitySignal = signal;
+        markProviderCalled();
+        return identityPromise;
+      },
+      createPeer,
+    });
+    const caller = new AbortController();
+    const connecting = connection.connect(caller.signal);
+    await providerCalled;
+    caller.abort(new Error('identity-attempt-cancelled'));
+
+    await expect(connecting).rejects.toThrow('identity-attempt-cancelled');
+    expect(identitySignal?.aborted).toBe(true);
+    resolveIdentity({ clientId: randomUUID(), nonce: 'A'.repeat(43) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(createPeer).not.toHaveBeenCalled();
+    expect(broker.open).not.toHaveBeenCalled();
+  });
+
+  test('cancellation during pinned broker open carries that attempt identity and signal', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const clientId = randomUUID();
+    const nonce = 'A'.repeat(43);
+    const inner = brokerStub(trust, keys, ANSWER);
+    let markOpened!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      markOpened = resolve;
+    });
+    const open = vi.fn(
+      (
+        _connection: Parameters<PionSignalingClient['open']>[0],
+        signal: AbortSignal,
+      ) =>
+        new Promise<{ expiresAt: number }>((_resolve, reject) => {
+          const cancelled = () => reject(signal.reason);
+          signal.addEventListener('abort', cancelled, { once: true });
+          if (signal.aborted) cancelled();
+          markOpened();
+        }),
+    );
+    const broker = { ...inner, open } satisfies PionSignalingClient;
+    const peer = fakePeer(OFFER, []);
+    const connection = createBrowserPionConnection({
+      broker,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createConnectionIdentity: () => ({ clientId, nonce }),
+      createPeer: () => peer as never,
+    });
+    const caller = new AbortController();
+    const connecting = connection.connect(caller.signal);
+    await opened;
+    caller.abort(new Error('pinned-open-cancelled'));
+
+    await expect(connecting).rejects.toThrow('pinned-open-cancelled');
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId, nonce, offerSdp: OFFER }),
+      expect.any(AbortSignal),
+    );
+    const openSignal = open.mock.calls[0]![1];
+    expect(openSignal.aborted).toBe(true);
+    expect(broker.read).not.toHaveBeenCalled();
+    expect(peer.close).toHaveBeenCalled();
   });
 
   test('wrong generation proof rejected before remote description', async () => {

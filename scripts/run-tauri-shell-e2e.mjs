@@ -58,9 +58,13 @@ function npmRun(args) {
   run(invocation.command, invocation.args);
 }
 
-function buildHarness() {
+function buildHarness(laneName) {
   const bundleArgs =
     process.platform === 'darwin' ? ['--bundles', 'app'] : ['--no-bundle'];
+  const config =
+    laneName === 'native-relay-grant-lifecycle'
+      ? 'tauri.webdriver.relay-grant.conf.json'
+      : 'tauri.webdriver.conf.json';
   npmRun([
     'run',
     'build:desktop',
@@ -70,7 +74,7 @@ function buildHarness() {
     '--features',
     'webdriver',
     '--config',
-    'tauri.webdriver.conf.json',
+    config,
     ...bundleArgs,
   ]);
 }
@@ -94,10 +98,22 @@ export const SHELL_E2E_LANES = [
     spec: 'tests/tauri-shell/native-relay-candidate-approval.e2e.ts',
     manual: true,
   },
+  {
+    // Explicit v2 grant custody lane: the real main WebView redeems, reads,
+    // revokes and retries cleanup against a free loopback broker using exact
+    // fixture-owned Keychain identities. It never mounts app data ingress.
+    name: 'native-relay-grant-lifecycle',
+    spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
+    manual: true,
+  },
 ];
 
 function main() {
-  if (process.argv.slice(2).includes('--build')) buildHarness();
+  const requested = process.argv
+    .slice(2)
+    .find((argument) => argument.startsWith('--lane='))
+    ?.slice('--lane='.length);
+  if (process.argv.slice(2).includes('--build')) buildHarness(requested);
   const explicit = process.env.STATION_TAURI_E2E_BINARY;
   const binary =
     explicit ??
@@ -126,10 +142,6 @@ function main() {
   // the sweep: a red `plugin-host-security` means `device-pane` did not run at
   // all rather than passing. Use `--lane=<name>` to reach a later lane while an
   // earlier one is red, and to iterate on one without paying for the other.
-  const requested = process.argv
-    .slice(2)
-    .find((argument) => argument.startsWith('--lane='))
-    ?.slice('--lane='.length);
   const lanes = requested
     ? SHELL_E2E_LANES.filter((lane) => lane.name === requested)
     : SHELL_E2E_LANES.filter((lane) => !lane.manual);

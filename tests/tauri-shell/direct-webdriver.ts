@@ -260,6 +260,16 @@ export class DirectWebDriver {
     });
   }
 
+  async executeAsync<T, A extends unknown[]>(
+    fn: (...args: [...A, (value: T) => void]) => void,
+    ...args: A
+  ) {
+    return await this.request<T>('POST', this.sessionPath('/execute/async'), {
+      script: `(${fn.toString()}).apply(null, arguments);`,
+      args,
+    });
+  }
+
   async refresh() {
     await this.request('POST', this.sessionPath('/refresh'), {});
   }
