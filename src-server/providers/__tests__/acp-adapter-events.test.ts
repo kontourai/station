@@ -222,7 +222,7 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
     });
   });
 
-  test('an oversized tool call reaches no event unbounded: the mapper has no path around the supervisor', () => {
+  test('an oversized tool call and its completion reach no event unbounded', () => {
     const events: CanonicalRuntimeEvent[] = [];
     const ctx = makeCtx(events);
     const oversized = `${'provider-bytes '.repeat(4096)}tail`;

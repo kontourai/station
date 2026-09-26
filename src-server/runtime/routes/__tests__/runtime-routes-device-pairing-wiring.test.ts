@@ -8,9 +8,6 @@
  * the real `configureRuntimeRoutes` over a real `DevicePairingService` and
  * reads the outcome where production writes it: the runtime logger for both
  * audit sinks, and the endpoint the pairing service records for the resolver.
- *
- * (It replaces source-text checks that an `audit:` key appeared within a few
- * hundred characters of each call site.)
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -195,9 +192,9 @@ describe('runtime routes: device pairing security wiring', () => {
         source: 'same-origin',
         requesterPosition: 'unproven',
       });
-      // Station's own attested internal caller presents no credential: the
-      // one approval class the host route writes to the audit log. An
-      // unproven requester position needs an operator, so it is refused.
+      // Station's own attested internal caller presents no credential. An
+      // unproven requester position needs an operator, so the approval is
+      // refused, and the host route writes that refusal to the audit log.
       const confirm = await request(
         `/api/pairing/requests/${pending.requestId}/confirm`,
         {

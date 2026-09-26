@@ -25,8 +25,8 @@ describe('tenant execution-context telemetry contract', () => {
   });
 
   test('passes every vocabulary value through unchanged', () => {
-    // A literal alongside the constant-derived rows: shrinking the vocabulary
-    // cannot make this vacuous.
+    // A literal alongside the constant-derived rows: emptying the operation
+    // vocabulary cannot make its rows vacuous.
     expect(TENANT_EXECUTION_CONTEXT_OPERATION).toContain('station_control');
     const dimensions = [
       ['operation', TENANT_EXECUTION_CONTEXT_OPERATION],
