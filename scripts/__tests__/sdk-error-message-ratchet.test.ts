@@ -182,6 +182,7 @@ describe('sdk envelope-read rule: what counts', () => {
     "throw new Error('Invalid Project catalogue.');",
     // Re-wrapping a caught failure is not an envelope read.
     'throw new Error(error.message);',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source deliberately embeds a template placeholder
     'throw new Error(`Import failed: ${err.message}`);',
     "const text = error.message ?? 'x';",
     // The helper is the answer, not a violation.
