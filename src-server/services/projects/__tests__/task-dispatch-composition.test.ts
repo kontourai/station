@@ -43,6 +43,7 @@ describe('TaskDispatcher runtime composition', () => {
     });
 
     const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       sourceSurface: 'composition-test',
     });
@@ -61,6 +62,7 @@ describe('TaskDispatcher runtime composition', () => {
     });
     await expect(
       composeTaskDispatcher(service).dispatch('missing-task', {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
       }),
     ).resolves.toEqual({

@@ -30,6 +30,22 @@ vi.mock(
   }),
 );
 
+// Passthrough spy: #2620 asserts what the seam hands delivery wiring.
+const wiring = vi.hoisted(() => ({ deps: [] as unknown[] }));
+vi.mock('../notification-delivery-wiring.js', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../notification-delivery-wiring.js')>();
+  return {
+    ...original,
+    wireNotificationDelivery: (
+      deps: Parameters<typeof original.wireNotificationDelivery>[0],
+    ) => {
+      wiring.deps.push(deps);
+      return original.wireNotificationDelivery(deps);
+    },
+  };
+});
+
 const { configureRuntimeSupportServices } = await import(
   '../runtime-route-support.js'
 );
@@ -59,10 +75,8 @@ function stub(): any {
   return proxy;
 }
 
-test('a plugin provider with a reserved id is skipped at boot and the ordinary one registers', () => {
-  const home = makeTempDir('runtime-support-notif-');
-  const warn = vi.fn();
-  const context = new Proxy(
+function supportContext(home: string, warn = vi.fn()) {
+  return new Proxy(
     {
       eventBus: new EventBus(),
       logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
@@ -70,6 +84,26 @@ test('a plugin provider with a reserved id is skipped at boot and the ordinary o
     } as Record<PropertyKey, unknown>,
     { get: (target, key) => (key in target ? target[key] : stub()) },
   );
+}
+
+test('#2620: the focus source and in-app liveness reach delivery wiring', () => {
+  const focus = { snapshotForPrincipals: () => new Map() };
+  const inAppLiveness = { isLive: () => false };
+  wiring.deps.length = 0;
+  const services = configureRuntimeSupportServices(
+    supportContext(makeTempDir('runtime-support-focus-')) as never,
+    stub(),
+    { webPushEnabled: false, focus, inAppLiveness },
+  );
+  shutdowns.push(() => services.notificationService.shutdown());
+  expect(wiring.deps).toHaveLength(1);
+  expect(wiring.deps[0]).toMatchObject({ focus, inAppLiveness });
+});
+
+test('a plugin provider with a reserved id is skipped at boot and the ordinary one registers', () => {
+  const home = makeTempDir('runtime-support-notif-');
+  const warn = vi.fn();
+  const context = supportContext(home, warn);
 
   const services = configureRuntimeSupportServices(context as never, stub(), {
     webPushEnabled: false,

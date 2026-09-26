@@ -120,7 +120,12 @@ function app(homeDir: string, deps = foregroundDependencies()) {
       logger: { warn: vi.fn() },
       // This is the actual foreground execution seam, not a hand-built
       // session/result: the assertion below observes its real start input.
-      startTurn: (input) => executeForegroundMessage(input, deps),
+      startTurn: (input) =>
+        // As production's webhook starter: the operator owns the session.
+        executeForegroundMessage(
+          { ...input, userId: 'human:local:operator' },
+          deps,
+        ),
     }),
     deps,
   };
@@ -309,7 +314,12 @@ describe('inbound webhooks', () => {
       homeDir,
       authorization,
       logger: { warn: vi.fn() },
-      startTurn: (input) => executeForegroundMessage(input, deps),
+      startTurn: (input) =>
+        // As production's webhook starter: the operator owns the session.
+        executeForegroundMessage(
+          { ...input, userId: 'human:local:operator' },
+          deps,
+        ),
     });
     const windowMs = 5 * 60_000;
     const skewed = String(Math.floor((now + windowMs - 1000) / 1000));
@@ -492,7 +502,12 @@ describe('minimum secret strength (review L2)', () => {
       homeDir,
       authorization,
       logger: { warn: vi.fn() },
-      startTurn: (input) => executeForegroundMessage(input, deps),
+      startTurn: (input) =>
+        // As production's webhook starter: the operator owns the session.
+        executeForegroundMessage(
+          { ...input, userId: 'human:local:operator' },
+          deps,
+        ),
     });
     const response = await request(route, body(), undefined, {
       tokenId: 'weak',

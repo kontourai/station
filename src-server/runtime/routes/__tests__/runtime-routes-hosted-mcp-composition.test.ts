@@ -16,8 +16,10 @@ import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-
 import {
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeCredentialAuthority,
+  setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   getInternalApiToken,
@@ -733,6 +735,15 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
       },
     );
     const app = new Hono();
+    // The launching request is the operator's: its principal owns the child.
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        credential: 'operator-credential',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+      await next();
+    });
     await configureRuntimeRoutes(
       runtimeContext(app, homeDir, {
         orchestrationService,
@@ -753,11 +764,16 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
       loopbackEnv(),
     );
     expect(response.status).toBe(201);
-    expect(dispatchWithReceipt).toHaveBeenCalledWith({
-      type: 'adoptSession',
-      sourceThreadId: 'external-session',
-      idempotencyKey: 'continue-op-1',
-    });
+    expect(dispatchWithReceipt).toHaveBeenCalledWith(
+      {
+        type: 'adoptSession',
+        sourceThreadId: 'external-session',
+        idempotencyKey: 'continue-op-1',
+      },
+      // The operator in person: its principal owns the child, and its
+      // grant may give it full access.
+      expect.objectContaining({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       success: true,
       data: {

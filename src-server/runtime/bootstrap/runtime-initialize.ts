@@ -51,7 +51,6 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
-import { getCachedUser } from '../../routes/system/auth.js';
 import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
@@ -580,16 +579,6 @@ export async function initializeRuntime(
       }
       return tenantExecutionContextFromSession(context);
     },
-    // Station currently exposes one local account. Keep legacy, pre-owner
-    // sessions readable only through this explicit compatibility mode; a
-    // multi-user runtime must migrate them and switch this to `deny`.
-    ownerlessSessionAccess: 'single-user-compat',
-    // #749: rows written before principal ownership retain this Station
-    // process's former OS alias. SessionAuthorization reads it as the local
-    // operator's history: members of the personal conversation account
-    // (below) read it, and otherwise only the home-possession local operator
-    // does (#2611).
-    legacyPersonalOwner: getCachedUser().alias,
     personalConversationAccess: {
       canRead: (requesterId, ownerId) =>
         deps.environmentSecurityService.canSharePersonalConversation(
@@ -678,6 +667,8 @@ export async function initializeRuntime(
     adoptionLedger,
     eventBus,
     logger,
+    invalidateSessionOwner: (threadId) =>
+      orchestrationService.invalidateSessionOwner(threadId),
     listProjects: () => storageAdapter.listProjects(),
     resolveProjectRoots: () =>
       resolveAttachedProjectRoots(storageAdapter.listProjects(), (slug) =>
