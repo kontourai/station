@@ -1,47 +1,96 @@
-import { resolve } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 
-// Detection is proven against real sources in route-error-egress-gate.test.ts.
-// This file proves only the default wiring: the governance family must call
-// the whole-tree collector on the repository root and block on what it finds.
-const collector = vi.hoisted(() => ({
-  calls: [] as unknown[],
-  finding:
-    'Unreviewed direct outward .message serialization: src-server/routes/fixture.ts :: route POST /fixture :: error.message :: 1.',
-}));
+// End to end: a violating source in a checkout must make the real
+// repo-governance lane CLI block. The lane resolves its root from its own
+// location, so it runs from a temporary copy of the tracked tree. Directories
+// no governance check reads are left out to keep the copy small; if a check
+// starts reading one, the clean control below fails first.
+const repoRoot = resolve(import.meta.dirname, '../..');
+const OMITTED_TOP_LEVEL = ['src-ui', 'packages', 'tests', 'examples'];
+const VOICE_SESSION = 'src-server/voice/voice-session.ts';
+const EXPECTED_BLOCK =
+  '- repo-governance: Raw outward or durable error coercion: src-server/voice/voice-session.ts :: route ON error :: String(failure).';
 
-vi.mock('../route-error-egress-gate.mjs', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../route-error-egress-gate.mjs')>()),
-  collectRouteErrorEgressFindings: (options: unknown) => {
-    collector.calls.push(options);
-    return [collector.finding];
-  },
-}));
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
 
-const { evaluateProofFamily } = await import('../proof-family-lane.mjs');
+function copyTrackedTree() {
+  // realpath: the lane's entry check compares resolved paths, and macOS
+  // tmpdir() is a symlink into /private.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'proof-family-e2e-')));
+  roots.push(root);
+  const listing = spawnSync('git', ['ls-files', '-z'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  expect(listing.status, listing.stderr).toBe(0);
+  const files = listing.stdout
+    .split('\0')
+    .filter(Boolean)
+    .filter((file) => !OMITTED_TOP_LEVEL.includes(file.split('/')[0]));
+  for (const file of files) {
+    mkdirSync(dirname(join(root, file)), { recursive: true });
+    cpSync(join(repoRoot, file), join(root, file), { dereference: false });
+  }
+  symlinkSync(join(repoRoot, 'node_modules'), join(root, 'node_modules'));
+  return root;
+}
+
+function runLane(root: string) {
+  return spawnSync(
+    process.execPath,
+    ['scripts/proof-family-lane.mjs', '--lane=repo-governance'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      // A hang guard only; the lane itself takes seconds.
+      timeout: 120_000,
+      windowsHide: true,
+    },
+  );
+}
 
 describe('repo-governance route error egress proof', () => {
-  test('default wiring runs the whole-tree collector and blocks on its findings', () => {
-    const result = evaluateProofFamily({
-      id: 'repo-governance',
-      evidenceCheckId: 'repo-governance',
-      destination: 'required',
-      owner: 'station',
-      defaultDisposition: 'required',
-      currentBlockingStatus: 'blocking',
-      regressionSeverity: 'high',
-      falsePositiveRisk: 'low',
-      expiryOrReviewTrigger: 'never',
-    });
+  test('the lane CLI blocks on a raw WebSocket error coercion in a checkout', () => {
+    const root = copyTrackedTree();
 
-    expect(collector.calls).toEqual([
-      { rootDir: resolve(import.meta.dirname, '../..') },
-    ]);
-    expect(result.status).toBe('fail');
-    expect(result.findings).toContainEqual({
-      id: 'route-error-egress',
-      message: collector.finding,
-      severity: 'block',
-    });
-  });
+    const clean = runLane(root);
+    expect(clean.error).toBeUndefined();
+    expect(clean.status, clean.stderr).toBe(0);
+    expect(clean.stdout).toContain('Proof family lane passed: repo-governance');
+
+    writeFileSync(
+      join(root, VOICE_SESSION),
+      `
+        export function write(ws) {
+          ws.on('error', (failure) => {
+            ws.send(JSON.stringify({ message: String(failure) }));
+          });
+        }
+      `,
+    );
+    const violating = runLane(root);
+    expect(violating.error).toBeUndefined();
+    expect(violating.status).toBe(1);
+    expect(violating.stderr).toContain(
+      'Proof family lane failed: repo-governance',
+    );
+    expect(violating.stderr.split('\n')).toContain(EXPECTED_BLOCK);
+  }, 180_000);
 });

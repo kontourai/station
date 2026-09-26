@@ -57,6 +57,26 @@ describe('route error egress gate', () => {
     );
   });
 
+  test('reports a raw WebSocket error coercion in a transport boundary file', () => {
+    const rootDir = fixture({
+      ...EMPTY_TRANSPORT_BOUNDARIES,
+      [FILE]: '',
+      'src-server/voice/voice-session.ts': `
+        function write(ws) {
+          ws.on('error', (failure) => {
+            ws.send(JSON.stringify({ message: String(failure) }));
+          });
+        }
+      `,
+    });
+
+    expect(
+      collectRouteErrorEgressFindings({ rootDir, reviewed: new Set() }),
+    ).toEqual([
+      'Raw outward or durable error coercion: src-server/voice/voice-session.ts :: route ON error :: String(failure).',
+    ]);
+  });
+
   test('detects a multiline conditional direct response message', () => {
     const source = `
       app.post('/safe', (c) =>
