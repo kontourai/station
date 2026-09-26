@@ -4,6 +4,7 @@ import {
   envelopeDetailsMessage,
   envelopeError,
   envelopeMessage,
+  envelopeReasons,
   readEnvelopeFailure,
 } from '../client/api-error-message';
 import {
@@ -37,14 +38,15 @@ describe('apiErrorMessage', () => {
         'Update failed',
       ),
     ).toBe(
-      'Validation failed: command A command word is lowercase letters, digits and dashes — the text typed after "/".',
+      'A command word is lowercase letters, digits and dashes — the text typed after "/".',
     );
   });
 
-  test('names each field, so two "Required"s are not two bare words (#2708 M1)', () => {
-    // The CLI's station#2871 shape: the SDK and the CLI print one sentence.
+  test('names each field in the THROWN message, as the CLI does (#2708 M1)', () => {
+    // The CLI's station#2871 shape: a thrown StationHttpError and the CLI
+    // print one sentence, so an agent never reads two bare "Required"s.
     expect(
-      apiErrorMessage(
+      envelopeMessage(
         {
           error: 'Validation failed',
           details: {
@@ -75,8 +77,22 @@ describe('apiErrorMessage', () => {
         },
         'Update failed',
       ),
-    ).toBe(
-      'Validation failed: name Too long, command Bad word, Body is required',
+    ).toBe('Body is required Too long Bad word');
+  });
+
+  test("the SHOWN form carries no field keys and says each reason once (#2708 M1')", () => {
+    const body = {
+      error: 'Validation failed',
+      details: {
+        formErrors: [],
+        fieldErrors: { command: ['Required'], secretEnvKey: ['Required'] },
+      },
+    };
+    expect(apiErrorMessage(body, 'Update failed')).toBe('Required');
+    expect(envelopeErrorMessage(body, 'Update failed')).toBe('Required');
+    expect(envelopeReasons(body.details)).toEqual(['Required']);
+    expect(envelopeMessage(body, 'Update failed')).toBe(
+      'Validation failed: command Required, secretEnvKey Required',
     );
   });
 
@@ -266,14 +282,20 @@ describe('readEnvelopeFailure / envelopeError', () => {
       expect(readEnvelopeFailure(response(500), body, 'fallback').message).toBe(
         expected,
       );
-      // The two historical rules are thin wrappers over the same one.
-      expect(envelopeErrorMessage(body, 'fallback')).toBe(expected);
-      expect(
-        apiErrorMessage(
-          body as Parameters<typeof apiErrorMessage>[0],
-          'fallback',
-        ),
-      ).toBe(expected);
+      // Without details the shown form is the same summary; with details it
+      // is the reasons alone (pinned in the apiErrorMessage block above).
+      const hasReasons =
+        envelopeReasons((body as { details?: unknown } | null)?.details)
+          .length > 0;
+      if (!hasReasons) {
+        expect(envelopeErrorMessage(body, 'fallback')).toBe(expected);
+        expect(
+          apiErrorMessage(
+            body as Parameters<typeof apiErrorMessage>[0],
+            'fallback',
+          ),
+        ).toBe(expected);
+      }
     });
   });
 

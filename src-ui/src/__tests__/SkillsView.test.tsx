@@ -452,6 +452,46 @@ describe('SkillsView', () => {
       });
     });
 
+    // #2708: the thrown message is field-qualified for CLI and agent readers
+    // ("Validation failed: command …"); the editor shows the server's reason.
+    test('a refused save toasts the server reason, not the field key', async () => {
+      const { StationHttpError } = await import(
+        '@kontourai/station-sdk/client'
+      );
+      updateLocalSkillMock.mockRejectedValueOnce(
+        new StationHttpError(
+          400,
+          'Validation failed: command A command word is lowercase letters, digits and dashes.',
+          {
+            details: {
+              formErrors: [],
+              fieldErrors: {
+                command: [
+                  'A command word is lowercase letters, digits and dashes.',
+                ],
+              },
+            },
+          },
+        ),
+      );
+      selectSkill(
+        { name: 'release-check', source: 'local' },
+        { name: 'release-check', source: 'local', body: 'Ship {{ticket}}' },
+      );
+
+      render(<SkillsView />);
+      fireEvent.click(
+        screen.getByRole('switch', { name: 'Runnable as a slash command' }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(showToastMock).toHaveBeenCalledWith(
+          'A command word is lowercase letters, digits and dashes.',
+        ),
+      );
+    });
+
     // Turning a command OFF has to be a WRITE. Omitting `command` from the
     // payload would leave the old declaration on disk and the skill would go on
     // answering to its word.

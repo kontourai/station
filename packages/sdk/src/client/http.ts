@@ -27,7 +27,7 @@ import {
 import {
   envelopeCode,
   envelopeError,
-  envelopeMessage,
+  envelopeSentence,
   parseRetryAfterMs,
   StationHttpError,
 } from './api-error-message';
@@ -422,15 +422,15 @@ export class StationSseStallError extends Error {
 
 /**
  * The sentence a user reads for a Station response envelope. A thin wrapper
- * over `envelopeMessage` (`api-error-message.ts`), the one rule every client
- * shares (#2708): validation `details` first, then a string `error`, an
- * object `error`'s `message` then `code`, the top-level `message`, and only
- * then `fallback`. The object shape is the runtime's own auth refusal
+ * over `envelopeSentence` (`api-error-message.ts`), the shown form of the one
+ * rule every client shares (#2708): the server's validation reasons when
+ * there are any, else a string `error`, an object `error`'s `message` then
+ * `code`, the top-level `message`, and only then `fallback`. The object shape is the runtime's own auth refusal
  * (`{"error":{"code":"authentication_required"}}`), which would otherwise
  * render as `[object Object]` (station#4-HOME-006).
  */
 export function envelopeErrorMessage(body: unknown, fallback: string): string {
-  return envelopeMessage(body, fallback);
+  return envelopeSentence(body, fallback);
 }
 
 /**

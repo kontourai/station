@@ -154,6 +154,26 @@ export function envelopeDetailsMessage(details: unknown): string | undefined {
 }
 
 /**
+ * The validation sentences in a zod `flatten()` `details`, for a person to
+ * read: the server's own reasons, form-level first, each said once, with no
+ * field keys (`command` is a schema key, not copy). Empty when there are none.
+ * The UI renders these from `StationHttpError.details`; the thrown message
+ * keeps the field-qualified form for CLI and agent readers.
+ */
+export function envelopeReasons(details: unknown): string[] {
+  const flattened = record(details);
+  if (!flattened) return [];
+  const reasons = stringEntries(flattened.formErrors);
+  const fieldErrors = record(flattened.fieldErrors);
+  if (fieldErrors) {
+    for (const messages of Object.values(fieldErrors)) {
+      reasons.push(...stringEntries(messages));
+    }
+  }
+  return [...new Set(reasons)];
+}
+
+/**
  * The one message rule. The summary is, in order: a string `error`; an object
  * `error`'s `message`, then its `code` (a machine token, still shown rather
  * than swapped for an invention — it is what the server computed); the
@@ -169,6 +189,24 @@ export function envelopeMessage(body: unknown, fallback: string): string {
   const summary = envelopeSummary(envelope, fallback);
   const fields = envelopeDetailsMessage(envelope.details);
   return fields ? `${summary}: ${fields}` : summary;
+}
+
+/**
+ * The same rule for a message that is SHOWN, not thrown with its details: the
+ * server's reason sentences when there are any (`envelopeReasons`), else the
+ * summary. `apiErrorMessage` and `envelopeErrorMessage` return this because
+ * their callers throw a plain `Error` carrying only the text — which the UI
+ * renders as-is, and which cannot be curated later because the `details` are
+ * gone. Once a fetcher throws `envelopeError` instead, its error carries both
+ * the field-qualified message and the `details` the UI curates from.
+ */
+export function envelopeSentence(body: unknown, fallback: string): string {
+  const envelope = record(body);
+  if (!envelope) return fallback;
+  const reasons = envelopeReasons(envelope.details);
+  return reasons.length > 0
+    ? reasons.join(' ')
+    : envelopeSummary(envelope, fallback);
 }
 
 function envelopeSummary(
@@ -255,8 +293,9 @@ export function envelopeError(
 }
 
 /**
- * The message rule for a body a caller has already parsed. Kept for its
- * existing callers and the `api-core` export; it is `envelopeMessage`.
+ * The message for a body a caller has already parsed and will throw as a
+ * plain `Error`. Kept for its existing callers and the `api-core` export; it
+ * is `envelopeSentence` (see there for why not the field-qualified form).
  */
 export function apiErrorMessage(
   result:
@@ -269,5 +308,5 @@ export function apiErrorMessage(
     | undefined,
   fallback: string,
 ): string {
-  return envelopeMessage(result, fallback);
+  return envelopeSentence(result, fallback);
 }
