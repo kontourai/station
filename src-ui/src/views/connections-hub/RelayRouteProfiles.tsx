@@ -7,10 +7,8 @@ import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
-import {
-  RelayRouteProfileDialog,
-  RelayRouteTrustReadout,
-} from './RelayRouteProfileDialog';
+import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
+import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import './ComputersSection.css';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
@@ -78,16 +76,13 @@ export function RelayRouteProfiles() {
             </Button>
           }
         >
-          <RelayRouteTrustReadout
+          <RelayRouteKeyApproval
+            key={`${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
+            profileName={profile.name}
+            brokerOrigin={profile.relayRoute!.brokerOrigin}
             stationId={profile.relayRoute!.stationId}
             enrollmentId={profile.relayRoute!.enrollmentId}
           />
-          <span className="connections-computers__note">
-            Station identity and enrollment must match the independently
-            approved key stored on this device. Broker messages cannot replace
-            that key. This readout is advisory; a future connection attempt must
-            check the current trust record again.
-          </span>
           <button
             type="button"
             className="connections-computers__remove tap-target"

@@ -27,6 +27,8 @@ type Answer = {
   answerSdp: string;
   stationProof: string;
   dispose: () => void | Promise<void>;
+  /** Present only for an explicitly composed diagnosticEcho adapter. */
+  collectDiagnosticEcho?: (signal: AbortSignal) => Promise<readonly string[]>;
 };
 export interface BrokerNativeOfferAdapter {
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
@@ -312,7 +314,9 @@ export class SelfHostedBrokerConnector {
       current();
       let observed = 0;
       let answered = 0;
-      while (observed < 32) {
+      let diagnosticEchoMode = false;
+      const diagnosticEchoes: string[] = [];
+      while (observed < 32 && !diagnosticEchoMode) {
         let offers: BrokerNativeOffer[];
         try {
           offers = await this.client.nativeOffers(
@@ -361,13 +365,24 @@ export class SelfHostedBrokerConnector {
             currentSignal,
           );
           current();
+          if (result.collectDiagnosticEcho) {
+            diagnosticEchoMode = true;
+            diagnosticEchoes.push(
+              ...(await result.collectDiagnosticEcho(currentSignal)),
+            );
+            current();
+            await this.#dispose(result);
+            current();
+          }
         } catch (error) {
           await this.#dispose(result);
           throw error;
         }
         answered++;
       }
-      return { observed, answered };
+      return diagnosticEchoMode
+        ? { observed, answered, diagnosticEchoes }
+        : { observed, answered };
     });
   }
   async withdraw(signal: AbortSignal) {
