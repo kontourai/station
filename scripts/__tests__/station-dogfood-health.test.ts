@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import {
+  chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,6 +27,7 @@ import { TerminalWebSocketServer } from '../../src-server/services/terminal/term
 import {
   assertListenerOwnership,
   inspectProcessFingerprints,
+  linuxProcessBirthFingerprint,
   listeningPidsByPort,
   observeListeningPidsByPort,
   probeDogfoodHealth,
@@ -162,6 +165,137 @@ describe('dogfood authenticated health', () => {
     expect(stderr).toContain(
       'usage: station-dogfood-health.mjs --instance-state=/absolute/path',
     );
+  });
+
+  it('runs as the lone file install-macos.zsh installs into bin/ (#2696)', async () => {
+    // install-macos.zsh copies ONLY this helper to
+    // "$SUPPORT_DIR/bin/station-dogfood-health.mjs" (`install -m 0755`) and
+    // runs that copy. Reproduce that shape: nothing beside it, no repo tree
+    // above it. A relative import of repo modules fails here at load time
+    // with ERR_MODULE_NOT_FOUND before main() ever runs.
+    const bin = join(
+      mkdtempSync(join(tmpdir(), 'station-health-installed-')),
+      'bin',
+    );
+    mkdirSync(bin, { mode: 0o700 });
+    const installed = join(bin, 'station-dogfood-health.mjs');
+    copyFileSync(
+      fileURLToPath(new URL('../station-dogfood-health.mjs', import.meta.url)),
+      installed,
+    );
+    chmodSync(installed, 0o755);
+
+    // A well-formed record for a Station that is not serving: the probe runs
+    // every check, reports JSON, and exits 1 through main()'s normal path.
+    const apiPort = await reserveConsecutivePorts();
+    const state = join(bin, '..', 'instance.json');
+    writeFileSync(
+      state,
+      JSON.stringify({
+        instanceId: 'phone',
+        bootId: '11111111-1111-4111-8111-111111111111',
+        build: { sha: 'a'.repeat(40) },
+        serverPid: process.pid,
+        serverFingerprint: currentProcessFingerprint(),
+        uiPid: process.pid,
+        uiFingerprint: currentProcessFingerprint(),
+        serverPort: apiPort,
+        uiPort: apiPort + 3,
+        host: '127.0.0.1',
+      }),
+      { mode: 0o600 },
+    );
+
+    let status = 0;
+    let stdout = '';
+    let stderr = '';
+    try {
+      stdout = execFileSync(
+        process.execPath,
+        [installed, `--instance-state=${state}`, '--timeout-ms=1500'],
+        { cwd: bin, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    } catch (error) {
+      const failure = error as {
+        status?: number;
+        stdout?: string;
+        stderr?: string;
+      };
+      status = failure.status ?? -1;
+      stdout = String(failure.stdout ?? '');
+      stderr = String(failure.stderr ?? '');
+    }
+
+    expect(stderr).not.toContain('ERR_MODULE_NOT_FOUND');
+    expect(status).toBe(1);
+    const report = JSON.parse(stdout.trim());
+    expect(report).toMatchObject({
+      healthy: false,
+      pid: process.pid,
+      failedChecks: expect.arrayContaining(['api', 'ui']),
+    });
+  });
+
+  it('keeps the inlined Linux birth probe identical to the shared lookup (#2696)', () => {
+    // The helper inlines the Linux branch of lookupProcessBirthFingerprint so
+    // it can run as a lone installed file. Drive both through the same
+    // injected /proc reads and require identical results, including every
+    // null (fail-closed) case, so the copy cannot drift from the authority.
+    const statWith = (command: string, startTime: string) =>
+      [
+        '4242',
+        `(${command})`,
+        'S',
+        ...Array.from({ length: 18 }, (_, index) => String(index + 1)),
+        startTime,
+        '99',
+        '100',
+      ].join(' ');
+    const cases: Array<{ name: string; stat: unknown; boot: unknown }> = [
+      { name: 'plain', stat: statWith('node', '8675309'), boot: 'boot-a\n' },
+      {
+        name: 'parens and spaces in comm',
+        stat: statWith('we) ird (x', '31337'),
+        boot: 'boot-b',
+      },
+      { name: 'non-numeric start', stat: statWith('node', '12ab'), boot: 'b' },
+      { name: 'empty boot id', stat: statWith('node', '1'), boot: '  \n' },
+      { name: 'no command close', stat: '4242 node S 1 2 3', boot: 'b' },
+      { name: 'close too early', stat: '4) S 1', boot: 'b' },
+      { name: 'truncated fields', stat: '4242 (node) S 1 2 3', boot: 'b' },
+      { name: 'empty stat', stat: '', boot: 'b' },
+      { name: 'stat read throws', stat: new Error('ENOENT'), boot: 'b' },
+      {
+        name: 'boot read throws',
+        stat: statWith('node', '5'),
+        boot: new Error('EACCES'),
+      },
+    ];
+    let nonNull = 0;
+    for (const { name, stat, boot } of cases) {
+      const readFile = ((file: string) => {
+        const value = file.endsWith('/stat') ? stat : boot;
+        if (value instanceof Error) throw value;
+        if (file !== '/proc/4242/stat' && !file.endsWith('/boot_id'))
+          throw new Error(`unexpected read ${file}`);
+        return value;
+      }) as unknown as typeof readFileSync;
+      const shared = lookupProcessBirthFingerprint(4242, {
+        platform: 'linux',
+        readFile,
+      });
+      const inlined = linuxProcessBirthFingerprint(4242, readFile);
+      expect({ name, inlined }).toEqual({ name, inlined: shared });
+      if (shared !== null) nonNull += 1;
+    }
+    // Both the success and the null branches were reached.
+    expect(nonNull).toBe(2);
+    expect(
+      linuxProcessBirthFingerprint(4242, ((file: string) =>
+        file.endsWith('/stat')
+          ? statWith('node', '8675309')
+          : 'boot-a\n') as unknown as typeof readFileSync),
+    ).toBe('linux:boot-a:8675309');
   });
 
   it('snapshots all expected processes and listener ports once per phase', () => {
