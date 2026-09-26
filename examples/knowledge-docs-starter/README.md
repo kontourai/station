@@ -1,13 +1,14 @@
 # Knowledge Docs Starter
 
-Knowledge and documentation starter for document-heavy workflows. It gives users a library, ask, and source-review surface before adding production ingestion.
+Knowledge and documentation UI starter with sample rows and chat-entry controls.
+It does not ingest, index, retrieve, or cite a real document collection.
 
 ## What It Demonstrates
 
 - Declaring a plugin-owned knowledge namespace in `plugin.json`.
 - Separating document intake, question answering, and source coverage into tabs.
-- Opening chat from a source-scoped action.
-- Keeping citation quality and document ownership visible in the workspace.
+- Opening chat from the Ask tab without transmitting document selection.
+- Showing placeholder guidance for freshness, citation quality, and ownership.
 
 ## Run It
 
@@ -17,7 +18,25 @@ Install from the local starter registry:
 station registry install knowledge-docs-starter --manifest examples/registry/manifest.json
 ```
 
-The starter ships static document rows so it works out of the box. Replace those rows with uploads, directory sync, or a provider-backed knowledge service when you connect it to real content.
+The [Library component](src/index.tsx) ships three static document rows. Their
+`indexed` labels and chunk counts are sample values, not ingestion evidence.
+The **Ask with selected sources** button only opens the chat Dock and calls
+`onShowChat`; there is no selection model or source payload in that handler.
+**Source coverage** displays guidance, not measured freshness or citation checks.
+
+The [manifest](plugin.json) declares `starter-docs` for the older Knowledge
+namespace interface. That declaration does not register a Knowledge Kit root
+or load the sample filenames. The **Summarize selected documents** host action
+sends a fixed prompt; it does not read those rows or attach source content.
+Configure a usable model connection for the contributed Agent before attempting
+that action, and do not treat an uncited response as grounded in this sample.
+
+For real content, implement intake, retrieval, selection, and citation handling
+through the appropriate public SDK contracts. Use
+[Knowledge Library](../knowledge-library/README.md) for canonical record recall
+and [Meeting Notes](../meeting-notes/README.md) for the separate capture/index
+workflow. Static builds and host-action tests do not qualify live-provider
+retrieval or answer quality.
 
 ## Workspace host action migration
 

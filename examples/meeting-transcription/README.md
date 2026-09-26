@@ -35,6 +35,13 @@ placeholder is first, the modal opens but hears nothing.
 
 ## Contrast with the old `MeetingTranscriptionModal.tsx`
 
-The previous version (deleted in this commit) used `useMeetingTranscription()` directly,
+An earlier implementation used `useMeetingTranscription()` directly,
 which hardcoded WebSpeech. This version routes through `voiceRegistry`, subject to
 the selection limits above.
+
+Sending opens chat for Station's own Agent through the public SDK; it does not
+create a raw or compiled Knowledge record or rebuild an index. Use the separate
+[Meeting Notes example](../meeting-notes/README.md) for those record operations.
+The component tests use registered-provider doubles; microphone access, provider
+selection in a deployed client, and a real transcript-to-Agent journey need
+separate runtime qualification.

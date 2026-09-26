@@ -24,7 +24,22 @@ Each provider calls MCP tools via `callTool` from the SDK, unwraps response enve
 MCP servers are declared in `integrations/` as JSON manifests. The agent's `tools.mcpServers` references these by id.
 
 ### Knowledge Namespaces
-The plugin declares a `notes` knowledge namespace with RAG behavior, enabling semantic search over meeting notes.
+The [manifest](plugin.json) declares a `notes` namespace with RAG behavior.
+That declaration alone does not ingest notes, configure embedding/vector
+providers, or populate a Knowledge Kit root. The current
+[Notes hooks](src/data/notes-hooks.ts) call the older public SDK document API
+using `enterprise-notes`, which differs from the declared namespace. Treat
+that mismatch as an integration gap when adapting this example. The
+[Project layout apply route](../../src-server/routes/projects/projects.ts)
+registers manifest namespace IDs unchanged, and the
+[SDK path builder](../../packages/sdk/src/api-knowledge-utils.ts) sends the
+hook's `enterprise-notes` ID unchanged. These are separate document/vector
+partitions, not a host-qualified alias. An undeclared namespace can use the
+default storage path, but unscoped RAG search enumerates registered RAG
+namespaces and does not discover that partition automatically. Its
+Agent's separate `notes-vault` MCP tool also needs its own package and vault
+configuration. See the [Knowledge guide](../../docs/guides/knowledge.md) for
+the distinction between the older document API and the store/index API.
 
 ### Command skills
 Markdown files under the manifest's `prompts.source` directory are read IN
