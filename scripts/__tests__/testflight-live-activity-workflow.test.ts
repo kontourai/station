@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
@@ -311,9 +311,17 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       "grep -Fq 'StationNotificationService.appex' gen/apple/station.xcodeproj/project.pbxproj",
       NOTIFICATION,
     );
-    expect(text).toContain(
+    const lines = text.split('\n').map((line) => line.trim());
+    const refusal = lines.indexOf(
       "elif grep -Fq 'StationNotificationService' gen/apple/station.xcodeproj/project.pbxproj; then",
     );
+    expect(refusal).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(refusal, refusal + 4)).toEqual([
+      "elif grep -Fq 'StationNotificationService' gen/apple/station.xcodeproj/project.pbxproj; then",
+      "echo 'A channel without a Notification Service extension generated one' >&2",
+      'exit 1',
+      'fi',
+    ]);
   });
 
   it('requires the NSE secret on the same enabled channels', () => {
@@ -326,17 +334,59 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       'APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
     );
     const secrets = run(SECRETS);
-    const guard = indexOf(
+    const check =
+      'test -n "$APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" || { echo "Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" >&2; exit 1; }';
+    expectGuarded(
       secrets,
+      check,
       `if [ '\${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then`,
     );
-    expect(
-      indexOf(
-        secrets,
-        'test -n "$APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64"',
-        guard,
-      ),
-    ).toBeGreaterThan(guard);
+    const requiredNames = secrets.match(/for name in ([^;]+); do/)?.[1];
+    expect(requiredNames).toBeDefined();
+    const requiredEnv = Object.fromEntries(
+      (requiredNames as string).split(' ').map((name) => [name, 'present']),
+    );
+    for (const [channel, enabled] of [
+      ['beta', 'true'],
+      ['nightly', 'true'],
+      ['stable', 'false'],
+    ]) {
+      const script = secrets
+        .replaceAll(`\${{ steps.live_activity.outputs.enabled }}`, enabled)
+        .replaceAll(
+          `\${{ steps.live_activity.outputs.notification_enabled }}`,
+          enabled,
+        );
+      expect(script, channel).not.toContain(`\${{`);
+      for (const secret of ['', 'present']) {
+        const result = spawnSync('bash', ['-c', script], {
+          cwd: root,
+          env: {
+            ...process.env,
+            ...requiredEnv,
+            APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: 'present',
+            APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: secret,
+          },
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+        expect(
+          result.error,
+          `${channel}: bash failed to start`,
+        ).toBeUndefined();
+        if (enabled === 'true' && !secret) {
+          expect(result.status, `${channel}: empty NSE secret`).not.toBe(0);
+          expect(result.stderr).toContain(
+            'Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
+          );
+        } else {
+          expect(
+            result.status,
+            `${channel}: NSE secret ${secret || 'empty'}`,
+          ).toBe(0);
+        }
+      }
+    }
   });
 
   it('audits exactly the two named extensions on Beta/Nightly and none on Stable', () => {
@@ -346,15 +396,32 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       NOTIFICATION_BUNDLE_ID: `\${{ steps.live_activity.outputs.notification_bundle_id }}`,
     });
     const text = run(VERIFY);
-    expect(
-      guardOf(
-        text,
-        indexOf(
-          text,
-          'expected_extension_count=2; else expected_extension_count=1; fi',
-        ),
-      ),
-    ).toBe(LIVE_GUARD);
+    const countLines = text
+      .split('\n')
+      .filter((line) => line.includes('expected_extension_count='));
+    expect(countLines).toHaveLength(1);
+    const countSwitch = countLines[0].trim();
+    expect(countSwitch).toBe(
+      'if [ "$NOTIFICATION_SERVICE" = true ]; then expected_extension_count=2; else expected_extension_count=1; fi',
+    );
+    expect(guardOf(text, indexOf(text, countLines[0]))).toBe(LIVE_GUARD);
+    for (const [enabled, expected] of [
+      ['true', '2'],
+      ['false', '1'],
+    ]) {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${countSwitch}\nprintf '%s' "$expected_extension_count"`],
+        {
+          env: { ...process.env, NOTIFICATION_SERVICE: enabled },
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      expect(result.error, `count switch with ${enabled}`).toBeUndefined();
+      expect(result.status, `count switch with ${enabled}`).toBe(0);
+      expect(result.stdout, `count switch with ${enabled}`).toBe(expected);
+    }
     expectGuarded(
       text,
       'test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d \' \')" = "$expected_extension_count"',
