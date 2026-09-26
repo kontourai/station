@@ -2,6 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createElicitationCallback } from '../../../runtime/conversation/stream-orchestrator.js';
+import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import type { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -55,7 +57,10 @@ describe('approval inbox notifications', () => {
   let approvalRegistry: ApprovalRegistry;
   let orchestrationService: Pick<
     OrchestrationService,
-    'dispatch' | 'readRequestOutcome' | 'resolveSessionProjectSlug'
+    | 'dispatch'
+    | 'isEphemeralSession'
+    | 'readRequestOutcome'
+    | 'resolveSessionProjectSlug'
   >;
   let provider: ApprovalInboxNotificationProvider;
 
@@ -79,6 +84,9 @@ describe('approval inbox notifications', () => {
       resolveSessionProjectSlug: vi
         .fn<OrchestrationService['resolveSessionProjectSlug']>()
         .mockReturnValue(undefined),
+      isEphemeralSession: vi
+        .fn<OrchestrationService['isEphemeralSession']>()
+        .mockReturnValue(false),
     };
     provider = new ApprovalInboxNotificationProvider({
       approvalRegistry,
@@ -402,6 +410,76 @@ describe('approval inbox notifications', () => {
 
     await expect(approvalPromise).resolves.toBe(true);
   });
+
+  // #2589: one tool approval in a Station-agent session is written twice:
+  // the /chat relay registers it (the registry notification) and the adapter
+  // republishes it as the thread's `request.opened` (the orchestration
+  // notification, and the agent-activity card). Both are on the card, so
+  // neither may raise a phone alert; a plain chat's approval must. An
+  // ephemeral (webhook) session is left out of the session read model the
+  // card is built from, so both of its records must alert, and so must they
+  // when the ephemeral lookup throws (fail-soft: unmarked still alerts).
+  test.each<[string, string | undefined, boolean | 'throws', boolean]>([
+    ['a Station-agent relay turn', 'thread-7', false, true],
+    ['an ephemeral Station-agent relay turn', 'thread-7', true, false],
+    [
+      'a Station-agent relay turn whose ephemeral lookup throws',
+      'thread-7',
+      'throws',
+      false,
+    ],
+    ['a plain managed chat', undefined, false, false],
+  ])(
+    'a registry approval from %s (relay thread %s, ephemeral %s) is card-alerted: %s',
+    async (_label, orchestrationThreadId, ephemeral, cardAlerted) => {
+      vi.mocked(orchestrationService.isEphemeralSession).mockImplementation(
+        (threadId) => {
+          if (ephemeral === 'throws')
+            throw new Error('ephemeral lookup failed');
+          return ephemeral && threadId === 'thread-7';
+        },
+      );
+      const elicit = createElicitationCallback(
+        { name: 'Reviewer', tools: { autoApprove: [] } } as any,
+        new Map(),
+        approvalRegistry,
+        { inject: vi.fn() } as any,
+        logger,
+        () => 'thread-7',
+        orchestrationThreadId,
+      );
+      const approval = elicit({ type: 'tool-approval', toolName: 'fs.write' });
+      await notificationService.drainAsyncDispatch();
+
+      const [registry] = await notificationService.list();
+      expect(registry?.metadata).toMatchObject({
+        requestKind: 'registry',
+        sessionId: 'thread-7',
+      });
+      expect(isCardAlerted(registry!)).toBe(cardAlerted);
+
+      if (orchestrationThreadId) {
+        await emit('orchestration:event', {
+          event: {
+            createdAt: new Date().toISOString(),
+            method: 'request.opened',
+            provider: 'station-agent',
+            requestId: registry?.metadata?.approvalId,
+            requestType: 'approval',
+            threadId: orchestrationThreadId,
+            title: 'fs.write',
+          },
+        });
+        const twin = (await notificationService.list()).find(
+          (n) => n.metadata?.requestKind === 'orchestration',
+        );
+        expect(isCardAlerted(twin!)).toBe(cardAlerted);
+      }
+
+      await notificationService.action(registry!.id, 'accept');
+      await expect(approval).resolves.toBe(true);
+    },
+  );
 
   test('does not action or forget a registry notification when trusted settlement reports stale', async () => {
     const approvalPromise = approvalRegistry.register('approval-stale', {

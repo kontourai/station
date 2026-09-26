@@ -7,13 +7,26 @@
 // hosts. Channels do not expire and Apple caps how many an app may hold, so a
 // channel whose start Apple refused is deleted before answering.
 
-import type { ApnsEnvironment, LiveActivityRequest } from './apns-request.ts';
-import { isApnsChannelId, livePriority } from './apns-request.ts';
+import type {
+  AlertRequest,
+  ApnsEnvironment,
+  LiveActivityRequest,
+} from './apns-request.ts';
+import {
+  alertPriority,
+  isApnsChannelId,
+  livePriority,
+} from './apns-request.ts';
 import { type ApnsCredentials, providerToken } from './apns-token.ts';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 /** A stored activity push older than this is worthless: drop it. */
 const EXPIRATION_SECONDS = 300;
+/**
+ * An alert Apple could not deliver within this long (the phone was off) is
+ * dropped rather than shown late: what it announced has likely been handled.
+ */
+const ALERT_EXPIRATION_SECONDS = 60 * 60;
 
 // Apple's reasons for a token that will never deliver again.
 const UNREGISTERED_REASONS = new Set([
@@ -236,6 +249,26 @@ export class ApnsSender {
       },
       body,
       false,
+    );
+  }
+
+  /** A regular alert push to one device, topic the app's bundle id. */
+  async alert(
+    request: AlertRequest,
+    body: Uint8Array<ArrayBuffer>,
+  ): Promise<{ kind: 'sent' } | Failure> {
+    return this.push(
+      `${pushHost(request.environment)}/3/device/${request.deviceToken}`,
+      {
+        'apns-push-type': 'alert',
+        'apns-topic': request.bundleId,
+        'apns-priority': String(alertPriority(request)),
+        'apns-expiration': String(this.now() + ALERT_EXPIRATION_SECONDS),
+        'apns-collapse-id': request.collapseId,
+        'content-type': 'application/json',
+      },
+      body,
+      true,
     );
   }
 

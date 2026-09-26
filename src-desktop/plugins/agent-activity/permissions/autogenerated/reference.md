@@ -1,6 +1,6 @@
 ## Default Permission
 
-Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.
+Read capability status, register the device for agent-activity delivery and notification alerts, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.
 
 #### This default permission set includes the following:
 
@@ -8,6 +8,7 @@ Read capability status, register the device for agent-activity delivery, open Li
 - `allow-configure`
 - `allow-clear`
 - `allow-push-token`
+- `allow-alert-token`
 - `allow-open-live-update-settings`
 - `allow-take-launch-route`
 - `allow-register-listener`
@@ -21,6 +22,32 @@ Read capability status, register the device for agent-activity delivery, open Li
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`station-agent-activity:allow-alert-token`
+
+</td>
+<td>
+
+Enables the alert_token command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:deny-alert-token`
+
+</td>
+<td>
+
+Denies the alert_token command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>

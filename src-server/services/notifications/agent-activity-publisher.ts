@@ -96,6 +96,7 @@ const DEFAULT_PUSH_GATEWAY_URL = 'https://push.kontourai.io';
 const SEND_PATH = '/v1/fcm/send';
 const LIVE_ACTIVITY_PATH = '/v1/apns/live-activity';
 const CHANNELS_PATH = '/v1/apns/channels';
+const ALERT_PATH = '/v1/apns/alert';
 /** Enough for the gateway's small JSON answers; anything longer is ignored. */
 const MAX_ANSWER_CHARS = 4096;
 const COALESCE_WINDOW_MS = 1_000;
@@ -147,6 +148,8 @@ export interface PushGatewayConfig {
   liveActivityUrl: string;
   /** Absolute URL of the iOS broadcast channel (deletion) endpoint. */
   channelsUrl: string;
+  /** Absolute URL of the iOS alert endpoint (the ApnsAlertChannel's). */
+  alertUrl: string;
   /** The gateway origin: the token's `aud`. */
   audience: string;
 }
@@ -182,6 +185,7 @@ export function resolvePushGatewayConfig(
     sendUrl: new URL(SEND_PATH, url.origin).toString(),
     liveActivityUrl: new URL(LIVE_ACTIVITY_PATH, url.origin).toString(),
     channelsUrl: new URL(CHANNELS_PATH, url.origin).toString(),
+    alertUrl: new URL(ALERT_PATH, url.origin).toString(),
     audience: url.origin,
   };
 }

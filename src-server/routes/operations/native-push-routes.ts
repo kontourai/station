@@ -102,18 +102,23 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
     } catch {
       return c.json({ error: 'invalid_request' }, 400);
     }
-    // An iOS token is hex: its case carries nothing, so it is stored in the
-    // one form the gateway and the registration file expect.
+    // iOS tokens are hex: their case carries nothing, so they are stored in
+    // the one form the gateway and the registration file expect.
     if (
       body &&
       typeof body === 'object' &&
       (body as { platform?: unknown }).platform === 'ios' &&
       typeof (body as { token?: unknown }).token === 'string'
-    )
+    ) {
+      const { alertToken } = body as { alertToken?: unknown };
       body = {
         ...body,
         token: (body as { token: string }).token.toLowerCase(),
+        ...(typeof alertToken === 'string'
+          ? { alertToken: alertToken.toLowerCase() }
+          : {}),
       };
+    }
     if (!isValidNativePushRequest(body))
       return c.json({ error: 'invalid_request' }, 400);
     // Only the fields the file keeps; anything else in the body is dropped.
@@ -126,6 +131,10 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
             packageName: body.packageName,
             platform: 'ios',
             apnsEnvironment: body.apnsEnvironment,
+            // Optional (#2589): the app's device token for alerts.
+            ...(body.alertToken !== undefined
+              ? { alertToken: body.alertToken }
+              : {}),
           }
         : {
             token: body.token,
