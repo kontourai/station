@@ -1,100 +1,163 @@
 import { execFileSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { renderLearningDocument } from './lib/learning-markdown.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-const MARKDOWN_LINK = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
-const EXTERNAL_TARGET = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
+const MARKDOWN_FILE = /\.(?:md|mdx|markdown)$/i;
 
 export function parseTrackedMarkdownFiles(output) {
   return output.split('\0').filter(Boolean).sort();
 }
 
+function git(root, args) {
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
 export function listTrackedMarkdownFiles(root = process.cwd()) {
-  const output = execFileSync(
-    'git',
-    ['ls-files', '-z', '--', '*.md', '*.mdx'],
-    { cwd: root, encoding: 'utf8' },
+  const files = parseTrackedMarkdownFiles(git(root, ['ls-files', '-z'])).filter(
+    (file) => MARKDOWN_FILE.test(file),
   );
-  const files = parseTrackedMarkdownFiles(output);
-  if (files.length === 0) {
+  if (files.length === 0)
     throw new Error('Tracked Markdown discovery returned no files.');
-  }
   return files;
 }
 
-function relativeTarget(rawTarget) {
-  const target = rawTarget.trim().replace(/^<|>$/g, '');
-  if (!target || target.startsWith('#') || EXTERNAL_TARGET.test(target)) {
-    return null;
-  }
-
-  const withoutTitle = target.match(/^(\S+)(?:\s+["'].*["'])?$/)?.[1] ?? target;
-  const pathname = withoutTitle.split(/[?#]/, 1)[0];
-  return pathname ? decodeURIComponent(pathname) : null;
-}
-
-export async function findBrokenMarkdownLinks({ files, root = process.cwd() }) {
-  const repositoryRoot = path.resolve(root);
+/** Validate already-rendered input so a generated snapshot never rereads its prose. */
+export async function findBrokenRenderedMarkdownLinks({
+  documents,
+  files = [...documents.keys()],
+  targetExists,
+}) {
   const failures = [];
-
   for (const file of files) {
-    const sourcePath = path.resolve(repositoryRoot, file);
-    const source = await readFile(sourcePath, 'utf8');
-
-    for (const match of source.matchAll(MARKDOWN_LINK)) {
-      const target = relativeTarget(match[2]);
-      if (!target) continue;
-
-      const resolved = path.resolve(path.dirname(sourcePath), target);
-      const relative = path.relative(repositoryRoot, resolved);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
-        failures.push({
-          file,
-          label: match[1],
-          target,
-          reason: 'outside repository',
-        });
+    const document = documents.get(file);
+    if (!document) throw new Error(`Markdown source was not rendered: ${file}`);
+    for (const id of document.duplicateAnchors)
+      failures.push({
+        file,
+        label: id,
+        target: `#${id}`,
+        reason: 'duplicate anchor',
+      });
+    for (const { destination, ...link } of document.links) {
+      if (destination.kind === 'external') continue;
+      if (destination.kind === 'invalid') {
+        failures.push({ file, ...link, reason: destination.reason });
         continue;
       }
-
-      try {
-        await access(resolved);
-      } catch {
-        failures.push({
-          file,
-          label: match[1],
-          target,
-          reason: 'missing target',
-        });
+      const target = documents.get(destination.file);
+      if (!target && !(await targetExists(destination.file))) {
+        failures.push({ file, ...link, reason: 'missing target' });
+      } else if (MARKDOWN_FILE.test(destination.file)) {
+        if (!target)
+          failures.push({
+            file,
+            ...link,
+            reason: 'Markdown target is not in the snapshot',
+          });
+        else if (
+          destination.fragment &&
+          !target.anchors.includes(destination.fragment)
+        )
+          failures.push({
+            file,
+            ...link,
+            reason: `missing anchor #${destination.fragment}`,
+          });
       }
     }
   }
-
   return failures;
 }
 
-export async function checkMarkdownLinks({ files, root = process.cwd() }) {
-  const failures = await findBrokenMarkdownLinks({ files, root });
+export function assertMarkdownLinks(failures) {
   if (failures.length === 0) return;
-
   const detail = failures
     .map(
-      ({ file, label, reason, target }) =>
-        `- ${file}: [${label}](${target}) — ${reason}`,
+      ({ file, line, label, reason, target }) =>
+        `- ${file}${line ? `:${line}` : ''}: [${label}](${target}) — ${reason}`,
     )
     .join('\n');
-  throw new Error(`Broken relative Markdown links:\n${detail}`);
+  throw new Error(`Broken local Markdown links:\n${detail}`);
+}
+
+export async function findBrokenMarkdownLinks({
+  files,
+  root = process.cwd(),
+  revision = 'main',
+  sourceFiles = files,
+}) {
+  const repositoryRoot = path.resolve(root);
+  const tracked = new Set(sourceFiles);
+  const markdown = new Set(
+    [...tracked].filter((file) => MARKDOWN_FILE.test(file)),
+  );
+  const documents = new Map();
+  const missing = new Set();
+  async function render(file) {
+    if (documents.has(file) || missing.has(file)) return;
+    let source;
+    try {
+      source = await readFile(path.join(repositoryRoot, file), 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      missing.add(file);
+      return;
+    }
+    documents.set(
+      file,
+      renderLearningDocument(source, file, markdown, revision, tracked),
+    );
+  }
+  for (const file of files) {
+    await render(file);
+    if (!documents.has(file))
+      throw new Error(`Missing Markdown source: ${file}`);
+  }
+  // A selected source may link to Markdown outside the selected check scope.
+  // Render that target for its actual IDs, but do not recursively widen scope.
+  for (const file of files)
+    for (const { destination } of documents.get(file).links)
+      if (destination.kind === 'local' && MARKDOWN_FILE.test(destination.file))
+        await render(destination.file);
+  return findBrokenRenderedMarkdownLinks({
+    documents,
+    files,
+    targetExists: async (file) => {
+      try {
+        await access(path.join(repositoryRoot, file));
+        return true;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        return false;
+      }
+    },
+  });
+}
+
+export async function checkMarkdownLinks(options) {
+  assertMarkdownLinks(await findBrokenMarkdownLinks(options));
 }
 
 if (invokedDirectly(import.meta.url)) {
-  const files = process.argv.slice(2);
-
   try {
-    const selectedFiles = files.length > 0 ? files : listTrackedMarkdownFiles();
-    await checkMarkdownLinks({ files: selectedFiles });
+    const selected = process.argv.slice(2);
+    const root = process.cwd();
+    const files =
+      selected.length > 0 ? selected : listTrackedMarkdownFiles(root);
+    await checkMarkdownLinks({
+      files,
+      root,
+      revision: git(root, ['rev-parse', 'HEAD']).trim(),
+      sourceFiles: parseTrackedMarkdownFiles(git(root, ['ls-files', '-z'])),
+    });
     console.log(
-      `Validated relative links in ${selectedFiles.length} Markdown files.`,
+      `Validated local paths and rendered anchors in ${files.length} Markdown files.`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

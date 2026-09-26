@@ -1386,14 +1386,16 @@
     },
     {
       "path": "docs/guides/documentation.md",
-      "documentDigest": "31eab27d7de12f1872a186eef04d48ba13c26cc436cda04ab9b504a65c8d8b13",
+      "documentDigest": "7b8a2ee305c775b5103c570a0af7b439a38bb99adbe9dc5545fd0e258c7ed656",
       "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
       "kind": "policy",
       "state": "classified",
       "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
       "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
       "sources": [],
-      "checks": []
+      "checks": [
+        "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits."
+      ]
     },
     {
       "path": "docs/guides/knowledge.md",

@@ -186,6 +186,17 @@ npm run docs:learn:check
 npm run docs:mcp:check
 ```
 
+`npm run docs:links:check` checks tracked Markdown links using the learning
+reader's parser and rendered heading IDs. It checks relative and self links,
+including section anchors, and GitHub `main` or exact-current-revision links
+that the reader opens locally. Historical revision links remain external;
+this check does not crawl external sites. Fenced and inline code examples are
+not links. Duplicate headings receive unique suffixes. For a stable explicit
+anchor, the reader accepts an empty `<a id="stable-name"></a>` or
+`<span id="stable-name"></span>` with a safe ID; arbitrary raw HTML stays escaped.
+The learning generator runs the same validation against the captured document
+bytes before producing a snapshot.
+
 These check links, indexes, public content policy, examples, source paths,
 documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report

@@ -4,166 +4,23 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import Markdown, { defaultUrlTransform } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
-  extractModules,
-  headingId,
-  validateCatalog,
-} from './lib/documentation-model.mjs';
+  assertMarkdownLinks,
+  findBrokenRenderedMarkdownLinks,
+} from './check-markdown-links.mjs';
+import { extractModules, validateCatalog } from './lib/documentation-model.mjs';
 import { compileDocumentationReviews } from './lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from './lib/immutable-snapshot.mjs';
+import { renderLearningDocument } from './lib/learning-markdown.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+
+export {
+  learningHref,
+  renderLearningDocument,
+} from './lib/learning-markdown.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
-const repository = 'https://github.com/kontourai/station';
-const textSourceExtension =
-  /\.(?:[cm]?[jt]sx?|rs|swift|go|kt|kts|java|c|cc|cpp|cxx|h|hpp|m|mm|cs|fsx?|jsonc?|jsonl|sarif|ya?ml|toml|xml|plist|entitlements|xcprivacy|xcconfig|pbxproj|xcworkspacedata|xcsettings|xcscheme|storyboard|gradle|properties|pro|lock|mod|sum|ini|conf|cfg|sh|bash|zsh|fish|ps1|bat|cmd|nsh|py|rb|sql|graphql|proto|css|scss|html|svg|mdx?|markdown|txt|csv|patch)$/i;
-const textSourceNames = new Set([
-  'Dockerfile',
-  'Containerfile',
-  'Makefile',
-  'GNUmakefile',
-  'Caddyfile',
-  'Podfile',
-  'Gemfile',
-  'justfile',
-  'Justfile',
-  'gradlew',
-  'station',
-  'CODEOWNERS',
-  'SPDX-LICENSE',
-  '.dockerignore',
-  '.editorconfig',
-  '.env.example',
-  '.gitattributes',
-  '.gitignore',
-  '.gitkeep',
-  '.gitleaksignore',
-  '.npmrc',
-  '.nvmrc',
-  '.yarnrc',
-]);
-
-function isTextSource(file) {
-  const name = path.posix.basename(file);
-  return (
-    textSourceExtension.test(name) ||
-    textSourceNames.has(name) ||
-    /^(?:LICENSE|COPYING|NOTICE)(?:-[A-Z0-9.-]+)?$/.test(name) ||
-    /^\.githooks\/[^/.]+$/.test(file)
-  );
-}
-
-function sourceSnapshotHref(file) {
-  return `sources/${file.split('/').map(encodeURIComponent).join('/')}.txt`;
-}
-
-export function learningHref(
-  href,
-  document,
-  files,
-  revision,
-  sourceFiles = new Set(),
-) {
-  const safe = defaultUrlTransform(href);
-  for (const ref of ['main', revision]) {
-    const prefix = `${repository}/blob/${ref}/`;
-    if (!safe.startsWith(prefix)) continue;
-    const [pathname, fragment = ''] = safe.slice(prefix.length).split('#');
-    const file = decodeURIComponent(pathname);
-    if (files.has(file))
-      return `#doc=${encodeURIComponent(file)}${fragment ? `&section=${encodeURIComponent(decodeURIComponent(fragment))}` : ''}`;
-    if (sourceFiles.has(file) && isTextSource(file))
-      return sourceSnapshotHref(file);
-  }
-  if (!safe || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(safe)) return safe;
-  const [pathname, fragment = ''] = safe.split('#');
-  const destination = pathname
-    ? path.posix.normalize(
-        path.posix.join(
-          path.posix.dirname(document),
-          decodeURIComponent(pathname),
-        ),
-      )
-    : document;
-  if (destination.startsWith('../') || path.posix.isAbsolute(destination))
-    return '';
-  if (files.has(destination))
-    return `#doc=${encodeURIComponent(destination)}${fragment ? `&section=${encodeURIComponent(fragment)}` : ''}`;
-  if (sourceFiles.has(destination) && isTextSource(destination))
-    return sourceSnapshotHref(destination);
-  const encoded = destination.split('/').map(encodeURIComponent).join('/');
-  return `${repository}/blob/${revision}/${encoded}${fragment ? `#${encodeURIComponent(fragment)}` : ''}`;
-}
-
-function textOf(node) {
-  return node.value ?? (node.children ?? []).map(textOf).join('');
-}
-
-export function renderLearningDocument(
-  source,
-  document,
-  files,
-  revision,
-  sourceFiles = new Set(),
-) {
-  const headings = [];
-  const seen = new Map();
-  const components = {};
-  for (let level = 1; level <= 6; level++) {
-    components[`h${level}`] = ({ node, children }) => {
-      const title = textOf(node);
-      const base = headingId(title);
-      const count = seen.get(base) ?? 0;
-      seen.set(base, count + 1);
-      const id = count ? `${base}-${count}` : base;
-      headings.push({ id, level, title });
-      return createElement(`h${level}`, { id }, children);
-    };
-  }
-  components.img = ({ alt, src }) =>
-    createElement('a', { href: src }, alt || 'Referenced image');
-  components.code = ({ className, children }) =>
-    className === 'language-mermaid'
-      ? createElement(
-          'span',
-          null,
-          createElement(
-            'span',
-            { className: 'diagram-label' },
-            'Diagram source',
-          ),
-          createElement('code', { className }, children),
-        )
-      : sourceFiles.has(String(children))
-        ? createElement(
-            'a',
-            {
-              href: isTextSource(String(children))
-                ? sourceSnapshotHref(String(children))
-                : `${repository}/blob/${revision}/${String(children).split('/').map(encodeURIComponent).join('/')}`,
-            },
-            createElement('code', null, children),
-          )
-        : createElement('code', { className }, children);
-  const html = renderToStaticMarkup(
-    createElement(
-      Markdown,
-      {
-        remarkPlugins: [remarkGfm],
-        components,
-        urlTransform: (href) =>
-          learningHref(href, document, files, revision, sourceFiles),
-      },
-      source,
-    ),
-  );
-  return { html, headings };
-}
 
 function git(args, cwd = root) {
   return execFileSync('git', args, {
@@ -233,6 +90,7 @@ export async function buildLearningGuide({
   );
   validateCatalog(catalog, modules, files);
   const documents = [];
+  const renderedDocuments = new Map();
   for (const file of files) {
     const bytes = await captureSource(file);
     const source = bytes.toString('utf8');
@@ -243,23 +101,41 @@ export async function buildLearningGuide({
       revision,
       sourceFiles,
     );
+    renderedDocuments.set(file, rendered);
     documents.push({
       path: file,
       title: rendered.headings[0]?.title ?? file,
       digest: createHash('sha256').update(bytes).digest('hex'),
       review: 'Semantic review not established by this build',
       search: source.toLowerCase(),
-      ...rendered,
+      html: rendered.html,
+      headings: rendered.headings,
     });
   }
+  const trackedTargets = new Set(sourceFiles);
+  trackedTargets.add('.');
+  for (const file of sourceFiles) {
+    let directory = path.posix.dirname(file);
+    while (directory !== '.') {
+      trackedTargets.add(directory);
+      directory = path.posix.dirname(directory);
+    }
+  }
+  assertMarkdownLinks(
+    await findBrokenRenderedMarkdownLinks({
+      documents: renderedDocuments,
+      targetExists: (file) =>
+        trackedTargets.has(file.replace(/\/+$/, '') || '.'),
+    }),
+  );
   for (const group of catalog.groups) {
     for (const reference of group.docs) {
       const [file, anchor] = reference.split('#');
       if (
         anchor &&
-        !documents
-          .find((doc) => doc.path === file)
-          ?.headings.some((heading) => heading.id === anchor)
+        !renderedDocuments
+          .get(file)
+          ?.anchors.includes(decodeURIComponent(anchor))
       )
         throw new Error(`Missing learning section: ${reference}`);
     }
@@ -273,11 +149,21 @@ export async function buildLearningGuide({
     captureSource,
     { requireFresh: check },
   );
-  const renderedModules = modules.map(({ text, ...module }) => ({
-    ...module,
-    digest: createHash('sha256').update(text).digest('hex'),
-    ...renderLearningDocument(text, moduleMap, files, revision, sourceFiles),
-  }));
+  const renderedModules = modules.map(({ text, ...module }) => {
+    const { html, headings } = renderLearningDocument(
+      text,
+      moduleMap,
+      files,
+      revision,
+      sourceFiles,
+    );
+    return {
+      ...module,
+      digest: createHash('sha256').update(text).digest('hex'),
+      html,
+      headings,
+    };
+  });
   const sourcePaths = [
     ...new Set([
       ...files,

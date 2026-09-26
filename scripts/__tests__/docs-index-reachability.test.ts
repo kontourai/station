@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -183,6 +183,109 @@ describe('docs index reachability', () => {
 });
 
 describe('learning atlas', () => {
+  it('fails the real generator on a removed local heading and passes after restoring its committed bytes', async () => {
+    const root = makeTempDir('station-anchor-generator-');
+    await fs.mkdir(join(root, 'docs/learn'), { recursive: true });
+    await fs.mkdir(join(root, 'docs/architecture'), { recursive: true });
+    const target = '# **Target** `API`\n\n<a id="stable"></a>\n';
+    await fs.writeFile(join(root, 'target.md'), target);
+    await fs.writeFile(
+      join(root, 'README.md'),
+      [
+        '# Reader fixture',
+        '[relative](target.md#target-api)',
+        '[self](#reader-fixture)',
+        '[directory](docs/architecture/) [root](./)',
+        '[explicit](target.md#stable)',
+        '[main](https://github.com/kontourai/station/blob/main/target.md#target-api)',
+        '[historical](https://github.com/kontourai/station/blob/old-sha/target.md#absent)',
+        '`[inline fixture](missing.md#absent)`',
+        '```md\n[fenced fixture](missing.md#absent)\n```',
+      ].join('\n\n'),
+    );
+    await fs.writeFile(
+      join(root, 'docs/architecture/module-map.md'),
+      '## Fixture module\n',
+    );
+    await fs.writeFile(
+      join(root, 'docs/learn/review-ledger.json'),
+      JSON.stringify({ version: 1, records: [] }),
+    );
+    await fs.writeFile(
+      join(root, 'docs/learn/atlas.json'),
+      JSON.stringify({
+        version: 1,
+        groups: [
+          {
+            id: 'fixture',
+            title: 'Fixture',
+            summary: 'Anchor fixture',
+            docs: ['README.md', 'target.md#stable'],
+            modules: ['Fixture module'],
+            questions: ['Where is the section?'],
+          },
+        ],
+      }),
+    );
+    const git = (args: string[]) =>
+      execFileSync('git', args, {
+        cwd: root,
+        windowsHide: true,
+        encoding: 'utf8',
+      });
+    git(['init', '--quiet']);
+    git(['add', '.']);
+    git([
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      '-c',
+      'core.hooksPath=/dev/null',
+      'commit',
+      '--quiet',
+      '-m',
+      'Anchor fixture baseline',
+    ]);
+    expect(git(['status', '--porcelain'])).toBe('');
+    const generator = new URL('../build-learning-guide.mjs', import.meta.url)
+      .href;
+    const check = () =>
+      spawnSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '--eval',
+          `import { buildLearningGuide } from ${JSON.stringify(generator)}; try { await buildLearningGuide({check:true,root:${JSON.stringify(root)}}); } catch (error) { console.error(error.message); process.exitCode=1; }`,
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+    const baseline = check();
+    expect(baseline.stderr).toBe('');
+    expect(baseline.status).toBe(0);
+    try {
+      await fs.writeFile(
+        join(root, 'target.md'),
+        target.replace('Target', 'Renamed'),
+      );
+      const mutated = check();
+      expect(mutated.status).toBe(1);
+      expect(mutated.stderr).toContain(
+        'README.md:3: [relative](target.md#target-api) — missing anchor #target-api',
+      );
+      expect(mutated.stderr).toContain(
+        '[main](https://github.com/kontourai/station/blob/main/target.md#target-api) — missing anchor #target-api',
+      );
+      expect(mutated.stderr).not.toContain('historical');
+    } finally {
+      await fs.writeFile(join(root, 'target.md'), target);
+    }
+    expect(git(['status', '--porcelain'])).toBe('');
+    const restored = check();
+    expect(restored.stderr).toBe('');
+    expect(restored.status).toBe(0);
+  });
+
   it('keeps recorded document reviews bound to their actual document and source bytes', async () => {
     const files = new Set(tracked([]));
     const ledger = JSON.parse(
@@ -562,5 +665,29 @@ describe('learning atlas', () => {
     expect(rendered.html).not.toContain('href="javascript:');
     expect(rendered.html).toContain('Diagram source');
     expect(rendered.html).toContain('A--&gt;B');
+  });
+
+  it('renders only safe empty explicit anchors and retains inert code literals', () => {
+    const rendered = renderLearningDocument(
+      [
+        '<a id="stable"></a>',
+        '<span id="another"></span>',
+        '<a name="legacy"></a>',
+        'An inline <a id="inline"></a> anchor.',
+        '<a id="unsafe" onclick="alert(1)"></a>',
+        '`<a id="literal"></a>`',
+        '```html\n<span id="fenced"></span>\n```',
+      ].join('\n\n'),
+      'README.md',
+      new Set(['README.md']),
+      'current',
+    );
+    expect(rendered.anchors).toEqual(['stable', 'another', 'legacy', 'inline']);
+    for (const id of rendered.anchors)
+      expect(rendered.html).toContain(`<span id="${id}"></span>`);
+    expect(rendered.html).not.toContain('<a id="unsafe"');
+    expect(rendered.html).toContain('&lt;a id=&quot;unsafe&quot;');
+    expect(rendered.html).toContain('&lt;a id=&quot;literal&quot;');
+    expect(rendered.html).toContain('&lt;span id=&quot;fenced&quot;');
   });
 });
