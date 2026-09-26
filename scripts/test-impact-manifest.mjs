@@ -627,6 +627,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
   'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
+  // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
