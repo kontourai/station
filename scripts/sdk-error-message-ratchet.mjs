@@ -27,22 +27,56 @@
 // status, `code`, `details`, `Retry-After`). The regex above never saw
 // `new Error(result.error)`, `result.message ||`, or a `typeof x.error ===
 // 'string' ? …` ternary, and it cannot see an error built from a
-// `response.status` at all. So an AST rule finds every `new *Error(...)` whose
-// arguments read an envelope, and three regexes catch the spellings outside a
-// constructor call. Those sites existed when the rule was written, so it is a
-// per-file baseline (sdk-envelope-read-baseline.json) that may only fall:
-// later #2708 slices migrate clients and lower it with `--update`, which
-// refuses to raise a row or add a file. The ratchet is two-sided: a count
-// BELOW its row fails too, telling the author to run `--update`. Without that,
-// a rule that silently stops counting (a broken AST walk reads 0 everywhere)
-// would pass forever over a baseline nothing enforces any more. The cost is
-// that two merges that each lower the same row conflict on the baseline file,
-// which is a visible merge conflict rather than a silent pass.
+// `response.status` at all. So a TypeScript AST walk counts, per file:
+//   - `new *Error(...)` whose arguments read an envelope: a message-rule call
+//     (apiErrorMessage / envelopeErrorMessage / envelopeFailureMessage), an
+//     `.error`/`.message`/`.code` read on anything but a caught failure, a
+//     field destructured from a body (`const { error } = body`), or a
+//     Response's `.status` (`r`/`res`/`resp`/`response`/`*Response`, or a
+//     parameter typed `Response`);
+//   - every other message-rule call, so `const message = apiErrorMessage(…);
+//     throw new Error(message)` and `Object.assign(new Error(m), …)` count;
+//   - `x.message ||` / `x.message ??`, and `typeof x.error === 'string' ?`.
+// A caught failure is decided by binding, not by name: only a `catch (x)`
+// variable or a `.catch((x) => …)` parameter is exempt, so an `error` pulled
+// out of a body is still an envelope read. A site inside a counted site is
+// the same site and counts once.
 //
-// What the rule cannot see: a message computed into a variable first and
-// passed to `new Error(message)` (the read happens outside the call), an
-// aliased helper import, or an error built in one module and thrown from
-// another. It routes new code to the helper; it is not a proof.
+// Those sites existed when the rule was written, so it is a per-file baseline
+// (sdk-envelope-read-baseline.json) that may only fall: later #2708 slices
+// migrate clients and lower it with `--update`, which refuses to raise a row
+// or add a file. The ratchet is two-sided: a count BELOW its row fails too,
+// telling the author to run `--update`. Without that, a rule that silently
+// stops counting (a broken AST walk reads 0 everywhere) would pass forever
+// over a baseline nothing enforces any more. The cost is that two merges that
+// each lower the same row conflict on the baseline file, which is a visible
+// merge conflict rather than a silent pass.
+//
+// Renaming a baselined file (`git mv`): `--update` refuses the new path,
+// because it never adds a row. Move the row by hand in the same commit — the
+// old path's key renamed to the new one, the count unchanged — and say so in
+// the commit message. That is the only hand edit the baseline takes; the
+// reviewer checks the diff is a pure key rename. A split file is migrated to
+// the helper instead of re-baselined.
+//
+// Widening the rule itself (as #2708's review round did) raises counts the
+// rule could not see before; that is a rule change, not a regression, and the
+// baseline is regenerated in the same commit with the new total stated.
+//
+// Deliberately opaque errors (decided for A-2): several fetchers withhold the
+// server's words on purpose — `new StationHttpError(response.status, 'Input
+// request unavailable')` in input-reply.ts and quote-source.ts, and the
+// `Task*RequestError(response.status)` family. They are counted like any
+// other site. Their migration is `envelopeError(response, body, fallback,
+// { message: '<fixed text>' })`, which keeps the observed status, `code` and
+// `Retry-After` while withholding the server's message and `details`. There
+// is no allow-comment: an opaque error still owes its caller the status and
+// code, so there is nothing to exempt.
+//
+// What the rule cannot see: a message built from an envelope field by any
+// other function, an aliased helper import, or an error built in one module
+// and thrown from another. It routes new code to the helper; it is not a
+// proof.
 //
 //   node scripts/sdk-error-message-ratchet.mjs [--update]
 
@@ -154,27 +188,10 @@ export const ENVELOPE_MESSAGE_CALLS = new Set([
 /** Envelope fields whose read, inside an error constructor, is a violation. */
 export const ENVELOPE_FIELDS = new Set(['error', 'message', 'code']);
 
-/**
- * Receivers that conventionally hold a CAUGHT error, not a response body:
- * `new Error(error.message)` re-wraps a failure, it does not read an
- * envelope. The names are the ones this package uses in `catch` clauses.
- */
-export const CAUGHT_ERROR_NAMES = new Set([
-  'caught',
-  'cause',
-  'e',
-  'err',
-  'error',
-  'reason',
-]);
+/** `response.status`, `r.status`, `res.status`, `listResponse.status`. */
+const RESPONSE_NAME = /^(r|res|resp|response)$|Response$/;
 
-/** `response.status`, `res.status`, `listResponse.status`. */
-function isResponseName(name) {
-  return /^(response|res|resp)$/.test(name) || /Response$/.test(name);
-}
-
-/** The rightmost identifier of a receiver expression, when it has one. */
-function receiverName(expression) {
+function unwrap(expression) {
   let current = expression;
   while (
     ts.isNonNullExpression(current) ||
@@ -182,15 +199,114 @@ function receiverName(expression) {
   ) {
     current = current.expression;
   }
-  if (ts.isIdentifier(current)) return current.text;
-  if (ts.isPropertyAccessExpression(current)) return current.name.text;
-  return undefined;
+  return current;
 }
 
 function calleeName(expression) {
   if (ts.isIdentifier(expression)) return expression.text;
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
   return undefined;
+}
+
+function parametersOf(node) {
+  return ts.isFunctionLike(node) ? (node.parameters ?? []) : [];
+}
+
+/**
+ * Is this identifier bound by a `catch (x)` clause or as the first parameter
+ * of a `.catch((x) => …)` callback? Only those hold a CAUGHT failure, whose
+ * `.message` re-wraps an error rather than reading an envelope. The binding
+ * is resolved by walking outward: the nearest function that declares the
+ * name as an ordinary parameter shadows any catch further out.
+ */
+export function isCaughtBinding(identifier) {
+  const name = identifier.text;
+  for (let node = identifier.parent; node; node = node.parent) {
+    if (
+      ts.isCatchClause(node) &&
+      node.variableDeclaration &&
+      ts.isIdentifier(node.variableDeclaration.name) &&
+      node.variableDeclaration.name.text === name
+    ) {
+      return true;
+    }
+    const declares = parametersOf(node).some(
+      (parameter) =>
+        ts.isIdentifier(parameter.name) && parameter.name.text === name,
+    );
+    if (declares) {
+      const call = node.parent;
+      return (
+        (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
+        call !== undefined &&
+        ts.isCallExpression(call) &&
+        ts.isPropertyAccessExpression(call.expression) &&
+        call.expression.name.text === 'catch' &&
+        call.arguments[0] === node
+      );
+    }
+  }
+  return false;
+}
+
+function enclosingScope(node) {
+  let current = node.parent;
+  while (current && !ts.isFunctionLike(current) && !ts.isSourceFile(current)) {
+    current = current.parent;
+  }
+  return current;
+}
+
+/** Does `name` come out of an object destructuring of an envelope field? */
+function isDestructuredEnvelopeField(identifier) {
+  const scope = enclosingScope(identifier);
+  let found = false;
+  const visit = (node) => {
+    if (found) return;
+    if (
+      ts.isBindingElement(node) &&
+      ts.isObjectBindingPattern(node.parent) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === identifier.text
+    ) {
+      const property = node.propertyName ?? node.name;
+      if (ts.isIdentifier(property) && ENVELOPE_FIELDS.has(property.text)) {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (scope) visit(scope);
+  return found;
+}
+
+/** A receiver that names a `Response`, by convention or by declared type. */
+function isResponseReceiver(expression) {
+  const receiver = unwrap(expression);
+  if (!ts.isIdentifier(receiver)) return false;
+  if (RESPONSE_NAME.test(receiver.text)) return true;
+  for (let node = receiver.parent; node; node = node.parent) {
+    const parameter = parametersOf(node).find(
+      (candidate) =>
+        ts.isIdentifier(candidate.name) &&
+        candidate.name.text === receiver.text,
+    );
+    if (parameter) {
+      return Boolean(
+        parameter.type && /\bResponse\b/.test(parameter.type.getText()),
+      );
+    }
+  }
+  return false;
+}
+
+/** `x.error` / `x.message` / `x.code`, unless `x` is a caught failure. */
+function isEnvelopeFieldRead(node) {
+  if (!ts.isPropertyAccessExpression(node)) return false;
+  if (!ENVELOPE_FIELDS.has(node.name.text)) return false;
+  const receiver = unwrap(node.expression);
+  return !(ts.isIdentifier(receiver) && isCaughtBinding(receiver));
 }
 
 /** Does this subtree read a failure envelope? Returns the first read's kind. */
@@ -205,18 +321,53 @@ function envelopeRead(node) {
         return;
       }
     }
-    if (ts.isPropertyAccessExpression(child)) {
-      const field = child.name.text;
-      const receiver = receiverName(child.expression);
+    if (isEnvelopeFieldRead(child)) {
+      found = `.${child.name.text}`;
+      return;
+    }
+    if (
+      ts.isPropertyAccessExpression(child) &&
+      child.name.text === 'status' &&
+      isResponseReceiver(child.expression)
+    ) {
+      found = `${unwrap(child.expression).getText()}.status`;
+      return;
+    }
+    if (
+      ts.isIdentifier(child) &&
+      ENVELOPE_FIELDS.has(child.text) &&
+      isDestructuredEnvelopeField(child)
+    ) {
+      found = `destructured ${child.text}`;
+      return;
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
+}
+
+/** `typeof x.error === 'string'` anywhere in a condition. */
+function hasStringErrorCheck(node) {
+  let found = false;
+  const visit = (child) => {
+    if (found) return;
+    if (
+      ts.isBinaryExpression(child) &&
+      (child.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        child.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken)
+    ) {
+      const [left, right] = [unwrap(child.left), unwrap(child.right)];
+      const typeofSide = ts.isTypeOfExpression(left) ? left : right;
+      const literal = typeofSide === left ? right : left;
       if (
-        ENVELOPE_FIELDS.has(field) &&
-        !(receiver && CAUGHT_ERROR_NAMES.has(receiver))
+        ts.isTypeOfExpression(typeofSide) &&
+        ts.isStringLiteral(literal) &&
+        literal.text === 'string' &&
+        isEnvelopeFieldRead(unwrap(typeofSide.expression)) &&
+        unwrap(typeofSide.expression).name.text === 'error'
       ) {
-        found = `.${field}`;
-        return;
-      }
-      if (field === 'status' && receiver && isResponseName(receiver)) {
-        found = `${receiver}.status`;
+        found = true;
         return;
       }
     }
@@ -227,49 +378,52 @@ function envelopeRead(node) {
 }
 
 /**
- * `.message ||` / `.message ??` on a non-caught-error receiver: the envelope's
- * own message as a fallback, outside the shared order.
+ * What kind of envelope-read site this node is, if any:
+ * - `new *Error(...)` whose arguments read an envelope (a message-rule call,
+ *   an `.error`/`.message`/`.code` read on anything but a caught failure, a
+ *   destructured envelope field, or a Response's `.status`);
+ * - any other call to a message-rule function — the message is computed into
+ *   a variable and thrown later, or wrapped in `Object.assign(new Error(m))`;
+ * - `x.message ||` / `x.message ??`: the envelope's message as a fallback;
+ * - `typeof x.error === 'string' ? … : …`: the string shape hand-checked.
  */
-const MESSAGE_FALLBACK = /([\w$]+)\??\.message\s*(?:\|\||\?\?)/g;
-/** `new Error(result.error)` — the string shape assumed, `[object Object]` otherwise. */
-const RAW_ERROR_ARGUMENT = /new\s+[\w$.]*Error\s*\(\s*[\w$.?\])]*\.error\s*\)/g;
-/** `typeof x.error === 'string' ? …` (with `&& …` guards before the `?`). */
-const STRING_ERROR_TERNARY =
-  /typeof\s+[\w$.?\])]+\.error\s*===\s*['"]string['"](?:\s*&&[^?;]*)?\s*\?/g;
-
-/** The source with every comment blanked (newlines kept), so prose never counts. */
-export function stripComments(source) {
-  const scanner = ts.createScanner(
-    ts.ScriptTarget.Latest,
-    false,
-    ts.LanguageVariant.Standard,
-    source,
-  );
-  let output = '';
-  let last = 0;
-  for (
-    let token = scanner.scan();
-    token !== ts.SyntaxKind.EndOfFileToken;
-    token = scanner.scan()
-  ) {
-    if (
-      token === ts.SyntaxKind.SingleLineCommentTrivia ||
-      token === ts.SyntaxKind.MultiLineCommentTrivia
-    ) {
-      const start = scanner.getTokenStart();
-      output += source.slice(last, start);
-      output += scanner.getTokenText().replace(/[^\n]/g, ' ');
-      last = scanner.getTokenEnd();
-    }
+function siteKind(node) {
+  if (ts.isNewExpression(node)) {
+    const name = calleeName(node.expression);
+    if (!name || !/Error$/.test(name)) return undefined;
+    const read = (node.arguments ?? [])
+      .map((argument) => envelopeRead(argument))
+      .find(Boolean);
+    return read ? `new ${name}(${read})` : undefined;
   }
-  return output + source.slice(last);
+  if (ts.isCallExpression(node)) {
+    const name = calleeName(node.expression);
+    return name && ENVELOPE_MESSAGE_CALLS.has(name)
+      ? `${name}() call`
+      : undefined;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+  ) {
+    const left = unwrap(node.left);
+    return isEnvelopeFieldRead(left) && left.name.text === 'message'
+      ? '.message fallback'
+      : undefined;
+  }
+  if (ts.isConditionalExpression(node) && hasStringErrorCheck(node.condition)) {
+    return "typeof x.error === 'string' ?";
+  }
+  return undefined;
 }
 
 /**
- * Every envelope-reading error site in one source, as `{ line, kind }`. An
- * AST site is a `new *Error(...)` whose arguments read an envelope; a regex
- * site inside an already-counted constructor call is the same site and is
- * not counted twice.
+ * Every envelope-reading error site in one source, as `{ line, kind }`. The
+ * walk is top-down and does not descend into a counted site, so a ternary or
+ * a message-rule call inside a counted constructor is the same site, counted
+ * once. Comments are never nodes, so prose that names a banned shape never
+ * counts; import and export declarations are not calls, so neither do they.
  */
 export function findEnvelopeReads(source, fileName = 'sample.ts') {
   const sourceFile = ts.createSourceFile(
@@ -280,44 +434,21 @@ export function findEnvelopeReads(source, fileName = 'sample.ts') {
     fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const sites = [];
-  const ranges = [];
-  const lineOf = (position) =>
-    sourceFile.getLineAndCharacterOfPosition(position).line + 1;
   const visit = (node) => {
-    if (ts.isNewExpression(node)) {
-      const name = calleeName(node.expression);
-      if (name && /Error$/.test(name)) {
-        const read = (node.arguments ?? [])
-          .map((argument) => envelopeRead(argument))
-          .find(Boolean);
-        if (read) {
-          const start = node.getStart(sourceFile);
-          sites.push({ line: lineOf(start), kind: `new ${name}(${read})` });
-          ranges.push([start, node.getEnd()]);
-        }
-      }
+    const kind = siteKind(node);
+    if (kind) {
+      sites.push({
+        line:
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+            .line + 1,
+        kind,
+      });
+      return;
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-
-  const code = stripComments(source);
-  const insideCounted = (index) =>
-    ranges.some(([start, end]) => index >= start && index < end);
-  const scan = (pattern, kind, accept = () => true) => {
-    for (const match of code.matchAll(pattern)) {
-      if (insideCounted(match.index) || !accept(match)) continue;
-      sites.push({ line: lineOf(match.index), kind });
-    }
-  };
-  scan(
-    MESSAGE_FALLBACK,
-    '.message fallback',
-    (match) => !CAUGHT_ERROR_NAMES.has(match[1]),
-  );
-  scan(RAW_ERROR_ARGUMENT, 'new Error(x.error)');
-  scan(STRING_ERROR_TERNARY, "typeof x.error === 'string' ?");
-  return sites.sort((a, b) => a.line - b.line);
+  return sites;
 }
 
 export function listEnvelopeScannedFiles() {

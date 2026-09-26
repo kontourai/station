@@ -142,7 +142,27 @@ describe('sdk envelope-read rule: what counts', () => {
       "throw new PluginCollectionHttpError(body.code, 'x');",
       'new PluginCollectionHttpError(.code)',
     ],
-    ["throw new Error(result?.error?.message ?? 'x');", 'new Error(.error)'],
+    ["throw new Error(result?.error?.message ?? 'x');", 'new Error(.message)'],
+    // #2708 review M2 (C): a Response under a short name.
+    [
+      "throw new StationHttpError(r.status, 'Failed');",
+      'new StationHttpError(r.status)',
+    ],
+    // …or under any name, typed as one.
+    [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source deliberately embeds a template placeholder
+      'function f(reply: Response) { throw new Error(`HTTP ${reply.status}`); }',
+      'new Error(reply.status)',
+    ],
+    // #2708 review L6: an `error` pulled out of a body is an envelope read.
+    [
+      'const { error } = body;\nthrow new Error(error);',
+      'new Error(destructured error)',
+    ],
+    [
+      'const { error } = body;\nthrow new Error(error.message);',
+      'new Error(.message)',
+    ],
   ])('counts %s', (source, kind) => {
     expect(sites(source)).toEqual([kind]);
   });
@@ -160,6 +180,36 @@ describe('sdk envelope-read rule: what counts', () => {
         "const m = !response.ok && typeof value?.error === 'string' && value.error.trim()\n  ? value.error\n  : undefined;",
       ),
     ).toEqual(["typeof x.error === 'string' ?"]);
+  });
+
+  test('counts a message computed into a variable, then thrown (#2708 review M2 B)', () => {
+    // orchestration.ts: the read happens before the constructor.
+    expect(
+      sites(
+        "const message = apiErrorMessage(payload, 'x');\nthrow new Error(message);",
+      ),
+    ).toEqual(['apiErrorMessage() call']);
+  });
+
+  test('counts the Object.assign(new Error(reason), …) shape (#2708 review M2 D)', () => {
+    expect(
+      sites(
+        "const reason = envelopeErrorMessage(body, 'x');\nthrow Object.assign(new Error(reason), { code: 'x' });",
+      ),
+    ).toEqual(['envelopeErrorMessage() call']);
+    expect(
+      sites(
+        "throw Object.assign(new Error(apiErrorMessage(body, 'x')), { status: 400 });",
+      ),
+    ).toEqual(['new Error(apiErrorMessage())']);
+  });
+
+  test('never counts an import or export of a message-rule function', () => {
+    expect(
+      sites(
+        "import { apiErrorMessage } from './api-error-message';\nexport { envelopeErrorMessage } from './http';",
+      ),
+    ).toEqual([]);
   });
 
   test('counts a .message fallback outside a constructor', () => {
@@ -180,11 +230,12 @@ describe('sdk envelope-read rule: what counts', () => {
   test.each([
     // projects.ts: client-side validation, no envelope at all.
     "throw new Error('Invalid Project catalogue.');",
-    // Re-wrapping a caught failure is not an envelope read.
-    'throw new Error(error.message);',
+    // Re-wrapping a caught failure is not an envelope read — decided by the
+    // binding: a catch-clause variable, or a `.catch` callback parameter.
+    'try { run(); } catch (error) { throw new Error(error.message); }',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source deliberately embeds a template placeholder
-    'throw new Error(`Import failed: ${err.message}`);',
-    "const text = error.message ?? 'x';",
+    'p.catch((err) => { throw new Error(`Import failed: ${err.message}`); });',
+    "try { run(); } catch (error) { const text = error.message ?? 'x'; }",
     // The helper is the answer, not a violation.
     "throw envelopeError(response, body, 'Save failed');",
     // A status that is not a response's.
@@ -343,7 +394,7 @@ describe('sdk-error-message ratchet at the process boundary', () => {
     ...Object.fromEntries(
       [...SCOPE_SENTINELS, ...ENVELOPE_SCOPE_SENTINELS].map((path) => [
         path,
-        "export const ok = apiErrorMessage(result, 'fine');\n",
+        'export const ok = envelopeError;\n',
       ]),
     ),
     [ENVELOPE_BASELINE_PATH]: `${JSON.stringify({ issue: '#2708', files: {} })}\n`,
