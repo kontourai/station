@@ -40,7 +40,10 @@
 // A caught failure is decided by binding, not by name: only a `catch (x)`
 // variable or a `.catch((x) => …)` parameter is exempt, so an `error` pulled
 // out of a body is still an envelope read. A site inside a counted site is
-// the same site and counts once.
+// the same site and counts once. Type-only wrappers (`as`, `<T>x`,
+// `satisfies`) are looked through, and a caught failure may be aliased
+// (`const err = caught as Error`) or be a `.then(ok, (err) => …)` rejection
+// handler's parameter.
 //
 // Those sites existed when the rule was written, so it is a per-file baseline
 // (sdk-envelope-read-baseline.json) that may only fall: later #2708 slices
@@ -74,9 +77,13 @@
 // code, so there is nothing to exempt.
 //
 // What the rule cannot see: a message built from an envelope field by any
-// other function, an aliased helper import, or an error built in one module
-// and thrown from another. It routes new code to the helper; it is not a
-// proof.
+// other function; an element access (`body['error']`); a fetch result held in
+// an arbitrarily named local (`const reply = await fetch(…)` then
+// `reply.status` is seen only when `reply` is typed `Response`); a destructured
+// field whose source is not a recognised body read (`const { error } = x`
+// with an arbitrary `x`); an aliased helper import; or an error built in one
+// module and thrown from another. It routes new code to the helper; it is not
+// a proof.
 //
 //   node scripts/sdk-error-message-ratchet.mjs [--update]
 
@@ -195,7 +202,10 @@ function unwrap(expression) {
   let current = expression;
   while (
     ts.isNonNullExpression(current) ||
-    ts.isParenthesizedExpression(current)
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isSatisfiesExpression(current)
   ) {
     current = current.expression;
   }
@@ -219,7 +229,7 @@ function parametersOf(node) {
  * is resolved by walking outward: the nearest function that declares the
  * name as an ordinary parameter shadows any catch further out.
  */
-export function isCaughtBinding(identifier) {
+export function isCaughtBinding(identifier, seen = new Set()) {
   const name = identifier.text;
   for (let node = identifier.parent; node; node = node.parent) {
     if (
@@ -234,19 +244,55 @@ export function isCaughtBinding(identifier) {
       (parameter) =>
         ts.isIdentifier(parameter.name) && parameter.name.text === name,
     );
-    if (declares) {
-      const call = node.parent;
-      return (
-        (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
-        call !== undefined &&
-        ts.isCallExpression(call) &&
-        ts.isPropertyAccessExpression(call.expression) &&
-        call.expression.name.text === 'catch' &&
-        call.arguments[0] === node
-      );
+    if (declares) return isRejectionHandler(node, name);
+    const alias = aliasInitializer(node, name);
+    if (alias) {
+      // `const err = caught as Error`: the alias is caught iff its source is.
+      const source = unwrap(alias);
+      if (!ts.isIdentifier(source) || seen.has(source.text)) return false;
+      seen.add(name);
+      return isCaughtBinding(source, seen);
     }
   }
   return false;
+}
+
+/**
+ * Is `fn` a rejection handler whose FIRST parameter is `name`? That is a
+ * `.catch(fn)` callback, or the second argument of `.then(onOk, fn)`.
+ */
+function isRejectionHandler(fn, name) {
+  if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return false;
+  const first = fn.parameters[0];
+  if (!first || !ts.isIdentifier(first.name) || first.name.text !== name) {
+    return false;
+  }
+  const call = fn.parent;
+  if (!call || !ts.isCallExpression(call)) return false;
+  if (!ts.isPropertyAccessExpression(call.expression)) return false;
+  const method = call.expression.name.text;
+  return (
+    (method === 'catch' && call.arguments[0] === fn) ||
+    (method === 'then' && call.arguments[1] === fn)
+  );
+}
+
+/** The initializer of a `const name = …` declared directly in this block. */
+function aliasInitializer(node, name) {
+  if (!ts.isBlock(node) && !ts.isSourceFile(node)) return undefined;
+  for (const statement of node.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === name &&
+        declaration.initializer
+      ) {
+        return declaration.initializer;
+      }
+    }
+  }
+  return undefined;
 }
 
 function enclosingScope(node) {
@@ -257,8 +303,32 @@ function enclosingScope(node) {
   return current;
 }
 
-/** Does `name` come out of an object destructuring of an envelope field? */
+/**
+ * A value that plausibly holds a response body: `await response.json()`,
+ * `await readJsonBody(response)`, or a local named like one
+ * (`body`, `payload`, `result`, `json`, `data`, `envelope`).
+ */
+const BODY_NAME = /^(body|payload|result|json|data|envelope|parsed)$/;
+
+function isBodyRead(expression) {
+  let current = unwrap(expression);
+  if (ts.isAwaitExpression(current)) current = unwrap(current.expression);
+  if (ts.isIdentifier(current)) return BODY_NAME.test(current.text);
+  if (ts.isCallExpression(current)) {
+    const name = calleeName(current.expression);
+    return name === 'json' || name === 'readJsonBody';
+  }
+  return false;
+}
+
+/**
+ * Does `name` come out of an object destructuring of an envelope field, from
+ * a body read (`const { error } = body`, `const { error } = await
+ * response.json()`)? A destructuring of any other object (`const { message }
+ * = options`) is not an envelope read, and a caught failure never is.
+ */
 function isDestructuredEnvelopeField(identifier) {
+  if (isCaughtBinding(identifier)) return false;
   const scope = enclosingScope(identifier);
   let found = false;
   const visit = (node) => {
@@ -270,7 +340,14 @@ function isDestructuredEnvelopeField(identifier) {
       node.name.text === identifier.text
     ) {
       const property = node.propertyName ?? node.name;
-      if (ts.isIdentifier(property) && ENVELOPE_FIELDS.has(property.text)) {
+      const declaration = node.parent.parent;
+      if (
+        ts.isIdentifier(property) &&
+        ENVELOPE_FIELDS.has(property.text) &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer &&
+        isBodyRead(declaration.initializer)
+      ) {
         found = true;
         return;
       }

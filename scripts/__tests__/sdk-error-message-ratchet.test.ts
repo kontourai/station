@@ -182,6 +182,34 @@ describe('sdk envelope-read rule: what counts', () => {
     ).toEqual(["typeof x.error === 'string' ?"]);
   });
 
+  // #2708 delta review L-b: only a catch binding is exempt. An ordinary
+  // parameter, or a callback parameter that is not a rejection handler, holds
+  // whatever the caller passed — usually a body.
+  test('counts a read on an ordinary function parameter', () => {
+    expect(
+      sites('function unwrap(result) { throw new Error(result.error); }'),
+    ).toEqual(['new Error(.error)']);
+  });
+
+  test('counts a read on a non-catch callback parameter', () => {
+    expect(
+      sites('items.forEach((error) => { throw new Error(error.message); });'),
+    ).toEqual(['new Error(.message)']);
+    expect(
+      sites('p.then((error) => { throw new Error(error.message); });'),
+    ).toEqual(['new Error(.message)']);
+  });
+
+  // #2708 delta review L-d: a destructured field counts only when it comes
+  // out of a body read.
+  test('counts a field destructured from an awaited response body', () => {
+    expect(
+      sites(
+        'async function f(response) { const { error } = await response.json(); throw new Error(error); }',
+      ),
+    ).toEqual(['new Error(destructured error)']);
+  });
+
   test('counts a message computed into a variable, then thrown (#2708 review M2 B)', () => {
     // orchestration.ts: the read happens before the constructor.
     expect(
@@ -245,6 +273,15 @@ describe('sdk envelope-read rule: what counts', () => {
     'const map = new Map(result.error);',
     // Prose names the banned shape; comments never count.
     "// throw new Error(result.error || result.message || 'x');\n/* typeof x.error === 'string' ? */",
+    // #2708 delta review L-a: type wrappers do not hide a catch binding.
+    'try { run(); } catch (error) { throw new Error((error as Error).message); }',
+    'try { run(); } catch (caught) { const err = caught as Error; throw new Error(err.message); }',
+    // …nor does a `.then(ok, onRejected)` rejection handler.
+    'p.then(ok, (err) => { throw new Error(err.message); });',
+    // #2708 delta review L-d: destructuring a non-body object is not an
+    // envelope read, and neither is destructuring a caught failure.
+    'function f(options) { const { message } = options; throw new Error(message); }',
+    'try { run(); } catch (error) { const { message } = error; throw new Error(message); }',
     // A typeof check that is a guard, not a message ternary.
     "if (typeof result.error === 'string') report(result.error);",
   ])('does not count %s', (source) => {
