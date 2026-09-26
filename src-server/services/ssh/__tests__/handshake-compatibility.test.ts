@@ -246,6 +246,9 @@ describe('public handshake capability flags (station#1095)', () => {
     for (const forbidden of [
       'contribut',
       'connectionids',
+      // A key naming contributed models (e.g. a boolean `models` flag) is a
+      // participation signal even when its value is only `true`.
+      'models',
       'providermodel',
       'participation',
       'ollama-workstation',
