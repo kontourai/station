@@ -498,6 +498,18 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
       rebuilt.modules[0].snapshotDigest,
     );
     expect(await readFile(join(output, originalUrl))).toEqual(code);
+    const manifestBeforeFailure = await readFile(
+      join(output, 'atlas-data.json'),
+    );
+    const truncated = changedCode.subarray(0, 8);
+    await writeFile(join(output, changedUrl), truncated);
+    await expect(buildLearningGuide({ root })).rejects.toThrow(
+      'Immutable source snapshot mismatch',
+    );
+    expect(await readFile(join(output, changedUrl))).toEqual(truncated);
+    expect(await readFile(join(output, 'atlas-data.json'))).toEqual(
+      manifestBeforeFailure,
+    );
   } finally {
     await context?.close();
   }

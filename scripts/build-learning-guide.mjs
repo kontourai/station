@@ -14,6 +14,7 @@ import {
   validateCatalog,
 } from './lib/documentation-model.mjs';
 import { compileDocumentationReviews } from './lib/documentation-review.mjs';
+import { publishImmutableSnapshot } from './lib/immutable-snapshot.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -309,6 +310,11 @@ export async function buildLearningGuide({
   if (!check) {
     const output = path.join(inputRoot, '.kontourai/docs-learning');
     await mkdir(output, { recursive: true });
+    for (const file of sourcePaths)
+      await publishImmutableSnapshot(
+        path.join(output, decodeURIComponent(sourceSnapshots[file])),
+        capturedSources.get(file),
+      );
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
       await copyFile(
         path.join(inputRoot, 'docs/learn', asset),
@@ -355,18 +361,6 @@ export async function buildLearningGuide({
       path.join(output, 'inventory.json'),
       `${JSON.stringify({ revision, documents: snapshots.map(({ path: file, digest, review, reviewRecord }) => ({ path: file, digest, review, reviewRecord })) }, null, 2)}\n`,
     );
-    for (const file of sourcePaths) {
-      const destination = path.join(
-        output,
-        decodeURIComponent(sourceSnapshots[file]),
-      );
-      await mkdir(path.dirname(destination), { recursive: true });
-      await writeFile(destination, capturedSources.get(file), {
-        flag: 'wx',
-      }).catch((error) => {
-        if (error.code !== 'EEXIST') throw error;
-      });
-    }
     await writeFile(
       path.join(output, 'atlas-data.json'),
       `${JSON.stringify(clientData)}\n`,

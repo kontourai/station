@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs/promises';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   STATION_DOCS_CONTENT_DIGEST,
   STATION_DOCS_TOPICS,
@@ -22,6 +25,95 @@ import {
   validateCatalog,
 } from '../lib/documentation-model.mjs';
 import { compileDocumentationReviews } from '../lib/documentation-review.mjs';
+import { publishImmutableSnapshot } from '../lib/immutable-snapshot.mjs';
+
+const makeTempDir = trackTempDirs();
+
+describe('immutable source publication', () => {
+  it('accepts identical existing bytes and refuses truncated or different evidence without replacing it', async () => {
+    const directory = makeTempDir('station-immutable-source-');
+    const destination = join(directory, 'source.txt');
+    const bytes = Buffer.from('complete captured source');
+    await publishImmutableSnapshot(destination, bytes);
+    await publishImmutableSnapshot(destination, bytes);
+    expect(await fs.readFile(destination)).toEqual(bytes);
+    for (const invalid of [
+      bytes.subarray(0, 8),
+      Buffer.alloc(bytes.length, 120),
+    ]) {
+      await fs.writeFile(destination, invalid);
+      await expect(
+        publishImmutableSnapshot(destination, bytes),
+      ).rejects.toThrow(`Immutable source snapshot mismatch: ${destination}`);
+      expect(await fs.readFile(destination)).toEqual(invalid);
+      expect(await fs.readdir(directory)).toEqual(['source.txt']);
+    }
+  });
+
+  it('publishes no destination when interrupted before the atomic link, then permits a complete retry', async () => {
+    const directory = makeTempDir('station-immutable-source-');
+    const destination = join(directory, 'source.txt');
+    const bytes = Buffer.from('complete captured source');
+    const interrupted = new Error('injected publication interruption');
+    const link = vi
+      .spyOn(fs, 'link')
+      .mockImplementationOnce(async (temporary, target) => {
+        expect(target).toBe(destination);
+        expect(await fs.readFile(temporary)).toEqual(bytes);
+        await expect(fs.stat(destination)).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        throw interrupted;
+      });
+    try {
+      await expect(publishImmutableSnapshot(destination, bytes)).rejects.toBe(
+        interrupted,
+      );
+      expect(link).toHaveBeenCalledOnce();
+    } finally {
+      link.mockRestore();
+    }
+    expect(await fs.readdir(directory)).toEqual([]);
+    await publishImmutableSnapshot(destination, bytes);
+    expect(await fs.readFile(destination)).toEqual(bytes);
+  });
+
+  it('joins concurrent identical publication and rejects a conflicting publisher without overwriting the winner', async () => {
+    const directory = makeTempDir('station-immutable-source-');
+    const destination = join(directory, 'source.txt');
+    const bytes = Buffer.from('same captured bytes');
+    await Promise.all(
+      Array.from({ length: 4 }, () =>
+        publishImmutableSnapshot(destination, bytes),
+      ),
+    );
+    expect(await fs.readFile(destination)).toEqual(bytes);
+    expect(await fs.readdir(directory)).toEqual(['source.txt']);
+    const contested = join(directory, 'contested.txt');
+    const alternatives = [
+      Buffer.from('first complete source'),
+      Buffer.from('second complete source'),
+    ];
+    const results = await Promise.allSettled(
+      alternatives.map((value) => publishImmutableSnapshot(contested, value)),
+    );
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const winner = results.findIndex((result) => result.status === 'fulfilled');
+    expect(await fs.readFile(contested)).toEqual(alternatives[winner]);
+    expect(results[1 - winner]).toMatchObject({
+      status: 'rejected',
+      reason: expect.objectContaining({
+        message: `Immutable source snapshot mismatch: ${contested}`,
+      }),
+    });
+    expect((await fs.readdir(directory)).sort()).toEqual([
+      'contested.txt',
+      'source.txt',
+    ]);
+  });
+});
 
 // docs/README.md indexed roughly half the docs tree when this was written —
 // 17 ADRs and eight whole directories were unreachable from the map that calls
