@@ -418,7 +418,17 @@ describe('station-control authority: route matching and refusals', () => {
     expect(
       decide(CALLERS['bound-operator'] ?? null, { type: 'respondToRequest' }),
     ).toBeUndefined();
-    // Other commands keep the dispatch policy (slice C).
+    for (const mode of ['auto', 'connection-default'])
+      expect(
+        decide(CALLERS['bearer-operator'] ?? null, {
+          type: 'setApprovalMode',
+          mode,
+        }),
+      ).toBe('station_control_assurance_insufficient');
+    // Other commands keep the dispatch policy (slice C), steerTurn included.
+    expect(
+      decide(CALLERS['bearer-operator'] ?? null, { type: 'steerTurn' }),
+    ).toBeUndefined();
     expect(
       decide(CALLERS['bearer-operator'] ?? null, { type: 'interruptTurn' }),
     ).toBeUndefined();

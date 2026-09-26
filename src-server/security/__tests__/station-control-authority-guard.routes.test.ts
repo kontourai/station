@@ -122,6 +122,12 @@ const JOBS = [
     prompt: 'the reviewed prompt',
     agent: 'reviewer',
     enabled: true,
+    monitor: {
+      kind: 'github-pull-request',
+      target: 'org/repo#1',
+      agentId: 'reviewer',
+      projectId: 'project-a',
+    },
     unattendedPrincipal: {
       kind: 'scheduled-job' as const,
       jobId: 'job-granted',
@@ -937,6 +943,57 @@ describe('answering a pending request (M4): only the bound operator', () => {
     },
   );
 
+  // M-2: setting a session's approval mode to ANY value is an approval
+  // decision (`auto` or a reset loosen it as surely as `never`).
+  test.each([
+    ['bound', 'op-', 'allowed'],
+    ['bound', 'person-', 'station_control_role_required'],
+    ['delegated-custody', 'op-', 'station_control_assurance_insufficient'],
+    ['bearer-exposed', 'op-', 'station_control_assurance_insufficient'],
+    ['pooled', 'none', 'station_control_caller_required'],
+  ] as const)(
+    'a %s (%s) caller setting any approval mode → %s',
+    async (channel, prefix, outcome) => {
+      for (const mode of ['auto', 'connection-default', 'never']) {
+        hits.length = 0;
+        const caller = forwardedCaller(channel, nextSession(prefix));
+        const response = await rest(
+          'POST',
+          '/api/orchestration/commands',
+          internalHeaders(
+            caller ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller } : {},
+          ),
+          { type: 'setApprovalMode', threadId: 't', mode },
+        );
+        if (outcome === 'allowed') {
+          expect([mode, response]).toEqual([mode, { status: 200 }]);
+          expect(hits).toEqual(['POST /api/orchestration/commands']);
+        } else {
+          expect([mode, response]).toEqual([
+            mode,
+            { status: 403, code: outcome },
+          ]);
+          expect(hits).toEqual([]);
+        }
+      }
+    },
+  );
+
+  test('the operator UI still sets an approval mode', async () => {
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/commands',
+        {
+          'content-type': 'application/json',
+          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        },
+        { type: 'setApprovalMode', threadId: 't', mode: 'auto' },
+      ),
+    ).toEqual({ status: 200 });
+    expect(refusals).toEqual([]);
+  });
+
   test('other commands keep the dispatch policy, and the operator UI still answers', async () => {
     const bearer = forwardedCaller('bearer-exposed', nextSession('op-'));
     expect(
@@ -984,16 +1041,32 @@ describe('a job a person granted (M1): an agent cannot change what it runs', () 
     },
   );
 
+  test.each([
+    ['agentId', { agentId: 'another-agent' }],
+    ['projectId', { projectId: 'another-project' }],
+    ['target', { target: 'org/other#2' }],
+  ] as const)(
+    'changing a granted job’s monitor %s is a person’s step even for the bound operator',
+    async (_field, change) => {
+      const monitor = { ...JOBS[0]!.monitor, ...change };
+      expect(
+        await rest('PUT', '/scheduler/jobs/granted', bound(), { monitor }),
+      ).toEqual({ status: 403, code: 'station_control_person_only' });
+      expect(hits).toEqual([]);
+    },
+  );
+
   test('other edits, unchanged values, and ungranted jobs stay the operator’s', async () => {
     for (const [target, body] of [
       ['granted', { enabled: false }],
       ['granted', { prompt: 'the reviewed prompt' }],
+      ['granted', { monitor: JOBS[0]!.monitor }],
       ['plain', { prompt: 'something else' }],
     ] as const)
       expect(
         await rest('PUT', `/scheduler/jobs/${target}`, bound(), body),
       ).toEqual({ status: 200 });
-    expect(hits).toHaveLength(3);
+    expect(hits).toHaveLength(4);
   });
 
   test('a revoked grant no longer holds the job', async () => {

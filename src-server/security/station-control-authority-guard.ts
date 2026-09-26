@@ -135,8 +135,12 @@ function needsBody(method: string, path: string): boolean {
   );
 }
 
-/** Job fields that decide what a scheduled job runs. */
-const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider'] as const;
+/**
+ * Job fields that decide what a scheduled job runs. `monitor` counts: its
+ * `agentId`, `projectId` and `target` choose the work a monitor dispatch runs
+ * under the job's scheduled-job principal (and so the job's grants).
+ */
+const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider', 'monitor'] as const;
 
 /**
  * The fields of an edit body that could change what a job runs; the grant

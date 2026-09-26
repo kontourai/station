@@ -96,20 +96,25 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  * A rule a ROUTE carries whatever tool reaches it, because the body decides
  * what the request does:
  *
- * - `respond-to-request-needs-bound-operator`: `POST
- *   /api/orchestration/commands` also answers pending permission requests
- *   (`type: 'respondToRequest'`, including `acceptForSession`). An agent must
- *   not approve its own requests, so that command needs a bound operator
- *   caller (decision 3 names bound + Project approve, which slice C adds;
- *   until then only the operator).
+ * - `approval-commands-need-bound-operator`: `POST
+ *   /api/orchestration/commands` also carries the approval commands. It
+ *   answers pending permission requests (`type: 'respondToRequest'`,
+ *   including `acceptForSession`) and sets a session's approval posture
+ *   (`type: 'setApprovalMode'`, any value — `auto` or a reset to the
+ *   connection default loosen it as surely as `never`). An agent must not
+ *   approve its own requests or loosen its own approvals, so both need a
+ *   bound operator caller (decision 3 names bound + Project approve for
+ *   respond, which slice C adds; until then only the operator). `steerTurn`
+ *   is dispatch and stays with slice C.
  * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
  *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
- *   granted job's prompt, agent or provider would hand the person's grants to
+ *   granted job's prompt, agent, provider or monitor (a monitor dispatch runs
+ *   under the job's principal) would hand the person's grants to
  *   work they never saw, so it is a person's step (the guard reads the grant
  *   store).
  */
 export type StationControlRouteRule =
-  | 'respond-to-request-needs-bound-operator'
+  | 'approval-commands-need-bound-operator'
   | 'retarget-of-granted-job-is-person-only';
 
 export interface StationControlRoute {
@@ -215,10 +220,7 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
   post('/api/orchestration/delegations/:taskId/interrupt'),
-  post(
-    '/api/orchestration/commands',
-    'respond-to-request-needs-bound-operator',
-  ),
+  post('/api/orchestration/commands', 'approval-commands-need-bound-operator'),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
@@ -960,6 +962,12 @@ export function authorizeStationControlRequest(
   return closest;
 }
 
+/** Commands that approve or loosen approvals (`/api/orchestration/commands`). */
+const APPROVAL_COMMANDS: ReadonlySet<string> = new Set([
+  'respondToRequest',
+  'setApprovalMode',
+]);
+
 /**
  * The leaf's own body-dependent rules, applied after some tool's policy
  * admitted the request (so no tool reaching the leaf can loosen them).
@@ -978,7 +986,7 @@ function routeRuleRefusal(
     if (
       !body ||
       typeof body !== 'object' ||
-      (body as { type?: unknown }).type !== 'respondToRequest'
+      !APPROVAL_COMMANDS.has(String((body as { type?: unknown }).type))
     )
       continue;
     const caller = context.caller;

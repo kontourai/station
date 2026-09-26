@@ -1135,7 +1135,8 @@ export async function jobEditRetargetsGrantedWork(
   );
   if (!job) return false;
   const changed = Object.entries(changes).some(
-    ([field, value]) => job[field] !== value,
+    // Structural comparison: `monitor` is an object (and `null` removes it).
+    ([field, value]) => JSON.stringify(job[field]) !== JSON.stringify(value),
   );
   const jobId = job.unattendedPrincipal?.jobId;
   if (!changed || !jobId) return false;
