@@ -676,7 +676,10 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/ecosystem-manifest.mjs',
     related: true,
-    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    tests: Object.freeze([
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({

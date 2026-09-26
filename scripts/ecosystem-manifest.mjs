@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  findPortableServerTarget,
+  portableServerArchiveName,
+} from '../packages/shared/src/portable-server-targets.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
@@ -98,7 +102,7 @@ function validateArtifact(kind, artifact, name) {
 }
 
 const PORTABLE_NAME = /^station-[A-Za-z0-9._-]+\.tar\.gz$/;
-const PAYLOAD_KEYS = [
+const PAYLOAD_KEYS_V1 = [
   'artifacts',
   'channel',
   'publishedAt',
@@ -107,6 +111,27 @@ const PAYLOAD_KEYS = [
   'sourceSha',
   'version',
 ];
+const PAYLOAD_KEYS_V2 = [
+  'artifacts',
+  'channel',
+  'launcherProtocol',
+  'nodeVersion',
+  'publishedAt',
+  'releaseTag',
+  'schemaVersion',
+  'sourceSha',
+  'version',
+];
+const PLATFORM_ARTIFACT_KEYS = [
+  'arch',
+  'format',
+  'name',
+  'os',
+  'sha256',
+  'size',
+  'url',
+];
+const NODE_VERSION = new RegExp(`^${RELEASE}$`);
 
 function validateCommonPayload(payload) {
   if (typeof payload.sourceSha !== 'string' || !SHA.test(payload.sourceSha))
@@ -120,6 +145,11 @@ function validateCommonPayload(payload) {
 }
 
 // Schema v2: portable-only, stable | preview | nightly.
+//
+// One prebuilt server archive per platform (#2675). packages/shared's
+// release-manifest.ts verifies the same schema for the service supervisor;
+// the shared golden vectors in release-manifest-vectors.test.ts hold the two
+// to the same accept/reject decisions and reasons.
 function validatePayloadV2(payload) {
   if (!Object.hasOwn(CHANNEL_VERSION, payload.channel))
     throw new Error('invalid manifest channel');
@@ -130,10 +160,77 @@ function validatePayloadV2(payload) {
   if (payload.releaseTag !== `v${payload.version}`)
     throw new Error('release tag does not match version');
   validateCommonPayload(payload);
-  if (!hasExactKeys(payload.artifacts, ['portable']))
-    throw new Error('invalid artifact set');
-  validateArtifact('portable', payload.artifacts.portable, PORTABLE_NAME);
+  if (
+    typeof payload.nodeVersion !== 'string' ||
+    !NODE_VERSION.test(payload.nodeVersion)
+  )
+    throw new Error('invalid Node.js version');
+  const protocol = payload.launcherProtocol;
+  if (
+    !hasExactKeys(protocol, ['max', 'min']) ||
+    !Number.isSafeInteger(protocol.min) ||
+    !Number.isSafeInteger(protocol.max) ||
+    protocol.min < 1 ||
+    protocol.max < protocol.min
+  )
+    throw new Error('invalid launcher protocol range');
+  validatePlatformArtifacts(payload.artifacts);
   return payload;
+}
+
+function validatePlatformArtifact(artifact, index) {
+  if (
+    !hasExactKeys(artifact, PLATFORM_ARTIFACT_KEYS) ||
+    typeof artifact.os !== 'string' ||
+    typeof artifact.arch !== 'string'
+  )
+    throw new Error(`platform artifact ${index} has an unexpected shape`);
+  const id = `${artifact.os}-${artifact.arch}`;
+  const target = findPortableServerTarget(artifact.os, artifact.arch);
+  if (!target)
+    throw new Error(`platform artifact ${id} is not a supported target`);
+  if (artifact.format !== target.format)
+    throw new Error(`platform artifact ${id} format must be ${target.format}`);
+  const name = portableServerArchiveName(target);
+  if (artifact.name !== name)
+    throw new Error(`platform artifact ${id} name must be ${name}`);
+  if (
+    !isCanonicalUrl(artifact.url) ||
+    !(
+      artifact.url.startsWith('https://') ||
+      (allowInsecureTestUrls && /^(http|file):\/\//.test(artifact.url))
+    )
+  )
+    throw new Error(`platform artifact ${id} url is not a canonical HTTPS URL`);
+  if (typeof artifact.sha256 !== 'string' || !SHA256.test(artifact.sha256))
+    throw new Error(`platform artifact ${id} sha256 is invalid`);
+  if (!Number.isSafeInteger(artifact.size) || artifact.size <= 0)
+    throw new Error(`platform artifact ${id} size is invalid`);
+  return id;
+}
+
+/**
+ * The signed bytes depend on array order, so the order is part of the
+ * schema: one entry per target, sorted by os, then arch (code-point order).
+ */
+function validatePlatformArtifacts(artifacts) {
+  if (!Array.isArray(artifacts) || artifacts.length === 0)
+    throw new Error('invalid artifact set');
+  const ids = artifacts.map(validatePlatformArtifact);
+  const seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) throw new Error(`duplicate platform artifact ${id}`);
+    seen.add(id);
+  }
+  for (let index = 1; index < artifacts.length; index += 1) {
+    const previous = artifacts[index - 1];
+    const current = artifacts[index];
+    if (
+      previous.os > current.os ||
+      (previous.os === current.os && previous.arch > current.arch)
+    )
+      throw new Error('platform artifacts are not sorted by os, then arch');
+  }
 }
 
 // Schema v1: stable | preview, with the macOS cask artifact. Kept for the
@@ -163,12 +260,24 @@ function validatePayloadV1(payload) {
   return payload;
 }
 
+// Each schema owns an exact key set: a v2 payload under schema 1, or v1 keys
+// under schema 2, is malformed rather than read as the other shape.
+const SCHEMAS = {
+  1: { keys: PAYLOAD_KEYS_V1, validate: validatePayloadV1 },
+  2: { keys: PAYLOAD_KEYS_V2, validate: validatePayloadV2 },
+};
+
 function validatePayload(payload) {
-  if (!hasExactKeys(payload, PAYLOAD_KEYS))
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload))
     throw new Error('manifest payload has an unexpected shape');
-  if (payload.schemaVersion === 1) return validatePayloadV1(payload);
-  if (payload.schemaVersion === 2) return validatePayloadV2(payload);
-  throw new Error('unsupported manifest schema');
+  const schema =
+    payload.schemaVersion === 1 || payload.schemaVersion === 2
+      ? SCHEMAS[payload.schemaVersion]
+      : undefined;
+  if (!schema) throw new Error('unsupported manifest schema');
+  if (!hasExactKeys(payload, schema.keys))
+    throw new Error('manifest payload has an unexpected shape');
+  return schema.validate(payload);
 }
 
 function readEnvelope(path) {
@@ -259,6 +368,143 @@ export function verifyManifest({ manifest, publicKey, keyTable }) {
   return validatePayload(envelope.payload);
 }
 
+const DESCRIPTOR_FILE = /^station-server-.+\.(tar\.gz|zip)\.json$/;
+
+/** Every archive descriptor under `root`, found recursively. */
+function findDescriptors(root) {
+  const found = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) found.push(...findDescriptors(path));
+    else if (entry.isFile() && DESCRIPTOR_FILE.test(entry.name))
+      found.push(path);
+  }
+  return found.sort();
+}
+
+function parsePositiveInteger(name, value) {
+  if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value)))
+    throw new Error(`${name} must be a positive integer`);
+  return Number(value);
+}
+
+/**
+ * A schema v2 payload built from the descriptors the portable archive build
+ * writes beside each archive (`<archive>.json`), so no digest or size is ever
+ * typed by hand. `baseUrl` must be the versioned release-asset directory: a
+ * rolling pointer would make a pinned or rollback manifest resolve to other
+ * bytes than it signed.
+ */
+function assemblePayload({
+  descriptorsDir,
+  version,
+  channel,
+  sourceSha,
+  baseUrl,
+  nodeVersion,
+  launcherProtocolMin,
+  launcherProtocolMax,
+  publishedAt,
+}) {
+  const releaseTag = `v${version}`;
+  if (
+    !isCanonicalUrl(baseUrl) ||
+    !baseUrl.startsWith('https://') ||
+    !baseUrl.endsWith('/')
+  )
+    throw new Error(
+      '--base-url must be a canonical HTTPS URL ending in a slash',
+    );
+  const segments = new URL(baseUrl).pathname.split('/');
+  if (!segments.includes(releaseTag) || segments.includes('latest'))
+    throw new Error(
+      `--base-url must name the versioned release ${releaseTag}, not a rolling pointer`,
+    );
+  if (!NODE_VERSION.test(nodeVersion))
+    throw new Error('--node-version must be MAJOR.MINOR.PATCH');
+  const paths = findDescriptors(resolve(descriptorsDir));
+  if (paths.length === 0)
+    throw new Error(`no archive descriptors found under ${descriptorsDir}`);
+  const byTarget = new Map();
+  const nodeVersions = new Set();
+  for (const path of paths) {
+    const descriptor = readJson(path);
+    const where = basename(path);
+    const [os, arch, ...rest] =
+      typeof descriptor?.target === 'string'
+        ? descriptor.target.split('-')
+        : [];
+    const target =
+      rest.length === 0 ? findPortableServerTarget(os, arch) : undefined;
+    if (descriptor?.schemaVersion !== 1 || !target)
+      throw new Error(`${where}: not a supported archive descriptor`);
+    const name = portableServerArchiveName(target);
+    if (
+      descriptor.format !== target.format ||
+      descriptor.name !== name ||
+      where !== `${name}.json`
+    )
+      throw new Error(`${where}: name or format does not match ${name}`);
+    if (
+      typeof descriptor.sha256 !== 'string' ||
+      !SHA256.test(descriptor.sha256)
+    )
+      throw new Error(`${where}: malformed sha256`);
+    if (!Number.isSafeInteger(descriptor.size) || descriptor.size <= 0)
+      throw new Error(`${where}: malformed size`);
+    const release = descriptor.release;
+    if (
+      release?.sha !== sourceSha ||
+      release?.ref !== releaseTag ||
+      release?.releaseChannel !== channel
+    )
+      throw new Error(
+        `${where}: built for ${String(release?.ref)} (${String(release?.releaseChannel)}) at ${String(release?.sha)}, not ${releaseTag} (${channel}) at ${sourceSha}`,
+      );
+    if (byTarget.has(descriptor.target))
+      throw new Error(`duplicate archive descriptor for ${descriptor.target}`);
+    nodeVersions.add(descriptor.node?.version);
+    byTarget.set(descriptor.target, {
+      os: target.os,
+      arch: target.arch,
+      name,
+      url: new URL(name, baseUrl).href,
+      sha256: descriptor.sha256,
+      size: descriptor.size,
+      format: target.format,
+    });
+  }
+  if (nodeVersions.size !== 1)
+    throw new Error(
+      `archive descriptors disagree on the Node.js version: ${[...nodeVersions].map(String).join(', ')}`,
+    );
+  const [bundledNode] = nodeVersions;
+  if (bundledNode !== nodeVersion)
+    throw new Error(
+      `archives bundle Node.js ${String(bundledNode)}, not the pinned ${nodeVersion}`,
+    );
+  const artifacts = [...byTarget.values()].sort((left, right) =>
+    left.os === right.os
+      ? left.arch < right.arch
+        ? -1
+        : 1
+      : left.os < right.os
+        ? -1
+        : 1,
+  );
+  return validatePayload({
+    schemaVersion: 2,
+    channel,
+    version,
+    releaseTag,
+    sourceSha,
+    publishedAt,
+    nodeVersion,
+    launcherProtocol: { min: launcherProtocolMin, max: launcherProtocolMax },
+    artifacts,
+  });
+}
+
 function renderCask(payload) {
   return `cask "station" do\n  version "${payload.version}"\n  sha256 "${payload.artifacts.macos.sha256}"\n\n  url "${payload.artifacts.macos.url}"\n  name "Station"\n  desc "Local-first agent workspace"\n  homepage "https://station.kontour.ai"\n\n  app "Station.app"\nend\n`;
 }
@@ -299,6 +545,31 @@ try {
       resolve(option('--output')),
       `${JSON.stringify(envelope, null, 2)}\n`,
     );
+  } else if (command === 'assemble') {
+    // TODO(#2675): once config/portable-server-node-runtime.json lands with
+    // the archive build (#2705), default --node-version from it and refuse a
+    // value that differs.
+    const payload = assemblePayload({
+      descriptorsDir: option('--descriptors'),
+      version: option('--version'),
+      channel: option('--channel'),
+      sourceSha: option('--source-sha'),
+      baseUrl: option('--base-url'),
+      nodeVersion: option('--node-version'),
+      launcherProtocolMin: parsePositiveInteger(
+        '--launcher-protocol-min',
+        option('--launcher-protocol-min'),
+      ),
+      launcherProtocolMax: parsePositiveInteger(
+        '--launcher-protocol-max',
+        option('--launcher-protocol-max'),
+      ),
+      publishedAt: optionalOption('--published-at') ?? new Date().toISOString(),
+    });
+    writeFileSync(
+      resolve(option('--output')),
+      `${JSON.stringify(payload, null, 2)}\n`,
+    );
   } else if (command === 'verify') {
     const payload = verifyManifest({
       manifest: option('--manifest'),
@@ -318,7 +589,9 @@ try {
       );
     writeFileSync(resolve(option('--output')), renderCask(payload));
   } else {
-    throw new Error('Usage: ecosystem-manifest.mjs <create|verify|cask> ...');
+    throw new Error(
+      'Usage: ecosystem-manifest.mjs <create|verify|cask|assemble> ...',
+    );
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
