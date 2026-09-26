@@ -14,6 +14,10 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  runAsStationServer,
+  stationServerScopeHeaders,
+} from '../../../security/station-server-scope.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
@@ -192,9 +196,12 @@ describe('runtime routes: device pairing security wiring', () => {
         source: 'same-origin',
         requesterPosition: 'unproven',
       });
-      // Station's own attested internal caller presents no credential. An
-      // unproven requester position needs an operator, so the approval is
-      // refused, and the host route writes that refusal to the audit log.
+      // Station's own server code presents no credential. Since #2377 slice A
+      // the station-control guard refuses a bare internal token here, so the
+      // server-self attestation (attached inside `runAsStationServer`) is the
+      // one remaining caller in this approval class. An unproven requester
+      // position needs an operator, so the approval is refused, and the host
+      // route writes that refusal to the audit log.
       const confirm = await request(
         `/api/pairing/requests/${pending.requestId}/confirm`,
         {
@@ -202,6 +209,7 @@ describe('runtime routes: device pairing security wiring', () => {
           headers: {
             [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
             [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+            ...runAsStationServer(stationServerScopeHeaders),
           },
         },
         '127.0.0.1',

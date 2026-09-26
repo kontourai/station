@@ -10,15 +10,11 @@
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { isMcpUiRenderRevoked } from '../../../services/plugins/mcp-ui-permissions.js';
-import {
-  getInternalApiToken,
-  INTERNAL_API_TOKEN_HEADER,
-  INTERNAL_PROXY_CALLER_HEADER,
-} from '../../../utils/internal-api-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -49,6 +45,8 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const SERVER_ID = 'ui-server';
+const OPERATOR_SECRET = 'operator-secret-mcp-ui-render-fixture';
+const isOperator = (credential: string) => credential === OPERATOR_SECRET;
 const EMBEDDED_UI = { uri: 'ui://ui-server/panel', mimeType: 'text/html' };
 
 describe('runtime routes: MCP-UI render permission wiring', () => {
@@ -93,15 +91,24 @@ describe('runtime routes: MCP-UI render permission wiring', () => {
       }),
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
-      environmentSecurityService: deepStub({}),
+      environmentSecurityService: deepStub({
+        verifyCredential: isOperator,
+        authorizeCredential: isOperator,
+        verifyOperatorCredential: isOperator,
+        resolveGrantedScope: (credential: string) =>
+          isOperator(credential) ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+        identifyDevice: () => undefined,
+        credentialLocality: () => undefined,
+        credentialMintKind: () => undefined,
+      }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    // Station's own attested local caller: the runtime authentication
-    // composed here admits it without a bearer credential.
+    // The operator's credential, through the runtime authentication composed
+    // here: render permission is a person's setting, not a tool's.
     const request = (path: string, init: RequestInit = {}) =>
       app.request(
         path,
@@ -109,8 +116,7 @@ describe('runtime routes: MCP-UI render permission wiring', () => {
           ...init,
           headers: {
             ...(init.headers as Record<string, string> | undefined),
-            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-            [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
           },
         },
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
