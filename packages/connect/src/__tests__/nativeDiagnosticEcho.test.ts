@@ -16,22 +16,51 @@ import {
 
 const CLIENT_FP = Array(32).fill('AA').join(':');
 const STATION_FP = Array(32).fill('BB').join(':');
-const OFFER_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${CLIENT_FP}\r\n`;
+const OFFER_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${CLIENT_FP}\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=sctp-port:5000\r\n`;
+const OFFER_WITHOUT_CHANNEL_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${CLIENT_FP}\r\n`;
 const ANSWER_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${STATION_FP}\r\n`;
 const EXPIRES_AT = Date.now() + 30_000;
 
 class FakeChannel extends EventTarget {
-  readyState = 'open';
+  readyState = 'connecting';
   bufferedAmount = 0;
   closed = false;
+  sent: string[] = [];
+  throwOnSend = false;
+  listenerCounts = new Map<string, number>();
   constructor(readonly label: string) {
     super();
   }
   send(value: string) {
+    if (this.throwOnSend) throw new Error('fake_send_failed');
+    this.sent.push(value);
     setTimeout(
       () => this.dispatchEvent(new MessageEvent('message', { data: value })),
       0,
     );
+  }
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ) {
+    this.listenerCounts.set(type, (this.listenerCounts.get(type) ?? 0) + 1);
+    super.addEventListener(type, callback, options);
+  }
+  override removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ) {
+    this.listenerCounts.set(
+      type,
+      Math.max(0, (this.listenerCounts.get(type) ?? 0) - 1),
+    );
+    super.removeEventListener(type, callback, options);
+  }
+  open() {
+    this.readyState = 'open';
+    this.dispatchEvent(new Event('open'));
   }
   close() {
     this.closed = true;
@@ -47,15 +76,36 @@ class FakePeer extends EventTarget {
   closed = false;
   ondatachannel: ((event: RTCDataChannelEvent) => void) | null = null;
   channel = new FakeChannel('station-lab-v1');
-  createOffer = vi.fn(async () => ({ type: 'offer' as const, sdp: OFFER_SDP }));
+  createdChannels: FakeChannel[] = [];
+  callOrder: string[] = [];
+  unexpectedRemoteChannel: FakeChannel | undefined;
+  createDataChannel = vi.fn((label: string, _options?: RTCDataChannelInit) => {
+    this.callOrder.push('create-channel');
+    const created = new FakeChannel(label);
+    this.createdChannels.push(created);
+    return created;
+  });
+  createOffer = vi.fn(async () => {
+    this.callOrder.push('create-offer');
+    return {
+      type: 'offer' as const,
+      sdp:
+        this.createdChannels.length > 0 ? OFFER_SDP : OFFER_WITHOUT_CHANNEL_SDP,
+    };
+  });
   setLocalDescription = vi.fn(async (value: RTCSessionDescriptionInit) => {
     this.localDescription = value;
   });
   setRemoteDescription = vi.fn(async (_value: RTCSessionDescriptionInit) => {
     this.remoteCalls++;
-    const event = new Event('datachannel');
-    Object.defineProperty(event, 'channel', { value: this.channel });
-    this.ondatachannel?.(event as unknown as RTCDataChannelEvent);
+    for (const created of this.createdChannels) created.open();
+    if (this.unexpectedRemoteChannel) {
+      const event = new Event('datachannel');
+      Object.defineProperty(event, 'channel', {
+        value: this.unexpectedRemoteChannel,
+      });
+      this.ondatachannel?.(event as unknown as RTCDataChannelEvent);
+    }
   });
   close() {
     this.closed = true;
@@ -91,6 +141,15 @@ async function fixture() {
   let bindingOverride: Partial<StationConnectionProofBinding> = {};
   let revokeOnRead = false;
   let pendingRead = false;
+  let deferBeforeRemote = false;
+  let releaseBeforeRemote!: () => void;
+  let signalBeforeRemote!: () => void;
+  const beforeRemoteReached = new Promise<void>((resolve) => {
+    signalBeforeRemote = resolve;
+  });
+  const beforeRemoteRelease = new Promise<void>((resolve) => {
+    releaseBeforeRemote = resolve;
+  });
   const signaling: NativeDiagnosticSignaling = {
     scope,
     surface,
@@ -133,6 +192,13 @@ async function fixture() {
     trust: {
       current: () => current,
       isCurrent: (expected) => current === expected,
+      recheck: async (expected, stage) => {
+        if (stage === 'before-remote-description' && deferBeforeRemote) {
+          signalBeforeRemote();
+          await beforeRemoteRelease;
+        }
+        return current === expected;
+      },
     },
     createPeer: () => peer as unknown as RTCPeerConnection,
   });
@@ -157,8 +223,25 @@ async function fixture() {
     pendingRead() {
       pendingRead = true;
     },
-    setChannelLabel(label: string) {
-      peer.channel = new FakeChannel(label);
+    setUnexpectedChannel(label: string) {
+      peer.unexpectedRemoteChannel = new FakeChannel(label);
+    },
+    setLocalChannel(channel: FakeChannel) {
+      peer.createDataChannel.mockImplementation((_label, _options) => {
+        peer.callOrder.push('create-channel');
+        peer.createdChannels.push(channel);
+        return channel;
+      });
+    },
+    deferBeforeRemote() {
+      deferBeforeRemote = true;
+      return {
+        reached: beforeRemoteReached,
+        revokeAndRelease() {
+          current = null;
+          releaseBeforeRemote();
+        },
+      };
     },
   };
 }
@@ -180,8 +263,17 @@ describe('native diagnostic echo client', () => {
       expect.any(AbortSignal),
     );
     expect(f.peer.setRemoteDescription).toHaveBeenCalledOnce();
-    expect(f.peer.channel.label).toBe('station-lab-v1');
-    expect(f.peer.channel.closed).toBe(true);
+    expect(f.peer.createDataChannel).toHaveBeenCalledWith('station-lab-v1', {
+      ordered: true,
+    });
+    expect(f.peer.callOrder).toEqual(['create-channel', 'create-offer']);
+    expect(f.peer.createdChannels[0]?.closed).toBe(true);
+    expect((await f.peer.createOffer.mock.results[0]!.value).sdp).toContain(
+      'm=application 9 UDP/DTLS/SCTP webrtc-datachannel',
+    );
+    expect((await f.peer.createOffer.mock.results[0]!.value).sdp).toContain(
+      'a=sctp-port:5000',
+    );
     expect(f.peer.closed).toBe(true);
   });
 
@@ -218,10 +310,24 @@ describe('native diagnostic echo client', () => {
 
   test('refuses an application channel and closes the peer', async () => {
     const f = await fixture();
-    f.setChannelLabel('station-application-v1');
+    f.setUnexpectedChannel('station-application-v1');
     await expect(f.client.run(new AbortController().signal)).rejects.toThrow();
     expect(f.peer.remoteCalls).toBe(1);
-    expect(f.peer.channel.closed).toBe(true);
+    expect(f.peer.unexpectedRemoteChannel?.closed).toBe(true);
+    expect(f.peer.closed).toBe(true);
+  });
+
+  test('a synchronous echo send failure aborts and removes the waiter', async () => {
+    const f = await fixture();
+    const channel = new FakeChannel('station-lab-v1');
+    channel.throwOnSend = true;
+    f.setLocalChannel(channel);
+    await expect(f.client.run(new AbortController().signal)).rejects.toThrow(
+      'fake_send_failed',
+    );
+    expect(channel.listenerCounts.get('message')).toBe(0);
+    expect(channel.listenerCounts.get('error')).toBe(0);
+    expect(channel.listenerCounts.get('close')).toBe(0);
     expect(f.peer.closed).toBe(true);
   });
 
@@ -231,6 +337,17 @@ describe('native diagnostic echo client', () => {
     await expect(f.client.run(new AbortController().signal)).rejects.toThrow(
       'native_diagnostic_trust_retired',
     );
+    expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
+    expect(f.peer.closed).toBe(true);
+  });
+
+  test('authoritative trust revocation during the pre-SDP check prevents application', async () => {
+    const f = await fixture();
+    const deferred = f.deferBeforeRemote();
+    const running = f.client.run(new AbortController().signal);
+    await deferred.reached;
+    deferred.revokeAndRelease();
+    await expect(running).rejects.toThrow('native_diagnostic_trust_retired');
     expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
     expect(f.peer.closed).toBe(true);
   });

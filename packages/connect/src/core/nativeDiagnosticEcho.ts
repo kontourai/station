@@ -59,6 +59,15 @@ export interface NativeDiagnosticEchoInput {
   readonly trust: {
     current(): ApprovedStationConnectionTrust | null;
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
+    /**
+     * Refresh persisted native trust through its authoritative owner (for
+     * example station_native_relay_key_approval_status). The local sync check
+     * alone cannot observe a revocation made by the native key owner.
+     */
+    recheck(
+      value: ApprovedStationConnectionTrust,
+      stage: 'checkpoint' | 'before-remote-description',
+    ): Promise<boolean>;
   };
   readonly createPeer?: (configuration: RTCConfiguration) => RTCPeerConnection;
   readonly configuration?: RTCConfiguration;
@@ -144,12 +153,26 @@ export function createNativeDiagnosticEchoClient(
       owned.addEventListener('abort', close, { once: true });
       const assertCurrent = async (
         expected: ApprovedStationConnectionTrust,
+        stage: 'checkpoint' | 'before-remote-description' = 'checkpoint',
       ) => {
         owned.throwIfAborted();
         const valid = trustOwner.isCurrent(expected);
         if (!valid) throw new Error('native_diagnostic_trust_retired');
         const current = trustOwner.current();
         if (!current || !sameTrust(current, expected))
+          throw new Error('native_diagnostic_trust_retired');
+        const authoritative = await raceOwnedLifetime(
+          trustOwner.recheck(expected, stage),
+          owned,
+        );
+        owned.throwIfAborted();
+        const authoritativeCurrent = trustOwner.current();
+        if (
+          authoritative !== true ||
+          !trustOwner.isCurrent(expected) ||
+          !authoritativeCurrent ||
+          !sameTrust(authoritativeCurrent, expected)
+        )
           throw new Error('native_diagnostic_trust_retired');
       };
       try {
@@ -169,19 +192,16 @@ export function createNativeDiagnosticEchoClient(
 
         peer = createPeer(configuration);
         const peerOwner = peer;
-        let remoteChannel: RTCDataChannel | undefined;
+        channel = peer.createDataChannel(ECHO_CHANNEL, { ordered: true });
+        const localChannel = channel;
         let wrongChannel = false;
         peer.ondatachannel = (event) => {
-          if (event.channel.label !== ECHO_CHANNEL || remoteChannel) {
-            wrongChannel = true;
-            try {
-              event.channel.close();
-            } catch {
-              /* already closed */
-            }
-            return;
+          wrongChannel = true;
+          try {
+            event.channel.close();
+          } catch {
+            /* already closed */
           }
-          remoteChannel = event.channel;
         };
         const clientId = surface.clientInstanceId;
         if (typeof clientId !== 'string' || !clientId)
@@ -307,6 +327,8 @@ export function createNativeDiagnosticEchoClient(
         verifier.assertStillCurrent();
         // Proof, nonce, identities, fingerprints and exact SDP digests have all
         // been checked before the untrusted answer reaches the WebRTC stack.
+        await assertCurrent(authority, 'before-remote-description');
+        verifier.assertStillCurrent();
         await raceOwnedLifetime(
           peer.setRemoteDescription({ type: 'answer', sdp: answer.answerSdp! }),
           owned,
@@ -319,7 +341,7 @@ export function createNativeDiagnosticEchoClient(
           (finish, fail) => {
             const changed = () => {
               if (wrongChannel) fail();
-              else if (remoteChannel) finish();
+              else if (peerOwner.connectionState === 'connected') finish();
               else if (
                 peerOwner.connectionState === 'failed' ||
                 peerOwner.connectionState === 'closed'
@@ -333,13 +355,9 @@ export function createNativeDiagnosticEchoClient(
           },
           15_000,
         );
-        if (
-          !remoteChannel ||
-          wrongChannel ||
-          remoteChannel.label !== ECHO_CHANNEL
-        )
+        await assertCurrent(authority);
+        if (wrongChannel || localChannel.label !== ECHO_CHANNEL)
           throw new Error('native_diagnostic_channel_invalid');
-        channel = remoteChannel;
         await waitForBrowserTransport(
           owned,
           (finish, fail) => {
@@ -358,11 +376,19 @@ export function createNativeDiagnosticEchoClient(
           10_000,
         );
         await assertCurrent(authority);
+        if (channel.bufferedAmount > 1024 || channel.readyState !== 'open')
+          throw new Error('native_diagnostic_echo_unavailable');
         const echo = base64url(
           globalThis.crypto.getRandomValues(new Uint8Array(ECHO_BYTES)),
         );
+        const echoWaitController = new AbortController();
+        const abortEchoWait = () =>
+          echoWaitController.abort(
+            owned.reason ?? new Error('native_diagnostic_retired'),
+          );
+        owned.addEventListener('abort', abortEchoWait, { once: true });
         const echoResult = waitForBrowserTransport(
-          owned,
+          echoWaitController.signal,
           (finish, fail) => {
             const message = (event: MessageEvent) => {
               if (typeof event.data !== 'string' || event.data.length > 128)
@@ -381,10 +407,18 @@ export function createNativeDiagnosticEchoClient(
           },
           5_000,
         );
-        if (channel.bufferedAmount > 1024 || channel.readyState !== 'open')
-          throw new Error('native_diagnostic_echo_unavailable');
-        channel.send(echo);
-        await echoResult;
+        try {
+          try {
+            channel.send(echo);
+          } catch (error) {
+            echoWaitController.abort(error);
+            await echoResult.catch(() => {});
+            throw error;
+          }
+          await echoResult;
+        } finally {
+          owned.removeEventListener('abort', abortEchoWait);
+        }
         await assertCurrent(authority);
         verifier.assertStillCurrent();
         return { stationId: trust.stationId, echoed: true };
