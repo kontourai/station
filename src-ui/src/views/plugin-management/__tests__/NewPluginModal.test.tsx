@@ -336,9 +336,10 @@ test('when this device may not set the override, it says so plainly', async () =
 });
 
 // #2708: the runtime's scope refusal now reaches the error with its code
-// (`insufficient_scope`). With the override sent it is still the override
-// refusal; without it, it gets a sentence rather than the raw token.
-test('a runtime insufficient_scope 403 with the override sent is the override refusal', async () => {
+// (`insufficient_scope`). It means this device may not create Projects at
+// all, so it reads as that sentence whether or not the override was sent —
+// never as the raw token, and never as the workspace-mode refusal.
+test('a runtime insufficient_scope 403 with the override sent says the device cannot create Projects', async () => {
   stationConfig.value = { defaultWorkspaceIsolation: 'worktree' };
   createProjectMock.mockRejectedValue(
     Object.assign(new Error('insufficient_scope'), {
@@ -352,7 +353,7 @@ test('a runtime insufficient_scope 403 with the override sent is the override re
   });
   fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
   expect((await screen.findByRole('alert')).textContent).toBe(
-    WORKTREE_OVERRIDE_REFUSED,
+    INSUFFICIENT_SCOPE_REFUSED,
   );
   expect(mutateJsonMock).not.toHaveBeenCalled();
 });

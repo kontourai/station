@@ -119,20 +119,16 @@ export function useNewPluginFlow(onDone: () => void) {
         } catch (createError) {
           // #2412: a 403 that names its own code is a different refusal (the
           // Project's folder), and says so itself. The runtime's scope
-          // refusal carries `insufficient_scope` since #2708 (it used to
-          // arrive with no code at all) and is still this refusal when the
-          // override was sent: writing it is what takes operate scope.
+          // refusal names `insufficient_scope` since #2708 (it used to arrive
+          // with no code at all): that means this device may not create
+          // Projects at all, override or not, so it gets its own sentence.
           const status = (createError as { status?: unknown }).status;
           const code = (createError as { code?: unknown }).code;
-          if (
-            needsSharedOverride &&
-            status === 403 &&
-            (code === undefined || code === 'insufficient_scope')
-          ) {
-            throw new Error(WORKTREE_OVERRIDE_REFUSED);
-          }
           if (status === 403 && code === 'insufficient_scope') {
             throw new Error(INSUFFICIENT_SCOPE_REFUSED);
+          }
+          if (needsSharedOverride && status === 403 && code === undefined) {
+            throw new Error(WORKTREE_OVERRIDE_REFUSED);
           }
           throw createError;
         }
