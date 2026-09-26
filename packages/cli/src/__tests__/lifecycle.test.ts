@@ -301,13 +301,26 @@ async function loadLifecycleModule(
   vi.doUnmock('node:fs');
 
   const gitRoot = options.gitRoot ?? TEST_CWD;
-  vi.doMock('@kontourai/station-shared/git', () => ({
-    resolveGitInfo: () => ({
-      branch: 'main',
-      gitRoot,
-      hash: '0123456',
-    }),
-  }));
+  vi.doMock('@kontourai/station-shared/git', async () => {
+    // The stamp writer reads HEAD through readGitHeadSha (station#2689). Route
+    // it onto this suite's `git rev-parse HEAD` execSync model, so each
+    // test's childProcessMock keeps owning the sha a build records.
+    const childProcess = await import('node:child_process');
+    return {
+      readGitHeadSha: (cwd: string) =>
+        String(
+          childProcess.execSync('git rev-parse HEAD', {
+            cwd,
+            encoding: 'utf-8',
+          }),
+        ).trim(),
+      resolveGitInfo: () => ({
+        branch: 'main',
+        gitRoot,
+        hash: '0123456',
+      }),
+    };
+  });
 
   const createConnection = options.netConnectMock ?? makeReadyTcpConnectMock();
   vi.doMock('node:net', async () => {
@@ -2395,7 +2408,48 @@ describe('lifecycle instance state', () => {
     await waiting;
     expect(failure).not.toBeNull();
     expect(failure!.message).toBe(
-      `Timed out waiting for ${url} (managed boot identity mismatch)`,
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "identity-sha", got "other-sha"; bootId expected "identity-boot", got "other-boot"; instanceId expected "smoke-b", got "someone-else"`,
+    );
+  });
+
+  it('names only the identity field that differed, with both values (station#2689)', async () => {
+    // The #2689 shape: no build stamp, so the supervisor expects sha
+    // 'unknown' while this very boot answers with its baked sha.
+    vi.useFakeTimers();
+    const bakedSha = '0d57e8277'.padEnd(40, '0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'default',
+              sha: bakedSha,
+              bootId: 'boot-1',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://127.0.0.1:3246/api/system/identity';
+
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'default', sha: 'unknown', bootId: 'boot-1' },
+        500,
+      )
+      .then(
+        () => null,
+        (error: Error) => error,
+      );
+    await vi.advanceTimersByTimeAsync(600);
+
+    // The parenthesised reason is unchanged, so run-e2e-suite's
+    // classifyStartFailure still reads this as a boot race.
+    expect((await waiting)?.message).toBe(
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "unknown", got "${bakedSha}"`,
     );
   });
 

@@ -27,7 +27,7 @@
  *   refused rather than read as 100%.
  */
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   COVERAGE_OUTPUT_DIRECTORY,
   COVERAGE_SHARD_DIRECTORY,
@@ -73,7 +73,7 @@ async function main() {
   process.exitCode = result.passed ? 0 : 1;
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(
       `[coverage-merge] ${error instanceof Error ? error.message : String(error)}\n`,

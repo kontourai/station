@@ -33,7 +33,21 @@ export interface UICommandRouteDeps {
    * enforcement that keeps them in lockstep if that ever changes.
    */
   isHostedDeployment: () => boolean;
+  /**
+   * #2377 slice B: whose Station clients a navigation from this request may
+   * move. `undefined`: every connection `/events` relays to, as before (the
+   * operator's own client). A principal id: only that principal's
+   * connections (a station-control agent moves its session owner's UI, never
+   * another person's). `null`: the request acts for no one and moves no UI.
+   */
+  navigationAudience?: (request: Request) => string | null | undefined;
 }
+
+/**
+ * The `ui:navigate` payload field naming the only principal whose
+ * connections may receive it (#2377 slice B). Absent: unrestricted.
+ */
+export const UI_NAVIGATE_AUDIENCE_FIELD = 'audiencePrincipalId';
 
 export function createUICommandRoutes(
   eventBus: EventBus,
@@ -79,7 +93,23 @@ export function createUICommandRoutes(
           403,
         );
       }
-      eventBus.emit(SERVER_EVENTS.UI_NAVIGATE, { path });
+      const audience = deps.navigationAudience?.(c.req.raw);
+      if (audience === null) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'This navigation acts for no person, so there is no Station window it may move.',
+          },
+          403,
+        );
+      }
+      eventBus.emit(SERVER_EVENTS.UI_NAVIGATE, {
+        path,
+        ...(audience === undefined
+          ? {}
+          : { [UI_NAVIGATE_AUDIENCE_FIELD]: audience }),
+      });
       return c.json({ success: true });
     }
 

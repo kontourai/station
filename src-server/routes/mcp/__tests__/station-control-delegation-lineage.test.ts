@@ -499,6 +499,16 @@ const FORGED: AgentDelegationContext = {
   blockedTools: [],
 };
 
+function expectCallerRequired(result: {
+  isError?: boolean;
+  content: Array<{ text: string }>;
+}) {
+  expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+    success: false,
+    code: 'station_control_caller_required',
+  });
+}
+
 describe('#2601 delegate_task stamps lineage from the verified caller', () => {
   test('a verified root session that omits _delegation still starts a child of ITS conversation, with the child tool denials', async () => {
     const result = await callTool(
@@ -879,26 +889,24 @@ describe("#2601 Station's own engine: the attested context survives the real too
       } as never) as ReturnType<Handler>;
   }
 
-  const expected = () =>
-    createChildDelegationContext({
-      agentSlug: 'planner',
-      conversationId: 'conversation-in-process',
-      spec: SPECS.planner,
-    });
-
-  test('send_message: tool → /chat/delegated keeps the attested context', async () => {
+  // #2377 slice A, owner decision 4: until the built-in engine has its own
+  // verified identity (slice D), a caller-less station-control request —
+  // Station's pooled engine included — gets read-only tools only. #2601's
+  // attestation vouches for the LINEAGE a context carries, not for the
+  // caller (anything holding the internal token can mint one), so these
+  // dispatches are refused with the typed code before anything is sent.
+  // They become slice D's acceptance tests: once the engine carries a
+  // verified identity, they assert the attested lineage again.
+  test('send_message: tool → /chat/delegated is refused until slice D (decision 4)', async () => {
     const result = await stationEngineTool('send_message')(SEND_ARGS);
-    expect(result.isError).not.toBe(true);
-    expect(stampedDelegation(executeForegroundMessage)).toEqual(expected());
+    expectCallerRequired(result);
+    expect(executeForegroundMessage).not.toHaveBeenCalled();
   });
 
-  test('delegate_task: tool → /delegations keeps the attested context (deliberate: its children now carry lineage and the child denials)', async () => {
+  test('delegate_task: tool → /delegations is refused until slice D (decision 4)', async () => {
     const result = await stationEngineTool('delegate_task')(DELEGATE_ARGS);
-    expect(result.isError).not.toBe(true);
-    expect(stampedDelegation(delegateTask)).toEqual(expected());
-    expect(delegateTask.mock.calls[0]![0]).toMatchObject({
-      parentTaskId: 'conversation-in-process',
-    });
+    expectCallerRequired(result);
+    expect(delegateTask).not.toHaveBeenCalled();
   });
 });
 
@@ -987,29 +995,33 @@ describe('#2601 forwards to a saved Environment with no verified caller', () => 
   }
   const peerArgs = { environmentId: PEER_ENVIRONMENT_ID };
 
-  test('pre-#2601 behaviour kept: an unverified, unattested send_message forwards its claim to the peer as it was given', async () => {
+  // #2377 slice A, owner decision 4: until the built-in engine has its own
+  // verified identity (slice D), a caller-less station-control request —
+  // Station's pooled engine included — gets read-only tools only. #2601's
+  // attestation vouches for the LINEAGE a context carries, not for the
+  // caller (anything holding the internal token can mint one), so these
+  // dispatches are refused with the typed code before anything is sent.
+  // They become slice D's acceptance tests: once the engine carries a
+  // verified identity, they assert the attested lineage again.
+  // Decision 3 also applies: another Station needs a bound operator caller.
+  test('an unverified, unattested send_message to a saved Environment is refused; nothing reaches the peer', async () => {
     const result = await rawTool('send_message')({
       ...SEND_ARGS,
       ...peerArgs,
       _delegation: FORGED,
     });
-    expect(result.isError).not.toBe(true);
-    expect(peerReceived).toHaveLength(1);
-    expect(peerReceived[0]!.path).toBe('/api/orchestration/chat/delegated');
-    expect(peerReceived[0]!.body.delegation).toEqual(FORGED);
-    expect(peerReceived[0]!.body).not.toHaveProperty('delegationAttestation');
+    expectCallerRequired(result);
+    expect(peerReceived).toHaveLength(0);
   });
 
-  test('pre-#2601 behaviour kept: an unverified, unattested delegate_task forwards no context', async () => {
+  test('an unverified, unattested delegate_task to a saved Environment is refused; nothing reaches the peer', async () => {
     const result = await rawTool('delegate_task')({
       ...DELEGATE_ARGS,
       ...peerArgs,
       _delegation: FORGED,
     });
-    expect(result.isError).not.toBe(true);
-    expect(peerReceived).toHaveLength(1);
-    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
-    expect(peerReceived[0]!.body).not.toHaveProperty('delegation');
+    expectCallerRequired(result);
+    expect(peerReceived).toHaveLength(0);
   });
 });
 
@@ -1043,28 +1055,28 @@ describe("#2601 Station's own engine forwarding to a saved Environment", () => {
         conversationId: 'conversation-in-process',
       } as never) as ReturnType<Handler>;
   }
-  const expected = () =>
-    createChildDelegationContext({
-      agentSlug: 'planner',
-      conversationId: 'conversation-in-process',
-      spec: SPECS.planner,
-    });
 
+  // #2377 slice A, owner decision 4: until the built-in engine has its own
+  // verified identity (slice D), a caller-less station-control request —
+  // Station's pooled engine included — gets read-only tools only. #2601's
+  // attestation vouches for the LINEAGE a context carries, not for the
+  // caller (anything holding the internal token can mint one), so these
+  // dispatches are refused with the typed code before anything is sent.
+  // They become slice D's acceptance tests: once the engine carries a
+  // verified identity, they assert the attested lineage again.
+  // Decision 3 also applies: another Station needs a bound operator caller.
   test.each([
-    ['delegate_task', DELEGATE_ARGS, '/api/orchestration/delegations'],
-    ['send_message', SEND_ARGS, '/api/orchestration/chat/delegated'],
+    ['delegate_task', DELEGATE_ARGS],
+    ['send_message', SEND_ARGS],
   ] as const)(
-    '%s: the peer receives the attested derived context, without the attestation',
-    async (name, args, path) => {
+    '%s: refused until slice D (decision 4); nothing reaches the peer',
+    async (name, args) => {
       const result = await stationEngineTool(name)({
         ...args,
         environmentId: PEER_ENVIRONMENT_ID,
       });
-      expect(result.isError).not.toBe(true);
-      expect(peerReceived).toHaveLength(1);
-      expect(peerReceived[0]!.path).toBe(path);
-      expect(peerReceived[0]!.body.delegation).toEqual(expected());
-      expect(peerReceived[0]!.body).not.toHaveProperty('delegationAttestation');
+      expectCallerRequired(result);
+      expect(peerReceived).toHaveLength(0);
     },
   );
 });

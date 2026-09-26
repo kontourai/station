@@ -15,12 +15,10 @@
  * locators report `locator-engine-unavailable` rather than failing
  * silently, and element refs and coordinates keep working.
  *
- * Adapted from t3code `apps/desktop/src/preview/PlaywrightInjectedRuntime.ts`
- * (https://github.com/pingdotgg/t3code), MIT License, Copyright (c) 2026
- * T3 Tools Inc. The extraction (terminator, sandboxed evaluation of the
- * source literal, minimum length) and the install options follow it; the
- * marker is anchored on the generated module's path instead of a fixed
- * variable name.
+ * The script source is extracted from playwright-core's bundle: the search
+ * is anchored on the generated module's path (not a variable name, which
+ * changes between releases), the literal is evaluated in a sandbox rather
+ * than parsed by hand, and a minimum length rejects a truncated match.
  */
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -28,7 +26,7 @@ import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 
 // The bundle's generated module for the injected script. Its local variable
-// is renumbered between Playwright releases (`source3` in t3code's version,
+// is renumbered between Playwright releases (`source3` in earlier ones,
 // `source4` in 1.62), so the module path anchors the search, not the name.
 const SOURCE_MODULE = 'generated/injectedScriptSource.ts"';
 const SOURCE_ASSIGNMENT = /\bsource\d* = /g;

@@ -12,10 +12,8 @@
  * a part or image larger than its cap is a protocol error, never an
  * unbounded buffer.
  *
- * The SEMU layout is adapted from t3code
- * (packages/client-runtime/src/device/stream.ts, `parseSemuPacket`) and the
- * hub's own `shared/frame-meta.js` (v2 adds an 8-byte send time).
- * t3code: MIT License, Copyright (c) 2026 T3 Tools Inc.
+ * The SEMU layout follows the hub's own `shared/frame-meta.js` (v2 adds an
+ * 8-byte send time).
  */
 
 export class DeviceFrameProtocolError extends Error {

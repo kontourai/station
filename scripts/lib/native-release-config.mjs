@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { assertProductVersion } from '../product-version.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 
 const RELEASE_TAG =
   /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-preview\.(?:[1-9]\d*))?)$/;
@@ -242,7 +243,7 @@ function assertKnownCliArguments(args) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   assertKnownCliArguments(args);
   const tag = option('tag', args) ?? process.env.RELEASE_TAG;

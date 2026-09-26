@@ -1,11 +1,9 @@
 #!/usr/bin/env tsx
-
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import {
   formatKontourDependencyState,
   inspectExactKontourDependencyPins,
 } from '../packages/cli/src/lib/kontour-dependency-drift.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export function runKontourDependencyDriftGate(
   repoRoot = process.cwd(),
@@ -25,10 +23,7 @@ export function runKontourDependencyDriftGate(
   return 0;
 }
 
-const invokedUrl = process.argv[1]
-  ? pathToFileURL(resolve(process.argv[1])).href
-  : null;
-if (import.meta.url === invokedUrl) {
+if (invokedDirectly(import.meta.url)) {
   try {
     process.exitCode = runKontourDependencyDriftGate();
   } catch (error) {

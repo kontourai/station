@@ -38,6 +38,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
 import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -2816,6 +2817,6 @@ function main() {
   return 0;
 }
 
-if (process.argv[1]?.endsWith('actionlint-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main());
 }

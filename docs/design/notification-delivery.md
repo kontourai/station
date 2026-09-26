@@ -131,23 +131,22 @@ until push lands.
 
 ## Decision: push through a Kontour-operated push gateway
 
-Decided September 23, 2026 by the owner: follow
-[T3 Code](https://github.com/pingdotgg/t3code), which ships this for a
-self-hosted product today, adapted where Station differs.
+Decided September 23, 2026 by the owner: follow the pattern an existing
+self-hosted product already ships today, adapted where Station differs.
 
 - **Why a hosted service at all.** Push credentials belong to whoever publishes
   the app (the Firebase project and the APNs key are bound to its package and
   bundle IDs), so a self-hosted Station cannot send to the published app
-  directly. T3 runs a hosted relay (`infra/relay/src/agentActivity/`).
+  directly, and the publisher has to run a hosted service that does.
 - **Named "push gateway", not relay.** In Station, relay and
   [broker](connection-broker.md) name the path a Device uses to *reach* a
   Station. The push gateway does the opposite job, Station to phone through
   Google or Apple, and only the app's publisher can run it. The broker design
   already kept notifications apart ("a separate payload policy and delivery
   grant").
-- **Stateless, Station-signed.** T3's relay links servers to Clerk user
-  accounts, stores device tokens and builds each card itself. Station has no
-  hosted accounts, and a Station already knows its paired phones, so the
+- **Stateless, Station-signed.** The gateway does not link Stations to hosted
+  user accounts, store device tokens, or build cards. Station has no hosted
+  accounts, and a Station already knows its paired phones, so the
   gateway (`deploy/push-gateway`) keeps nothing: every request is signed by the
   Station's own P-256 push key (ES256, body hash bound into the token, at most
   120 s lifetime). The gateway verifies it, rate limits per key and globally,
@@ -175,7 +174,8 @@ transcripts, code or tool output (the same rule as the
 [connection broker](connection-broker.md)), and it is end-to-end encrypted
 to the phone: the gateway and Google see only routing data.
 
-**What doing without hosted accounts costs**, compared with T3: no single card
+**What doing without hosted accounts costs**, compared with an account-backed
+relay: no single card
 merging several Stations (each Station owns its own card), revocation happens
 at the Station rather than centrally, and the gateway cannot restrict senders
 to known people, so abuse is bounded by rate limits and the phone-side check
@@ -558,7 +558,7 @@ status).
 
 | Slice | State |
 |---|---|
-| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built; ported from T3's Kotlin module. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake |
+| Android rendering + FCM receipt (`src-desktop/plugins/agent-activity`) | built. Verified on a Pixel 10 Pro XL (Android 16): real FCM delivery, and delivery through the deployed gateway, to a killed process; promoted chip; launch after that wake. That device verification predates the 2026-09-25 rewrite of the card model and notifier, which is verified by JVM unit tests, a one-off randomized comparison against the previous code (not kept in the repo), and an old-versus-new comparison on an Android 16 (API 36) emulator: channels, cards, alerts, dedupe, stale and clock-skewed pushes, swipe and tap re-arm matched. Status-bar promotion and real FCM delivery were not exercised after the rewrite |
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
 | Station notifications on Android (#2588: gateway kind, `FcmAlertChannel`, `StationNotifications.kt`) | built; the channel is tested through the production delivery wiring against the gateway's own verifier and request parser, and the phone opens the shared known-answer vector in a JVM unit test. Not yet verified on a device or emulator, and the gateway change is not yet deployed |
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
