@@ -24,7 +24,10 @@ import {
   mapTurnFinishReason,
   needsHostImageRead,
 } from './codex-adapter-events.js';
-import type { CodexSessionRecord } from './codex-adapter-types.js';
+import {
+  type CodexSessionRecord,
+  markCodexTurnTerminal,
+} from './codex-adapter-types.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -143,10 +146,21 @@ export function handleCodexNotification(
       const itemId = extractString(notification.params.itemId);
       const delta = extractString(notification.params.delta);
       if (!turnId || !itemId || !delta) return;
-      record.turnOutput.set(
-        turnId,
-        `${record.turnOutput.get(turnId) ?? ''}${delta}`,
-      );
+      const priorOutput = record.turnOutput.get(turnId) ?? '';
+      record.turnOutputItemId ??= new Map();
+      // A new agent message after text from an earlier one opens a new
+      // paragraph. The break rides IN the delta, so the live fold, the
+      // durable replay, and `outputText` below all see the same bytes — the
+      // terminal's prefix reconciliation compares them verbatim.
+      const separator =
+        priorOutput.length > 0 &&
+        record.turnOutputItemId.get(turnId) !== itemId &&
+        !/\n\n$/.test(priorOutput)
+          ? '\n\n'
+          : '';
+      record.turnOutputItemId.set(turnId, itemId);
+      const text = `${separator}${delta}`;
+      record.turnOutput.set(turnId, `${priorOutput}${text}`);
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -155,7 +169,7 @@ export function handleCodexNotification(
         method: 'content.text-delta',
         turnId,
         itemId,
-        delta,
+        delta: text,
       });
       return;
     }
@@ -314,7 +328,7 @@ export function handleCodexNotification(
       // branch) — mark it before either publish path so a concurrent
       // `stopSession`/process-exit synthesis (`publishOrphanedTurnFailure`)
       // never double-publishes for this turn.
-      record.terminalPublishedForTurnId = turnId;
+      markCodexTurnTerminal(record, turnId);
       record.session = {
         ...record.session,
         status: 'ready',
@@ -406,7 +420,7 @@ export function handleCodexNotification(
       // `blockedReason` and erase the real cause this notification just
       // reported.
       if (errorTurnId && !willRetry) {
-        record.terminalPublishedForTurnId = errorTurnId;
+        markCodexTurnTerminal(record, errorTurnId);
       }
       publish({
         eventId: crypto.randomUUID(),

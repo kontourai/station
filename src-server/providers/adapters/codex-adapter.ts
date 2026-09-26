@@ -37,6 +37,7 @@ import {
 } from '../../telemetry/metrics.js';
 import {
   abortError,
+  awaitSettlementWithin,
   raceWithSignal,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
@@ -47,15 +48,21 @@ import {
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
   type ProviderDiscardSessionRecovery,
+  type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ProviderSessionAdoptInput,
   type ProviderSessionStartInput,
+  type ProviderTaskStopResult,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
+import {
+  buildCliRuntimePrerequisites,
+  type CliCommandResult,
+  runCliCommand,
+} from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -70,6 +77,11 @@ import {
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  codexRunningChildTurnId,
+  codexRunningChildTurns,
+  requestStop as requestCodexChildStop,
+} from './codex-adapter-child-work.js';
 import {
   codexResumeCursor,
   endsAtCompletedCodexTurn,
@@ -87,9 +99,17 @@ import {
   createCodexProcess,
   createCodexSessionRecord,
 } from './codex-adapter-transport.js';
-import type { CodexSessionRecord } from './codex-adapter-types.js';
 import {
+  type CodexSessionRecord,
+  codexTurnAlreadyTerminal,
+  markCodexTurnTerminal,
+} from './codex-adapter-types.js';
+import {
+  codexSandboxModeOfPolicy,
   mapCodexKnobsToApprovalMode,
+  planCodexTurnSandbox,
+  readCodexSandboxPolicy,
+  reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
@@ -135,6 +155,19 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * Readiness seams, injectable so the installed branch and the probe's
+   * environment are exercised on any host (a host without `codex` would
+   * otherwise short-circuit before the login probe runs). Default to
+   * `findCliBinary` and `runCliCommand`.
+   */
+  findBinary?: (command: string) => string | null;
+  runCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+  ) => Promise<CliCommandResult | null>;
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
@@ -277,6 +310,15 @@ const CODEX_ADOPTION_RECONCILIATION_TIMEOUT_MS = 30_000;
 const CODEX_ADOPTION_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const CODEX_ADOPTION_MAX_FORK_TURNS = 10_000;
 const CODEX_ADOPTION_ROLLOUT_HEADER_BYTES = 128 * 1024;
+/**
+ * #2486 review: a child's own `turn/interrupt` only settles on a response or
+ * the process exiting (`CodexAdapterTransport.sendRequest`) — unbounded, a
+ * hung child RPC would re-hang exactly the path this feature exists to
+ * unblock (the parent step). A few seconds is generous against the live
+ * captures, where a child interrupt round-trip took single-digit
+ * milliseconds (codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl).
+ */
+const CODEX_CHILD_INTERRUPT_TIMEOUT_MS = 5_000;
 const CODEX_THREAD_SOURCE_KINDS = [
   'cli',
   'vscode',
@@ -659,6 +701,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       dispatchSettlement: 'provider-response',
     },
     reviewIsolation: 'read-only',
+    // #2482: `mapCodexModelCatalogEntry` builds every entry with
+    // `originalId: id`.
+    modelCatalogIdentityMapped: true,
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -726,11 +771,23 @@ export class CodexAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // The `codex login status` probe runs under the connection env, as every
+    // `codex app-server` child of this connection does — so a configured
+    // configHome (→ CODEX_HOME) is the account readiness reports on. The
+    // app-home / credential-profile layer is not modelled: resolving it can
+    // create profile directories, which a readiness read must not do.
+    const connectionEnv = await this.resolveConnectionEnv();
+    const runCommand = this.options.runCommand ?? runCliCommand;
     return buildCliRuntimePrerequisites({
       command: 'codex',
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      runCommand: (command, args, signal) =>
+        runCommand(command, args, signal, connectionEnv),
+      ...(this.options.findBinary
+        ? { findBinary: this.options.findBinary }
+        : {}),
       installStep: 'Install the Codex CLI and ensure `codex` is on PATH.',
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,
@@ -1736,9 +1793,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.transport.sendNotification(record, 'initialized');
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
+      // #2493: `never` reaches `danger-full-access` only for a `host`
+      // session; the orchestration service derives confinement, and an
+      // absent value confines.
       const approvalKnobs = resolveCodexExecutionKnobs(
         input.modelOptions,
         input.reviewIsolation,
+        input.confinement,
       );
       const approvalWire = approvalKnobs
         ? {
@@ -1793,6 +1854,23 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      record.threadSandbox = reportedCodexThreadSandbox(
+        reportedSandbox,
+        approvalKnobs?.sandbox,
+      );
+      // #2559 R5: what `session.configured` reports is the sandbox Codex
+      // said the thread runs in; the requested mode only when it said
+      // nothing. A sandbox with no Station mode (an external one) is not
+      // reported as one.
+      const configuredSandbox = reportedSandbox
+        ? codexSandboxModeOfPolicy(reportedSandbox)
+        : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
         status: 'ready',
@@ -1848,12 +1926,22 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(approvalKnobs
           ? {
               approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-              // Resolved approvalMode alongside the raw knobs, so the client can
-              // track a durable lastAppliedApprovalMode baseline at session
-              // start without re-deriving it from provider-specific knobs
-              // (archive#727 review round 3, item 1).
-              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              ...(configuredSandbox
+                ? {
+                    sandbox: configuredSandbox,
+                    // Resolved approvalMode alongside the raw knobs, so the
+                    // client can track a durable lastAppliedApprovalMode
+                    // baseline at session start (archive#727 review round
+                    // 3, item 1), derived from the applied pair.
+                    approvalMode: mapCodexKnobsToApprovalMode({
+                      approvalPolicy: approvalKnobs.approvalPolicy,
+                      sandbox: configuredSandbox,
+                    }),
+                  }
+                : {}),
+              // #2493: the pair alone no longer says whether `never` is
+              // confined to the workspace.
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         codexThreadId: codexThread.id,
@@ -2174,7 +2262,22 @@ export class CodexAdapter implements ProviderAdapterShape {
     const approvalKnobs = resolveCodexExecutionKnobs(
       input.modelOptions,
       input.reviewIsolation,
+      input.confinement,
     );
+    // #2559: `turn/start` ignores a sandbox mode string; its only sandbox
+    // override is a full `sandboxPolicy` (`planCodexTurnSandbox` says when).
+    // With a posture the plan always names the sandbox the turn runs in.
+    const thread = record.threadSandbox ?? {};
+    const postured = approvalKnobs
+      ? {
+          knobs: approvalKnobs,
+          plan: planCodexTurnSandbox(approvalKnobs, thread, input.confinement),
+        }
+      : undefined;
+    const sandboxPolicy = postured
+      ? postured.plan.sandboxPolicy
+      : planCodexTurnSandbox(undefined, thread, input.confinement)
+          .sandboxPolicy;
     let result: unknown;
     try {
       result = await this.transport.sendRequest(record, 'turn/start', {
@@ -2197,13 +2300,14 @@ export class CodexAdapter implements ProviderAdapterShape {
         model: input.modelId,
         effort: mapReasoningEffort(modelOptions),
         ...(approvalKnobs
-          ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-            }
+          ? { approvalPolicy: approvalKnobs.approvalPolicy }
           : {}),
+        ...(sandboxPolicy ? { sandboxPolicy } : {}),
         serviceTier: modelOptions.fastMode ? 'fast' : undefined,
       });
+      // Applies to this turn and every later one (TurnStartParams).
+      if (sandboxPolicy)
+        record.threadSandbox = { ...thread, policy: sandboxPolicy };
       providerOps.add(1, {
         operation: 'adapter-model-options',
         provider: this.provider,
@@ -2278,13 +2382,20 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(input.recoveryCorrelationId
           ? { recoveryCorrelationId: input.recoveryCorrelationId }
           : {}),
-        ...(approvalKnobs
+        ...(postured
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-              // Lets the client track a durable lastAppliedApprovalMode baseline
-              // (archive#727 review round 3, item 1 — the pending-apply chip state).
-              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              approvalPolicy: postured.knobs.approvalPolicy,
+              // #2559: the sandbox this turn runs in (the thread's, or the
+              // policy just sent), never merely the one requested, and the
+              // mode that pair really is. Lets the client track a durable
+              // lastAppliedApprovalMode baseline (archive#727 review round 3,
+              // item 1).
+              sandbox: postured.plan.applied,
+              approvalMode: mapCodexKnobsToApprovalMode({
+                approvalPolicy: postured.knobs.approvalPolicy,
+                sandbox: postured.plan.applied,
+              }),
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
@@ -2375,17 +2486,94 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     const targetTurnId = turnId ?? activeTurnId;
 
-    // archive#3473 fix round (H3): do NOT clear `activeTurnId` (or mark the
-    // terminal published) until the RPC actually succeeds and `turn.aborted`
-    // is actually about to be published — matching claude/acp exactly. The
-    // previous synchronous-before-await clear left two callers with no
-    // fallback: `orchestration-service.ts`'s recovery `interrupt` hook and
-    // its accept-then-abort race cleanup both catch a rejection and rely on
-    // "a later canonical terminal event" to close the turn — which is
-    // `publishOrphanedTurnFailure`'s job, and a clear here (regardless of
-    // outcome) silently disarmed it. `runCooperativeStop`'s cooperative-stop
-    // deadline branch (the one caller that DOES have its own unconditional
-    // fallback) stays safe via `rejectPendingRpcRequests`'s in-flight check.
+    // #2486: Codex has no per-child stop that leaves the parent's turn
+    // running (see `stopProviderTask`), so ending the parent's turn ANY way
+    // — including a plain user-initiated Stop, here — would otherwise leave
+    // every still-running child an orphan with nothing left addressing it.
+    // Interrupt every currently tracked live child first, proven live in
+    // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl (both
+    // children settle before the parent does). Concurrent and each
+    // individually bounded (`interruptCodexChild`), so the group itself is
+    // bounded too, never N sequential waits.
+    await this.interruptLiveCodexChildren(record);
+
+    // #2486 review: `targetTurnId` was captured and validated BEFORE the
+    // cascade, which awaits real RPCs — `record.activeTurnId` can move on
+    // while it runs (a new turn started, or a concurrent interrupt already
+    // finished this one). Re-read and re-validate with the SAME guards used
+    // above, rather than acting on a snapshot that may already be stale: a
+    // turn that started DURING the cascade must never be aborted or
+    // stamped by an interrupt request that predates it.
+    const activeAfterCascade = record.activeTurnId;
+    if (activeAfterCascade !== targetTurnId) {
+      if (!activeAfterCascade) return { outcome: 'no-active-turn' } as const;
+      return {
+        outcome: 'target-mismatch',
+        activeTurnId: activeAfterCascade,
+      } as const;
+    }
+
+    return this.requestCodexParentTurnInterrupt(record, threadId, targetTurnId);
+  }
+
+  /**
+   * #2486 review: single-flight guard around
+   * {@link performCodexParentTurnInterrupt}. `stopProviderTask` (per-child)
+   * and `interruptTurn`'s cascade (plain Stop) can both reach the parent
+   * step for the SAME record — two concurrent per-child stops for
+   * different children of one parent is the case the review named.
+   *
+   * The flight is keyed by TURN, not by record: a new turn can start while
+   * an earlier interrupt's RPC is still out (`sendTurn` overwrites
+   * `activeTurnId`), and a stop for that new turn must send its own
+   * interrupt. Joining the earlier flight would report the NEW turn as
+   * stopped while it kept running. Only a call for the same turn shares.
+   */
+  private requestCodexParentTurnInterrupt(
+    record: CodexSessionRecord,
+    threadId: string,
+    targetTurnId: string,
+  ): Promise<ProviderInterruptTurnResult> {
+    const existing = record.parentInterruptInFlight;
+    if (existing && existing.turnId === targetTurnId) return existing.promise;
+    const promise = this.performCodexParentTurnInterrupt(
+      record,
+      threadId,
+      targetTurnId,
+    ).finally(() => {
+      if (record.parentInterruptInFlight?.promise === promise) {
+        record.parentInterruptInFlight = undefined;
+      }
+    });
+    record.parentInterruptInFlight = { turnId: targetTurnId, promise };
+    return promise;
+  }
+
+  /**
+   * The actual `turn/interrupt` RPC and its bookkeeping for the SESSION's
+   * own (parent) turn — factored out of `interruptTurn` so
+   * `stopProviderTask` can call it directly without also re-running
+   * `interruptTurn`'s child cascade (which would interrupt every sibling,
+   * not just the one child a per-child stop targets). Reached only through
+   * {@link requestCodexParentTurnInterrupt}'s single-flight guard.
+   *
+   * archive#3473 fix round (H3): do NOT clear `activeTurnId` (or mark the
+   * terminal published) until the RPC actually succeeds and `turn.aborted`
+   * is actually about to be published — matching claude/acp exactly. The
+   * previous synchronous-before-await clear left two callers with no
+   * fallback: `orchestration-service.ts`'s recovery `interrupt` hook and its
+   * accept-then-abort race cleanup both catch a rejection and rely on "a
+   * later canonical terminal event" to close the turn — which is
+   * `publishOrphanedTurnFailure`'s job, and a clear here (regardless of
+   * outcome) silently disarmed it. `runCooperativeStop`'s cooperative-stop
+   * deadline branch (the one caller that DOES have its own unconditional
+   * fallback) stays safe via `rejectPendingRpcRequests`'s in-flight check.
+   */
+  private async performCodexParentTurnInterrupt(
+    record: CodexSessionRecord,
+    threadId: string,
+    targetTurnId: string,
+  ) {
     try {
       await this.transport.sendRequest(
         record,
@@ -2407,18 +2595,143 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.cancelPendingApprovals(record, threadId);
     }
 
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: this.now().toISOString(),
-      turnId: targetTurnId,
-      method: 'turn.aborted',
-      reason: 'interrupted',
-    });
-    record.activeTurnId = undefined;
-    record.terminalPublishedForTurnId = targetTurnId;
+    // `targetTurnId` really was interrupted — that fact does not depend on
+    // what is active NOW. But if the turn already reached its own terminal
+    // (it completed normally while this RPC was still out), that terminal
+    // stands: a second, contradictory `turn.aborted` must not follow it.
+    if (!codexTurnAlreadyTerminal(record, targetTurnId)) {
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        turnId: targetTurnId,
+        method: 'turn.aborted',
+        reason: 'interrupted',
+      });
+    }
+    // #2486 review: the SESSION-level bookkeeping is a different claim — "is
+    // THIS still the turn Station is tracking" — and must only change for
+    // the turn actually interrupted. The RPC round-trip above can outlive a
+    // NEW turn starting (`sendTurn` always overwrites `activeTurnId`
+    // unconditionally); clearing here regardless would clobber that newer
+    // turn's own tracking for an interrupt that was never about it.
+    if (record.activeTurnId === targetTurnId) {
+      record.activeTurnId = undefined;
+      markCodexTurnTerminal(record, targetTurnId);
+    }
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
+  }
+
+  /**
+   * #2486: `turn/interrupt` for ONE child's own {threadId, turnId} — never
+   * throws, so a failed child interrupt never stops the caller from still
+   * reaching the parent step (`stopProviderTask`, `interruptTurn`'s
+   * cascade). #2486 review: also never hangs past
+   * {@link CODEX_CHILD_INTERRUPT_TIMEOUT_MS} — `sendRequest` only settles on
+   * a response or the process exiting, and an unbounded await here would
+   * re-hang the exact path this feature exists to unblock. On timeout the
+   * RPC is left running (its eventual settlement is still logged if it
+   * fails) and this returns anyway.
+   */
+  private async interruptCodexChild(
+    record: CodexSessionRecord,
+    childId: string,
+    childTurnId: string,
+  ): Promise<void> {
+    const request = this.transport
+      .sendRequest(record, 'turn/interrupt', {
+        threadId: childId,
+        turnId: childTurnId,
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => {
+          (this.options.logger ?? console).warn?.(
+            `Codex: interrupting subagent ${childId} failed: ${errorMessage(error)}`,
+          );
+        },
+      );
+    const settledInTime = await awaitSettlementWithin(
+      request,
+      CODEX_CHILD_INTERRUPT_TIMEOUT_MS,
+    );
+    if (!settledInTime) {
+      (this.options.logger ?? console).warn?.(
+        `Codex: interrupting subagent ${childId} did not answer turn/interrupt within ${CODEX_CHILD_INTERRUPT_TIMEOUT_MS}ms; proceeding to the parent without confirmation`,
+      );
+    }
+  }
+
+  /**
+   * Every currently live tracked child, interrupted before the parent —
+   * CONCURRENTLY, never sequentially (a sequential sweep would let N
+   * children each consume their own {@link CODEX_CHILD_INTERRUPT_TIMEOUT_MS}
+   * budget, multiplying the wait before the parent step by N). Each
+   * individual interrupt is already bounded, so the group's wall-clock time
+   * is bounded to that same ceiling regardless of how many children there
+   * are.
+   */
+  private async interruptLiveCodexChildren(
+    record: CodexSessionRecord,
+  ): Promise<void> {
+    await Promise.all(
+      codexRunningChildTurns(record).map(({ childId, turnId }) =>
+        this.interruptCodexChild(record, childId, turnId),
+      ),
+    );
+  }
+
+  /**
+   * #2486: stop ONE Codex subagent. Codex offers no client mechanism that
+   * unblocks the parent's turn any softer way (its "wait" collabAgentToolCall
+   * can take 100s+ to notice the child's interrupt, or never resolve within
+   * any bounded window — codex-0.155.1-collab-v1-client-turn-interrupt.jsonl),
+   * so this ALSO ends the reporting session's own active turn — the matrix's
+   * `subagentControl.stop.endsParentTurn` says so. Exactly two interrupts:
+   * the child, then the parent — never `interruptTurn`'s cascading sweep,
+   * which would also end any OTHER running sibling. The parent step runs
+   * even when the child interrupt failed OR timed out, so the parent is
+   * never left hanging on a child that can no longer (or has not yet)
+   * report.
+   *
+   * Live proof: codex-0.155.1-collab-v1-client-interrupt-unblocks-parent.jsonl
+   * (the parent's own turn/completed arrives ~4ms after its interrupt
+   * request, instead of never resolving within any bounded window).
+   */
+  async stopProviderTask(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult> {
+    const record = this.transport.requireSession(threadId);
+    // A subagent can settle (or its own turn id can still be unknown, see
+    // `codexRunningChildTurnId`) between a client rendering its stop control
+    // and this request landing. That race is a normal outcome, not an error.
+    const childTurnId = codexRunningChildTurnId(record, taskId);
+    if (childTurnId === undefined) {
+      return { outcome: 'no-active-task', taskId };
+    }
+    await this.interruptCodexChild(record, taskId, childTurnId);
+    // Immediate "stop requested" feedback, exactly like the MODEL-initiated
+    // closeAgent/interruptAgent/subAgentActivity-interrupted paths already
+    // give — never claims `cancelled` itself; only the child's own later
+    // `turn/completed` does that.
+    requestCodexChildStop(
+      {
+        record,
+        nowIso: () => this.now().toISOString(),
+        publish: (event) => this.transport.publish(event),
+      },
+      taskId,
+    );
+    if (record.activeTurnId) {
+      await this.requestCodexParentTurnInterrupt(
+        record,
+        threadId,
+        record.activeTurnId,
+      );
+    }
+    return { outcome: 'stopped', taskId };
   }
 
   /**

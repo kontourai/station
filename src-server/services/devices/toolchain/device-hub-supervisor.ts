@@ -1,9 +1,8 @@
 /**
  * Runs expo-device-hub as a supervised child (#1970, D11).
  *
- * Adapted from t3code's `apps/server/src/device/LocalDeviceHost.ts` (MIT,
- * © 2026 T3 Tools Inc.): the hub is a child process, not imported
- * middleware, because serve-sim loads private CoreSimulator frameworks
+ * The hub is a child process, not imported middleware, because serve-sim
+ * loads private CoreSimulator frameworks
  * through a native addon and a crash there must not take the server down;
  * restarts back off by doubling so a hub that dies on boot cannot spin.
  *

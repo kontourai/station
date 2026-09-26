@@ -33,6 +33,8 @@ export interface RegionChromeTab {
   instanceId: string;
   /** The surface's registered title. */
   title: string;
+  /** The tab's tooltip, where the pane supplies one. */
+  tooltip?: string;
 }
 
 /**
@@ -355,6 +357,7 @@ function RegionTabStrip({
               }
               tabIndex={isSelected ? 0 : -1}
               data-region-tab={tab.surfaceId}
+              title={tab.tooltip}
               className="region-tabs__tab"
               onClick={() => onSelect(tab.surfaceId)}
               onKeyDown={(event) => onKeyDown(event, index, tab.surfaceId)}
@@ -472,6 +475,7 @@ export function RegionChromeBar({
   addPaneOpen = false,
   leadingSlotRef,
   trailingSlotRef,
+  onBackToChat,
 }: {
   chrome: DockShellChrome;
   groupId: string;
@@ -489,6 +493,13 @@ export function RegionChromeBar({
   addPaneOpen?: boolean;
   leadingSlotRef: (element: HTMLElement | null) => void;
   trailingSlotRef: (element: HTMLElement | null) => void;
+  /**
+   * Present while a pane is open OVER Chat in this region (the phone layer,
+   * `RegionModelContext.phoneLayer`): the visible way back, because the iOS
+   * app has no swipe-back and Android's Back is not discoverable. It does
+   * what the device's Back does (`closePhoneLayer`).
+   */
+  onBackToChat?: () => void;
 }) {
   const barRef = useRef<HTMLDivElement | null>(null);
   // ONE open move menu for the whole bar, whichever trigger opened it (#2160).
@@ -604,6 +615,19 @@ export function RegionChromeBar({
       data-dock-drag-surface=""
     >
       <div className="chat-dock__title">
+        {onBackToChat ? (
+          <button
+            type="button"
+            className="region-chrome__back"
+            onClick={onBackToChat}
+            aria-label="Back to Chat"
+          >
+            <span aria-hidden="true" className="region-chrome__back-glyph">
+              ‹
+            </span>
+            <span>Chat</span>
+          </button>
+        ) : null}
         <DockPlacementControl
           availablePlacements={chrome.availableDockSlotPlacements}
           effectivePlacement={chrome.effectiveDockSlotPlacement}

@@ -254,6 +254,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'host-runtime',
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
+  {
+    id: 'device-helper-url',
+    title: 'Device helper URL',
+    section: 'host-runtime',
+    keywords: ['device helper simulator emulator mobile capture'],
+    configKeys: ['mobileDeviceHubUrl'],
+  },
   // ── Sources (#2182) ─────────────────────────────────────────────────────
   // Where this Station gets agents, skills, plugins and layouts from. All
   // three were previously scattered through one undifferentiated card, so
@@ -552,6 +559,14 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Mobile pairing & network discovery',
     section: 'pairing',
     configKeys: ['featureSettings'],
+  },
+  {
+    id: 'open-last-station',
+    title: 'Open last Station on launch',
+    section: 'pairing',
+    keywords: ['reconnect', 'startup', 'last connection', 'phone'],
+    configKeys: ['openLastStationOnLaunch'],
+    conditional: 'mobile',
   },
   {
     id: 'personal-knowledge-store',

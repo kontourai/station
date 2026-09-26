@@ -206,7 +206,7 @@ Flags skip the prompt and name the path directly:
 | Flag | Effect when nothing is running |
 |------|--------------------------------|
 | `--inline` | Start inline in this terminal |
-| `--service` | Install and start a background service |
+| `--service` | Install and start a background service (from a source checkout, the checkout's development instance; see [`service`](#service)) |
 | `--temp-home` | Start against a throwaway temp home |
 | `--port=<n>` / `--ui-port=<n>` | Ports for the started instance |
 | `--consent-port=<n>` | Consent-listener port (default: server port + 3, station#3677) |
@@ -535,7 +535,10 @@ station setup import detect|preview|review-targets|apply|receipt|rollback [targe
 ```
 
 Local setup is checkout-only because it installs Station under launchd,
-systemd, or Windows Task Scheduler before creating the default Station. A
+systemd, or Windows Task Scheduler before creating the default Station.
+Without `--instance` or `--base` it installs the checkout's development
+instance in its home (see [`service`](#service)), and the saved Station
+records that same instance, home, and ports. A
 failed install saves no Station. Existing setup can select an unpaired
 Station deliberately or reuse the ordinary pairing pipeline with `--pair`.
 Hosted setup pairs with `https://station.kontourai.io` and selects it only after
@@ -552,8 +555,14 @@ local UI-bootstrap token, and hands the browser the same redeemable URL the
 launcher does (station#1991).
 
 ```text
-station open [--home=<directory>] [--instance=<name>]
+station open [--home=<directory>] [--instance=<name>] [--print]
 ```
+
+`--print` prints the one-time sign-in link instead of launching a browser, for a
+browser this command cannot open, such as a simulator or another profile. Each
+link is single use, and minting one replaces any earlier unspent link, including
+the one `station start` printed (#2612). Without `--print`, the command never
+prints the token.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
@@ -1648,6 +1657,31 @@ override only that runtime leaf; shared saved-Station metadata remains under
 `STATION_ROOT`. `--temp-home` is rejected because a service needs a durable
 home. Every backend is per-user and requires no elevation.
 
+From a source checkout (the development channel), a service installed
+without `--instance` and without `--home`, `--base`, or `STATION_HOME` is
+the checkout's development instance: it is named with the checkout's
+development instance id and runs in that instance's home and on its ports.
+This covers `station service install`, `station setup local`, the launcher's
+`--service` flag, and its "Install and start a background service" choice.
+If that home already holds a service installed from this checkout (for
+example a `default` service from an earlier `setup local`), flagless commands
+address that service instead and say so; if it holds several, they refuse and
+list them so you can pass `--instance`.
+An explicit `--instance=<name>` other than that id, with no explicit home,
+is refused: `--instance=<dev id>` names the service after its home,
+`--instance=<name> --base=<dev home>` keeps an existing service where it is,
+and `--instance=<name> --home=<dir>` gives it its own durable home.
+
+Before registering, a source-checkout install checks the build stamp
+(`dist-server/station-build.json`, or `dist-server-<instance>/` for a named
+instance), which `station build` writes and `npm run build` does not. When the
+stamp is missing or records a sha other than the checkout's `HEAD`, install
+rebuilds first, as it does for a stale bundle, and refuses, naming
+`station build`, only if the stamp still does not match. If git cannot read
+`HEAD`, a missing stamp is refused without building, because the build could
+not write one. `station service run` rebuilds on the same conditions. Packaged
+installs (no `.git`) are not checked.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
@@ -1669,6 +1703,34 @@ origins on an `origins` line.
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
+
+The unit's `PATH` is captured once, at install, from your login shell
+(`$SHELL -l`) plus the Node and system directories. A directory added to your
+profile later, or a Nix/home-manager generation that has since moved on, does
+not reach the service until it is reinstalled. For a managed install on macOS
+or Linux, `service status` (and the status `start`/`stop` print) re-reads your
+login-shell `PATH` and compares it with the `PATH` in the installed unit file
+on a `service PATH` line:
+
+- `current`: the unit carries exactly the directories, in the same order, that
+  a reinstall would capture now.
+- `drifted`: lists directories missing from the unit, directories no longer
+  captured, and the first difference when the shared directories are in a
+  different order (order decides which same-named binary wins). The reinstall
+  command follows, printed once even when scheduling is also stale, or an
+  explanation when no faithful command can be given.
+- `unknown`: the unit could not be read or sets no `PATH`, or your login shell
+  did not report its `PATH` within 5 seconds; nothing is compared.
+
+`--json` carries the same result as `servicePath`:
+`{ status, missing, stale, reordered?, reason? }`, where `reordered` is
+`{ position, unit, current }` with `position` counted from 0 within the shared
+directories. Drift is advice and does not change `healthy` or the exit code.
+The comparison reads the unit file Station wrote, not systemd drop-ins or the
+loaded job, and uses the environment of the shell that runs `status`. A
+reinstall command is prefixed with `STATION_ROOT=…` when the registration's
+recorded root differs from the one a shell without `STATION_ROOT` would
+derive.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a

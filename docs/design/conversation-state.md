@@ -188,6 +188,10 @@ is where it stops.
   `canReadSession` is `ownerUserId === userId`, with ownerless rows readable
   only under the compatibility mode
   (`src-server/services/orchestration/orchestration-service.ts:1655-1661`).
+  *(Since superseded: the compatibility mode is removed, a personal Station's
+  paired devices share one conversation account, and an ownerless session is
+  readable by no caller — see `SessionAuthorization.canReadSession` in
+  `src-server/services/orchestration/session-authorization.ts`.)*
 
 **Design consequence: "add membership to the existing store" is not a
 refactor.** There is no member noun to extend. Everything in §3 that is not the

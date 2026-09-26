@@ -413,6 +413,118 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('seeded replay cursors remain monotonic across physical Draft discard', () => {
+    // The connected client has seen every append. The reconnecting client
+    // must see every surviving event whose append happened after its cursor.
+    // Tail deletes are deliberate: they used to let MAX(global_sequence)+1
+    // recycle an id that both clients had already admitted.
+    for (let seed = 0; seed < 200; seed++) {
+      let state = seed + 1;
+      const random = () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 0x100000000;
+      };
+      const prefix = `cursor-seed-${seed}`;
+      let liveCursor = store.headGlobalSequence();
+      for (let step = 0; step < 8; step++) {
+        const discarded = `${prefix}-draft-${step}`;
+        store.appendEvent({
+          eventId: `${discarded}-event`,
+          provider: 'claude',
+          threadId: discarded,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          method: 'content.text-delta',
+          itemId: 'text',
+          delta: 'draft',
+        });
+        liveCursor = store.headGlobalSequence();
+        store.deleteThread(discarded);
+        const surviving = `${prefix}-surviving-${step}`;
+        store.appendEvent({
+          eventId: surviving,
+          provider: 'claude',
+          threadId: surviving,
+          createdAt: '2026-09-24T00:00:00.000Z',
+          method: 'content.text-delta',
+          itemId: 'text',
+          delta: String(random()),
+        });
+        expect(
+          store
+            .listEventsAfterGlobalSequence(liveCursor, { limit: 2 })
+            .map((event) => event.payload.eventId),
+          `seed=${seed} step=${step} cursor=${liveCursor}`,
+        ).toContain(surviving);
+      }
+    }
+  });
+
+  test('the stream high-water mark survives deleting the last event and reopening the store', () => {
+    const path = join(dir, 'orchestration.sqlite');
+    const event = (eventId: string) => ({
+      eventId,
+      provider: 'claude' as const,
+      threadId: eventId,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'content.text-delta' as const,
+      itemId: 'text',
+      delta: eventId,
+    });
+    store.appendEvent(event('first'));
+    const cursor = store.headGlobalSequence();
+    store.deleteThread('first');
+    expect(store.headGlobalSequence()).toBe(cursor);
+    store.close();
+    store = new EventStore(path);
+    expect(store.headGlobalSequence()).toBe(cursor);
+    store.appendEventIfAbsent(event('second'));
+    expect(
+      store.listEventsAfterGlobalSequence(cursor, { limit: 2 }),
+    ).toMatchObject([{ payload: { eventId: 'second' } }]);
+  });
+
+  test('a store epoch survives restart and differs for a new database', () => {
+    const path = join(dir, 'orchestration.sqlite');
+    const epoch = store.streamEpoch();
+    store.close();
+    store = new EventStore(path);
+    expect(store.streamEpoch()).toBe(epoch);
+    const other = new EventStore(join(dir, 'other.sqlite'));
+    try {
+      expect(other.streamEpoch()).not.toBe(epoch);
+    } finally {
+      other.close();
+    }
+  });
+
+  test('batches the current open request ids for snapshot session rows', () => {
+    const request = (
+      eventId: string,
+      threadId: string,
+      method: 'request.opened' | 'request.resolved',
+    ) =>
+      ({
+        eventId,
+        provider: 'claude' as const,
+        threadId,
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method,
+        requestId: 'request-1',
+        ...(method === 'request.opened'
+          ? { requestType: 'approval', title: 'Allow Read' }
+          : { status: 'approved' }),
+      }) as CanonicalRuntimeEvent;
+    store.appendEvent(request('opened-a', 'thread-a', 'request.opened'));
+    store.appendEvent(request('opened-b', 'thread-b', 'request.opened'));
+    store.appendEvent(request('resolved-b', 'thread-b', 'request.resolved'));
+    expect(store.listOpenRequestIdsByThreads(['thread-a', 'thread-b'])).toEqual(
+      new Map([
+        ['thread-a', ['request-1']],
+        ['thread-b', []],
+      ]),
+    );
+  });
+
   test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
     const threadId = 'noisy-cold-chat';
     const turnId = 'first-turn';
@@ -859,7 +971,7 @@ describe('EventStore', () => {
       add('usage-alpha-outside-window', 'alpha', 'reader');
 
       const rows = store.listUsageCoverageEvents({
-        ownerUserId: 'reader',
+        ownerUserIds: ['reader'],
         tenantId: 'alpha',
         from: '2026-08-01',
         to: '2026-08-30',
@@ -868,6 +980,24 @@ describe('EventStore', () => {
       expect(new Set(rows.map((event) => event.threadId))).toEqual(
         new Set(['usage-alpha']),
       );
+      // An owner set reads each named owner's rows, and only theirs.
+      const both = store.listUsageCoverageEvents({
+        ownerUserIds: ['reader', 'other-reader'],
+        tenantId: 'alpha',
+        from: '2026-08-01',
+        to: '2026-08-30',
+      });
+      expect(new Set(both.map((event) => event.threadId))).toEqual(
+        new Set(['usage-alpha', 'usage-alpha-foreign-owner']),
+      );
+      // A read naming no owner is refused, never widened.
+      expect(() =>
+        store.listUsageCoverageEvents({
+          ownerUserIds: [],
+          from: '2026-08-01',
+          to: '2026-08-30',
+        }),
+      ).toThrow('at least one owner');
     } finally {
       vi.useRealTimers();
     }
@@ -2539,7 +2669,7 @@ describe('EventStore', () => {
       events: payloads,
     });
     expect(summary.hasActiveTurn).toBe(false);
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
   });
 
   // archive#3557/#3558 fix-round review BLOCK 1 (independent review's exact
@@ -2778,7 +2908,7 @@ describe('EventStore', () => {
       persisted,
       events: payloads,
     });
-    expect(summary.lifecycleState).toBe('completed');
+    expect(summary.lifecycleState).toBe('idle');
 
     const run = buildAgentRunSummary({
       answerability,
@@ -2991,7 +3121,7 @@ describe('EventStore', () => {
       .listEvents(threadId)
       .find((event) => event.payload.eventId === 'stamp-turn-2-completed');
     expect(persisted?.payload.method).toBe('turn.completed');
-    expect(persisted?.payload.sessionState).toBe('completed');
+    expect(persisted?.payload.sessionState).toBe('idle');
   });
 
   // archive#3524 fix-round: re-pins archive#3451 B1/D1's fail-closed identity
@@ -6914,12 +7044,12 @@ describe('EventStore', () => {
         // `JSON.parse(row.payload)` is unguarded, so a malformed payload made
         // `sessionOwnerUserId` THROW — fail-closed, no owner resolved and no
         // read served. The SQL path skips the row instead and can resolve
-        // `undefined`, which under `ownerlessSessionAccess:
-        // 'single-user-compat'` makes the session READABLE. That is the
-        // WIDENING direction, and it is the one divergence in this branch
-        // that is not restrictive.
+        // `undefined`. That once made the session readable under the
+        // single-user ownerless compatibility mode; with that mode removed,
+        // an ownerless session is readable by no caller, so both paths now
+        // fail closed and the divergence only changes throw-vs-refuse.
         //
-        // Accepted, with the reasons stated. Reachability is LOW, not nil:
+        // Reachability is LOW, not nil:
         // every append serializes with `JSON.stringify`, but SQLite's JSON
         // parser caps nesting at 1000 levels, and `json_valid` returns 0 from
         // ~998 levels down — a payload of only ~6 KB. Nothing in `src-server`
@@ -8733,7 +8863,7 @@ describe('EventStore', () => {
     });
 
     test('an ownerless thread stays a candidate for the real predicate to judge', () => {
-      // `single-user-compat` is the predicate's decision, not this query's.
+      // The predicate refuses an ownerless session; narrowing never decides.
       store.appendEvent(attachmentTurn('evt-ownerless', 'thread-ownerless'));
       const blobRef = persistedRow('thread-ownerless').attachments[0].blobRef;
 

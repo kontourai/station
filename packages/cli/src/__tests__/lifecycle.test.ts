@@ -301,13 +301,26 @@ async function loadLifecycleModule(
   vi.doUnmock('node:fs');
 
   const gitRoot = options.gitRoot ?? TEST_CWD;
-  vi.doMock('@kontourai/station-shared/git', () => ({
-    resolveGitInfo: () => ({
-      branch: 'main',
-      gitRoot,
-      hash: '0123456',
-    }),
-  }));
+  vi.doMock('@kontourai/station-shared/git', async () => {
+    // The stamp writer reads HEAD through readGitHeadSha (station#2689). Route
+    // it onto this suite's `git rev-parse HEAD` execSync model, so each
+    // test's childProcessMock keeps owning the sha a build records.
+    const childProcess = await import('node:child_process');
+    return {
+      readGitHeadSha: (cwd: string) =>
+        String(
+          childProcess.execSync('git rev-parse HEAD', {
+            cwd,
+            encoding: 'utf-8',
+          }),
+        ).trim(),
+      resolveGitInfo: () => ({
+        branch: 'main',
+        gitRoot,
+        hash: '0123456',
+      }),
+    };
+  });
 
   const createConnection = options.netConnectMock ?? makeReadyTcpConnectMock();
   vi.doMock('node:net', async () => {
@@ -490,7 +503,15 @@ function writeStaleServiceManifest(home: string, instanceId: string): string {
       host: '127.0.0.1',
       instanceId,
       platform,
+      // The registration field a real `service install` records for each
+      // backend — the status probe needs it to ask about the unit at all.
       ...(platform === 'win32' ? { taskName: `\\Station-${instanceId}` } : {}),
+      ...(platform === 'darwin'
+        ? { label: `io.kontourai.station.${instanceId}` }
+        : {}),
+      ...(platform === 'linux'
+        ? { unitName: `station-${instanceId}.service` }
+        : {}),
       serverPort: 3141,
       uiPort: 3000,
       unitPath,
@@ -499,8 +520,39 @@ function writeStaleServiceManifest(home: string, instanceId: string): string {
   return unitPath;
 }
 
+/**
+ * The answers a backend gives for an installed-but-stopped unit, or null when
+ * the command is not a running-state probe. `station upgrade` probes every
+ * installed service before touching the checkout (#2674).
+ */
+function stoppedServiceProbe(
+  command: string,
+  args: string[],
+): { status: number; stderr: string; stdout: string } | null {
+  if (command === 'launchctl' && args[0] === 'print') {
+    // launchd's "could not find service" exit: loaded nowhere, not running.
+    return { status: 113, stderr: '', stdout: '' };
+  }
+  if (command === 'systemctl' && args.includes('is-active')) {
+    return { status: 3, stderr: '', stdout: 'inactive\n' };
+  }
+  if (command === 'systemctl' && args.includes('is-enabled')) {
+    return { status: 1, stderr: '', stdout: 'disabled\n' };
+  }
+  if (command === 'loginctl') {
+    return { status: 0, stderr: '', stdout: 'no\n' };
+  }
+  if (/schtasks/i.test(command) && args.includes('/Query')) {
+    // schtasks' "task does not exist" exit.
+    return { status: 1, stderr: '', stdout: '' };
+  }
+  return null;
+}
+
 function staleSchedulingSpawnSync(unitPath: string): Mock {
-  return vi.fn((_command: string, _args: string[]) => {
+  return vi.fn((command: string, args: string[]) => {
+    const probe = stoppedServiceProbe(command, args);
+    if (probe) return probe;
     if (process.platform === 'darwin') {
       return {
         status: 0,
@@ -809,6 +861,9 @@ describe('lifecycle instance state', () => {
     const previous = process.env.STATION_SUPERVISOR_PID;
     const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // #2674: the unit's marker, inherited by a terminal inside a
+    // service-managed Station, must not make this plain start read as one.
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
     // #2327: addressed to the desktop's own sidecar only.
     process.env.STATION_STDOUT_LOGS = '0';
     try {
@@ -829,6 +884,9 @@ describe('lifecycle instance state', () => {
       expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
         'STATION_STDOUT_LOGS',
       );
+      for (const call of spawn.mock.calls) {
+        expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
+      }
     } finally {
       if (previous === undefined) delete process.env.STATION_SUPERVISOR_PID;
       else process.env.STATION_SUPERVISOR_PID = previous;
@@ -857,6 +915,8 @@ describe('lifecycle instance state', () => {
       throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
     }) as typeof process.kill);
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    // The unit sets this on service-run; the supervised server keeps it.
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
@@ -872,9 +932,13 @@ describe('lifecycle instance state', () => {
 
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
+      STATION_SERVICE_MANAGED: '1',
     });
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
+    );
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SERVICE_MANAGED',
     );
   });
 
@@ -1021,6 +1085,144 @@ describe('lifecycle instance state', () => {
       expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
         type: 'stop_result',
         result: 'failed',
+      });
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it("keeps the state record and refuses to stop when a live process's identity cannot be verified (#2332 item 2)", async () => {
+    // A null fingerprint observation (unreadable /proc, a `ps` without a
+    // `command=` column, a missing boot id) is NOT the same fact as "the
+    // process is gone". Before the fix, both tracked pids returning null
+    // made `stopRecord` conclude `already_absent` and delete the state
+    // record while the server was still running (signal-0 succeeds below).
+    ensureDir(TEST_CWD);
+    const journal = join(TEST_ROOT, 'unverifiable-lifecycle.jsonl');
+    const statePath = writeInstanceState({
+      instanceName: 'unverifiable',
+      serverPid: 44001,
+      uiPid: 44002,
+      bootId: '11111111-1111-4111-8111-111111111111',
+      lifecycleJournal: journal,
+      serverFingerprint: {
+        pid: 44001,
+        startToken: 'server-start',
+        commandDigest: 'a'.repeat(64),
+      },
+      uiFingerprint: {
+        pid: 44002,
+        startToken: 'ui-start',
+        commandDigest: 'b'.repeat(64),
+      },
+      build: {
+        branch: 'main',
+        builtAt: '2026-07-10T12:00:00.000Z',
+        sha: 'a'.repeat(40),
+      },
+    });
+    const killProcessTree = vi.fn();
+    // Both tracked pids are alive by signal-0 (the ground-truth liveness
+    // check); their fingerprint probe fails closed with null instead, as it
+    // would on an unreadable /proc or a busybox `ps`.
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => '') },
+      platformOverrides: {
+        killProcessTree,
+        sleepSync: vi.fn(),
+        inspectProcessFingerprint: () => null,
+      },
+    });
+    try {
+      let refusal = '';
+      try {
+        lifecycle.stop({ instanceName: 'unverifiable' });
+      } catch (error) {
+        refusal = String((error as Error).message);
+      }
+      expect(refusal).toContain('identity could not be verified');
+      // There is no --force, so the refusal itself must name the way out:
+      // the pid to check and the state file to remove if it was reused.
+      expect(refusal).toMatch(/PID \d+ is running/);
+      expect(refusal).toContain(`remove ${statePath}`);
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(true);
+      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+        type: 'stop_result',
+        result: 'failed',
+      });
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('still reclaims state when every tracked pid is confirmed dead despite a null fingerprint observation', async () => {
+    // The companion case: liveness (not the fingerprint) is what must gate
+    // `already_absent`, but a genuinely dead process must still reclaim —
+    // the fix must not turn every null observation into a hard refusal.
+    ensureDir(TEST_CWD);
+    const journal = join(TEST_ROOT, 'confirmed-dead-lifecycle.jsonl');
+    const statePath = writeInstanceState({
+      instanceName: 'confirmed-dead',
+      serverPid: 45001,
+      uiPid: 45002,
+      serverPort: 44443,
+      uiPort: 44553,
+      bootId: '11111111-1111-4111-8111-111111111111',
+      lifecycleJournal: journal,
+      serverFingerprint: {
+        pid: 45001,
+        startToken: 'server-start',
+        commandDigest: 'a'.repeat(64),
+      },
+      uiFingerprint: {
+        pid: 45002,
+        startToken: 'ui-start',
+        commandDigest: 'b'.repeat(64),
+      },
+      build: {
+        branch: 'main',
+        builtAt: '2026-07-10T12:00:00.000Z',
+        sha: 'a'.repeat(40),
+      },
+    });
+    const killProcessTree = vi.fn();
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 45001 || pid === 45002)) {
+        throw new Error('gone');
+      }
+      return true;
+    }) as typeof process.kill);
+    const { lifecycle } = await loadLifecycleModule({
+      // A stale port listener (unrelated pid) keeps `isInstanceRunning`
+      // true at discovery, so `stop` reaches `stopRecord` instead of the
+      // outer discovery pass reclaiming it first — the case that exercises
+      // stopRecord's own `already_absent` decision rather than the
+      // discovery-time short-circuit.
+      childProcessMock: {
+        execSync: vi.fn((command: string) =>
+          command.includes('lsof') ? '99999\n' : '',
+        ),
+      },
+      platformOverrides: {
+        killProcessTree,
+        sleepSync: vi.fn(),
+        inspectProcessFingerprint: () => null,
+      },
+    });
+    try {
+      lifecycle.stop({ instanceName: 'confirmed-dead' });
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(false);
+      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+        type: 'stop_result',
+        result: 'already_absent',
       });
     } finally {
       killSpy.mockRestore();
@@ -2206,7 +2408,48 @@ describe('lifecycle instance state', () => {
     await waiting;
     expect(failure).not.toBeNull();
     expect(failure!.message).toBe(
-      `Timed out waiting for ${url} (managed boot identity mismatch)`,
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "identity-sha", got "other-sha"; bootId expected "identity-boot", got "other-boot"; instanceId expected "smoke-b", got "someone-else"`,
+    );
+  });
+
+  it('names only the identity field that differed, with both values (station#2689)', async () => {
+    // The #2689 shape: no build stamp, so the supervisor expects sha
+    // 'unknown' while this very boot answers with its baked sha.
+    vi.useFakeTimers();
+    const bakedSha = '0d57e8277'.padEnd(40, '0');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'default',
+              sha: bakedSha,
+              bootId: 'boot-1',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://127.0.0.1:3246/api/system/identity';
+
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'default', sha: 'unknown', bootId: 'boot-1' },
+        500,
+      )
+      .then(
+        () => null,
+        (error: Error) => error,
+      );
+    await vi.advanceTimersByTimeAsync(600);
+
+    // The parenthesised reason is unchanged, so run-e2e-suite's
+    // classifyStartFailure still reads this as a boot race.
+    expect((await waiting)?.message).toBe(
+      `Timed out waiting for ${url} (managed boot identity mismatch): sha expected "unknown", got "${bakedSha}"`,
     );
   });
 
@@ -3668,6 +3911,264 @@ describe('upgrade', () => {
     }
   });
 
+  /**
+   * A backend reporting the installed unit RUNNING (the running twin of
+   * `stoppedServiceProbe`); every other command answers like the stale-
+   * scheduling runner so the guidance path stays representative.
+   */
+  function runningServiceSpawnSync(unitPath: string): Mock {
+    const fallback = staleSchedulingSpawnSync(unitPath);
+    return vi.fn((command: string, args: string[]) => {
+      if (command === 'launchctl' && args[0] === 'print') {
+        return { status: 0, stderr: '', stdout: 'state = running\n' };
+      }
+      if (command === 'systemctl' && args.includes('is-active')) {
+        return { status: 0, stderr: '', stdout: 'active\n' };
+      }
+      if (command === 'systemctl' && args.includes('is-enabled')) {
+        return { status: 0, stderr: '', stdout: 'enabled\n' };
+      }
+      return fallback(command, args);
+    });
+  }
+
+  it('refuses a source upgrade while an installed service from this checkout is running, stopping nothing (#2674)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-running',
+    );
+    // What `service install` records: the realpath of the checkout it ran in.
+    const runningManifestPath = join(
+      TEST_DEFAULT_HOME,
+      'service',
+      'service-running.json',
+    );
+    writeFileSync(
+      runningManifestPath,
+      `${JSON.stringify({
+        ...JSON.parse(readFileSync(runningManifestPath, 'utf-8')),
+        repoPath: realpathSync(TEST_CWD),
+      })}\n`,
+    );
+    // The live instance a running service supervises: the one `upgrade`
+    // would otherwise `stopRecord`, handing the supervisor an exit to restart.
+    const supervisedPid = await spawnLongRunning();
+    writeInstanceState({ serverPid: supervisedPid, uiPid: null });
+    const execSync = vi.fn();
+    const spawnSync = runningServiceSpawnSync(unitPath);
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync, spawnSync },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /station upgrade is blocked because an installed Station service supervises this Station\.[\s\S]*service-running: running[\s\S]*"station service stop", run "station upgrade", then start it again with "station service start"/,
+    );
+    expect(execSync).not.toHaveBeenCalled();
+    expect(isAlive(supervisedPid)).toBe(true);
+    process.kill(supervisedPid, 'SIGKILL');
+  }, 15_000);
+
+  it('refuses a source upgrade when the installed service state cannot be determined', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-unknown',
+    );
+    const fallback = staleSchedulingSpawnSync(unitPath);
+    const spawnSync = vi.fn((command: string, args: string[]) =>
+      command === 'launchctl' ||
+      (command === 'systemctl' && !args.includes('cat')) ||
+      /schtasks/i.test(command)
+        ? { error: new Error('backend unavailable'), status: null }
+        : fallback(command, args),
+    );
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync, spawnSync },
+    });
+
+    const refusal = lifecycle.upgrade().then(
+      () => null,
+      (error: Error) => error.message,
+    );
+    const message = await refusal;
+    expect(message).toMatch(
+      /service-unknown: state unknown \(.*backend unavailable/,
+    );
+    // Actionable (review M2): the manifest file, the status command for this
+    // unit, the uninstall that clears a gone unit, and the override flag.
+    expect(message).toContain(
+      `manifest: ${join(TEST_DEFAULT_HOME, 'service', 'service-unknown.json')}`,
+    );
+    expect(message).toContain(
+      `"station service status --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+    );
+    expect(message).toContain(
+      `"station service uninstall --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
+    );
+    expect(message).toContain('--ignore-service-state');
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  /** A backend that cannot answer any running-state probe. */
+  function brokenBackendSpawnSync(unitPath: string): Mock {
+    const fallback = staleSchedulingSpawnSync(unitPath);
+    return vi.fn((command: string, args: string[]) =>
+      command === 'launchctl' ||
+      (command === 'systemctl' && !args.includes('cat')) ||
+      /schtasks/i.test(command)
+        ? { error: new Error('backend unavailable'), status: null }
+        : fallback(command, args),
+    );
+  }
+
+  it('--ignore-service-state proceeds past an undeterminable service, loudly', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-unknown-ignored',
+    );
+    const execSync = vi.fn(
+      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+        if (command === 'npm run build:server') {
+          const serverDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_SERVER_DIR),
+          );
+          ensureDir(serverDir);
+          writeFileSync(join(serverDir, 'command-station.js'), 'server');
+        }
+        if (command === 'npm run build:ui') {
+          const uiDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_UI_DIR),
+          );
+          ensureDir(uiDir);
+          writeFileSync(join(uiDir, 'index.html'), '<!doctype html>');
+        }
+        if (command === 'git rev-parse HEAD')
+          return '0123456789abcdef0123456789abcdef01234567\n';
+        return 'origin/main\n';
+      },
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: {
+        execSync,
+        spawnSync: brokenBackendSpawnSync(unitPath),
+      },
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await lifecycle.upgrade({ ignoreUnknownServiceState: true });
+      expect(execSync.mock.calls.map(([command]) => command)).toContain(
+        'git pull',
+      );
+      expect(warn.mock.calls.flat().join('\n')).toMatch(
+        /WARNING: --ignore-service-state[\s\S]*service-unknown-ignored \(.*backend unavailable/,
+      );
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('--ignore-service-state never overrides a service reported running', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'service-running-ignored',
+    );
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: {
+        execSync,
+        spawnSync: runningServiceSpawnSync(unitPath),
+      },
+    });
+
+    await expect(
+      lifecycle.upgrade({ ignoreUnknownServiceState: true }),
+    ).rejects.toThrow(/service-running-ignored: running/);
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  it('proceeds with a source upgrade past a running service installed from a DIFFERENT checkout', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
+    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
+    const unitPath = writeStaleServiceManifest(
+      TEST_DEFAULT_HOME,
+      'other-checkout',
+    );
+    const manifestPath = join(
+      TEST_DEFAULT_HOME,
+      'service',
+      'other-checkout.json',
+    );
+    const otherCheckout = join(TEST_ROOT, 'other-checkout');
+    ensureDir(otherCheckout);
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        ...JSON.parse(readFileSync(manifestPath, 'utf-8')),
+        repoPath: otherCheckout,
+      })}\n`,
+    );
+    const execSync = vi.fn(
+      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+        if (command === 'npm run build:server') {
+          const serverDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_SERVER_DIR),
+          );
+          ensureDir(serverDir);
+          writeFileSync(join(serverDir, 'command-station.js'), 'server');
+        }
+        if (command === 'npm run build:ui') {
+          const uiDir = join(
+            TEST_CWD,
+            String(options?.env?.STATION_BUILD_UI_DIR),
+          );
+          ensureDir(uiDir);
+          writeFileSync(join(uiDir, 'index.html'), '<!doctype html>');
+        }
+        if (command === 'git rev-parse HEAD')
+          return '0123456789abcdef0123456789abcdef01234567\n';
+        return 'origin/main\n';
+      },
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: {
+        execSync,
+        spawnSync: runningServiceSpawnSync(unitPath),
+      },
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await lifecycle.upgrade();
+      expect(execSync.mock.calls.map(([command]) => command)).toContain(
+        'git pull',
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('blocks shared-build upgrades when multiple instances are still live', async () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
@@ -3817,6 +4318,63 @@ describe('upgrade', () => {
       }
     },
   );
+
+  it('refuses a signed packaged upgrade while an installed service in its home is running, before the installer runs (#2674)', async () => {
+    const installRoot = join(TEST_ROOT, 'portable-service');
+    const release = join(installRoot, 'releases', 'e'.repeat(64));
+    const stationHome = join(TEST_ROOT, 'home-service');
+    ensureDir(release);
+    ensureDir(stationHome);
+    writeFileSync(
+      join(release, '.station-release.json'),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        sha: 'f'.repeat(40),
+        ref: 'v1.2.3',
+        createdAt: '2026-07-22T00:00:00.000Z',
+        channel: 'stable',
+        releaseChannel: 'stable',
+        prerelease: false,
+      })}\n`,
+    );
+    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      `${JSON.stringify({
+        schemaVersion: 3,
+        channel: 'stable',
+        releaseChannel: 'stable',
+        installRoot,
+        stationRoot: join(TEST_ROOT, 'root-service'),
+        stationHome,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    symlinkSync(release, join(installRoot, 'current'));
+    const unitPath = writeStaleServiceManifest(stationHome, 'packaged-running');
+    const execFileSync = vi.fn();
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: release,
+      childProcessMock: {
+        execFileSync,
+        execSync,
+        spawnSync: runningServiceSpawnSync(unitPath),
+      },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /station upgrade is blocked because an installed Station service supervises this Station\.[\s\S]*packaged-running: running/,
+    );
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execSync).not.toHaveBeenCalled();
+  });
 
   it('reports stale scheduling guidance after a source upgrade', async () => {
     ensureDir(TEST_CWD);

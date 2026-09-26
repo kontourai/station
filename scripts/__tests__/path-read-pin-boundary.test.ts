@@ -67,6 +67,7 @@ import {
   E2E_CONTRACT_BOUNDARIES,
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
+  REPO_SCAN_SUITES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -113,12 +114,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/changed-verification.test.ts',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
   'scripts/__tests__/guardrail-process-boundary.test.ts',
-  // This file. It reads suites through a computed `join(ROOT, file)`, which
-  // the scanner refuses by design; it previously also made an anchored
-  // self-read, which is what used to keep it reported. Being listed here is
-  // correct and safe: #1913 puts this suite on the unconditional prepush
-  // floor, so it no longer depends on a pin to be scheduled.
-  'scripts/__tests__/path-read-pin-boundary.test.ts',
   'scripts/__tests__/publish-oidc-exchange-status.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/release-sbom-generation.test.ts',
@@ -196,6 +191,496 @@ function selectedTests(paths: string[], manifest?: unknown): string[] {
     .tests.map(({ path }: { path: string }) => path)
     .sort();
 }
+
+/**
+ * #2176: every suite that walks a real source tree is run by the
+ * `repo-scans` job (`REPO_SCAN_SUITES`) or says here why it need not be. A
+ * tree walk has no impact edge an honest selection can use, so without this
+ * a new scanner would run only in the merge queue's full corpus again.
+ *
+ * HOW A WALK IS FOUND, AND WHAT THAT CANNOT SEE. `realTreeWalks` is a text
+ * heuristic over one suite's source with comments removed:
+ *
+ * - A WALK is a `readdir`/`readdirSync` call, a `git ls-files` invocation or
+ *   a glob-family call. A walk written any other way — a lister imported
+ *   from a gate module, a shell `find`, `fs.opendir` — is invisible;
+ *   `HELPER_BASED_SCANS` names the ones known when this landed.
+ * - A walk is exempt, one call at a time, only when its target looks
+ *   TEMPORARY at that point in the file: the argument (for `ls-files`, a
+ *   `cwd:` inside that same call's arguments — never a neighbour's) contains
+ *   a temp-directory call; a whole name token temp/tmp/scratch/temporary
+ *   (camelCase, `_`, `-` and `.` split tokens, so `templates`, `itemPath` and
+ *   `attempt` are not temp); a call to a local function whose EVERY return is
+ *   temp-derived; or an identifier whose NEAREST PRECEDING assignment in the
+ *   file is temp-derived, by the same rules. A walk inside a helper, on the
+ *   helper's own parameter, is exempt when every outside call of the helper
+ *   passes such an argument. A suite that creates temp directories is NOT
+ *   exempt as a whole.
+ * - LIMITS. Resolution is by file order, not by scope: a binding assigned in
+ *   one test and used in another, or a helper called before its definition,
+ *   resolves to whatever assignment precedes it textually. Imported fixture
+ *   factories, object properties (`f.root`) and parameters of functions that
+ *   are not the walking helper are not traced. The untraced forms err toward
+ *   REPORTING a walk, and the suites they report are classified by hand below
+ *   (`TEMP_VIA_FIXTURE`). The ways a real walk can still hide: a real
+ *   directory held in a binding NAMED with a temp token or spelled with one
+ *   in a path literal (`'fixtures/tmp-shapes'`); a `return` the regex does
+ *   not see (a multi-line return is judged by its first line); file-order
+ *   resolution itself, when an earlier test's temp `root` shadows a later
+ *   walk of a module-level real `root`; an argument that mentions any temp
+ *   value anywhere (`flag ? mkdtempSync() : join(cwd, 'src')`); and mixed
+ *   destructuring (`const { tmp, src } = { tmp: mkdtempSync(), src: … }`
+ *   marks `src` temp). None of these shapes existed in the suites when this
+ *   was written (every exempted walk argument was traced by hand).
+ */
+const WALK_CALL = new RegExp(['\\bread', 'dir(?:Sync)?\\s*\\('].join(''), 'g');
+const LS_FILES = new RegExp(['\\bls', '-files\\b'].join(''), 'g');
+const GLOB_CALL = new RegExp(
+  ['\\b(?:glob|globSync|globby|fastGlob|tinyglobby)', '\\s*\\('].join(''),
+  'g',
+);
+const TEMP_SOURCE =
+  /\bmkdtemp(?:Sync)?\b|\btmpdir\(\)|\bmakeTempDir\b|\bmakeTemp\w*\(|\bcreateTemp\w*\(|\btempDir\(|\btemporaryDirectory\(/;
+/** Whole name tokens only: `templates`, `itemPath`, `attempt` are not temp. */
+const TEMP_TOKENS = new Set(['temp', 'tmp', 'scratch', 'temporary']);
+const FUNCTION_HEAD =
+  /function\s+(\w+)\s*(?:<[^>]*>)?\(([^)]*)\)|(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*(?::[^=]+)?=>/g;
+const ASSIGNMENT =
+  /(?:(?:const|let|var)\s+|^\s*|[;{]\s*)(?:\{([^}]*)\}|(\w+))\s*(?::[^=\n]+)?=(?![=>])\s*([^;]*)/gm;
+const KEYWORDS = new Set([
+  'const',
+  'let',
+  'var',
+  'return',
+  'await',
+  'new',
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'function',
+  'async',
+]);
+
+/** True when some identifier or word in `text` has a whole temp token. */
+function hasTempToken(text: string): boolean {
+  for (const word of text.match(/[A-Za-z][A-Za-z0-9]*/g) ?? [])
+    for (const token of word.split(/(?<=[a-z0-9])(?=[A-Z])/))
+      if (TEMP_TOKENS.has(token.toLowerCase())) return true;
+  return false;
+}
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+function callArgument(source: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < source.length && i < open + 400; i += 1) {
+    if (source[i] === '(') depth += 1;
+    else if (source[i] === ')') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, i);
+    }
+  }
+  return source.slice(open + 1, open + 200);
+}
+
+function mentions(text: string, name: string): boolean {
+  return new RegExp(`\\b${name}\\b`).test(text);
+}
+
+/** Every local function, with its body span and parameters. */
+function localFunctions(source: string) {
+  return [...source.matchAll(FUNCTION_HEAD)].map((head) => {
+    const start = head.index ?? 0;
+    let open = start + head[0].length;
+    while (open < source.length && /\s/.test(source[open])) open += 1;
+    if (source.startsWith('=>', open)) open += 2;
+    while (open < source.length && /[\s:\w<>[\]|]/.test(source[open]))
+      open += 1;
+    const braced = source[open] === '{';
+    let end = source.indexOf('\n', open);
+    if (braced) {
+      let depth = 0;
+      for (end = open; end < source.length; end += 1) {
+        if (source[end] === '{') depth += 1;
+        else if (source[end] === '}' && --depth === 0) break;
+      }
+    }
+    end = end === -1 ? source.length : end;
+    return {
+      name: head[1] ?? head[3],
+      start,
+      bodyStart: open,
+      end,
+      braced,
+      params: (head[2] ?? head[4])
+        .split(',')
+        .map((param) =>
+          param
+            .trim()
+            .split(/[:=\s]/)[0]
+            .replace(/^\.\.\./, ''),
+        )
+        .filter(Boolean),
+    };
+  });
+}
+
+/**
+ * Temp-ness of an expression AT a position: a temp call, a whole temp token,
+ * a call to a local function that ALWAYS returns a temp-derived value, or an
+ * identifier whose nearest preceding assignment is itself temp.
+ */
+function tempResolver(source: string) {
+  const functions = localFunctions(source);
+  const assignments = [...source.matchAll(ASSIGNMENT)].map((match) => ({
+    index: match.index ?? 0,
+    names: match[2]
+      ? [match[2]]
+      : (match[1] ?? '')
+          .split(',')
+          .map((part) => part.split(':').pop()?.trim() ?? '')
+          .filter(Boolean),
+    value: match[3],
+  }));
+  const assignmentMemo = new Map<number, boolean>();
+  const factoryMemo = new Map<string, boolean>();
+
+  const resolveName = (name: string, before: number): boolean => {
+    let nearest: (typeof assignments)[number] | undefined;
+    for (const assignment of assignments)
+      if (assignment.index < before && assignment.names.includes(name))
+        nearest = assignment;
+    if (!nearest) return false;
+    const known = assignmentMemo.get(nearest.index);
+    if (known !== undefined) return known;
+    assignmentMemo.set(nearest.index, false); // cycle guard
+    const result =
+      nearest.names.some(hasTempToken) ||
+      valueIsTemp(nearest.value, nearest.index);
+    assignmentMemo.set(nearest.index, result);
+    return result;
+  };
+
+  const alwaysReturnsTemp = (name: string): boolean => {
+    const known = factoryMemo.get(name);
+    if (known !== undefined) return known;
+    factoryMemo.set(name, false); // cycle guard
+    const fn = functions.find((candidate) => candidate.name === name);
+    let result = false;
+    if (fn) {
+      const body = source.slice(fn.bodyStart, fn.end + 1);
+      const returns = fn.braced
+        ? [...body.matchAll(/\breturn\s+([^;\n]+)/g)].map((match) => ({
+            text: match[1],
+            at: fn.bodyStart + (match.index ?? 0),
+          }))
+        : [{ text: body, at: fn.bodyStart }];
+      result =
+        returns.length > 0 &&
+        returns.every(({ text, at }) => valueIsTemp(text, at + 1));
+    }
+    factoryMemo.set(name, result);
+    return result;
+  };
+
+  const valueIsTemp = (text: string, at: number): boolean => {
+    if (TEMP_SOURCE.test(text) || hasTempToken(text)) return true;
+    for (const call of text.matchAll(/\b(\w+)\s*\(/g))
+      if (alwaysReturnsTemp(call[1])) return true;
+    for (const identifier of new Set(text.match(/\b[A-Za-z_$][\w$]*\b/g)))
+      if (!KEYWORDS.has(identifier) && resolveName(identifier, at)) return true;
+    return false;
+  };
+
+  return { functions, valueIsTemp };
+}
+
+/** The argument text of the innermost call that contains `index`. */
+function enclosingCallArguments(source: string, index: number): string {
+  let depth = 0;
+  for (let i = index; i >= 0 && i > index - 600; i -= 1) {
+    if (source[i] === ')') depth += 1;
+    else if (source[i] === '(') {
+      if (depth === 0) return callArgument(source, i);
+      depth -= 1;
+    }
+  }
+  return '';
+}
+
+/** Every walk in `raw` whose target does not look temporary. */
+function realTreeWalks(raw: string): string[] {
+  const source = stripComments(raw);
+  const { functions, valueIsTemp } = tempResolver(source);
+  const enclosing = (index: number) =>
+    functions
+      .filter((fn) => fn.start < index && index <= fn.end)
+      .sort((left, right) => right.start - left.start)[0];
+  const tempTarget = (text: string, at: number) => {
+    if (valueIsTemp(text, at)) return true;
+    // A walk inside a helper, on the helper's own parameter: temp only when
+    // every outside call site passes a temp-derived argument.
+    const fn = enclosing(at);
+    if (!fn?.params.some((param) => mentions(text, param))) return false;
+    const outside = [
+      ...source.matchAll(new RegExp(`\\b${fn.name}\\s*\\(`, 'g')),
+    ].filter(
+      (call) =>
+        call.index !== fn.start &&
+        !source.slice((call.index ?? 0) - 9, call.index).includes('function') &&
+        enclosing(call.index ?? 0)?.name !== fn.name,
+    );
+    return (
+      outside.length > 0 &&
+      outside.every((call) =>
+        valueIsTemp(
+          callArgument(source, (call.index ?? 0) + call[0].length - 1),
+          call.index ?? 0,
+        ),
+      )
+    );
+  };
+  const walks: string[] = [];
+  for (const pattern of [WALK_CALL, GLOB_CALL])
+    for (const match of source.matchAll(pattern)) {
+      const at = match.index ?? 0;
+      const argument = callArgument(source, at + match[0].length - 1);
+      if (!tempTarget(argument, at)) walks.push(argument.slice(0, 80));
+    }
+  for (const match of source.matchAll(LS_FILES)) {
+    const at = match.index ?? 0;
+    // Only a `cwd:` inside THIS call's own arguments counts; a neighbour's
+    // `cwd: tempRepo` says nothing about where this one runs.
+    const cwd = /\bcwd:\s*([^,}\n]+)/.exec(enclosingCallArguments(source, at));
+    if (!cwd || !valueIsTemp(cwd[1], at))
+      walks.push(`ls-files cwd=${cwd?.[1] ?? '.'}`);
+  }
+  return walks;
+}
+
+/** Scans whose walk is not visible in their own text. */
+const HELPER_BASED_SCANS = Object.freeze([
+  // Lists its scope through the gate module's `scopedFiles()`.
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+]);
+
+const TEMP_VIA_FIXTURE =
+  'hand-checked: walks only a temporary directory the text heuristic cannot ' +
+  'trace (a fixture object, a caller in another scope, or a same-named ' +
+  'binding in another test)';
+const WRAPS_FS =
+  'wraps fs.readdir in a mock; walks whatever the code under test asks';
+
+/** Detected real-tree walkers that are not repo scans, and why. */
+const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
+    'walks its own fixture directory',
+  'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
+    'walks its own fixture directory',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
+    'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
+  'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/android-channel-release-generation.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/android-firebase-workflow-env.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/basis-mcp-apps.test.ts':
+    'git ls-files over its own generated outputs, to prove they are untracked',
+  'scripts/__tests__/desktop-runtime-port-lease.test.ts':
+    'its rmSync mock walks whatever the code under test deletes, a temporary lock directory',
+  'scripts/__tests__/generate-app-icons.test.ts':
+    'incidental: compares the committed icon sets and .icns files it regenerates',
+  'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
+    'walks its own fixture root',
+  'scripts/__tests__/path-read-pin-boundary.test.ts':
+    "this file: the detector's own strings name the calls it looks for; the prepush floor runs it (#1913)",
+  'scripts/__tests__/release-workflow.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/verification-policy-gate.test.ts':
+    'stubs git ls-files to test the gate; walks nothing real',
+  'scripts/__tests__/vitest-resource-manifest.test.ts':
+    'packages/connect tests; the check rides the suite-wide Vitest discovery ' +
+    'the whole file shares, and verification:policy:gate re-derives the ' +
+    'corpus partition in ci:fast',
+  'scripts/__tests__/worktree-hygiene-git.test.ts': TEMP_VIA_FIXTURE,
+  'src-server/knowledge-index/__tests__/migration-path-traversal.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/knowledge-index/__tests__/migration.test.ts': TEMP_VIA_FIXTURE,
+  'src-server/providers/__tests__/claude-skills-materialization.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/providers/app-home/__tests__/app-home-profiles.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts':
+    'git ls-files inside the temporary project it creates',
+  'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts':
+    WRAPS_FS,
+  'src-server/services/plugins/__tests__/example-manifest-fields.test.ts':
+    'walks examples/; its examples/** edge selects it',
+  'src-server/services/projects/__tests__/plugin-publish-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
+    WRAPS_FS,
+  'packages/cli/src/__tests__/install-registry.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/ios-channel-icons.test.ts':
+    'incidental: checks the committed iOS icon sets against their catalog, like generate-app-icons',
+  'scripts/__tests__/server-build-portability.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/typecheck-host-slots.test.ts':
+    'walks a directory handed to a fixture child on its argv',
+  'src-server/providers/__tests__/muse-adapter.real-child.process.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/runtime/bootstrap/__tests__/station-runtime-store-quarantine.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/agents/__tests__/playbook-skill-migration.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/browser/__tests__/chromium-acquisition.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/checkpoints/__tests__/checkpoint-index-store.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/services/infra/__tests__/server-log-store.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/utils/__tests__/git-exec.hardening.test.ts':
+    'git ls-files inside the temporary repository its helper creates',
+  'tests/learning-source.spec.ts':
+    'a Playwright spec; Vitest cannot schedule it (#1817)',
+  'src-ui/src/__tests__/station-vocabulary.test.ts':
+    'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
+  'tests/builder-delivery-viewer.spec.ts':
+    'a Playwright spec (examples/builder-delivery-viewer); Vitest cannot schedule it (#1817)',
+});
+
+describe('whole-tree scans are run or classified (#2176)', () => {
+  const suites = listSuiteFiles(ROOT);
+  const walkers = suites.filter(
+    (file) => realTreeWalks(readFileSync(join(ROOT, file), 'utf8')).length > 0,
+  );
+
+  it('the walk heuristic exempts a temporary target and reports a real one', () => {
+    // Directional controls on literal sources, so the repository-wide
+    // assertions below are not the only thing holding the heuristic up.
+    const read = ['read', 'dirSync'].join('');
+    // Assembled, so this file does not trip the raw temp-dir ratchet (#2421).
+    const mk = ['mk', 'dtempSync'].join('');
+    expect(
+      realTreeWalks(`const dir = ${mk}(join(tmpdir(), 'x'));\n${read}(dir);`),
+    ).toEqual([]);
+    expect(realTreeWalks(`${read}(join(ROOT, 'docs'));`)).toHaveLength(1);
+    // One real walk in a suite that also makes temp directories still counts.
+    expect(
+      realTreeWalks(`const t = ${mk}('x');\n${read}(t);\n${read}('examples');`),
+    ).toEqual(["'examples'"]);
+    // A helper walking its own parameter follows its call sites.
+    const helper = `function walk(dir) { return ${read}(dir); }\n`;
+    expect(
+      realTreeWalks(`${helper}const home = makeTempDir('h');\nwalk(home);`),
+    ).toEqual([]);
+    expect(realTreeWalks(`${helper}walk('src-ui/src');`)).toHaveLength(1);
+    // Adversarial controls from the #2176 final review: each must SURFACE.
+    // (a) A temp token must be a whole name token, not a substring.
+    expect(
+      realTreeWalks(`${read}(join(ROOT, 'src-server/templates'));`),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(`const itemPath = join(cwd, 'src');\n${read}(itemPath);`),
+    ).toHaveLength(1);
+    // (b) A shadowed name resolves to its nearest preceding assignment.
+    expect(
+      realTreeWalks(
+        `let root = ${mk}('x');\n${read}(root);\nroot = join(REPO, 'src');\n${read}(root);`,
+      ),
+    ).toEqual(['root']);
+    // (c) A helper that returns a temp dir on only one branch is not a temp
+    // factory; one that always does is.
+    expect(
+      realTreeWalks(
+        `function resolveDir(p) {\n  if (p) return makeTempDir('x');\n  return join(REPO, p);\n}\nconst d = resolveDir(p);\n${read}(d);`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(
+        `function fresh() {\n  return makeTempDir('x');\n}\nconst d = fresh();\n${read}(d);`,
+      ),
+    ).toEqual([]);
+    // (d) Only a \`cwd:\` in the call's OWN arguments counts.
+    const ls = ['ls', '-files'].join('');
+    expect(
+      realTreeWalks(
+        `execFileSync('git', ['init'], { cwd: tempRepo });\nexecFileSync('git', ['${ls}']);`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      realTreeWalks(`execFileSync('git', ['${ls}'], { cwd: tempRepo });`),
+    ).toEqual([]);
+    // A comment naming the call is not a walk.
+    expect(realTreeWalks(`// ${read}('docs')\n`)).toEqual([]);
+  });
+
+  it('every real-tree walker is a repo scan or classified with a reason', () => {
+    // Population first: the check below is satisfied by an empty list.
+    expect(walkers.length).toBeGreaterThan(REPO_SCAN_SUITES.length);
+    expect(
+      walkers.filter(
+        (file) =>
+          !REPO_SCAN_SUITES.includes(file) &&
+          !(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS),
+      ),
+      'a suite walks a real directory but is neither in REPO_SCAN_SUITES ' +
+        '(scripts/test-impact-manifest.mjs) nor classified here',
+    ).toEqual([]);
+  });
+
+  it('no classification outlives the walk it explains', () => {
+    expect(
+      Object.keys(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS).filter(
+        (file) => !walkers.includes(file),
+      ),
+    ).toEqual([]);
+  });
+
+  it('every repo scan suite exists, is runnable by Vitest, and is not also classified away', () => {
+    expect(REPO_SCAN_SUITES.length).toBeGreaterThan(0);
+    for (const file of REPO_SCAN_SUITES) {
+      expect(existsSync(join(ROOT, file)), file).toBe(true);
+      expect(file.startsWith('tests/'), file).toBe(false);
+      expect(file in DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS, file).toBe(false);
+    }
+    for (const file of HELPER_BASED_SCANS)
+      expect(REPO_SCAN_SUITES, file).toContain(file);
+    expect(new Set(REPO_SCAN_SUITES).size).toBe(REPO_SCAN_SUITES.length);
+  });
+
+  it('the repo-scans CI job runs exactly the one list, on same-repository pull requests', () => {
+    const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    // publish-surface packs packages/cli and asserts the built entrypoint is
+    // in the tarball, so the scans build the CLI they inspect first; the
+    // pinned repo-scans job runs only this script (#2686).
+    expect(pkg.scripts['test:repo-scans']).toBe(
+      'npm run build:cli && node scripts/run-repo-scan-suites.mjs',
+    );
+    // What the runner hands the focused runner is asserted behaviourally in
+    // run-repo-scan-suites.test.ts.
+    const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    // The last job in ci.yml, so the slice runs to the end of the file.
+    const job = ci.slice(ci.indexOf('\n  repo-scans:\n'));
+    expect(job).toContain('run: npm run test:repo-scans');
+    expect(job).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    // The checkout's own `ref:` line, not the concurrency group (which also
+    // names the head sha).
+    expect(job).toMatch(
+      /\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n/,
+    );
+  });
+});
 
 describe('path-read pins are discovered', () => {
   it('finds pins across the repository', () => {

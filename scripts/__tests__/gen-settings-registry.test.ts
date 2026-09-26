@@ -10,8 +10,11 @@ import {
   loadRegistrySources,
   MINIMUM_REGISTRY_CONFIG_KEYS,
   MINIMUM_REGISTRY_ENTRIES,
+  REGISTRY_ARTIFACT_PATH,
+  REGISTRY_SOURCE_PATHS,
   serializeRegistry,
 } from '../gen-settings-registry';
+import { selectChangedVerification } from '../run-changed-verification.mjs';
 
 const ROOT = process.cwd();
 
@@ -175,6 +178,24 @@ describe('settings registry generator', () => {
       generateSettingsRegistry({ check: true, root: ROOT }),
     ).resolves.toEqual({ written: false, entries: document.settings.length });
   });
+
+  test('a change to any generator input selects this suite in the pull-request lane', () => {
+    // #2176: the sources load through a computed specifier and the artifact
+    // is read by path, so no import edge reaches this suite from any of them.
+    // Without an impact edge, a new settings row first failed the two
+    // assertions above in the merge queue's full corpus (#2511, #2593). The
+    // list is the generator's own, so a new source without an edge reds here.
+    const inputs = [...REGISTRY_SOURCE_PATHS, REGISTRY_ARTIFACT_PATH];
+    expect(inputs).toHaveLength(5);
+    const unselected = inputs.filter(
+      (path) =>
+        !selectChangedVerification([path]).tests.some(
+          (entry) =>
+            entry.path === 'scripts/__tests__/gen-settings-registry.test.ts',
+        ),
+    );
+    expect(unselected).toEqual([]);
+  });
 });
 
 /**
@@ -212,6 +233,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'terminal-shell': 'station',
   'mcp-ui-host': 'station',
   'surface-trust': 'station',
+  'device-helper-url': 'station',
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
   'default-workspace-isolation': 'station',
@@ -257,6 +279,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'message-context': 'temporary',
   'voice-pill': 'device',
   'mobile-pairing': 'device',
+  'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
 };

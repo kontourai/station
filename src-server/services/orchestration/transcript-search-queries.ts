@@ -15,25 +15,17 @@ export const MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY = 0.000000001;
 
 function transcriptOwnerIds(options: {
   ownerUserId: string;
-  legacyOwnerUserId?: string;
   ownerUserIds?: readonly string[];
-}): (string | null)[] {
+}): string[] {
   return options.ownerUserIds
-    ? [
-        ...new Set([
-          options.ownerUserId,
-          ...options.ownerUserIds,
-          ...(options.legacyOwnerUserId ? [options.legacyOwnerUserId] : []),
-        ]),
-      ]
-    : [options.ownerUserId, options.legacyOwnerUserId ?? null];
+    ? [...new Set([options.ownerUserId, ...options.ownerUserIds])]
+    : [options.ownerUserId];
 }
 export function queryTranscriptMessages(
   db: TranscriptQueryDatabase,
   options: {
     query: string;
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
     tenantId?: string;
     projectId?: string;
@@ -163,7 +155,6 @@ export function queryTranscriptSession(
   options: {
     threadId: string;
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
     tenantId?: string;
   },
@@ -198,7 +189,6 @@ export function queryTranscriptMessage(
     threadId: string;
     matchedEventId: string;
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
     tenantId?: string;
   },
@@ -298,7 +288,6 @@ export function queryTranscriptMessagePage(
     threadId: string;
     matchedEventId: string;
     ownerUserId: string;
-    legacyOwnerUserId?: string;
     ownerUserIds?: readonly string[];
     tenantId?: string;
     continuation?: string;

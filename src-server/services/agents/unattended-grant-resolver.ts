@@ -8,6 +8,7 @@
 import type {
   InvocationContext,
   ToolCallContext,
+  UnattendedGrantResolution,
 } from '../../runtime/types.js';
 import {
   unattendedGrantStoreUnavailable,
@@ -28,7 +29,10 @@ type ResolverLogger = {
 export function makeUnattendedGrantResolver(
   store: UnattendedGrantStore,
   deps: { logger: ResolverLogger },
-): (tool: ToolCallContext, invocation: InvocationContext) => Promise<boolean> {
+): (
+  tool: ToolCallContext,
+  invocation: InvocationContext,
+) => Promise<UnattendedGrantResolution> {
   return async (tool, invocation) => {
     const principal = invocation.unattendedPrincipal;
     if (!principal) return false;
@@ -44,7 +48,7 @@ export function makeUnattendedGrantResolver(
           principalKind,
         });
         unattendedGrantStoreUnavailable.add(1, { principalKind });
-        return false;
+        return 'store-unavailable';
       }
       throw error;
     }

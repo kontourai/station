@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -87,6 +88,190 @@ describe('Notification Routes', () => {
     const body = await json(res);
     expect(body.success).toBe(true);
     expect(body.data.title).toBe('Test');
+  });
+
+  test.each([
+    [
+      'a forged envelope',
+      {
+        metadata: {
+          envelope: {
+            v: 1,
+            source: { kind: 'agent', sessionId: 'victim', assurance: 'bound' },
+            audience: { kind: 'owner' },
+            urgency: 'attention',
+            interrupt: 'default',
+          },
+        },
+      },
+    ],
+    ['an agent-* category', { category: 'agent-attention' }],
+  ])(
+    'POST / refuses %s with 400 and stores nothing (#2583)',
+    async (_label, extra) => {
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Forged', category: 'test', ...extra }),
+      });
+      expect(res.status).toBe(400);
+      expect(await svc.list()).toEqual([]);
+    },
+  );
+
+  function post(body: Record<string, unknown>) {
+    return app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test('POST / cannot relabel a scheduler record: a foreign source is refused and the record is untouched (#2597)', async () => {
+    const original = await svc.schedule('scheduler', {
+      title: 'Job failed',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+      metadata: { link: '/schedule?job=nightly' },
+    });
+    const res = await post({
+      title: 'Click me',
+      category: 'job-failure',
+      source: 'scheduler',
+      dedupeTag: 'scheduler:fail:nightly:1',
+      metadata: { link: 'https://evil.example' },
+    });
+    expect(res.status).toBe(400);
+    expect(await svc.list()).toEqual([original]);
+  });
+
+  test('POST / records every request as source api, accepting the SDK label (#2597)', async () => {
+    const res = await post({
+      title: 'From SDK',
+      category: 'test',
+      source: 'sdk',
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.source).toBe('api');
+  });
+
+  test('POST / with an internal tag is namespaced: the scheduler record is untouched (#2597)', async () => {
+    const original = await svc.schedule('scheduler', {
+      title: 'Job failed',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+    });
+    const res = await post({
+      title: 'Click me',
+      category: 'job-failure',
+      dedupeTag: 'scheduler:fail:nightly:1',
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.metadata.dedupeTag).toBe(
+      'api:scheduler:fail:nightly:1',
+    );
+    expect((await svc.list()).find((n) => n.id === original.id)).toEqual(
+      original,
+    );
+  });
+
+  test.each([
+    ['scheduler', 'scheduler:heartbeat-stale'],
+    ['approval-inbox', 'approval:req-1'],
+    ['device-pairing', 'device-pairing:r1'],
+  ])(
+    'a REST squat of a %s tag does not block that producer (#2597)',
+    async (source, tag) => {
+      expect(
+        (await post({ title: 'Squat', category: 'test', dedupeTag: tag }))
+          .status,
+      ).toBe(201);
+      const internal = await svc.schedule(source, {
+        title: 'Internal',
+        category: 'test',
+        dedupeTag: tag,
+      });
+      expect(internal).toMatchObject({ source, status: 'delivered' });
+      // And the producer's own dedupe still works afterwards.
+      const again = await svc.schedule(source, {
+        title: 'Internal 2',
+        category: 'test',
+        dedupeTag: tag,
+      });
+      expect(again).toMatchObject({ id: internal.id, title: 'Internal 2' });
+    },
+  );
+
+  test('POST / with an agent: tag is namespaced and cannot squat the agent key (#2597)', async () => {
+    const res = await post({
+      title: 'Squat',
+      category: 'test',
+      dedupeTag: 'agent:victim-root:build',
+    });
+    expect(res.status).toBe(201);
+    expect((await json(res)).data.metadata.dedupeTag).toBe(
+      'api:agent:victim-root:build',
+    );
+  });
+
+  test('hosted POST / namespaces REST dedupe tags by tenant', async () => {
+    const hostedApp = createNotificationRoutes(svc, {
+      readAuthorityForRequest: (request) =>
+        hostedAuthority(
+          request.headers.get('x-test-tenant') as 'alpha' | 'bravo',
+        ),
+      canReadSession: (sessionId, authority) =>
+        sessionId === `${authority.tenantExecutionContext?.tenantId}-session`,
+    });
+    const postAs = (tenant: 'alpha' | 'bravo', title: string) =>
+      hostedApp.request('/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-tenant': tenant,
+        },
+        body: JSON.stringify({
+          title,
+          category: 'test',
+          dedupeTag: 'x',
+          metadata: { sessionId: `${tenant}-session` },
+        }),
+      });
+    const alpha = await json(await postAs('alpha', 'Alpha'));
+    const bravo = await json(await postAs('bravo', 'Bravo'));
+    const alphaAgain = await json(await postAs('alpha', 'Alpha 2'));
+
+    expect(alpha.data.metadata.dedupeTag).toBe('api:alpha:x');
+    expect(bravo.data.metadata.dedupeTag).toBe('api:bravo:x');
+    expect(bravo.data.id).not.toBe(alpha.data.id);
+    expect(alphaAgain.data).toMatchObject({
+      id: alpha.data.id,
+      title: 'Alpha 2',
+    });
+    expect((await svc.list()).find((n) => n.id === bravo.data.id)?.title).toBe(
+      'Bravo',
+    );
+  });
+
+  test('POST / same-tag dedupe still works for REST callers (#2597)', async () => {
+    const first = await json(
+      await post({ title: 'v1', category: 'test', dedupeTag: 'mine' }),
+    );
+    const second = await json(
+      await post({ title: 'v2', category: 'test', dedupeTag: 'mine' }),
+    );
+    expect(second.data).toMatchObject({ id: first.data.id, title: 'v2' });
+    expect(await svc.list()).toHaveLength(1);
+  });
+
+  test('POST / refuses a dedupe tag smuggled in metadata (#2597)', async () => {
+    const res = await post({
+      title: 'Squat',
+      category: 'test',
+      metadata: { dedupeTag: 'scheduler:heartbeat-stale' },
+    });
+    expect(res.status).toBe(400);
+    expect(await svc.list()).toEqual([]);
   });
 
   test('POST /:id/action/:actionId carries the authenticated request origin through the approval inbox into the registry resolution event (#3830)', async () => {
@@ -430,6 +615,186 @@ describe('Notification Routes', () => {
       }),
     );
     expect(body.success).toBe(true);
+  });
+
+  describe('POST /:id/read (#2587)', () => {
+    const CLIENT_SESSION = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
+    const envelope: NotificationEnvelopeV1 = {
+      v: 1,
+      source: {
+        kind: 'agent',
+        sessionId: 'session-1',
+        agent: 'builder',
+        assurance: 'bound',
+      },
+      audience: { kind: 'session-readers', sessionId: 'session-1' },
+      urgency: 'done',
+      interrupt: 'default',
+    };
+
+    function withDevice(deviceId: string) {
+      const outer = new Hono();
+      outer.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          credential: 'device-credential',
+          authority: 'device-credential',
+          deviceId,
+          source: 'bearer',
+        });
+        await next();
+      });
+      outer.route('/', createNotificationRoutes(svc));
+      return outer;
+    }
+
+    async function readMarker(id: string) {
+      const stored = (await svc.list()).find((n) => n.id === id);
+      return (stored?.metadata?.envelope ?? {}) as {
+        readAt?: string;
+        readBy?: string;
+      };
+    }
+
+    test('records the local client session as the reader, ignoring a body claim', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const res = await app.request(`/${n.id}/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Station-Client-Session': CLIENT_SESSION.toUpperCase(),
+        },
+        body: JSON.stringify({ surfaceId: 'device:someone-else' }),
+      });
+      expect(res.status).toBe(200);
+      expect((await json(res)).data).toEqual({ outcome: 'read' });
+      expect((await readMarker(n.id)).readBy).toBe(`local:${CLIENT_SESSION}`);
+    });
+
+    test('a paired device reads as device:<id> from its verified credential', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const res = await withDevice('device-7').request(`/${n.id}/read`, {
+        method: 'POST',
+        headers: { 'X-Station-Client-Session': CLIENT_SESSION },
+      });
+      expect(res.status).toBe(200);
+      expect((await readMarker(n.id)).readBy).toBe('device:device-7');
+    });
+
+    test('refuses a caller that names no surface, and records nothing', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      for (const headers of [
+        {},
+        { 'X-Station-Client-Session': 'not-a-uuid' },
+      ] as Record<string, string>[]) {
+        const res = await app.request(`/${n.id}/read`, {
+          method: 'POST',
+          headers,
+        });
+        expect(res.status).toBe(400);
+      }
+      expect((await readMarker(n.id)).readAt).toBeUndefined();
+    });
+
+    test('reports first-reader-wins and legacy records truthfully', async () => {
+      const n = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Tests pass', category: 'agent-done' },
+          envelope,
+        )
+      ).notification;
+      const headers = { 'X-Station-Client-Session': CLIENT_SESSION };
+      await app.request(`/${n.id}/read`, { method: 'POST', headers });
+      const second = await withDevice('device-7').request(`/${n.id}/read`, {
+        method: 'POST',
+      });
+      expect((await json(second)).data).toEqual({ outcome: 'already-read' });
+      expect((await readMarker(n.id)).readBy).toBe(`local:${CLIENT_SESSION}`);
+
+      const legacy = await svc.schedule('test', { title: 'X', category: 'c' });
+      const legacyRes = await app.request(`/${legacy.id}/read`, {
+        method: 'POST',
+        headers,
+      });
+      expect((await json(legacyRes)).data).toEqual({ outcome: 'no-envelope' });
+
+      expect(
+        (await app.request('/missing/read', { method: 'POST', headers }))
+          .status,
+      ).toBe(404);
+
+      const pending = (
+        await svc.scheduleEnveloped(
+          'agent',
+          {
+            title: 'Later',
+            category: 'agent-done',
+            scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+          envelope,
+        )
+      ).notification;
+      const pendingRes = await app.request(`/${pending.id}/read`, {
+        method: 'POST',
+        headers,
+      });
+      expect((await json(pendingRes)).data).toEqual({
+        outcome: 'not-delivered',
+      });
+    });
+
+    test("a hosted caller cannot mark another tenant's notification read", async () => {
+      const alpha = (
+        await svc.scheduleEnveloped(
+          'agent',
+          { title: 'Alpha only', category: 'agent-done' },
+          {
+            ...envelope,
+            source: {
+              kind: 'agent',
+              sessionId: 'alpha-session',
+              assurance: 'bound',
+            },
+            audience: { kind: 'session-readers', sessionId: 'alpha-session' },
+          },
+        )
+      ).notification;
+      const hostedApp = createNotificationRoutes(svc, {
+        readAuthorityForRequest: (request) =>
+          hostedAuthority(
+            request.headers.get('x-test-tenant') as 'alpha' | 'bravo',
+          ),
+        canReadSession: (sessionId, authority) =>
+          sessionId === `${authority.tenantExecutionContext?.tenantId}-session`,
+      });
+      const res = await hostedApp.request(`/${alpha.id}/read`, {
+        method: 'POST',
+        headers: {
+          'x-test-tenant': 'bravo',
+          'X-Station-Client-Session': CLIENT_SESSION,
+        },
+      });
+      expect(res.status).toBe(404);
+      expect((await readMarker(alpha.id)).readAt).toBeUndefined();
+    });
   });
 
   test('hosted list and mutations retain bravo and unbound scheduler/API rows while allowing only alpha', async () => {

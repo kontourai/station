@@ -101,7 +101,13 @@ export function createEmptyAgentForm(
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
+    tools: {
+      mcpServers: [],
+      available: [],
+      autoApprove: [],
+      unattendedAutoApprove: [],
+      browser: true,
+    },
     toolsOriginal: undefined,
     execution: {
       agentConnectionId: defaultRuntimeConnectionId,
@@ -147,6 +153,9 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       mcpServers: agent.toolsConfig?.mcpServers || [],
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
+      // #2613: carried through, not yet editable here (#2658). Modelled so a
+      // save writes back exactly what was loaded; absent stays absent.
+      unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
       browser: agent.toolsConfig?.browser !== false,
     },
     toolsOriginal: agent.toolsConfig,
@@ -173,8 +182,9 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
 
 /**
  * The one safe copy projection. It intentionally omits identity, ownership,
- * provenance, delegation, commands, UI metadata, credentials, and tool
- * environment values; a copied Agent starts with its own defaults for those.
+ * provenance, delegation, commands, UI metadata, credentials, tool
+ * environment values, and the unattended tool opt-in; a copied Agent starts
+ * with its own defaults for those.
  */
 export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
   return {
@@ -197,6 +207,10 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       mcpServers: [...(agent.toolsConfig?.mcpServers || [])],
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
+      // #2613: a copy starts without the source's unattended opt-in. It is a
+      // standing grant to run with nobody present, and the editor cannot
+      // show it yet (#2658), so a copy must not inherit it unseen.
+      unattendedAutoApprove: [],
       browser: agent.toolsConfig?.browser !== false,
     },
     execution: {
@@ -305,6 +319,7 @@ function buildToolsPayload(
   put('mcpServers', form.tools.mcpServers);
   put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
+  put('unattendedAutoApprove', form.tools.unattendedAutoApprove);
   // #90 D14: the browser tools are on unless switched off, so only an
   // explicit `false` (or a value the agent already had) is written.
   if (form.tools.browser === false) next.browser = false;

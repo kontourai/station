@@ -183,15 +183,19 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     const onCloseChat = vi.fn();
     renderSheetHost(workItem(), onCloseChat);
 
+    // Touch rows fold the one-tap snooze and its duration caret into ONE
+    // 44px control that opens the menu — two targets for one action cost
+    // the title a third of a phone row.
     expect(
-      screen.getByRole('button', { name: 'Snooze Shared row title' }),
-    ).not.toBeNull();
-
-    fireEvent.click(
-      screen.getByRole('button', {
+      screen.queryByRole('button', {
         name: 'Choose snooze duration for Shared row title',
       }),
-    );
+    ).toBeNull();
+    const snooze = screen.getByRole('button', {
+      name: 'Snooze Shared row title',
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(snooze);
     expect(screen.getByRole('menuitem', { name: '3 hours' })).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close snooze menu' }));
 
@@ -199,6 +203,18 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: 'Close Shared row title' }),
     );
     expect(onCloseChat).toHaveBeenCalledWith('shared');
+  });
+
+  it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
+    renderPanelHost(workItem());
+    const snooze = screen.getByRole('button', {
+      name: 'Snooze Shared row title',
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBeNull();
+    const caret = screen.getByRole('button', {
+      name: 'Choose snooze duration for Shared row title',
+    });
+    expect(caret.querySelector('svg.choice-caret')).not.toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
@@ -239,6 +255,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze Shared row title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '30 min' }));
     sheet.unmount();
 
     renderPanelHost(item);

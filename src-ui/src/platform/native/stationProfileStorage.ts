@@ -254,6 +254,9 @@ export interface NativeStationProfileRepository {
   updateProfile(
     input: import('@kontourai/station-connect').SavedStationEdit,
   ): Promise<void>;
+  removeProfile(
+    input: import('@kontourai/station-connect').SavedStationRemoval,
+  ): Promise<void>;
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
   saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
@@ -276,8 +279,12 @@ export interface NativeStationProfileRepository {
    * changing the CLI default. An intentional process-local choice wins.
    */
   selectProfileForProcess(profileName: string): string | undefined;
-  /** Re-authorizes the CLI-owned default after each native process start. */
-  authorizeDefaultProfile(): Promise<boolean>;
+  /** Re-authorizes the CLI-owned default; optionally forgets client-local selection. */
+  authorizeDefaultProfile(
+    forgetRememberedSelection?: boolean,
+  ): Promise<boolean>;
+  /** Re-authorizes this client's saved choice, falling back to the shared default. */
+  authorizeRememberedProfile(): Promise<boolean>;
   /**
    * Whether the hydrated store holds any saved Station. Lets boot paths
    * that only make sense with a Station to watch (notification priming)
@@ -378,6 +385,10 @@ export function savedConnectionFromStationProfile(
  * does not make a transient connection choice the CLI default: callers must
  * use `makeDefault` for that explicit cross-client mutation.
  */
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class NativeStationProfileStorage
   implements StorageAdapter, NativeStationProfileRepository
 {
@@ -845,6 +856,127 @@ export class NativeStationProfileStorage
     }
   }
 
+  /**
+   * Forgets a direct saved Station on this device: its profile, its project
+   * mappings, the CLI default if it named it (cleared, as the CLI's own
+   * removal does), and its credential unless another profile still uses it.
+   *
+   * The confirmed name and address are checked before anything changes. The
+   * store is written first and the credential deleted after, for the active
+   * Station too: writing the profile out also clears the host's active
+   * binding, and the host deletes a credential only once nothing references
+   * it. A failed write therefore changes nothing and can simply be retried.
+   *
+   * Forgetting the selected Station moves the selection to the default, or,
+   * with no default left, to the first remaining Station for this session
+   * only; the CLI default is never reassigned here.
+   */
+  async removeProfile(
+    input: import('@kontourai/station-connect').SavedStationRemoval,
+  ): Promise<void> {
+    const matches = (profile: StationProfile) =>
+      profileConnectionId(profile) === input.connectionId;
+    const confirmed = (profile: StationProfile | undefined) =>
+      profile !== undefined &&
+      profile.name === input.expected.name &&
+      profile.endpoint === input.expected.url;
+    const initial = await this.readProfileStore();
+    const target = initial.profiles.find(matches);
+    if (target && (target.localService || target.relayRoute))
+      throw new Error('This Station cannot be forgotten here.');
+    if (!confirmed(target))
+      throw new Error(
+        'This Station changed while you were confirming. Reopen it and try again.',
+      );
+    const wasSelected = this.values.get(ACTIVE_KEY) === input.connectionId;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await this.readProfileStore();
+      const profile = current.profiles.find(matches);
+      if (!profile || !confirmed(profile))
+        throw new Error(
+          'This Station changed while you were confirming. Reopen it and try again.',
+        );
+      const named = (value: string) =>
+        value.toLowerCase() === profile.name.toLowerCase();
+      const profiles = current.profiles.filter(
+        (candidate) => candidate !== profile,
+      );
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles,
+        defaultProfile:
+          current.defaultProfile && !named(current.defaultProfile)
+            ? current.defaultProfile
+            : null,
+        projectProfiles: Object.fromEntries(
+          Object.entries(current.projectProfiles).filter(
+            ([, value]) => !named(value),
+          ),
+        ),
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The saved Stations are invalid.');
+      try {
+        await this.writeProfileStore(next, current.revision);
+      } catch (error) {
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+        continue;
+      }
+      this.replaceProfileStore(next);
+      const reference = profile.credentialRef;
+      const failures: string[] = [];
+      if (
+        reference &&
+        !profiles.some(
+          (candidate) =>
+            candidate.credentialRef?.kind === reference.kind &&
+            candidate.credentialRef?.id === reference.id,
+        )
+      ) {
+        try {
+          await this.deleteUnreferencedCredential(reference);
+        } catch (error) {
+          failures.push(
+            `its saved credential could not be deleted (${message(error)})`,
+          );
+        }
+      }
+      if (wasSelected) {
+        const fallback =
+          this.values.get(ACTIVE_KEY) ??
+          profiles
+            .filter((candidate) => candidate.relayRoute === undefined)
+            .map(profileConnectionId)[0];
+        const next = profiles.find(
+          (candidate) => profileConnectionId(candidate) === fallback,
+        );
+        // The host authorizes only a configured Station with a credential;
+        // any other is selected as-is, as the rest of the app treats it.
+        if (
+          fallback &&
+          next?.configurationState === 'configured' &&
+          next.credentialRef
+        ) {
+          try {
+            await this.authorizeActiveConnection(fallback);
+          } catch (error) {
+            failures.push(
+              `switching to the next Station failed (${message(error)})`,
+            );
+          }
+        } else if (fallback) {
+          this.values.set(ACTIVE_KEY, fallback);
+        }
+      }
+      if (failures.length > 0)
+        throw new Error(`Station forgotten, but ${failures.join(' and ')}.`);
+      return;
+    }
+    throw new Error('saved Stations changed concurrently; retry.');
+  }
+
   getRelayRouteProfiles(): readonly StationProfile[] {
     return this.relayRouteProfileSnapshot;
   }
@@ -1008,7 +1140,10 @@ export class NativeStationProfileStorage
     }
   }
 
-  async authorizeDefaultProfile(): Promise<boolean> {
+  async authorizeDefaultProfile(
+    forgetRememberedSelection = false,
+  ): Promise<boolean> {
+    if (forgetRememberedSelection) this.clearExplicitProcessSelection();
     const defaultProfile = this.profileStore.defaultProfile;
     if (!defaultProfile) return false;
     const profile = this.profileStore.profiles.find(
@@ -1019,6 +1154,12 @@ export class NativeStationProfileStorage
     return profile
       ? this.authorizeActiveConnection(profileConnectionId(profile))
       : false;
+  }
+
+  async authorizeRememberedProfile(): Promise<boolean> {
+    return this.explicitProcessSelection
+      ? this.authorizeActiveConnection(this.explicitProcessSelection)
+      : this.authorizeDefaultProfile();
   }
 
   hasSavedProfiles(): boolean {

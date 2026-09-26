@@ -7,6 +7,12 @@ import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
 export const FAST_FEEDBACK_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
+/**
+ * The owner-final cause this runner prints when it stops the lane at its
+ * budget. Exported so the receipt/reporter tests that model that line derive
+ * it rather than restating a minute count that drifts with the budget.
+ */
+export const CI_FAST_BUDGET_EXCEEDED_CAUSE = `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`;
 export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
 export const SELECTOR_DEFERRED_EXIT_CODE = 3;
 export const CI_FAST_INFRASTRUCTURE_EXIT_CODE = PRODUCT_LAW_TIMEOUT_EXIT_CODE;
@@ -25,9 +31,9 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // pair is what needs the room. Measured on a dev host under load ~20:
 // `build:connect` 7s, `typecheck-aggregate` 82s for all 13 lanes (it runs
 // them with bounded concurrency, so it is CHEAPER than the 72s three of
-// those lanes cost run sequentially). 150s left ~9.5min of the twelve-minute
-// budget for affected-test selection, including the observed 385-test hosted
-// selection that exhausted the previous seven-minute budget.
+// those lanes cost run sequentially). 150s left ~9.5min of the then
+// twelve-minute budget for affected-test selection, including the observed
+// 385-test hosted selection that exhausted the previous seven-minute budget.
 // If a real runner disagrees, the scoped fallback is `typecheck:server-tests`
 // alone (27s, and the only lane of the thirteen that needs no build) — that
 // covers where both of #4273's motivating breaks actually landed.
@@ -41,11 +47,13 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // concurrency is doing some of the work (the typecheck aggregate alone runs
 // at 447% CPU here).
 //
-// What that spends: 720s - 220s = 500s (8.3min) is left for affected-test
-// selection, down from 570s (9.5min). The selection budget observed to be too
-// small was the seven-minute one #4273 replaced, and the 385-test hosted
-// selection that exhausted it fits inside 500s. If a real selection ever
-// needs more than this, raise the twelve-minute lane budget rather than
+// What that spent under the then twelve-minute budget: 720s - 220s = 500s
+// (8.3min) for affected-test selection, down from 570s (9.5min). Under the
+// current fifteen-minute budget (#2577) it is 900s - 220s = 680s (11.3min).
+// The selection budget observed to be too small was the seven-minute one
+// #4273 replaced, and the 385-test hosted selection that exhausted it fits
+// inside either. If a real selection ever
+// needs more than this, raise the lane budget rather than
 // dropping an invariant back out of the list — the gap this list closes is
 // that a violation was unobservable before merge, and a shorter static set
 // restores exactly that.
@@ -58,15 +66,21 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // and a small selection share the remainder, so the hosted static set is
 // roughly 250-330s.
 //
-// Deliberately NOT raised to match. The reserve does not add time; it only
-// decides where a 720s overrun is cut. A selection allowed 500s whose statics
-// then need 330s dies at 720s inside the statics; a reserve of 360s would
-// kill that selection at 360s instead, which is just as red, and would ALSO
-// fail selections of 360-470s that pass today because their statics
-// happened to fit. Raising the reserve therefore only converts passes into
-// infrastructure errors. The real levers are the policy-pinned twelve-minute
-// budget (an owner decision; verification-policy-gate.test.ts pins it) and a
-// shorter static set (the typecheck aggregate is its largest member).
+// Deliberately NOT raised to match (re-checked by #2577, whose 88 hosted
+// runs put the tail from verification:policy:gate onward at 165-315s). The
+// reserve does not add time; it only decides where an overrun of the 900s
+// budget is cut. A selection allowed 680s whose statics then need 315s dies
+// at 900s inside the statics; a reserve of 315s would kill that selection at
+// 585s instead, which is just as red, and would ALSO fail selections of
+// 585-680s that pass because their statics happened to be quick. Raising
+// the reserve therefore only converts passes into infrastructure errors (its
+// one gain is a doomed run failing a few minutes sooner). The real levers
+// are the policy-pinned lane budget (verification-policy-gate.test.ts pins
+// it) and a shorter static set (the typecheck aggregate is its largest
+// member). #2577 pulled both as far as the data supported: the budget went
+// from twelve to fifteen minutes (see CI_FAST_TIMEOUT_MS in
+// verification-lanes.mjs) and the typecheck aggregate starts its longest
+// lanes first.
 export const FAST_STATIC_RESERVE_MS = 220_000;
 export const CONTENT_INTEGRITY_FAST_COMMAND = Object.freeze([
   'npm',
@@ -103,6 +117,8 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
+  // Names Station must not reference, in any tracked file.
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help topics must have a `###` heading in docs/reference/cli.md
   // (scripts/cli-doc-parity.mjs). Pure source read, no build, ~50ms. Until
   // this joined the lane, the CLI↔docs contract was enforced ONLY by the
@@ -212,11 +228,23 @@ function remaining(startedAt, now = Date.now) {
   return FAST_FEEDBACK_TIMEOUT_MS - (now() - startedAt);
 }
 
+/**
+ * Human-readable label for a `[command, args]` pair, e.g.
+ * `node scripts/typecheck-aggregate.mjs` or `npm run veritas:readiness`.
+ * Used only for the per-step timing line below; never parsed back.
+ */
+export function describeCiFastCommand(command, args) {
+  return [command, ...args].join(' ');
+}
+
+/** One decimal place is enough resolution to answer "where did the time go". */
+export function formatCiFastElapsedSeconds(elapsedMs) {
+  return (elapsedMs / 1000).toFixed(1);
+}
+
 export function classifyCiFastCommandResult(result) {
   if (result?.error?.code === 'ETIMEDOUT')
-    throw new CiFastInfrastructureError(
-      `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`,
-    );
+    throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
   if (result?.error)
     throw new CiFastInfrastructureError(
       `ci:fast command could not start: ${result.error.message}`,
@@ -264,13 +292,23 @@ export function runCiFast({
     ],
     ...FAST_STATIC_COMMANDS,
   ].entries()) {
+    const iterationStartedAt = now();
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
-      throw new CiFastInfrastructureError(
-        `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`,
-      );
+      throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
     const status = execute(command, args, { cwd, timeout });
+    // station#2621: the timed-out receipt for a candidate merge_group run
+    // showed no evidence at all of which step consumed the ~6 extra
+    // minutes -- every command's own stdout is buffered by its own tooling
+    // (npm-lane-aggregate.mjs prints nothing until every lane finishes) and
+    // this runner never stamped a boundary between commands. Printing one
+    // line per step, independent of whether the step's own tool prints
+    // anything, makes the next timeout receipt answer "where did the time
+    // go" without needing a bespoke reproduction.
+    report(
+      `[ci:fast] ${describeCiFastCommand(command, args)} ${formatCiFastElapsedSeconds(now() - iterationStartedAt)}s\n`,
+    );
     if (index === 0 && status === SELECTOR_DEFERRED_EXIT_CODE) {
       report(SELECTOR_DEFERRED_MESSAGE);
       continue;

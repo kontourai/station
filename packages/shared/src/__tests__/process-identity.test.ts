@@ -279,6 +279,44 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(wait).toHaveBeenCalledOnce();
   });
 
+  test('own-process publication retries a transient POSIX probe failure within a bound (#2470)', () => {
+    // Our own pid is alive, so a null is a macOS `ps` that hit its short
+    // timeout under load. The saved Station lock relied on this retry before
+    // it moved onto the shared resolver.
+    const lookup = vi
+      .fn<(pid: number) => string | null>()
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(null)
+      .mockReturnValue('Mon Aug 17 13:25:00 2026');
+    const wait = vi.fn();
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'darwin',
+        lookup,
+        alive: () => 'alive',
+        wait,
+      }),
+    ).toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'Mon Aug 17 13:25:00 2026' },
+    });
+    expect(lookup).toHaveBeenCalledTimes(3);
+    expect(wait.mock.calls).toEqual([[100], [100]]);
+
+    const unavailable = vi.fn(() => null);
+    const exhaustedWait = vi.fn();
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'linux',
+        lookup: unavailable,
+        alive: () => 'alive',
+        wait: exhaustedWait,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(unavailable).toHaveBeenCalledTimes(3);
+    expect(exhaustedWait).toHaveBeenCalledTimes(2);
+  });
+
   test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
     const lookup = vi.fn(() => null);
     expect(

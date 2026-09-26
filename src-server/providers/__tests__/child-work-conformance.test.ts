@@ -18,30 +18,30 @@
  *   nesting   = a depth on any child
  */
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   type ChildWorkDelta,
   type ChildWorkItem,
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkKey,
+  LEGACY_CLAUDE_TASK_NAMESPACE,
 } from '@kontourai/station-contracts/child-work';
 import {
   ENGINE_CAPABILITY_MATRICES,
   type SubagentSignal,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';
-import {
-  type ClaudeMessageState,
-  mapClaudeSdkMessage,
-} from '../adapters/claude-adapter-events.js';
-import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import {
+  CLAUDE_TASK_CAPTURES,
+  replayClaudeTaskCapture,
+} from './claude-task-captures.js';
 import {
   CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
@@ -51,10 +51,14 @@ import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_TOOL_TURN_LINES,
 } from './muse-adapter-fixtures.js';
+import {
+  FakeMuseServeHost,
+  loadMuseServeCapture,
+  type MuseServeCaptureName,
+  replayMuseServeCapture,
+} from './muse-serve-replay.js';
 
 type Driver = {
-  /** The adapter module whose mapper this driver actually runs. */
-  adapterModule?: string;
   /** Replays the engine's captured output; returns everything published. */
   run: () => Promise<CanonicalRuntimeEvent[]>;
   /**
@@ -66,43 +70,28 @@ type Driver = {
   formats?: Record<string, () => Promise<CanonicalRuntimeEvent[]>>;
 };
 
-const CLAUDE_TASK_SUBAGENTS_FIXTURE = readFileSync(
-  new URL('./fixtures/claude-task-subagents.jsonl', import.meta.url),
-  'utf8',
-)
-  .split('\n')
-  .filter((line) => line.length > 0);
-
 /**
- * A REAL capture (`fixtures/claude-task-subagents.jsonl`, recorded by
- * `fixtures/capture-claude-task-fixtures.mjs` against
- * @anthropic-ai/claude-agent-sdk 0.3.261 / claude 2.1.261, haiku): one
- * foreground and one backgrounded Task subagent, every SDK message in order.
+ * Claude: the REAL captures (`claude-task-captures.ts`), each replayed
+ * through the adapter's own mapper and its child-work module
+ * (`claude-adapter-child-work.ts`). One format per capture that carries a
+ * subagent's whole life: `close-kills` is left out of the per-format check
+ * because the engine sends no terminal there (the child ends `unresolved` at
+ * the session end), so it has no lifecycle settle to deliver — it is still in
+ * the union.
  */
-async function replayClaudeCapture(): Promise<CanonicalRuntimeEvent[]> {
-  const events: CanonicalRuntimeEvent[] = [];
-  const record: ClaudeMessageState = {
-    session: {
-      provider: 'claude',
-      threadId: 'thread-claude',
-      status: 'running',
-      createdAt: '2026-09-23T00:00:00.000Z',
-      updatedAt: '2026-09-23T00:00:00.000Z',
-    },
-    lastSessionState: 'running',
-  };
-  // #2324: turn identity lives in the SDK turn ledger; dispatching turn-1
-  // makes it the running turn, as the live adapter does.
-  recordClaudeTurnDispatched(record, 'turn-1');
-  for (const line of CLAUDE_TASK_SUBAGENTS_FIXTURE) {
-    mapClaudeSdkMessage({
-      provider: 'claude',
-      record,
-      message: JSON.parse(line) as SDKMessage,
-      publish: (event) => events.push(event),
-    });
-  }
-  return events;
+const CLAUDE_FORMATS = Object.fromEntries(
+  CLAUDE_TASK_CAPTURES.filter((name) => name !== 'close-kills').map((name) => [
+    name,
+    async () => replayClaudeTaskCapture(name).events,
+  ]),
+);
+
+async function replayClaudeCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  return CLAUDE_TASK_CAPTURES.flatMap(
+    (name) =>
+      replayClaudeTaskCapture(name, { threadId: `thread-claude-${name}` })
+        .events,
+  );
 }
 
 class FakeMuseProcess extends EventEmitter {
@@ -130,9 +119,11 @@ class FakeMuseProcess extends EventEmitter {
 }
 
 /**
- * The REAL muse 1.3 captures already committed for the muse adapter (a bash
- * tool turn and a background-workflow turn), fed through the actual adapter
- * with its process replaced by a stream double.
+ * The REAL muse 1.3 `muse exec` captures already committed for the muse
+ * adapter (a bash tool turn and a background-workflow turn), fed through the
+ * actual adapter with its process replaced by a stream double — on the
+ * production exec path: a runtime configured for serve whose host cannot be
+ * used (#2452).
  */
 async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
   const events: CanonicalRuntimeEvent[] = [];
@@ -150,6 +141,13 @@ async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
       },
       terminateProcess: async (processHandle: MuseProcessLike) => {
         processHandle.kill('SIGTERM');
+      },
+      // #2452: a runtime configured for serve whose host cannot be used —
+      // the production fallback — rather than an exec-only construction.
+      serve: {
+        spawnHost: () => {
+          throw new Error('muse serve is not available here');
+        },
       },
       logger: { warn: () => {}, info: () => {} },
     });
@@ -169,6 +167,87 @@ async function replayMuseCaptures(): Promise<CanonicalRuntimeEvent[]> {
       events.push(next.value as CanonicalRuntimeEvent);
     }
     await adapter.stopAll();
+  }
+  return events;
+}
+
+/**
+ * #2452 Muse: the REAL `muse serve` 1.3.0 captures (a workflow child that is
+ * approved, denied, and stopped), each replayed through the actual adapter
+ * with its host replaced by a stream double (`muse-serve-replay.ts`), with
+ * Station answering exactly as the capture's probe did.
+ */
+async function replayMuseServeCaptures(): Promise<CanonicalRuntimeEvent[]> {
+  const events: CanonicalRuntimeEvent[] = [];
+  const scenarios: Array<{
+    name: MuseServeCaptureName;
+    decide?: 'accept' | 'decline';
+    stop?: boolean;
+  }> = [
+    { name: 'workflow-child-approve', decide: 'accept' },
+    { name: 'workflow-child-deny', decide: 'decline' },
+    { name: 'workflow-child-stop', stop: true },
+  ];
+  for (const [index, scenario] of scenarios.entries()) {
+    const hosts: FakeMuseServeHost[] = [];
+    const threadId = `thread-muse-serve-${index}`;
+    const adapter = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          hosts.push(host);
+          return { process: host, release: () => {} };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as FakeMuseServeHost).exit(0);
+        },
+      },
+      logger: { warn: () => {}, info: () => {} },
+    });
+    const collected: CanonicalRuntimeEvent[] = [];
+    const draining = (async () => {
+      for await (const event of adapter.streamEvents()) collected.push(event);
+    })();
+    const started = adapter.startSession({
+      provider: 'muse',
+      threadId,
+      modelOptions: { approvalMode: 'ask' },
+    });
+    while (!hosts[0]) await new Promise((settle) => setImmediate(settle));
+    await replayMuseServeCapture(
+      hosts[0],
+      loadMuseServeCapture(scenario.name),
+      {
+        onDrivenRequest: (method, occurrence, captured) => {
+          if (method === 'turn/start') {
+            return adapter.sendTurn({ threadId, input: 'go' });
+          }
+          if (
+            method === 'approval/decide' &&
+            occurrence === 0 &&
+            scenario.decide
+          ) {
+            return adapter.respondToRequest(
+              threadId,
+              String(captured.approvalId),
+              scenario.decide,
+            );
+          }
+          if (method === 'subagent/stop' && scenario.stop) {
+            return adapter.stopProviderTask(
+              threadId,
+              String(captured.subagentId),
+            );
+          }
+          return undefined;
+        },
+      },
+    );
+    await started;
+    await new Promise((settle) => setTimeout(settle, 20));
+    await adapter.stopAll();
+    await draining;
+    events.push(...collected);
   }
   return events;
 }
@@ -229,28 +308,28 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
 
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
-  // Via the legacy translator until #2457: the adapter's existing pure
-  // mapper emits `claude-code` task tuples, which `childWorkDeltas` reads
-  // exactly as the server projection does.
   claude: {
-    adapterModule: 'claude-adapter-events.ts',
-    run: replayClaudeCapture,
+    run: replayClaudeCaptures,
+    formats: CLAUDE_FORMATS,
   },
   codex: {
-    adapterModule: 'codex-adapter-child-work.ts',
     run: replayCodexCollabCaptures,
     formats: CODEX_FORMATS,
   },
-  muse: { run: replayMuseCaptures },
+  // #2452: the muse cell is declared for `muse serve`; the exec fallback's
+  // own claim (it reports `not-reported`, never child work) is checked below.
+  muse: {
+    run: replayMuseServeCaptures,
+  },
   acp: { run: replayAcpKiroSubagentTuple },
 };
 
 /**
  * The child work a replay produced, read exactly as the server projection
- * reads it: `child-work.updated` deltas, plus — until #2457 moves the Claude
- * adapter onto the contract — its legacy `claude-code` task tuples through
- * the contract's one translator. For every other engine the translator
- * matches nothing, so it cannot manufacture a signal.
+ * reads it: `child-work.updated` deltas, plus any legacy `claude-code` task
+ * tuple through the contract's one translator (the projection still reads
+ * them, for pre-#2457 history). No driver emits one — asserted below — so the
+ * translator cannot manufacture a signal here.
  */
 function childWorkDeltas(events: CanonicalRuntimeEvent[]): ChildWorkDelta[] {
   return events.flatMap((event) => {
@@ -330,32 +409,75 @@ function observedSignals(deltas: ChildWorkDelta[]): Set<SubagentSignal> {
 const KNOWN_SIGNAL_GAPS: Record<
   string,
   Partial<Record<SubagentSignal, string>>
-> = {
-  // #2457: via the legacy translator, Claude's `task_progress` reaches
-  // clients only as `tool.progress`; no child-work progress exists until the
-  // adapter emits the contract's `upsert`.
-  claude: { progress: '#2457' },
-};
+> = {};
+
+const ADAPTERS_DIR = new URL('../adapters/', import.meta.url);
 
 /**
- * Engines whose cell names an adapter module the driver does not run,
- * keyed to the tracking issue. Empty since #2458 moved Codex onto
- * `codex-adapter-child-work.ts`.
+ * Whether `source` BUILDS a child-work event: an object literal property
+ * `method: 'child-work.updated'` in code, found by parsing the file with the
+ * TypeScript compiler. A comment, or the string anywhere else, does not
+ * count; either quote style does.
+ *
+ * An emitter that builds `method` from a named constant is not recognised:
+ * this is a structural check of LITERAL method assignments.
+ *
+ * STRUCTURAL ONLY (#2457 review D3): this proves the module constructs such
+ * an event, not that a given replay reached that line at runtime — the
+ * drivers publish through adapter-owned queues (Codex replays through its
+ * transport), where no per-module spy can see the emit. The runtime half is
+ * each driver producing this engine's `child-work.updated` events at all.
  */
-const KNOWN_MODULE_GAPS: Record<string, string> = {};
+function buildsChildWorkEvent(source: string, fileName: string): boolean {
+  const file = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isPropertyAssignment(node) &&
+      (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+      node.name.text === 'method' &&
+      ts.isStringLiteralLike(node.initializer) &&
+      node.initializer.text === 'child-work.updated'
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/**
+ * The adapter modules that can emit child work (see `buildsChildWorkEvent`).
+ * A driver's child work can only have come from one of these, which is what
+ * ties a cell's `adapterModule` to the code a replay ran (#2457 review V4).
+ */
+function childWorkEmittingModules(): string[] {
+  return readdirSync(ADAPTERS_DIR)
+    .filter((name) => name.endsWith('.ts'))
+    .filter((name) =>
+      buildsChildWorkEvent(
+        readFileSync(new URL(name, ADAPTERS_DIR), 'utf8'),
+        name,
+      ),
+    )
+    .sort();
+}
 
 /**
  * Engines whose emitted child work offers a control its matrix
  * `subagentControl` cell does not declare wired (or the reverse), keyed to
  * the tracking issue. Each is a `test.fails`.
  */
-const KNOWN_CONTROL_GAPS: Record<string, string> = {
-  // The legacy Claude translator stamps `controls.stop: 'provider-task-stop'`
-  // on every running task (the adapter's station#1877 per-task stop), while
-  // Claude's `subagentControl` cell says `none`. One of the two is wrong;
-  // the Claude move onto the contract (#2457) owns resolving it.
-  claude: '#2457',
-};
+const KNOWN_CONTROL_GAPS: Record<string, string> = {};
 
 /** Every control any delta offers, on an item or a settle's identity. */
 function offeredControls(deltas: ChildWorkDelta[]): string[] {
@@ -378,6 +500,35 @@ describe('#2456 child-work conformance tripwire', () => {
       ),
     );
     expect(STATION_UNMAPPED_SUBAGENT_ENGINES).toEqual(lifecycleGaps);
+  });
+
+  test('the emitter check reads code, not text: a comment or a stray string is not an emitter; either quote style is', () => {
+    const at = 'probe.ts';
+    expect(
+      buildsChildWorkEvent("// publishes method: 'child-work.updated'\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent("const label = 'child-work.updated';\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent("publish({ kind: 'child-work.updated' });\n", at),
+    ).toBe(false);
+    expect(
+      buildsChildWorkEvent('publish({ method: "child-work.updated" });\n', at),
+    ).toBe(true);
+    expect(
+      buildsChildWorkEvent("publish({ method: 'child-work.updated' });\n", at),
+    ).toBe(true);
+  });
+
+  test('the modules that emit child work are exactly the declared cells’ adapter modules (structural)', () => {
+    const declared = Object.values(ENGINE_CAPABILITY_MATRICES).flatMap(
+      (matrix) =>
+        matrix.subagentObservability.state === 'declared'
+          ? [matrix.subagentObservability.adapterModule]
+          : [],
+    );
+    expect(childWorkEmittingModules()).toEqual([...new Set(declared)].sort());
   });
 
   test('there is exactly one driver per matrix engine key', () => {
@@ -423,13 +574,19 @@ describe('#2456 child-work conformance tripwire', () => {
       });
       continue;
     }
-    const moduleTest = KNOWN_MODULE_GAPS[key] ? test.fails : test;
-    moduleTest(
-      `${key}: the driver runs the adapter module the cell names`,
-      () => {
-        expect(driver.adapterModule).toBe(cell.adapterModule);
-      },
-    );
+    test(`${key}: the cell's adapter module exists and is where this engine's child work is emitted`, async () => {
+      expect(existsSync(new URL(cell.adapterModule, ADAPTERS_DIR))).toBe(true);
+      expect(childWorkEmittingModules()).toContain(cell.adapterModule);
+      // The replay really produced child work, for this engine, and (by the
+      // emitter-set test below) only a declared cell's module can emit it.
+      const emitted = (await driver.run()).filter(
+        (event) => event.method === 'child-work.updated',
+      );
+      expect(emitted.length).toBeGreaterThan(0);
+      expect(new Set(emitted.map((event) => event.provider))).toEqual(
+        new Set([key]),
+      );
+    });
     const gaps = KNOWN_SIGNAL_GAPS[key] ?? {};
     const expected = cell.signals.filter((signal) => !gaps[signal]);
     test(`${key}: observed signals are the declared ones, less registered gaps`, async () => {
@@ -450,10 +607,40 @@ describe('#2456 child-work conformance tripwire', () => {
     }
   }
 
-  test('the Claude capture, via the legacy translator until #2457, is the two-task shape the claims rest on', async () => {
-    const deltas = childWorkDeltas(await replayClaudeCapture());
+  test('#2452 muse exec fallback: real exec output emits no child work, only its not-reported view', async () => {
+    const events = await replayMuseCaptures();
+    // The replay must actually have reached the mapper.
+    expect(events.some((event) => event.method === 'tool.completed')).toBe(
+      true,
+    );
+    const deltas = childWorkDeltas(events);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((delta) => delta.kind === 'not-reported')).toBe(true);
+    expect(offeredControls(deltas)).toEqual([]);
+  });
+
+  test('#2457: no driver emits a pre-contract Claude task tuple', async () => {
+    for (const [key, driver] of Object.entries(DRIVERS)) {
+      const runs = [driver.run, ...Object.values(driver.formats ?? {})];
+      for (const run of runs) {
+        const tuples = (await run()).filter(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.namespace === LEGACY_CLAUDE_TASK_NAMESPACE &&
+            (event.type === 'task/registry' || event.type === 'task/settled'),
+        );
+        expect(tuples, key).toEqual([]);
+      }
+    }
+  });
+
+  test('the Claude task-subagents capture is the two-task shape the claims rest on', async () => {
+    const deltas = childWorkDeltas(
+      replayClaudeTaskCapture('task-subagents').events,
+    );
     const settled = deltas.filter((delta) => delta.kind === 'settle');
     // Each subagent settles twice (task_updated then task_notification).
+    expect(settled).toHaveLength(4);
     expect(new Set(settled.map((delta) => delta.childId)).size).toBe(2);
     expect(
       deltas.some(

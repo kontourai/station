@@ -28,6 +28,17 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     isError: false,
   }),
+  // The Tools tab's workflow section mounts these on every editor render;
+  // inert here, exercised in AgentEditorWorkflows.test.tsx.
+  useAgentWorkflowsQuery: () => ({ data: [], isLoading: false, error: null }),
+  useWorkflowContentQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+  }),
+  useUpdateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteWorkflowMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('../components/icons/AgentIcon', () => ({
@@ -48,7 +59,13 @@ function createForm(overrides: Partial<AgentFormData> = {}): AgentFormData {
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
+    tools: {
+      mcpServers: [],
+      available: [],
+      autoApprove: [],
+      unattendedAutoApprove: [],
+      browser: true,
+    },
     execution: {
       agentConnectionId: 'bedrock-runtime',
       modelConnectionId: '',

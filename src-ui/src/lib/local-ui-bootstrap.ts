@@ -139,12 +139,41 @@ export async function bootstrapLocalUiSession(
       'Could not reach this Station to exchange its start link.',
     );
   }
-  if (!response.ok) {
-    throw new LocalUiBootstrapRefusedError(
-      `Local UI bootstrap was refused (${response.status}). Open a fresh Station start link.`,
+  // A backend restarting behind the UI proxy is the host being away, exactly
+  // as the identity read treats it, not a verdict on this link. A body that
+  // cannot be read to the end (the check rethrows) is no answer either.
+  let proxyUnavailable: boolean;
+  try {
+    proxyUnavailable = await isStationUiProxyUnavailableResponse(response);
+  } catch {
+    proxyUnavailable = true;
+  }
+  if (proxyUnavailable) {
+    throw new LocalUiHostUnreachableError(
+      'Could not reach this Station to exchange its start link.',
     );
   }
+  if (!response.ok) {
+    throw new LocalUiBootstrapRefusedError(refusalSentence(response.status));
+  }
   return true;
+}
+
+/**
+ * What a refused sign-in link means, by status (#2612). The server answers the
+ * same 403 for a token that was spent or replaced (links are single use, and a
+ * new mint replaces any unspent one) and for a page origin it does not trust,
+ * so a 403 names both. A 429 keeps the token retryable on purpose: asking for a
+ * new link would only hit the same limit.
+ */
+function refusalSentence(status: number): string {
+  const freshLink =
+    'Get a fresh one with `station open`, or from Station in the menu bar or tray.';
+  if (status === 403)
+    return `This sign-in link was already used or replaced, or this address isn't trusted. ${freshLink} (403)`;
+  if (status === 429)
+    return 'Too many new sign-ins right now. Try this link again in a moment. (429)';
+  return `Station refused this sign-in link. ${freshLink} (${status})`;
 }
 
 /**

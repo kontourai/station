@@ -86,6 +86,7 @@ const harness = `
       <button onClick={() => openPreview({ url: asDataUrl(pdf), name: 'report.pdf', mediaType: 'application/pdf' })}>Open PDF</button>
       <button onClick={() => openPreview({ url: asDataUrl(broken), name: 'broken.pdf', mediaType: 'application/pdf' })}>Open broken PDF</button>
       <button onClick={() => openPreview({ url: 'data:application/pdf;base64,${LOCKED_PDF_BASE64}', name: 'locked.pdf', mediaType: 'application/pdf' })}>Open locked PDF</button>
+      <button onClick={() => openPreview({ url: 'data:text/markdown;base64,' + btoa('# Notes\\n\\n- one\\n- two\\n'), name: 'notes.md', mediaType: 'text/markdown' })}>Open short note</button>
     </>;
   }
   createRoot(document.getElementById('root')).render(<PreviewProvider><Open /></PreviewProvider>);
@@ -320,6 +321,88 @@ test('reports a PDF worker that never starts instead of loading forever', async 
     timeout: 20_000,
   });
   await expect(dialog.getByRole('link', { name: 'Download' })).toBeVisible();
+});
+
+test('keeps the page count, zoom and Download on one row at phone width', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+
+  await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  await expect(dialog.getByRole('img', { name: 'Page 1 of 2' })).toBeVisible({
+    timeout: 20_000,
+  });
+  const zoomIn = (await dialog
+    .getByRole('button', { name: 'Zoom in', exact: true })
+    .boundingBox())!;
+  const download = (await dialog
+    .getByRole('link', { name: 'Download report.pdf' })
+    .boundingBox())!;
+  // One toolbar row, not a Download row of its own above it.
+  expect(download.y).toBe(zoomIn.y);
+  expect(download.x).toBeGreaterThan(zoomIn.x);
+  expect(download.x + download.width).toBeLessThanOrEqual(390);
+  expect(download.height).toBeGreaterThanOrEqual(44);
+  expect(download.width).toBeGreaterThanOrEqual(44);
+});
+
+test('a short text preview fits its content and keeps list markers', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+
+  await page
+    .getByRole('button', { name: 'Open short note', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Preview' });
+  const item = dialog.getByRole('listitem').first();
+  await expect(item).toHaveText('one', { timeout: 20_000 });
+  // Sized to the note, not the 90dvh panel an image or PDF gets.
+  const panel = (await page.locator('.image-preview-panel').boundingBox())!;
+  expect(panel.height).toBeLessThan(844 * 0.5);
+  expect(
+    await item.evaluate((element) => getComputedStyle(element).listStyleType),
+  ).toBe('disc');
+  // The file's "# Notes" uses the transcript's heading scale (1.5x body
+  // text), not the browser's 2em default.
+  const heading = dialog.getByRole('heading', { name: 'Notes' });
+  const [headingSize, bodySize] = await Promise.all([
+    heading.evaluate((element) =>
+      parseFloat(getComputedStyle(element).fontSize),
+    ),
+    item.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  expect(headingSize / bodySize).toBeCloseTo(1.5, 1);
+});
+
+test('opening a preview from the keyboard focuses the dialog without ringing the whole panel', async ({
+  page,
+}) => {
+  await mount(page);
+
+  // Keyboard modality: the dialog's programmatic panel focus then matches
+  // :focus-visible, which is what drew a ring around the entire panel.
+  await page
+    .getByRole('button', { name: 'Open short note', exact: true })
+    .focus();
+  await page.keyboard.press('Enter');
+  const panel = page.locator('.image-preview-panel');
+  await expect(page.getByRole('dialog', { name: 'Preview' })).toBeVisible();
+  expect(
+    await panel.evaluate((element) => document.activeElement === element),
+  ).toBe(true);
+  expect(
+    await panel.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).toBe('none');
+  // Controls inside still get the product's keyboard ring.
+  await page.keyboard.press('Tab');
+  const focused = page.locator(':focus');
+  expect(
+    await focused.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).toBe('solid');
 });
 
 test('a page zoomed wider than the dialog can be scrolled to both of its edges', async ({

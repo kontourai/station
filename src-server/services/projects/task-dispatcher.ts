@@ -10,11 +10,13 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { isKnownFullAccessAcpModeId } from '../../providers/adapters/acp-session-mode.js';
 import {
   type FullAccessGrant,
   isFullAccessGrant,
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import type {
   SessionStartBoundaryClaim,
   TaskDispatchBoundaryClaim,
@@ -47,14 +49,31 @@ type MonitorTaskDispatchIntent = Readonly<{
   onSessionAbandoned?: (sessionId: string) => void;
 }>;
 
-type DispatchIntent = TaskDispatchInput & {
+export type DispatchIntent = TaskDispatchInput & {
   /**
    * #2436: the caller's authority to start this Task's session at full
    * access (`runtimeConfig.modelOptions.approvalMode: 'never'`). Required so
    * that every caller, present and future, states it; `null` for a caller
    * acting without a request that may grant it. Enforced by `dispatch`.
+   * #2493: also carried to the session start, which runs `host` only with
+   * it, so an Agent or Station default of `never` stays confined otherwise.
    */
   readonly fullAccessGrant: FullAccessGrant | null;
+  /**
+   * The principal the dispatched session belongs to, recorded as its owner.
+   * Required so every caller states it: a request passes its own principal,
+   * and a caller acting without a request (a monitor, the acceptance
+   * harness) passes the local operator. A session with no recorded owner is
+   * readable by no caller.
+   */
+  readonly ownerUserId: string;
+  /**
+   * Whether the session acts for `ownerUserId` (see `SessionOwnerStamp`): an
+   * unverified agent's or an external sender's dispatch passes
+   * `unattributed-agent`, so the session stays readable by the owner's
+   * account but acts for no one.
+   */
+  readonly ownerAttribution?: StartOwnerAttribution;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;
@@ -218,8 +237,11 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     const startedAt = performance.now();
     // #2436: full access needs the caller's grant. Checked before anything
     // is reserved, so a refusal leaves the Task exactly as it was.
+    // #2569: an ACP agent's own full-access mode is the same request.
+    const options = intent.runtimeConfig?.modelOptions;
     if (
-      intent.runtimeConfig?.modelOptions?.approvalMode === 'never' &&
+      (options?.approvalMode === 'never' ||
+        isKnownFullAccessAcpModeId(options?.mode)) &&
       !isFullAccessGrant(intent.fullAccessGrant)
     ) {
       return {

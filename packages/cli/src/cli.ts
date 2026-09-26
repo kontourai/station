@@ -746,6 +746,7 @@ function buildProgram(
     const lifecycleArgs = parseLifecycleArgs(rawArgs);
     validateLifecyclePorts(lifecycleArgs.serverPort, lifecycleArgs.uiPort);
     await upgrade({
+      ignoreUnknownServiceState: rawArgs.includes('--ignore-service-state'),
       baseDir: lifecycleArgs.baseDir,
       serverPort: lifecycleArgs.serverPort,
       uiPort: lifecycleArgs.uiPort,

@@ -382,11 +382,27 @@ export class SelfHostedBrokerClient {
         'clientInstanceId',
         'keyThumbprint',
       ]);
+      // The channel union cannot be narrowed by the includes() check below,
+      // so pin it to a literal here. Every input this rejects, the
+      // String()-based check below rejects too (broker input is JSON, so no
+      // boxed strings reach it).
+      const channel = surface.channel;
+      if (
+        channel !== 'dev' &&
+        channel !== 'stable' &&
+        channel !== 'beta' &&
+        channel !== 'nightly'
+      )
+        throw new Error('broker_response_invalid');
       if (
         offer.version !== 'station-broker-native-key-candidate-offer/v1' ||
+        typeof offer.brokerOrigin !== 'string' ||
         offer.brokerOrigin !== this.#base ||
+        typeof scope.stationId !== 'string' ||
         scope.stationId !== this.#scope.stationId ||
+        typeof scope.enrollmentId !== 'string' ||
         scope.enrollmentId !== this.#scope.enrollmentId ||
+        typeof scope.routingGeneration !== 'number' ||
         scope.routingGeneration !== this.#scope.routingGeneration ||
         typeof offer.invitationId !== 'string' ||
         !ID.test(offer.invitationId) ||
@@ -394,24 +410,45 @@ export class SelfHostedBrokerClient {
         !/^[A-Za-z0-9_-]{43}$/.test(offer.challenge) ||
         typeof offer.stationSigningKeyId !== 'string' ||
         !/^[A-Za-z0-9_-]{43}$/.test(offer.stationSigningKeyId) ||
+        typeof offer.stationSigningGeneration !== 'number' ||
         !Number.isSafeInteger(offer.stationSigningGeneration) ||
         (offer.stationSigningGeneration as number) < 1 ||
+        typeof offer.expiresAt !== 'number' ||
         !Number.isSafeInteger(offer.expiresAt) ||
         (offer.expiresAt as number) <= 0 ||
         (offer.expiresAt as number) > this.now() + 60_000 ||
         surface.kind !== 'station-native' ||
         typeof surface.appIdentifier !== 'string' ||
         !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) ||
-        !['dev', 'stable', 'beta', 'nightly'].includes(
-          String(surface.channel),
-        ) ||
         typeof surface.clientInstanceId !== 'string' ||
         !/^[0-9a-f-]{36}$/i.test(surface.clientInstanceId) ||
         typeof surface.keyThumbprint !== 'string' ||
         !/^[A-Za-z0-9_-]{43}$/.test(surface.keyThumbprint)
       )
         throw new Error('broker_response_invalid');
-      return offer as unknown as SelfHostedBrokerNativeKeyCandidateOfferV1;
+      // Every field was narrowed by the guard above: assemble the typed
+      // offer instead of laundering the unknown JSON through a cast.
+      return {
+        version: 'station-broker-native-key-candidate-offer/v1',
+        invitationId: offer.invitationId,
+        brokerOrigin: offer.brokerOrigin,
+        scope: {
+          stationId: scope.stationId,
+          enrollmentId: scope.enrollmentId,
+          routingGeneration: scope.routingGeneration,
+        },
+        surface: {
+          kind: surface.kind,
+          appIdentifier: surface.appIdentifier,
+          channel,
+          clientInstanceId: surface.clientInstanceId,
+          keyThumbprint: surface.keyThumbprint,
+        },
+        stationSigningKeyId: offer.stationSigningKeyId,
+        stationSigningGeneration: offer.stationSigningGeneration,
+        challenge: offer.challenge,
+        expiresAt: offer.expiresAt,
+      };
     });
   }
   async answerNativeKeyCandidate(

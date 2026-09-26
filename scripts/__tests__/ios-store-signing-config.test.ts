@@ -3,12 +3,23 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import YAML from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { inspectAppStoreDistributionProfile } from '../check-ios-store-profile.mjs';
+import {
+  EXTENSION_TARGET,
+  ensureIosAgentActivity,
+} from '../ensure-ios-agent-activity-extension.mjs';
 import { parseCredentialPreflightOptions } from '../ios-store-credential-preflight.mjs';
 import {
+  agentActivityBundleId,
   mobileCargoConfig,
+  parseAgentActivityOptions,
   parseOptions,
+  storeAgentActivitySigningSpec,
+  storeExportOptions,
   storeSigningTemplate,
+  writeIosAgentActivitySigning,
   writeIosStoreSigningConfig,
 } from '../ios-store-signing-config.mjs';
 
@@ -46,6 +57,49 @@ describe('iOS App Store signing config', () => {
     expect(template).toContain(
       'PROVISIONING_PROFILE_SPECIFIER: "Station App Store"',
     );
+  });
+
+  test('drops a Tauri-rendered DEVELOPMENT_TEAM instead of duplicating it', () => {
+    // Nightly 246002: `tauri ios init` renders DEVELOPMENT_TEAM from
+    // APPLE_DEVELOPMENT_TEAM, so the signing template input already carries
+    // one. Appending the manual block beside it is a duplicate YAML key,
+    // which xcodegen tolerates but the strict parse in the Live Activity
+    // steps refuses.
+    const template = storeSigningTemplate({
+      template:
+        'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.nightly\n      DEVELOPMENT_TEAM: TEAMID1234\n',
+      profile: {
+        name: 'Station Nightly App Store',
+        team: 'TEAMID1234',
+        uuid: 'profile-uuid',
+      },
+      identity: 'Apple Distribution: Example (TEAMID1234)',
+      bundleId: 'io.kontourai.station.nightly',
+    });
+    expect(
+      template
+        .split('\n')
+        .filter((line: string) => line.startsWith('      DEVELOPMENT_TEAM:')),
+    ).toHaveLength(1);
+    expect(template).toContain('DEVELOPMENT_TEAM: TEAMID1234');
+    // The signed spec parses strictly with unique keys.
+    const document = YAML.parseDocument(template);
+    expect(document.errors).toEqual([]);
+  });
+
+  test('refuses a template that signs another settings block', () => {
+    expect(() =>
+      storeSigningTemplate({
+        template:
+          'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n      DEVELOPMENT_TEAM: TEAMID1234\ntargets:\n  other:\n    settings:\n      DEVELOPMENT_TEAM: OTHERTEAM\n',
+        profile: {
+          name: 'Station App Store',
+          team: 'ABCDE12345',
+          uuid: 'profile-uuid',
+        },
+        identity: 'Apple Distribution: Example (ABCDE12345)',
+      }),
+    ).toThrow(/reconcile it by hand/);
   });
 
   test('rejects multiline identity injection', () => {
@@ -335,5 +389,356 @@ describe('iOS App Store signing config', () => {
     }
     expect(failure?.status).toBe(1);
     expect(() => readFileSync(output, 'utf8')).toThrow();
+  });
+});
+
+const makeTempDir = trackTempDirs();
+const TEAM = 'U7KHF2QAC4';
+const IDENTITY = `Apple Distribution: Example (${TEAM})`;
+const APP_UUID = '11111111-2222-3333-4444-555555555555';
+const EXTENSION_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+function extensionProfile(
+  appBundleId = 'io.kontourai.station.beta',
+): DistributionProfile {
+  return {
+    distribution: 'app-store-connect',
+    name: 'Station Beta Agent Activity App Store',
+    uuid: EXTENSION_UUID,
+    team: TEAM,
+    expiration: '2027-01-01T00:00:00.000Z',
+    applicationIdentifier: `${TEAM}.${appBundleId}.AgentActivity`,
+    certificateFingerprints: [],
+  };
+}
+
+/**
+ * The spec the TestFlight job builds from for Beta: the committed
+ * Tauri-rendered spec with the channel's identity, the app's signing
+ * template applied, then the Live Activity extension added — the order the
+ * workflow runs them in.
+ */
+function betaSpecWithExtension() {
+  const committed = readFileSync('src-desktop/gen/apple/project.yml', 'utf8');
+  const rendered = committed.replace(
+    '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
+    '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.beta\n',
+  );
+  expect(rendered).not.toBe(committed);
+  const signed = storeSigningTemplate({
+    template: rendered,
+    profile: { name: 'Station Beta App Store', uuid: APP_UUID, team: TEAM },
+    identity: IDENTITY,
+    bundleId: 'io.kontourai.station.beta',
+  });
+  return ensureIosAgentActivity(
+    { project: signed, infoPlist: '<plist><dict>\n</dict>\n</plist>\n' },
+    { appBundleId: 'io.kontourai.station.beta', apsEnvironment: 'production' },
+  ).project;
+}
+
+describe('iOS App Store signing for the Live Activity extension (#2513)', () => {
+  test('names the extension only for channels that embed one', () => {
+    expect(agentActivityBundleId('io.kontourai.station.beta')).toBe(
+      'io.kontourai.station.beta.AgentActivity',
+    );
+    expect(agentActivityBundleId('io.kontourai.station.nightly')).toBe(
+      'io.kontourai.station.nightly.AgentActivity',
+    );
+    expect(() => agentActivityBundleId('io.kontourai.station')).toThrow(
+      /No reviewed Live Activity extension/,
+    );
+  });
+
+  test('signs the extension target manually with its own profile, beside the app', () => {
+    const project = YAML.parse(
+      storeAgentActivitySigningSpec({
+        project: betaSpecWithExtension(),
+        profile: extensionProfile(),
+        identity: IDENTITY,
+        appBundleId: 'io.kontourai.station.beta',
+      }),
+    );
+    expect(project.targets[EXTENSION_TARGET].settings.base).toMatchObject({
+      STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station.beta',
+      PRODUCT_BUNDLE_IDENTIFIER:
+        '$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity',
+      CODE_SIGN_STYLE: 'Manual',
+      CODE_SIGN_IDENTITY: IDENTITY,
+      DEVELOPMENT_TEAM: TEAM,
+      PROVISIONING_PROFILE: EXTENSION_UUID,
+      PROVISIONING_PROFILE_SPECIFIER: 'Station Beta Agent Activity App Store',
+    });
+    // The app keeps the template's signing and gains push and the groups.
+    expect(project.settingGroups.app.base).toMatchObject({
+      PRODUCT_BUNDLE_IDENTIFIER: 'io.kontourai.station.beta',
+      CODE_SIGN_STYLE: 'Manual',
+      PROVISIONING_PROFILE: APP_UUID,
+    });
+    expect(project.targets.station_iOS.entitlements.properties).toMatchObject({
+      'aps-environment': 'production',
+      'keychain-access-groups': [
+        '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
+        '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
+      ],
+    });
+  });
+
+  test('refuses a spec without the extension, for another app, or a foreign profile', () => {
+    const committed = readFileSync('src-desktop/gen/apple/project.yml', 'utf8');
+    expect(() =>
+      storeAgentActivitySigningSpec({
+        project: committed,
+        profile: extensionProfile(),
+        identity: IDENTITY,
+        appBundleId: 'io.kontourai.station.beta',
+      }),
+    ).toThrow(/no StationAgentActivity app-extension target/);
+    expect(() =>
+      storeAgentActivitySigningSpec({
+        project: betaSpecWithExtension(),
+        profile: extensionProfile('io.kontourai.station.nightly'),
+        identity: IDENTITY,
+        appBundleId: 'io.kontourai.station.nightly',
+      }),
+    ).toThrow(/belongs to io.kontourai.station.beta/);
+    expect(() =>
+      storeAgentActivitySigningSpec({
+        project: betaSpecWithExtension(),
+        // The APP's profile handed in as the extension's.
+        profile: {
+          ...extensionProfile(),
+          applicationIdentifier: `${TEAM}.io.kontourai.station.beta`,
+        },
+        identity: IDENTITY,
+        appBundleId: 'io.kontourai.station.beta',
+      }),
+    ).toThrow(/profile is for/);
+    expect(() =>
+      storeAgentActivitySigningSpec({
+        project: betaSpecWithExtension(),
+        profile: extensionProfile(),
+        identity: 'Apple Distribution: Example (OTHERTEAM1)',
+        appBundleId: 'io.kontourai.station.beta',
+      }),
+    ).toThrow(/does not bind/);
+  });
+
+  test('export options name both bundles, so a manual export can sign the extension', () => {
+    const plist = storeExportOptions({
+      identity: `Apple Distribution: A & B (${TEAM})`,
+      team: TEAM,
+      profiles: {
+        'io.kontourai.station.beta': APP_UUID,
+        'io.kontourai.station.beta.AgentActivity': EXTENSION_UUID,
+      },
+    });
+    expect(plist).toMatch(
+      /<key>method<\/key>\s*<string>app-store-connect<\/string>/,
+    );
+    expect(plist).toMatch(
+      /<key>signingStyle<\/key>\s*<string>manual<\/string>/,
+    );
+    expect(plist).toMatch(
+      new RegExp(
+        `<key>io\\.kontourai\\.station\\.beta</key>\\s*<string>${APP_UUID}</string>`,
+      ),
+    );
+    expect(plist).toMatch(
+      new RegExp(
+        `<key>io\\.kontourai\\.station\\.beta\\.AgentActivity</key>\\s*<string>${EXTENSION_UUID}</string>`,
+      ),
+    );
+    expect(plist).toContain(`A &amp; B (${TEAM})`);
+    expect(() =>
+      storeExportOptions({
+        identity: IDENTITY,
+        team: TEAM,
+        profiles: { 'io.kontourai.station.beta': 'not-a-uuid' },
+      }),
+    ).toThrow(/Invalid provisioning-profile UUID/);
+    expect(() =>
+      storeExportOptions({
+        identity: IDENTITY,
+        team: TEAM,
+        profiles: { 'com.example.other': APP_UUID },
+      }),
+    ).toThrow(/Unreviewed bundle id/);
+  });
+
+  test('replacing the committed export options drops nothing Tauri does not replace', () => {
+    // The TestFlight job overwrites gen/apple/ExportOptions.plist for a Live
+    // Activity build; that is safe only while the committed file holds
+    // nothing but `method`, which --export-method replaces anyway.
+    const committed = readFileSync(
+      'src-desktop/gen/apple/ExportOptions.plist',
+      'utf8',
+    );
+    expect(
+      [...committed.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1]),
+    ).toEqual(['method']);
+  });
+
+  test('validates both profiles, requiring push on the app, before writing', () => {
+    const root = makeTempDir('ios-agent-activity-signing-');
+    const project = join(root, 'project.yml');
+    const exportOptions = join(root, 'ExportOptions.plist');
+    writeFileSync(project, betaSpecWithExtension());
+    const inspections: Array<Record<string, unknown>> = [];
+    const result = writeIosAgentActivitySigning(
+      {
+        profile: join(root, 'extension.mobileprovision'),
+        appProfile: join(root, 'app.mobileprovision'),
+        identity: IDENTITY,
+        team: TEAM,
+        appBundleId: 'io.kontourai.station.beta',
+        apsEnvironment: 'production',
+        project,
+        exportOptionsOutput: exportOptions,
+      },
+      {
+        decode: (path: string) => path,
+        inspect: (path: unknown, options = {}): DistributionProfile => {
+          inspections.push({ path, ...options });
+          return String(path).endsWith('extension.mobileprovision')
+            ? extensionProfile()
+            : {
+                ...extensionProfile(),
+                name: 'Station Beta App Store',
+                uuid: APP_UUID,
+                applicationIdentifier: `${TEAM}.io.kontourai.station.beta`,
+              };
+        },
+      },
+    );
+    expect(inspections).toEqual([
+      expect.objectContaining({
+        path: join(root, 'extension.mobileprovision'),
+        expectedTeam: TEAM,
+        expectedBundleIdentifier: 'io.kontourai.station.beta.AgentActivity',
+      }),
+      expect.objectContaining({
+        path: join(root, 'app.mobileprovision'),
+        expectedTeam: TEAM,
+        expectedBundleIdentifier: 'io.kontourai.station.beta',
+        expectedApsEnvironment: 'production',
+      }),
+    ]);
+    expect(result).toMatchObject({
+      app: { uuid: APP_UUID },
+      extension: { uuid: EXTENSION_UUID },
+    });
+    expect(
+      YAML.parse(readFileSync(project, 'utf8')).targets[EXTENSION_TARGET]
+        .settings.base.PROVISIONING_PROFILE,
+    ).toBe(EXTENSION_UUID);
+    expect(readFileSync(exportOptions, 'utf8')).toContain(
+      `<string>${EXTENSION_UUID}</string>`,
+    );
+  });
+
+  test('a refused app profile leaves the project and export options untouched', () => {
+    const root = makeTempDir('ios-agent-activity-refusal-');
+    const project = join(root, 'project.yml');
+    const exportOptions = join(root, 'ExportOptions.plist');
+    const spec = betaSpecWithExtension();
+    writeFileSync(project, spec);
+    expect(() =>
+      writeIosAgentActivitySigning(
+        {
+          profile: join(root, 'extension.mobileprovision'),
+          appProfile: join(root, 'app.mobileprovision'),
+          identity: IDENTITY,
+          team: TEAM,
+          appBundleId: 'io.kontourai.station.beta',
+          apsEnvironment: 'production',
+          project,
+          exportOptionsOutput: exportOptions,
+        },
+        {
+          decode: (path: string) => path,
+          inspect: (path: unknown): DistributionProfile => {
+            if (String(path).endsWith('app.mobileprovision'))
+              throw new Error('aps-environment (absent) does not match');
+            return extensionProfile();
+          },
+        },
+      ),
+    ).toThrow(/aps-environment/);
+    expect(readFileSync(project, 'utf8')).toBe(spec);
+    expect(() => readFileSync(exportOptions, 'utf8')).toThrow();
+  });
+
+  test('refuses Stable before reading any profile', () => {
+    const calls: string[] = [];
+    expect(() =>
+      writeIosAgentActivitySigning(
+        {
+          profile: '/extension',
+          appProfile: '/app',
+          identity: IDENTITY,
+          team: TEAM,
+          appBundleId: 'io.kontourai.station',
+          apsEnvironment: 'production',
+          project: '/project.yml',
+          exportOptionsOutput: '/ExportOptions.plist',
+        },
+        {
+          decode: () => {
+            calls.push('decode');
+            return '';
+          },
+        },
+      ),
+    ).toThrow(/No reviewed Live Activity extension/);
+    expect(calls).toEqual([]);
+  });
+
+  test('requires every agent-activity option exactly once', () => {
+    const args = [
+      '--extension-profile',
+      'e',
+      '--app-profile',
+      'a',
+      '--identity',
+      IDENTITY,
+      '--team',
+      TEAM,
+      '--app-bundle-id',
+      'io.kontourai.station.beta',
+      '--aps-environment',
+      'production',
+      '--project',
+      'p',
+      '--export-options-output',
+      'o',
+    ];
+    expect(parseAgentActivityOptions(args)).toMatchObject({
+      'app-profile': 'a',
+      'aps-environment': 'production',
+    });
+    expect(() => parseAgentActivityOptions(args.slice(0, -2))).toThrow(
+      /Missing/,
+    );
+    expect(() =>
+      parseAgentActivityOptions([...args.slice(0, -2), '--team', 'x']),
+    ).toThrow(/exactly once/);
+  });
+
+  test('carries the plugin half of the switch as cargo config', () => {
+    expect(mobileCargoConfig(undefined, { liveActivity: true })).toBe(
+      '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n',
+    );
+    const both = mobileCargoConfig('https://station.example.test', {
+      liveActivity: true,
+    });
+    expect(both).toContain('STATION_MOBILE_DEFAULT_ENDPOINT');
+    expect(both).toContain(
+      'STATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }',
+    );
+    expect(both.match(/\[env\]/g)).toHaveLength(1);
+    expect(mobileCargoConfig('https://station.example.test')).not.toContain(
+      'STATION_IOS_LIVE_ACTIVITY',
+    );
   });
 });

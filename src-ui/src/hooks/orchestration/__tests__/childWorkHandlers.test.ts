@@ -1,9 +1,10 @@
 /**
- * #2456: the client's child-work path. Until #2457 the Claude adapter still
- * reports through `claude-code` `task/registry` / `task/settled`, so these
- * drive the LIVE path end to end: the real extension handler → the contract
- * translator → the reducer → the derived `ChatUIState.backgroundTasks` and the
- * settle announcement.
+ * #2456: the client's child-work path. Since #2457 the Claude adapter emits
+ * `child-work.updated`; the `claude-code` `task/registry` / `task/settled`
+ * tuples these tests feed are the REPLAY path for pre-#2457 history, driven
+ * end to end: the real extension handler → the contract translator → the
+ * reducer → the derived `ChatUIState.backgroundTasks` and the settle
+ * announcement.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -37,6 +38,35 @@ const announcements = () =>
   (chat()?.ephemeralMessages ?? []).map((message) => message.content);
 
 describe('child-work client path (legacy Claude tuples → contract reducer)', () => {
+  test('a reported snapshot restores a child that settled during the gap once', () => {
+    const view = {
+      observability: 'reported' as const,
+      running: [],
+      observedAt: '2026-09-24T00:00:00.000Z',
+      settled: [
+        {
+          producer: 'engine-subagent' as const,
+          reporterThreadId: threadId,
+          childId: 'settled-during-gap',
+          status: 'completed' as const,
+          title: 'Explore',
+          backgrounded: true,
+          result: { summary: 'Done.' },
+        },
+      ],
+    };
+    handlers.applySnapshotChildWork(threadId, view);
+    handlers.applySnapshotChildWork(threadId, view);
+    expect(handlers.childWorkRegistrySnapshot().items).toMatchObject({
+      [JSON.stringify(['engine-subagent', threadId, 'settled-during-gap'])]: {
+        status: 'completed',
+        result: { summary: 'Done.' },
+      },
+    });
+    expect(announcements()).toEqual([
+      'Background task finished — Explore\n\nDone.',
+    ]);
+  });
   beforeEach(async () => {
     seq = 0;
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
@@ -300,6 +330,124 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual([]);
   });
 
+  test('ordered parent activity keeps Home and dock active without offering Stop or Steer during child work; reconnect restores it', async () => {
+    const { isTurnInFlight } = await import(
+      '../../../contexts/active-chats-state'
+    );
+    const { isSessionExecutionActive, isSessionWorkActive } = await import(
+      '../../../utils/execution'
+    );
+    const { buildHomeWorkItems } = await import(
+      '../../../views/home/home-view-model'
+    );
+    const { partitionHomeWorkItems } = await import(
+      '../../../views/home/home-lane-model'
+    );
+    const { applyOrchestrationSnapshot } = await import('../snapshotHandlers');
+    activeChatsStore.updateChat(threadId, {
+      conversationId: threadId,
+      status: 'idle',
+      messages: [{ role: 'user', content: 'work', timestamp: 1 }],
+    });
+    const states = [
+      {
+        openTurn: {
+          turnId: 'turn-1',
+          threadId,
+          startedAt: '2026-09-24T00:00:00Z',
+        },
+      },
+      { runningChildWork: { count: 1, producers: ['engine-subagent'] } },
+      { runningChildWork: { count: 0, producers: [], followUpPending: true } },
+      {
+        openTurn: {
+          turnId: 'provider-1',
+          threadId,
+          startedAt: '2026-09-24T00:00:20Z',
+          trigger: 'provider',
+        },
+      },
+      {},
+    ] as const;
+    for (const [index, state] of states.entries()) {
+      const activity = {
+        conversationId: threadId,
+        asOfSequence: index + 1,
+        ...state,
+      } as any;
+      activeChatsStore.applyConversationActivity(activity);
+      const chat = activeChatsStore.getSnapshot()[threadId]!;
+      const summary = {
+        provider: 'claude',
+        threadId,
+        conversationId: threadId,
+        status: 'ready',
+        lifecycleState: 'completed',
+        hasActiveTurn: Boolean(activity.openTurn),
+        createdAt: '2026-09-24T00:00:00Z',
+        updatedAt: '2026-09-24T00:00:30Z',
+        answerability: { answerable: true },
+        conversationActivity: activity,
+      } as any;
+      const row = buildHomeWorkItems({
+        chats: { [threadId]: chat },
+        agents: [],
+        sessions: [summary],
+      }).find((item) => item.conversationId === threadId)!;
+      const active = index < 4;
+      expect(row.lifecycleLabel).toBe(active ? 'Running' : 'Completed');
+      if (index === 1 || index === 2)
+        expect(row.activeReason).toBe('background');
+      expect(
+        partitionHomeWorkItems({
+          items: [row],
+          now: Date.now(),
+          snoozedUntil: new Map(),
+          terminalSince: new Map(),
+        }).active.length,
+      ).toBe(active ? 1 : 0);
+      expect([chat].filter(isSessionWorkActive)).toHaveLength(active ? 1 : 0);
+      const turnActive = index === 0 || index === 3;
+      expect(isTurnInFlight(chat)).toBe(turnActive);
+      expect(isSessionExecutionActive(chat)).toBe(turnActive);
+    }
+    const reconnectActivity = {
+      conversationId: threadId,
+      asOfSequence: 6,
+      runningChildWork: { count: 1, producers: ['engine-subagent'] },
+    } as any;
+    applyOrchestrationSnapshot({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId,
+          conversationId: threadId,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: reconnectActivity,
+          childWork: {
+            children: {
+              observability: 'reported',
+              observedAt: '2026-09-24T00:00:31Z',
+              running: [
+                {
+                  producer: 'engine-subagent',
+                  reporterThreadId: threadId,
+                  childId: 'reconnected',
+                  status: 'running',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    const restored = activeChatsStore.getSnapshot()[threadId]!;
+    expect(restored.conversationActivity?.runningChildWork?.count).toBe(1);
+    expect(isSessionWorkActive(restored)).toBe(true);
+    expect(isTurnInFlight(restored)).toBe(false);
+  });
+
   test("an older server's snapshot row (no childWork) leaves the running set alone", async () => {
     const { applyOrchestrationSnapshot } = await import('../snapshotHandlers');
     tuple('task/registry', {
@@ -539,6 +687,103 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     });
     expect(chat()?.backgroundTasks?.map((task) => task.description)).toEqual([
       'Upserted',
+    ]);
+  });
+
+  test('#2457: a real result drained after the session exited is still announced, and brings no running card back', async () => {
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const live = 'exec-live';
+    activeChatsStore.updateChat(threadId, { currentSessionId: live });
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: live,
+    };
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        ...key,
+        running: [
+          {
+            ...key,
+            childId: 'late',
+            status: 'running',
+            backgrounded: true,
+            title: 'Late one',
+          },
+        ],
+      },
+    });
+    handleOrchestrationEvent('http://api', {
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:01.000Z',
+      method: 'session.exited',
+    } as never);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+    // The adapter drains the engine's real outcome after the exit.
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId: live,
+      createdAt: '2026-09-23T00:00:02.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'settle',
+        ...key,
+        childId: 'late',
+        status: 'completed',
+        result: { summary: 'Found it' },
+        identity: { backgrounded: true, title: 'Late one' },
+      },
+    });
+    expect(announcements()).toEqual([
+      'Background task finished — Late one\n\nFound it',
+    ]);
+    expect(chat()?.backgroundTasks ?? []).toEqual([]);
+  });
+
+  test('#2457: a live progress upsert reaches the chat task, so the sheet can show it', () => {
+    const item = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+      childId: 'task-p',
+      status: 'running' as const,
+      title: 'Run four sleeps',
+      controls: { stop: 'provider-task-stop' as const },
+    };
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T00:00:00.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [item],
+      },
+    });
+    expect(chat()?.backgroundTasks?.[0]?.progress).toBeUndefined();
+    handlers.handleChildWorkUpdatedEvent({
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-09-23T00:00:01.000Z',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: { ...item, progress: 'Executing second sleep interval.' },
+      },
+    });
+    expect(chat()?.backgroundTasks).toEqual([
+      expect.objectContaining({
+        taskId: 'task-p',
+        description: 'Run four sleeps',
+        progress: 'Executing second sleep interval.',
+        stop: 'provider-task-stop',
+      }),
     ]);
   });
 });

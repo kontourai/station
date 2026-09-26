@@ -7,11 +7,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -23,6 +25,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const {
+  NotificationDedupeSourceConflictError,
   NotificationDispatchClosedError,
   NotificationService,
   NotificationShutdownTimeoutError,
@@ -1545,5 +1548,218 @@ describe('metadata normalization (upstream regression #2247)', () => {
     expect(notification.metadata?.approvalId).toBe('a-1');
     // The store still validates, so the notification is actually readable.
     expect((await svc2.list()).map((n) => n.id)).toContain(notification.id);
+  });
+});
+
+describe('NotificationService cross-source dedupe (#2597)', () => {
+  const makeTempDir = trackTempDirs();
+  let dir: string;
+  let bus: InstanceType<typeof EventBus>;
+  let svc: InstanceType<typeof NotificationService>;
+
+  beforeEach(() => {
+    dir = makeTempDir('notif-cross-source-');
+    bus = new EventBus();
+    svc = new NotificationService(bus, dir, 999_999);
+  });
+
+  afterEach(async () => {
+    await svc.shutdown();
+  });
+
+  function pairingItem(title: string) {
+    return {
+      title,
+      category: 'pairing-request',
+      dedupeTag: 'device-pairing:r1',
+      actions: [
+        { id: 'approve', label: 'Approve', variant: 'primary' as const },
+      ],
+    };
+  }
+
+  test('a rogue provider poll cannot rewrite the device-pairing record, and the rest of its poll still lands', async () => {
+    svc.addProvider({
+      id: 'device-pairing',
+      displayName: 'Pairing',
+      categories: ['pairing-request'],
+      poll: async () => [pairingItem('Approve new device?')],
+    });
+    await svc.poll();
+    svc.addProvider({
+      id: 'rogue',
+      displayName: 'Rogue',
+      categories: ['pairing-request'],
+      poll: async () => [
+        {
+          ...pairingItem('Click me'),
+          actions: [{ id: 'approve', label: 'Click me' }],
+        },
+        { title: 'Own item', category: 'test', dedupeTag: 'rogue:1' },
+      ],
+    });
+    const captured = captureLoggerLines('warn');
+    await svc.poll();
+
+    const byTag = Object.fromEntries(
+      (await svc.list()).map((n) => [n.metadata?.dedupeTag, n]),
+    );
+    expect(byTag['device-pairing:r1']).toMatchObject({
+      source: 'device-pairing',
+      title: 'Approve new device?',
+      actions: [{ id: 'approve', label: 'Approve', variant: 'primary' }],
+    });
+    expect(byTag['rogue:1']).toMatchObject({
+      source: 'rogue',
+      title: 'Own item',
+    });
+    expect(captured.at('warn')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          msg: 'Notification provider item refused',
+          provider: 'rogue',
+        }),
+      ]),
+    );
+    captured.stop();
+  });
+
+  test.each(['delivered', 'dismissed'])(
+    'a cross-source write to a %s record is refused, never a shadowing duplicate',
+    async (status) => {
+      const original = await svc.schedule(
+        'device-pairing',
+        pairingItem('Original'),
+      );
+      if (status === 'dismissed') await svc.dismiss(original.id);
+      await expect(
+        svc.schedule('api', pairingItem('Click me')),
+      ).rejects.toBeInstanceOf(NotificationDedupeSourceConflictError);
+      const all = await svc.list();
+      expect(all).toHaveLength(1);
+      expect(all[0]).toMatchObject({ title: 'Original', status });
+    },
+  );
+
+  test.each(['delivered', 'dismissed'])(
+    'an internal writer takes over a pre-upgrade REST squat (%s) of its tag',
+    async (status) => {
+      // Pre-#2597 REST records were stored under the caller's raw tag.
+      const squat = await svc.schedule('api', {
+        title: 'Squat',
+        category: 'test',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      if (status === 'dismissed') await svc.dismiss(squat.id);
+      const internal = await svc.schedule('scheduler', {
+        title: 'Heartbeat stale',
+        category: 'scheduler-unhealthy',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      expect(internal).toMatchObject({
+        source: 'scheduler',
+        status: 'delivered',
+      });
+      expect(internal.id).not.toBe(squat.id);
+      expect(await svc.list()).toEqual([internal]);
+    },
+  );
+
+  test.each(['sdk', 'my-plugin'])(
+    'an internal writer takes over a pre-upgrade squat under source %s and announces the removal',
+    async (squatSource) => {
+      const cleared: unknown[] = [];
+      bus.subscribe((message) => {
+        if (message.event === SERVER_EVENTS.NOTIFICATION_CLEARED)
+          cleared.push(message.data);
+      });
+      const squat = await svc.schedule(squatSource, {
+        title: 'Squat',
+        category: 'test',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      const internal = await svc.schedule('scheduler', {
+        title: 'Heartbeat stale',
+        category: 'scheduler-unhealthy',
+        dedupeTag: 'scheduler:heartbeat-stale',
+      });
+      expect(internal.id).not.toBe(squat.id);
+      expect(await svc.list()).toEqual([internal]);
+      expect(cleared).toEqual([{ clearedCount: 1, retainedCount: 1 }]);
+    },
+  );
+
+  test.each([
+    ['an internal source', 'turn-completion', false],
+    ['a registered provider', 'plugin-x', true],
+  ])(
+    'a record under %s still owns its tag',
+    async (_label, owner, register) => {
+      if (register) {
+        svc.addProvider({
+          id: owner,
+          displayName: owner,
+          categories: ['test'],
+        });
+      }
+      const original = await svc.schedule(owner, {
+        title: 'Owned',
+        category: 'test',
+        dedupeTag: 'shared:owned',
+      });
+      await expect(
+        svc.schedule('scheduler', {
+          title: 'Takeover',
+          category: 'test',
+          dedupeTag: 'shared:owned',
+        }),
+      ).rejects.toBeInstanceOf(NotificationDedupeSourceConflictError);
+      expect(await svc.list()).toEqual([original]);
+    },
+  );
+
+  test.each(['api', 'sdk', 'agent'])(
+    'a provider may not register as %s',
+    (id) => {
+      expect(() =>
+        svc.addProvider({ id, displayName: id, categories: ['test'] }),
+      ).toThrow(/reserved/);
+      expect(svc.listProviders()).toEqual([]);
+    },
+  );
+
+  test('a second provider under an existing id is refused, not a silent replacement', () => {
+    svc.addProvider({ id: 'p', displayName: 'First', categories: ['test'] });
+    expect(() =>
+      svc.addProvider({ id: 'p', displayName: 'Second', categories: ['test'] }),
+    ).toThrow(/duplicate/);
+    expect(svc.listProviders()).toEqual([
+      { id: 'p', displayName: 'First', categories: ['test'] },
+    ]);
+  });
+
+  test('only the REST path may write an api: tag', async () => {
+    await expect(
+      svc.schedule('scheduler', {
+        title: 'x',
+        category: 'test',
+        dedupeTag: 'api:mine',
+      }),
+    ).rejects.toThrow(/reserved/);
+    const created = await svc.scheduleFromRequest({
+      title: 'x',
+      category: 'test',
+      dedupeTag: 'mine',
+    });
+    expect(created).toMatchObject({
+      source: 'api',
+      metadata: { dedupeTag: 'api:mine' },
+    });
+  });
+
+  test('same-source dedupe still updates', async () => {
+    const first = await svc.schedule('device-pairing', pairingItem('v1'));
+    const second = await svc.schedule('device-pairing', pairingItem('v2'));
+    expect(second).toMatchObject({ id: first.id, title: 'v2' });
   });
 });

@@ -90,13 +90,17 @@ class StreamReader {
 function clientActivity(frames: Frame[]): unknown {
   let activity: unknown;
   for (const frame of frames) {
-    if (frame.event === 'orchestration:snapshot') {
+    if (
+      frame.event === 'orchestration:snapshot' ||
+      frame.event === 'orchestration:caughtUp'
+    ) {
       const { sessions } = JSON.parse(frame.data) as {
-        sessions: Array<{ threadId: string; conversationActivity?: unknown }>;
+        sessions?: Array<{ threadId: string; conversationActivity?: unknown }>;
       };
-      activity = sessions.find(
-        (s) => s.threadId === root,
-      )?.conversationActivity;
+      if (sessions)
+        activity = sessions.find(
+          (s) => s.threadId === root,
+        )?.conversationActivity;
     } else if (frame.event === 'orchestration:event') {
       const parsed = JSON.parse(frame.data) as {
         conversation?: { conversationId: string; activity?: unknown };
@@ -302,4 +306,147 @@ describe('conversation activity through GET /events (#2309)', () => {
     ).toBe(true);
     expect(clientActivity(clientD.frames())).toEqual(activityA);
   }, 60_000);
+
+  test('a restarted service rebuilds settled child outcomes without reviving running work', async () => {
+    const at = '2026-09-24T00:00:00.000Z';
+    for (const event of [
+      {
+        eventId: 'restart-child-upsert',
+        provider: 'claude',
+        threadId: root,
+        createdAt: at,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: root,
+            childId: 'restart-child',
+            status: 'running',
+            title: 'Explore',
+          },
+        },
+      },
+      {
+        eventId: 'restart-child-settle',
+        provider: 'claude',
+        threadId: root,
+        createdAt: at,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: root,
+          childId: 'restart-child',
+          status: 'completed',
+          result: { summary: 'Done.' },
+        },
+      },
+    ] as CanonicalRuntimeEvent[]) {
+      (service as any).publishCanonicalEvent(event);
+    }
+    await service.shutdown();
+    eventStore.close();
+    eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    eventBus = new EventBus();
+    const restarted = makeService();
+    const response = await app(restarted).request('/events');
+    const reader = new StreamReader(response.body!);
+    await reader.until((text) => text.includes('orchestration:caughtUp'));
+    const snapshot = reader
+      .frames()
+      .find((frame) => frame.event === 'orchestration:snapshot');
+    await reader.close();
+    const sessions = JSON.parse(snapshot!.data).sessions as Array<{
+      threadId: string;
+      childWork?: {
+        children?: {
+          running?: unknown[];
+          settled?: Array<{ childId: string; status: string }>;
+        };
+      };
+    }>;
+    expect(
+      sessions.find((row) => row.threadId === root)?.childWork?.children,
+    ).toMatchObject({
+      running: [],
+      settled: [{ childId: 'restart-child', status: 'completed' }],
+    });
+  });
+
+  test('#2654: a claude-code child-work notification carries its conversation binding on its own frame', async () => {
+    // `extension.notification` is not an activity method by name; only its
+    // namespace and type make it an immediate activity frame. The route has
+    // to hand both to the binding, or this frame goes out bare and the
+    // activity arrives only on the trailing idless flush.
+    const response = await app(service).request('/events');
+    const reader = new StreamReader(response.body!);
+    await reader.until((wire) => wire.includes('orchestration:caughtUp'));
+    publish({
+      eventId: 'child-work-registry',
+      provider: 'claude',
+      threadId: child,
+      createdAt: '2026-09-25T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: { active: [{ taskId: 'task-1' }] },
+    } as CanonicalRuntimeEvent);
+    await reader.until((wire) => wire.includes('child-work-registry'));
+    const registryFrame = reader
+      .frames()
+      .find(
+        (frame) =>
+          frame.event === 'orchestration:event' &&
+          frame.data.includes('child-work-registry'),
+      );
+    await reader.close();
+    expect(registryFrame).toBeDefined();
+    expect(
+      (
+        JSON.parse(registryFrame!.data) as {
+          conversation?: { conversationId: string };
+        }
+      ).conversation?.conversationId,
+    ).toBe(root);
+  });
+
+  test('a live coalesced burst ends with an idless current activity frame', async () => {
+    const response = await app(service).request('/events');
+    const reader = new StreamReader(response.body!);
+    await reader.until((wire) => wire.includes('orchestration:caughtUp'));
+    for (const event of [
+      {
+        eventId: 'burst-start',
+        provider: 'claude',
+        threadId: child,
+        turnId: 'burst-turn',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'Work',
+      },
+      ...Array.from({ length: 4 }, (_, index) => ({
+        eventId: `burst-delta-${index}`,
+        provider: 'claude',
+        threadId: child,
+        turnId: 'burst-turn',
+        createdAt: '2026-09-24T00:00:00.000Z',
+        method: 'content.text-delta',
+        itemId: 'answer',
+        delta: 'x',
+      })),
+    ] as CanonicalRuntimeEvent[])
+      publish(event);
+    await reader.until((wire) =>
+      wire.includes('event: orchestration:activity'),
+    );
+    const activityFrame = reader
+      .frames()
+      .find((frame) => frame.event === 'orchestration:activity');
+    await reader.close();
+    expect(activityFrame?.id).toBeUndefined();
+    expect(
+      JSON.parse(activityFrame!.data).conversation.activity.asOfSequence,
+    ).toBe(eventStore.headGlobalSequence());
+  });
 });

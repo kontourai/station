@@ -10,6 +10,7 @@ type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 interface PendingBatch {
   scope: Scope;
   projectSlug: string;
+  thread: string | undefined;
   waiters: Map<string, ((exists: boolean) => void)[]>;
   rejecters: ((error: unknown) => void)[];
 }
@@ -44,6 +45,7 @@ export const workspaceFileExistenceBatcher = (() => {
           batch.projectSlug,
           chunk,
           { requestScope: batch.scope },
+          batch.thread,
         );
         for (const file of answer.files) found.add(file);
       }
@@ -56,15 +58,27 @@ export const workspaceFileExistenceBatcher = (() => {
   }
 
   return {
-    exists(scope: Scope, projectSlug: string, path: string): Promise<boolean> {
+    exists(
+      scope: Scope,
+      projectSlug: string,
+      path: string,
+      thread?: string,
+    ): Promise<boolean> {
       const key = JSON.stringify([
         scope.apiBase,
         scope.authorityKey,
         projectSlug,
+        thread ?? null,
       ]);
       let batch = pending.get(key);
       if (!batch) {
-        batch = { scope, projectSlug, waiters: new Map(), rejecters: [] };
+        batch = {
+          scope,
+          projectSlug,
+          thread,
+          waiters: new Map(),
+          rejecters: [],
+        };
         pending.set(key, batch);
         setTimeout(() => void flush(key), 0);
       }
@@ -88,6 +102,7 @@ export const workspaceFileExistenceBatcher = (() => {
 export function useWorkspaceFileExists(
   projectSlug: string | null,
   path: string | null,
+  thread?: string | null,
 ): boolean | undefined {
   const scope = useHostRequestAuthorityScope();
   const enabled = !!scope?.isCurrent() && !!projectSlug && !!path;
@@ -97,10 +112,16 @@ export function useWorkspaceFileExists(
       scope?.apiBase,
       scope?.authorityKey,
       projectSlug,
+      thread ?? null,
       path,
     ],
     queryFn: () =>
-      workspaceFileExistenceBatcher.exists(scope!, projectSlug!, path!),
+      workspaceFileExistenceBatcher.exists(
+        scope!,
+        projectSlug!,
+        path!,
+        thread ?? undefined,
+      ),
     enabled,
     staleTime: 60_000,
     retry: false,

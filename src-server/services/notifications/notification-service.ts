@@ -8,13 +8,22 @@ import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   Notification,
+  NotificationEnvelopeV1,
   ScheduleNotificationOpts,
+  SurfaceId,
 } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   acquireFileMutationLockAsync,
   type FileMutationLock,
 } from '@kontourai/station-shared/lifecycle-events';
+import {
+  AGENT_NOTIFICATION_CATEGORY_PREFIX,
+  AGENT_NOTIFICATION_DEDUPE_PREFIX,
+  isSurfaceId,
+  parseNotificationEnvelope,
+  parseNotificationEnvelopeForWrite,
+} from '@kontourai/station-shared/notification-envelope';
 import {
   classifyNotificationCategory,
   NOTIFICATION_TTL_MS,
@@ -74,6 +83,25 @@ type NotificationClearMutation =
       next?: StoredNotification[];
     };
 type NotificationClearResult = NotificationClearMutation['result'];
+/**
+ * `read` — this call recorded the first reader. `already-read` — an earlier
+ * reader won; nothing changed. `no-envelope` — a legacy (or unreadable
+ * envelope) record, which carries no read marker and is left untouched.
+ * `not-delivered` — only a delivered record can be read (pending has not
+ * reached anyone; dismissed/expired/actioned are already settled).
+ */
+export type NotificationMarkReadOutcome =
+  | 'read'
+  | 'already-read'
+  | 'no-envelope'
+  | 'not-delivered'
+  | 'not-found';
+
+/**
+ * Result of the trusted enveloped write. `unchanged` — the dedupe tag names a
+ * dismissed (final) record or one whose action is in flight; nothing changed.
+ */
+export type NotificationScheduleOutcome = 'created' | 'updated' | 'unchanged';
 
 export interface NotificationServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
@@ -92,6 +120,84 @@ export class NotificationStoreValidationError extends Error {
   constructor() {
     super('Notification store is invalid');
     this.name = 'NotificationStoreValidationError';
+  }
+}
+
+export class NotificationEnvelopeValidationError extends Error {
+  constructor(detail = 'Notification envelope is invalid') {
+    super(detail);
+    this.name = 'NotificationEnvelopeValidationError';
+  }
+}
+
+/**
+ * A dedupe tag already names a record written by a DIFFERENT source (#2597).
+ * Tags are global, so without this a writer could rewrite another source's
+ * record — its title and actions — while `source` (which routes the action
+ * to a provider) stayed the victim's. Refused whatever the existing record's
+ * status: a dismissed/expired record of another source still owns its tag,
+ * and creating a second record under it would shadow it (and fail the
+ * store's unique-tag validation).
+ */
+/**
+ * Source of every record created through `POST /notifications`, and the
+ * namespace its dedupe tags are stored under (#2597). A request body chooses
+ * neither: a caller-chosen source could relabel (and, through a shared tag,
+ * rewrite) another producer's record, and an un-namespaced tag could squat an
+ * internal producer's tag and block it forever.
+ */
+export const REST_NOTIFICATION_SOURCE = 'api';
+const REST_NOTIFICATION_DEDUPE_PREFIX = 'api:';
+
+/**
+ * Sources Station's own producers write under (every in-process
+ * `schedule()`/`scheduleEnveloped()` caller; a test pins this against them).
+ * A record under one of these, or under a registered provider's id, owns its
+ * dedupe tag; any other source's record under a colliding tag was written by
+ * a request before #2597 and is taken over by the tag's rightful writer.
+ */
+export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
+  'agent',
+  'approval-inbox',
+  'device-pairing',
+  'scheduler',
+  'turn-completion',
+]);
+
+/** Provider ids a provider may not register under: they name REST/agent writes. */
+const RESERVED_NOTIFICATION_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  REST_NOTIFICATION_SOURCE,
+  'sdk',
+  'agent',
+]);
+
+export class NotificationProviderIdError extends Error {
+  constructor(
+    readonly providerId: string,
+    readonly reason: 'reserved' | 'internal' | 'duplicate',
+  ) {
+    super(`Notification provider id "${providerId}" refused: ${reason}`);
+    this.name = 'NotificationProviderIdError';
+  }
+}
+
+export class NotificationDedupeSourceConflictError extends Error {
+  constructor() {
+    super('Notification dedupe tag belongs to another source');
+    this.name = 'NotificationDedupeSourceConflictError';
+  }
+}
+
+/**
+ * The untrusted `schedule()` path (REST `POST /notifications`, providers)
+ * tried to write something only `scheduleEnveloped()` may: an envelope, an
+ * `agent:` dedupe tag, an `agent-*` category, or an update to an enveloped
+ * record.
+ */
+export class NotificationReservedFieldError extends Error {
+  constructor(field: 'envelope' | 'dedupeTag' | 'category') {
+    super(`Notification ${field} is reserved to enveloped notifications`);
+    this.name = 'NotificationReservedFieldError';
   }
 }
 
@@ -152,8 +258,43 @@ export class NotificationService {
       options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   }
 
+  /**
+   * Registers a built-in provider. Action, dismiss and status-sync dispatch
+   * is keyed by a record's `source`, so a provider id is an authority over
+   * every record under that source. Refused (NotificationProviderIdError):
+   * - `reserved` — `api`/`sdk`/`agent`, the REST and agent write sources;
+   * - `duplicate` — an id already registered (a Map would silently REPLACE
+   *   the earlier provider, e.g. a plugin shadowing `device-pairing`).
+   * Built-ins may use an INTERNAL_NOTIFICATION_SOURCES id (that is their
+   * own source); plugins go through `addPluginProvider`, which may not.
+   */
   addProvider(provider: INotificationProvider): void {
+    if (RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'reserved');
+    if (this.providers.has(provider.id))
+      throw new NotificationProviderIdError(provider.id, 'duplicate');
     this.providers.set(provider.id, provider);
+  }
+
+  /**
+   * Registers a plugin's provider: as `addProvider`, and additionally
+   * refuses (`internal`) any INTERNAL_NOTIFICATION_SOURCES id — a plugin
+   * named `scheduler` would receive the actions and dismissals of scheduler
+   * records.
+   */
+  addPluginProvider(provider: INotificationProvider): void {
+    if (
+      INTERNAL_NOTIFICATION_SOURCES.has(provider.id) &&
+      !RESERVED_NOTIFICATION_PROVIDER_IDS.has(provider.id)
+    )
+      throw new NotificationProviderIdError(provider.id, 'internal');
+    this.addProvider(provider);
+  }
+
+  private ownsDedupeTags(source: string): boolean {
+    return (
+      INTERNAL_NOTIFICATION_SOURCES.has(source) || this.providers.has(source)
+    );
   }
 
   listProviders(): Array<{
@@ -197,19 +338,190 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Untrusted write path: REST `POST /notifications` (caller-supplied body)
+   * and notification providers. It can never write an envelope, an `agent:`
+   * dedupe tag or an `agent-*` category, and never rewrites an enveloped
+   * record — those belong to `scheduleEnveloped`, so a caller cannot forge an
+   * agent's provenance or squat (and then dismiss) an agent's dedupe key.
+   * Records squatted on an `agent:` tag before this upgrade are not migrated.
+   */
   async schedule(
     source: string,
     opts: ScheduleNotificationOpts,
   ): Promise<Notification> {
+    return this.scheduleUntrusted(source, opts, false);
+  }
+
+  /**
+   * `POST /notifications` (#2597): always source `api`, and the caller's
+   * dedupe tag is stored as `api:<tag>` (dedupe matches the prefixed form),
+   * so a request can never collide with — or squat — an internal, provider
+   * or agent tag. A tag smuggled in `metadata.dedupeTag` is refused.
+   * In hosted mode the route passes the caller's tenant, and the tag is
+   * `api:<tenantId>:<tag>` so two tenants' requests never share a record.
+   * Tenant ids cannot contain `:`, so one tenant's tags never alias
+   * another's. A personal-mode `api:acme:foo` and tenant acme's `foo` are
+   * kept apart because a hosted request always carries a tenant (the route
+   * refuses a hosted request without one), so the unscoped form only ever
+   * exists in personal mode.
+   */
+  async scheduleFromRequest(
+    opts: ScheduleNotificationOpts,
+    scope: { tenantId?: string } = {},
+  ): Promise<Notification> {
+    if (scope.tenantId !== undefined && !/^[^:\s]+$/.test(scope.tenantId))
+      throw new TypeError('scheduleFromRequest tenant id is invalid');
+    const namespace = `${REST_NOTIFICATION_DEDUPE_PREFIX}${
+      scope.tenantId === undefined ? '' : `${scope.tenantId}:`
+    }`;
+    if (Object.hasOwn(jsonSafeMetadata(opts.metadata), 'dedupeTag'))
+      throw new NotificationReservedFieldError('dedupeTag');
+    return this.scheduleUntrusted(
+      REST_NOTIFICATION_SOURCE,
+      {
+        ...opts,
+        ...(opts.dedupeTag === undefined
+          ? {}
+          : {
+              dedupeTag: `${namespace}${opts.dedupeTag}`,
+            }),
+      },
+      true,
+    );
+  }
+
+  private async scheduleUntrusted(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    fromRequest: boolean,
+  ): Promise<Notification> {
+    const metadata = jsonSafeMetadata(opts.metadata);
+    if (Object.hasOwn(metadata, 'envelope'))
+      throw new NotificationReservedFieldError('envelope');
+    if (
+      typeof opts.category === 'string' &&
+      opts.category.startsWith(AGENT_NOTIFICATION_CATEGORY_PREFIX)
+    )
+      throw new NotificationReservedFieldError('category');
+    const tag = opts.dedupeTag ?? metadata.dedupeTag;
+    if (
+      typeof tag === 'string' &&
+      (tag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX) ||
+        (!fromRequest && tag.startsWith(REST_NOTIFICATION_DEDUPE_PREFIX)))
+    )
+      throw new NotificationReservedFieldError('dedupeTag');
+    return (await this.scheduleRecord(source, opts, metadata, undefined))
+      .notification;
+  }
+
+  /**
+   * Trusted write path (#2583): the only way `metadata.envelope` is written.
+   * In-process producers only (the agent notification gate, system
+   * producers) — never wire a request body into it. The envelope must pass
+   * `parseNotificationEnvelopeForWrite` (exact keys, no read/dismiss markers,
+   * no `principal` audience). `metadata.sessionId`/`conversationId` are
+   * derived from the envelope so REST read-gating and deep links follow the
+   * envelope's session; a conflicting caller value is refused. A dedupe
+   * update of an enveloped record emits NOTIFICATION_UPDATED.
+   */
+  async scheduleEnveloped(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    envelope: NotificationEnvelopeV1,
+  ): Promise<{
+    notification: Notification;
+    outcome: NotificationScheduleOutcome;
+  }> {
+    const parsed = parseNotificationEnvelopeForWrite(envelope);
+    if (!parsed) throw new NotificationEnvelopeValidationError();
+    const metadata = jsonSafeMetadata(opts.metadata);
+    if (Object.hasOwn(metadata, 'envelope'))
+      throw new NotificationReservedFieldError('envelope');
+    const sessionId =
+      parsed.audience.kind === 'session-readers'
+        ? parsed.audience.sessionId
+        : parsed.source.kind === 'agent'
+          ? parsed.source.sessionId
+          : undefined;
+    const conversationId =
+      parsed.source.kind === 'agent' ? parsed.source.conversationId : undefined;
+    for (const [key, derived] of [
+      ['sessionId', sessionId],
+      ['conversationId', conversationId],
+    ] as const) {
+      if (derived === undefined) continue;
+      if (metadata[key] !== undefined && metadata[key] !== derived) {
+        throw new NotificationEnvelopeValidationError(
+          `Notification metadata.${key} disagrees with its envelope`,
+        );
+      }
+      metadata[key] = derived;
+    }
+    metadata.envelope = parsed as unknown as Record<string, unknown>;
+    const { notification, created, updated } = await this.scheduleRecord(
+      source,
+      opts,
+      metadata,
+      parsed,
+    );
+    return {
+      notification,
+      outcome: created ? 'created' : updated ? 'updated' : 'unchanged',
+    };
+  }
+
+  private async scheduleRecord(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    metadata: Record<string, unknown>,
+    envelope: NotificationEnvelopeV1 | undefined,
+  ): Promise<{
+    notification: Notification;
+    created: boolean;
+    updated: boolean;
+  }> {
+    let displaced: string | undefined;
+    let remaining = 0;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
       // lock, so a stale schedule cannot restore a concurrent dismissal or
       // publish a second notification for the same provider item.
       if (opts.dedupeTag) {
-        const existing = all.find(
+        let existing = all.find(
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
+        if (existing && existing.source !== source) {
+          // A record under a source that is neither internal nor a
+          // registered provider can only have come from a request before
+          // #2597 (whose body chose any source: `api`, the SDK's `sdk`, a
+          // plugin string). That tag was never its to hold, so the writer
+          // takes it over (whatever its status) rather than being blocked
+          // forever. An internal/provider record still owns its tag.
+          // Ownership is evaluated now: a provider's records lose it while
+          // that provider is not registered (a removed or failed plugin) and
+          // may then be taken over by a colliding writer. Conversely a
+          // pre-#2597 request squat labelled with an internal or provider
+          // source name keeps ownership and is not reclaimable.
+          if (!this.ownsDedupeTags(existing.source)) {
+            all.splice(all.indexOf(existing), 1);
+            displaced = existing.id;
+            remaining = all.length + 1;
+            existing = undefined;
+          } else {
+            throw new NotificationDedupeSourceConflictError();
+          }
+        }
+        // Only the trusted path may rewrite an enveloped record: an untrusted
+        // update would replace metadata wholesale and strip its envelope.
+        if (
+          existing &&
+          !envelope &&
+          Object.hasOwn(existing.metadata ?? {}, 'envelope')
+        ) {
+          throw new NotificationReservedFieldError('dedupeTag');
+        }
         if (existing) {
           // archive#1912: a dismissal is a real, terminal user decision.
           if (existing.status === 'dismissed' || existing.actionLease) {
@@ -255,7 +567,7 @@ export class NotificationService {
             ...(opts.actions === undefined ? {} : { actions: opts.actions }),
             ...(opts.body === undefined ? {} : { body: opts.body }),
             metadata: {
-              ...jsonSafeMetadata(opts.metadata),
+              ...metadata,
               ...(opts.dedupeTag === undefined
                 ? {}
                 : { dedupeTag: opts.dedupeTag }),
@@ -294,7 +606,7 @@ export class NotificationService {
           : { ttl: opts.ttl ?? defaultTtl }),
         ...(opts.actions === undefined ? {} : { actions: opts.actions }),
         metadata: {
-          ...jsonSafeMetadata(opts.metadata),
+          ...metadata,
           ...(opts.dedupeTag === undefined
             ? {}
             : { dedupeTag: opts.dedupeTag }),
@@ -309,6 +621,14 @@ export class NotificationService {
       };
     });
 
+    if (displaced) {
+      this.clearTimer(displaced);
+      // The displaced record is gone from the store: tell clients to refetch.
+      this.eventBus.emit(SERVER_EVENTS.NOTIFICATION_CLEARED, {
+        clearedCount: 1,
+        retainedCount: remaining,
+      });
+    }
     if (created) notificationOps.add(1, { op: 'schedule' });
 
     if (created && notification.status === 'delivered') {
@@ -329,16 +649,48 @@ export class NotificationService {
       if (notification.status === 'pending') this.scheduleTimer(notification);
       else if (notification.status === 'delivered')
         this.scheduleExpiryTimer(notification);
+      // An enveloped record's content change must reach every client (and
+      // the delivery router); legacy dedupe updates stay silent as before.
+      if (envelope) {
+        this.eventBus.emit(
+          SERVER_EVENTS.NOTIFICATION_UPDATED,
+          toPublicNotification(notification) as unknown as Record<
+            string,
+            unknown
+          >,
+        );
+      }
     }
 
-    return toPublicNotification(notification);
+    return {
+      notification: toPublicNotification(notification),
+      created,
+      updated,
+    };
   }
 
+  /**
+   * For an enveloped record, the first dismissal by a known surface is also
+   * recorded in `envelope.dismissedAt/dismissedBy`. The surface is the
+   * explicit `surfaceId`, else a device caller's `device:<id>`; an operator
+   * caller with no client session id has no surface, so only `status`
+   * records that dismissal (status stays authoritative).
+   */
   async dismiss(
     id: string,
     clientOrigin?: ClientOrigin,
+    surfaceId?: SurfaceId,
   ): Promise<NotificationDismissal> {
-    return this.dismissWithOptions(id, { notifyProvider: true, clientOrigin });
+    const surface =
+      surfaceId ??
+      (clientOrigin?.actor.kind === 'device'
+        ? (`device:${clientOrigin.actor.deviceId}` as const)
+        : undefined);
+    return this.dismissWithOptions(id, {
+      notifyProvider: true,
+      clientOrigin,
+      surface: isSurfaceId(surface) ? surface : undefined,
+    });
   }
 
   async markStatus(id: string, status: Notification['status']): Promise<void> {
@@ -355,9 +707,69 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Records the first surface to read an enveloped notification in
+   * `metadata.envelope.readAt/readBy` and emits NOTIFICATION_UPDATED. First
+   * reader wins: a later read never overwrites the marker and emits nothing.
+   *
+   * `status` is untouched — the store has no read state, and status stays
+   * authoritative for delivery/expiry/dismissal. `revision` is deliberately
+   * NOT bumped: it is the CAS generation for the expiry/delivery timers and
+   * the action lease (whose `revision` must equal the record's), and a read
+   * marker changes neither. Bumping it would silently cancel a pending expiry
+   * and make a leased record fail store validation.
+   *
+   * A record without a readable envelope is left untouched (`no-envelope`):
+   * synthesising one would invent a source/audience/urgency nothing derived.
+   * Only a `delivered` record can be read (`not-delivered` otherwise). The
+   * marker is merged into the RAW stored envelope, so fields a newer build
+   * wrote survive. A dedupe update replaces metadata wholesale, so it also
+   * resets the marker — the content changed, so the record is unread again.
+   */
+  async markRead(
+    id: string,
+    surfaceId: SurfaceId,
+  ): Promise<NotificationMarkReadOutcome> {
+    if (!isSurfaceId(surfaceId)) {
+      throw new TypeError('markRead requires a surface id');
+    }
+    const readAt = new Date().toISOString();
+    const result = await this.mutate<
+      | { outcome: 'read'; notification: StoredNotification }
+      | { outcome: Exclude<NotificationMarkReadOutcome, 'read'> }
+    >((all) => {
+      const notification = all.find((candidate) => candidate.id === id);
+      if (!notification) return { result: { outcome: 'not-found' } };
+      const envelope = parseNotificationEnvelope(
+        notification.metadata?.envelope,
+      );
+      if (!envelope) return { result: { outcome: 'no-envelope' } };
+      if (notification.status !== 'delivered')
+        return { result: { outcome: 'not-delivered' } };
+      if (envelope.readAt) return { result: { outcome: 'already-read' } };
+      stampEnvelopeMark(notification, 'read', readAt, surfaceId);
+      notification.updatedAt = readAt;
+      return { result: { outcome: 'read', notification }, next: all };
+    });
+    if (result.outcome !== 'read') return result.outcome;
+    notificationOps.add(1, { op: 'read' });
+    this.eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_UPDATED,
+      toPublicNotification(result.notification) as unknown as Record<
+        string,
+        unknown
+      >,
+    );
+    return 'read';
+  }
+
   private async dismissWithOptions(
     id: string,
-    options: { notifyProvider: boolean; clientOrigin?: ClientOrigin },
+    options: {
+      notifyProvider: boolean;
+      clientOrigin?: ClientOrigin;
+      surface?: SurfaceId;
+    },
   ): Promise<NotificationDismissal> {
     const result = await this.mutate<NotificationDismissalResult>((all) => {
       const current = all.find((candidate) => candidate.id === id);
@@ -373,6 +785,14 @@ export class NotificationService {
       current.updatedAt = new Date().toISOString();
       current.revision += 1;
       delete current.actionLease;
+      if (options.surface) {
+        stampEnvelopeMark(
+          current,
+          'dismissed',
+          current.updatedAt,
+          options.surface,
+        );
+      }
       return {
         result: { outcome: 'dismissed' as const, notification: current },
         next: all,
@@ -954,7 +1374,23 @@ export class NotificationService {
       if (provider.poll) {
         try {
           const items = await provider.poll();
-          for (const opts of items) await this.schedule(provider.id, opts);
+          for (const opts of items) {
+            try {
+              await this.schedule(provider.id, opts);
+            } catch (e) {
+              // One refused item (a tag another source owns, a reserved
+              // field) must not drop the rest of this provider's poll.
+              if (
+                !(e instanceof NotificationDedupeSourceConflictError) &&
+                !(e instanceof NotificationReservedFieldError)
+              )
+                throw e;
+              logger.warn('Notification provider item refused', {
+                provider: provider.id,
+                reason: e.name,
+              });
+            }
+          }
         } catch (e) {
           logger.debug('Failed to poll notification provider', {
             provider: provider.id,
@@ -966,9 +1402,20 @@ export class NotificationService {
         try {
           const updates = await provider.syncStatus();
           for (const update of updates) {
+            // A provider syncs only its OWN records, and never an enveloped
+            // or `agent:` one: an unscoped tag lookup let any provider
+            // dismiss (permanently suppressing) or action an agent record.
+            if (
+              typeof update.dedupeTag !== 'string' ||
+              update.dedupeTag.startsWith(AGENT_NOTIFICATION_DEDUPE_PREFIX)
+            )
+              continue;
             const all = await this.read();
             const notification = all.find(
-              (n) => (n.metadata as any)?.dedupeTag === update.dedupeTag,
+              (n) =>
+                n.source === provider.id &&
+                (n.metadata as any)?.dedupeTag === update.dedupeTag &&
+                !Object.hasOwn(n.metadata ?? {}, 'envelope'),
             );
             if (!notification) continue;
             if (update.status === 'actioned') {
@@ -1245,6 +1692,30 @@ function jsonSafeMetadata(
   return Object.fromEntries(
     Object.entries(metadata).filter(([, value]) => value !== undefined),
   );
+}
+
+/**
+ * Records the first read/dismiss of an enveloped record by merging into the
+ * RAW stored envelope (a newer build's unknown fields survive). No-op for a
+ * record whose envelope does not read, or whose mark is already set.
+ */
+function stampEnvelopeMark(
+  notification: StoredNotification,
+  mark: 'read' | 'dismissed',
+  at: string,
+  by: SurfaceId,
+): void {
+  const raw = notification.metadata?.envelope;
+  const envelope = parseNotificationEnvelope(raw);
+  if (!envelope || !isRecord(raw)) return;
+  if (mark === 'read' ? envelope.readAt : envelope.dismissedAt) return;
+  notification.metadata = {
+    ...notification.metadata,
+    envelope:
+      mark === 'read'
+        ? { ...raw, readAt: at, readBy: by }
+        : { ...raw, dismissedAt: at, dismissedBy: by },
+  };
 }
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {

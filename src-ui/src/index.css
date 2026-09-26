@@ -1042,6 +1042,15 @@ button:hover {
   animation: responsive-surface-panel-enter var(--motion-base)
     var(--ease-emphasized);
 }
+/* The panel takes focus programmatically (tabindex -1) so the dialog, not a
+   control, is announced first. Under keyboard use every engine then draws its
+   default ring around the whole panel. It is a non-interactive container, so
+   the ring is suppressed deliberately: the first Tab lands on a control with
+   the product's keyboard ring. (A dialog with no controls at all is left with
+   no visible focus.) */
+.responsive-surface-panel:focus {
+  outline: none;
+}
 
 @keyframes responsive-surface-panel-enter {
   from {
@@ -1664,6 +1673,36 @@ button:hover {
 .region-tabs__close:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
+}
+
+/* The phone layer's way back to Chat (`RegionChromeBar` onBackToChat): only
+   rendered while a pane is open over Chat on a bottom-only device, so the
+   44px touch floor is unconditional rather than a mobile media rule. The ring
+   is the product-level :focus-visible rule at the top of this file. */
+.region-chrome__back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.region-chrome__back:hover {
+  background: var(--bg-tertiary);
+}
+
+.region-chrome__back-glyph {
+  font-size: 1.4em;
+  line-height: 1;
 }
 
 /* The close, revealed the way the placement grab is (#1552 D3): on an
@@ -4320,6 +4359,8 @@ button.background-tasks-banner:focus-visible {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+  /* Wrapped inside the 1px box, some screen readers run the words together. */
+  white-space: nowrap;
 }
 
 /* archive#3341: the two shapes every clipboard call site needs once its copy
@@ -4375,6 +4416,15 @@ button.background-tasks-banner:focus-visible {
   transition:
     opacity var(--motion-slow) var(--ease-out),
     transform var(--motion-slow) var(--ease-out);
+}
+
+/* A notice the user reads and acts on (Retry, Dismiss), not a transcript
+ * annotation: `.message.system`'s italic monospace made multi-sentence
+ * error prose hard to read. */
+.message.system.ephemeral-message {
+  color: var(--text-primary);
+  font-family: inherit;
+  font-style: normal;
 }
 
 .ephemeral-message.removing {
@@ -6823,16 +6873,43 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* File Preview (non-image attachments) */
-.file-preview__actions {
+.file-preview__toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
 }
-.file-preview__actions .button {
-  min-height: 44px;
+.file-preview__toolbar--end {
+  justify-content: flex-end;
+}
+.file-preview__kind {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+/* The preview's Download: an icon at the end of whichever toolbar the viewer
+   shows, with a full 44px target. */
+.preview-download {
+  /* Ends the row; if a narrow toolbar wraps, it stays at the trailing edge
+     rather than centred alone on a second line. */
+  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
   text-decoration: none;
+}
+.preview-download svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .file-preview__body {
   flex: 1;
@@ -6840,6 +6917,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+/* Text previews size to their content: a three-line note should not sit in
+   a nearly empty full-height panel. The panel keeps its height cap. */
+.file-preview__body--fit {
+  flex: 0 1 auto;
+}
+.image-preview-panel:has(.file-preview__body--fit) {
+  height: auto;
+  max-height: 90dvh;
 }
 .file-preview__frame {
   flex: 1;
@@ -6868,6 +6954,49 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .file-preview__markdown {
   padding: 4px 8px;
   overflow-wrap: anywhere;
+}
+/* h1-h3 use the transcript's heading scale (.message h1-h3), not browser
+   defaults, so a file's "# Title" reads as a heading, not a banner. h4-h6 sit
+   at body size rather than the defaults' shrinking sizes. */
+.file-preview__markdown h1,
+.file-preview__markdown h2,
+.file-preview__markdown h3,
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.file-preview__markdown > :first-child {
+  margin-top: 0;
+}
+.file-preview__markdown h1 {
+  font-size: 1.5em;
+}
+.file-preview__markdown h2 {
+  font-size: 1.3em;
+}
+.file-preview__markdown h3 {
+  font-size: 1.1em;
+}
+.file-preview__markdown h4,
+.file-preview__markdown h5,
+.file-preview__markdown h6 {
+  font-size: 1em;
+}
+.file-preview__markdown ul,
+.file-preview__markdown ol {
+  padding-inline-start: 1.5em;
+}
+.file-preview__markdown ul {
+  list-style: disc;
+}
+.file-preview__markdown ol {
+  list-style: decimal;
+}
+.file-preview__markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
 }
 .file-preview__notice {
   margin: 0;
@@ -9844,49 +9973,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--error-bg);
   color: var(--error-text);
   font-weight: 600;
-}
-
-/* ── Activity / chat switcher rows: anatomy now shared with the desktop
-   inbox panel (`chat-dock-inbox__*`, kontourai/station#3312) — only the
-   sheet-chrome rules below remain. ── */
-.mobile-task-switcher__show-all {
-  min-height: 44px;
-  margin-top: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.mobile-task-switcher__show-all:hover {
-  background: var(--bg-hover);
-}
-
-/* archive#1301: the activity-mode entry point into the Background
-   tasks sheet. Same shell as `__show-all` (a bordered full-width row) but it
-   opens a separate surface rather than expanding this one, so it sits above
-   the groups instead of below them. */
-.mobile-task-switcher__background-tasks-row {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  width: 100%;
-  margin-bottom: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mobile-task-switcher__background-tasks-row:hover,
-.mobile-task-switcher__background-tasks-row:focus-visible {
-  background: var(--bg-hover);
 }
 
 /* Ambiguous shortcut conflicts (archive#2576): equal-priority claims on one

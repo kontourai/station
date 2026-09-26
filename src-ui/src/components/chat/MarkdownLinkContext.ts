@@ -26,12 +26,6 @@ export interface MarkdownLinkContextValue {
   /** The project this dock is bound to, for the same comparison. */
   dockProjectSlug: string | null;
   /**
-   * True when this device's fold offers one dock region only (a phone). A
-   * side-region pane is not available there, so paths keep the main route and
-   * a pull request opens in the host's browser.
-   */
-  bottomOnly: boolean;
-  /**
    * The route a file preview took before #2049 and still takes wherever a
    * dock pane is not the answer: navigate `main` to the session's coding
    * layout with an open-preview intent. Null when the session has no coding
@@ -43,10 +37,8 @@ export interface MarkdownLinkContextValue {
     | ((path: string, lineRange?: WorkspaceFilePreviewLineRange) => void)
     | null;
   /**
-   * Absolute directories an absolute path in this conversation may name a
-   * file under — today the project's checkout, the directory the preview
-   * reads. An absolute path is a file link only inside one of these, and is
-   * previewed relative to it.
+   * The project's checkout. When the session runs there, an absolute path is
+   * a file link only inside it and is previewed relative to it.
    */
   projectRoots?: readonly string[];
   /**
@@ -56,11 +48,16 @@ export interface MarkdownLinkContextValue {
    */
   conversationId?: string | null;
   /**
-   * The directory the session runs in. When it is not the project checkout
-   * (an isolated worktree) the preview would read a different copy of the
-   * files the model named, so path mentions stay text.
+   * The directory the session runs in. When it is not the checkout (an
+   * isolated worktree, a subfolder), the model's paths name ITS files; they
+   * resolve against it and are read through `threadId` (#2476). The server
+   * reads it only when it can vouch the directory is this project's (the
+   * checkout, inside it, or a registered worktree) and refuses otherwise, so
+   * such a mention simply stays text.
    */
   sessionDirectory?: string | null;
+  /** The session's thread id, through which its own directory is read. */
+  threadId?: string | null;
 }
 
 export const MarkdownLinkContext =

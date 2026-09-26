@@ -38,7 +38,7 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
-import { resolveGitInfo } from '@kontourai/station-shared/git';
+import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -52,6 +52,10 @@ import {
   appendLifecycleEvent,
   type StopIntent,
 } from '@kontourai/station-shared/lifecycle-events';
+import {
+  OWNED_DEPENDENCY_INSTALL_SCRIPT,
+  ownedDependencyInstallerUnavailable,
+} from '@kontourai/station-shared/owned-dependency-installer';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -105,11 +109,17 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import type { CommandRunner } from './service.js';
 import {
   renderServiceInstallRemedy,
   renderServiceStatusCommand,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
+import {
+  findSupervisingServices,
+  IGNORE_SERVICE_STATE_FLAG,
+  renderSupervisingServiceRefusal,
+} from './service-upgrade-guard.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -1840,12 +1850,33 @@ function stopRecord(
       [record.serverPid, record.serverFingerprint, 'server'],
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
-    let anyPresent = false;
+    let anyAlive = false;
+    let unverifiable: { label: string; pid: number } | undefined;
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
+      // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
+      // never by whether the fingerprint probe returned something: the probe
+      // has more ways to come back null than "the process is gone" — an
+      // unreadable /proc, a `ps` without a `command=` column (busybox), or a
+      // missing boot id. Reading a null fingerprint as absence made `station
+      // stop` delete a running instance's state record (#2332 item 2).
+      if (!isProcessAlive(pid)) continue;
+      anyAlive = true;
       const actual = inspectProcessFingerprint(pid);
-      if (!actual) continue;
-      anyPresent = true;
+      if (!actual) {
+        // Alive, but its identity could not be confirmed. Fail safe: do not
+        // claim absence and do not sign off on a match either — keep the
+        // record and refuse the stop instead of guessing.
+        //
+        // Accepted residual: a recorded pid now reused by an UNRELATED
+        // process with an unreadable identity also lands here. The old code
+        // forgot the record in that case, which was right for reuse and
+        // wrong for a live Station; this refuses both and names the way out
+        // (check the pid, then remove the state file), since only the
+        // operator can tell them apart.
+        unverifiable = { label, pid };
+        continue;
+      }
       if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(
@@ -1853,7 +1884,7 @@ function stopRecord(
         );
       }
     }
-    if (!anyPresent) {
+    if (!anyAlive) {
       appendStopResult('already_absent');
       if (record.serverPid) {
         const activeApiBase = activeLocalApiBase(
@@ -1881,6 +1912,17 @@ function stopRecord(
       );
       return;
     }
+    if (unverifiable) {
+      appendStopResult('failed');
+      throw new Error(
+        [
+          `Refusing to stop Station instance ${record.instanceId}: its ${unverifiable.label} PID ${unverifiable.pid} is running, but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id), so it was not signalled and the recorded state was kept.`,
+          `Check what PID ${unverifiable.pid} is (for example \`ps -p ${unverifiable.pid} -o command=\`).`,
+          `If it is this Station, stop it with your OS tools and run \`station stop\` again.`,
+          `If it is an unrelated process that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
+        ].join(' '),
+      );
+    }
   }
   for (const pid of pids) {
     if (managed) {
@@ -1888,8 +1930,14 @@ function stopRecord(
         pid === record.serverPid
           ? record.serverFingerprint
           : record.uiFingerprint;
+      if (!isProcessAlive(pid)) continue;
       const actual = inspectProcessFingerprint(pid);
-      if (!actual) continue;
+      if (!actual) {
+        appendStopResult('failed');
+        throw new Error(
+          `Refusing to signal PID ${pid}: process is running but its identity could not be verified`,
+        );
+      }
       if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(
@@ -2896,15 +2944,16 @@ export function validatePackagedReleaseManifest(
   };
 }
 
+/** Bound on every checkout HEAD read (stamp writer and checker). */
+const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
     const git = resolveGitInfo(CWD);
-    const sha = execSync('git rev-parse HEAD', {
-      cwd: git.gitRoot,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    }).trim();
+    // station#2689: the same scrubbed, bounded read `checkSourceBuildStamp`
+    // uses, so an inherited GIT_DIR cannot make the stamp this writes
+    // disagree with the HEAD it is later checked against.
+    const sha = readGitHeadSha(git.gitRoot, SOURCE_HEAD_READ_TIMEOUT_MS);
     const manifest = validateBuildManifest({
       sha,
       // Detached release checkouts report `HEAD`; the promotion runner can
@@ -2957,6 +3006,89 @@ export function readBuildManifest(
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * station#2689: whether this source checkout's build stamp can back a managed
+ * boot. `start()` pins the supervisor's expected sha to `station-build.json`
+ * (`'unknown'` when absent) while the server reports its esbuild-baked sha, so
+ * a bundle built by `npm run build` — which never writes the stamp — fails
+ * every boot with "managed boot identity mismatch". A stamp whose sha differs
+ * from HEAD records a build of other sources.
+ *
+ * Scoped to source checkouts (`.git` present, as a directory or a linked
+ * worktree's file). A packaged release has no checkout HEAD to compare
+ * against; its provenance is `.station-release.json`, validated by the
+ * packaged install/upgrade path, and is not judged here.
+ *
+ * HEAD is read with a bounded, scrubbed git call. When it cannot be read,
+ * a present stamp is `unverifiable` (no verdict) and a missing one carries
+ * `headError`: a rebuild could not stamp it either, because `buildApplication`
+ * derives the stamp from the same HEAD.
+ */
+export type SourceBuildStampCheck =
+  | { status: 'not-source-checkout' }
+  | { status: 'current' }
+  | { status: 'unverifiable'; manifestPath: string; headError: string }
+  | { status: 'missing'; manifestPath: string; headError?: string }
+  | {
+      status: 'mismatch';
+      manifestPath: string;
+      stampSha: string;
+      headSha: string;
+    };
+
+export function checkSourceBuildStamp(
+  instanceId: string,
+): SourceBuildStampCheck {
+  if (!existsSync(join(CWD, '.git'))) return { status: 'not-source-checkout' };
+  const manifestPath = getBuildManifestPath(resolveBuildPaths(instanceId));
+  const stamp = readBuildManifest(instanceId);
+  let headSha: string | undefined;
+  let headError: string | undefined;
+  try {
+    headSha = readGitHeadSha(CWD, SOURCE_HEAD_READ_TIMEOUT_MS);
+  } catch (error) {
+    headError = error instanceof Error ? error.message : String(error);
+  }
+  if (!stamp) {
+    return headError === undefined
+      ? { status: 'missing', manifestPath }
+      : { status: 'missing', manifestPath, headError };
+  }
+  if (headSha === undefined) {
+    return { status: 'unverifiable', manifestPath, headError: headError! };
+  }
+  if (stamp.sha !== headSha) {
+    return { status: 'mismatch', manifestPath, stampSha: stamp.sha, headSha };
+  }
+  return { status: 'current' };
+}
+
+/** True when a `buildApplication` run can repair the stamp. */
+export function sourceBuildStampNeedsRebuild(
+  check: SourceBuildStampCheck,
+): boolean {
+  return (
+    check.status === 'mismatch' ||
+    (check.status === 'missing' && check.headError === undefined)
+  );
+}
+
+/** Why the stamp cannot back a managed boot, or null when nothing is wrong. */
+export function describeSourceBuildStampProblem(
+  check: SourceBuildStampCheck,
+): string | null {
+  switch (check.status) {
+    case 'missing':
+      return check.headError === undefined
+        ? `build stamp ${check.manifestPath} is missing or invalid (a plain \`npm run build\` does not write it)`
+        : `build stamp ${check.manifestPath} is missing or invalid, and the checkout HEAD cannot be read (${check.headError}), so no build can write it`;
+    case 'mismatch':
+      return `build stamp ${check.manifestPath} records sha ${check.stampSha}, but the checkout HEAD is ${check.headSha}`;
+    default:
+      return null;
   }
 }
 
@@ -3331,6 +3463,10 @@ export async function waitForIdentity(
   let extensionsUsed = 0;
   let lastFailure = 'No response received';
   let lastKind: IdentityWaitFailureKind | null = null;
+  // station#2689: which triple fields differed on the last mismatch, and both
+  // values. Kept out of `lastFailure` so the parenthesised reason stays the
+  // exact phrase `classifyStartFailure` (scripts/run-e2e-suite.mjs) matches.
+  let lastMismatchDetail = '';
   while (true) {
     if (Date.now() >= deadline) {
       // Last-attempt-only by design: a mismatch followed by a refused connect
@@ -3380,6 +3516,7 @@ export async function waitForIdentity(
         }
         lastFailure = 'managed boot identity mismatch';
         lastKind = 'identity-mismatch';
+        lastMismatchDetail = describeIdentityMismatch(expected, actual);
       } else {
         lastFailure = `${response.status} ${response.statusText}`.trim();
         lastKind = classifyIdentityWaitStatus(response.status);
@@ -3395,7 +3532,29 @@ export async function waitForIdentity(
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
-  throw new Error(`Timed out waiting for ${url} (${lastFailure})`);
+  throw new Error(
+    `Timed out waiting for ${url} (${lastFailure})${
+      lastKind === 'identity-mismatch' ? `: ${lastMismatchDetail}` : ''
+    }`,
+  );
+}
+
+const IDENTITY_TRIPLE_FIELDS = ['sha', 'bootId', 'instanceId'] as const;
+
+/** `sha expected "a", got "b"; …` for each identity field that differed. */
+function describeIdentityMismatch(
+  expected: { instanceId: string; sha: string; bootId: string },
+  actual: Partial<typeof expected>,
+): string {
+  const show = (value: unknown) => JSON.stringify(value) ?? 'nothing';
+  return IDENTITY_TRIPLE_FIELDS.filter(
+    (field) => actual[field] !== expected[field],
+  )
+    .map(
+      (field) =>
+        `${field} expected ${show(expected[field])}, got ${show(actual[field])}`,
+    )
+    .join('; ');
 }
 
 async function probeIdentityOnce(
@@ -4031,6 +4190,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // This marker is a capability for precisely the server spawn governed by
   // service-run. Never inherit it through a server-initiated lifecycle call.
   delete serverEnv.STATION_SUPERVISOR_PID;
+  // The unit's "you run under the service" marker (set by the launchd/systemd
+  // unit, inherited through service-run) belongs to the supervised spawn only,
+  // like the PID above: a plain `station start` from a terminal inside a
+  // service-managed Station is not service-managed, and reading it as such
+  // makes that server refuse its own core update (#2674).
+  const serviceManaged = serverEnv.STATION_SERVICE_MANAGED;
+  delete serverEnv.STATION_SERVICE_MANAGED;
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
@@ -4063,6 +4229,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   serverEnv.STATION_BOOT_ID = bootId;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
+    if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
   }
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
@@ -4147,6 +4314,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
+          delete uiEnv.STATION_SERVICE_MANAGED;
           return uiEnv;
         })(),
       },
@@ -4277,6 +4445,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     console.log(`\n  ✓ Server: http://${healthHost}:${serverPort}`);
     console.log(
       `  ✓ UI:     http://${healthHost}:${uiPort}/#station-ui-bootstrap=${uiBootstrapToken}`,
+    );
+    // #2612: `station open` mints a replacement and this link then stops
+    // working with no other signal.
+    // Same selectors this instance was started with, so the command works as
+    // printed (like the "Stop with" line below).
+    const openHome =
+      homeSource === 'default'
+        ? ''
+        : ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+    console.log(
+      `            (single-use sign-in link; \`station open --print${openHome} --instance=${instanceId}\` makes a new one)`,
     );
     // station#3677 (owner decision 3): the consent listener fails CLOSED but
     // never fails the START. Review MED 4: the report derives from the
@@ -4697,7 +4876,9 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  * installer-owned state before it may touch the network; falling through to
  * Git would turn old or copied release files into an unsigned update path.
  */
-function delegatePackagedUpgradeIfPresent(): string | null {
+function delegatePackagedUpgradeIfPresent(
+  beforeInstall: (stationHome: string) => void,
+): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
   const installRoot = resolve(releasesRoot, '..');
@@ -4747,6 +4928,7 @@ function delegatePackagedUpgradeIfPresent(): string | null {
   }
   const installer = join(CWD, 'install.sh');
   readSafePackagedFile(installer, 'packaged release installer');
+  beforeInstall(state.stationHome);
 
   execFileSync('sh', ['./install.sh', 'install'], {
     cwd: CWD,
@@ -4761,6 +4943,63 @@ function delegatePackagedUpgradeIfPresent(): string | null {
     windowsHide: true,
   });
   return state.stationHome;
+}
+
+/** Synchronous command runner for the read-only service probes below. */
+function runServiceProbe(
+  command: string,
+  args: string[],
+): ReturnType<CommandRunner> {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return {
+    error: result.error,
+    status: result.status,
+    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
+    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
+  };
+}
+
+/**
+ * #2674: under an installed service, the live instance `upgrade` would stop is
+ * the service's supervised child. The supervisor exits with it, launchd/systemd
+ * restart the unit within seconds, and its `buildIfStale` races this upgrade's
+ * own pull and build in the same checkout (for a packaged install, the
+ * installer's swap). Refuse before touching anything and name the sequence
+ * that is safe; orchestrating stop/upgrade/start is deliberately not done here.
+ */
+function assertNoSupervisingService(
+  stationHome: string,
+  options: { ignoreUnknownServiceState?: boolean; repoPath?: string },
+) {
+  const supervising = findSupervisingServices(stationHome, {
+    fs: { existsSync, readFileSync, readdirSync, realpathSync },
+    platform: process.platform,
+    run: runServiceProbe,
+    ...(options.repoPath === undefined ? {} : { repoPath: options.repoPath }),
+  });
+  if (supervising.length === 0) return;
+  // The override is for a probe that cannot answer (a broken backend, a
+  // stale manifest whose unit is gone) — never for a unit reported running.
+  if (
+    options.ignoreUnknownServiceState &&
+    supervising.every((service) => service.state === 'unknown')
+  ) {
+    console.warn(
+      [
+        `WARNING: ${IGNORE_SERVICE_STATE_FLAG}: proceeding although Station could not determine whether these installed services are running:`,
+        ...supervising.map(
+          (service) =>
+            `  - ${service.instanceId} (${service.detail ?? 'state unknown'}; manifest ${service.manifestPath})`,
+        ),
+        'If one of them is in fact supervising this Station, it will restart the server mid-upgrade.',
+      ].join('\n'),
+    );
+    return;
+  }
+  throw new Error(renderSupervisingServiceRefusal(supervising));
 }
 
 function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
@@ -4810,22 +5049,7 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
             : {}),
           unitPath: manifest.unitPath,
         },
-        {
-          run: (command, args) => {
-            const result = spawnSync(command, args, {
-              encoding: 'utf8',
-              windowsHide: true,
-            });
-            return {
-              error: result.error,
-              status: result.status,
-              stderr:
-                typeof result.stderr === 'string' ? result.stderr : undefined,
-              stdout:
-                typeof result.stdout === 'string' ? result.stdout : undefined,
-            };
-          },
-        },
+        { run: runServiceProbe },
       );
       if (scheduling.status === 'stale') {
         console.log(
@@ -4880,42 +5104,33 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
  * dependency edit. The `station` launcher's cold bootstrap uses `ci` because
  * it installs a freshly cloned checkout nobody has edited yet.
  */
-const UPGRADE_DEPENDENCY_INSTALL_COMMAND = 'npm run dependencies:install';
+const UPGRADE_DEPENDENCY_INSTALL_COMMAND = `npm run ${OWNED_DEPENDENCY_INSTALL_SCRIPT}`;
 
-/**
- * Why the pulled tree cannot run the owned installer, or `null` when it can.
- *
- * `git pull` can leave any tree the upstream branch happens to name, so the
- * two things `npm run dependencies:install` needs are checked before it is
- * spawned: the script binding and the script itself. There is no fallback —
- * a raw `npm install` in a pinned-pnpm workspace is the defect this replaced,
- * not a degraded mode — so the caller refuses and says which file is missing.
- */
-function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
-  const manifestPath = join(gitRoot, 'package.json');
-  let script: unknown;
-  try {
-    script = (
-      JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-        scripts?: Record<string, unknown>;
-      }
-    ).scripts?.['dependencies:install'];
-  } catch (error) {
-    return `${manifestPath} could not be read as JSON (${error instanceof Error ? error.message : String(error)})`;
-  }
-  if (typeof script !== 'string')
-    return `${manifestPath} does not define the "dependencies:install" script`;
-  const lifecyclePath = join(gitRoot, 'scripts', 'dependency-lifecycle.mjs');
-  if (!existsSync(lifecyclePath)) return `${lifecyclePath} is missing`;
-  return null;
+export interface UpgradeOptions extends BuildOptions {
+  /**
+   * Proceed past installed services whose running state could not be
+   * determined (`--ignore-service-state`). Never overrides a running one.
+   */
+  ignoreUnknownServiceState?: boolean;
 }
 
-export async function upgrade(options: BuildOptions = {}): Promise<void> {
-  const packagedStationHome = delegatePackagedUpgradeIfPresent();
+export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  const { ignoreUnknownServiceState, ...buildOptions } = options;
+  // A packaged install proves its provenance first; the service check runs on
+  // the home that provenance names, before the installer swaps anything.
+  const packagedStationHome = delegatePackagedUpgradeIfPresent((home) =>
+    assertNoSupervisingService(home, { ignoreUnknownServiceState }),
+  );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
     return;
   }
+  // Source checkout: only services installed from THIS checkout are raced by
+  // its rebuild (`service install` records the checkout as `repoPath`).
+  assertNoSupervisingService(
+    resolveLifecycleHomeTarget({ baseDir: options.baseDir }).projectHome,
+    { ignoreUnknownServiceState, repoPath: CWD },
+  );
   const liveInstances = listRunningInstances();
   if (liveInstances.length > 1) {
     throw new Error(
@@ -4993,7 +5208,7 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   // buildApplication() resolves the default instance's build paths
   // (dist-server/dist-ui), writes the manifest, and validates+promotes
   // atomically, keeping the manifest sha and the baked sha in lockstep.
-  await buildApplication(options);
+  await buildApplication(buildOptions);
 
   console.log('\n  ✓ Upgraded');
   console.log('  Plugins unchanged. Run "station start" to launch.');

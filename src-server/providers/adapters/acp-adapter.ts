@@ -86,6 +86,12 @@ import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
+import {
+  classifyProviderQuotaFailure,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  PROVIDER_PLAN_QUOTA_MESSAGE,
+  providerQuotaEventDetails,
+} from '../provider-plan-quota.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   decodeChatAttachments,
@@ -110,6 +116,7 @@ import {
   type AdvertisedAcpModeCatalog,
   advertisedAcpSessionModes,
   applyAdvertisedAcpSessionMode,
+  permittedAcpSessionMode,
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
@@ -402,7 +409,7 @@ export interface AcpSessionRecord {
   command: string;
   args?: string[];
   /**
-   * Bumps on each `session/prompt` this Station turn owns. A T3-style
+   * Bumps on each `session/prompt` this Station turn owns. A
    * cancel+reprompt steer increments it so the cancelled prompt's settlement
    * cannot complete or fail the still-open turn.
    */
@@ -1235,7 +1242,20 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (modeCatalog.modes.length > 0) {
           record.currentModeId = modeCatalog.currentModeId;
         }
-        const requestedMode = requestedAcpSessionMode(input.modelOptions);
+        // #2569: a full-access mode is the ACP form of approval `never`.
+        // Outside a `host` session it is not applied, and the session keeps
+        // (and reports, as `acpSessionMode`) the connection's own current
+        // mode. `mode` is not an effective-model-option key, so nothing
+        // reports the withheld request as applied.
+        //
+        // Only a fresh `session/new` applies a start mode: a credential
+        // re-establishment always resumes with `session/load`, so the
+        // `recoveryStart` copy needs no confinement of its own.
+        const requestedMode = permittedAcpSessionMode(
+          modeCatalog,
+          requestedAcpSessionMode(input.modelOptions),
+          input.confinement,
+        );
         if (requestedMode) {
           if (modeCatalog.modes.length === 0) {
             throw new Error(
@@ -1454,9 +1474,15 @@ export class AcpAdapter implements ProviderAdapterShape {
         'This engine did not advertise image attachment support.',
       );
     }
-    const requestedMode = requestedAcpSessionMode(input.modelOptions);
+    const turnCatalog = record.acpModeCatalog ?? { modes: [] };
+    // #2569: see startSession.
+    const requestedMode = permittedAcpSessionMode(
+      turnCatalog,
+      requestedAcpSessionMode(input.modelOptions),
+      input.confinement,
+    );
     if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = record.acpModeCatalog ?? { modes: [] };
+      const catalog = turnCatalog;
       if (catalog.modes.length === 0) {
         throw new Error(
           `ACP mode option unavailable: this session did not advertise a session mode.`,
@@ -2418,20 +2444,41 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.quarantinedTurnIds?.delete(turnId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
-        const baseMessage = errorMessage(error);
+        // #2265: a classified provider-plan quota exhaustion publishes
+        // fixed safe copy plus bounded facts — never the engine's raw
+        // message, and never the co-reported notification text (which is
+        // correlation, not a proven cause, and stays out of this terminal).
+        const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          method: 'runtime.error',
-          severity: 'error',
-          message: coReportedCause
-            ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-            : baseMessage,
-        });
+        if (quota) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            severity: 'error',
+            code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+            message: PROVIDER_PLAN_QUOTA_MESSAGE,
+            details: providerQuotaEventDetails(quota),
+          });
+        } else {
+          const baseMessage = errorMessage(error);
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            severity: 'error',
+            message: coReportedCause
+              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+              : baseMessage,
+          });
+        }
         record.session.status = 'error';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;

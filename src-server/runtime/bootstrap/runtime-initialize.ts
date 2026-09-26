@@ -51,7 +51,6 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
-import { getCachedUser } from '../../routes/system/auth.js';
 import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
@@ -132,7 +131,7 @@ import {
   createRuntimeFrameworkModel,
   resolveDefaultManagedModelHint,
 } from '../plugins/runtime-provider-resolution.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import type { IAgentFramework } from '../types.js';
 import {
   createEventStoreWorkItemPrincipalLiveness,
@@ -534,7 +533,13 @@ export async function initializeRuntime(
         new GitLabPullRequestProvider(),
       ],
     });
+  // #2540: idle-engine parking. A non-negative integer overrides the
+  // threshold in milliseconds; `0` turns parking off.
+  const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
+    process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
+  );
   const orchestrationService = new OrchestrationService({
+    ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.
@@ -574,14 +579,6 @@ export async function initializeRuntime(
       }
       return tenantExecutionContextFromSession(context);
     },
-    // Station currently exposes one local account. Keep legacy, pre-owner
-    // sessions readable only through this explicit compatibility mode; a
-    // multi-user runtime must migrate them and switch this to `deny`.
-    ownerlessSessionAccess: 'single-user-compat',
-    // #749: rows written before principal ownership retain this Station
-    // process's former OS alias. SessionAuthorization admits it only for the
-    // request-derived home-possession local-operator principal.
-    legacyPersonalOwner: getCachedUser().alias,
     personalConversationAccess: {
       canRead: (requesterId, ownerId) =>
         deps.environmentSecurityService.canSharePersonalConversation(
@@ -670,6 +667,8 @@ export async function initializeRuntime(
     adoptionLedger,
     eventBus,
     logger,
+    invalidateSessionOwner: (threadId) =>
+      orchestrationService.invalidateSessionOwner(threadId),
     listProjects: () => storageAdapter.listProjects(),
     resolveProjectRoots: () =>
       resolveAttachedProjectRoots(storageAdapter.listProjects(), (slug) =>
@@ -851,7 +850,7 @@ export async function initializeRuntime(
         logger,
         usageAggregator: nextUsageAggregator,
         defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-        autoApproveTools: SC_READ_ONLY_TOOLS,
+        autoApproveTools: SC_AUTO_APPROVED_TOOLS,
         replaceTemplateVariables,
         resolveDefaultModelHint: () =>
           resolveDefaultManagedModelHint(
@@ -1093,4 +1092,12 @@ export async function initializeRuntime(
     voltAgent,
     voiceWsAttached: true,
   };
+}
+
+function parseNonNegativeIntegerEnv(
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }

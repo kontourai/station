@@ -4,7 +4,10 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
+import {
+  isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -27,6 +30,7 @@ import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { isReplayThread } from './replay/replay-registry';
+import { notifyTurnTerminal } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -225,6 +229,10 @@ export function handleTurnStartedEvent(
           sendAwaitingTurnStart: undefined,
         }),
     status: 'sending',
+    // A new turn supersedes the previous turn's transient failure. Its
+    // failure card remains in the transcript until the durable projection
+    // reconciles it, but the current chat status must not inherit the error.
+    error: undefined,
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be
     // buffered, so a terminal event for a DIFFERENT turn cannot attach its
@@ -350,6 +358,27 @@ export function handleTurnCompletedEvent(
     activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
     event.threadId;
   reconcileDurableTurn(chatKey, event.turnId);
+  if (closesOpenTurn) {
+    notifyTurnTerminal({
+      threadId: event.threadId,
+      turnId: event.turnId,
+      provider: event.provider,
+      kind: 'completed',
+      cancelled: event.finishReason === 'cancelled',
+      providerTurn: isProviderTriggeredTurn(event),
+      closedWithoutResult: event.metadata?.closedWithoutResult !== undefined,
+      text: event.outputText?.trim()
+        ? event.outputText
+        : activeChatsStore
+            .getChatForExecutionSession(event.threadId)
+            ?.messages?.slice()
+            .reverse()
+            .find(
+              (message) =>
+                message.role === 'assistant' && message.turnId === event.turnId,
+            )?.content,
+    });
+  }
   if (!isReplayThread(event.threadId)) {
     drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
   }
@@ -431,6 +460,14 @@ export function handleTurnAbortedEvent(
     !chat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
+  });
+  notifyTurnTerminal({
+    threadId: event.threadId,
+    turnId: event.turnId,
+    provider: event.provider,
+    kind: 'aborted',
+    providerTurn: isProviderTriggeredTurn(event),
+    reason: event.reason,
   });
 }
 
@@ -614,6 +651,19 @@ export function handleRuntimeErrorEvent(
     messages,
     orchestrationHistoryRevision: (chat?.orchestrationHistoryRevision ?? 0) + 1,
   });
+  // A deferred-retriable Codex error may still resolve this turn, so it is
+  // not the turn's end (the same rule the queue drain and server push use).
+  if (!isDeferredRetriableTurnError(event)) {
+    notifyTurnTerminal({
+      threadId: event.threadId,
+      turnId:
+        typeof terminalTurnId === 'string' ? terminalTurnId : chat?.openTurnId,
+      provider: event.provider,
+      kind: 'error',
+      providerTurn: isProviderTriggeredTurn(event),
+      reason: errorPartPrefix,
+    });
+  }
 }
 
 export function handleRuntimeWarningEvent(

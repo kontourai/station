@@ -6,9 +6,10 @@ import type {
   BundledServerPhase,
   BundledServerStatus,
   HapticFeedbackKind,
+  NativeAgentActivityLaunchRoute,
+  NativeAgentActivityPhoneStatus,
   NativeAgentActivityPushToken,
   NativeAgentActivityRegistration,
-  NativeAgentActivityStatus,
   NativeBrowserPreviewGrantResult,
   NativeBrowserPreviewHostErrorCode,
   NativeBrowserPreviewObservation,
@@ -20,6 +21,7 @@ import type {
   NativeCommandResult,
   NativeConsentOutcome,
   NativeEventSubscription,
+  NativeIosAgentActivityStatus,
   NativePairingDeepLinkEvent,
   NativePlatformAdapter,
   NativePlatformError,
@@ -34,6 +36,12 @@ export type TauriEventHandler<T> = (event: { payload: T }) => void;
 export interface TauriEventBridge {
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
   listen<T>(event: string, handler: TauriEventHandler<T>): Promise<UnlistenFn>;
+  /** A mobile plugin's own event (`Plugin.trigger` on Android). */
+  addPluginListener?(
+    plugin: string,
+    event: string,
+    handler: () => void,
+  ): Promise<UnlistenFn>;
 }
 
 export interface TauriDeepLinkBridge {
@@ -51,6 +59,13 @@ const TAURI_EVENT_BRIDGE: TauriEventBridge = {
   ): Promise<UnlistenFn> {
     const { listen } = await import('@tauri-apps/api/event');
     return listen<T>(event, handler);
+  },
+  async addPluginListener(plugin, event, handler) {
+    const { addPluginListener } = await import('@tauri-apps/api/core');
+    const listener = await addPluginListener(plugin, event, () => handler());
+    return () => {
+      void listener.unregister().catch(() => {});
+    };
   },
 };
 
@@ -563,14 +578,55 @@ function errorMessage(error: unknown): string {
   return message.slice(0, 500);
 }
 
-/** Tauri plugin id of the Android agent-activity plugin (src-desktop/plugins/agent-activity). */
+/** Tauri plugin id of the agent-activity plugin (src-desktop/plugins/agent-activity). */
 const AGENT_ACTIVITY_PLUGIN = 'plugin:station-agent-activity';
+
+function isApnsEnvironment(value: unknown): value is 'production' | 'sandbox' {
+  return value === 'production' || value === 'sandbox';
+}
+
+/** The iOS plugin's `status` reply (AgentActivityPlugin.swift). */
+function parseIosAgentActivityStatus(
+  candidate: Record<string, unknown>,
+): NativeIosAgentActivityStatus | null {
+  const booleans = [
+    'liveActivitiesSupported',
+    'liveActivitiesEnabled',
+    'frequentPushesEnabled',
+    'pushConfigured',
+    'configured',
+  ] as const;
+  if (
+    typeof candidate.osVersion !== 'string' ||
+    typeof candidate.packageName !== 'string' ||
+    candidate.packageName.length === 0 ||
+    booleans.some((key) => typeof candidate[key] !== 'boolean') ||
+    (candidate.apnsEnvironment !== undefined &&
+      !isApnsEnvironment(candidate.apnsEnvironment))
+  )
+    return null;
+  return {
+    platform: 'ios',
+    osVersion: candidate.osVersion,
+    packageName: candidate.packageName,
+    liveActivitiesSupported: candidate.liveActivitiesSupported as boolean,
+    liveActivitiesEnabled: candidate.liveActivitiesEnabled as boolean,
+    frequentPushesEnabled: candidate.frequentPushesEnabled as boolean,
+    pushConfigured: candidate.pushConfigured as boolean,
+    configured: candidate.configured as boolean,
+    ...(isApnsEnvironment(candidate.apnsEnvironment)
+      ? { apnsEnvironment: candidate.apnsEnvironment }
+      : {}),
+  };
+}
 
 function parseAgentActivityStatus(
   value: unknown,
-): NativeAgentActivityStatus | null {
+): NativeAgentActivityPhoneStatus | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
+  if (candidate.platform === 'ios')
+    return parseIosAgentActivityStatus(candidate);
   const booleans = [
     'notificationsEnabled',
     'liveUpdatesSupported',
@@ -602,19 +658,63 @@ function parseAgentActivityPushToken(
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
   if (candidate.state === 'unconfigured') return { state: 'unconfigured' };
+  // Only the iOS plugin answers this, below iOS 18.
+  if (candidate.state === 'unsupported') return { state: 'unsupported' };
   if (
     candidate.state === 'available' &&
     typeof candidate.token === 'string' &&
     candidate.token.length > 0
-  )
-    return { state: 'available', token: candidate.token };
+  ) {
+    // Only an iOS reply names the APNs environment its token belongs to.
+    if (candidate.apnsEnvironment === undefined)
+      return { state: 'available', token: candidate.token };
+    if (!isApnsEnvironment(candidate.apnsEnvironment)) return null;
+    return {
+      state: 'available',
+      token: candidate.token,
+      apnsEnvironment: candidate.apnsEnvironment,
+    };
+  }
   return null;
+}
+
+/**
+ * The plugin's `take_launch_route` reply: `{ route: null }`, or a route of
+ * non-empty strings. Only the shape is checked here; whether it may be
+ * navigated to is `agentActivitySessionTarget`'s decision.
+ */
+function parseAgentActivityLaunchRoute(
+  value: unknown,
+): { route: NativeAgentActivityLaunchRoute | null } | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const route = (value as { route?: unknown }).route;
+  if (route === null || route === undefined) return { route: null };
+  if (typeof route !== 'object') return null;
+  const candidate = route as Record<string, unknown>;
+  if (
+    typeof candidate.stationId !== 'string' ||
+    typeof candidate.sessionId !== 'string' ||
+    (candidate.projectSlug !== undefined &&
+      typeof candidate.projectSlug !== 'string')
+  )
+    return null;
+  return {
+    route: {
+      stationId: candidate.stationId,
+      sessionId: candidate.sessionId,
+      ...(typeof candidate.projectSlug === 'string'
+        ? { projectSlug: candidate.projectSlug }
+        : {}),
+    },
+  };
 }
 
 /** The sole Tauri SDK adapter for Station's React application. */
 export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   readonly platform = 'tauri' as const;
   private capabilityReportReadFailed = false;
+  /** The compile target the host last reported; null until a report is read. */
+  private reportedTarget: NativeCapabilityReport['platform'] | null = null;
   private capabilities = Object.fromEntries(
     Object.entries(INITIAL_TAURI_CAPABILITIES).map(([id, status]) => [
       id,
@@ -659,6 +759,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         ),
       } as Record<NativeCapabilityId, NativeCapabilityStatus>;
       this.capabilityReportReadFailed = false;
+      this.reportedTarget = report.platform;
       return {
         status: 'ok',
         value: report,
@@ -1277,7 +1378,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
   async agentActivityStatus(): Promise<
-    NativeCommandResult<NativeAgentActivityStatus>
+    NativeCommandResult<NativeAgentActivityPhoneStatus>
   > {
     return this.agentActivityCommand(
       'agent-activity-status',
@@ -1342,10 +1443,64 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     );
   }
 
+  async takeAgentActivityLaunchRoute(): Promise<
+    NativeCommandResult<{ route: NativeAgentActivityLaunchRoute | null }>
+  > {
+    // Only the Android plugin records card-tap routes; the iOS plugin has no
+    // such command (an iOS tap opens the app where it was).
+    if (this.reportedTarget !== 'android') {
+      return {
+        status: 'unsupported',
+        command: 'take-agent-activity-launch-route',
+        reason: 'Card-tap routes are recorded only by the Android app.',
+      };
+    }
+    return this.agentActivityCommand(
+      'take-agent-activity-launch-route',
+      'take_launch_route',
+      undefined,
+      parseAgentActivityLaunchRoute,
+    );
+  }
+
+  subscribeToAgentActivityLaunchRoutes(
+    listener: () => void,
+  ): NativeEventSubscription & { ready: Promise<void> } {
+    let disposed = false;
+    let unlisten: UnlistenFn | undefined;
+    const addPluginListener = this.bridge.addPluginListener;
+    if (
+      this.capabilities['remote-push'].state !== 'enabled' ||
+      this.reportedTarget !== 'android' ||
+      !addPluginListener
+    )
+      return { dispose() {}, ready: Promise.resolve() };
+    const ready = addPluginListener
+      .call(this.bridge, 'station-agent-activity', 'launchRoute', () => {
+        if (!disposed) listener();
+      })
+      .then((registered) => {
+        if (disposed) registered();
+        else unlisten = registered;
+      })
+      .catch((error: unknown) => {
+        // Without the nudge a tap while the app runs is picked up on the
+        // next start instead; say so rather than failing silently.
+        console.warn('station: agent activity launch listener failed', error);
+      });
+    return {
+      ready,
+      dispose() {
+        disposed = true;
+        unlisten?.();
+      },
+    };
+  }
+
   /**
-   * The plugin is compiled into Android builds only, so the host's
-   * `remote-push` report — not a guess about the platform — decides whether
-   * a call is attempted at all.
+   * The plugin's native half exists only in Android builds and iOS builds
+   * with the Live Activity half, so the host's `remote-push` report — not a
+   * guess about the platform — decides whether a call is attempted at all.
    */
   private async agentActivityCommand<T>(
     command: NativeCommandName,

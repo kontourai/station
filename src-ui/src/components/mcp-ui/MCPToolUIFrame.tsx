@@ -295,6 +295,9 @@ export function MCPToolUIFrame({
   const config = useConfig();
   const platform = usePlatformProfile();
   const requestAuthority = useHostRequestAuthorityScope();
+  // Re-enabling MCP frames on native must also add a narrow Rust-side opener
+  // for their links: the native `open_external_link` admits any https link
+  // since #2480, so this frame's own allowlist would be the only check left.
   const nativeIframeBlocked = platform.isTauri;
   // MCP-UI host renders by default; operators opt out with `mcpUiHost: false`.
   const hostEnabled = config?.mcpUiHost !== false;

@@ -56,11 +56,11 @@ const guidance = [
 export const CI_FAST_DEADLINE_GUIDANCE = Object.freeze([
   Object.freeze({
     file: 'docs/guides/testing.md',
-    marker: 'twelve-minute coordinator deadline',
+    marker: 'fifteen-minute coordinator deadline',
   }),
   Object.freeze({
     file: 'docs/guides/code-quality.md',
-    marker: 'bounded twelve-minute feedback',
+    marker: 'bounded fifteen-minute feedback',
   }),
 ]);
 const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
@@ -96,6 +96,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
@@ -265,7 +266,7 @@ const VERIFICATION_POLICY_SECTION_LINES = [
   'See `docs/reference/verification-receipts.md` for the field-by-field table.',
   '',
   '`ci:fast` is bounded diagnostic feedback, not completion evidence: it has a',
-  'twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
+  'fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
   '`origin/main`) in its request identity, runs the affected selection before a',
   'fixed bounded static invariant set. A selector exit 3 is reported as a',
   'diagnostic defer after those invariants, never completion evidence; the',

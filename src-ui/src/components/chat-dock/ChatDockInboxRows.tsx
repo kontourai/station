@@ -15,7 +15,7 @@ import {
   LifecycleStatusChip,
 } from '../home/LifecycleStatusChip';
 import { AgentIcon } from '../icons/AgentIcon';
-import { ReturnGlyph, TimeGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, ReturnGlyph, TimeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -182,11 +182,14 @@ function SnoozeActions({
   isSnoozed,
   now,
   onWake,
+  menuOnly = false,
 }: {
   item: HomeWorkItem;
   isSnoozed: boolean;
   now: number;
   onWake: (wakeAt: number | null, action: HTMLButtonElement) => void;
+  /** One control that opens the duration menu — see `InboxRowProps`. */
+  menuOnly?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -195,24 +198,39 @@ function SnoozeActions({
       onWake(snoozeWakeAt(option, now), triggerRef.current);
     setMenuOpen(false);
   };
+  const opensMenu = menuOnly && !isSnoozed;
   return (
     <>
-      <button
-        type="button"
-        className="chat-dock-inbox__row-action"
-        aria-label={
-          isSnoozed ? `Unsnooze ${item.title}` : `Snooze ${item.title}`
-        }
-        onClick={(event) =>
-          onWake(
-            isSnoozed ? null : snoozeWakeAt(SNOOZE_OPTIONS[0], now),
-            event.currentTarget,
-          )
-        }
-      >
-        {isSnoozed ? <ReturnGlyph /> : <TimeGlyph />}
-      </button>
-      {!isSnoozed && (
+      {opensMenu ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          className="chat-dock-inbox__row-action"
+          aria-label={`Snooze ${item.title}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <TimeGlyph />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="chat-dock-inbox__row-action"
+          aria-label={
+            isSnoozed ? `Unsnooze ${item.title}` : `Snooze ${item.title}`
+          }
+          onClick={(event) =>
+            onWake(
+              isSnoozed ? null : snoozeWakeAt(SNOOZE_OPTIONS[0], now),
+              event.currentTarget,
+            )
+          }
+        >
+          {isSnoozed ? <ReturnGlyph /> : <TimeGlyph />}
+        </button>
+      )}
+      {!isSnoozed && !opensMenu && (
         <button
           ref={triggerRef}
           type="button"
@@ -222,7 +240,7 @@ function SnoozeActions({
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((open) => !open)}
         >
-          <span aria-hidden="true">▾</span>
+          <ArrowDownGlyph className="choice-caret" />
         </button>
       )}
       {menuOpen && (
@@ -305,6 +323,12 @@ interface InboxRowProps {
    * it invalidates every existing grant.
    */
   gitLocation?: GitReadLocation;
+  /**
+   * Touch hosts: snooze is ONE control that opens the duration menu, rather
+   * than a one-tap default beside a separate caret. Two 44px targets for one
+   * action cost the title a third of a phone's row width.
+   */
+  snoozeMenuOnly?: boolean;
 }
 
 export function InboxRow({
@@ -319,6 +343,7 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
+  snoozeMenuOnly = false,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
@@ -385,6 +410,12 @@ export function InboxRow({
             {item.unanswerableNotice}
           </span>
         )}
+        {item.lifecycleLabel === 'Running' &&
+          item.activeReason === 'background' && (
+            <span className="chat-dock-inbox__answerability">
+              Background work running
+            </span>
+          )}
         {/* station#3688: the observation behind a red Failed chip, same
             contract as the answerability notice above — the chip is a
             pointer; this is what computed it. Absent when no reason was
@@ -430,6 +461,7 @@ export function InboxRow({
               isSnoozed={isSnoozed}
               now={now}
               onWake={(wakeAt, action) => onSnoozeWake(item, wakeAt, action)}
+              menuOnly={snoozeMenuOnly}
             />
           )}
           {onCloseChat && isOpenChat && item.chatSessionId && (
@@ -506,6 +538,8 @@ export interface InboxGroupListProps {
    * across renders for the same reason `agents` is.
    */
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
+  /** Touch chrome: see `InboxRowProps.snoozeMenuOnly`. */
+  snoozeMenuOnly?: boolean;
 }
 
 export function InboxGroupList({
@@ -522,6 +556,7 @@ export function InboxGroupList({
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
+  snoozeMenuOnly,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
@@ -542,6 +577,7 @@ export function InboxGroupList({
       onCloseChat={onCloseChat}
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
+      snoozeMenuOnly={snoozeMenuOnly}
       gitLocation={
         gitLocationByThreadId?.get(
           item.orchestrationThreadId ?? item.chatSessionId ?? '',

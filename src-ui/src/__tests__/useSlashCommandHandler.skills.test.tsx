@@ -281,3 +281,25 @@ describe('typing a command skill', () => {
     expect(mocks.readSkillDetail).not.toHaveBeenCalled();
   });
 });
+
+// The built-in commands load on demand (epic #61) rather than with the chat
+// input. A typed built-in must still reach its handler on first dispatch,
+// never fall through to "Unknown command" because the chunk had not arrived.
+describe('typing a built-in command', () => {
+  test('dispatches a built-in from the lazily loaded builtins module', async () => {
+    autocomplete.openNewChat.mockClear();
+
+    await expect(run('/chat')).resolves.toBe(true);
+
+    expect(autocomplete.openNewChat).toHaveBeenCalledTimes(1);
+    expect(mocks.addEphemeralMessage).not.toHaveBeenCalled();
+  });
+
+  test('/help lists commands registered by both lazily loaded modules', async () => {
+    await expect(run('/help')).resolves.toBe(true);
+
+    const content = mocks.addEphemeralMessage.mock.calls[0]?.[1]?.content;
+    expect(content).toContain('**/chat**');
+    expect(content).toContain('**/tools**');
+  });
+});

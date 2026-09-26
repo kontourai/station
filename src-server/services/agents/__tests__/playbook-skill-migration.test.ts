@@ -15,16 +15,15 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   skillDiscoveries: { add: vi.fn() },
@@ -54,6 +53,8 @@ const PLAYBOOK_IDS = {
 
 const STANDUP_BODY =
   'Ask each person:\n\n- what shipped\n- what is blocked\n\n{{team}} stand-up.\n   trailing spaces kept   ';
+
+const makeTempDir = trackTempDirs();
 
 let home: string;
 let service: InstanceType<typeof SkillService>;
@@ -281,7 +282,7 @@ async function run(options: { dryRun?: boolean } = {}) {
 }
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'playbook-migration-'));
+  home = makeTempDir('playbook-migration-');
   vi.clearAllMocks();
   service = new SkillService(configLoader as never, logger);
   seedFixtureHome();
