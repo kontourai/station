@@ -3,8 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { basename, isAbsolute, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { basename, isAbsolute, join } from 'node:path';
 import {
   assertPackagedStationApp,
   createFixtureHome,
@@ -12,6 +11,7 @@ import {
   removeFixtureHome,
   startLoopbackFixture,
 } from './lib/browser-preview-packaged-fixture.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 function usage() {
   return `Usage: node scripts/browser-preview-packaged-fixture.mjs [--app /absolute/path/Station.app] [--keep]\n\nUses the current release bundle by default. Creates one temporary STATION_HOME, seeds exactly one Project and Coding layout, launches a numeric-loopback fixture and the supplied packaged Station app. It never uses a development grant path. Press Ctrl-C to stop the app and delete only the owned fixture root; use --keep to retain bounded evidence for review.`;
@@ -222,10 +222,7 @@ async function main() {
   });
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(
       `browser-preview-packaged-fixture: ${error instanceof Error ? error.message : String(error)}\n`,

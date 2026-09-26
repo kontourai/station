@@ -268,7 +268,7 @@ A new count-ratchet gate, `scripts/shell-conformance-ratchet.mjs` (+ checked-in
 `scripts/shell-conformance-baseline.json`, + `scripts/__tests__/shell-conformance-ratchet.test.ts`),
 lands in the same PR as this doc and the Knowledge port. It follows
 `scripts/state-primitives-ratchet.mjs`'s exact, established architecture (pure exported
-functions, `main()` gated behind `import.meta.url === file://process.argv[1]`, a checked-in
+functions, `main()` gated behind `invokedDirectly(import.meta.url)`, a checked-in
 numeric ceiling that only decreases, reasoned per-file exclusion lists with staleness checks) and
 is wired into `verify:static` immediately after `state-primitives:ratchet`.
 

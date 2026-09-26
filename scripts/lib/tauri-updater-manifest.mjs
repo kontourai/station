@@ -11,6 +11,7 @@
 
 import { lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { invokedDirectly } from './module-entry.mjs';
 
 const PUB_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
@@ -413,7 +414,7 @@ function assertKnownCliArguments(args) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   assertKnownCliArguments(args);
   if (args.includes('--assert-not-regressing')) {

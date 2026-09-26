@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { runFocusedTests } from './run-focused-tests.mjs';
 
 // Same behavioral coverage and original 10s bound as the prior macro. The
@@ -27,7 +25,7 @@ export function runConnectedAgentTests(options = {}) {
   });
 }
 
-if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     if (process.argv.length !== 2)
       throw new Error('Connected-agent macro accepts no CLI overrides');
