@@ -18,6 +18,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     environment: 'native-release',
     internalGroup: 'Internal Testers',
     agentActivityBundleId: null,
+    notificationServiceBundleId: null,
   }),
   beta: Object.freeze({
     bundleId: 'io.kontourai.station.beta',
@@ -29,6 +30,8 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     environment: 'ios-beta',
     internalGroup: 'Station Beta Internal',
     agentActivityBundleId: 'io.kontourai.station.beta.AgentActivity',
+    notificationServiceBundleId:
+      'io.kontourai.station.beta.NotificationService',
   }),
   nightly: Object.freeze({
     bundleId: 'io.kontourai.station.nightly',
@@ -40,6 +43,8 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     environment: 'ios-nightly',
     internalGroup: 'Station Nightly Internal',
     agentActivityBundleId: 'io.kontourai.station.nightly.AgentActivity',
+    notificationServiceBundleId:
+      'io.kontourai.station.nightly.NotificationService',
   }),
 });
 

@@ -6,7 +6,10 @@ import {
   decodeProvisioningProfile,
   inspectAppStoreDistributionProfile,
 } from './check-ios-store-profile.mjs';
-import { EXTENSION_TARGET } from './ensure-ios-agent-activity-extension.mjs';
+import {
+  EXTENSION_TARGET,
+  NOTIFICATION_SERVICE_TARGET,
+} from './ensure-ios-agent-activity-extension.mjs';
 import { IOS_TESTFLIGHT_CHANNELS } from './ios-testflight-channel.mjs';
 
 const REQUIRED = [
@@ -30,6 +33,11 @@ const AGENT_ACTIVITY_BUNDLE_IDS = new Map(
   Object.values(IOS_TESTFLIGHT_CHANNELS)
     .filter((channel) => channel.agentActivityBundleId)
     .map((channel) => [channel.bundleId, channel.agentActivityBundleId]),
+);
+const NOTIFICATION_SERVICE_BUNDLE_IDS = new Map(
+  Object.values(IOS_TESTFLIGHT_CHANNELS)
+    .filter((channel) => channel.notificationServiceBundleId)
+    .map((channel) => [channel.bundleId, channel.notificationServiceBundleId]),
 );
 const AGENT_ACTIVITY_REQUIRED = [
   'extension-profile',
@@ -74,7 +82,25 @@ export function parseOptions(args) {
 }
 
 export function parseAgentActivityOptions(args) {
-  return parseRequired(args, AGENT_ACTIVITY_REQUIRED);
+  const notificationOption = '--notification-service-profile';
+  const at = args.indexOf(notificationOption);
+  if (at < 0) return parseRequired(args, AGENT_ACTIVITY_REQUIRED);
+  const value = args[at + 1];
+  if (
+    !value ||
+    value.startsWith('--') ||
+    args.lastIndexOf(notificationOption) !== at
+  )
+    throw new Error(
+      'Expected --notification-service-profile exactly once with a non-empty value.',
+    );
+  return {
+    ...parseRequired(
+      [...args.slice(0, at), ...args.slice(at + 2)],
+      AGENT_ACTIVITY_REQUIRED,
+    ),
+    'notification-service-profile': value,
+  };
 }
 
 /** The widget extension's bundle id for a Station app, or a refusal. */
@@ -85,6 +111,15 @@ export function agentActivityBundleId(appBundleId) {
       `No reviewed Live Activity extension for iOS app ${appBundleId}.`,
     );
   return extensionBundleId;
+}
+
+export function notificationServiceBundleId(appBundleId) {
+  const bundleId = NOTIFICATION_SERVICE_BUNDLE_IDS.get(appBundleId);
+  if (!bundleId)
+    throw new Error(
+      `No reviewed Notification Service extension for iOS app ${appBundleId}.`,
+    );
+  return bundleId;
 }
 
 function assertSigningInputs(profile, identity) {
@@ -180,52 +215,42 @@ export function writeIosStoreSigningConfig(
   return profile;
 }
 
-/**
- * Manual signing for the Live Activity extension target that
- * ensure-ios-agent-activity-extension.mjs added to a rendered spec. The app's
- * signing comes from the Tauri template (storeSigningTemplate); the extension
- * target is added after that template is rendered, so it is signed here, with
- * its own profile, bound to the app the target names.
- *
- * @param {{
- *   project: string,
- *   profile: { name: string, uuid: string, team: string, applicationIdentifier?: string },
- *   identity: string,
- *   appBundleId: string,
- * }} options
- */
-export function storeAgentActivitySigningSpec({
+/** Sign one target added to the rendered spec with its own app-bound profile. */
+function signExtensionTarget({
   project,
   profile,
   identity,
   appBundleId,
+  targetName,
+  suffix,
+  label,
 }) {
   assertSigningInputs(profile, identity);
-  const extensionBundleId = agentActivityBundleId(appBundleId);
+  const extensionBundleId = `${appBundleId}.${suffix}`;
   if (profile.applicationIdentifier !== `${profile.team}.${extensionBundleId}`)
     throw new Error(
-      `The Live Activity profile is for ${profile.applicationIdentifier}, not ${profile.team}.${extensionBundleId}.`,
+      `The ${label} profile is for ${profile.applicationIdentifier}, not ${profile.team}.${extensionBundleId}.`,
     );
   const document = YAML.parseDocument(project);
   if (document.errors.length) throw document.errors[0];
-  const target = document.getIn(['targets', EXTENSION_TARGET]);
+  const target = document.getIn(['targets', targetName]);
   if (!YAML.isMap(target) || target.get('type') !== 'app-extension')
     throw new Error(
-      `iOS project spec has no ${EXTENSION_TARGET} app-extension target; run ensure-ios-agent-activity-extension.mjs first.`,
+      `iOS project spec has no ${targetName} app-extension target; run ensure-ios-agent-activity-extension.mjs first.`,
     );
   const base = target.getIn(['settings', 'base']);
   if (!YAML.isMap(base))
-    throw new Error(`Unrecognized ${EXTENSION_TARGET} build settings.`);
+    throw new Error(`Unrecognized ${targetName} build settings.`);
   if (base.get('STATION_APP_BUNDLE_IDENTIFIER') !== appBundleId)
     throw new Error(
-      `${EXTENSION_TARGET} belongs to ${base.get('STATION_APP_BUNDLE_IDENTIFIER')}, not ${appBundleId}.`,
+      `${targetName} belongs to ${base.get('STATION_APP_BUNDLE_IDENTIFIER')}, not ${appBundleId}.`,
     );
   if (
     base.get('PRODUCT_BUNDLE_IDENTIFIER') !==
-    '$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity'
+    `$(STATION_APP_BUNDLE_IDENTIFIER).${suffix}`
   )
     throw new Error(
-      `${EXTENSION_TARGET} bundle identifier is not derived from its app.`,
+      `${targetName} bundle identifier is not derived from its app.`,
     );
   base.set('CODE_SIGN_STYLE', 'Manual');
   base.set('CODE_SIGN_IDENTITY', identity);
@@ -233,6 +258,16 @@ export function storeAgentActivitySigningSpec({
   base.set('PROVISIONING_PROFILE', profile.uuid);
   base.set('PROVISIONING_PROFILE_SPECIFIER', profile.name);
   return document.toString({ lineWidth: 0, flowCollectionPadding: false });
+}
+
+export function storeAgentActivitySigningSpec(options) {
+  agentActivityBundleId(options.appBundleId);
+  return signExtensionTarget({
+    ...options,
+    targetName: EXTENSION_TARGET,
+    suffix: 'AgentActivity',
+    label: 'Live Activity',
+  });
 }
 
 function xmlText(value) {
@@ -296,10 +331,9 @@ ${mapping}\t</dict>
 }
 
 /**
- * Validates both profiles (the extension's against `<app>.AgentActivity`, the
- * app's for the APNs environment the build writes into its entitlements),
- * signs the extension target in `project` in place, and writes the export
- * options exclusively to `exportOptionsOutput`.
+ * Validates the app and widget profiles, and the optional Notification Service
+ * profile when its target is present. Signs both extension targets in place
+ * and writes export options exclusively to `exportOptionsOutput`.
  */
 export function writeIosAgentActivitySigning(
   options,
@@ -311,15 +345,38 @@ export function writeIosAgentActivitySigning(
   } = {},
 ) {
   const extensionBundleId = agentActivityBundleId(options.appBundleId);
+  const notificationBundleId = NOTIFICATION_SERVICE_BUNDLE_IDS.get(
+    options.appBundleId,
+  );
+  if (options.notificationServiceProfile && !notificationBundleId)
+    throw new Error(
+      `No reviewed Notification Service extension for iOS app ${options.appBundleId}.`,
+    );
   const paths = [
     options.profile,
     options.appProfile,
     options.project,
     options.exportOptionsOutput,
+    ...(options.notificationServiceProfile
+      ? [options.notificationServiceProfile]
+      : []),
   ].map((path) => resolve(path));
   if (new Set(paths).size !== paths.length)
     throw new Error('iOS signing inputs and outputs must not alias.');
   const [profilePath, appProfilePath, projectPath, exportOptionsPath] = paths;
+  const originalProject = read(projectPath, 'utf8');
+  const spec = YAML.parseDocument(originalProject);
+  if (spec.errors.length) throw spec.errors[0];
+  const hasNotificationTarget = spec.hasIn([
+    'targets',
+    NOTIFICATION_SERVICE_TARGET,
+  ]);
+  if (hasNotificationTarget !== Boolean(options.notificationServiceProfile))
+    throw new Error(
+      hasNotificationTarget
+        ? `${NOTIFICATION_SERVICE_TARGET} target requires --notification-service-profile.`
+        : `--notification-service-profile was provided but ${NOTIFICATION_SERVICE_TARGET} target is absent.`,
+    );
   const extension = inspect(decode(profilePath), {
     label: profilePath,
     expectedTeam: options.team,
@@ -332,22 +389,43 @@ export function writeIosAgentActivitySigning(
     expectedApsEnvironment: options.apsEnvironment,
   });
   const project = storeAgentActivitySigningSpec({
-    project: read(projectPath, 'utf8'),
+    project: originalProject,
     profile: extension,
     identity: options.identity,
     appBundleId: options.appBundleId,
   });
+  const notificationService = options.notificationServiceProfile
+    ? inspect(decode(resolve(options.notificationServiceProfile)), {
+        label: resolve(options.notificationServiceProfile),
+        expectedTeam: options.team,
+        expectedBundleIdentifier: notificationBundleId,
+      })
+    : undefined;
+  const signedProject = notificationService
+    ? signExtensionTarget({
+        project,
+        profile: notificationService,
+        identity: options.identity,
+        appBundleId: options.appBundleId,
+        targetName: NOTIFICATION_SERVICE_TARGET,
+        suffix: 'NotificationService',
+        label: 'Notification Service',
+      })
+    : project;
   const exportOptions = storeExportOptions({
     identity: options.identity,
     team: options.team,
     profiles: {
       [options.appBundleId]: app.uuid,
       [extensionBundleId]: extension.uuid,
+      ...(notificationService
+        ? { [notificationBundleId]: notificationService.uuid }
+        : {}),
     },
   });
-  write(projectPath, project, 'utf8');
+  write(projectPath, signedProject, 'utf8');
   write(exportOptionsPath, exportOptions, { mode: 0o600, flag: 'wx' });
-  return { app, extension };
+  return { app, extension, notificationService };
 }
 
 /**
@@ -395,7 +473,7 @@ function isMainModule() {
 
 if (isMainModule() && process.argv[2] === 'agent-activity') {
   const values = parseAgentActivityOptions(process.argv.slice(3));
-  const { app, extension } = writeIosAgentActivitySigning({
+  const { app, extension, notificationService } = writeIosAgentActivitySigning({
     profile: values['extension-profile'],
     appProfile: values['app-profile'],
     identity: values.identity,
@@ -404,9 +482,10 @@ if (isMainModule() && process.argv[2] === 'agent-activity') {
     apsEnvironment: values['aps-environment'],
     project: values.project,
     exportOptionsOutput: values['export-options-output'],
+    notificationServiceProfile: values['notification-service-profile'],
   });
   process.stdout.write(
-    `${JSON.stringify({ app: app.uuid, extension: extension.uuid })}\n`,
+    `${JSON.stringify({ app: app.uuid, extension: extension.uuid, ...(notificationService ? { notificationService: notificationService.uuid } : {}) })}\n`,
   );
 } else if (isMainModule()) {
   const values = parseOptions(process.argv.slice(2));

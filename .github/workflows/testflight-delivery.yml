@@ -80,6 +80,7 @@ jobs:
       # The Live Activity widget extension's App Store profile (#2513). Only
       # the Beta and Nightly environments hold one; Stable builds no extension.
       APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
       STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
@@ -167,6 +168,10 @@ jobs:
           extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
           if [ -n "$extension_bundle_id" ]; then enabled=true; else enabled=false; fi
           { echo "enabled=$enabled"; echo "extension_bundle_id=$extension_bundle_id"; echo "aps_environment=production"; } >> "$GITHUB_OUTPUT"
+          notification_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).notificationServiceBundleId ?? "");' '${{ inputs.channel }}')
+          if [ -n "$notification_bundle_id" ]; then notification_enabled=true; else notification_enabled=false; fi
+          test "$notification_enabled" = "$enabled"
+          { echo "notification_enabled=$notification_enabled"; echo "notification_bundle_id=$notification_bundle_id"; } >> "$GITHUB_OUTPUT"
       - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
           for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
@@ -174,6 +179,9 @@ jobs:
           done
           if [ '${{ steps.live_activity.outputs.enabled }}' = true ]; then
             test -n "$APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64" || { echo "Missing required protected channel value: APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64" >&2; exit 1; }
+          fi
+          if [ '${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then
+            test -n "$APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" || { echo "Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" >&2; exit 1; }
           fi
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
       - run: STATION_BUILD_BRANCH="$AUTHORITY_REF" npm run build:native-client
@@ -291,6 +299,21 @@ jobs:
           extension_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$extension_metadata")
           [[ "$extension_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
           cp "$extension_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$extension_uuid.mobileprovision"
+      - name: Import the Notification Service extension profile bound to this channel
+        if: steps.live_activity.outputs.notification_enabled == 'true'
+        run: |
+          set -euo pipefail
+          notification_bundle_id='${{ steps.live_activity.outputs.notification_bundle_id }}'
+          test "$notification_bundle_id" = '${{ steps.app_store.outputs.bundle_id }}.NotificationService'
+          notification_profile="$RUNNER_TEMP/station-ios-notification-service.mobileprovision"
+          notification_metadata="$RUNNER_TEMP/station-ios-notification-service-profile.json"
+          printf '%s' "$APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$notification_profile"
+          signing_certificate_sha1=$(security find-identity -v -p codesigning "$RUNNER_TEMP/station-ios.keychain-db" | awk -v identity="\"$APPLE_SIGNING_IDENTITY\"" 'index($0, identity) { print $2 }')
+          [[ "$signing_certificate_sha1" =~ ^[A-F0-9]{40}$ ]] || { echo "::error::Expected exactly one valid code-signing identity named APPLE_SIGNING_IDENTITY in the imported keychain."; exit 1; }
+          node scripts/check-ios-store-profile.mjs --station "$notification_profile" --label APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$notification_bundle_id" --expected-certificate-sha1 "$signing_certificate_sha1" > "$notification_metadata"
+          notification_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$notification_metadata")
+          [[ "$notification_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          cp "$notification_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$notification_uuid.mobileprovision"
       - name: Prove headless codesign access before the expensive build
         timeout-minutes: 2
         run: |
@@ -304,6 +327,7 @@ jobs:
         working-directory: src-desktop
         env:
           LIVE_ACTIVITY: ${{ steps.live_activity.outputs.enabled }}
+          NOTIFICATION_SERVICE: ${{ steps.live_activity.outputs.notification_enabled }}
           APP_BUNDLE_ID: ${{ steps.app_store.outputs.bundle_id }}
           APS_ENVIRONMENT: ${{ steps.live_activity.outputs.aps_environment }}
         run: |
@@ -349,8 +373,16 @@ jobs:
             # xcodegen rewrites Info.plist and the preserved one is restored
             # and diff-checked below before this copy replaces it.
             ditto "$preserved/station_iOS/Info.plist" "$live_info_plist"
-            node ../scripts/ensure-ios-agent-activity-extension.mjs gen/apple/project.yml --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --info-plist "$live_info_plist"
-            node ../scripts/ios-store-signing-config.mjs agent-activity --extension-profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --project gen/apple/project.yml --export-options-output "$live_export_options"
+            notification_args=()
+            if [ "$NOTIFICATION_SERVICE" = true ]; then
+              notification_args=(--notification-service)
+            fi
+            node ../scripts/ensure-ios-agent-activity-extension.mjs gen/apple/project.yml --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --info-plist "$live_info_plist" "${notification_args[@]}"
+            signing_args=()
+            if [ "$NOTIFICATION_SERVICE" = true ]; then
+              signing_args=(--notification-service-profile "$RUNNER_TEMP/station-ios-notification-service.mobileprovision")
+            fi
+            node ../scripts/ios-store-signing-config.mjs agent-activity --extension-profile "$RUNNER_TEMP/station-ios-agent-activity.mobileprovision" --app-profile "$RUNNER_TEMP/station-ios.mobileprovision" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --app-bundle-id "$APP_BUNDLE_ID" --aps-environment "$APS_ENVIRONMENT" --project gen/apple/project.yml --export-options-output "$live_export_options" "${signing_args[@]}"
           fi
           # Every source directory the spec names exists now, so regenerate
           # the Xcode project from the amended spec and prove the manifest
@@ -361,6 +393,12 @@ jobs:
             grep -Fq 'StationAgentActivity.appex' gen/apple/station.xcodeproj/project.pbxproj
           elif grep -Fq 'StationAgentActivity' gen/apple/station.xcodeproj/project.pbxproj; then
             echo 'A channel without a Live Activity extension generated one' >&2
+            exit 1
+          fi
+          if [ "$NOTIFICATION_SERVICE" = true ]; then
+            grep -Fq 'StationNotificationService.appex' gen/apple/station.xcodeproj/project.pbxproj
+          elif grep -Fq 'StationNotificationService' gen/apple/station.xcodeproj/project.pbxproj; then
+            echo 'A channel without a Notification Service extension generated one' >&2
             exit 1
           fi
           # xcodegen rewrites `info.path` (station_iOS/Info.plist) from the
@@ -374,7 +412,7 @@ jobs:
           if [ "$LIVE_ACTIVITY" = true ]; then
             # Only now, after the preserved files are proven unchanged: the
             # preserved Info.plist plus StationApsEnvironment, and export
-            # options naming both bundles' profiles (see the build step).
+            # options naming the app and each extension profile.
             ditto "$live_info_plist" gen/apple/station_iOS/Info.plist
             test "$(/usr/libexec/PlistBuddy -c 'Print :StationApsEnvironment' gen/apple/station_iOS/Info.plist)" = "$APS_ENVIRONMENT"
             test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' gen/apple/station_iOS/Info.plist)" = true
@@ -396,13 +434,16 @@ jobs:
             # provisioningProfiles names only the app, replacing this file's;
             # a manual-signing export then refuses the extension. Keep both
             # unset: the project already names both profiles and the export
-            # options written above list both. Tauri merges them into a
+            # options written above list every bundle. Tauri merges them into a
             # temporary file it deletes on exit and never names, so that file
             # cannot be inspected; the IPA audit below proves the outcome (the
-            # widget's embedded profile is the one imported for it).
+            # extensions' embedded profiles match those imported for them).
             test -z "${IOS_MOBILE_PROVISION:-}"
             test -z "${IOS_CERTIFICATE:-}"
             grep -Fq '<key>${{ steps.live_activity.outputs.extension_bundle_id }}</key>' gen/apple/ExportOptions.plist
+            if [ '${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then
+              grep -Fq '<key>${{ steps.live_activity.outputs.notification_bundle_id }}</key>' gen/apple/ExportOptions.plist
+            fi
           else
             IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station-ios.mobileprovision" | tr -d '\n')"
             export IOS_MOBILE_PROVISION
@@ -417,6 +458,8 @@ jobs:
         env:
           LIVE_ACTIVITY: ${{ steps.live_activity.outputs.enabled }}
           EXTENSION_BUNDLE_ID: ${{ steps.live_activity.outputs.extension_bundle_id }}
+          NOTIFICATION_BUNDLE_ID: ${{ steps.live_activity.outputs.notification_bundle_id }}
+          NOTIFICATION_SERVICE: ${{ steps.live_activity.outputs.notification_enabled }}
           APS_ENVIRONMENT: ${{ steps.live_activity.outputs.aps_environment }}
         run: |
           ipa=$(find src-desktop/gen/apple/build -type f -name '*.ipa' -print)
@@ -453,6 +496,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Info.plist")" = "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).productName')"
           node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
           appex="$app/PlugIns/StationAgentActivity.appex"
+          notification_appex="$app/PlugIns/StationNotificationService.appex"
           # The plugin half: the Swift AgentActivityPlugin class is compiled
           # only when STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/
           # build.rs). Its Objective-C class metadata (a Tauri Plugin is an
@@ -465,11 +509,11 @@ jobs:
           xcrun otool -oV "$app/$app_executable" > "$objc_classes"
           grep -Fq '_TtC' "$objc_classes"
           if [ "$LIVE_ACTIVITY" = true ]; then
-            # The Live Activity widget (#2513) is the app's only extension,
-            # carries the app's versions, is signed with the extension profile
-            # imported for this channel, and holds only the shared keychain
-            # group; the app carries push for the environment it reports.
-            test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = 1
+            # The channel's reviewed extensions are the exact packaged set.
+            # Each carries the app's versions, its own imported profile, and
+            # only the shared keychain group; the app carries push.
+            if [ "$NOTIFICATION_SERVICE" = true ]; then expected_extension_count=2; else expected_extension_count=1; fi
+            test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "$expected_extension_count"
             test -d "$appex"
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$appex/Info.plist")" = "$EXTENSION_BUNDLE_ID"
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$appex/Info.plist")" = '${{ inputs.marketing_version }}'
@@ -488,8 +532,28 @@ jobs:
             codesign -d --entitlements :- "$appex" 2>/dev/null > "$extension_entitlements"
             plutil -convert json -o "$extension_entitlements_json" "$extension_entitlements"
             node scripts/ios-exported-entitlements.mjs "$extension_entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' --agent-activity-extension > provider-receipts/exported-ios-agent-activity-entitlements.json
+            if [ "$NOTIFICATION_SERVICE" = true ]; then
+              test -d "$notification_appex"
+              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$notification_appex/Info.plist")" = "$NOTIFICATION_BUNDLE_ID"
+              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$notification_appex/Info.plist")" = '${{ inputs.marketing_version }}'
+              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$notification_appex/Info.plist")" = '${{ inputs.bundle_version }}'
+              notification_embedded="$RUNNER_TEMP/station-ios-notification-service-embedded.json"
+              node scripts/check-ios-store-profile.mjs --station "$notification_appex/embedded.mobileprovision" --label 'exported IPA Notification Service embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$NOTIFICATION_BUNDLE_ID" > "$notification_embedded"
+              node --input-type=module -e 'import {readFileSync} from "node:fs"; const uuid=(path)=>JSON.parse(readFileSync(path,"utf8")).uuid; if(uuid(process.argv[1])!==uuid(process.argv[2])) process.exit(1)' "$notification_embedded" "$RUNNER_TEMP/station-ios-notification-service-profile.json"
+              notification_entitlements="$RUNNER_TEMP/station-ios-notification-service-entitlements.plist"
+              notification_entitlements_json="$RUNNER_TEMP/station-ios-notification-service-entitlements.json"
+              codesign -d --entitlements :- "$notification_appex" 2>/dev/null > "$notification_entitlements"
+              plutil -convert json -o "$notification_entitlements_json" "$notification_entitlements"
+              node scripts/ios-exported-entitlements.mjs "$notification_entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' --notification-service-extension > provider-receipts/exported-ios-notification-service-entitlements.json
+            else
+              test ! -e "$notification_appex"
+            fi
           else
             test ! -e "$appex"
+            test ! -e "$notification_appex"
+            if [ -d "$app/PlugIns" ]; then
+              test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = 0
+            fi
             if /usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$app/Info.plist" > /dev/null 2>&1; then
               echo 'A channel without the Live Activity declares NSSupportsLiveActivities' >&2
               exit 1
