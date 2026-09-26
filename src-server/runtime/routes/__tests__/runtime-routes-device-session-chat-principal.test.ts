@@ -3137,7 +3137,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     // internal token (which any agent holding a stdio child's env can
     // present) starts a session that is the operator's to read but acts for
     // no one; the operator's own credential starts an ordinary one.
-    test('the production task and board-intent routes mark an internal-token dispatch unattributed', async () => {
+    test('the production task and board-intent routes refuse an internal-token dispatch and attribute the operator’s own', async () => {
       const dispatch = vi.fn(async () => ({
         kind: 'failed' as const,
         reason: 'test stops at the dispatcher',
@@ -3150,7 +3150,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
         [INTERNAL_PROXY_CALLER_HEADER]: 'local',
       };
-      await app.request(
+      // #2377 slice A: no station-control tool reaches either route, so the
+      // station-control authority guard refuses the per-boot internal token
+      // before the route could even mark it unattributed.
+      const internalDispatch = await app.request(
         '/api/tasks/task-1/dispatch',
         { method: 'POST', headers: internalHeaders, body: '{}' },
         LOOPBACK_SERVE_PROXY_ENV,
@@ -3177,6 +3180,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
         LOOPBACK_SERVE_PROXY_ENV,
       );
+      for (const refused of [internalDispatch, intent]) {
+        expect(refused.status).toBe(403);
+        expect(await refused.json()).toMatchObject({
+          code: 'station_control_route_unmapped',
+        });
+      }
       const owners = dispatch.mock.calls.map((call) => {
         const intentArg = (call as unknown[])[1] as {
           ownerUserId: string;
@@ -3187,18 +3196,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ownerAttribution: intentArg.ownerAttribution,
         };
       });
-      expect(owners, await intent.text()).toEqual([
-        {
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: 'unattributed-agent',
-        },
+      expect(owners).toEqual([
         {
           ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
           ownerAttribution: undefined,
-        },
-        {
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: 'unattributed-agent',
         },
       ]);
     });
