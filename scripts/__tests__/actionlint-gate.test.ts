@@ -1274,6 +1274,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
       '.github/workflows/merge-queue-regression.yml',
+      '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {

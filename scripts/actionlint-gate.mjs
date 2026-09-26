@@ -461,6 +461,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/merge-queue-regression.yml',
+  '.github/workflows/portable-server-archives.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
@@ -631,6 +632,13 @@ const MERGE_QUEUE_REGRESSION_WORKFLOW =
  * artifact holds what the candidate rendered and nothing the token can reach.
  */
 const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
+/**
+ * #2675: the portable server archive check uploads the archive it built from
+ * the candidate and smoked, so a reviewer can run the exact bytes. It is
+ * packaging output only; nothing the read-only token can reach is included.
+ */
+const PORTABLE_SERVER_ARCHIVES_WORKFLOW =
+  '.github/workflows/portable-server-archives.yml';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -2402,7 +2410,8 @@ function baseControlledPrWorkflowFindings(file, document) {
         !(
           (file === '.github/workflows/build-ios.yml' ||
             file === MERGE_QUEUE_REGRESSION_WORKFLOW ||
-            file === GALLERY_PR_WORKFLOW) &&
+            file === GALLERY_PR_WORKFLOW ||
+            file === PORTABLE_SERVER_ARCHIVES_WORKFLOW) &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&

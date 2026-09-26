@@ -1,0 +1,29 @@
+#!/bin/sh
+# Station portable server launcher. It runs the Node.js runtime bundled in this
+# archive and never a Node.js found on PATH, so the host needs no Node install.
+set -eu
+
+self=$0
+# Follow a symlinked launcher (for example ~/.local/bin/station) back to the
+# archive, so a relative link still finds runtime/ and dist-server/.
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=${self%/*}/$link ;;
+  esac
+done
+case $self in
+  */*) bin_dir=${self%/*} ;;
+  *) bin_dir=. ;;
+esac
+root=$(CDPATH='' cd -- "$bin_dir/.." && pwd -P)
+node=$root/runtime/bin/node
+
+case "${1-}" in
+  --version | -v) exec "$node" "$root/bin/station-version.mjs" "$@" ;;
+esac
+# The server reads schemas/ relative to its working directory, exactly as the
+# desktop app launches it from its resource directory.
+cd "$root"
+exec "$node" "$root/dist-server/command-station.js" "$@"
