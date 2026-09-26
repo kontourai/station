@@ -144,7 +144,6 @@ function fixture() {
       return { ...input, agent: { slug: 'claude' } };
     },
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   const deps: ExecutionTargetExecutionDependencies = {
     resolveEnvironmentAccess: async () => ({

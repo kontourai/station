@@ -195,6 +195,7 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 |------------------------------------|------------------------------------------|-------------|
 | `station.provider.operations`     | Provider register/remove/health events   | `op`        |
 | `station.notification.operations` | Notification schedule/deliver/dismiss    | `op`        |
+| `station.notification.agent_operations` | Agent `notify_user` outcomes (sent/updated/deduped/muted/rate_limited/unavailable/caller-required); never content or session identity | `result`, `urgency` |
 | `station.scheduler.job.runs`      | Scheduler job executions                 | —           |
 | `station.scheduler.concurrency.deferrals` | Automatic invocation-ceiling lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle`           | MCP connection lifecycle events          | `event`     |

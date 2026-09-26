@@ -117,6 +117,12 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
+# The Live Activity widget extension's App Store profile (Beta and Nightly
+# only; see mobile-release.md "Live Activity in Beta and Nightly")
+for env in ios-beta ios-nightly; do
+  gh secret set APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
+done
+
 # Internal authority signatures are verified in every delivery environment.
 # Only native-release can read the private key because only the planning job
 # creates a new authority tag.

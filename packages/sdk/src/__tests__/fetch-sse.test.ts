@@ -112,6 +112,21 @@ describe('fetchSSE', () => {
     vi.unstubAllGlobals();
   });
 
+  it('sends an initial Last-Event-ID on the first request', async () => {
+    const fetchMock = pendingFetchThatRejectsOnAbort(() => {});
+    vi.stubGlobal('fetch', fetchMock);
+    const stream = fetchSSE('https://station.example.test/events', {
+      initialLastEventId: '42',
+      onMessage: () => undefined,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Last-Event-ID'),
+    ).toBe('42');
+    stream.close();
+    await stream.completed;
+  });
+
   it('settles a pending request only when its parent signal aborts', async () => {
     const requestAborted = vi.fn();
     const fetchMock = pendingFetchThatRejectsOnAbort(requestAborted);

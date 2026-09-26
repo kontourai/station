@@ -12,7 +12,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { registerDialogHistory } from '../components/dialog-history';
+import {
+  DIALOG_HISTORY_KEY,
+  registerDialogHistory,
+} from '../components/dialog-history';
 import {
   availablePlacements,
   dockFoldsToOneRegion,
@@ -243,8 +246,85 @@ interface RegionModelValue {
   closePhoneLayer(): void;
 }
 
-/** The prefix of the layer's `registerDialogHistory` ids (`<prefix>:<n>`). */
+/**
+ * Gap G1: what Chat's dock looked like before a phone layer, kept for the
+ * life of the layer in this tab's session storage. The layer's maximize (and
+ * the dock open it may add) ride Chat's `?dock`/`?maximize` URL params, so a
+ * reload with a layer open would otherwise come back with Chat maximized and
+ * no layer to undo it. The record names the layer's LIVE history entry id
+ * (rewritten whenever the layer pushes a new entry); every ending of a layer
+ * removes it, and so does the provider unmounting with a layer open. A
+ * record found at mount whose entry is exactly the entry being loaded
+ * therefore means a reload with that layer open, and the load restores the
+ * pre-layer dock state instead of the URL's.
+ */
+const PHONE_LAYER_PRE_STATE_KEY = 'station.phoneLayer.preLayerDock.v1';
+
+interface PhoneLayerPreState {
+  visible: boolean;
+  maximized: boolean;
+  dockMemory: boolean;
+}
+
+interface StoredPhoneLayerPreState extends PhoneLayerPreState {
+  /** The `registerDialogHistory` id of the layer's live entry. */
+  entry: string;
+}
+
+function takePhoneLayerPreState(): PhoneLayerPreState | null {
+  try {
+    const raw = window.sessionStorage.getItem(PHONE_LAYER_PRE_STATE_KEY);
+    if (raw === null) return null;
+    window.sessionStorage.removeItem(PHONE_LAYER_PRE_STATE_KEY);
+    // Keyed to the layer's live history entry, exactly: only a load ON that
+    // entry (a reload with the layer open) is the layer's. Any other load
+    // finds a stale record — a tab that unloaded mid-layer and navigated
+    // since — and the URL it was given stands.
+    const state: unknown = window.history.state;
+    const marker =
+      state !== null && typeof state === 'object'
+        ? (state as Record<string, unknown>)[DIALOG_HISTORY_KEY]
+        : undefined;
+    const value = JSON.parse(raw) as Partial<StoredPhoneLayerPreState>;
+    if (typeof marker !== 'string' || marker !== value.entry) return null;
+    return typeof value.visible === 'boolean' &&
+      typeof value.maximized === 'boolean' &&
+      typeof value.dockMemory === 'boolean'
+      ? {
+          visible: value.visible,
+          maximized: value.maximized,
+          dockMemory: value.dockMemory,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePhoneLayerPreState(state: StoredPhoneLayerPreState | null) {
+  try {
+    if (state)
+      window.sessionStorage.setItem(
+        PHONE_LAYER_PRE_STATE_KEY,
+        JSON.stringify(state),
+      );
+    else window.sessionStorage.removeItem(PHONE_LAYER_PRE_STATE_KEY);
+  } catch {
+    // Storage unavailable: a reload with a layer open keeps the URL's state,
+    // the behaviour before G1.
+  }
+}
+
+/**
+ * The prefix of the layer's `registerDialogHistory` ids
+ * (`<prefix>:<load>-<n>`). `<load>` is a per-page-load nonce: a reload keeps
+ * the entries (and their markers) an earlier load pushed while its counter
+ * starts again, so without it the first layer after a reload could get the
+ * very id of the entry it opens on — and `dialog-history` would read Back as
+ * "still on my entry" and not close it.
+ */
 const PHONE_LAYER_HISTORY_ID = 'phone-pane-layer';
+const PHONE_LAYER_LOAD_NONCE = Math.random().toString(36).slice(2, 10);
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
@@ -390,8 +470,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // pane reads full screen; a wide coarse device keeps the region's size.
   const isMobile = useIsMobile();
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A reload that happened with a phone layer open (gap G1): the URL's
+  // Chat params are the layer's, so the load starts from the pre-layer ones
+  // and the mount effect below writes them back to navigation.
+  const [reloadedOverLayer] = useState(takePhoneLayerPreState);
   const [regions, setRegions] = useState<RegionArrangement>(() =>
-    initialRegionArrangement(settings, dockMode, isDockOpen, isDockMaximized),
+    initialRegionArrangement(
+      settings,
+      dockMode,
+      reloadedOverLayer ? reloadedOverLayer.visible : isDockOpen,
+      reloadedOverLayer ? reloadedOverLayer.maximized : isDockMaximized,
+    ),
   );
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
@@ -418,7 +507,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Bumped per layer and per re-pushed entry: each history entry gets its own
   // id, so the marker `dialog-history` orphans on a Back can never match a
   // LATER layer's live entry and skip it.
-  const [layerEntry, setLayerEntry] = useState(0);
+  const layerEntryRef = useRef(0);
+  // The live entry's unregister. A layer's first entry is registered by the
+  // effect below; a Back's reinstatement registers the next one
+  // SYNCHRONOUSLY, inside the popstate that asked (gap G3), so a second Back
+  // queued in the same tick lands on it rather than on the page before.
+  const layerHistoryRef = useRef<(() => void) | null>(null);
+  const leavePhoneLayerByBackRef = useRef<() => void>(() => {});
+  // The open layer's pre-layer dock state (gap G1), stored against each
+  // entry the layer registers.
+  const layerPreStateRef = useRef<PhoneLayerPreState | null>(null);
+  const registerLayerEntry = useCallback(() => {
+    const entry = `${PHONE_LAYER_HISTORY_ID}:${PHONE_LAYER_LOAD_NONCE}-${layerEntryRef.current}`;
+    layerHistoryRef.current = registerDialogHistory(entry, () =>
+      leavePhoneLayerByBackRef.current(),
+    );
+    if (layerPreStateRef.current)
+      writePhoneLayerPreState({ ...layerPreStateRef.current, entry });
+  }, []);
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
   const closePhoneLayerRef = useRef<() => void>(() => {});
@@ -432,7 +538,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // never answers (its component unmounted with the prompt up) would
     // otherwise leave the decision set for the session, and navigation's
     // inbound sync and the dismissal effect both stand down while it is.
-    if (!layer) layerBackDecisionRef.current = null;
+    if (!layer) {
+      layerBackDecisionRef.current = null;
+      layerPreStateRef.current = null;
+      writePhoneLayerPreState(null);
+    }
     setPhoneLayerState(layer);
   }, []);
   const regionsRef = useRef(regions);
@@ -566,7 +676,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           // would otherwise forward that as the memory (see the restore).
           if (!phoneLayerRef.current) {
             layerDockMemoryRef.current = navigationStore.lastDockMaximized;
-            setLayerEntry((entry) => entry + 1);
+            layerEntryRef.current += 1;
+            const chatAt = chatRegion(current);
+            layerPreStateRef.current = {
+              visible: chatAt ? current[chatAt].visible : false,
+              maximized: chatAt ? current[chatAt].maximized : false,
+              dockMemory: navigationStore.lastDockMaximized,
+            };
           }
           layerMaximizedRef.current =
             opened.arrangement[opened.layer.region].maximized;
@@ -754,19 +870,21 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // The layer is a bottom-only device's (review M3): when the fold opens (a
   // narrow window widened, split view resized) the layer ENDS where it
-  // stands (`endPhonePaneLayerInPlace`): its pane stays visible, selected
-  // and mounted as an ordinary tab — the device now has a tab strip — and
-  // only the maximize the layer added is undone. That arrangement is also
-  // what is saved: a pane the layer moved out of another region stays in the
-  // layer's region (moving it back would remount it and hide what the user
-  // was reading; the user can move it). The history entry goes with the
-  // registration.
+  // stands (`endPhonePaneLayerInPlace`). A pane the layer moved out of
+  // another region goes back there — shown and selected if the reader was
+  // looking at it — unless its own unsaved-changes guard is registered
+  // (dirty): the move remounts the pane, so a dirty one stays where it is,
+  // an ordinary tab of Chat's region (gap G4). The maximize the layer added
+  // is undone, and the arrangement that results is the one saved. The
+  // history entry goes with the registration.
   useEffect(() => {
     if (bottomOnly) return;
     const layer = phoneLayerRef.current;
     if (!layer) return;
     setPhoneLayer(null);
-    const next = endPhonePaneLayerInPlace(regionsRef.current, layer);
+    const next = endPhonePaneLayerInPlace(regionsRef.current, layer, {
+      returnToOrigin: !navigationStore.hasNavigationGuard(layer.surfaceId),
+    });
     if (next === regionsRef.current) {
       navigationStore.lastDockMaximized = layerDockMemoryRef.current;
       return;
@@ -789,11 +907,10 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Every deliberate exit — Back, "‹ Chat" (`closePhoneLayer`), the folded
   // menu's hide of the layer's pane, a chat-focus intent — asks the
   // unsaved-changes guards first (a pull request review draft is component
-  // state; the restore unmounts it). KNOWN LIMITATION (review M-a): the
-  // guards are the navigation store's app-wide set, not the layer pane's, so
-  // an unrelated dirty form mounted elsewhere also asks, and its answer
-  // decides whether the layer closes. Scoping guards to a surface is design
-  // work that is not done here. Back has already left the entry when it
+  // state; the restore unmounts it). Only the layer pane's own guards are
+  // asked (`owner`: the region host scopes each pane's `useUnsavedGuard` to
+  // its surface through `UnsavedGuardOwnerContext`), so an unrelated dirty
+  // form elsewhere neither prompts nor decides whether the layer closes. Back has already left the entry when it
   // asks; `leavePhoneLayerByBack` keeps the layer as it was while the guard
   // decides.
   const phoneLayerOpen = phoneLayer !== null;
@@ -829,7 +946,9 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       });
       regionsRef.current = next;
       setRegions(next);
-      setLayerEntry((entry) => entry + 1);
+      layerHistoryRef.current?.();
+      layerEntryRef.current += 1;
+      registerLayerEntry();
     };
     navigationStore.runNavigationGuards(
       () => {
@@ -844,25 +963,31 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         layerBackDecisionRef.current = null;
         if (!reinstated) reinstate();
       },
+      // The layer's pane's guards only — not every dirty form in the app.
+      { owner: layer.surfaceId },
     );
     if (current() && !reinstated) reinstate();
-  }, [restorePhoneLayer]);
+  }, [registerLayerEntry, restorePhoneLayer]);
+  leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
   const closePhoneLayer = useCallback(() => {
     // No layer, nothing to leave — and no guard to ask. Chat-focus intents
     // call this on every device (`useDismissPhoneLayer`), so asking with no
     // layer would put a "Discard?" in front of an unrelated dirty form
     // whose answer changes nothing.
     if (!phoneLayerRef.current) return;
-    navigationStore.runNavigationGuards(restorePhoneLayer);
+    navigationStore.runNavigationGuards(restorePhoneLayer, undefined, {
+      owner: phoneLayerRef.current.surfaceId,
+    });
   }, [restorePhoneLayer]);
   closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {
     if (!phoneLayerOpen) return;
-    return registerDialogHistory(
-      `${PHONE_LAYER_HISTORY_ID}:${layerEntry}`,
-      leavePhoneLayerByBack,
-    );
-  }, [phoneLayerOpen, layerEntry, leavePhoneLayerByBack]);
+    registerLayerEntry();
+    return () => {
+      layerHistoryRef.current?.();
+      layerHistoryRef.current = null;
+    };
+  }, [phoneLayerOpen, registerLayerEntry]);
 
   const persistRegionArrangement = useCallback(() => {
     // A phone layer is transient: the record is written as if it were not
@@ -1017,6 +1142,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       pendingDockMemoryRef.current = null;
     }
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
+
+  // Gap G1: put navigation back in line with the pre-layer dock state the
+  // arrangement was seeded from. A mount is otherwise not a write; this one
+  // repairs params the layer left behind, once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once for the state taken at mount.
+  useEffect(() => {
+    if (!reloadedOverLayer) return;
+    setDockState(reloadedOverLayer.visible, reloadedOverLayer.maximized);
+    navigationStore.lastDockMaximized = reloadedOverLayer.dockMemory;
+  }, []);
+  // The provider going away with a layer open (not a reload — a reload runs
+  // no cleanup) takes the layer with it, so its pre-layer record goes too.
+  useEffect(
+    () => () => {
+      if (phoneLayerRef.current) writePhoneLayerPreState(null);
+    },
+    [],
+  );
 
   // Navigation remains an inbound source for deep links and browser history.
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.

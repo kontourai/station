@@ -13,7 +13,6 @@ export type TranscriptReadRequest =
       threadId: string;
       matchedEventId: string;
       ownerUserId: string;
-      legacyOwnerUserId?: string;
       ownerUserIds?: readonly string[];
       tenantId?: string;
       continuation?: string;
@@ -23,7 +22,6 @@ export type TranscriptReadRequest =
       id: number;
       query: string;
       ownerUserId: string;
-      legacyOwnerUserId?: string;
       ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
@@ -35,7 +33,6 @@ export type TranscriptReadRequest =
       threadId: string;
       matchedEventId: string;
       ownerUserId: string;
-      legacyOwnerUserId?: string;
       ownerUserIds?: readonly string[];
       tenantId?: string;
     }
@@ -44,7 +41,6 @@ export type TranscriptReadRequest =
       id: number;
       threadId: string;
       ownerUserId: string;
-      legacyOwnerUserId?: string;
       ownerUserIds?: readonly string[];
       tenantId?: string;
     }
@@ -116,15 +112,7 @@ export function transcriptMessageRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    [
-      'query',
-      'ownerUserId',
-      'legacyOwnerUserId',
-      'ownerUserIds',
-      'tenantId',
-      'projectId',
-      'limit',
-    ],
+    ['query', 'ownerUserId', 'ownerUserIds', 'tenantId', 'projectId', 'limit'],
     ['query', 'ownerUserId', 'limit'],
   );
   return fields
@@ -138,14 +126,7 @@ export function transcriptMessageOpenRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    [
-      'threadId',
-      'matchedEventId',
-      'ownerUserId',
-      'legacyOwnerUserId',
-      'ownerUserIds',
-      'tenantId',
-    ],
+    ['threadId', 'matchedEventId', 'ownerUserId', 'ownerUserIds', 'tenantId'],
     ['threadId', 'matchedEventId', 'ownerUserId'],
   );
   return fields
@@ -158,13 +139,7 @@ export function transcriptSessionOpenRequest(
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    [
-      'threadId',
-      'ownerUserId',
-      'legacyOwnerUserId',
-      'ownerUserIds',
-      'tenantId',
-    ],
+    ['threadId', 'ownerUserId', 'ownerUserIds', 'tenantId'],
     ['threadId', 'ownerUserId'],
   );
   return fields
@@ -182,7 +157,6 @@ export function parseTranscriptReadRequest(
       'id',
       'query',
       'ownerUserId',
-      'legacyOwnerUserId',
       'ownerUserIds',
       'tenantId',
       'projectId',
@@ -200,12 +174,6 @@ export function parseTranscriptReadRequest(
   )
     return null;
   if (request.type !== 'message-page' && Object.hasOwn(request, 'continuation'))
-    return null;
-  if (
-    request.legacyOwnerUserId !== undefined &&
-    (!boundedTaskText(request.legacyOwnerUserId, 256) ||
-      request.tenantId !== undefined)
-  )
     return null;
   if (request.ownerUserIds !== undefined) {
     const owners = request.ownerUserIds;

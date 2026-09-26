@@ -203,6 +203,13 @@ export type UnattendedPrincipal =
   | { kind: 'scheduled-job'; jobId: string }
   | { kind: 'delegated-child'; originAgentSlug: string };
 
+/**
+ * What an unattended standing-grant lookup found. Only literal `true`
+ * authorizes. `'store-unavailable'` is a denial too, reported separately so
+ * the user is not told to record a grant in a store that cannot be read.
+ */
+export type UnattendedGrantResolution = boolean | 'store-unavailable';
+
 export interface InvocationContext {
   agentSlug: string;
   conversationId?: string;

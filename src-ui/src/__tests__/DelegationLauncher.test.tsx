@@ -8,14 +8,83 @@ const mutateAsync = vi.fn();
 const reset = vi.fn();
 const retryDiscovery = vi.fn();
 let discoveryFailure: Error | null = null;
+let mutationError: Error | null = null;
 let projectDefaultEnvironment: { kind: 'saved'; id: string } | undefined;
 let environmentsFailure = false;
 let environmentsLoading = false;
 let projectLoading = false;
 let projectFailure = false;
+// The selected Project record's LOCAL incarnation id (#480 identity
+// lifetime). Matches the identity fixture's association by default; the
+// stale-incarnation tests replace it to model a same-slug delete/recreate.
+let projectId: string | undefined = 'project:station';
 let staleDiscoveryEnvironment: string | undefined;
 const retryProject = vi.fn();
+const retryIdentity = vi.fn();
 const discoveryInputs = vi.fn();
+interface MockIdentityRepo {
+  kind: 'git';
+  id: string;
+  canonicalRemote: string;
+  label?: string;
+}
+let projectIdentity:
+  | {
+      identity: {
+        id: string;
+        repos: MockIdentityRepo[];
+        executionRoot?: { repoId: string; path: string };
+      };
+      association: {
+        portableProjectId: string;
+        localProjectId: string;
+        localProjectSlug: string;
+      };
+    }
+  | undefined;
+let identityLoading = false;
+let identityFailure = false;
+let identityError: unknown = Object.assign(
+  new Error(
+    'Project identity was not found. An existing Project may need explicit identity preparation.',
+  ),
+  { status: 404 },
+);
+let scopeStale = false;
+
+// Per-invocation authority the launcher must freeze into every dispatch:
+// the mocked `useHostRequestAuthorityScope` above always reports Home
+// `http://station.test` under this key.
+const INVOCATION_API_BASE = 'http://station.test';
+const INVOCATION_SCOPE = {
+  apiBase: 'http://station.test',
+  authorityKey: 'ui-scope-test-authority',
+};
+
+function singleRepoIdentity() {
+  return {
+    identity: {
+      id: 'portable:station',
+      repos: [
+        {
+          kind: 'git' as const,
+          id: 'https://git.example.test/station.git',
+          canonicalRemote: 'https://git.example.test/station.git',
+          label: 'station',
+        },
+      ],
+      executionRoot: {
+        repoId: 'https://git.example.test/station.git',
+        path: '.',
+      },
+    },
+    association: {
+      portableProjectId: 'portable:station',
+      localProjectId: 'project:station',
+      localProjectSlug: 'station',
+    },
+  };
+}
 let peerCredentials:
   | Array<{
       environmentId: string;
@@ -32,138 +101,155 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
     authorityKey: 'ui-scope-test-authority',
-    isCurrent: () => true,
+    isCurrent: () => !scopeStale,
   }),
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
-  useProjectQuery: () => ({
-    data: projectLoading
-      ? undefined
-      : projectDefaultEnvironment
-        ? { defaultEnvironment: projectDefaultEnvironment }
-        : {},
-    isSuccess: !projectLoading && !projectFailure,
-    isError: projectFailure,
-    refetch: retryProject,
-  }),
-  useDelegationOptionsQuery: (
-    input: { environmentId?: string },
-    _apiBase: string,
-    options: { enabled: boolean },
-  ) => {
-    if (options.enabled) discoveryInputs(input);
-    const error =
-      discoveryFailure ??
-      (input.environmentId === 'deleted-environment'
-        ? new Error('Selected environment is missing')
-        : null);
-    return {
-      data: error
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  // Bind the REAL failure classifier and scope guard: the states under test
+  // are the production branching, not a re-implementation of it.
+  const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    isApiRequestScope: real.isApiRequestScope,
+    projectIdentityReadFailure: real.projectIdentityReadFailure,
+    useProjectQuery: () => ({
+      data: projectLoading
         ? undefined
-        : {
-            environment: input.environmentId
-              ? {
-                  id: staleDiscoveryEnvironment ?? input.environmentId,
-                  name: 'Brian Media',
-                  kind: 'ssh',
-                }
-              : {
-                  id: 'env-current',
-                  name: 'Current environment',
-                  kind: 'current',
-                },
-            targets: [
-              {
-                id: 'codex',
-                kind: 'agent',
-                name: input.environmentId ? 'Remote Codex' : 'Codex',
-                ready: true,
-                defaultModel: 'gpt-5.6-sol',
-                models: [
-                  {
-                    id: 'gpt-5.6-sol',
-                    name: 'GPT-5.6 Sol',
-                    originalId: 'gpt-5.6-sol',
+        : projectDefaultEnvironment
+          ? { id: projectId, defaultEnvironment: projectDefaultEnvironment }
+          : { id: projectId },
+      isSuccess: !projectLoading && !projectFailure,
+      isError: projectFailure,
+      refetch: retryProject,
+    }),
+    useProjectIdentityQuery: () => ({
+      data: identityLoading ? undefined : projectIdentity,
+      isSuccess:
+        !identityLoading && !identityFailure && projectIdentity !== undefined,
+      isError: identityFailure,
+      error: identityFailure ? identityError : null,
+      refetch: retryIdentity,
+    }),
+    useDelegationOptionsQuery: (
+      input: { environmentId?: string },
+      _apiBase: string,
+      options: { enabled: boolean },
+    ) => {
+      if (options.enabled) discoveryInputs(input);
+      const error =
+        discoveryFailure ??
+        (input.environmentId === 'deleted-environment'
+          ? new Error('Selected environment is missing')
+          : null);
+      return {
+        data: error
+          ? undefined
+          : {
+              environment: input.environmentId
+                ? {
+                    id: staleDiscoveryEnvironment ?? input.environmentId,
+                    name: 'Brian Media',
+                    kind: 'ssh',
+                  }
+                : {
+                    id: 'env-current',
+                    name: 'Current environment',
+                    kind: 'current',
                   },
-                ],
-                capabilities: {
-                  resume: true,
-                  interrupt: true,
-                  approvals: true,
-                  modelSelection: true,
-                },
-              },
-              {
-                id: 'reviewer',
-                kind: 'agent',
-                name: 'Reviewer',
-                ready: true,
-                models: [],
-                capabilities: {
-                  resume: true,
-                  interrupt: true,
-                  approvals: false,
-                  modelSelection: false,
-                },
-              },
-              ...(input.environmentId
-                ? [
+              targets: [
+                {
+                  id: 'codex',
+                  kind: 'agent',
+                  name: input.environmentId ? 'Remote Codex' : 'Codex',
+                  ready: true,
+                  defaultModel: 'gpt-5.6-sol',
+                  models: [
                     {
-                      id: 'claude',
-                      kind: 'agent',
-                      name: 'Claude Code',
-                      ready: false,
-                      unavailableReason: 'Install the required runtime first.',
-                      models: [],
-                      capabilities: {
-                        resume: false,
-                        interrupt: false,
-                        approvals: false,
-                        modelSelection: false,
-                      },
+                      id: 'gpt-5.6-sol',
+                      name: 'GPT-5.6 Sol',
+                      originalId: 'gpt-5.6-sol',
                     },
-                  ]
-                : []),
-            ],
-          },
-      error,
-      isFetching: false,
-      refetch: retryDiscovery,
-    };
-  },
-  useSshEnvironmentsQuery: () => ({
-    data:
-      environmentsFailure || environmentsLoading
-        ? undefined
-        : [
-            {
-              profile: {
-                id: 'media',
-                name: 'Brian Media',
-                environmentId: 'env-media',
-                verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
-              },
-              state: { phase: 'disconnected' },
+                  ],
+                  capabilities: {
+                    resume: true,
+                    interrupt: true,
+                    approvals: true,
+                    modelSelection: true,
+                  },
+                },
+                {
+                  id: 'reviewer',
+                  kind: 'agent',
+                  name: 'Reviewer',
+                  ready: true,
+                  models: [],
+                  capabilities: {
+                    resume: true,
+                    interrupt: true,
+                    approvals: false,
+                    modelSelection: false,
+                  },
+                },
+                ...(input.environmentId
+                  ? [
+                      {
+                        id: 'claude',
+                        kind: 'agent',
+                        name: 'Claude Code',
+                        ready: false,
+                        unavailableReason:
+                          'Install the required runtime first.',
+                        models: [],
+                        capabilities: {
+                          resume: false,
+                          interrupt: false,
+                          approvals: false,
+                          modelSelection: false,
+                        },
+                      },
+                    ]
+                  : []),
+              ],
             },
-          ],
-    isSuccess: !environmentsFailure && !environmentsLoading,
-    isError: environmentsFailure,
-  }),
-  // #790: an `access:manage`-gated read — undefined data models the 403 a
-  // non-operator browser session receives.
-  usePeerCredentialsQuery: () => ({
-    data: peerCredentials,
-    isSuccess: peerCredentials !== undefined,
-    isError: peerCredentials === undefined,
-  }),
-  useDelegateOrchestrationTaskMutation: () => ({
-    mutateAsync,
-    reset,
-    isPending: false,
-    error: null,
-  }),
-}));
+        error,
+        isFetching: false,
+        refetch: retryDiscovery,
+      };
+    },
+    useSshEnvironmentsQuery: () => ({
+      data:
+        environmentsFailure || environmentsLoading
+          ? undefined
+          : [
+              {
+                profile: {
+                  id: 'media',
+                  name: 'Brian Media',
+                  environmentId: 'env-media',
+                  verifiedProjectPath:
+                    '/home/brian/dev/github/kontourai/station',
+                },
+                state: { phase: 'disconnected' },
+              },
+            ],
+      isSuccess: !environmentsFailure && !environmentsLoading,
+      isError: environmentsFailure,
+    }),
+    // #790: an `access:manage`-gated read — undefined data models the 403 a
+    // non-operator browser session receives.
+    usePeerCredentialsQuery: () => ({
+      data: peerCredentials,
+      isSuccess: peerCredentials !== undefined,
+      isError: peerCredentials === undefined,
+    }),
+    useDelegateOrchestrationTaskMutation: () => ({
+      mutateAsync,
+      reset,
+      isPending: false,
+      error: mutationError,
+    }),
+  };
+});
 
 describe('DelegationLauncher', () => {
   beforeEach(() => {
@@ -171,14 +257,27 @@ describe('DelegationLauncher', () => {
     reset.mockReset();
     retryDiscovery.mockReset();
     discoveryFailure = null;
+    mutationError = null;
     environmentsFailure = false;
     environmentsLoading = false;
     projectLoading = false;
     projectFailure = false;
+    projectId = 'project:station';
     staleDiscoveryEnvironment = undefined;
     retryProject.mockReset();
+    retryIdentity.mockReset();
     discoveryInputs.mockReset();
     projectDefaultEnvironment = undefined;
+    projectIdentity = singleRepoIdentity();
+    identityLoading = false;
+    identityFailure = false;
+    identityError = Object.assign(
+      new Error(
+        'Project identity was not found. An existing Project may need explicit identity preparation.',
+      ),
+      { status: 404 },
+    );
+    scopeStale = false;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
       taskId: 'task:1',
@@ -229,14 +328,12 @@ describe('DelegationLauncher', () => {
     ).toBe('true');
   });
 
-  test('shows Agent-only targets and delegates to a saved SSH environment', async () => {
+  test('shows Agent-only targets and delegates to a saved SSH environment without a Project', async () => {
     const onDelegated = vi.fn();
     render(
       <DelegationLauncher
         isOpen
         apiBase="http://station.test"
-        projectSlug="station"
-        projectName="Station"
         currentAgentId="codex"
         currentModel="gpt-5.6-sol"
         parentTaskId="codex:1721355900000"
@@ -282,16 +379,24 @@ describe('DelegationLauncher', () => {
     expect(screen.getAllByText(/GPT-5.6 Sol/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
 
+    // No-Project SSH delegation keeps its explicit semantics: no workspace,
+    // no Project substitution — and no SSH repair notice either.
+    expect(
+      screen.queryByText(/can\u2019t be placed on an SSH Station/),
+    ).toBeNull();
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        prompt: 'Fix the mobile task controls',
-        target: {
-          environment: { kind: 'saved', id: 'env-media' },
-          agent: 'codex',
-          model: { override: 'gpt-5.6-sol' },
-          workspace: { kind: 'project', projectSlug: 'station' },
+        input: {
+          prompt: 'Fix the mobile task controls',
+          target: {
+            environment: { kind: 'saved', id: 'env-media' },
+            agent: 'codex',
+            model: { override: 'gpt-5.6-sol' },
+          },
+          parentTaskId: 'codex:1721355900000',
         },
-        parentTaskId: 'codex:1721355900000',
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
       }),
     );
     expect(onDelegated).toHaveBeenCalledWith(
@@ -325,7 +430,13 @@ describe('DelegationLauncher', () => {
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          target: expect.objectContaining({ environment: { kind: 'current' } }),
+          input: expect.objectContaining({
+            target: expect.objectContaining({
+              environment: { kind: 'current' },
+            }),
+          }),
+          apiBase: INVOCATION_API_BASE,
+          requestScope: INVOCATION_SCOPE,
         }),
       ),
     );
@@ -361,7 +472,13 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: expect.objectContaining({ environment: { kind: 'current' } }),
+        input: expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'current' },
+          }),
+        }),
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
       }),
     );
   });
@@ -387,9 +504,13 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: expect.objectContaining({
-          environment: { kind: 'saved', id: 'env-media' },
+        input: expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'saved', id: 'env-media' },
+          }),
         }),
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
       }),
     );
     expect(discoveryInputs).toHaveBeenCalledWith({
@@ -417,14 +538,20 @@ describe('DelegationLauncher', () => {
     expect(mutateAsync).not.toHaveBeenCalled();
     expect(discoveryInputs).not.toHaveBeenCalled();
     projectLoading = false;
-    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    // The default resolves to This Station: local Project execution keeps
+    // its explicit local semantics (an SSH default would now refuse, below).
+    projectDefaultEnvironment = undefined;
     rerender(<DelegationLauncher {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: expect.objectContaining({
-          environment: { kind: 'saved', id: 'env-media' },
+        input: expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'current' },
+          }),
         }),
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
       }),
     );
   });
@@ -517,7 +644,13 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: expect.objectContaining({ environment: { kind: 'current' } }),
+        input: expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'current' },
+          }),
+        }),
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
       }),
     );
   });
@@ -650,14 +783,33 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
 
     await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          target: expect.objectContaining({
+      expect(mutateAsync).toHaveBeenCalledWith({
+        input: {
+          prompt: 'Run on the peer',
+          target: {
             environment: { kind: 'saved', id: 'env-peer-b' },
-          }),
-        }),
-      ),
+            agent: 'codex',
+            workspace: {
+              kind: 'project-portable',
+              portableProjectId: 'portable:station',
+              resourceId: 'https://git.example.test/station.git',
+            },
+          },
+        },
+        apiBase: INVOCATION_API_BASE,
+        requestScope: INVOCATION_SCOPE,
+      }),
     );
+    // Same local/remote slug mismatch still sends the portable id/resource —
+    // never a receiver-local slug — and the public body carries no client
+    // scope or functions.
+    const sent = mutateAsync.mock.calls[0][0] as {
+      input: { target: { workspace: Record<string, unknown> } };
+    };
+    expect(sent.input.target.workspace).not.toHaveProperty('projectSlug');
+    expect(sent.input).not.toHaveProperty('requestScope');
+    expect(sent.input).not.toHaveProperty('apiBase');
+    expect(screen.getByText(/Offer not verified from here/)).toBeTruthy();
   });
 
   test('an unlabeled peer falls back to its endpoint for a name', () => {
@@ -736,5 +888,824 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(screen.queryByRole('option', { name: /Paired Station/ })).toBeNull();
     expect(screen.getByRole('option', { name: 'This Station' })).toBeTruthy();
+  });
+
+  test('a linked Project on an SSH Station is refused with no slug workspace dispatch', async () => {
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Run over SSH"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-media' },
+    });
+    // Named repair state: choosing SSH is not consent to substitute a
+    // different same-named Project — nothing may dispatch.
+    expect(
+      screen.getByText(/can\u2019t be placed on an SSH Station/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Choose a paired Station/)).toBeTruthy();
+    await waitFor(() =>
+      expect((screen.getByLabelText('Worker') as HTMLSelectElement).value).toBe(
+        'agent:codex',
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    // Draft and Station choice survive the refusal.
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Run over SSH',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-media',
+    );
+  });
+
+  test('multiple resources require an explicit choice and never guess', async () => {
+    projectIdentity = {
+      identity: {
+        id: 'portable:station',
+        repos: [
+          {
+            kind: 'git',
+            id: 'https://git.example.test/station.git',
+            canonicalRemote: 'https://git.example.test/station.git',
+            label: 'station',
+          },
+          {
+            kind: 'git',
+            id: 'https://git.example.test/docs.git',
+            canonicalRemote: 'https://git.example.test/docs.git',
+            label: 'docs',
+          },
+        ],
+      },
+      association: {
+        portableProjectId: 'portable:station',
+        localProjectId: 'project:station',
+        localProjectSlug: 'station',
+      },
+    };
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Place on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByLabelText('Project resource')).toBeTruthy();
+    expect(screen.getByText(/Choose which Project resource/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: 'https://git.example.test/docs.git' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            target: expect.objectContaining({
+              workspace: {
+                kind: 'project-portable',
+                portableProjectId: 'portable:station',
+                resourceId: 'https://git.example.test/docs.git',
+              },
+            }),
+          }),
+          apiBase: INVOCATION_API_BASE,
+          requestScope: INVOCATION_SCOPE,
+        }),
+      ),
+    );
+  });
+
+  test('a removed explicit resource does not fall back to the remaining default', async () => {
+    const removedResource = 'https://git.example.test/docs.git';
+    projectIdentity = singleRepoIdentity();
+    projectIdentity.identity.repos.push({
+      kind: 'git',
+      id: removedResource,
+      canonicalRemote: removedResource,
+      label: 'docs',
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      initialPrompt: 'Use the resource I selected',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: removedResource },
+    });
+    projectIdentity = singleRepoIdentity();
+    rerender(<DelegationLauncher {...props} />);
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Project resource') as HTMLSelectElement).value,
+    ).toBe(removedResource);
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: 'https://git.example.test/station.git' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    expect(mutateAsync.mock.calls[0][0].input.target.workspace.resourceId).toBe(
+      'https://git.example.test/station.git',
+    );
+  });
+
+  test('a declared execution-root resource is preselected for a peer', async () => {
+    projectIdentity = {
+      ...singleRepoIdentity(),
+      identity: {
+        ...singleRepoIdentity().identity,
+        repos: [
+          ...singleRepoIdentity().identity.repos,
+          {
+            kind: 'git',
+            id: 'https://git.example.test/docs.git',
+            canonicalRemote: 'https://git.example.test/docs.git',
+            label: 'docs',
+          },
+        ],
+      },
+    };
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Place the default resource"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    // Declared default wins: no explicit choice required.
+    expect(
+      (screen.getByLabelText('Project resource') as HTMLSelectElement).value,
+    ).toBe('https://git.example.test/station.git');
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            target: expect.objectContaining({
+              workspace: {
+                kind: 'project-portable',
+                portableProjectId: 'portable:station',
+                resourceId: 'https://git.example.test/station.git',
+              },
+            }),
+          }),
+          apiBase: INVOCATION_API_BASE,
+          requestScope: INVOCATION_SCOPE,
+        }),
+      ),
+    );
+  });
+
+  test('a verified missing identity blocks peer placement with prepare guidance', () => {
+    identityFailure = true;
+    // Genuine missing: 404 WITH the discriminated wire code. The message is
+    // deliberately unrelated — branching is by status+code, never by text.
+    identityError = Object.assign(new Error('unrelated server sentence'), {
+      status: 404,
+      code: 'project_identity_not_prepared',
+    });
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Keep this peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    // Only the verified 404 missing state gets prepare guidance.
+    expect(screen.getByText(/has no portable identity/)).toBeTruthy();
+    expect(screen.getByText(/prepare-identity/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    // Selection and draft survive the refusal.
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('a removed Project 404 stays unavailable with retry only, never an absence or setup claim', () => {
+    identityFailure = true;
+    // Removed Project: a 404 carrying the GENERIC storage code — the same
+    // status as genuine missing, a different verified fact. The absence
+    // sentence is deliberately present: branching is by code, never by text.
+    identityError = Object.assign(
+      new Error('Project identity was not found.'),
+      { status: 404, code: 'file_storage_not_found' },
+    );
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Keep this removed draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
+    // No absence claim...
+    expect(screen.queryByText(/has no portable identity/)).toBeNull();
+    // ...and no speculative setup help: an unverified 404 has no
+    // established diagnosis, so only retry/access guidance is shown.
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this removed draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('an unknown-endpoint 404 stays unavailable with retry only', () => {
+    identityFailure = true;
+    // Old Station without the identity endpoint, or a proxy 404 page: a 404
+    // with no machine code at all.
+    identityError = Object.assign(new Error('Request failed with HTTP 404'), {
+      status: 404,
+    });
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Keep this old-server draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
+    expect(screen.queryByText(/has no portable identity/)).toBeNull();
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this old-server draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('an authorization denial names access without inventing absence', () => {
+    identityFailure = true;
+    identityError = Object.assign(new Error('Forbidden'), { status: 403 });
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Denied peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/refused to share/)).toBeTruthy();
+    // A denial is not absence: no prepare guidance, no readiness claim.
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Denied peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('a failed identity read names the outage without inventing absence', () => {
+    identityFailure = true;
+    identityError = new TypeError('fetch failed');
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Failed-read peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
+    // A transport failure is not absence: no prepare guidance, not even the
+    // conditional hint (nothing about a 404 was observed).
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.queryByText(/has no portable identity/)).toBeNull();
+    expect(screen.queryByText(/never had an identity prepared/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Failed-read peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test.each(['loading', 'failed', 'missing id'])(
+    'blocks cached portable identity while the selected Project is %s',
+    (state) => {
+      projectLoading = state === 'loading';
+      projectFailure = state === 'failed';
+      if (state === 'missing id') projectId = undefined;
+      peerCredentials = [
+        {
+          environmentId: 'env-peer-b',
+          apiBase: 'https://box-b.example.test',
+          scope: 'orchestration:read orchestration:operate',
+          label: 'box-b',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ];
+      render(
+        <DelegationLauncher
+          isOpen
+          apiBase="http://station.test"
+          projectSlug="station"
+          initialPrompt="Keep this draft"
+          onClose={vi.fn()}
+          onDelegated={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+      fireEvent.change(screen.getByLabelText('Station'), {
+        target: { value: 'env-peer-b' },
+      });
+      expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+        'disabled',
+        true,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+      expect(mutateAsync).not.toHaveBeenCalled();
+      expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+        'Keep this draft',
+      );
+    },
+  );
+
+  test('a same-slug recreated Project blocks dispatch on the stale incarnation and never sends the old portable id', () => {
+    // Same Home, same slug, NEW local incarnation: the cached identity still
+    // names the deleted Project. The selected Project record owns the
+    // answer — mismatch is a named blocked state, no dispatch, no fallback.
+    projectId = 'project:station-recreated';
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(
+      screen.getByText(/changed on this Station since its placement/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Recreated draft',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('correct association on fresh data restores placement for the recreated Project', () => {
+    projectId = 'project:station-recreated';
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const { rerender } = render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(
+      screen.getByText(/changed on this Station since its placement/),
+    ).toBeTruthy();
+    // The identity read resolves FRESH data whose association names the
+    // recreated incarnation: the mismatch clears and placement works, with
+    // the RECREATED Project's portable id — never the old one.
+    projectIdentity = {
+      ...singleRepoIdentity(),
+      identity: {
+        ...singleRepoIdentity().identity,
+        id: 'portable:station-recreated',
+      },
+      association: {
+        portableProjectId: 'portable:station-recreated',
+        localProjectId: 'project:station-recreated',
+        localProjectSlug: 'station',
+      },
+    };
+    rerender(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByText(/changed on this Station since its placement/),
+    ).toBeNull();
+    const delegate = screen.getByRole('button', { name: 'Delegate' });
+    expect(delegate).toHaveProperty('disabled', false);
+    fireEvent.submit(delegate.closest('form')!);
+    expect(mutateAsync).toHaveBeenCalledOnce();
+    const envelope = mutateAsync.mock.calls[0]![0] as Record<string, any>;
+    expect(envelope.input.target.workspace).toMatchObject({
+      kind: 'project-portable',
+      portableProjectId: 'portable:station-recreated',
+    });
+  });
+
+  test('a loading identity blocks peer dispatch until it resolves', () => {
+    identityLoading = true;
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Wait for identity"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/portable identity before placing/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test('a stale Home/authority before dispatch refuses without dispatching', () => {
+    scopeStale = true;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Do not send stale"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText(/Station access changed/)).toBeTruthy();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Do not send stale',
+    );
+  });
+
+  test('authority going stale across the await keeps the draft and skips the result', async () => {
+    const onDelegated = vi.fn();
+    mutateAsync.mockImplementation(async () => {
+      scopeStale = true;
+      return {
+        taskId: 'task:1',
+        sessionId: 'task:1',
+        status: 'dispatched',
+        environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+        target: { kind: 'agent', id: 'codex' },
+        resumable: true,
+      };
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Keep the late result out"
+        onClose={vi.fn()}
+        onDelegated={onDelegated}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.getByText(/Station access changed/)).toBeTruthy(),
+    );
+    expect(onDelegated).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep the late result out',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+  });
+
+  test('a receiver refusal keeps the draft and machine choice with no redispatch', async () => {
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      projectName: 'Station',
+      initialPrompt: 'Keep this refused draft',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    mutationError = new Error(
+      'This Station does not currently offer execution for the requested Project resource.',
+    );
+    rerender(<DelegationLauncher {...props} />);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'does not currently offer execution',
+    );
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this refused draft',
+    );
+    // Explicit retry dispatches exactly once more — never automatically.
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
   });
 });

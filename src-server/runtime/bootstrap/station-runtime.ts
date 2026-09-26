@@ -14,6 +14,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
   closePluginActivationSession,
@@ -32,6 +33,7 @@ import {
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
  * VoltAgent runtime integration for Station
@@ -85,7 +87,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
-import { ensureConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
+import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
@@ -150,6 +152,7 @@ import { projectSessionLifecycle } from '../../services/orchestration/session-li
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
+import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
@@ -379,6 +382,7 @@ import type { DeviceToolchainService } from '../../services/devices/toolchain/de
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import type { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
+import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import {
   ActionOperationService,
   FileActionOperationStore,
@@ -426,7 +430,7 @@ import {
   resolveRuntimeVectorDbProvider,
 } from '../plugins/runtime-provider-resolution.js';
 import { configureRuntimeRoutes } from '../routes/runtime-routes.js';
-import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../tools/runtime-control-tools.js';
 import { guardRuntimeGenerationTools } from '../tools/runtime-generation-tools.js';
 import type {
   DispatchEvidenceSource,
@@ -700,6 +704,7 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
@@ -1046,6 +1051,9 @@ export class StationRuntime {
       onRosterOp: (op) => orchestrationStreamPresenceRosterOps.add(1, { op }),
     },
   );
+  // #2585: which surfaces are being looked at. Written by the focus route,
+  // read by notification delivery; one instance so both see the same truth.
+  public readonly focusPresence = new FocusPresence();
   private framework!: VoltAgentFramework | StrandsFramework;
   // Different-origin MCP Apps sandbox proxy. It uses an ephemeral loopback port
   // by default; MCP_UI_FRAME_PORT can pin that port for deployments.
@@ -3115,7 +3123,7 @@ export class StationRuntime {
       logger: this.logger,
       usageAggregator: this.usageAggregator,
       defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-      autoApproveTools: SC_READ_ONLY_TOOLS,
+      autoApproveTools: SC_AUTO_APPROVED_TOOLS,
       replaceTemplateVariables: (text) =>
         replaceRuntimeTemplateVariables(text, appConfig),
       resolveDefaultModelHint: () =>
@@ -3475,25 +3483,10 @@ export class StationRuntime {
               credentialRecoveryRuntimeConnectionId,
             ),
           usageAggregator: this.usageAggregator,
-          // archive#3245: lifetime analytics reads the orchestration
-          // substrate through the SAME `readSessionUsage` fold the stats
-          // route uses. Resolved per rescan off `this.orchestrationService`,
-          // which a reload replaces underneath a reused aggregator. The
-          // aggregate scope is the deliberate one: `stats.json` is a
-          // home-global lifetime store with no per-user partition, and
-          // `listSessionUsage` refuses the read outright in hosted mode,
-          // where "home-global" would mean "across tenants".
-          orchestrationUsageRef: {
-            get: () =>
-              this.orchestrationService
-                ? {
-                    listSessionUsage: () =>
-                      this.orchestrationService.listSessionUsage(
-                        INTERNAL_SESSION_READ_SCOPE,
-                      ),
-                  }
-                : undefined,
-          },
+          // archive#3245 / #2568: see `orchestrationUsageRefFor`.
+          orchestrationUsageRef: orchestrationUsageRefFor(
+            () => this.orchestrationService,
+          ),
           monitoringEmitter: this.monitoringEmitter,
           activeAgents: this.activeAgents,
           agentMetadataMap: this.agentMetadataMap,
@@ -3614,16 +3607,15 @@ export class StationRuntime {
             // (module doc's onCoreConfigReady/onRouteServicesReady ordering
             // note; `this.appConfig` is set synchronously by
             // `onCoreConfigReady` above, which always runs first).
-            await ensureConversationKnowledgeRoot({
+            // Sessions are read as the request's principal, never a fixed
+            // reader: see `registerRuntimeConversationKnowledgeRoot`.
+            await registerRuntimeConversationKnowledgeRoot({
               provider: this.knowledgeStoreProvider,
               persistence: this.storageAdapter,
-              sessionReader: {
-                listSessionReadModel: (authority) =>
-                  this.orchestrationService.listSessionReadModel(authority),
-                sessionQueries: this.orchestrationService.sessionQueries,
-              },
+              sessions: this.orchestrationService,
               fileStores: this.memoryAdapters,
-              getUserId: () => getCachedUser().alias,
+              // Legacy file-memory conversations are keyed by the OS alias.
+              fileMemoryUserId: () => getCachedUser().alias,
               projectHomeDir: this.configLoader.getProjectHomeDir(),
               knowledgeStoresEnabled: this.appConfig?.knowledgeStores,
             });
@@ -3860,6 +3852,7 @@ export class StationRuntime {
           provider: 'task-dispatch',
           sourceSurface: 'e2e-task-room-control',
           fullAccessGrant: null,
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
         });
         if (dispatched.kind !== 'dispatched')
           throw new Error(`Task dispatch was ${dispatched.kind}`);
@@ -4031,6 +4024,7 @@ export class StationRuntime {
       pluginDraftService,
       deviceHosts,
       agentActivityPublisher,
+      notificationDeliveryRouter,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4085,6 +4079,7 @@ export class StationRuntime {
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,
+      focusPresence: this.focusPresence,
       layoutService: this.layoutService,
       modelCatalog: this.modelCatalog,
       acpBridge: this.acpBridge,
@@ -4119,7 +4114,7 @@ export class StationRuntime {
       reloadSkillsAndAgents: async () => this.reloadSkillsAndAgents(),
       initialize: async () => this.initialize(),
       getVoltAgent: () => this.voltAgent,
-      defaultAutoApprovedTools: SC_READ_ONLY_TOOLS,
+      defaultAutoApprovedTools: SC_AUTO_APPROVED_TOOLS,
       createMemoryAdapter: (_slug: string) =>
         new FileMemoryAdapter({
           projectHomeDir: this.configLoader.getProjectHomeDir(),
@@ -4142,6 +4137,7 @@ export class StationRuntime {
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
+    this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4637,6 +4633,8 @@ export class StationRuntime {
       this.deviceSessions = undefined;
       await this.agentActivityPublisher?.stop();
       this.agentActivityPublisher = undefined;
+      this.notificationDeliveryRouter?.stop();
+      this.notificationDeliveryRouter = undefined;
     } catch (error) {
       failures.push(error);
     }

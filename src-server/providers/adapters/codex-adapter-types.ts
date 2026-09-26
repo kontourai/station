@@ -3,6 +3,7 @@ import type {
   ProviderSession,
 } from '../adapter-shape.js';
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
+import type { CodexThreadSandbox } from './codex-approval-mode.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -75,6 +76,13 @@ export interface CodexSessionRecord {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * #2559: the sandbox the thread runs in, from `thread/start`,
+   * `thread/resume` or `thread/fork`'s own report, updated whenever a turn
+   * sends a `sandboxPolicy`. `turn/start` takes no sandbox mode string, so
+   * this is what a turn's sandbox actually is.
+   */
+  threadSandbox?: CodexThreadSandbox;
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**
@@ -92,6 +100,15 @@ export interface CodexSessionRecord {
   terminalPublishedForTurnId?: string;
   lastSessionState: 'idle' | 'running' | 'errored';
   turnOutput: Map<string, string>;
+  /**
+   * `turnId → itemId` of the agent message `turnOutput` last grew from.
+   * Codex streams each commentary update as its own `agentMessage` item, and
+   * the items carry no whitespace between them, so a turn's updates ran
+   * together ("…the PR.The focused tests…"). A change of item is where the
+   * adapter inserts the paragraph break. Optional so existing records and
+   * fixtures stay valid; created on first use.
+   */
+  turnOutputItemId?: Map<string, string>;
   toolNames: Map<string, string>;
   /**
    * `itemId → { toolName, turnId }` for tool items whose `tool.started` has

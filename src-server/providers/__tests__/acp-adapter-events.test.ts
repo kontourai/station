@@ -158,6 +158,45 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
     });
   });
 
+  test('a new messageId opens a paragraph; chunks of one message and id-less chunks join as sent', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events, { state: {} });
+    const chunk = (text: string, messageId?: string) =>
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+          ...(messageId ? { messageId } : {}),
+        } as any,
+        ctx,
+      );
+
+    chunk('I opened', 'message-1');
+    chunk(' the PR.', 'message-1');
+    chunk('The tests pass.', 'message-2');
+
+    const noIds: CanonicalRuntimeEvent[] = [];
+    const idless = makeCtx(noIds, { state: {} });
+    for (const text of ['One.', 'Two.'])
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        } as any,
+        idless,
+      );
+
+    const deltas = (list: CanonicalRuntimeEvent[]) =>
+      list.map((event) => (event as { delta?: string }).delta);
+    expect(deltas(events)).toEqual([
+      'I opened',
+      ' the PR.',
+      '\n\nThe tests pass.',
+    ]);
+    // No messageId: the boundary is invisible, so nothing is invented.
+    expect(deltas(noIds)).toEqual(['One.', 'Two.']);
+  });
+
   test('maps a completed tool_call_update through the bounded typed projection', () => {
     const events: CanonicalRuntimeEvent[] = [];
     const ctx = makeCtx(events);

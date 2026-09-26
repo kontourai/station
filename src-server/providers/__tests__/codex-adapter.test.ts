@@ -1,11 +1,18 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
@@ -3639,6 +3646,74 @@ describe('CodexAdapter', () => {
     );
   });
 
+  describe('the login probe runs under the connection env', () => {
+    const makeTempDir = trackTempDirs();
+    let globalHome: string;
+    let probedEnvs: Array<Record<string, string> | undefined>;
+
+    // Stands in for `codex login status`: it reports on whichever CODEX_HOME
+    // it is launched with, exactly as the real CLI does. The global home is
+    // an empty temp dir, so no credentials on this host can leak in.
+    const runCommand = async (
+      _command: string,
+      args: string[],
+      _signal?: AbortSignal,
+      envOverlay?: Record<string, string>,
+    ) => {
+      if (args[0] === '--version') {
+        return { stdout: 'codex-cli 0.0.0', stderr: '', code: 0 };
+      }
+      probedEnvs.push(envOverlay);
+      const codexHome = envOverlay?.CODEX_HOME ?? globalHome;
+      return existsSync(join(codexHome, 'auth.json'))
+        ? { stdout: 'Logged in using ChatGPT', stderr: '', code: 0 }
+        : { stdout: '', stderr: 'Not logged in', code: 1 };
+    };
+
+    const loginStatus = async (
+      connectionEnv: Record<string, string> | undefined,
+    ) => {
+      const adapter = new CodexAdapter({
+        findBinary: () => '/test/bin/codex',
+        runCommand,
+        getConnectionEnv: async () => connectionEnv,
+      });
+      const prerequisites = await adapter.getPrerequisites();
+      return prerequisites.find((entry) => entry.id === 'codex-auth')?.status;
+    };
+
+    test('configHome (CODEX_HOME) is the account readiness reports on', async () => {
+      const root = makeTempDir('station-codex-readiness-auth-');
+      globalHome = join(root, 'global');
+      mkdirSync(globalHome);
+      const configHome = join(root, 'codex-proxy');
+      mkdirSync(configHome);
+      writeFileSync(
+        join(configHome, 'auth.json'),
+        JSON.stringify({ OPENAI_API_KEY: 'sk-proxy' }),
+      );
+      probedEnvs = [];
+
+      await expect(
+        loginStatus({
+          CODEX_HOME: configHome,
+          OPENAI_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      ).resolves.toBe('installed');
+      expect(probedEnvs).toEqual([
+        { CODEX_HOME: configHome, OPENAI_BASE_URL: 'http://127.0.0.1:8318' },
+      ]);
+
+      // Negative control: the same host without the connection env. The
+      // probe must receive no overlay at all, so a regression that always
+      // hands it one (even an empty one) is caught here.
+      probedEnvs = [];
+      await expect(loginStatus(undefined)).resolves.toBe('missing');
+      expect(probedEnvs).toHaveLength(1);
+      expect(probedEnvs[0]).toBeUndefined();
+    });
+  });
+
   test('lists models from Codex app-server model/list', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -4417,10 +4492,14 @@ describe('CodexAdapter', () => {
     expect(turnStartCalls).toHaveLength(2);
     expect(turnStartCalls[0].params).not.toHaveProperty('approvalPolicy');
     expect(turnStartCalls[0].params).not.toHaveProperty('sandbox');
+    expect(turnStartCalls[0].params).not.toHaveProperty('sandboxPolicy');
     expect(turnStartCalls[1].params).toMatchObject({
       approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
     });
+    // #2559: turn/start takes no sandbox mode string, and Ask and Auto share
+    // the thread's workspace-write sandbox, so no sandboxPolicy is sent.
+    expect(turnStartCalls[1].params).not.toHaveProperty('sandbox');
+    expect(turnStartCalls[1].params).not.toHaveProperty('sandboxPolicy');
 
     await adapter.stopAll();
   });
@@ -4504,12 +4583,12 @@ describe('CodexAdapter', () => {
       approvalPolicy: 'never',
       sandbox: 'read-only',
     });
-    expect(
-      calls.find((line) => line.method === 'turn/start')?.params,
-    ).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'read-only',
-    });
+    const turnStart = calls.find((line) => line.method === 'turn/start');
+    expect(turnStart?.params).toMatchObject({ approvalPolicy: 'never' });
+    // #2559: the thread is already read-only; nothing loosens it, and the
+    // ignored sandbox mode string is no longer sent.
+    expect(turnStart?.params).not.toHaveProperty('sandbox');
+    expect(turnStart?.params).not.toHaveProperty('sandboxPolicy');
 
     await adapter.stopAll();
   });
@@ -4575,6 +4654,430 @@ describe('CodexAdapter', () => {
     });
 
     await adapter.stopAll();
+  });
+
+  describe('#2493: never reaches danger-full-access only in a host session', () => {
+    /** The next event with `method`, skipping the ones before it. */
+    async function nextOf(
+      iterator: AsyncIterator<any>,
+      method: string,
+    ): Promise<any> {
+      for (let seen = 0; seen < 20; seen += 1) {
+        const event = await nextEvent(iterator, method);
+        if (event?.method === method) return event;
+      }
+      throw new Error(`No ${method} event`);
+    }
+
+    async function startWith(
+      threadId: string,
+      confinement: 'host' | 'workspace' | undefined,
+      resume: boolean,
+    ) {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        modelOptions: { approvalMode: 'never' },
+        ...(resume
+          ? { resumeCursor: { codexThreadId: `codex-${threadId}` } }
+          : {}),
+        ...(confinement ? { confinement } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: {
+          thread: { id: `codex-${threadId}` },
+          model: 'gpt-5-codex',
+        },
+      });
+      await withTimeout(sessionPromise, `startSession ${threadId}`);
+      await flushIo();
+      const request = processHandle.stdin.lines
+        .map(parseLine)
+        .find(
+          (line) => line.method === (resume ? 'thread/resume' : 'thread/start'),
+        );
+      const configured = await nextOf(iterator, 'session.configured');
+      return { adapter, iterator, request, configured };
+    }
+
+    test.each([
+      ['thread/start', false],
+      ['thread/resume', true],
+    ] as const)(
+      'a host session sends exactly the historical pair on %s',
+      async (_method, resume) => {
+        const { adapter, request, configured } = await startWith(
+          `host-${String(resume)}`,
+          'host',
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+        });
+        expect(configured.metadata).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'danger-full-access',
+          approvalMode: 'never',
+          confinement: 'host',
+        });
+        await adapter.stopAll();
+      },
+    );
+
+    test.each([
+      ['thread/start', 'workspace', false],
+      ['thread/resume', 'workspace', true],
+      ['thread/start (no confinement at all)', undefined, false],
+    ] as const)(
+      'a confined session keeps never but sandboxes %s to the workspace',
+      async (_method, confinement, resume) => {
+        const { adapter, iterator, request, configured } = await startWith(
+          `confined-${String(resume)}-${String(confinement)}`,
+          confinement,
+          resume,
+        );
+        expect(request?.params).toMatchObject({
+          approvalPolicy: 'never',
+          sandbox: 'workspace-write',
+        });
+        expect(configured.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+
+        const threadId = `confined-${String(resume)}-${String(confinement)}`;
+        const turnPromise = adapter.sendTurn({
+          threadId,
+          input: 'go',
+          modelOptions: { approvalMode: 'never' },
+          ...(confinement ? { confinement } : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, threadId, {
+          id: '3',
+          result: { turn: { id: `turn-${threadId}` } },
+        });
+        await withTimeout(turnPromise, `sendTurn ${threadId}`);
+        const turnStarted = await nextOf(iterator, 'turn.started');
+        expect(turnStarted.metadata).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+        await adapter.stopAll();
+      },
+    );
+  });
+
+  describe('#2559: a turn changes the thread sandbox only with sandboxPolicy, never looser than confinement', () => {
+    type Posture = {
+      approvalMode?: 'ask' | 'auto' | 'never';
+      confinement?: 'host' | 'workspace';
+    };
+
+    async function nextOf(
+      iterator: AsyncIterator<any>,
+      method: string,
+    ): Promise<any> {
+      for (let seen = 0; seen < 20; seen += 1) {
+        const event = await nextEvent(iterator, method);
+        if (event?.method === method) return event;
+      }
+      throw new Error(`No ${method} event`);
+    }
+
+    /**
+     * Starts a thread in `start`, with Codex reporting `reported` as its
+     * sandbox, then runs one turn per posture in `turns`. Returns each
+     * turn/start request's params and each turn.started's metadata.
+     */
+    async function run(
+      threadId: string,
+      start: Posture,
+      reported: unknown,
+      turns: Posture[],
+    ) {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const started = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        ...(start.approvalMode
+          ? { modelOptions: { approvalMode: start.approvalMode } }
+          : {}),
+        ...(start.confinement ? { confinement: start.confinement } : {}),
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: {
+          thread: { id: `codex-${threadId}` },
+          model: 'gpt-5-codex',
+          ...(reported ? { sandbox: reported } : {}),
+        },
+      });
+      await withTimeout(started, `startSession ${threadId}`);
+      await flushIo();
+      // Published only when the start carried a posture.
+      const configured = start.approvalMode
+        ? (await nextOf(iterator, 'session.configured')).metadata
+        : undefined;
+      const metadata: Array<Record<string, unknown>> = [];
+      let id = 3;
+      for (const turn of turns) {
+        const sent = adapter.sendTurn({
+          threadId,
+          input: 'go',
+          ...(turn.approvalMode
+            ? { modelOptions: { approvalMode: turn.approvalMode } }
+            : {}),
+          ...(turn.confinement ? { confinement: turn.confinement } : {}),
+        });
+        await flushIo();
+        writeServerMessage(adapter, threadId, {
+          id: String(id),
+          result: { turn: { id: `turn-${threadId}-${id}` } },
+        });
+        id += 1;
+        await withTimeout(sent, `sendTurn ${threadId}`);
+        metadata.push((await nextOf(iterator, 'turn.started')).metadata);
+      }
+      const params = processHandle.stdin.lines
+        .map(parseLine)
+        .filter((line) => line.method === 'turn/start')
+        .map((line) => line.params);
+      await adapter.stopAll();
+      return { params, metadata, configured };
+    }
+
+    const FULL = { type: 'dangerFullAccess' };
+    const WORKSPACE = {
+      type: 'workspaceWrite',
+      writableRoots: ['/tmp/extra'],
+      networkAccess: false,
+      excludeTmpdirEnvVar: true,
+      excludeSlashTmp: false,
+    };
+
+    const NO_BASELINE = {
+      type: 'workspaceWrite',
+      writableRoots: [],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    };
+
+    test('a host thread at full access tightens to workspace-write when Ask is picked, without gaining network', async () => {
+      const { params, metadata } = await run(
+        'tighten',
+        { approvalMode: 'never', confinement: 'host' },
+        FULL,
+        [
+          { approvalMode: 'ask', confinement: 'host' },
+          { approvalMode: 'ask', confinement: 'host' },
+        ],
+      );
+      // Codex never reported a workspace-write config for this thread, so
+      // there is no baseline to restore: no network, no extra roots.
+      expect(params[0].sandboxPolicy).toEqual(NO_BASELINE);
+      expect(params[0]).not.toHaveProperty('sandbox');
+      expect(metadata[0]).toMatchObject({
+        approvalPolicy: 'untrusted',
+        sandbox: 'workspace-write',
+        approvalMode: 'ask',
+      });
+      // Already tightened: the next Ask turn changes nothing.
+      expect(params[1]).not.toHaveProperty('sandboxPolicy');
+      expect(metadata[1]).toMatchObject({ sandbox: 'workspace-write' });
+    });
+
+    test("tightening back restores the thread's own workspace-write config exactly (R2 round trip)", async () => {
+      const { params, metadata } = await run(
+        'round-trip',
+        { approvalMode: 'ask', confinement: 'host' },
+        WORKSPACE,
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { approvalMode: 'ask', confinement: 'host' },
+        ],
+      );
+      expect(params[0].sandboxPolicy).toEqual({ type: 'dangerFullAccess' });
+      expect(metadata[0]).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+        confinement: 'host',
+      });
+      // Back to the config Codex reported: network still off, its roots and
+      // exclude flags intact.
+      expect(params[1].sandboxPolicy).toEqual(WORKSPACE);
+      expect(metadata[1]).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'ask',
+      });
+    });
+
+    test.each([
+      ['a workspace session', 'workspace'],
+      ['a turn naming no confinement at all', undefined],
+    ] as const)(
+      'never is never full access for %s, whatever the thread started as',
+      async (_label, confinement) => {
+        const fromWorkspace = await run(
+          `confined-ws-${String(confinement)}`,
+          { approvalMode: 'ask', ...(confinement ? { confinement } : {}) },
+          WORKSPACE,
+          [{ approvalMode: 'never', ...(confinement ? { confinement } : {}) }],
+        );
+        // Already workspace-write: nothing to send.
+        expect(fromWorkspace.params[0]).not.toHaveProperty('sandboxPolicy');
+        expect(fromWorkspace.metadata[0]).toMatchObject({
+          sandbox: 'workspace-write',
+          approvalMode: 'never',
+          confinement: 'workspace',
+        });
+
+        // A thread the user's own Codex config left unconfined is pulled
+        // into the workspace, not left at (or given) full access.
+        const fromFull = await run(
+          `confined-full-${String(confinement)}`,
+          {},
+          FULL,
+          [{ approvalMode: 'never', ...(confinement ? { confinement } : {}) }],
+        );
+        expect(fromFull.params[0].sandboxPolicy).toEqual(NO_BASELINE);
+        expect(fromFull.metadata[0]).toMatchObject({
+          sandbox: 'workspace-write',
+        });
+      },
+    );
+
+    test('R1: a confined thread at full access is pulled into the workspace even on a turn that carries no posture', async () => {
+      // The user's own Codex config (or an adopted session's source)
+      // started the thread unconfined; nothing on the turn asks for a mode.
+      const confined = await run('no-posture-ws', {}, FULL, [
+        { confinement: 'workspace' },
+        { confinement: 'workspace' },
+      ]);
+      expect(confined.params[0].sandboxPolicy).toEqual(NO_BASELINE);
+      expect(confined.params[1]).not.toHaveProperty('sandboxPolicy');
+
+      // A host session keeps what its own config gave it.
+      const host = await run('no-posture-host', {}, FULL, [
+        { confinement: 'host' },
+      ]);
+      expect(host.params[0]).not.toHaveProperty('sandboxPolicy');
+    });
+
+    test('a thread whose posture does not change sends no sandboxPolicy, so its own sandbox keeps governing', async () => {
+      const { params, metadata } = await run(
+        'unchanged',
+        { approvalMode: 'never', confinement: 'host' },
+        FULL,
+        [
+          { approvalMode: 'never', confinement: 'host' },
+          { confinement: 'host' },
+        ],
+      );
+      for (const turn of params) {
+        expect(turn).not.toHaveProperty('sandboxPolicy');
+        expect(turn).not.toHaveProperty('sandbox');
+      }
+      expect(metadata[0]).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+      });
+    });
+
+    test('R3: a thread Codex reports read-only is a floor Station never loosens', async () => {
+      // Station asked for workspace-write; Codex's own config (or a managed
+      // requirement) put the thread at read-only. Neither Ask nor full
+      // access moves it.
+      const { params, metadata, configured } = await run(
+        'read-only-floor',
+        { approvalMode: 'auto', confinement: 'host' },
+        { type: 'readOnly', networkAccess: false },
+        [
+          { approvalMode: 'ask', confinement: 'host' },
+          { approvalMode: 'never', confinement: 'host' },
+        ],
+      );
+      for (const turn of params)
+        expect(turn).not.toHaveProperty('sandboxPolicy');
+      expect(metadata[0]).toMatchObject({ sandbox: 'read-only' });
+      expect(metadata[1]).toMatchObject({ sandbox: 'read-only' });
+      // R5: session.configured reports the sandbox Codex reported, not the
+      // one requested, and no Station mode claims it (untrusted/on-request
+      // over read-only is none of Ask, Auto or Full access).
+      expect(configured).toMatchObject({
+        approvalPolicy: 'on-request',
+        sandbox: 'read-only',
+        approvalMode: 'connection-default',
+      });
+    });
+
+    test('R5: an external sandbox report claims no Station sandbox mode in session.configured', async () => {
+      // Codex says the thread runs inside an outer sandbox, which is none of
+      // read-only, workspace-write or full access. Reporting the requested
+      // mode would claim one the thread is not in.
+      const { configured } = await run(
+        'configured-external',
+        { approvalMode: 'never', confinement: 'host' },
+        { type: 'externalSandbox', networkAccess: 'restricted' },
+        [],
+      );
+      expect(configured).toMatchObject({ approvalPolicy: 'never' });
+      expect(configured).not.toHaveProperty('sandbox');
+      expect(configured).not.toHaveProperty('approvalMode');
+    });
+
+    test('R5: session.configured falls back to the requested pair only when Codex reported no sandbox', async () => {
+      const reported = await run(
+        'configured-reported',
+        { approvalMode: 'never', confinement: 'host' },
+        WORKSPACE,
+        [],
+      );
+      expect(reported.configured).toMatchObject({
+        sandbox: 'workspace-write',
+        approvalMode: 'never',
+      });
+      const silent = await run(
+        'configured-silent',
+        { approvalMode: 'never', confinement: 'host' },
+        undefined,
+        [],
+      );
+      expect(silent.configured).toMatchObject({
+        sandbox: 'danger-full-access',
+        approvalMode: 'never',
+      });
+    });
   });
 
   describe('#896 wave 2: app-home profile env layering', () => {

@@ -68,7 +68,9 @@ import {
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
+import { verifyDelegationContextAttestation } from '../runtime/agents/delegation-attestation.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
@@ -228,9 +230,19 @@ export interface DelegateTaskInput {
   sessionId?: string;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
+  delegationAttestation?: string;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.stationControlToolCall`. */
+  stationControlToolCall?: true;
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: route-set only, like `ownerAttribution`: the request's proof that
+   * the session this starts may run `host`. Absent (the agent tool, every
+   * in-process caller) starts it confined to its workspace.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -307,6 +319,19 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * Server-only; scoped to the executing thread in the closures below.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #2601: Station's own engine's attestation for `delegation`
+   * (`delegation-attestation.ts`). Forwarded only to THIS Station's route,
+   * which verifies it; another Station holds a different key.
+   */
+  delegationAttestation?: string;
+  /**
+   * #2601: set only by the station-control tools themselves. Their
+   * `delegation` is a model's claim, settled by `delegationToForward` before
+   * any forward; a Station route's own call already carries the context its
+   * `resolveRequestDelegation` settled, and forwards it as it is.
+   */
+  stationControlToolCall?: true;
 };
 
 /**
@@ -474,6 +499,8 @@ export interface ContinueDelegatedTaskInput
    * owner attribution as a fresh delegation (session-owner-attribution.ts).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /** #2493: route-set only; see `DelegateTaskInput.fullAccessGrant`. */
+  fullAccessGrant?: FullAccessGrant | null;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -1232,6 +1259,69 @@ function currentControlApiBase(): string {
   return resolveControlApiBase();
 }
 
+/** #2601: this Station's derivation for the calling tool's verified caller. */
+const CALLER_DELEGATION_PATH =
+  '/api/orchestration/station-control/caller/delegation';
+
+type ForwardedDelegation = {
+  delegation?: AgentDelegationContext;
+  delegationAttestation?: string;
+};
+
+/**
+ * #2601: the delegation context a station-control tool call forwards.
+ *
+ * To THIS Station an attested claim goes with its attestation, and nothing
+ * else: its route derives the context from the verified caller, or keeps an
+ * attested one.
+ * To a saved Environment (peer or SSH Station) that route is bypassed, so
+ * the context is settled here first:
+ *  - a verified caller forwards the context THIS Station derives for it
+ *    (the same derivation), and a caller at its depth limit is refused
+ *    before anything is sent;
+ *  - otherwise a context Station's own engine attested is forwarded (the
+ *    attestation itself is not: another Station holds another key);
+ *  - otherwise the pre-#2601 behaviour stands, and it is a claim: a
+ *    `send_message` forwards whatever context it was given, and a
+ *    `delegate_task` forwards none. Only an unverified, unattested
+ *    station-control connection reaches this branch.
+ */
+async function delegationToForward(
+  target: DelegationTarget,
+  input: ForwardedDelegation,
+  unverifiedForwardsClaim: boolean,
+): Promise<ForwardedDelegation> {
+  if (target.kind === 'current')
+    // Only an attested claim can matter to this Station's route (it derives
+    // or drops every other one), so an unattested one is not sent: a
+    // malformed model claim must not fail the call's validation.
+    return input.delegation && input.delegationAttestation
+      ? {
+          delegation: input.delegation,
+          delegationAttestation: input.delegationAttestation,
+        }
+      : {};
+  const derived = await readJson<{
+    delegation?: AgentDelegationContext | null;
+  }>(
+    `${currentControlApiBase()}${CALLER_DELEGATION_PATH}`,
+    trustedRequest(),
+    'Station could not derive this delegation from the calling session',
+  );
+  if (derived.delegation) return { delegation: derived.delegation };
+  if (
+    input.delegation &&
+    verifyDelegationContextAttestation(
+      input.delegation,
+      input.delegationAttestation,
+    )
+  )
+    return { delegation: input.delegation };
+  return unverifiedForwardsClaim && input.delegation
+    ? { delegation: input.delegation }
+    : {};
+}
+
 /**
  * Local delegation reads are externally initiated even when the selected
  * environment is this process.  Personal mode retains its established
@@ -1284,12 +1374,16 @@ function dispatchContextForAuthority(
   // The service stamps it on the new session (`prepareStart`), the one
   // place every start passes.
   ownerAttribution?: StartOwnerAttribution,
+  // #2493: the route's full-access grant for a start this dispatch causes.
+  // `prepareStart` reads it (`startConfinement`); absent confines the start.
+  fullAccessGrant?: FullAccessGrant | null,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
+  fullAccessGrant?: FullAccessGrant;
 } {
   return {
     userId: authority.userId,
@@ -1299,6 +1393,7 @@ function dispatchContextForAuthority(
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
+    ...(fullAccessGrant ? { fullAccessGrant } : {}),
   };
 }
 
@@ -3933,6 +4028,9 @@ export async function continueDelegatedTask(
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
         : {}),
+      ...(input.fullAccessGrant
+        ? { fullAccessGrant: input.fullAccessGrant }
+        : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
@@ -4277,6 +4375,13 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
+    // #2601: settled before the authority recheck below, so no await sits
+    // between that recheck and the forward.
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, false)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -4300,6 +4405,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
             // #485: the opt-in correlation rides the portable forward body
             // ONLY (validated at both seams; the receiver re-derives its
             // claim key from its OWN verified view of the caller grant).
@@ -4316,6 +4422,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
           },
           'The selected Station could not start the delegated task',
         );
@@ -4838,6 +4945,7 @@ export async function delegateTask(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           conversationIdentity: {
@@ -5100,20 +5208,54 @@ export async function executeExecutionTargetMessage(
         'Current-host staged attachments cannot be sent to another Station.',
       );
     }
+    // #480 scope correction: the FOREGROUND path has no portable identity
+    // or receiver-offer admission. A non-portable Project workspace
+    // (`kind: 'project'`, sender-local slug) resolved onto a PEER would
+    // execute an unrelated same-slug Project there — refused BEFORE
+    // `postForegroundMessage`, so there is no remote POST and no provider
+    // effect. This covers both the ProjectSettings thread default (a saved
+    // peer default resolved by `projectDefaultEnvironment`) and explicit
+    // peer+Project callers. Verified SSH Project forwarding keeps its
+    // explicit `pinSshDispatchWorkspace` contract, and peer foreground
+    // WITHOUT a Project workspace keeps its prior contract.
+    if (
+      selectedTarget.kind === 'peer' &&
+      input.target.workspace?.kind === 'project'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
+      );
+    }
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,
     );
-    const { automaticBackground: _automaticBackground, ...remoteInput } = input;
+    // #2493: a grant is this Station's proof about this request; the peer
+    // derives its own from the credential that reaches it.
+    const {
+      automaticBackground: _automaticBackground,
+      fullAccessGrant: _fullAccessGrant,
+      delegation: _claimedDelegation,
+      delegationAttestation: _claimedAttestation,
+      stationControlToolCall: _stationControlToolCall,
+      ...remoteInput
+    } = input;
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, true)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
     return postForegroundMessage(
       selectedTarget,
-      input.delegation
+      forwarded.delegation
         ? '/api/orchestration/chat/delegated'
         : input.automaticBackground
           ? '/api/orchestration/chat/background'
           : '/api/orchestration/chat',
       {
         ...remoteInput,
+        ...forwarded,
         target: {
           ...pinnedTarget,
           environment: { kind: 'current' },
@@ -5454,6 +5596,7 @@ export async function executeExecutionTargetMessage(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

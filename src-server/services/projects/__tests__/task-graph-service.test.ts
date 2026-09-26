@@ -79,9 +79,11 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
+import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
@@ -1517,6 +1519,57 @@ describe('TaskGraphService', () => {
     expect(result.task.status).toBe('in_progress');
   });
 
+  test.each([
+    ['a request that may grant full access', true],
+    ['a caller without that grant (a monitor, the board intent)', false],
+  ] as const)(
+    "#2493: the session start carries %s's grant, and nothing else",
+    async (_label, granted) => {
+      const dispatch = vi.fn().mockResolvedValue({
+        provider: 'codex',
+        threadId: 'task-runtime-1',
+        status: 'ready',
+        createdAt: '2026-05-03T00:00:00.000Z',
+        updatedAt: '2026-05-03T00:00:00.000Z',
+      });
+      const service = createTempService({
+        orchestrationService: { dispatch, seedSessionRecord: vi.fn() },
+      });
+      const task = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Start runtime',
+      });
+      const grant = granted ? fullAccessGrantForTesting() : null;
+      const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+        runtimeConfig: {
+          provider: 'codex',
+          modelOptions: { approvalMode: 'never' },
+        },
+        ownerUserId: 'test-owner',
+        fullAccessGrant: grant,
+      });
+      expect(outcome.kind).toBe(granted ? 'dispatched' : 'forbidden');
+      if (!granted) {
+        // Asking for `never` without the grant is refused before a start.
+        expect(dispatch).not.toHaveBeenCalled();
+        const defaulted = await composeTaskDispatcher(service).dispatch(
+          task.id,
+          {
+            runtimeConfig: { provider: 'codex' },
+            ownerUserId: 'test-owner',
+            fullAccessGrant: null,
+          },
+        );
+        expect(defaulted.kind).toBe('dispatched');
+      }
+      const context = dispatch.mock.calls[0]?.[1] as
+        | { fullAccessGrant?: unknown }
+        | undefined;
+      if (granted) expect(context?.fullAccessGrant).toBe(grant);
+      else expect(context).toBeUndefined();
+    },
+  );
+
   describe('station#189 S4: metadata.taskSlug at builder-session start', () => {
     async function dispatchWithSidecar(options: {
       workItemRef?: string;
@@ -1571,7 +1624,11 @@ describe('TaskGraphService', () => {
         {
           type: 'startSession',
           input: expect.objectContaining({
-            metadata: { taskSlug: 'kontourai-station-1388' },
+            // The dispatching principal always owns the session.
+            metadata: {
+              userId: 'test-owner',
+              taskSlug: 'kontourai-station-1388',
+            },
           }),
         },
         undefined,
@@ -1596,7 +1653,9 @@ describe('TaskGraphService', () => {
         readState: () => null,
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
@@ -1608,7 +1667,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
       // No slug means no join, so the attach mode must not be forced either.
       expect(
         dispatch.mock.calls[0][2].workflowSidecarAttachMode,
@@ -1621,7 +1682,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('declares nothing when the dispatch supplies no cwd', async () => {
@@ -1652,7 +1715,9 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
 
     test('an unreadable sidecar degrades to no slug instead of failing the dispatch', async () => {
@@ -1663,7 +1728,9 @@ describe('TaskGraphService', () => {
         },
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
+        userId: 'test-owner',
+      });
     });
   });
 

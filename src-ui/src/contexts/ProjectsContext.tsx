@@ -1,10 +1,12 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ProjectReadQueryConfig,
+  useProjectIdentityQuery,
   useProjectQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
@@ -24,7 +26,17 @@ import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 type AppProjectReadConfig<T> = Omit<
   ProjectReadQueryConfig<T>,
   'requestScope' | 'requireRequestScope' | 'durableAuthorityId'
->;
+> & {
+  /**
+   * Identity-lifetime binding (#480 review), forwarded to
+   * `useProjectIdentityQuery`: the selected local Project record id joins
+   * the identity cache key and validates the response association, so a
+   * same-slug delete/recreate can never serve the previous incarnation.
+   * Meaningless to the list/detail reads; consumed only by
+   * `useScopedProjectIdentityQuery`.
+   */
+  expectedProjectId?: string;
+};
 
 /**
  * Canonical app-owner Project LIST read. Returns the full typed query result
@@ -68,6 +80,26 @@ export function useScopedProjectQuery(
   });
 }
 
+/**
+ * Canonical app-owner portable-identity read (#480/#1964 placement). Same
+ * scope contract as {@link useScopedProjectQuery}: the request scope is
+ * captured from the host authority and partitions the cache, so a late
+ * identity response for a previous Home/authority can never satisfy the
+ * current Project. Consumes the project-identity SDK subpath — the browser
+ * never touches a stored peer secret to read it.
+ */
+export function useScopedProjectIdentityQuery(
+  slug: string,
+  config?: AppProjectReadConfig<ProjectIdentityView>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  return useProjectIdentityQuery(slug, {
+    ...config,
+    requestScope,
+    requireRequestScope: true,
+  });
+}
+
 export type ProjectPageView = ProjectConfig | MemberProjectView;
 
 function isMemberProjectView(
@@ -82,8 +114,11 @@ function isMemberProjectView(
 
 /**
  * Project page detail read that preserves the server's narrow member view.
- * It is always bound to the render-captured host scope and a credentialed SDK
- * transport; no ambient API-base or browser-cookie path is available here.
+ * It is always bound to the render-captured host scope. Over a native host
+ * transport or a browser relay route it requires the SDK-owned credential; a
+ * browser talking to its own Station directly is authenticated by that
+ * Station's session cookie (#2598), which the server enforces. No ambient
+ * API-base path is available here.
  */
 export function useScopedProjectPageViewQuery(slug: string) {
   const requestScope = useHostRequestAuthorityScope();
@@ -104,7 +139,7 @@ export function useScopedProjectPageViewQuery(slug: string) {
       const { getProjectView } = await import('@kontourai/station-sdk');
       const value = (await getProjectView(captured.apiBase, slug, {
         requestScope: captured,
-        requireCredential: true,
+        requireCredential: captured.requiresEnrolledCredential ?? true,
         signal,
         timeoutMs: 15_000,
         maxResponseBytes: 64 * 1024,
@@ -173,7 +208,7 @@ export function useScopedMemberProjectSharedTasksQuery(
         project.slug,
         {
           requestScope: captured,
-          requireCredential: true,
+          requireCredential: captured.requiresEnrolledCredential ?? true,
           signal,
           timeoutMs: 15_000,
           maxResponseBytes: 1024 * 1024,

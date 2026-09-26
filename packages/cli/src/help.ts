@@ -262,6 +262,15 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Lifecycle',
     summary: 'Pull latest + rebuild (keeps plugins)',
     usage: ['station upgrade'],
+    detail: [
+      'Refuses while an installed Station service supervises this Station:',
+      'stop it with `station service stop`, upgrade, then `station service start`.',
+      '',
+      'Options:',
+      "  --ignore-service-state  Proceed when an installed service's running",
+      '                          state cannot be determined (never when it is',
+      '                          reported running)',
+    ],
   },
   service: {
     group: 'Lifecycle',
@@ -320,9 +329,11 @@ const VERBS: Record<string, VerbSpec> = {
   open: {
     group: 'Stations',
     summary: 'Open an authorized browser session for a running local Station',
-    usage: ['station open [--home=<directory>] [--instance=<name>]'],
+    usage: ['station open [--home=<directory>] [--instance=<name>] [--print]'],
     detail: [
       'Uses the selected local Station home and one-time browser authorization. Never starts or stops a backend.',
+      '--print prints the one-time sign-in link instead of launching a browser, for a browser this command cannot open (a simulator, another profile).',
+      'Each link is single use, and a new one replaces any earlier unspent link, including the one `station start` printed.',
     ],
   },
   target: {

@@ -1,6 +1,6 @@
 ## Default Permission
 
-Read capability status, register the device for agent-activity delivery, and open Live Update settings. `preview` is not included: it renders an arbitrary payload and exists for device verification only.
+Read capability status, register the device for agent-activity delivery, open Live Update settings, and take the session a card tap asked to open (`take_launch_route`, plus listening for the `launchRoute` nudge). `preview` is not included: it renders an arbitrary payload and exists for device verification only.
 
 #### This default permission set includes the following:
 
@@ -9,6 +9,9 @@ Read capability status, register the device for agent-activity delivery, and ope
 - `allow-clear`
 - `allow-push-token`
 - `allow-open-live-update-settings`
+- `allow-take-launch-route`
+- `allow-register-listener`
+- `allow-remove-listener`
 
 ## Permission Table
 
@@ -152,6 +155,58 @@ Denies the push_token command without any pre-configured scope.
 <tr>
 <td>
 
+`station-agent-activity:allow-register-listener`
+
+</td>
+<td>
+
+Enables the register_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:deny-register-listener`
+
+</td>
+<td>
+
+Denies the register_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:allow-remove-listener`
+
+</td>
+<td>
+
+Enables the remove_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:deny-remove-listener`
+
+</td>
+<td>
+
+Denies the remove_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `station-agent-activity:allow-status`
 
 </td>
@@ -171,6 +226,32 @@ Enables the status command without any pre-configured scope.
 <td>
 
 Denies the status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:allow-take-launch-route`
+
+</td>
+<td>
+
+Enables the take_launch_route command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`station-agent-activity:deny-take-launch-route`
+
+</td>
+<td>
+
+Denies the take_launch_route command without any pre-configured scope.
 
 </td>
 </tr>

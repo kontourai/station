@@ -30,6 +30,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
@@ -109,6 +110,12 @@ export interface ForegroundMessageInput {
    * new session so it acts for no one (`session-owner-attribution.ts`).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: set only by the dispatch routes, from the request itself
+   * (`resolveDispatchActor`). It rides the start's dispatch context, where
+   * `OrchestrationService` lets the session run `host` only with it.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**
@@ -606,6 +613,20 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  // A fresh or successor session records `userId` as its owner, and a
+  // session with no recorded owner is readable by no caller. Refuse the start
+  // here, before its approval-mode receipt, a boundary claim, a worktree or
+  // an engine start. Two effects can already have happened above, both only
+  // for a conversation that already has a binding (the binding check above
+  // refuses a caller naming no user when that binding records an owner):
+  // `prepareConversationHandoff` may have written a handoff marker, and
+  // `resolveConversationSession` may have reserved the successor child.
+  // A fresh conversation reaches this point with neither.
+  if ((!binding || continuation?.startRequired) && !input.userId?.trim()) {
+    throw new Error(
+      'A session start requires the principal it belongs to (userId).',
+    );
+  }
   // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
@@ -765,7 +786,7 @@ export async function executeForegroundMessage(
             : binding?.worktree
               ? { worktree: binding.worktree }
               : {}),
-          ...(input.userId ? { userId: input.userId } : {}),
+          userId: input.userId,
           ...(input.delegation ? { delegation: input.delegation } : {}),
           ...(input.ephemeral
             ? { [SESSION_VISIBILITY_METADATA_KEY]: 'ephemeral' }

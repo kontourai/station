@@ -1,5 +1,8 @@
 import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
-import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
@@ -28,6 +31,7 @@ import { handlePlanUpdatedEvent } from './planHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
+import { recordSequencedLiveEvent } from './sequencedLiveEvents';
 import {
   handleApprovalModeSetEvent,
   handleSessionExitedEvent,
@@ -104,6 +108,7 @@ export function handleOrchestrationEvent(
   position?: number,
 ) {
   recordEventPosition(event, position);
+  recordSequencedLiveEvent(apiBase, event as CanonicalRuntimeEvent, position);
   if (
     conversation?.currentSessionId === event.threadId &&
     (event.method === 'session.started' ||

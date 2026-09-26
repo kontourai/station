@@ -117,7 +117,8 @@ export interface PrincipalRef {
   readonly display: string;
 }
 
-const PRINCIPAL_KINDS: readonly PrincipalKind[] = [
+/** Every principal kind, in grammar order. */
+export const PRINCIPAL_KINDS: readonly PrincipalKind[] = [
   'human',
   'agent',
   'service',

@@ -58,7 +58,11 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
+import {
+  buildCliRuntimePrerequisites,
+  type CliCommandResult,
+  runCliCommand,
+} from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -101,7 +105,11 @@ import {
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
 import {
+  codexSandboxModeOfPolicy,
   mapCodexKnobsToApprovalMode,
+  planCodexTurnSandbox,
+  readCodexSandboxPolicy,
+  reportedCodexThreadSandbox,
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
@@ -147,6 +155,19 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * Readiness seams, injectable so the installed branch and the probe's
+   * environment are exercised on any host (a host without `codex` would
+   * otherwise short-circuit before the login probe runs). Default to
+   * `findCliBinary` and `runCliCommand`.
+   */
+  findBinary?: (command: string) => string | null;
+  runCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+  ) => Promise<CliCommandResult | null>;
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
@@ -750,11 +771,23 @@ export class CodexAdapter implements ProviderAdapterShape {
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
+    // The `codex login status` probe runs under the connection env, as every
+    // `codex app-server` child of this connection does — so a configured
+    // configHome (→ CODEX_HOME) is the account readiness reports on. The
+    // app-home / credential-profile layer is not modelled: resolving it can
+    // create profile directories, which a readiness read must not do.
+    const connectionEnv = await this.resolveConnectionEnv();
+    const runCommand = this.options.runCommand ?? runCliCommand;
     return buildCliRuntimePrerequisites({
       command: 'codex',
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      runCommand: (command, args, signal) =>
+        runCommand(command, args, signal, connectionEnv),
+      ...(this.options.findBinary
+        ? { findBinary: this.options.findBinary }
+        : {}),
       installStep: 'Install the Codex CLI and ensure `codex` is on PATH.',
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,
@@ -1760,9 +1793,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.transport.sendNotification(record, 'initialized');
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
+      // #2493: `never` reaches `danger-full-access` only for a `host`
+      // session; the orchestration service derives confinement, and an
+      // absent value confines.
       const approvalKnobs = resolveCodexExecutionKnobs(
         input.modelOptions,
         input.reviewIsolation,
+        input.confinement,
       );
       const approvalWire = approvalKnobs
         ? {
@@ -1817,6 +1854,23 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      record.threadSandbox = reportedCodexThreadSandbox(
+        reportedSandbox,
+        approvalKnobs?.sandbox,
+      );
+      // #2559 R5: what `session.configured` reports is the sandbox Codex
+      // said the thread runs in; the requested mode only when it said
+      // nothing. A sandbox with no Station mode (an external one) is not
+      // reported as one.
+      const configuredSandbox = reportedSandbox
+        ? codexSandboxModeOfPolicy(reportedSandbox)
+        : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
         status: 'ready',
@@ -1872,12 +1926,22 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(approvalKnobs
           ? {
               approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-              // Resolved approvalMode alongside the raw knobs, so the client can
-              // track a durable lastAppliedApprovalMode baseline at session
-              // start without re-deriving it from provider-specific knobs
-              // (archive#727 review round 3, item 1).
-              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              ...(configuredSandbox
+                ? {
+                    sandbox: configuredSandbox,
+                    // Resolved approvalMode alongside the raw knobs, so the
+                    // client can track a durable lastAppliedApprovalMode
+                    // baseline at session start (archive#727 review round
+                    // 3, item 1), derived from the applied pair.
+                    approvalMode: mapCodexKnobsToApprovalMode({
+                      approvalPolicy: approvalKnobs.approvalPolicy,
+                      sandbox: configuredSandbox,
+                    }),
+                  }
+                : {}),
+              // #2493: the pair alone no longer says whether `never` is
+              // confined to the workspace.
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         codexThreadId: codexThread.id,
@@ -2198,7 +2262,22 @@ export class CodexAdapter implements ProviderAdapterShape {
     const approvalKnobs = resolveCodexExecutionKnobs(
       input.modelOptions,
       input.reviewIsolation,
+      input.confinement,
     );
+    // #2559: `turn/start` ignores a sandbox mode string; its only sandbox
+    // override is a full `sandboxPolicy` (`planCodexTurnSandbox` says when).
+    // With a posture the plan always names the sandbox the turn runs in.
+    const thread = record.threadSandbox ?? {};
+    const postured = approvalKnobs
+      ? {
+          knobs: approvalKnobs,
+          plan: planCodexTurnSandbox(approvalKnobs, thread, input.confinement),
+        }
+      : undefined;
+    const sandboxPolicy = postured
+      ? postured.plan.sandboxPolicy
+      : planCodexTurnSandbox(undefined, thread, input.confinement)
+          .sandboxPolicy;
     let result: unknown;
     try {
       result = await this.transport.sendRequest(record, 'turn/start', {
@@ -2221,13 +2300,14 @@ export class CodexAdapter implements ProviderAdapterShape {
         model: input.modelId,
         effort: mapReasoningEffort(modelOptions),
         ...(approvalKnobs
-          ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-            }
+          ? { approvalPolicy: approvalKnobs.approvalPolicy }
           : {}),
+        ...(sandboxPolicy ? { sandboxPolicy } : {}),
         serviceTier: modelOptions.fastMode ? 'fast' : undefined,
       });
+      // Applies to this turn and every later one (TurnStartParams).
+      if (sandboxPolicy)
+        record.threadSandbox = { ...thread, policy: sandboxPolicy };
       providerOps.add(1, {
         operation: 'adapter-model-options',
         provider: this.provider,
@@ -2302,13 +2382,20 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(input.recoveryCorrelationId
           ? { recoveryCorrelationId: input.recoveryCorrelationId }
           : {}),
-        ...(approvalKnobs
+        ...(postured
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
-              sandbox: approvalKnobs.sandbox,
-              // Lets the client track a durable lastAppliedApprovalMode baseline
-              // (archive#727 review round 3, item 1 — the pending-apply chip state).
-              approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
+              approvalPolicy: postured.knobs.approvalPolicy,
+              // #2559: the sandbox this turn runs in (the thread's, or the
+              // policy just sent), never merely the one requested, and the
+              // mode that pair really is. Lets the client track a durable
+              // lastAppliedApprovalMode baseline (archive#727 review round 3,
+              // item 1).
+              sandbox: postured.plan.applied,
+              approvalMode: mapCodexKnobsToApprovalMode({
+                approvalPolicy: postured.knobs.approvalPolicy,
+                sandbox: postured.plan.applied,
+              }),
+              confinement: input.confinement ?? 'workspace',
             }
           : {}),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(

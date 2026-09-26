@@ -5,11 +5,13 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
 } from '@kontourai/station-contracts/orchestration';
-import type {
-  EngineId,
-  ModelLaunchPlan,
-  ProviderSession,
-  ProviderSessionStartInput,
+import {
+  type EngineId,
+  type ModelLaunchPlan,
+  type ProviderSession,
+  type ProviderSessionStartInput,
+  STATION_CONFINEMENT_METADATA_KEY,
+  type StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
@@ -80,6 +82,12 @@ interface AdoptionContext {
   tenantExecutionContext?: TenantExecutionContext;
   /** Station #90 lane D (R1): stamped on the adopted child's start. */
   ownerAttribution?: SessionOwnerAttribution;
+  /**
+   * #2493: the adopting caller's grant, as the child's confinement stamp
+   * (`STATION_CONFINEMENT_METADATA_KEY`): `host` only when the request that
+   * adopted may grant full access, the same rule as `prepareStart`.
+   */
+  confinementStamp?: StationConfinement;
 }
 
 const liveAdoptionOwners = new Set<string>();
@@ -198,6 +206,7 @@ export class AttachedSessionAdoption {
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
+    confinementStamp?: StationConfinement,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -225,6 +234,7 @@ export class AttachedSessionAdoption {
         requestTenantExecutionContext,
         idempotencyKey,
         ownerAttribution,
+        confinementStamp,
       );
       this.adoptionIntents.set(intentScope, intent);
       try {
@@ -240,6 +250,7 @@ export class AttachedSessionAdoption {
       requestTenantExecutionContext,
       undefined,
       ownerAttribution,
+      confinementStamp,
     );
   }
 
@@ -250,6 +261,7 @@ export class AttachedSessionAdoption {
     requestTenantExecutionContext?: TenantExecutionContext,
     idempotencyKey?: string,
     ownerAttribution?: SessionOwnerAttribution,
+    confinementStamp?: StationConfinement,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -346,6 +358,7 @@ export class AttachedSessionAdoption {
       tenantExecutionContext ?? sourceTenantExecutionContext;
     context.reservation.idempotencyKey = idempotencyKey;
     context.ownerAttribution = ownerAttribution;
+    context.confinementStamp = confinementStamp;
     const reservation = this.deps.adoptionLedger?.reserve(context.reservation);
     if (reservation?.kind !== 'owner') {
       if (idempotencyKey) {
@@ -643,7 +656,11 @@ export class AttachedSessionAdoption {
         adoptedFromThreadId: reservation.sourceThreadId,
         ...(userId !== undefined ? { userId } : {}),
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
+        // #2493: server-built, so no strip is needed; absent is `workspace`.
+        [STATION_CONFINEMENT_METADATA_KEY]:
+          context.confinementStamp === 'host' ? 'host' : 'workspace',
       },
+      confinement: context.confinementStamp === 'host' ? 'host' : 'workspace',
       ...(context.tenantExecutionContext
         ? { tenantExecutionContext: context.tenantExecutionContext }
         : {}),

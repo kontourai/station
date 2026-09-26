@@ -42,6 +42,17 @@ export interface ChatDockMobileOverflowActions {
    */
   regionPanes?: readonly { id: string; title: string; selected: boolean }[];
   onSelectRegionPane?: (surfaceId: string) => void;
+  /**
+   * #2510: the sheet's entry to the dock's Background tasks surface, routed
+   * by ChatDock's `showBackgroundTasks` (the sheet on a bottom-only device,
+   * the Agents pane where a side region exists). It OPENS rather than
+   * toggles: the overflow sheet dismisses itself on the tap, so there is no
+   * open state for it to toggle against.
+   * Absent: no row (ChatDock omits it when there is no chat for the sheet to
+   * read).
+   */
+  onOpenBackgroundTasks?: () => void;
+  backgroundTasksRunningCount?: number;
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -69,9 +80,7 @@ interface ChatDockMobileHeaderProps {
   activeCount: number;
   unreadCount: number;
   taskSwitcherTriggerRef: RefObject<HTMLButtonElement | null>;
-  activityTriggerRef: RefObject<HTMLButtonElement | null>;
   onOpenTaskSwitcher: () => void;
-  onOpenActivity: () => void;
   onToggleSidebar: (trigger: HTMLElement) => void;
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
@@ -92,9 +101,7 @@ export function ChatDockMobileHeader({
   activeCount,
   unreadCount,
   taskSwitcherTriggerRef,
-  activityTriggerRef,
   onOpenTaskSwitcher,
-  onOpenActivity,
   onToggleSidebar,
   onDragPointerDown,
   onDragClickCapture,
@@ -206,10 +213,7 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <button
-        ref={(node) => {
-          chatActionsTriggerRef.current = node;
-          activityTriggerRef.current = node;
-        }}
+        ref={chatActionsTriggerRef}
         type="button"
         className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
         aria-haspopup="dialog"
@@ -238,8 +242,6 @@ export function ChatDockMobileHeader({
             projectScope,
             showConnection,
             onNewChat,
-            onOpenActivity,
-            activeCount,
             branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
             onClose: () => setIsOverflowOpen(false),

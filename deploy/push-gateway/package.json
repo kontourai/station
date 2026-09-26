@@ -2,7 +2,11 @@
   "name": "station-push-gateway",
   "private": true,
   "type": "module",
-  "description": "Forwards Station-signed agent-activity pushes to FCM. Deployed by Kontour; not part of the Station workspace.",
+  "description": "Forwards Station-signed agent-activity pushes to FCM and APNs. Deployed by Kontour; not part of the Station workspace.",
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  },
   "scripts": {
     "test": "cd ../.. && npm run test:focused -- deploy/push-gateway/test/*.test.ts",
     "deploy": "npx --yes wrangler@4 deploy"

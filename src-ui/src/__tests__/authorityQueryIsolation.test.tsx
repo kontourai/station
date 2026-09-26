@@ -154,6 +154,13 @@ interface Harness {
   observationCalls: { apiBase: string; authorityKey: string }[];
   projectPlan: Map<string, () => Promise<ProjectList>>;
   projectFetches: (string | undefined)[];
+  /**
+   * The verified namespace each `['projects']` read ran under, in the same
+   * order as `projectFetches`, so an assertion can say WHOSE shelf read the
+   * wire: the seeded Default row verifies and reads its own projects
+   * whenever its observation lands before a test's first switch (#2572).
+   */
+  projectFetchNamespaces: (string | null)[];
   networkUp: boolean;
   legacyGate: {
     promise: Promise<unknown>;
@@ -199,6 +206,7 @@ function createHarness(): Harness {
     observationCalls: [],
     projectPlan: new Map(),
     projectFetches: [],
+    projectFetchNamespaces: [],
     networkUp: true,
     legacyGate: null,
     legacyResolutions: [],
@@ -239,6 +247,7 @@ function Probe() {
     queryFn: async () => {
       const activeId = connections?.activeConnection?.id;
       harness.projectFetches.push(activeId);
+      harness.projectFetchNamespaces.push(namespace);
       const behavior =
         (activeId && harness.projectPlan.get(activeId)) ??
         harness.projectPlan.get('default');
@@ -583,6 +592,63 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
         ?.asOfSequence,
     ).toBe(12);
     activeChatsStore.removeChat(conversationId);
+    unmount();
+  });
+
+  it('station#2530 review D7: a real A→B→A switch dispatches the orchestration-authority-change event, not just a direct-call reconstruction of it', async () => {
+    // ensureOrchestrationEventStream.recovery.test.ts drives the LISTENER
+    // side of this by dispatching the CustomEvent directly — it never
+    // renders `AuthorityQueryContext`, so it cannot prove the provider
+    // itself still fires it on a real switch. This test renders the real
+    // provider tree and drives the real switch path
+    // (`connections.setActiveConnection`, exactly what a Station switch in
+    // the app does), and would fail if the dispatch in
+    // `AuthorityQueryContext.tsx` were ever deleted.
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea-d7');
+    const { id: idB, url: urlB } = await addHome('homeb-d7');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+
+    // The FIRST ever verified namespace never dispatches — there is no
+    // prior verified namespace to announce a change FROM
+    // (`lastVerifiedNamespaceRef.current !== undefined`) — so the listener
+    // is only armed once A's own initial verification has already settled.
+    const authorityChangeDetails: string[] = [];
+    const onAuthorityChange = (event: Event) => {
+      authorityChangeDetails.push(
+        String((event as CustomEvent<string>).detail),
+      );
+    };
+    window.addEventListener(
+      'station:orchestration-authority-change',
+      onAuthorityChange,
+    );
+    try {
+      await switchTo(idB);
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+      );
+      await waitFor(() => expect(authorityChangeDetails.length).toBe(1));
+
+      await switchTo(idA);
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+      );
+      await waitFor(() => expect(authorityChangeDetails.length).toBe(2));
+    } finally {
+      window.removeEventListener(
+        'station:orchestration-authority-change',
+        onAuthorityChange,
+      );
+    }
     unmount();
   });
 
@@ -1329,62 +1395,97 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
-  it('mutations are never hydrated from a stored blob', async () => {
-    const harness = createHarness();
-    harness.observationPlan.set('default', async () => OBS_DEFAULT);
-    harness.asyncStorage.data.set(
-      authorityPersistenceKey(NS_A),
-      JSON.stringify({
-        timestamp: Date.now(),
-        buster: queryPersistenceBuster(),
-        clientState: {
-          queries: [
-            {
-              queryKey: ['projects'],
-              queryHash: JSON.stringify(['projects']),
-              state: {
-                data: [{ id: 'p1', home: 'seeded' }],
-                status: 'success',
-                error: null,
-                dataUpdatedAt: Date.now(),
+  // #2572: the seeded Default row the tree mounts on verifies through its
+  // own observation, and whether that lands before the switch to A depends
+  // on elapsed real time (React Query delivers the result to React on a
+  // `setTimeout(0)` task, which a slow runner reaches before the test's
+  // next `act`). When it wins, Default's own shelf reads
+  // its own projects — legitimately — and a whole-harness "zero fetches"
+  // count went red on CI. Both orderings are pinned here, each forced
+  // rather than hoped for, and the no-refetch claim is scoped to A's shelf.
+  it.each([
+    { ordering: 'Default verifies and reads before the switch' },
+    { ordering: 'the switch lands before Default verifies' },
+  ])(
+    'mutations are never hydrated from a stored blob ($ordering)',
+    async ({ ordering }) => {
+      const defaultFirst = ordering.startsWith('Default');
+      const harness = createHarness();
+      const heldDefault = deferred<AuthorityObservation>();
+      harness.observationPlan.set(
+        'default',
+        defaultFirst ? async () => OBS_DEFAULT : () => heldDefault.promise,
+      );
+      harness.asyncStorage.data.set(
+        authorityPersistenceKey(NS_A),
+        JSON.stringify({
+          timestamp: Date.now(),
+          buster: queryPersistenceBuster(),
+          clientState: {
+            queries: [
+              {
+                queryKey: ['projects'],
+                queryHash: JSON.stringify(['projects']),
+                state: {
+                  data: [{ id: 'p1', home: 'seeded' }],
+                  status: 'success',
+                  error: null,
+                  dataUpdatedAt: Date.now(),
+                },
               },
-            },
-          ],
-          mutations: [
-            {
-              mutationKey: ['rename-agent'],
-              state: {
-                context: undefined,
-                data: undefined,
-                error: null,
-                failureCount: 0,
-                failureReason: null,
-                isPaused: true,
-                status: 'pending',
-                variables: { slug: 'queued-rename' },
+            ],
+            mutations: [
+              {
+                mutationKey: ['rename-agent'],
+                state: {
+                  context: undefined,
+                  data: undefined,
+                  error: null,
+                  failureCount: 0,
+                  failureReason: null,
+                  isPaused: true,
+                  status: 'pending',
+                  variables: { slug: 'queued-rename' },
+                },
               },
-            },
-          ],
-        },
-      }),
-    );
-    const { unmount } = renderTree(harness);
-    const { id: idA, url: urlA } = await addHome('homea');
-    harness.observationPlan.set(urlA, async () => OBS_A);
-    await switchTo(idA);
+            ],
+          },
+        }),
+      );
+      const { unmount } = renderTree(harness);
+      const NS_DEFAULT = buildAuthorityNamespace(OBS_DEFAULT);
+      if (defaultFirst) {
+        await waitFor(() =>
+          expect(harness.projectFetchNamespaces).toEqual([NS_DEFAULT]),
+        );
+      }
+      const { id: idA, url: urlA } = await addHome('homea');
+      harness.observationPlan.set(urlA, async () => OBS_A);
+      await switchTo(idA);
 
-    await waitFor(() =>
-      expect(probe().getAttribute('data-status')).toBe('verified'),
-    );
-    // The whitelisted query restored (seeded data, no fetch)…
-    await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain('seeded'),
-    );
-    expect(harness.projectFetches).toHaveLength(0);
-    // …while the queued mutation did not survive the restore.
-    expect(probe().getAttribute('data-mutations')).toBe('0');
-    unmount();
-  });
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+      );
+      expect(probe().getAttribute('data-status')).toBe('verified');
+      // The whitelisted query restored (seeded data, no fetch)…
+      await waitFor(() =>
+        expect(probe().getAttribute('data-projects')).toContain('seeded'),
+      );
+      // …so A's shelf never read the wire. The only read allowed is Default's
+      // own, and only in the ordering that let it verify first.
+      expect(harness.projectFetchNamespaces).toEqual(
+        defaultFirst ? [NS_DEFAULT] : [],
+      );
+      // …while the queued mutation did not survive the restore.
+      expect(probe().getAttribute('data-mutations')).toBe('0');
+      // Release the held read: it resolves for a replaced scope and is refused.
+      await act(async () => {
+        heldDefault.resolve(OBS_DEFAULT);
+      });
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A);
+      unmount();
+    },
+  );
 
   it('namespace survives epoch-neutral store churn without refetch or key fork', async () => {
     const harness = createHarness();

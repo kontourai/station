@@ -87,6 +87,7 @@ import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
+import { UnsavedGuardOwnerContext } from '../UnsavedGuardOwnerContext';
 
 const PR = 'pr:github.com/kontourai/station#2049';
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -111,23 +112,27 @@ function onLayerEntry(): boolean {
   return typeof marker === 'string' && marker.startsWith('phone-pane-layer:');
 }
 
-async function mountWithDraft() {
+async function mountWithDraft(draft = 'Half-written review') {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <KeyboardShortcutsProvider>
         <NavigationProvider>
           <RegionModelProvider>
             <Probe />
-            <PullRequestReviewPanel
-              target={{
-                provider: 'github',
-                host: 'github.com',
-                owner: 'kontourai',
-                repository: 'station',
-                ref: '2049',
-                project: 'station',
-              }}
-            />
+            {/* As the region host renders it: the pane's guards belong to
+                its surface (`RegionPaneHost`'s `ownedByPane`). */}
+            <UnsavedGuardOwnerContext.Provider value={PR}>
+              <PullRequestReviewPanel
+                target={{
+                  provider: 'github',
+                  host: 'github.com',
+                  owner: 'kontourai',
+                  repository: 'station',
+                  ref: '2049',
+                  project: 'station',
+                }}
+              />
+            </UnsavedGuardOwnerContext.Provider>
           </RegionModelProvider>
         </NavigationProvider>
       </KeyboardShortcutsProvider>
@@ -141,7 +146,7 @@ async function mountWithDraft() {
   const comment = (await screen.findByLabelText(
     'Comment',
   )) as HTMLTextAreaElement;
-  fireEvent.change(comment, { target: { value: 'Half-written review' } });
+  if (draft) fireEvent.change(comment, { target: { value: draft } });
   return comment;
 }
 
@@ -156,6 +161,7 @@ function expectLayerOpen() {
 beforeEach(() => {
   model = null;
   localStorage.clear();
+  sessionStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
@@ -304,6 +310,103 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(
       screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
     ).toBeNull();
+  });
+
+  // Gap G2: leaving the layer asked EVERY registered guard app-wide, so an
+  // unrelated dirty form elsewhere prompted — and decided — on Back and
+  // "‹ Chat". Only the layer pane's own guards are asked now.
+  test('an unrelated dirty guard elsewhere is not asked on Back or "‹ Chat"', async () => {
+    const unrelated = vi.fn();
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-settings-form'),
+      unrelated,
+    );
+    try {
+      await mountWithDraft('');
+      act(() => window.history.back());
+      await waitFor(() => expect(current().phoneLayer).toBeNull());
+      expect(current().regions.bottom.occupant).toBe('chat');
+
+      act(() => {
+        current().openSurfaceInRegion(PR);
+      });
+      await waitFor(() => expect(onLayerEntry()).toBe(true));
+      act(() => current().closePhoneLayer());
+      await waitFor(() => expect(current().phoneLayer).toBeNull());
+      expect(unrelated).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
+      ).toBeNull();
+    } finally {
+      unregister();
+    }
+  });
+
+  // Gap G3: the layer's entry was re-pushed from an effect after the Back
+  // that asked, so two history.back() calls in the same tick traversed the
+  // entry before the layer too — leaving the conversation. The re-push is
+  // synchronous in the popstate that asks, so the second Back lands on it.
+  test('two history.back() calls in the same tick while the prompt is up stay on the layer', async () => {
+    window.history.replaceState(
+      window.history.state,
+      '',
+      '/?dock=open&page=before',
+    );
+    window.history.pushState(window.history.state, '', '/?dock=open');
+    await mountWithDraft();
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+
+    // The mechanism, observed deterministically: by the time the popstate
+    // that asks has been handled, the layer's entry is already live again.
+    // A second traversal queued in the same tick runs after this dispatch,
+    // so it can only land on that entry. (jsdom happens to flush React's
+    // effects between two queued traversals, so the double Back below
+    // passes even with an effect-deferred re-push; this listener does not.)
+    const liveAfterPopstate: boolean[] = [];
+    const observe = () => liveAfterPopstate.push(onLayerEntry());
+    window.addEventListener('popstate', observe);
+    act(() => {
+      window.history.back();
+      window.history.back();
+    });
+    // Let both traversals land.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    window.removeEventListener('popstate', observe);
+    expect(liveAfterPopstate.length).toBeGreaterThan(0);
+    expect(liveAfterPopstate.every(Boolean)).toBe(true);
+    expect(new URLSearchParams(window.location.search).get('page')).toBe(null);
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    expectLayerOpen();
+    expect(
+      screen.getByRole('dialog', { name: /Unsaved Changes/ }),
+    ).toBeTruthy();
+  });
+
+  // Delta review LOW: G1's record names the layer's LIVE entry, and a
+  // cancelled Back replaces that entry (G3's synchronous re-push). The record
+  // must follow it, or a reload on the new entry would not restore the
+  // pre-layer dock state.
+  test('after Back→Cancel the pre-layer record names the re-pushed entry', async () => {
+    const record = () =>
+      JSON.parse(
+        sessionStorage.getItem('station.phoneLayer.preLayerDock.v1') ?? 'null',
+      ) as { entry?: string } | null;
+    const marker = () =>
+      (window.history.state as Record<string, unknown> | null)?.[
+        DIALOG_HISTORY_KEY
+      ];
+    await mountWithDraft();
+    await waitFor(() => expect(record()?.entry).toBe(marker()));
+    const firstEntry = record()?.entry;
+
+    act(() => window.history.back());
+    await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    expect(marker()).not.toBe(firstEntry);
+    expect(record()?.entry).toBe(marker());
   });
 
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {

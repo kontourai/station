@@ -67,6 +67,7 @@ import type {
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
@@ -78,6 +79,7 @@ import {
 import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
+  type DispatchIntent,
   type TaskDispatchAssociation,
   type TaskDispatchClaims,
   type TaskDispatchGraphState,
@@ -2791,7 +2793,7 @@ export class TaskGraphService {
         orchestrationService !== undefined,
       startOrSeed: async (
         reservation: DispatcherReservation,
-        input: TaskDispatchInput,
+        input: DispatchIntent,
         admission?: SessionStartBoundaryClaim,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
@@ -2811,10 +2813,26 @@ export class TaskGraphService {
                 cwd: input.runtimeConfig?.cwd,
                 modelId: reservation.modelId,
                 modelOptions: input.runtimeConfig?.modelOptions,
-                ...(taskSlug ? { metadata: { taskSlug } } : {}),
+                metadata: {
+                  userId: input.ownerUserId,
+                  ...(taskSlug ? { taskSlug } : {}),
+                },
               },
             },
-            undefined,
+            // #2493: the dispatching request's grant, or none (a monitor, the
+            // board intent): the session runs `host` only with it. The owner
+            // attribution marks an unverified agent's or external sender's
+            // session to act for no one, at the service's start choke point.
+            input.fullAccessGrant || input.ownerAttribution
+              ? {
+                  ...(input.fullAccessGrant
+                    ? { fullAccessGrant: input.fullAccessGrant }
+                    : {}),
+                  ...(input.ownerAttribution
+                    ? { ownerAttribution: input.ownerAttribution }
+                    : {}),
+                }
+              : undefined,
             {
               roomExecutionBinding: {
                 projectId: reservation.task.projectId,
@@ -2832,6 +2850,12 @@ export class TaskGraphService {
           session: this.seedSession(
             reservation.sessionId,
             reservation.provider,
+            {
+              ownerUserId: input.ownerUserId,
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            },
             reservation.modelId,
             orchestrationService,
           ),
@@ -3758,6 +3782,7 @@ export class TaskGraphService {
   private seedSession(
     sessionId: string,
     provider: EngineId,
+    owner: SessionOwnerStamp,
     model?: string,
     orchestrationService = this.orchestrationService,
   ): ProviderSession {
@@ -3767,6 +3792,10 @@ export class TaskGraphService {
         provider,
         model,
         status: 'ready',
+        ownerUserId: owner.ownerUserId,
+        ...(owner.ownerAttribution
+          ? { ownerAttribution: owner.ownerAttribution }
+          : {}),
       });
     }
     const now = new Date().toISOString();

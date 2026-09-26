@@ -87,7 +87,8 @@ export type NativeCommandName =
   | 'agent-activity-push-token'
   | 'configure-agent-activity'
   | 'clear-agent-activity'
-  | 'open-live-update-settings';
+  | 'open-live-update-settings'
+  | 'take-agent-activity-launch-route';
 
 /**
  * What the Android agent-activity plugin reports about this phone. Local facts
@@ -95,6 +96,8 @@ export type NativeCommandName =
  * that any Station will send to it.
  */
 export interface NativeAgentActivityStatus {
+  /** Absent from the Android plugin's reply; only iOS names its platform. */
+  platform?: 'android';
   sdkInt: number;
   /** This install's application id; it differs per channel. */
   packageName: string;
@@ -109,10 +112,59 @@ export interface NativeAgentActivityStatus {
   configured: boolean;
 }
 
-/** The phone's push token, or `unconfigured` when the build has no push. */
+/**
+ * What the iOS agent-activity plugin reports about this phone (built only
+ * with STATION_IOS_LIVE_ACTIVITY=1). Local facts only, as on Android.
+ */
+export interface NativeIosAgentActivityStatus {
+  platform: 'ios';
+  osVersion: string;
+  /** This install's bundle id; it differs per channel. */
+  packageName: string;
+  /** iOS 18 or later, the floor for broadcast-channel Live Activities. */
+  liveActivitiesSupported: boolean;
+  /** Whether the person allows Station's Live Activities. */
+  liveActivitiesEnabled: boolean;
+  frequentPushesEnabled: boolean;
+  /** Whether this build is signed for push (names an APNs environment). */
+  pushConfigured: boolean;
+  configured: boolean;
+  /** Which APNs this build's tokens belong to; absent when not signed for push. */
+  apnsEnvironment?: NativeApnsEnvironment;
+}
+
+export type NativeApnsEnvironment = 'production' | 'sandbox';
+
+/** Either plugin's status; `platform === 'ios'` tells them apart. */
+export type NativeAgentActivityPhoneStatus =
+  | NativeAgentActivityStatus
+  | NativeIosAgentActivityStatus;
+
+/**
+ * The phone's push token (FCM on Android; the ActivityKit push-to-start
+ * token on iOS, with the APNs environment it belongs to), `unconfigured`
+ * when the build has no push, or `unsupported` below iOS 18.
+ */
 export type NativeAgentActivityPushToken =
   | { state: 'unconfigured' }
-  | { state: 'available'; token: string };
+  | { state: 'unsupported' }
+  | {
+      state: 'available';
+      token: string;
+      apnsEnvironment?: NativeApnsEnvironment;
+    };
+
+/**
+ * The session an agent-activity card or alert tap asked to open (#2515), as
+ * the plugin holds it: `stationId` is the registration's verified Station,
+ * the rest came from the sealed card. Untrusted until
+ * `agentActivitySessionTarget` validates it against the connected Station.
+ */
+export interface NativeAgentActivityLaunchRoute {
+  stationId: string;
+  sessionId: string;
+  projectSlug?: string;
+}
 
 /** Exactly what a Station returned from native-push registration. */
 export interface NativeAgentActivityRegistration {
@@ -457,11 +509,12 @@ export interface NativePlatformAdapter {
     requestId: string,
   ): Promise<NativeCommandResult<NativeConsentOutcome>>;
   /**
-   * Agent activity on this phone (Android only). Every call returns
-   * `unsupported` unless the host reports `remote-push` as enabled.
+   * Agent activity on this phone (Android, and iOS builds with the Live
+   * Activity half). Every call returns `unsupported` unless the host reports
+   * `remote-push` as enabled.
    */
   agentActivityStatus(): Promise<
-    NativeCommandResult<NativeAgentActivityStatus>
+    NativeCommandResult<NativeAgentActivityPhoneStatus>
   >;
   agentActivityPushToken(): Promise<
     NativeCommandResult<NativeAgentActivityPushToken>
@@ -473,8 +526,23 @@ export interface NativePlatformAdapter {
   clearAgentActivity(
     registrationId: string,
   ): Promise<NativeCommandResult<void>>;
-  /** Open the OS page where the person allows Live Updates for Station. */
+  /** Open the OS page where the person allows Live Updates (Android) or Live Activities (iOS: the app's Settings page) for Station. */
   openLiveUpdateSettings(): Promise<NativeCommandResult<{ opened: boolean }>>;
+  /** Return and clear the route the last card tap carried; `route: null` when none. */
+  takeAgentActivityLaunchRoute(): Promise<
+    NativeCommandResult<{ route: NativeAgentActivityLaunchRoute | null }>
+  >;
+  /**
+   * Called (with no route) when a card tap arrives while the app runs; the
+   * listener then calls `takeAgentActivityLaunchRoute`. `ready` settles once
+   * the listener is registered (or registration failed), so a caller can
+   * take any pending route only after a new tap can no longer slip between
+   * the take and the registration. A no-op subscription, already ready,
+   * wherever the plugin is absent.
+   */
+  subscribeToAgentActivityLaunchRoutes(
+    listener: () => void,
+  ): NativeEventSubscription & { ready: Promise<void> };
 }
 
 /** The settled transaction status the native consent broker returns. */

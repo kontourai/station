@@ -105,11 +105,17 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import type { CommandRunner } from './service.js';
 import {
   renderServiceInstallRemedy,
   renderServiceStatusCommand,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
+import {
+  findSupervisingServices,
+  IGNORE_SERVICE_STATE_FLAG,
+  renderSupervisingServiceRefusal,
+} from './service-upgrade-guard.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -4069,6 +4075,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // This marker is a capability for precisely the server spawn governed by
   // service-run. Never inherit it through a server-initiated lifecycle call.
   delete serverEnv.STATION_SUPERVISOR_PID;
+  // The unit's "you run under the service" marker (set by the launchd/systemd
+  // unit, inherited through service-run) belongs to the supervised spawn only,
+  // like the PID above: a plain `station start` from a terminal inside a
+  // service-managed Station is not service-managed, and reading it as such
+  // makes that server refuse its own core update (#2674).
+  const serviceManaged = serverEnv.STATION_SERVICE_MANAGED;
+  delete serverEnv.STATION_SERVICE_MANAGED;
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
@@ -4101,6 +4114,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   serverEnv.STATION_BOOT_ID = bootId;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
+    if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
   }
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
@@ -4185,6 +4199,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
+          delete uiEnv.STATION_SERVICE_MANAGED;
           return uiEnv;
         })(),
       },
@@ -4315,6 +4330,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     console.log(`\n  ✓ Server: http://${healthHost}:${serverPort}`);
     console.log(
       `  ✓ UI:     http://${healthHost}:${uiPort}/#station-ui-bootstrap=${uiBootstrapToken}`,
+    );
+    // #2612: `station open` mints a replacement and this link then stops
+    // working with no other signal.
+    // Same selectors this instance was started with, so the command works as
+    // printed (like the "Stop with" line below).
+    const openHome =
+      homeSource === 'default'
+        ? ''
+        : ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+    console.log(
+      `            (single-use sign-in link; \`station open --print${openHome} --instance=${instanceId}\` makes a new one)`,
     );
     // station#3677 (owner decision 3): the consent listener fails CLOSED but
     // never fails the START. Review MED 4: the report derives from the
@@ -4735,7 +4761,9 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  * installer-owned state before it may touch the network; falling through to
  * Git would turn old or copied release files into an unsigned update path.
  */
-function delegatePackagedUpgradeIfPresent(): string | null {
+function delegatePackagedUpgradeIfPresent(
+  beforeInstall: (stationHome: string) => void,
+): string | null {
   if (existsSync(join(CWD, '.git'))) return null;
   const releasesRoot = resolve(CWD, '..');
   const installRoot = resolve(releasesRoot, '..');
@@ -4785,6 +4813,7 @@ function delegatePackagedUpgradeIfPresent(): string | null {
   }
   const installer = join(CWD, 'install.sh');
   readSafePackagedFile(installer, 'packaged release installer');
+  beforeInstall(state.stationHome);
 
   execFileSync('sh', ['./install.sh', 'install'], {
     cwd: CWD,
@@ -4799,6 +4828,63 @@ function delegatePackagedUpgradeIfPresent(): string | null {
     windowsHide: true,
   });
   return state.stationHome;
+}
+
+/** Synchronous command runner for the read-only service probes below. */
+function runServiceProbe(
+  command: string,
+  args: string[],
+): ReturnType<CommandRunner> {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return {
+    error: result.error,
+    status: result.status,
+    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
+    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
+  };
+}
+
+/**
+ * #2674: under an installed service, the live instance `upgrade` would stop is
+ * the service's supervised child. The supervisor exits with it, launchd/systemd
+ * restart the unit within seconds, and its `buildIfStale` races this upgrade's
+ * own pull and build in the same checkout (for a packaged install, the
+ * installer's swap). Refuse before touching anything and name the sequence
+ * that is safe; orchestrating stop/upgrade/start is deliberately not done here.
+ */
+function assertNoSupervisingService(
+  stationHome: string,
+  options: { ignoreUnknownServiceState?: boolean; repoPath?: string },
+) {
+  const supervising = findSupervisingServices(stationHome, {
+    fs: { existsSync, readFileSync, readdirSync, realpathSync },
+    platform: process.platform,
+    run: runServiceProbe,
+    ...(options.repoPath === undefined ? {} : { repoPath: options.repoPath }),
+  });
+  if (supervising.length === 0) return;
+  // The override is for a probe that cannot answer (a broken backend, a
+  // stale manifest whose unit is gone) — never for a unit reported running.
+  if (
+    options.ignoreUnknownServiceState &&
+    supervising.every((service) => service.state === 'unknown')
+  ) {
+    console.warn(
+      [
+        `WARNING: ${IGNORE_SERVICE_STATE_FLAG}: proceeding although Station could not determine whether these installed services are running:`,
+        ...supervising.map(
+          (service) =>
+            `  - ${service.instanceId} (${service.detail ?? 'state unknown'}; manifest ${service.manifestPath})`,
+        ),
+        'If one of them is in fact supervising this Station, it will restart the server mid-upgrade.',
+      ].join('\n'),
+    );
+    return;
+  }
+  throw new Error(renderSupervisingServiceRefusal(supervising));
 }
 
 function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
@@ -4848,22 +4934,7 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
             : {}),
           unitPath: manifest.unitPath,
         },
-        {
-          run: (command, args) => {
-            const result = spawnSync(command, args, {
-              encoding: 'utf8',
-              windowsHide: true,
-            });
-            return {
-              error: result.error,
-              status: result.status,
-              stderr:
-                typeof result.stderr === 'string' ? result.stderr : undefined,
-              stdout:
-                typeof result.stdout === 'string' ? result.stdout : undefined,
-            };
-          },
-        },
+        { run: runServiceProbe },
       );
       if (scheduling.status === 'stale') {
         console.log(
@@ -4948,12 +5019,31 @@ function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
   return null;
 }
 
-export async function upgrade(options: BuildOptions = {}): Promise<void> {
-  const packagedStationHome = delegatePackagedUpgradeIfPresent();
+export interface UpgradeOptions extends BuildOptions {
+  /**
+   * Proceed past installed services whose running state could not be
+   * determined (`--ignore-service-state`). Never overrides a running one.
+   */
+  ignoreUnknownServiceState?: boolean;
+}
+
+export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  const { ignoreUnknownServiceState, ...buildOptions } = options;
+  // A packaged install proves its provenance first; the service check runs on
+  // the home that provenance names, before the installer swaps anything.
+  const packagedStationHome = delegatePackagedUpgradeIfPresent((home) =>
+    assertNoSupervisingService(home, { ignoreUnknownServiceState }),
+  );
   if (packagedStationHome !== null) {
     reportSchedulingPolicyUpgradeGuidance(packagedStationHome);
     return;
   }
+  // Source checkout: only services installed from THIS checkout are raced by
+  // its rebuild (`service install` records the checkout as `repoPath`).
+  assertNoSupervisingService(
+    resolveLifecycleHomeTarget({ baseDir: options.baseDir }).projectHome,
+    { ignoreUnknownServiceState, repoPath: CWD },
+  );
   const liveInstances = listRunningInstances();
   if (liveInstances.length > 1) {
     throw new Error(
@@ -5031,7 +5121,7 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   // buildApplication() resolves the default instance's build paths
   // (dist-server/dist-ui), writes the manifest, and validates+promotes
   // atomically, keeping the manifest sha and the baked sha in lockstep.
-  await buildApplication(options);
+  await buildApplication(buildOptions);
 
   console.log('\n  ✓ Upgraded');
   console.log('  Plugins unchanged. Run "station start" to launch.');

@@ -2,14 +2,24 @@
  * Notification Routes — notification management REST API.
  */
 
-import type { Notification } from '@kontourai/station-contracts/notification';
+import type {
+  Notification,
+  SurfaceId,
+} from '@kontourai/station-contracts/notification';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
-import type { NotificationService } from '../../services/notifications/notification-service.js';
+import {
+  NotificationDedupeSourceConflictError,
+  NotificationReservedFieldError,
+  type NotificationService,
+  REST_NOTIFICATION_SOURCE,
+} from '../../services/notifications/notification-service.js';
+import { notificationMetadataSessionId } from '../../services/notifications/notification-session.js';
+import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import { notificationOps } from '../../telemetry/metrics.js';
 import {
   getBody,
@@ -29,6 +39,12 @@ export function createNotificationRoutes(
       sessionId: string,
       authority: SessionReadAuthority,
     ) => boolean;
+    /**
+     * #2584: whether the request declares itself a station-control agent
+     * tool call (`isAgentOriginatedRequest`). Such a request may not create
+     * a notification here; agents use `notify_user`.
+     */
+    isAgentOriginatedRequest?: (request: Request) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -37,7 +53,7 @@ export function createNotificationRoutes(
     notification: Notification,
     request: Request,
   ): boolean => {
-    const sessionId = notificationSessionId(notification);
+    const sessionId = notificationMetadataSessionId(notification);
     // Existing personal-only constructors omit both hooks.  A partial hosted
     // composition, on the other hand, cannot make a session row public.
     if (!options.readAuthorityForRequest && !options.canReadSession)
@@ -80,23 +96,99 @@ export function createNotificationRoutes(
   });
 
   // Schedule a new notification
-  app.post('/', validate(notificationCreateSchema), async (c) => {
-    const body = getBody(c);
-    const provisional = {
-      ...body,
-      id: '',
-      source: body.source ?? 'api',
-    } as Notification;
-    if (!canReadNotification(provisional, c.req.raw)) {
-      return c.json({ success: false, error: 'Notification not found' }, 404);
+  // #2584: before body validation and the source/reserved-field refusals, so
+  // an agent is pointed at the tool whatever it sent. The declaration may
+  // only restrict: its absence proves nothing (see `isAgentOriginatedRequest`),
+  // so this closes the documented path, not every path an agent with a shell
+  // could take.
+  const refuseAgentOriginated: MiddlewareHandler = async (c, next) => {
+    if (options.isAgentOriginatedRequest?.(c.req.raw)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Agents cannot create notifications here. Use the station-control notify_user tool.',
+          code: 'agent_notification_requires_tool',
+        },
+        403,
+      );
     }
-    const notification = await notificationService.schedule(
-      body.source ?? 'api',
-      body,
-    );
-    notificationOps.add(1, { op: 'schedule' });
-    return c.json({ success: true, data: notification }, 201);
-  });
+    await next();
+  };
+
+  app.post(
+    '/',
+    refuseAgentOriginated,
+    validate(notificationCreateSchema),
+    async (c) => {
+      const body = getBody(c);
+      const provisional = {
+        ...body,
+        id: '',
+        source: REST_NOTIFICATION_SOURCE,
+      } as Notification;
+      if (!canReadNotification(provisional, c.req.raw)) {
+        return c.json({ success: false, error: 'Notification not found' }, 404);
+      }
+      // #2597: a request cannot choose its source — a caller-chosen source
+      // relabels (and via a shared tag rewrites) another producer's record.
+      // Every REST record is `api`. The shipped SDK labels its requests
+      // `sdk`; that label is accepted and recorded as `api`. Anything else is
+      // refused rather than silently relabelled.
+      if (
+        body.source !== undefined &&
+        body.source !== REST_NOTIFICATION_SOURCE &&
+        body.source !== 'sdk'
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'Notification source is set by the server for API requests',
+          },
+          400,
+        );
+      }
+      let notification: Notification;
+      try {
+        // Hosted: namespace REST dedupe tags by the caller's tenant, so one
+        // tenant's request can never update another tenant's record.
+        const authority = options.readAuthorityForRequest?.(c.req.raw);
+        const tenantId =
+          authority && isHostedSessionReadAuthority(authority)
+            ? authority.tenantExecutionContext?.tenantId
+            : undefined;
+        notification = await notificationService.scheduleFromRequest(
+          body,
+          tenantId === undefined ? {} : { tenantId },
+        );
+      } catch (error) {
+        // Envelopes, `agent:` dedupe tags and `agent-*` categories belong to
+        // the trusted enveloped path (#2583); a request body cannot claim them.
+        if (error instanceof NotificationDedupeSourceConflictError) {
+          return c.json(
+            {
+              success: false,
+              error: 'Notification dedupe tag belongs to another source',
+            },
+            409,
+          );
+        }
+        if (error instanceof NotificationReservedFieldError) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Envelopes, metadata.dedupeTag, agent: dedupe tags and agent-* categories are reserved',
+            },
+            400,
+          );
+        }
+        throw error;
+      }
+      notificationOps.add(1, { op: 'schedule' });
+      return c.json({ success: true, data: notification }, 201);
+    },
+  );
 
   // Clear ordinary/resolved activity while preserving active approvals.
   app.delete('/activity', async (c) => {
@@ -159,6 +251,34 @@ export function createNotificationRoutes(
     return c.json({ success: true });
   });
 
+  // Record that this surface read an enveloped notification (#2587).
+  //
+  // The surface id is derived here, never taken from the body: a paired
+  // device is `device:<id>` from its verified credential, and any other
+  // caller is `local:<client session>` from the per-document
+  // `X-Station-Client-Session` header. A caller with neither cannot name a
+  // surface, so it is refused rather than recorded under an invented one.
+  app.post('/:id/read', async (c) => {
+    if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
+      return c.json({ success: false, error: 'Notification not found' }, 404);
+    }
+    const surfaceId = readerSurfaceId(c.req.raw);
+    if (!surfaceId) {
+      return c.json(
+        { success: false, error: 'A client session is required' },
+        400,
+      );
+    }
+    const outcome = await notificationService.markRead(
+      param(c, 'id'),
+      surfaceId,
+    );
+    if (outcome === 'not-found') {
+      return c.json({ success: false, error: 'Notification not found' }, 404);
+    }
+    return c.json({ success: true, data: { outcome } });
+  });
+
   // Snooze a notification
   app.post('/:id/snooze', validate(notificationSnoozeSchema), async (c) => {
     if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
@@ -191,20 +311,11 @@ export function createNotificationRoutes(
   return app;
 }
 
-function notificationSessionId(
-  notification: Pick<Notification, 'metadata'>,
-): string | undefined {
-  const metadata = notification.metadata;
-  if (!metadata) return undefined;
-  for (const key of [
-    'sessionId',
-    'conversationId',
-    'threadId',
-    'gen_ai.conversation.id',
-    'station.agent_telemetry.session_id',
-  ]) {
-    const value = metadata[key];
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return undefined;
+function readerSurfaceId(request: Request): SurfaceId | undefined {
+  const origin = resolveClientOriginForRequest(request);
+  if (origin.actor.kind === 'device') return `device:${origin.actor.deviceId}`;
+  const clientSession = request.headers.get('x-station-client-session');
+  return clientSession && CLIENT_SESSION_ID_PATTERN.test(clientSession)
+    ? `local:${clientSession.toLowerCase()}`
+    : undefined;
 }

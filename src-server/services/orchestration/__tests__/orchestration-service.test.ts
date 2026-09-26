@@ -76,6 +76,7 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../../../runtime/mcp/station-control-caller.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import {
   adapterTurnDuration,
   attachedSessionMutationRejected,
@@ -120,6 +121,7 @@ import { createProjectSessionDirectoryResolver } from '../../projects/project-se
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import type { ChildWorkProjection } from '../child-work-projection.js';
 import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
@@ -131,10 +133,7 @@ import {
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
 import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
-import {
-  anyPersonalOrchestrationStreamPresenceSubject,
-  OrchestrationStreamPresence,
-} from '../orchestration-stream-presence.js';
+import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
@@ -1036,6 +1035,39 @@ describe('OrchestrationService', () => {
         projectIdSource: 'slug-lookup',
       });
     });
+
+    test('#2601 L3: the started engine comes from the SAME record as the started metadata', () => {
+      // A metadata-less `session.started` is skipped for the metadata, so its
+      // provider must be skipped too: a caller's Agent-less identity (its
+      // engine) and its `adoptedFromThreadId` never come from two events.
+      const now = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'codex',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-started',
+        createdAt: now,
+        method: 'session.started',
+        sessionId: 'split-record-session',
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-configured',
+        createdAt: now,
+        method: 'session.configured',
+        sessionId: 'split-record-session',
+        metadata: { adoptedFromThreadId: 'thread-attached-1' },
+      } as CanonicalRuntimeEvent);
+      expect(
+        service.firstStartedMetadataOfThread('split-record-session'),
+      ).toEqual({ adoptedFromThreadId: 'thread-attached-1' });
+      expect(service.firstStartedEngineOfThread('split-record-session')).toBe(
+        'claude',
+      );
+      expect(
+        service.firstStartedEngineOfThread('no-such-session'),
+      ).toBeUndefined();
+    });
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
@@ -1347,7 +1379,11 @@ describe('OrchestrationService', () => {
       currentSessionId: child,
       // #2309: the rebinding frame also carries the conversation's activity
       // (nothing committed on either child yet).
-      activity: { conversationId: root, asOfSequence: 0 },
+      activity: {
+        conversationId: root,
+        currentThreadId: child,
+        asOfSequence: 0,
+      },
     });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(
@@ -1525,6 +1561,135 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
+  // A dispatched Task's session belongs to the principal that dispatched it,
+  // on both the engine-start path and the default seeded (`task-dispatch`)
+  // path. This suite's service denies ownerless reads, so a session with no
+  // recorded owner would be invisible to the dispatcher itself.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'a Task session started by %s records its dispatcher as owner',
+    async (_label, provider) => {
+      const root = join(tmp, `owned-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'owned-project',
+        title: 'Owned dispatch',
+        agentId: 'codex',
+      });
+      const dispatcher = composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      });
+      const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'human:device:phone',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // An engine records the owner from its start metadata in the
+        // `session.started` it publishes (this suite's fake engine publishes
+        // nothing), so the start must carry it.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({ userId: 'human:device:phone' }),
+          }),
+        );
+        return;
+      }
+      expect(eventStore.findSessionOwnerUserId(sessionId)).toBe(
+        'human:device:phone',
+      );
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:device:phone'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('stranger'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  // B2: an unverified agent's (or an external sender's) dispatch is the
+  // operator's to read but acts for no one, on both dispatch paths.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'an unattributed Task session started by %s is readable by its owner and acts for no one',
+    async (_label, provider) => {
+      const root = join(tmp, `unattributed-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'unattributed-project',
+        title: 'Agent dispatch',
+        agentId: 'codex',
+      });
+      const dispatched = await composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      }).dispatch(task.id, {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // The start choke point stamps the marker the engine records.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({
+              userId: 'human:local:operator',
+              ownerAttribution: 'unattributed-agent',
+            }),
+          }),
+        );
+        return;
+      }
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:local:operator'),
+        ),
+      ).toBe(true);
+      expect(service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {
@@ -1562,6 +1727,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
@@ -1761,6 +1927,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
@@ -5915,7 +6082,6 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([stationAgent]),
       eventBus: new EventBus(),
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = peerService.recordPeerDelegationActivityDispatch({
@@ -7012,24 +7178,22 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock]),
       eventBus,
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // A personal Station refuses an ownerless session too.
     await expect(
       local.readSession('ownerless-thread', personal),
-    ).resolves.toEqual(
+    ).resolves.toBeNull();
+    await expect(local.readSession('alpha-thread', personal)).resolves.toEqual(
       expect.objectContaining({
-        session: expect.objectContaining({ threadId: 'ownerless-thread' }),
+        session: expect.objectContaining({ threadId: 'alpha-thread' }),
       }),
     );
   });
 
-  test('resolves a personal ownerless session to the any-personal presence subject (slice 6 I10 guard)', () => {
-    // The personal fallback branch of `resolveSessionPresenceSubject` — a
-    // session with no recorded owner in a non-hosted deployment falls back
-    // to the any-personal subject rather than resolving no subject at all.
-    // Before this fixture, deleting the fallback ran the whole suite green:
-    // the hosted test above only exercises tenant-bound subjects.
+  test('resolves no presence subject for a personal ownerless session: nobody may read it (slice 6 I10 guard)', () => {
+    // A session with no recorded owner has no one to notify, so a
+    // completion must not borrow any connected user's presence.
     const threadId = 'ownerless-presence-thread';
     eventStore.upsertSession({
       provider: 'bedrock',
@@ -7038,8 +7202,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-08T00:00:00.000Z',
       updatedAt: '2026-08-08T00:00:00.000Z',
     });
-    const subject = service.resolveSessionPresenceSubject(threadId);
-    expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
+    expect(service.resolveSessionPresenceSubject(threadId)).toBeUndefined();
   });
 
   test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
@@ -8095,6 +8258,75 @@ describe('OrchestrationService', () => {
     expect((sessionBackgroundTasks.add as any).mock.calls.length).toBe(
       settlesBefore,
     );
+  });
+
+  test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
+    // ACP 1.1.1 has no subagent concept, so its matrix cell stays `none`
+    // (muse's became `declared` with muse serve, #2452).
+    const acp = new FakeAdapter('acp');
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([acp]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'matrix-none-child-work';
+    await isolated.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'acp' },
+    });
+    const publish = (
+      isolated as unknown as {
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+      }
+    ).projectAndPublishEvent.bind(isolated);
+    publish({
+      eventId: 'matrix-none-child-delta',
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: threadId,
+        running: [
+          {
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            childId: 'unexpected-child',
+            status: 'running',
+          },
+        ],
+      },
+    });
+    const childWork = (
+      isolated as unknown as { childWork: ChildWorkProjection }
+    ).childWork;
+    expect(childWork.read(threadId, 'acp')?.observability).toBe('not-reported');
+    expect(
+      (await isolated.readSession(threadId))?.session.conversationActivity
+        ?.runningChildWork,
+    ).toBeUndefined();
+    // Exercise the service's own readRunningChildWork wiring under a
+    // contradictory projection result. The matrix-none read above is real;
+    // this injected extra field proves the service gate still rejects child
+    // rows if a future projection accidentally includes them on that view.
+    vi.spyOn(childWork, 'read').mockReturnValue({
+      observability: 'not-reported',
+      reason: 'The engine does not report subagents.',
+      running: [
+        {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'unexpected-child',
+          status: 'running',
+        },
+      ],
+    } as unknown as ReturnType<ChildWorkProjection['read']>);
+    const session = (await isolated.readSession(threadId))?.session;
+    expect(session?.childWork?.children?.observability).toBe('not-reported');
+    expect(session?.conversationActivity?.runningChildWork).toBeUndefined();
   });
 
   test('fails closed for hosted starts without a server-owned tenant context', async () => {
@@ -9395,179 +9627,6 @@ describe('OrchestrationService', () => {
     });
   });
 
-  /** A class-member declaration at the file's two-space member indent. */
-  const MEMBER_DECLARATION =
-    /^ {2}(?:private |public |protected )?(?:static )?(?:readonly )?(?:async )?[A-Za-z_$][\w$]*\(/gm;
-
-  /**
-   * One method's body: from its declaration to whatever member is declared
-   * NEXT, whichever that turns out to be.
-   *
-   * Review L6 (archive#4218) called out the previous form — a slice between two
-   * NAMED markers — as not-a-body, since a member declared between them but
-   * CALLED from above the gate keeps every relative index intact while
-   * inverting the ordering the invariant exists to protect. That was not
-   * hypothetical: applying this helper immediately showed
-   * `captureUsagePricingSnapshot` had already landed between
-   * `consumeAdapterEvents` and `isAdapterCurrent`, so the ingest scan was
-   * reading two members as one body. Naming the next marker is what rots;
-   * this finds it, so an insertion narrows the slice instead of widening it.
-   */
-  function readMethodBody(source: string, declaration: string): string {
-    const start = source.indexOf(declaration);
-    expect(
-      start,
-      `declaration not found: ${declaration}`,
-    ).toBeGreaterThanOrEqual(0);
-    const rest = source.slice(start + declaration.length);
-    const next = [...rest.matchAll(MEMBER_DECLARATION)][0];
-    expect(next, 'no member follows the scanned declaration').toBeDefined();
-    return declaration + rest.slice(0, next?.index ?? rest.length);
-  }
-
-  describe('the cooperative-stop settle-read precedes the quarantine gate (source invariant)', () => {
-    /**
-     * Slice 10 (archive#4204): moving `settleCompletedTurn` below the quarantine
-     * gate changes observable behavior ONLY for a quarantined thread with
-     * an in-flight cooperative stop — a state no runtime fixture had ever
-     * constructed, so the perturbation was 100% green under the whole
-     * suite. The ordering's owner is this scan; its behavioral complement
-     * is the I2 guard fixture beside the stop tests.
-     */
-    test('publishCanonicalEvent settles a completed stop before it can decline the event', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(source, '\n  private publishCanonicalEvent(');
-      const settle = body.indexOf('.settleCompletedTurn(');
-      const gate = body.indexOf('this.quarantinedThreads.has(');
-      expect(settle).toBeGreaterThanOrEqual(0);
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(settle).toBeLessThan(gate);
-      // Exactly one dispatch of the settle, file-wide (double-settle guard).
-      // RAW scan, comments included: a service-side comment that writes the
-      // literal call form `.settleCompletedTurn(` would red this on its own
-      // rationale — keep prose references name-only (same warning as the
-      // forgetThreadState invariant above).
-      expect(source.split('.settleCompletedTurn(').length - 1).toBe(1);
-    });
-  });
-
-  describe('the ingest policy/spool calls sit below the publish continue-gate (source invariant)', () => {
-    /**
-     * Slice 11 (archive#4218): the two FlowPolicySidecar ingest calls must run
-     * ONLY for events the publish seam accepted — moving either above the
-     * continue-gate changes observable behavior only for events the gate
-     * declines (coalesced deltas, quarantined threads), populations no
-     * runtime fixture combined with tool events before this slice. The
-     * ordering's owner is this scan; its behavioral complement is the
-     * quarantined-ingest guard in the S3 policy band. Prose that names the
-     * calls stays name-only (no `this.flowPolicy.` + paren call form) or
-     * this scan reds on its own rationale — same warning as the two
-     * invariants above.
-     */
-    test('consumeAdapterEvents orders gate < post-hoc policy < command spool, each dispatched once file-wide', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  private async consumeAdapterEvents(',
-      );
-      const gate = body.indexOf('if (!this.projectAndPublishEvent(');
-      const postHoc = body.indexOf('.applyPostHocToolPolicies(');
-      const spool = body.indexOf('.spoolCommandEvidence(');
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(postHoc).toBeGreaterThan(gate);
-      expect(spool).toBeGreaterThan(postHoc);
-      // The gate must be the ONLY one in the body: with two, the ingest
-      // calls could sit above the real gate and still be `> gate`.
-      expect(body.split('if (!this.projectAndPublishEvent(').length - 1).toBe(
-        1,
-      );
-      // Exactly one dispatch of each across the SERVICES TREE, not just this
-      // file (review M2): before slice 11 both were private members of this
-      // class, so "file-wide" was "everywhere". They are public members of an
-      // exported class now — any module holding the sidecar can dispatch
-      // them, and a second appender spooling the same event would double
-      // every command into durable Flow evidence. RAW scan, comments
-      // included, so prose naming them stays name-only.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.applyPostHocToolPolicies(').length - 1).toBe(
-        1,
-      );
-      expect(servicesTree.split('.spoolCommandEvidence(').length - 1).toBe(1);
-    });
-  });
-
-  describe('shutdown reads the retiring set before it drains (source invariant)', () => {
-    /**
-     * Slice 12 (archive#4024): `retiringAdapters()` and `shutdownRetirementTasks()`
-     * used to be one expression over one map. Split across a module seam,
-     * they are two calls that MUST happen at the same synchronous tick —
-     * an await between them lets a retirement settle and drop out of the
-     * set, after which the second arm stops an adapter the first arm is
-     * already stopping. Nothing at any level observes that ordering, so
-     * this scan owns it.
-     */
-    test('the two retirement reads are adjacent, with no await between them', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  async shutdown(): Promise<void> {',
-      );
-      const set = body.indexOf('.retiringAdapters()');
-      const drain = body.indexOf('.shutdownRetirementTasks()');
-      expect(set).toBeGreaterThanOrEqual(0);
-      expect(drain).toBeGreaterThan(set);
-      // The window starts at the read, so an await IMMEDIATELY BEFORE it —
-      // `const x = await this.adapterRetirement.retiringAdapters()`, if that
-      // ever became async — would suspend outside the scan and stay green
-      // while a retirement settles out of the drain map (review L2). Pin the
-      // call's awaitless form directly.
-      expect(body).toContain(
-        'const retiringAdapters = this.adapterRetirement.retiringAdapters();',
-      );
-      // The ONLY await permitted between them is the one that opens the
-      // `Promise.allSettled([` whose array literal CONTAINS the drain: that
-      // await does not suspend until after the array is built, so the two
-      // reads still happen at one tick. Any OTHER await does suspend, and
-      // that is the hazard. RAW scan, comments included, so prose between
-      // them stays name-only.
-      const between = body
-        .slice(set, drain)
-        .replace('await Promise.allSettled([', '');
-      expect(between).not.toMatch(/\bawait\b/);
-      // Exactly one dispatch of each across the services tree: a second
-      // drain would double-stop every retiring adapter.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.shutdownRetirementTasks(').length - 1).toBe(
-        1,
-      );
-    });
-  });
-
   describe('turn-stall detection (station#2959)', () => {
     test('detects a turn with no observed progress past its agent window — observe-only: counted, logged, and nothing terminated', async () => {
       vi.useFakeTimers();
@@ -10409,6 +10468,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'both-halves-turn-1-started',
       provider: 'codex',
@@ -10586,6 +10656,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'failed-restart-turn-1-started',
       provider: 'codex',
@@ -10774,6 +10855,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'replay-fail-turn-1-started',
       provider: 'codex',
@@ -10958,6 +11050,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'teardown-failed-turn-1-started',
       provider: 'codex',
@@ -11168,7 +11271,13 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         threadId,
         provider: 'claude',
-        metadata: { agentSlug: 'delegated-agent', delegation },
+        // #2493: the restart carries its session's confinement stamp
+        // forward (none here, so the `workspace` it already meant).
+        metadata: {
+          agentSlug: 'delegated-agent',
+          delegation,
+          stationConfinement: 'workspace',
+        },
       }),
       undefined,
     );
@@ -17243,6 +17352,58 @@ describe('OrchestrationService', () => {
     );
   });
 
+  test.each([
+    {
+      label: 'a request that may grant full access',
+      granted: true,
+      expected: 'host',
+    },
+    {
+      label: 'a request that may not (a device without the grant, an agent)',
+      granted: false,
+      expected: 'workspace',
+    },
+  ] as const)(
+    '#2493 Q2: an adoption by $label stamps its child $expected',
+    async ({ granted, expected }) => {
+      const sourceThreadId = `external:claude:confine-${expected}`;
+      const projectRoot = join(tmp, `confine-project-${expected}`);
+      mkdirSync(projectRoot, { recursive: true });
+      configuredProjects.push({
+        slug: `confine-project-${expected}`,
+        workingDirectory: projectRoot,
+      });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: sourceThreadId,
+        status: 'ready',
+        cwd: projectRoot,
+        controlMode: 'read-only-attached',
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: `vendor-confine-${expected}`,
+          affinity: { kind: 'test', ref: 'fixture' },
+        },
+        createdAt: '2026-07-22T00:00:00.000Z',
+        updatedAt: '2026-07-22T00:00:00.000Z',
+      });
+      await service.dispatch(
+        { type: 'adoptSession', sourceThreadId },
+        granted ? { fullAccessGrant: fullAccessGrantForTesting() } : {},
+      );
+      expect(claude.adoptSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          confinement: expected,
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+            stationConfinement: expected,
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
@@ -17410,11 +17571,9 @@ describe('OrchestrationService', () => {
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
     // so the resulting session.started/session.configured event carries a
     // real owner instead of leaving the adopted thread permanently
-    // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
-    // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy archive#1165 is about (under this suite's default `deny`
-    // policy, the pre-existing source-thread precheck wouldn't even let a
-    // userId-bearing dispatch through, masking the bug this test targets).
+    // ownerless. The attached source is owned by the adopting user, as the
+    // follow service records an attached transcript's owner (the local
+    // operator in production), so the source precheck admits the adoption.
     const sourceThreadId = 'external:claude:source-1165';
     const projectRoot = join(tmp, 'project-1165');
     mkdirSync(projectRoot, { recursive: true });
@@ -17438,7 +17597,6 @@ describe('OrchestrationService', () => {
       flowRunService,
       listProjects: () => localProjects,
       workflowSidecarService,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     localService.initialize();
@@ -17456,6 +17614,15 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'source-1165-owner',
+      provider: 'claude',
+      threadId: sourceThreadId,
+      createdAt: '2026-07-28T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: sourceThreadId,
+      metadata: { controlMode: 'read-only-attached', userId: 'adopter-user' },
+    } as CanonicalRuntimeEvent);
 
     const child = await localService.dispatch(
       { type: 'adoptSession', sourceThreadId },
@@ -23469,8 +23636,8 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(false);
       // Unknown thread: never seen by the store at all — falls through to
-      // a full (miss) read every time and is denied by this suite's
-      // default `ownerlessSessionAccess` (fail-closed, unset === deny).
+      // a full (miss) read every time and is denied: a session with no
+      // recorded owner is readable by no caller.
       expect(
         service.canUserReadSession(
           'thread-never-existed',

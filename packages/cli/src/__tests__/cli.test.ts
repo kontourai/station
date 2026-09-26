@@ -248,6 +248,14 @@ describe('runCli', () => {
         }),
       );
 
+      expect(lifecycle.upgrade).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ignoreUnknownServiceState: false }),
+      );
+      await runCli(['upgrade', '--ignore-service-state']);
+      expect(lifecycle.upgrade).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ignoreUnknownServiceState: true }),
+      );
+
       process.env.STATION_SERVER_PORT = '29141';
       process.env.STATION_UI_PORT = '29000';
       await runCli(['upgrade']);

@@ -452,6 +452,7 @@ describe('StarterRegistry', () => {
           task: { projectId: 'project-1', title: 'First task' },
         },
         null,
+        { ownerUserId: 'owner-1' },
       ),
     ).resolves.toMatchObject({
       task: { kind: 'task', id: 'task-1', projectId: 'project-1' },
@@ -476,8 +477,11 @@ describe('StarterRegistry', () => {
         task: { projectId: 'project-1', title: 'First task' },
       },
       grant,
+      { ownerUserId: 'owner-1' },
     );
     expect(dispatch.mock.calls[0]?.[1].fullAccessGrant).toBe(grant);
+    // The launching principal owns the session the dispatch starts.
+    expect(dispatch.mock.calls[0]?.[1].ownerUserId).toBe('owner-1');
   });
 
   it('preserves indeterminate dispatch without an automatic retry', async () => {
@@ -494,6 +498,7 @@ describe('StarterRegistry', () => {
           task: { projectId: 'project-1', title: 'First task' },
         },
         null,
+        { ownerUserId: 'owner-1' },
       ),
     ).resolves.toMatchObject({
       dispatch: {
@@ -513,8 +518,10 @@ describe('StarterRegistry', () => {
       operationId: 'launch-replay',
       task: { projectId: 'project-1', title: 'First task' },
     };
-    await registry.launchStartTask(input, null);
-    await expect(registry.launchStartTask(input, null)).resolves.toMatchObject({
+    await registry.launchStartTask(input, null, { ownerUserId: 'owner-1' });
+    await expect(
+      registry.launchStartTask(input, null, { ownerUserId: 'owner-1' }),
+    ).resolves.toMatchObject({
       dispatch: { state: 'dispatched', session: { id: 'session-1' } },
     });
     expect(dispatch).toHaveBeenCalledTimes(1);
@@ -538,6 +545,7 @@ describe('StarterRegistry', () => {
           },
         },
         null,
+        { ownerUserId: 'owner-1' },
       ),
     ).resolves.toEqual({
       state: 'deferred',
@@ -568,7 +576,9 @@ describe('StarterRegistry', () => {
       operationId: 'continue-op-1',
       sourceSessionId: 'external-session',
     };
-    await expect(registry.launchContinueSession(input)).resolves.toMatchObject({
+    await expect(
+      registry.launchContinueSession(input, null, { ownerUserId: 'owner-1' }),
+    ).resolves.toMatchObject({
       state: 'continued',
       source: { kind: 'session', id: 'external-session' },
       session: { threadId: 'continued-session', controlMode: 'station-owned' },
@@ -584,6 +594,8 @@ describe('StarterRegistry', () => {
     expect(continueSession).toHaveBeenCalledWith({
       sourceSessionId: 'external-session',
       operationId: 'continue-op-1',
+      fullAccessGrant: null,
+      owner: { ownerUserId: 'owner-1' },
     });
     await expect(registry.observe('continue-session')).resolves.toMatchObject({
       starterId: 'continue-session',
@@ -604,11 +616,15 @@ describe('StarterRegistry', () => {
   it('does not continue a missing or Station-owned source Session', async () => {
     const { registry, continueSession } = await fixture();
     await expect(
-      registry.launchContinueSession({
-        starterId: 'continue-session',
-        operationId: 'continue-op-2',
-        sourceSessionId: 'continued-session',
-      }),
+      registry.launchContinueSession(
+        {
+          starterId: 'continue-session',
+          operationId: 'continue-op-2',
+          sourceSessionId: 'continued-session',
+        },
+        null,
+        { ownerUserId: 'owner-1' },
+      ),
     ).resolves.toMatchObject({ state: 'unavailable', retrySafe: false });
     expect(continueSession).not.toHaveBeenCalled();
   });
