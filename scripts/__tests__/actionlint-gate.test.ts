@@ -284,6 +284,84 @@ describe('persistent runner policy', () => {
     return [{ file: workflow.file, document }];
   }
 
+  function portableArchiveWorkflowFixture(
+    mutate: (step: Record<string, unknown>) => void = () => {},
+  ) {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/portable-server-archives.yml',
+    );
+    if (!workflow) throw new Error('Expected the portable archive workflow.');
+    const document = structuredClone(workflow.document) as {
+      jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+    };
+    const upload = document.jobs.archive.steps.find(
+      (step) => step.name === 'Upload the archive and its descriptor',
+    );
+    if (!upload) throw new Error('Expected the archive upload step.');
+    mutate(upload);
+    return [{ file: workflow.file, document }];
+  }
+
+  const UNREVIEWED_ACTION = {
+    file: '.github/workflows/portable-server-archives.yml',
+    jobId: 'archive',
+    message:
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+  };
+
+  test('admits the exact portable archive upload', () => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture()),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a workspace path with hidden files',
+      (step: Record<string, unknown>) => {
+        step.with = {
+          ...(step.with as object),
+          path: `\${{ github.workspace }}`,
+          'include-hidden-files': true,
+        };
+      },
+    ],
+    [
+      'an added upload input',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), overwrite: true };
+      },
+    ],
+    [
+      'a longer retention',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), 'retention-days': 90 };
+      },
+    ],
+    [
+      'no fork guard',
+      (step: Record<string, unknown>) => {
+        delete step.if;
+      },
+    ],
+    [
+      'a guard that admits fork pull requests',
+      (step: Record<string, unknown>) => {
+        step.if = 'always()';
+      },
+    ],
+    [
+      'an unpinned upload action',
+      (step: Record<string, unknown>) => {
+        step.uses = 'actions/upload-artifact@v7';
+      },
+    ],
+  ])('refuses a portable archive upload with %s', (_label, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture(mutate)),
+    ).toContainEqual(UNREVIEWED_ACTION);
+  });
+
   test('rejects an unguarded self-hosted PR fast-checks job', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/ci.yml',
@@ -1274,6 +1352,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
       '.github/workflows/merge-queue-regression.yml',
+      '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
