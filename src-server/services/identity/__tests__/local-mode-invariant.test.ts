@@ -120,6 +120,9 @@ function createHarness() {
         credential === MASTER_CREDENTIAL ||
         (!request?.path.startsWith('/api/pairing') &&
           pairing.verifyCredential(credential)),
+      recognizeCredential: (credential) =>
+        credential === MASTER_CREDENTIAL ||
+        pairing.verifyCredential(credential),
       resolveGrantedScope: (credential) =>
         credential === MASTER_CREDENTIAL
           ? DEFAULT_GRANT_PAIRING_SCOPE

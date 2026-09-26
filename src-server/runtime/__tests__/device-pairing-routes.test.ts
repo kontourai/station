@@ -211,6 +211,9 @@ function createHarness(
         credential === MASTER_CREDENTIAL ||
         (!request?.path.startsWith('/api/pairing') &&
           pairing.verifyCredential(credential)),
+      recognizeCredential: (credential) =>
+        credential === MASTER_CREDENTIAL ||
+        pairing.verifyCredential(credential),
       // The master credential carries every scope; a real paired device
       // resolves through the same service `verifyCredential` above uses.
       resolveGrantedScope: (credential) =>
@@ -1730,7 +1733,7 @@ describe('device pairing routes', () => {
           ),
         )
       ).status,
-    ).toBe(401);
+    ).toBe(403);
 
     const revoked = await harness.request(
       `/api/pairing/devices/${first.device.id}`,
@@ -2022,13 +2025,13 @@ describe('device pairing routes', () => {
         })
       ).status,
     ).toBe(403);
-    expect(
-      (
-        await harness.request('/api/pairing/devices', {
-          headers: { Cookie: cookie },
-        })
-      ).status,
-    ).toBe(401);
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Cookie: cookie },
+    });
+    expect(devices.status).toBe(403);
+    expect(await devices.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
 
     const device = result.device as PairedDevice;
     expect(
@@ -2219,7 +2222,10 @@ describe('device scope change (station#3816)', () => {
       `/api/pairing/devices/${paired.device.id}/scope`,
       harness.json({ scope: ['orchestration:read'] }, paired.credential),
     );
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
     expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
       paired.device.scope,
     );

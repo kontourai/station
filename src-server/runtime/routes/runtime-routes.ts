@@ -1198,6 +1198,11 @@ export function configureRuntimeRoutes(
             request,
           )
         : context.environmentSecurityService.verifyCredential(credential),
+    // Identity, not admission. authorizeCredential refuses an ordinary
+    // device on /api/pairing; this still recognizes the credential so the
+    // HTTP layer can answer 403 instead of revoking the browser session.
+    recognizeCredential: (credential: string) =>
+      context.environmentSecurityService.verifyCredential(credential),
     resolveGrantedScope: (credential: string) =>
       context.environmentSecurityService.resolveGrantedScope(credential),
     resolveCredentialAuthority: (credential: string) =>
