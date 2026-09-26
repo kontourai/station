@@ -206,6 +206,15 @@ describe('station-control SSH environment management tools', () => {
     expect(connected.data.profile.remoteHome).toBe(WORKER.remoteHome);
     expect(createTunnel).toHaveBeenCalledTimes(1);
 
+    // Callers poll get_ssh_environment for live state, so it must report the
+    // connection too, not only the connect response.
+    const polled = toolBody(await tools.get_ssh_environment({ id }));
+    expect(polled.success).toBe(true);
+    expect(polled.data.state.phase).toBe('connected');
+    expect(polled.data.profile.verifiedProjectPath).toBe(
+      WORKER.remoteProjectPath,
+    );
+
     const disconnected = toolBody(
       await tools.disconnect_ssh_environment({ id }),
     );
