@@ -8,7 +8,8 @@
 //! docs/design/notification-delivery.md for why every keep-the-process-alive
 //! approach failed there. iOS: APNs starts and updates the Live Activity and
 //! the widget extension (`src-desktop/ios/StationAgentActivity`) opens the
-//! sealed card; the Swift plugin (`ios/`) only registers identity. The iOS
+//! sealed card; the Swift plugin (`ios/`) only registers identity and hands
+//! over push tokens (including the app's APNs device token for alerts). The iOS
 //! half is compiled only when STATION_IOS_LIVE_ACTIVITY=1 (see build.rs).
 //!
 //! There are no Rust command handlers. On mobile, Tauri forwards an

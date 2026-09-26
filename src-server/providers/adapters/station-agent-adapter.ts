@@ -55,6 +55,7 @@ import {
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_ORCHESTRATION_THREAD_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
@@ -1022,6 +1023,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               'Content-Type': 'application/json',
               [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
               [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+              // #2589: this stream's tool approvals become this thread's
+              // `request.opened` (below), so their registry twins are on the
+              // card. Same value as `options.conversationId`.
+              [INTERNAL_ORCHESTRATION_THREAD_HEADER]: input.threadId,
               ...stationServerScopeHeaders(),
               ...(relayHandoff
                 ? {

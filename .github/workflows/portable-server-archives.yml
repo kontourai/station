@@ -1,0 +1,165 @@
+name: Portable server archives
+
+# Builds station-server-<os>-<arch> on each target's native runner and proves
+# it runs with no Node.js on PATH (#2675). An archive carries the build host's
+# platform-specific native modules (node-pty, @napi-rs/keyring, esbuild, the
+# Claude Agent SDK binary), so each target is built where it runs; there is
+# no cross-build. Linux uses ubuntu-22.04 images, like the node-pty prebuild
+# matrix, to keep the glibc floor of compiled modules low; the smoke reports
+# that floor.
+#
+# Packaging proof only: archives are uploaded as short-lived workflow
+# artifacts. Nothing is released, signed, attested or published, and no
+# secret is read. The ref is the placeholder v0.0.0 that install-smoke uses.
+#
+# Repository policy routes pull requests through pull_request_target (see
+# scripts/actionlint-gate.mjs). Candidate code therefore runs only from an
+# explicit head-repository/head-SHA checkout that persists no credentials,
+# on ephemeral GitHub-hosted runners, under a read-only token.
+
+# Every input that changes an archive's bytes or its proof triggers a run.
+# scripts/__tests__/portable-server-archive.test.ts derives the builder's and
+# the smoke's local imports and fails if one is missing here, and holds push
+# and pull_request_target to the same list. Server, UI and shared package
+# sources are deliberately not listed: they change on most pull requests,
+# and ordinary CI owns them.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'schemas/**'
+      - 'config/portable-server-node-runtime.json'
+      - 'packaging/portable-server/**'
+      - 'packages/cli/**'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/smoke-portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/server-build-config.mjs'
+  pull_request_target:
+    paths:
+      - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'schemas/**'
+      - 'config/portable-server-node-runtime.json'
+      - 'packaging/portable-server/**'
+      - 'packages/cli/**'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/smoke-portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/server-build-config.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-server-archives-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    name: Build and smoke ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x64
+            format: tar.gz
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+            format: tar.gz
+          - runner: macos-15
+            target: darwin-arm64
+            format: tar.gz
+          - runner: macos-15-intel
+            target: darwin-x64
+            format: tar.gz
+          - runner: windows-latest
+            target: win32-x64
+            format: zip
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: npm run dependencies:ci
+
+      - name: Confirm the runner is the matrix target
+        run: test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+
+      - run: npm run build
+
+      - name: Build the archive
+        # The provenance SHA is the commit actually checked out: under
+        # pull_request_target GITHUB_SHA is the base tip, not the candidate.
+        run: npm run build:portable-server -- --ref v0.0.0 --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
+
+      - name: Smoke the archive with no Node.js on PATH
+        # --long-path extracts beneath a directory long enough that the
+        # deepest node_modules path crosses Windows MAX_PATH (#2484).
+        run: npm run smoke:portable-server -- --archive "$RUNNER_TEMP/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}" --long-path
+
+      # Uploads only for main, dispatch, and same-repository pull requests. A
+      # fork's archive is never published even as a run artifact; for forks
+      # the smoke above is the whole proof. scripts/actionlint-gate.mjs pins
+      # this step exactly.
+      - name: Upload the archive and its descriptor
+        if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-server-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}
+            ${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json
+          if-no-files-found: error
+          retention-days: 7
