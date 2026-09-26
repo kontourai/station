@@ -123,6 +123,13 @@ async function verifyPinnedDigest(path, expectedSha256) {
  * Returns a verified local copy of the pinned Node.js distribution. A cached
  * or caller-supplied file is re-verified every time: the pin, not the cache,
  * is the trust root. A download is verified before it becomes the cache.
+ *
+ * @param {{ node: { file: string, url: string, sha256: string } }} target
+ * @param {{
+ *   cacheDir: string,
+ *   nodeDistribution?: string,
+ *   fetchImpl?: (url: string) => Promise<Response>,
+ * }} options
  */
 export async function obtainNodeDistribution(
   target,
