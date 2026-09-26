@@ -1,5 +1,13 @@
 # ADR 0019 — Host the Browser pane server-side, behind a host adapter
 
+> **Reading this record today:** the decision and verification statements below
+> describe the design accepted on 2026-09-22. Implementation has since added
+> personal-host browser/live-surface routes and the pane's `2.0` state and
+> migration. See the [current glossary and source links](../glossary.md#browser-pane-live-surface-control-lease).
+> “Planned,” “does not exist yet,” and NOT_VERIFIED below retain their dated
+> meaning; they are not a current feature inventory or a completed audit of
+> those original gaps.
+
 **Status:** Accepted, 2026-09-22. It records six owner decisions (D1–D6) made
 that day for epic [#90](https://github.com/kontourai/station/issues/90). It
 **supersedes in part** three records, and each names the parts superseded:

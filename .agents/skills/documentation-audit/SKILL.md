@@ -62,6 +62,20 @@ bad comments. Do not strip comments with a repository-wide regex or use a
 deletion quota. When extracting rationale, preserve its issue/test reference.
 Keep behavior changes separate and verify comment-only deltas are behavior-neutral.
 
+## Final editorial pass
+
+After the technical review, follow the maintenance guide's
+[clear-language guidance](../../../docs/guides/documentation.md#edit-for-clear-language).
+Review current documentation, READMEs, navigation and diagram labels, retained
+comments, and canonical MCP topics. Remove inflated phrasing, vague claims,
+repetition, and unnecessary jargon. Keep exact terms, conditions, failure
+cases, evidence limits, and the reasons past defects must not recur.
+
+Edit generator inputs, regenerate their outputs, and check the diff for changes
+in meaning. Preserve historical and exact-text records. Track unfinished
+editorial work separately from technical review; neither substitutes for the
+other.
+
 ## Verification and handoff
 
 Run the routed documentation and focused checks. Inspect generated output, not

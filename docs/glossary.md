@@ -322,29 +322,48 @@ retired names.
 
 ## Browser pane, live surface, control lease
 
-Decided in [ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
-None of it is implemented yet.
+The design began in
+[ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
+The current code composes the Browser pane and live-surface routes on personal
+hosts; hosted tenant runtimes do not mount those routes. The ADR retains its
+original design and verification gaps and is not a current availability report.
 
-- **Browser pane** — the Workspace Pane that shows a web page rendered by a
-  browser on the Station host, streamed to every client. The Station operator
-  and the admins and owners of the session's Project, and their agents, can
-  operate it.
-  It supersedes the loopback-only
-  **Browser Preview** pane (`packages/contracts/src/workspace-browser-preview.ts`),
-  which remains the shipped `1.0` pane until the `2.0` migration lands.
+- **Browser pane** — a Workspace Pane that displays a browser session running
+  on the Station host. Authorized Devices view its streamed frames. The
+  Station operator can view and control sessions across profiles; active
+  Project admins and owners are restricted to sessions in their own profile.
+  Agent operations need a separately verified grant. Pane state `2.0` stores
+  the Project ID and browser-session reference. Opening a legacy `1.0` Browser
+  Preview record restores or opens a server session for its URL and saves the
+  new reference after attachment.
 - **Live surface** — the host-neutral primitive behind a streamed pane: one
   producer's frames fanned out to any number of viewers, a typed input
-  channel, and a control lease. It is shared by the Browser pane and, later,
-  the Device pane. It is a developer-contract term. Always write it as the
+  channel, and a control lease. Browser and Device sessions use it. It is a
+  developer-contract term. Always write it as the
   two-word phrase. It is **not** a placement **Surface** (a thing that
   occupies a region) and it is not the Kontour product Surface. Never shorten
   it to "surface".
 - **Control lease** — the right to send input to a live surface. At most one
-  holder (a human or an agent session) at a time; watching needs no lease.
-  Every claim increments the lease's **epoch**. Human input claims it
-  automatically, which interrupts an agent operation already in flight. An
-  agent claim never preempts a human holder. The right to view and the right
-  to hold the lease are authorized separately.
+  holder (a human on one Device or an agent Session) controls it at a time;
+  watching needs no lease. Human input can claim control when its observed
+  **epoch** is current; a stale epoch is refused. The epoch advances when a
+  different controller takes over, not when the same holder renews or returns
+  after a lapse. A separate **fence** advances on every holder change,
+  including release and expiry, so work from an earlier claim cannot become
+  valid when the same agent reclaims control. An agent cannot preempt a live
+  human lease. Viewing and controlling are authorized separately.
+
+Follow the implementation through
+[runtime composition](../src-server/runtime/routes/runtime-routes.ts),
+[pane state and migration](../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx),
+[browser authorization](../src-server/services/browser/browser-live-surfaces.ts),
+and the [lease state machine](../src-server/services/live-surface/control-lease.ts).
+The [runtime route tests](../src-server/runtime/routes/__tests__/runtime-routes-live-surface.test.ts)
+exercise caller admission and the hosted-mode boundary; the
+[lease tests](../src-server/services/live-surface/__tests__/control-lease.test.ts)
+cover takeover, stale input, renewal, release, and expiry. These checks do not
+establish physical-device operation, browser availability on every host, or
+release delivery.
 
 ## User-facing labels
 
@@ -376,7 +395,16 @@ None of it is implemented yet.
 
 ## Rename status
 
-This is the current pre-release vocabulary. Station does not preserve incompatible identity schemas: a non-empty unversioned or wrong-version home fails before data loading with `STATION_HOME_RESET_REQUIRED`, which names the supported `station home reset --confirm` command (station#1913) rather than requiring a manual, improvised fix.
+This is the current vocabulary. The
+[home-schema gate](../packages/shared/src/station-home-schema.ts) checks
+compatibility before application data is loaded. At schema version `2`, a
+home with existing data but no valid marker, or a version below `2`, requires
+explicit archive-and-reset (`STATION_HOME_RESET_REQUIRED`). A home from a
+newer schema instead fails with `STATION_HOME_SCHEMA_DOWNGRADE_REFUSED`; it
+is not treated as a reset candidate. Fresh, recognized bootstrap scaffolding
+can receive the current marker. The production migration registry is empty.
+See the [schema tests](../packages/shared/src/__tests__/station-home-schema.test.ts)
+and [reset command](reference/cli.md#home-reset) for the separate outcomes.
 
 - **User-facing labels:** the Connections tab owns the noun (#592) — **Model
   connection** on the Models tab, **Engine** on the Engines tab, **Model** for

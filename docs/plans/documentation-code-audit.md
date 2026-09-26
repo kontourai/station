@@ -67,6 +67,13 @@ explanation; correction; remaining limitation. Also inspect inbound links,
 duplicated explanations, glossary consistency, diagram edges, failure paths,
 and external prerequisites.
 
+No document is marked fully reviewed yet. The findings below establish only
+the named claims and corrections, not every claim in their containing pages.
+The reader shows this limit above each document. As the audit progresses,
+record each file's review scope and disposition, source revision, supporting
+code/tests, and remaining unchecked claims. A proposal or historical design
+must be identified before readers encounter its description of behavior.
+
 ## Abstraction review
 
 The tree's nodes represent responsibilities, not directory names. For each
@@ -96,7 +103,16 @@ existing interface when it already hides the relevant complexity.
 4. **Prevention.** Reuse existing link/index/example/contract checks, fill
    demonstrated coverage gaps, route feature changes to documentation owners,
    and prove new checks catch representative drift with benign controls.
-5. **Reader acceptance.** Walk the atlas from a fresh reader's perspective,
+5. **Final editorial pass.** After technical review, simplify current guides,
+   READMEs, navigation, diagram labels, retained comments, and canonical MCP
+   topics using the maintenance guide's
+   [clear-language guidance](../guides/documentation.md#edit-for-clear-language).
+   Remove inflated phrasing, repetition, vague claims, and unnecessary jargon.
+   Preserve exact names, conditions, defaults, failure cases, evidence limits,
+   and reasons for past fixes. Regenerate derived content and review the diff
+   for changed meaning. Record any remaining editorial work; passing technical
+   checks does not complete this stage.
+6. **Reader acceptance.** Walk the atlas from a fresh reader's perspective,
    exercise search, hierarchy, cross-links, document outlines and narrow-screen
    behavior. Follow success and failure/recovery journeys into real code and
    evidence. Verify generated output and retained source paths at the final
@@ -115,6 +131,35 @@ existing interface when it already hides the relevant complexity.
 | Monitoring prose conflates observations with the durable orchestration stream | `MonitoringEmitter` uses an EventEmitter and best-effort persistence | Name the separate channel and its durability limit |
 | The MCP carries an independent prose copy with stale vocabulary and abstraction claims | The former `station-docs-content.ts` described Provider as user-facing, every Project as directory-backed, and core as having no domain logic | Move shipped prose to canonical Markdown, correct those claims, generate manual and architecture topics with content identity |
 | The Task introduction implies Session history is not persistent | `src-server/services/orchestration/event-store.ts` and its reopen/history tests | Distinguish durable work identity from an execution episode without denying persisted Session history |
+| The glossary says Browser/live-surface work is unimplemented and state `1.0` is still current | `runtime-routes.ts` composes personal-host browser and live-surface routes; `BrowserPreviewWorkspacePane` loads the streamed pane and migrates legacy state | Correct the current glossary; label ADRs 0017/0019 and the two preview-design records as dated history with a current explanation |
+| The glossary says every lease claim increments the epoch | `LiveSurfaceControlLeaseState.setHolder` separately updates epoch and fence; release/reclaim and continuing-holder tests exercise the distinction | Explain both counters, stale-input refusal, and the live-human restriction; shorten the source comment while retaining D2/S3 regression rationale |
+| The CLI README says nearly all operations are HTTP and its help always matches admission | Existing-service control invokes OS service managers; `bundledAvailabilityNote` lists all of `service` despite `assertCommandAvailable` admitting status/start/stop | Correct the README's local-operation scope and document the help discrepancy; the help implementation still needs correction |
+| The glossary treats every wrong-version home as requiring reset | `ensureStationHomeSchemaSync` refuses future versions with `STATION_HOME_SCHEMA_DOWNGRADE_REFUSED`; `stationHomeSchemaNeedsReset` does not select them | Distinguish legacy/invalid homes, current bootstrap, and newer-schema refusal; do not imply the empty production registry provides migrations |
+
+### Browser and lease evidence, 2026-09-26
+
+At source revision `7f11f9000204dea178f176ffb75571612f0a8fab`, the focused run
+below passed all 53 tests across three files. It exercises
+the lease state machine, actual runtime route composition with fixture
+services/producers, and the Browser pane's UI states with a test API. It does
+not launch a production browser, prove hostile-page containment, test a
+physical phone, or establish release delivery.
+
+```bash
+npm run test:focused -- src-server/services/live-surface/__tests__/control-lease.test.ts src-server/runtime/routes/__tests__/runtime-routes-live-surface.test.ts src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPane.test.tsx
+```
+
+The subsequent lease-comment cleanup produces identical JavaScript with
+comments removed. A separate
+`npm run test:focused -- packages/shared/src/__tests__/station-home-schema.test.ts`
+run passed all 32 tests, including the refusal to reset or migrate a
+future-version home. Neither run changes application behavior.
+
+The module map still lacks a dedicated explanation of browser-session
+ownership and the shared live-surface boundary. The glossary correction is a
+starting point, not a complete Browser subsystem review. Trace acquisition,
+profiles, target admission, agent grants, process cleanup, and Device producer
+composition before closing that review unit.
 
 ## Foundation implemented in this tranche
 

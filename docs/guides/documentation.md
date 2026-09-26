@@ -60,6 +60,33 @@ these kinds of flow and label optional or planned paths. Put a source/evidence
 route beside the diagram. Verify the rendering, labels, and narrow-screen
 reading order; valid Mermaid syntax alone is not a readability check.
 
+## Edit for clear language
+
+After checking technical accuracy, make a separate editorial pass through the
+overview, detailed guides, READMEs, navigation labels, diagram text, and MCP
+topics. Write for someone learning Station: explain what a part does before
+introducing its implementation terms, then link to the detail.
+
+Use concrete subjects and verbs. Remove promotional claims, stock transitions,
+repeated summaries, and words that add no meaning. Replace vague descriptions
+such as “provides robust lifecycle management” with the specific operations
+and limits verified in the code. Explain necessary jargon on first use; keep
+established domain names consistent with the glossary and UI.
+
+Shorter prose must retain conditions, defaults, units, ownership, failure cases,
+platform differences, and reasons for past fixes. Do not turn “may” into “will,”
+drop an exception, or generalize a test result while simplifying a sentence.
+Keep exact API names, commands, paths, and source/test references. For example,
+“runtime retrieval remains credential-free” can become “reading these topics
+does not require credentials”; the separate restriction on filesystem and
+network access still needs its own explanation.
+
+Edit canonical inputs and regenerate derived pages and MCP content. Preserve
+dated records, quoted evidence, legal text, directives, and fixture text when
+their exact wording matters. Review the final diff for changed meaning and
+read the rendered result in order; automated checks cannot judge whether an
+explanation is clear or faithful to the code.
+
 ## Maintain comments with their code
 
 Prefer clear names, types, and small functions over comments that narrate the

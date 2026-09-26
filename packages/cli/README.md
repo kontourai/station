@@ -7,8 +7,8 @@ server, or another machine on your tailnet.
 
 This package is the **client** CLI for those Stations. It is a terminal front end
 for Stations that are already running: chat with agents, read and interrupt
-sessions, drive projects, tasks, skills, and every other Station
-surface, over HTTP. It also supports selected host-local operations against an
+sessions, and manage projects, tasks, and skills over HTTP. It also supports
+selected host-local operations against an
 existing installation. Building and installing a backend remain checkout
 operations; see [What this CLI does not do](#what-this-cli-does-not-do).
 
@@ -140,8 +140,8 @@ sandbox, an ephemeral session, and user config ignored, or Claude in safe plan
 mode with only Read/Glob/Grep tools, using argv arrays and a run-local prompt
 file. With both available,
 select one explicitly. No available agent still
-leaves portable artifacts successfully. The bundled CLI does not inspect the
-local host filesystem or run the source-only doctor report.
+leaves portable artifacts successfully. The bundled triage command does not
+collect local host filesystem diagnostics or run the source-only doctor report.
 Problem text stays local unless `--search-issues` (or the equivalent TTY
 confirmation) explicitly authorizes a fixed, read-only Station issue search.
 Successful agent output is bounded and re-redacted into local `diagnosis.md`
@@ -184,7 +184,7 @@ $ station start
 Error: `station start` runs against a Station repository checkout, so it is not part of the published CLI.
 Run it from the root of a Station checkout with the bundled launcher:
     ./station start
-The published CLI drives Stations that are already running — see `station stations`, `station setup hosted`, and `--api-base`.
+The published CLI drives Stations that are already running — see `station stations` and `--api-base`.
 ```
 
 **Selected local operations are available in the published CLI.** `open`,
@@ -219,17 +219,19 @@ This proves dependency resolution without claiming publication or
 native-keyring behavior. Windows and physical native-keyring verification are
 **NOT_VERIFIED** until exercised on those platforms.
 
-`station --help` prints the same boundary in its closing note, so the printed
-command list never claims a verb this CLI cannot run.
+`station --help` includes a checkout-command note. That note currently lists
+`service` as a whole; the supported packaged exceptions are
+`service status|start|stop`, as described above.
 
 ## Requirements
 
 - **Node 24** (`engines: 24.x`). The CLI is a bundle, not a binary; it needs a
   host Node.
-- **A reachable Station.** Everything this CLI does, apart from managing
-  its own saved Stations and config, is an HTTP call to a Station server. With no
-  Station saved, commands use a running local desktop Station when available,
-then fall back to the selected channel's runtime-resolver loopback origin.
+- **A reachable Station for API commands.** With no Station saved, API commands
+  use a running local desktop Station when available, then fall back to the
+  selected channel's runtime-resolver loopback origin. Saved-Station management,
+  local diagnostics, and existing-service control also use host-local storage
+  or operating-system services; they are not all HTTP calls.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake never looks like a broken Station:
