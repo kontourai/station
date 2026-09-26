@@ -150,11 +150,12 @@ describe('install-script:check as a process', () => {
 
   it('exits non-zero, naming the stale blocks, when install.sh drifts', () => {
     const copy = makeTempDir('station-install-check-');
-    mkdirSync(join(copy, 'scripts'));
+    mkdirSync(join(copy, 'scripts/lib'), { recursive: true });
     mkdirSync(join(copy, 'config'));
     for (const file of [
       'scripts/install-script-generated.mjs',
       'scripts/channel-ports.mjs',
+      'scripts/lib/module-entry.mjs',
       'config/channel-ports.json',
       'config/release-manifest-keys.json',
     ]) {
