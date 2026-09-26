@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -10,7 +11,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 
 // End to end: a violating source in a checkout must make the real
 // repo-governance lane CLI block. The lane resolves its root from its own
@@ -25,6 +27,7 @@ const EXPECTED_BLOCK =
 
 const roots: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
@@ -34,8 +37,11 @@ function copyTrackedTree() {
   // tmpdir() is a symlink into /private.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'proof-family-e2e-')));
   roots.push(root);
+  // Hooks export GIT_DIR, GIT_INDEX_FILE and friends; inheriting them would
+  // list some other repository or index instead of this checkout.
   const listing = spawnSync('git', ['ls-files', '-z'], {
     cwd: repoRoot,
+    env: sanitizedGitEnvironment(),
     encoding: 'utf8',
     windowsHide: true,
   });
@@ -58,6 +64,7 @@ function runLane(root: string) {
     ['scripts/proof-family-lane.mjs', '--lane=repo-governance'],
     {
       cwd: root,
+      env: sanitizedGitEnvironment(),
       encoding: 'utf8',
       // A hang guard only; the lane itself takes seconds.
       timeout: 120_000,
@@ -68,7 +75,10 @@ function runLane(root: string) {
 
 describe('repo-governance route error egress proof', () => {
   test('the lane CLI blocks on a raw WebSocket error coercion in a checkout', () => {
+    // As a git hook would: an inherited index must not empty the copy.
+    vi.stubEnv('GIT_INDEX_FILE', '/dev/null');
     const root = copyTrackedTree();
+    expect(existsSync(join(root, VOICE_SESSION))).toBe(true);
 
     const clean = runLane(root);
     expect(clean.error).toBeUndefined();
