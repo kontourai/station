@@ -51,6 +51,7 @@ import type { CliAuthState, CliCommandResult } from '../auth/cli-auth.js';
 import {
   buildCliRuntimePrerequisites,
   findCliBinary,
+  resolveAugmentedPathSync,
 } from '../auth/cli-auth.js';
 import {
   AsyncEventQueue,
@@ -653,7 +654,12 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
   // running cleanup — a per-turn process leaks worse than a per-session one.
   const { proc, release } = spawnOwnedChild(binary, args, {
     cwd,
-    env: childProcessEnvironment({ TMPDIR: ensureEngineSpawnTmpDir() }),
+    // #2663: the PATH `muse` was resolved from, so a launcher script found
+    // off the service PATH can find its interpreter (see codexSpawnEnv).
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   return { process: proc as unknown as MuseProcessLike, release };
@@ -686,6 +692,7 @@ function createMuseServeHost(
     {
       cwd,
       env: childProcessEnvironment({
+        PATH: resolveAugmentedPathSync(),
         TMPDIR: ensureEngineSpawnTmpDir(),
         ...museServeEnvOverrides(dataHome),
       }),

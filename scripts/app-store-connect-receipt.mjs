@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash, createPrivateKey, sign as signBytes } from 'node:crypto';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const API_ORIGIN = 'https://api.appstoreconnect.apple.com';
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -780,7 +780,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

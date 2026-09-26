@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { canonicalJson } from './lib/release-sboms.mjs';
 import { containerSourceToFragment } from './release-container-sbom-source.mjs';
 
@@ -161,9 +161,7 @@ export function runReleaseSbomFragments(args) {
 }
 
 // This module is intentionally inert when imported by converter/process tests.
-// The entry comparison evaluates argv only in an executable Node entrypoint.
-const invokedPath = process.argv[1];
-if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
+if (invokedDirectly(import.meta.url)) {
   try {
     runReleaseSbomFragments(process.argv.slice(2));
   } catch (error) {

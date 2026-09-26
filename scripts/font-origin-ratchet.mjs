@@ -11,7 +11,7 @@
 // external font origins only, not a general external-origin scanner.
 //
 // Follows the established ratchet family (pure exported functions + a
-// `main()` gated behind `import.meta.url === file://process.argv[1]`,
+// `main()` gated behind `invokedDirectly(import.meta.url)`,
 // `git ls-files`-scoped). Zero-tolerance like rename-inventory, not a
 // counted-baseline ratchet: the correct number of external font origins is 0.
 //
@@ -23,7 +23,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SCAN_PATHSPECS = [
   'src-ui/index.html',
@@ -96,9 +96,6 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

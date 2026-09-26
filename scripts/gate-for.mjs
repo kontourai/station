@@ -14,7 +14,6 @@
 // or required governance context cannot be read.
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   buildExplainGuidance,
   loadRepoMap,
@@ -27,6 +26,7 @@ import {
 } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
 import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
@@ -225,6 +225,6 @@ export function main(argv = process.argv.slice(2)) {
   writeBriefedReport(changedPaths, baseSha);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

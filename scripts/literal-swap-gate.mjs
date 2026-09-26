@@ -36,6 +36,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const TEST_PATH = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/;
 const CODE_PATH = /\.[cm]?[jt]sx?$/;
@@ -188,6 +189,6 @@ function main() {
   if (strict) process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

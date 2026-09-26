@@ -34,6 +34,7 @@ import {
   validateAllowlist,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { resolveNpmCli } from './lib/npm-cli.mjs';
 import {
   readPnpmLockfileImporters,
@@ -758,7 +759,7 @@ function usage() {
   );
 }
 
-if (process.argv[1]?.endsWith('dependency-lifecycle.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const operation = process.argv[2];
   try {
     if (operation === 'check') check();

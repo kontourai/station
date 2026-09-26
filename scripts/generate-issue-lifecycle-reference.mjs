@@ -2,7 +2,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const OUTPUT = 'docs/reference/issue-lifecycle.md';
 export function renderIssueLifecycleReference() {
@@ -36,7 +36,7 @@ export function generate({ check = false } = {}) {
   }
   writeFileSync(OUTPUT, expected);
 }
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   try {
     generate({ check: process.argv.includes('--check') });
   } catch (error) {
