@@ -15,14 +15,14 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import {
   ACCOUNT_DISABLED_HEADING,
   ACCOUNT_DISABLED_REASON,
   parseE2EDisabledLines,
 } from './lib/account-requirement.mjs';
 import { projectLatestE2EEvidence } from './lib/e2e-latest-evidence.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedProcess,
   registerProcessSignal,
@@ -52,21 +52,61 @@ import {
  * Android boots a full Station build plus an Android target, so it is at least
  * as heavy as product/extended; weight 5 keeps it off every other
  * startup-heavy bucket while still admitting a single light partner (5 + 1 = 6).
+ *
+ * `timeoutMs` (#2416): the coordinated job that runs every bucket has one
+ * overall deadline, and nothing previously bounded a single bucket inside
+ * it — smoke-live alone spent 49 of a 90-minute job timeout, mostly waiting
+ * on engine-dependent tests timing out with no signed-in engine (since
+ * removed by #2422), leaving too little of the budget for the buckets behind
+ * it. Each deadline here is roughly double that bucket's slowest PASS-or-FAIL
+ * observed duration in run 35869067805 (the run #2416 measured): product
+ * 1582s, first-run 129s, starter-clean-install 70s, smoke-live 2935s
+ * (pre-#2422 fix), extended 415s, screenshot 282s, android 99s. A bucket that
+ * exceeds its deadline is cancelled and reported `TIMEOUT` — a distinct
+ * verdict from `FAIL`, because it names a budget decision, not a test
+ * failure — and every other bucket still runs to its own completion or
+ * deadline (see `runBuckets`).
  */
 export const BUCKETS = [
-  { name: 'product', script: 'test:e2e:product', weight: 5 },
-  { name: 'first-run', script: 'test:e2e:first-run', weight: 2 },
+  {
+    name: 'product',
+    script: 'test:e2e:product',
+    weight: 5,
+    timeoutMs: 25 * 60_000,
+  },
+  {
+    name: 'first-run',
+    script: 'test:e2e:first-run',
+    weight: 2,
+    timeoutMs: 8 * 60_000,
+  },
   {
     name: 'starter-clean-install',
     script: 'test:e2e:starter-clean-install',
     weight: 5,
+    timeoutMs: 8 * 60_000,
   },
   // Includes the 100-sample production performance reference and its browser
   // state pool. It must not overlap ordinary geometry or latency assertions.
-  { name: 'smoke-live', script: 'test:e2e:smoke-live', weight: 6 },
-  { name: 'extended', script: 'test:e2e:extended', weight: 5 },
-  { name: 'screenshot', script: 'test:e2e:screenshot', weight: 1 },
-  { name: 'android', script: 'test:android', weight: 5 },
+  {
+    name: 'smoke-live',
+    script: 'test:e2e:smoke-live',
+    weight: 6,
+    timeoutMs: 20 * 60_000,
+  },
+  {
+    name: 'extended',
+    script: 'test:e2e:extended',
+    weight: 5,
+    timeoutMs: 12 * 60_000,
+  },
+  {
+    name: 'screenshot',
+    script: 'test:e2e:screenshot',
+    weight: 1,
+    timeoutMs: 12 * 60_000,
+  },
+  { name: 'android', script: 'test:android', weight: 5, timeoutMs: 8 * 60_000 },
 ];
 
 // This is deliberately a small host-wide budget. It permits a heavy browser
@@ -401,30 +441,38 @@ export function startBucket(
         ? `bucket output exceeded ${maxOutputBytes} byte limit`
         : failureKind === 'interrupted'
           ? `coverage run cancelled (${cleanupReason})`
-          : failureKind === 'process-tree'
-            ? `${processLabel} cleanup did not settle${cleanupReason ? ` after ${cleanupReason}` : ''}`
-            : failureKind === 'cleanup-dispatch'
-              ? `${processLabel} cleanup required escalation: ${String(cleanupError?.message ?? cleanupError)}`
-              : cleanupError
-                ? String(cleanupError.message ?? cleanupError)
-                : completion.error
-                  ? String(completion.error.message ?? completion.error)
-                  : cleanup?.settled === false
-                    ? `${processLabel} cleanup did not settle`
-                    : null;
+          : failureKind === 'deadline'
+            ? cleanupReason
+            : failureKind === 'process-tree'
+              ? `${processLabel} cleanup did not settle${cleanupReason ? ` after ${cleanupReason}` : ''}`
+              : failureKind === 'cleanup-dispatch'
+                ? `${processLabel} cleanup required escalation: ${String(cleanupError?.message ?? cleanupError)}`
+                : cleanupError
+                  ? String(cleanupError.message ?? cleanupError)
+                  : completion.error
+                    ? String(completion.error.message ?? completion.error)
+                    : cleanup?.settled === false
+                      ? `${processLabel} cleanup did not settle`
+                      : null;
     const ok = completion.status === 0 && !runnerError;
     const counts = summarize(captured.output);
+    // A deadline cutoff is a budget decision, not a test failure: it gets its
+    // own verdict rather than reusing FAIL, so a report reader does not go
+    // hunting for a broken test that was simply never given time to finish
+    // (#2416; the same distinction run-vitest-corpus.mjs's `emitResult`
+    // already draws between CANCELLED and FAIL).
+    const timedOut = failureKind === 'deadline';
     const result = {
       ...bucket,
       ok,
-      verdict: bucketVerdict({ ok, counts }),
+      verdict: timedOut ? 'TIMEOUT' : bucketVerdict({ ok, counts }),
       runnerError,
       seconds: Math.round((Date.now() - started) / 1000),
       counts,
       specs: failingSpecs(captured.output),
       disabled: parseE2EDisabledLines(captured.output),
       output: captured.output,
-      interrupted: cleanupCause === 'interrupted',
+      interrupted: cleanupCause === 'interrupted' || timedOut,
       failureKind,
       overflow: captured.overflow,
       outputBytes: captured.bytes,
@@ -433,7 +481,7 @@ export function startBucket(
   })();
   return {
     promise,
-    cancel: (reason) => requestCleanup(reason, 'interrupted'),
+    cancel: (reason, cause = 'interrupted') => requestCleanup(reason, cause),
   };
 }
 
@@ -573,9 +621,30 @@ export async function runBuckets(
           // event observer may synchronously abort, and that abort must see
           // this exact tree rather than admitting it after cancellation.
           onEvent?.({ type: 'start', bucket, usedCapacity });
+          // A per-bucket deadline (#2416) stops ONE slow or wedged bucket
+          // from consuming the whole coordinated job's budget: it targets
+          // this bucket's own owned process tree exactly like the
+          // output-overflow cancellation above, tagged with a distinct
+          // 'deadline' cause so the result reads TIMEOUT rather than FAIL.
+          // Every OTHER active or still-pending bucket is unaffected — this
+          // bucket's slot frees and `schedule()` admits the next one, same
+          // as any other completion.
+          let deadlineTimer = null;
+          if (Number.isFinite(bucket.timeoutMs) && bucket.timeoutMs > 0) {
+            deadlineTimer = setTimeout(() => {
+              const minutes = Math.round((bucket.timeoutMs / 60_000) * 10) / 10;
+              void Promise.resolve(
+                execution.cancel(
+                  `exceeded its ${minutes}-minute per-bucket deadline`,
+                  'deadline',
+                ),
+              ).catch(() => undefined);
+            }, bucket.timeoutMs);
+          }
           Promise.resolve(execution.promise)
             .catch((error) => runnerFailure(bucket, Date.now(), error))
             .then((result) => {
+              if (deadlineTimer !== null) clearTimeout(deadlineTimer);
               activeExecutions.delete(index);
               results[index] =
                 cancelled && !result?.interrupted
@@ -780,10 +849,15 @@ export async function main() {
   console.log('\n════ Playwright coverage summary ════');
   for (const r of results) {
     console.log(
-      `  ${r.verdict.padEnd(5)} ${r.name.padEnd(11)} ${String(r.seconds).padStart(4)}s  ${formatCounts(r.counts)}`,
+      `  ${r.verdict.padEnd(7)} ${r.name.padEnd(11)} ${String(r.seconds).padStart(4)}s  ${formatCounts(r.counts)}`,
     );
     if (r.verdict === 'EMPTY') {
       console.log('          executed 0 tests — this bucket covered nothing');
+    }
+    if (r.verdict === 'TIMEOUT') {
+      console.log(
+        '          exceeded its per-bucket deadline — a budget decision, not a test failure',
+      );
     }
     if (r.runnerError) {
       console.log(`          runner error: ${r.runnerError}`);
@@ -805,12 +879,15 @@ export async function main() {
 
   const failed = results.filter((r) => r.verdict === 'FAIL');
   const empty = results.filter((r) => r.verdict === 'EMPTY');
-  if (failed.length > 0 || empty.length > 0) {
+  const timedOut = results.filter((r) => r.verdict === 'TIMEOUT');
+  if (failed.length > 0 || empty.length > 0 || timedOut.length > 0) {
     const problems = [
       failed.length > 0 &&
         `${failed.length} failed (${failed.map((r) => r.name).join(', ')})`,
       empty.length > 0 &&
         `${empty.length} executed no tests (${empty.map((r) => r.name).join(', ')})`,
+      timedOut.length > 0 &&
+        `${timedOut.length} exceeded their per-bucket deadline (${timedOut.map((r) => r.name).join(', ')})`,
     ].filter(Boolean);
     console.error(
       `\nFAIL: of ${results.length} bucket(s), ${problems.join('; ')}.`,
@@ -824,10 +901,7 @@ export async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error.stack ?? error);
     process.exitCode = 1;

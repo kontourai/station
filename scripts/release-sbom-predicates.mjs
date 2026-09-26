@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { SBOM_ASSETS, spdxComment } from './lib/release-sboms.mjs';
 
 function fail(message) {
@@ -31,7 +32,7 @@ export function validateReleaseSbomPredicates(root) {
   }
 }
 
-if (process.argv[1]?.endsWith('release-sbom-predicates.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const index = process.argv.indexOf('--assets-dir');
     if (index < 0 || !process.argv[index + 1]) fail('missing --assets-dir');

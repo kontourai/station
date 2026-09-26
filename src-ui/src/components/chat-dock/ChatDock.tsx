@@ -50,11 +50,13 @@ import {
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
   useChatDockActions,
@@ -78,7 +80,7 @@ import {
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
-  isSessionExecutionActive,
+  isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import {
@@ -237,7 +239,7 @@ const loadDelegationLauncher = () =>
 
 /**
  * station#1301 slice 1: an overlay behind an explicit trigger (the tab bar's
- * Background tasks button, or the mobile activity switcher's row) that
+ * Background tasks button, or the phone's ⋯ sheet row) that
  * renders nothing until opened — same lazy-load rationale as the two
  * launchers above. Keeps the sheet's markup and its per-row expand state out
  * of the entry chunk; only the small trigger button + the store it reads a
@@ -368,6 +370,12 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   const isFullscreenPlacement = placement === 'fullscreen';
+  // A full-screen Chat shows its active chat without opening the dock; end-of-
+  // turn toasts must treat that chat as on screen (`isChatInForeground`).
+  useEffect(
+    () => (isFullscreenPlacement ? registerFullscreenChatSurface() : undefined),
+    [isFullscreenPlacement],
+  );
   // A full-screen placement never mounts inside the ambient `DockShell`, so
   // it owns an independent chrome instance (cmd+D / cmd+M keep working
   // there, and it never reserves ambient route space). A docked placement
@@ -549,7 +557,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [orchestrationSessions],
   );
-  const openChatItems = useOpenChats(agents, orchestrationSessions);
+  // archive#3391: the inboxes name models through the catalog, as Home does.
+  const { resolveModelLabel } = useCatalogModelLabel();
+  const openChatItems = useOpenChats(
+    agents,
+    orchestrationSessions,
+    resolveModelLabel,
+  );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
     sessions: orchestrationSessions,
@@ -587,6 +601,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       agents,
       chatItems: openChatItems,
       currentSessionIdByConversation,
+      resolveModelLabel,
     }).map((item) => {
       const conversation = inventoryById.get(item.id);
       if (!conversation) return item;
@@ -605,6 +620,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryById,
     openChatItems,
     orchestrationSessions,
+    resolveModelLabel,
   ]);
   const acknowledgeTaskConversation = useCallback(
     (item: { id: string; conversationUpdatedAt?: string }) => {
@@ -616,7 +632,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [acknowledgeConversation],
   );
-  const activeSessionCount = sessions.filter(isSessionExecutionActive).length;
+  const activeSessionCount = sessions.filter(isSessionWorkActive).length;
 
   // Dock CHROME (snap/geometry/dragging) lives in `chrome` now — owned by
   // the persistent DockShell (or, for a full-screen placement, this
@@ -689,7 +705,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     useState<ConversationOpenRecovery | null>(null);
 
   // station#1301 slice 1: the active session's running-background-task count,
-  // for the tab bar's badge and the mobile switcher's row label.
+  // for the tab bar's badge and the Background tasks rows' labels.
   const backgroundTasksRunningCount =
     useChatBackgroundTasksRunningCount(activeSessionId);
 
@@ -738,9 +754,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setActiveWorkPanel,
     isTaskSwitcherOpen,
     setIsTaskSwitcherOpen,
-    taskSwitcherMode,
-    setTaskSwitcherMode,
-    activityTriggerRef,
     isBackgroundTasksOpen,
     setIsBackgroundTasksOpen,
     backgroundTasksTriggerRef,
@@ -1724,7 +1737,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isFullscreenPlacement,
         });
         if (route.surface === 'task-switcher-sheet') {
-          setTaskSwitcherMode('tasks');
           setIsTaskSwitcherOpen(true);
           return;
         }
@@ -1762,7 +1774,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     agentsLoaded,
     showSurface,
     setIsTaskSwitcherOpen,
-    setTaskSwitcherMode,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
@@ -1956,7 +1967,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the dock's alongside it, because a dock pane binds the dock's project and
   // the two differing is what makes the pane route wrong rather than merely
   // unavailable. `openPathInMain` is the route a preview took before #2049
-  // and still takes on a bottom-only device or a mismatched binding.
+  // and still takes on a mismatched binding or when the model refuses the
+  // pane; a bottom-only device opens the pane over Chat (the phone layer).
   const conversationProjectSlug = activeSession?.projectSlug ?? null;
   const conversationProjectId = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)
@@ -1976,11 +1988,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * renderer and pane renderers do not read region state.
    */
   const backgroundTasksOpensPane = !dockBottomOnly;
-  // Two callers with two meanings, kept apart: the More-menu row TOGGLES the
-  // sheet it announces as a dialog, while a switcher row that is dismissing
-  // itself OPENS it. Folding them into one toggle would let a second entry
-  // point close a sheet it never opened. The pane branch is the same either
-  // way — revealing a tab that is already there is a reveal.
+  // Two meanings, kept apart: the More-menu row TOGGLES the sheet it
+  // announces as a dialog, while the phone's ⋯ sheet row (which dismisses its
+  // own sheet) and the transcript banner OPEN it. Folding them into one toggle
+  // would let a second entry point close a sheet it never opened. The pane
+  // branch is the same either way — revealing a tab that is already there is
+  // a reveal.
   const showBackgroundTasks = useCallback(() => {
     if (backgroundTasksOpensPane) {
       showSurface('workspace-agents');
@@ -2006,18 +2019,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       projectSlug: conversationProjectSlug,
       projectId: conversationProjectId,
       dockProjectSlug,
-      bottomOnly: dockBottomOnly,
-      // Where an absolute path in this conversation can point: the project's
-      // checkout only. A session in an isolated worktree writes paths under
-      // THAT directory, but the preview and the existence check read the
-      // project checkout, so linking them would open the checkout's copy of
-      // a file the model edited elsewhere.
+      // The project checkout, and the directory the session runs in with the
+      // thread the server reads it through (#2476).
       projectRoots: conversationProjectDirectory
         ? [conversationProjectDirectory]
         : [],
-      // The same holds for RELATIVE paths in an isolated worktree; the anchor
-      // compares this with the checkout.
       sessionDirectory: sessionDisplayCwd,
+      threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
@@ -2037,9 +2045,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
-      dockBottomOnly,
       dockProjectSlug,
       sessionDisplayCwd,
+      activeOrchestrationSession?.threadId,
       setLayout,
     ],
   );
@@ -2178,15 +2186,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               activeCount={activeSessionCount}
               unreadCount={unreadCount}
               taskSwitcherTriggerRef={taskSwitcherTriggerRef}
-              activityTriggerRef={activityTriggerRef}
-              onOpenTaskSwitcher={() => {
-                setTaskSwitcherMode('tasks');
-                setIsTaskSwitcherOpen(true);
-              }}
-              onOpenActivity={() => {
-                setTaskSwitcherMode('activity');
-                setIsTaskSwitcherOpen(true);
-              }}
+              onOpenTaskSwitcher={() => setIsTaskSwitcherOpen(true)}
               onToggleSidebar={(trigger) =>
                 window.dispatchEvent(
                   new CustomEvent('toggle-sidebar', { detail: { trigger } }),
@@ -2255,6 +2255,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // the region model this renderer may not read.
                 regionPanes: chrome.regionPanes,
                 onSelectRegionPane: chrome.selectRegionPane,
+                // #2510: the phone's entry to Background tasks, through the
+                // same router as the desktop row. The sheet only mounts for
+                // an active chat, so without one the row is omitted rather
+                // than offered as a tap that opens nothing. While an imported
+                // session is on screen the sheet would show the chat hidden
+                // behind it, so the row is omitted then too.
+                onOpenBackgroundTasks:
+                  activeSessionId && !importedSessionId
+                    ? showBackgroundTasks
+                    : undefined,
+                backgroundTasksRunningCount,
               }}
             />
           ) : (
@@ -2719,7 +2730,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             load={loadMobileTaskSwitcher}
             componentProps={{
               open: isMobile && isTaskSwitcherOpen,
-              mode: taskSwitcherMode,
               tasks: taskItems,
               pending: taskItemsPending,
               loadError: taskItemsFailed,
@@ -2731,10 +2741,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
-              triggerRef:
-                taskSwitcherMode === 'activity'
-                  ? activityTriggerRef
-                  : taskSwitcherTriggerRef,
+              triggerRef: taskSwitcherTriggerRef,
               onClose: () => setIsTaskSwitcherOpen(false),
               onFocusChat: focusUserSelectedSessionInPane,
               onOpenConversation: openUserSelectedConversationInScopedPane,
@@ -2742,11 +2749,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onAcknowledgeConversation: acknowledgeTaskConversation,
               agentsLoaded,
               onOpenFailed: showInboxOpenFailure,
-              backgroundTaskCount: backgroundTasksRunningCount,
-              onOpenBackgroundTasks: () => {
-                setIsTaskSwitcherOpen(false);
-                showBackgroundTasks();
-              },
               onOpenSession: (threadId) => {
                 setIsTaskSwitcherOpen(false);
                 openImportedSessionInPane(threadId);
@@ -2754,16 +2756,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }}
             pending={
               <MobileSheetPending
-                label={
-                  taskSwitcherMode === 'activity' ? 'Activity' : 'Switch task'
-                }
+                label="Switch task"
                 style={visualViewport.style}
                 onClose={() => setIsTaskSwitcherOpen(false)}
-                returnFocusTarget={
-                  taskSwitcherMode === 'activity'
-                    ? activityTriggerRef.current
-                    : taskSwitcherTriggerRef.current
-                }
+                returnFocusTarget={taskSwitcherTriggerRef.current}
               />
             }
           />

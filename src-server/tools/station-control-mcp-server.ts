@@ -13,9 +13,71 @@ import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
+import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
+import {
+  evaluateStationControlPolicy,
+  personOnlyApplies,
+  type StationControlRefusal,
+  stationControlRefusal,
+  stationControlRefusalBody,
+  stationControlToolPolicy,
+} from './station-control-policy.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
+import {
+  getStationControlCaller,
+  jsonToolResult,
+} from './station-control-shared.js';
+
+/**
+ * #2377 slice A: the tool-side half of the station-control authority table.
+ * Refuses with the SAME typed code the server guard would answer, before the
+ * tool makes its call, so an agent learns what to do without a round trip
+ * (the shape `browserAgentCallerRefusal` set). The server guard remains the
+ * enforcement point; this can only refuse earlier, never allow more.
+ *
+ * Skipped where it has nothing to add: tools not in the table (the browser
+ * tools, whose own refusal is unchanged), route-enforced tools (`notify_user`
+ * answers `caller-required` itself), reads of data that belongs to no person
+ * (any caller, or none, may read them), and tools that call no route
+ * (`install_plugin` only explains). A principal-scoped or operator-wide read
+ * is checked (slice B): a caller-less or owner-less session learns why here,
+ * whatever envelope the tool's SDK call would have put the server's code in.
+ */
+function withToolSideRefusal<
+  Callback extends (input: never, ...rest: never[]) => unknown,
+>(name: string, callback: Callback): Callback {
+  const policy = stationControlToolPolicy(name);
+  if (
+    !policy ||
+    policy.enforcedBy === 'route' ||
+    (policy.toolClass === 'read-only' && policy.role === 'none') ||
+    policy.routes.length === 0
+  )
+    return callback;
+  const guarded = async (
+    ...args: Parameters<Callback>
+  ): Promise<ReturnType<Callback> | ReturnType<typeof jsonToolResult>> => {
+    const input: unknown = args[0];
+    // A person-only request is refused before any caller lookup: no caller
+    // could take it.
+    const refusal: StationControlRefusal | undefined = personOnlyApplies(
+      policy,
+      input,
+    )
+      ? stationControlRefusal('station_control_person_only')
+      : evaluateStationControlPolicy(policy, {
+          caller: await getStationControlCaller(),
+          body: input,
+        });
+    if (refusal) return jsonToolResult(stationControlRefusalBody(refusal));
+    return Reflect.apply(callback, undefined, args) as ReturnType<Callback>;
+  };
+  // The SDK types a callback by its schema; `guarded` takes exactly the same
+  // arguments and returns either the callback's result or a tool result.
+  return guarded as Callback;
+}
 
 /**
  * The small registration surface shared by Station's built-in control tools.
@@ -37,7 +99,7 @@ export class StationControlToolRegistry {
         description,
         inputSchema: z.object(shape),
       },
-      callback,
+      withToolSideRefusal(name, callback),
     );
   }
 
@@ -50,7 +112,7 @@ export class StationControlToolRegistry {
     return this.server.registerTool(
       name,
       { description, inputSchema },
-      callback,
+      withToolSideRefusal(name, callback),
     );
   }
 
@@ -68,12 +130,13 @@ export class StationControlToolRegistry {
         openWorldHint?: boolean;
       };
     },
-    callback: ToolCallback<Schema>,
+    unguardedCallback: ToolCallback<Schema>,
   ) {
     // @modelcontextprotocol/server v2 and ext-apps currently publish distinct
     // structural ServerContext types. The helper only calls registerTool;
     // keep the compatibility cast at this one adapter while still using the
     // official metadata normalization rather than reimplementing it.
+    const callback = withToolSideRefusal(name, unguardedCallback);
     return registerAppTool(
       this.server as unknown as Parameters<typeof registerAppTool>[0],
       name,
@@ -134,5 +197,6 @@ export function createStationControlMcpServer(): McpServer {
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerNotifyTools(registry);
   return server;
 }

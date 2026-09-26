@@ -7,7 +7,7 @@ import {
 } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedProcess,
@@ -830,43 +830,51 @@ export function parseVitestCorpusArguments(args) {
     };
   }
   if (args.length === 0) return {};
-  if (args.length > 2)
+  if (args.length > 3)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]] [--coverage-root=<dir>]',
     );
   const values = new Map();
   for (const argument of args) {
-    const match = argument.match(/^--(group|shard)=(.+)$/);
+    const match = argument.match(/^--(group|shard|coverage-root)=(.+)$/);
     if (!match || values.has(match[1]))
       throw new Error(
-        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
+        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]] [--coverage-root=<dir>]',
       );
     values.set(match[1], match[2]);
   }
   const groupName = values.get('group');
   const shard = values.get('shard');
+  const coverageRoot = values.get('coverage-root');
+  // Hosted parallel coverage shards (#2416): one job runs exactly one
+  // descriptor with coverage enabled, so this flag is only meaningful next
+  // to --group. It is never required by the canonical, uninstrumented lane.
+  if (coverageRoot !== undefined && !groupName)
+    throw new Error('--coverage-root requires --group=<name>');
   if (!groupName)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]] [--coverage-root=<dir>]',
     );
   if (!VITEST_CORPUS_GROUP_NAMES.includes(groupName))
     throw new Error(`unknown Vitest corpus group '${groupName}'`);
+  const withCoverageRoot = (result) =>
+    coverageRoot === undefined ? result : { ...result, coverageRoot };
   if (groupName === 'ordinary') {
     if (!ORDINARY_SHARD_DESCRIPTORS.some((entry) => entry.shard === shard))
       throw new Error(
         `ordinary Vitest corpus requires exactly --shard=<1-${ORDINARY_SHARD_COUNT}>/${ORDINARY_SHARD_COUNT}`,
       );
-    return { groupName, shard };
+    return withCoverageRoot({ groupName, shard });
   }
   if (groupName === 'process-heavy' && shard) {
     parseProcessHeavyShard(shard);
-    return { groupName, shard };
+    return withCoverageRoot({ groupName, shard });
   }
   if (shard)
     throw new Error(
       '--shard is supported only with --group=ordinary or --group=process-heavy',
     );
-  return { groupName };
+  return withCoverageRoot({ groupName });
 }
 
 async function main() {
@@ -932,5 +940,4 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href)
-  void main();
+if (invokedDirectly(import.meta.url)) void main();

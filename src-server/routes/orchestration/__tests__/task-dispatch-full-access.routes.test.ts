@@ -10,6 +10,7 @@
  * `TaskDispatcher` enforces the grant. Only the graph, the claim and the
  * engine start are fakes; the engine start records what it was asked for.
  */
+
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,10 +20,16 @@ import {
   type PairingScopePreset,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { isFullAccessGrant } from '../../../security/coding-authority.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { sessionOwnerStampFor } from '../../../services/orchestration/session-owner-attribution.js';
 import {
   createTaskDispatcher,
   type TaskDispatchRemoteSessions,
@@ -31,6 +38,11 @@ import {
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { StarterRegistry } from '../../../services/starter-work/starter-registry.js';
 import { StarterWorkModule } from '../../../services/starter-work/starter-work-module.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createStarterWorkRoutes } from '../../starter-work.js';
 import { createTaskRoutes } from '../tasks.js';
@@ -94,9 +106,17 @@ async function fixture() {
 
   // The engine start: records the modelOptions each session starts with.
   const started: Array<Record<string, unknown> | undefined> = [];
+  // And the principal each session is recorded as belonging to.
+  const owners: Array<{ ownerUserId: string; ownerAttribution?: string }> = [];
   const startOrSeed = vi.fn<TaskDispatchRemoteSessions['startOrSeed']>(
     async (_reservation, intent) => {
       started.push(intent.runtimeConfig?.modelOptions);
+      owners.push({
+        ownerUserId: intent.ownerUserId,
+        ...(intent.ownerAttribution
+          ? { ownerAttribution: intent.ownerAttribution }
+          : {}),
+      });
       return {
         session: { threadId: 'session-1', provider: 'claude' } as never,
         outcome: 'started',
@@ -133,6 +153,16 @@ async function fixture() {
     { succeeded: () => {}, failed: () => {} },
   );
 
+  // #2493: the continue-session owner records the grant it is handed.
+  const continueSession = vi.fn(
+    async (_input: {
+      fullAccessGrant: unknown;
+      owner: { ownerUserId: string; ownerAttribution?: string };
+    }) => ({
+      state: 'continued' as const,
+      session: { threadId: 'adopted-child', controlMode: 'station-owned' },
+    }),
+  );
   const createTaskIdempotent = vi.fn(
     async () =>
       ({ id: 'task-1', projectId: 'project-1', agentId: 'station' }) as never,
@@ -150,7 +180,13 @@ async function fixture() {
       check: async () => ({ state: 'ready' as const }),
       checkScheduled: async () => ({ state: 'ready' as const }),
     },
-    { read: async () => null, continue: vi.fn() } as never,
+    {
+      read: async (sessionId: string) => ({
+        threadId: sessionId,
+        controlMode: 'read-only-attached' as const,
+      }),
+      continue: continueSession,
+    } as never,
     () => ({ firstRun: { status: 'completed' } }) as never,
     {
       candidate: async () => ({ state: 'missing' as const }),
@@ -185,11 +221,46 @@ async function fixture() {
       allowedOrigins: [],
     },
   });
+  // Production's request principal: the same resolver the runtime routes
+  // compose, over the runtime auth boundary's verified credential facts.
+  const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
+    environmentSecurityService: security,
+  });
+  const principals = new WeakMap<Request, string>();
+  app.use('/api/tasks/*', async (c, next) => {
+    principals.set(c.req.raw, resolvePrincipal(c as never).id);
+    await next();
+  });
+  // Production's agent verdict with no station-control caller registry:
+  // every request carrying Station's internal token is an unverified agent.
+  const agentActor = createAgentDispatchActorResolver();
   app.route(
     '/api/tasks',
-    createTaskRoutes({} as never, { taskDispatcher: dispatcher } as never),
+    createTaskRoutes(
+      {} as never,
+      {
+        taskDispatcher: dispatcher,
+        readAuthorityForRequest: (request: Request) =>
+          sessionReadAuthorityFromRequest(
+            principals.get(request)!,
+            undefined,
+            undefined,
+          ),
+        dispatchOwnerForRequest: (request: Request) =>
+          sessionOwnerStampFor(principals.get(request)!, agentActor(request)),
+      } as never,
+    ),
   );
-  app.route('/api/starter-work', createStarterWorkRoutes(registry));
+  app.route(
+    '/api/starter-work',
+    createStarterWorkRoutes(registry, {
+      ownerForRequest: (c) =>
+        sessionOwnerStampFor(
+          resolvePrincipal(c as never).id,
+          agentActor(c.req.raw),
+        ),
+    }),
+  );
 
   const post = async (credential: string, path: string, body: unknown) => {
     const res = await app.request(path, {
@@ -200,6 +271,23 @@ async function fixture() {
       },
       body: JSON.stringify(body),
     });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+  /** Station's internal principal: per-boot token, `local`, loopback. */
+  const postInternally = async (path: string, body: unknown) => {
+    const res = await app.request(
+      path,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        },
+        body: JSON.stringify(body),
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+    );
     return { status: res.status, body: (await res.json()) as any };
   };
   const dispatchTask = (credential: string, approvalMode: string) =>
@@ -221,9 +309,13 @@ async function fixture() {
     operator,
     pair,
     grant,
+    post,
+    postInternally,
+    continueSession,
     dispatchTask,
     launchStarter,
     started,
+    owners,
     reserve,
     createTaskIdempotent,
   };
@@ -286,5 +378,120 @@ test.each([
       { approvalMode: 'never' },
       { approvalMode: 'never' },
     ]);
+  },
+);
+
+test('each route records the requesting principal as the dispatched session owner', async () => {
+  const f = await fixture();
+  const phone = f.pair('Phone');
+  expect((await f.dispatchTask(phone.credential, 'ask')).status).toBe(200);
+  expect((await f.launchStarter(phone.credential, 'ask')).status).toBe(201);
+  expect((await f.dispatchTask(f.operator.credential, 'ask')).status).toBe(200);
+  // The device's own principal, never the operator's or an OS alias, and
+  // each acts for its owner (no unattributed marker).
+  const device = { ownerUserId: `human:device:${phone.device.id}` };
+  expect(f.owners).toEqual([
+    device,
+    device,
+    { ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID },
+  ]);
+});
+
+// B2: Station's internal token resolves to the operator, and any agent
+// holding a stdio child's env can present it. Both routes must record such a
+// session as the operator's (so the operator's account reads it) but acting
+// for no one, exactly as `/api/orchestration` does.
+test("an internal-token caller's dispatch and Starter launch are the operator's to read but act for no one", async () => {
+  const f = await fixture();
+  expect(
+    (
+      await f.postInternally('/api/tasks/task-1/dispatch', {
+        runtimeConfig: {
+          provider: 'claude',
+          modelOptions: { approvalMode: 'ask' },
+        },
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await f.postInternally('/api/starter-work/launch', {
+        starterId: 'start-task',
+        operationId: 'launch-internal',
+        task: { projectId: 'project-1', title: 'Agent task' },
+        dispatch: {
+          runtimeConfig: {
+            provider: 'claude',
+            modelOptions: { approvalMode: 'ask' },
+          },
+        },
+      })
+    ).status,
+  ).toBe(201);
+  const unattributed = {
+    ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    ownerAttribution: 'unattributed-agent',
+  };
+  expect(f.owners).toEqual([unattributed, unattributed]);
+});
+
+test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's full-access mode", async () => {
+  const f = await fixture();
+  const phone = f.pair('Phone');
+  for (const mode of ['bypassPermissions', 'full-access', 'yolo']) {
+    expect(
+      await f.post(phone.credential, '/api/tasks/task-1/dispatch', {
+        runtimeConfig: { provider: 'acp', modelOptions: { mode } },
+      }),
+    ).toEqual({ status: 403, body: REFUSAL });
+  }
+  expect(f.reserve).not.toHaveBeenCalled();
+  expect(f.started).toEqual([]);
+});
+
+test.each([
+  ['the operator in person', 'operator', true],
+  ['a device without approval:full-access', 'device', false],
+  ['a granted device', 'granted', true],
+  ["Station's internal principal (an agent's tool)", 'internal', false],
+] as const)(
+  "#2493: Starter Work's continue-session hands the adoption %s's grant",
+  async (_label, caller, granted) => {
+    const f = await fixture();
+    const body = {
+      starterId: 'continue-session',
+      operationId: `continue-${caller}`,
+      sourceSessionId: 'attached-source',
+    };
+    let response: { status: number; body: any };
+    // The operator in person acts as the operator and a device as itself.
+    // Station's internal principal is an unverified agent: the child is the
+    // operator's to read but acts for no one.
+    let owner: { ownerUserId: string; ownerAttribution?: string } = {
+      ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    };
+    if (caller === 'internal') {
+      owner = {
+        ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerAttribution: 'unattributed-agent',
+      };
+      response = await f.postInternally('/api/starter-work/launch', body);
+    } else {
+      let credential = f.operator.credential;
+      if (caller !== 'operator') {
+        const phone = f.pair('Phone');
+        if (caller === 'granted') f.grant(phone.device.id);
+        credential = phone.credential;
+        owner = { ownerUserId: `human:device:${phone.device.id}` };
+      }
+      response = await f.post(credential, '/api/starter-work/launch', body);
+    }
+    expect(response.status).toBeLessThan(300);
+    expect(f.continueSession).toHaveBeenCalledTimes(1);
+    expect(
+      isFullAccessGrant(f.continueSession.mock.calls[0]![0].fullAccessGrant),
+    ).toBe(granted);
+    // The adopted child belongs to the launching principal.
+    expect(f.continueSession.mock.calls[0]![0].owner).toEqual(owner);
   },
 );

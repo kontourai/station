@@ -6,8 +6,13 @@ import {
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
-/** Clean engine identities whose adapter maps `approvalMode` to a native knob. */
-const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set(['claude', 'codex']);
+/**
+ * Clean engine identities whose adapter maps `approvalMode` to a native knob.
+ * Muse's is its `muse serve` approval mode (#2452); a Muse session on the
+ * `muse exec` fallback reports what actually applied, so the chip shows the
+ * request as not yet applied rather than claiming it.
+ */
+const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set(['claude', 'codex', 'muse']);
 
 /**
  * Whether this engine connection's adapter reads `approvalMode` at all.

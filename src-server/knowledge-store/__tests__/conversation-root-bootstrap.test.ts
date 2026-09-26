@@ -1,4 +1,5 @@
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test } from 'vitest';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
@@ -64,6 +65,45 @@ function baseDeps(persistence: FakeRootPersistence) {
     projectHomeDir: '/tmp/fake-home',
   };
 }
+
+describe('ensureConversationKnowledgeRoot session-leg authority', () => {
+  // A session is readable only by its recorded principal owner, so the
+  // conversation index must read its session leg as a principal rather than
+  // with the file-memory leg's OS-alias user id.
+  test('the registered adapter reads sessions with the supplied authority, not the alias user id', async () => {
+    delete process.env[HOSTED_TENANT_REGISTRY_FILE_ENV];
+    const persistence = new FakeRootPersistence();
+    const deps = baseDeps(persistence);
+    const seen: unknown[] = [];
+    const operator = sessionReadAuthorityFromRequest(
+      'human:local:operator',
+      undefined,
+      undefined,
+    );
+    await ensureConversationKnowledgeRoot({
+      ...deps,
+      sessionReader: {
+        ...deps.sessionReader,
+        sessionQueries: {
+          ...deps.sessionReader.sessionQueries,
+          read: async (_query, authority) => {
+            seen.push(authority);
+            return { status: 'not-found' as const };
+          },
+        },
+      },
+      getUserId: () => 'os-alias',
+      getReadAuthority: () => operator,
+      knowledgeStoresEnabled: false,
+    });
+    const descriptor = deps.provider
+      .listAdapters()
+      .find((entry) => entry.id === CONVERSATION_STORE_ADAPTER_ID)!;
+    const adapter = await descriptor.create({} as never);
+    await adapter.get('some-conversation');
+    expect(seen).toEqual([operator]);
+  });
+});
 
 describe('ensureConversationKnowledgeRoot (station#1879)', () => {
   const originalHostedRegistry = process.env[HOSTED_TENANT_REGISTRY_FILE_ENV];

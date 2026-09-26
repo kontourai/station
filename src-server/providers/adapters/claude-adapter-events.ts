@@ -22,6 +22,14 @@ import {
   redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import {
+  type ClaudeChildWorkContext,
+  type ClaudeChildWorkState,
+  observeClaudeTaskNotification,
+  observeClaudeTaskProgress,
+  observeClaudeTaskStarted,
+  observeClaudeTaskUpdated,
+} from './claude-adapter-child-work.js';
 import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
@@ -34,6 +42,7 @@ import {
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
   ensureClaudeTurnStartPublished,
+  observeClaudeBackgroundChildSettling,
   observeClaudeCommandLifecycle,
   observeClaudeEmptyResult,
   observeClaudeInit,
@@ -42,6 +51,10 @@ import {
   resolveClaudeResultTarget,
   settleClaudeResultTarget,
 } from './claude-sdk-turns.js';
+import {
+  type ParagraphBoundaryState,
+  withParagraphBreak,
+} from './paragraph-boundary.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
@@ -232,32 +245,19 @@ export interface ClaudeMessageState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
-   * #2316: called when no subagent/background task is live any more (the last
-   * tracked task settled, or the main turn completed with none live). The
-   * adapter settles every pending permission request a subagent raised: with
-   * no task live, no subagent can still be waiting on one, and leaving it
-   * answerable would let a late "Allow <tool> for this session" mint a grant
-   * for a call that never ran.
+   * #2348: called with a task's id when the engine reports it ended (either
+   * terminal). The adapter withdraws the permission requests THAT subagent
+   * raised — `canUseTool`'s `agentID` is the subagent's `task_id` (captured:
+   * `claude-2.1.281-subagent-permission.jsonl`) — so a late "Allow <tool>
+   * for this session" cannot mint a grant for a call that never ran, while a
+   * sibling subagent's request stays answerable.
    */
-  onNoLiveTasks?: () => void;
+  onTaskSettled?: (taskId: string) => void;
   /**
-   * station#1892: tasks this process already settled, retained so a SECOND
-   * terminal for the same `task_id` is recognised as a duplicate rather than
-   * misread as a task started before Station attached.
-   *
-   * The SDK routinely sends two terminals for one subagent — a `task_updated`
-   * whose patch carries a terminal status, then a `task_notification` — and
-   * they carry complementary halves: the first has the task's identity
-   * (`toolCallId`, `description`), the second has the result (`summary`,
-   * `output_file`, `usage`). Deleting on the first made the second land in
-   * the untracked branch, which publishes no identity, so neither settle was
-   * complete and the one carrying the result was the one clients dropped.
-   *
-   * `hadResult` records whether the settle already published a result, so an
-   * enrichment is emitted at most once per task and a genuinely duplicate
-   * terminal adds nothing.
+   * #2457: the session's child work (its subagents) as the contract's
+   * registry. Owned by `claude-adapter-child-work.ts`.
    */
-  settledTasks?: Map<string, { task: ClaudeActiveTask; hadResult: boolean }>;
+  childWork?: ClaudeChildWorkState;
   /**
    * `toolCallId → { toolName, turnId, terminalPublished }` for top-level
    * assistant `tool_use` blocks whose `tool_result` has not arrived yet.
@@ -337,6 +337,8 @@ export interface ClaudeMessageState {
    * must never let a later turn's index 0 reuse an earlier turn's value.
    */
   contentMessageKey?: string;
+  /** Paragraph breaks between this turn's assistant messages. */
+  textBoundary?: ParagraphBoundaryState;
 }
 
 /**
@@ -367,17 +369,13 @@ export interface ClaudeActiveTask {
   taskId: string;
   toolCallId: string;
   toolName: string;
-  description: string;
-  subagentType?: string;
-  backgrounded?: boolean;
+  /** The turn running when the task started, for its `tool.*` events. */
+  turnId?: string;
   /**
-   * station#1877 follow-up: the SDK's `spawn_depth` — 1 for a top-level
-   * spawn, N+1 when spawned from inside a depth-N agent. Station tracked no
-   * nesting at all, so a subagent's own subagents were indistinguishable
-   * from its siblings. Optional because the field is only present on
-   * `task_started`.
+   * A subagent's own tool call (`owned_by_subagent`): it keeps its `tool.*`
+   * events but is not child work.
    */
-  spawnDepth?: number;
+  ownedBySubagent?: boolean;
 }
 
 /** Namespace for Claude-Code-specific `extension.notification` events. */
@@ -410,6 +408,14 @@ export function mapClaudeSdkMessage({
     createdAt,
     logInfo,
     interruptEngine,
+  };
+  const childWorkContext: ClaudeChildWorkContext = {
+    provider,
+    record,
+    publish,
+    createdAt,
+    onBackgroundChildSettling: () =>
+      observeClaudeBackgroundChildSettling(turnContext),
   };
 
   if (message.type === 'system' && message.subtype === 'init') {
@@ -474,7 +480,9 @@ export function mapClaudeSdkMessage({
     record.session.updatedAt = createdAt;
     const liveTasks =
       to === 'idle' && record.activeTasks?.size
-        ? [...record.activeTasks.values()]
+        ? [...record.activeTasks.values()].filter(
+            (task) => !task.ownedBySubagent,
+          )
         : [];
     publish({
       eventId: crypto.randomUUID(),
@@ -487,12 +495,9 @@ export function mapClaudeSdkMessage({
       to,
       // The turn is honestly over (queued messages must drain), but
       // backgrounded work continues — clients can keep an activity
-      // affordance alive off this reason plus the task/registry snapshot.
+      // affordance alive off this reason plus the child-work running set.
       reason: liveTasks.length > 0 ? 'background-tasks' : undefined,
     });
-    if (liveTasks.length > 0) {
-      publishClaudeTaskRegistry({ provider, record, publish, createdAt });
-    }
     return;
   }
 
@@ -507,17 +512,14 @@ export function mapClaudeSdkMessage({
     if (!record.activeTasks) {
       record.activeTasks = new Map();
     }
+    const ownedBySubagent =
+      (message as { owned_by_subagent?: unknown }).owned_by_subagent === true;
     record.activeTasks.set(message.task_id, {
       taskId: message.task_id,
       toolCallId,
       toolName,
-      description: message.description ?? '',
-      subagentType: message.subagent_type,
-      ...(typeof message.spawn_depth === 'number' &&
-      Number.isFinite(message.spawn_depth) &&
-      message.spawn_depth > 0
-        ? { spawnDepth: message.spawn_depth }
-        : {}),
+      ...(record.activeTurnId ? { turnId: record.activeTurnId } : {}),
+      ...(ownedBySubagent ? { ownedBySubagent } : {}),
     });
     publish({
       eventId: crypto.randomUUID(),
@@ -535,15 +537,18 @@ export function mapClaudeSdkMessage({
         ...(message.prompt ? { prompt: message.prompt } : {}),
       },
     });
-    // station#1877: the live set changed, so the client needs the snapshot
-    // now — not only if this turn later goes idle with work still running.
-    publishClaudeTaskRegistry({ provider, record, publish, createdAt });
+    // station#1877 / #2457: the live set changed, so the child-work snapshot
+    // goes out now — not only if this turn later goes idle with work running.
+    observeClaudeTaskStarted(childWorkContext, message);
     return;
   }
 
   if (message.type === 'system' && message.subtype === 'task_progress') {
     const tracked = record.activeTasks?.get(message.task_id);
-    if (!tracked) return;
+    if (!tracked) {
+      observeClaudeTaskProgress(childWorkContext, message);
+      return;
+    }
     const detail = message.last_tool_name
       ? `${message.description} — ${message.last_tool_name}`
       : message.description;
@@ -559,19 +564,16 @@ export function mapClaudeSdkMessage({
       message: detail || tracked.toolName,
       progress: undefined,
     });
+    observeClaudeTaskProgress(childWorkContext, message);
     return;
   }
 
   if (message.type === 'system' && message.subtype === 'task_updated') {
+    observeClaudeTaskUpdated(childWorkContext, message);
+    const terminal = mapClaudeTaskStatus(message.patch?.status);
+    if (terminal) record.onTaskSettled?.(message.task_id);
     const tracked = record.activeTasks?.get(message.task_id);
     if (!tracked) return;
-    if (typeof message.patch?.is_backgrounded === 'boolean') {
-      tracked.backgrounded = message.patch.is_backgrounded;
-    }
-    if (typeof message.patch?.description === 'string') {
-      tracked.description = message.patch.description;
-    }
-    const terminal = mapClaudeTaskStatus(message.patch?.status);
     if (terminal) {
       settleClaudeTask({
         provider,
@@ -588,75 +590,26 @@ export function mapClaudeSdkMessage({
 
   if (message.type === 'system' && message.subtype === 'task_notification') {
     const tracked = record.activeTasks?.get(message.task_id);
+    // #2457: child work settles on EVERY notification — an unrecognised
+    // status as `unresolved`, never as success — and the second terminal of
+    // the station#1892 pair enriches the first through the contract reducer.
+    observeClaudeTaskNotification(childWorkContext, message, {
+      ownedBySubagent: tracked?.ownedBySubagent === true,
+    });
+    record.onTaskSettled?.(message.task_id);
     const status = mapClaudeTaskStatus(message.status);
     // SDK/CLI version skew must not turn an unrecognised terminal status into
-    // a persisted task success. This matches task_updated's no-op contract.
-    if (!status) return;
-    if (tracked) {
-      settleClaudeTask({
-        provider,
-        record,
-        publish,
-        createdAt,
-        task: tracked,
-        status,
-        summary: message.summary,
-        outputFile: message.output_file,
-        usage: readClaudeTaskUsage(message.usage),
-      });
-    } else if (record.settledTasks?.has(message.task_id)) {
-      // station#1892: the SECOND terminal for a task this process already
-      // settled. The first one carried the task's identity but no result;
-      // this one carries the result but, in the SDK message, no identity.
-      // Re-publish the settle with both, so the event carrying the subagent's
-      // actual outcome is the same event a client can attribute and announce.
-      const retained = record.settledTasks.get(message.task_id);
-      if (!retained || retained.hadResult) return;
-      const enrichedUsage = readClaudeTaskUsage(message.usage);
-      if (!message.summary && !message.output_file && !enrichedUsage) return;
-      rememberSettledClaudeTask(record.settledTasks, retained.task, {
-        hadResult: true,
-      });
-      publish({
-        eventId: crypto.randomUUID(),
-        provider,
-        threadId: record.session.threadId,
-        createdAt,
-        method: 'extension.notification',
-        namespace: CLAUDE_EXTENSION_NAMESPACE,
-        type: 'task/settled',
-        payload: {
-          taskId: retained.task.taskId,
-          toolCallId: retained.task.toolCallId,
-          description: retained.task.description,
-          backgrounded: retained.task.backgrounded === true,
-          status,
-          summary: message.summary,
-          ...(message.output_file ? { outputFile: message.output_file } : {}),
-          ...(enrichedUsage ? { usage: enrichedUsage } : {}),
-        },
-      });
-    } else if (message.skip_transcript !== true) {
-      // Untracked settle (e.g. task started before this process attached):
-      // still let the client clear any stale activity affordance.
-      const untrackedUsage = readClaudeTaskUsage(message.usage);
-      publish({
-        eventId: crypto.randomUUID(),
-        provider,
-        threadId: record.session.threadId,
-        createdAt,
-        method: 'extension.notification',
-        namespace: CLAUDE_EXTENSION_NAMESPACE,
-        type: 'task/settled',
-        payload: {
-          taskId: message.task_id,
-          status,
-          summary: message.summary,
-          ...(message.output_file ? { outputFile: message.output_file } : {}),
-          ...(untrackedUsage ? { usage: untrackedUsage } : {}),
-        },
-      });
-    }
+    // a persisted tool success. This matches task_updated's no-op contract.
+    if (!status || !tracked) return;
+    settleClaudeTask({
+      provider,
+      record,
+      publish,
+      createdAt,
+      task: tracked,
+      status,
+      summary: message.summary,
+    });
     return;
   }
 
@@ -725,6 +678,10 @@ export function mapClaudeSdkMessage({
       streamEvent.delta?.type === 'text_delta' &&
       typeof streamEvent.delta.text === 'string'
     ) {
+      // A second assistant message in one turn (a stop-hook continuation,
+      // merged sends) opens a new paragraph; the text blocks of ONE message
+      // stay joined verbatim — they split at citation boundaries mid-prose.
+      record.textBoundary ??= {};
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -733,7 +690,17 @@ export function mapClaudeSdkMessage({
         turnId: record.activeTurnId,
         itemId,
         method: 'content.text-delta',
-        delta: streamEvent.delta.text,
+        // Only the top-level reply's messages: a subagent's `message_start`
+        // also moves `contentMessageKey`, and is no paragraph of this reply.
+        delta:
+          message.parent_tool_use_id == null
+            ? withParagraphBreak(
+                record.textBoundary,
+                record.activeTurnId ?? 'no-turn',
+                record.contentMessageKey ?? 'no-message',
+                streamEvent.delta.text,
+              )
+            : streamEvent.delta.text,
       });
     }
     if (
@@ -995,7 +962,6 @@ export function mapClaudeSdkMessage({
           finishReason: 'other',
         });
       }
-      if (!record.activeTasks?.size) record.onNoLiveTasks?.();
     }
     return;
   }
@@ -1289,108 +1255,10 @@ export function mapClaudeTaskStatus(
 }
 
 /**
- * Publishes the current live subagent set.
- *
- * station#1877: this used to be reachable only from the `session.state-changed`
- * transition to `idle`, so a subagent that started and finished inside one
- * active turn never produced a registry event at all — the client had no live
- * set to render and the run was invisible until its settle. Every mutation of
- * `record.activeTasks` publishes the snapshot now, including the empty one, so
- * the client can clear a finished task instead of inferring its absence.
+ * A task's terminal, as the `tool.completed` of the call that spawned it.
+ * Its child-work settle is `claude-adapter-child-work.ts`'s; this is only the
+ * transcript's tool card.
  */
-function publishClaudeTaskRegistry(params: {
-  provider: ProviderSession['provider'];
-  record: ClaudeMessageState;
-  publish: (event: CanonicalRuntimeEvent) => void;
-  createdAt: string;
-}): void {
-  const { provider, record, publish, createdAt } = params;
-  publish({
-    eventId: crypto.randomUUID(),
-    provider,
-    threadId: record.session.threadId,
-    createdAt,
-    method: 'extension.notification',
-    namespace: CLAUDE_EXTENSION_NAMESPACE,
-    type: 'task/registry',
-    payload: {
-      active: [...(record.activeTasks?.values() ?? [])].map((task) => ({
-        taskId: task.taskId,
-        toolCallId: task.toolCallId,
-        description: task.description,
-        subagentType: task.subagentType,
-        backgrounded: task.backgrounded === true,
-        ...(task.spawnDepth !== undefined
-          ? { spawnDepth: task.spawnDepth }
-          : {}),
-      })),
-    },
-  });
-}
-
-/**
- * station#1879: reads the SDK's optional per-task usage into Station's
- * vocabulary. `usage` is `usage?` on `SDKTaskNotificationMessage`, so absence
- * is ordinary and must not be reported as zeroes — a subagent that really did
- * spend 0 tokens is not the same claim as one that never told us.
- *
- * Deliberately NOT summed into any session total here: Claude reports per-turn
- * deltas while other engines report cumulative totals, and reconciling that is
- * `foldUsageEvents`' job (see its `CUMULATIVE_USAGE_PROVIDERS` docblock).
- */
-function readClaudeTaskUsage(
-  usage:
-    | { total_tokens?: number; tool_uses?: number; duration_ms?: number }
-    | undefined,
-):
-  | { totalTokens?: number; toolUses?: number; durationMs?: number }
-  | undefined {
-  if (!usage || typeof usage !== 'object') return undefined;
-  const read = (value: unknown): number | undefined =>
-    typeof value === 'number' && Number.isFinite(value) && value >= 0
-      ? value
-      : undefined;
-  const totalTokens = read(usage.total_tokens);
-  const toolUses = read(usage.tool_uses);
-  const durationMs = read(usage.duration_ms);
-  if (
-    totalTokens === undefined &&
-    toolUses === undefined &&
-    durationMs === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    ...(totalTokens !== undefined ? { totalTokens } : {}),
-    ...(toolUses !== undefined ? { toolUses } : {}),
-    ...(durationMs !== undefined ? { durationMs } : {}),
-  };
-}
-
-/**
- * station#1892: how many settled tasks stay addressable for enrichment.
- *
- * The two terminals for one task arrive milliseconds apart, so this only has
- * to outlive that gap. It is a bound, not a policy: the map is insertion
- * ordered, so the oldest entry is evicted once the cap is reached and a very
- * old duplicate simply falls back to the untracked path it used before.
- */
-const CLAUDE_SETTLED_TASK_RETENTION = 64;
-
-function rememberSettledClaudeTask(
-  settled: Map<string, { task: ClaudeActiveTask; hadResult: boolean }>,
-  task: ClaudeActiveTask,
-  entry: { hadResult: boolean },
-): void {
-  settled.delete(task.taskId);
-  settled.set(task.taskId, { task, hadResult: entry.hadResult });
-  while (settled.size > CLAUDE_SETTLED_TASK_RETENTION) {
-    const oldest = settled.keys().next();
-    if (oldest.done) break;
-    settled.delete(oldest.value);
-  }
-}
-
 function settleClaudeTask(params: {
   provider: ProviderSession['provider'];
   record: ClaudeMessageState;
@@ -1399,44 +1267,10 @@ function settleClaudeTask(params: {
   task: ClaudeActiveTask;
   status: 'success' | 'error' | 'cancelled';
   summary?: string;
-  /**
-   * station#1879: the SDK's own path to the subagent's full transcript
-   * (`SDKTaskNotificationMessage.output_file`, a REQUIRED field Station was
-   * discarding). `summary` is only ever the agent's last utterance, so
-   * without this the real result of a delegated run is unreachable.
-   * Absent on the `task_updated` settle path, which carries no such field.
-   */
-  outputFile?: string;
-  /**
-   * Optional in the SDK (`usage?`), so never assume it is present — a settle
-   * with no usage is normal, not a defect.
-   */
-  usage?: {
-    totalTokens?: number;
-    toolUses?: number;
-    durationMs?: number;
-  };
 }): void {
-  const {
-    provider,
-    record,
-    publish,
-    createdAt,
-    task,
-    status,
-    summary,
-    outputFile,
-    usage,
-  } = params;
+  const { provider, record, publish, createdAt, task, status, summary } =
+    params;
   record.activeTasks?.delete(task.taskId);
-  if (!record.activeTasks?.size) record.onNoLiveTasks?.();
-  // station#1892: remember what this settle published so a second terminal
-  // for the same task can enrich it exactly once instead of arriving as an
-  // identity-less "untracked" settle.
-  if (!record.settledTasks) record.settledTasks = new Map();
-  rememberSettledClaudeTask(record.settledTasks, task, {
-    hadResult: Boolean(summary || outputFile),
-  });
   // station#1558 (fix round, H1): this publishes the call's terminal, but the
   // `tool_use` entry stays — the real `tool_result` can still arrive and is
   // still the authoritative output, and dropping the entry would make the
@@ -1450,7 +1284,14 @@ function settleClaudeTask(params: {
     provider,
     threadId: record.session.threadId,
     createdAt,
-    turnId: record.activeTurnId,
+    // #2457: the turn that issued the call, not whichever turn is running
+    // when a backgrounded task ends — the same rule the `tool_result` path
+    // follows.
+    ...(trackedCall?.turnId !== undefined
+      ? { turnId: trackedCall.turnId }
+      : task.turnId !== undefined
+        ? { turnId: task.turnId }
+        : {}),
     itemId: task.toolCallId,
     method: 'tool.completed',
     toolCallId: task.toolCallId,
@@ -1459,34 +1300,6 @@ function settleClaudeTask(params: {
     output: summary,
     error: status === 'error' ? summary : undefined,
   });
-  // Also settle via extension.notification: after the turn's bubble is
-  // archived, tool parts are frozen, so this is the client's post-turn
-  // signal to clear the background-activity affordance.
-  publish({
-    eventId: crypto.randomUUID(),
-    provider,
-    threadId: record.session.threadId,
-    createdAt,
-    method: 'extension.notification',
-    namespace: CLAUDE_EXTENSION_NAMESPACE,
-    type: 'task/settled',
-    payload: {
-      taskId: task.taskId,
-      toolCallId: task.toolCallId,
-      description: task.description,
-      // station#1892: clients gate the settle announcement on this, so it has
-      // to travel with every settle — including the enriched one below, whose
-      // own SDK message carries no identity.
-      backgrounded: task.backgrounded === true,
-      status,
-      summary,
-      ...(outputFile ? { outputFile } : {}),
-      ...(usage ? { usage } : {}),
-    },
-  });
-  // station#1877: publish the set this settle left behind, so a client that
-  // is tracking siblings drops only this one and keeps the rest live.
-  publishClaudeTaskRegistry({ provider, record, publish, createdAt });
 }
 
 const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;
@@ -1633,13 +1446,11 @@ export function mapClaudeSessionState(
 }
 
 /**
- * #2348: how Station settles a subagent's permission request when no subagent
- * task is tracked as live (`onNoLiveTasks`). That signal can be wrong: a
- * `skip_transcript` task is never tracked, and a `task_*` settle message can
- * be processed after another subagent's `canUseTool` registered its request.
- * So this is a plain denial of the one call, never the `cancel` mapping's
- * `interrupt: true`, which may abort a subagent that is in fact still running.
- * The message lets a live subagent ask again.
+ * #2348: how Station settles a permission request the subagent that raised
+ * it can no longer be waiting on — the engine reported that subagent ended
+ * (`onTaskSettled`). A plain denial of the one call, never the `cancel`
+ * mapping's `interrupt: true`, which could abort the parent's turn. The
+ * message lets a subagent that is somehow still live ask again.
  */
 export function withdrawnSubagentPermissionResult(): PermissionResult {
   return {

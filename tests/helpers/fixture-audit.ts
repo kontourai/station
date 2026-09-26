@@ -1,3 +1,4 @@
+import { FOCUS_PRESENCE_REPORT_PATH } from '@kontourai/station-contracts/presence';
 import { test as base, expect, type Page, type Route } from '@playwright/test';
 
 const unexpected = new WeakMap<Page, Set<string>>();
@@ -6,9 +7,19 @@ const unexpected = new WeakMap<Page, Set<string>>();
 export async function rejectUnexpectedFixtureRequest(
   route: Route,
 ): Promise<void> {
+  const url = new URL(route.request().url());
+  // Every mounted App reports its document focus (#2585). The route's real
+  // answer is an empty 204, so this is its declared model, not a guessed
+  // empty inventory; journeys that assert on focus route it themselves.
+  if (
+    route.request().method() === 'POST' &&
+    url.pathname === FOCUS_PRESENCE_REPORT_PATH
+  ) {
+    await route.fulfill({ status: 204 });
+    return;
+  }
   const page = route.request().frame().page();
   const failures = unexpected.get(page) ?? new Set<string>();
-  const url = new URL(route.request().url());
   failures.add(`${route.request().method()} ${url.pathname}`);
   unexpected.set(page, failures);
   await route.fulfill({

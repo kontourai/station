@@ -166,7 +166,8 @@ function backgroundTaskEntryFromChildWork(
     source: 'provider-task',
     chatThreadId: placement.chatThreadId,
     title: placement.title || item.title || item.kindLabel || 'Background task',
-    detail: item.kindLabel,
+    // #2457: the child's live status line when it reports one, else its kind.
+    detail: item.progress ?? item.kindLabel,
     ...(placement.startedAt !== undefined
       ? { startedAt: placement.startedAt }
       : {}),
@@ -213,6 +214,7 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
     status: 'running',
     ...(task.description ? { title: task.description } : {}),
     ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
+    ...(task.progress ? { progress: task.progress } : {}),
     // #2459: a stop only for a child that carried the seam itself, and only
     // with a session to address it to. A session thread alone is not a seam:
     // deriving one from it offered a Codex child a Stop wired to nothing.
@@ -573,30 +575,48 @@ export function reconcileBackgroundTasksSnapshot(
     const isActive = child.status === 'running';
 
     if (!existing) {
-      // A bare status snapshot carries no turn history — only seed a card
-      // for a delegate the snapshot itself says is still active. A finished
-      // one this client never saw live has nothing worth backfilling.
-      if (!isActive) continue;
+      // A current server's asChild carries the terminal fact and exact end.
+      // An older delegation-only row cannot backfill a finished card.
+      if (!isActive && !session.childWork?.asChild) continue;
       const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
-        startedAt: parseTime(session.createdAt, Date.now()),
+        startedAt: parseTime(child.startedAt ?? session.createdAt, Date.now()),
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
-        title: child.kindLabel
-          ? `Delegated task — ${child.kindLabel}`
-          : 'Delegated task',
+        title:
+          session.displayTitle ??
+          (child.kindLabel
+            ? `Delegated task — ${child.kindLabel}`
+            : 'Delegated task'),
       });
-      next = { ...next, entries: { ...next.entries, [entry.id]: entry } };
+      const settled =
+        !isActive && child.endedAt
+          ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }
+          : entry;
+      next = { ...next, entries: { ...next.entries, [entry.id]: settled } };
       continue;
     }
 
     if (existing.state === 'running' && !isActive) {
-      const endedAt = parseTime(session.lastEventAt, Date.now());
+      const endedAt = parseTime(
+        child.endedAt ?? session.lastEventAt,
+        Date.now(),
+      );
       const entries = {
         ...next.entries,
         [existing.id]: {
           ...existing,
-          state: 'stopped' as BackgroundTaskState,
+          // station#2530 review 2 round 2: `child.status` is already the
+          // honest fact for BOTH server vintages — `snapshotDelegateChildWork`
+          // synthesizes 'unresolved' for an older server's bare `delegation`
+          // row exactly as `projectDelegateChildWork` does for a current
+          // server's own demotion (see both functions above). Neither means
+          // a stop was requested; 'stopped' is a claim nothing derived. Map
+          // through `CHILD_WORK_CARD_STATE` unconditionally so a genuine
+          // richer terminal status (completed/failed/cancelled/
+          // stopped-unconfirmed) still comes through, and the two server
+          // vintages agree on 'unresolved' when nothing settled it.
+          state: CHILD_WORK_CARD_STATE[child.status],
           endedAt,
         },
       };

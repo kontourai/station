@@ -34,6 +34,7 @@ import {
 } from '../../contexts/RegionModelContext';
 import { useOpenInRegion } from '../../contexts/useOpenInRegion';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -312,4 +313,56 @@ test('a malformed instance id mounts no shell, while the well-formed id it imita
     'pr:github.com/kontourai/station#2049',
   );
   await waitFor(() => expect(queryShell('right')).not.toBeNull());
+});
+
+/**
+ * Two previews of the same path — one from the checkout, one read through a
+ * session's thread (its own directory) — were indistinguishable tabs. The
+ * session one now says so in its title, and both tabs carry the full
+ * distinction as a tooltip; the checkout's title stays the bare file name.
+ */
+test('a session-directory preview is told apart from the checkout preview of the same path', async () => {
+  const checkoutId = `file-preview:${'a'.repeat(32)}`;
+  const sessionId = `file-preview:${'b'.repeat(32)}`;
+  writeFilePreviewPaneState(window.localStorage, checkoutId, {
+    version: '1.0',
+    projectSlug: 'station',
+    path: 'src/app.ts',
+    wrap: true,
+  });
+  writeFilePreviewPaneState(window.localStorage, sessionId, {
+    version: '1.0',
+    projectSlug: 'station',
+    path: 'src/app.ts',
+    wrap: true,
+    thread: 'thread-7',
+  });
+  render(
+    <KeyboardShortcutsProvider>
+      <NavigationProvider>
+        <RegionModelProvider>
+          <MainCaller />
+          <RegionShells />
+        </RegionModelProvider>
+      </NavigationProvider>
+    </KeyboardShortcutsProvider>,
+  );
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() => current().model.placeSurface(checkoutId, 'right'));
+  act(() => current().model.placeSurface(sessionId, 'right'));
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await waitFor(() =>
+    expect(within(shell('right')).getAllByRole('tab')).toHaveLength(2),
+  );
+  const [checkout, session] = within(shell('right')).getAllByRole('tab');
+  expect(checkout?.textContent).toBe('app.ts');
+  expect(session?.textContent).toBe('app.ts · session');
+  expect(checkout?.getAttribute('title')).toBe(
+    'src/app.ts — from the project checkout',
+  );
+  expect(session?.getAttribute('title')).toBe(
+    "src/app.ts — read through the session's directory",
+  );
 });

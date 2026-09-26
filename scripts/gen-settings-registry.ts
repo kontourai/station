@@ -31,9 +31,32 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const OUTPUT_PATH = join(ROOT, 'src-server/generated/settings-registry.json');
+
+/** The checked-in artifact, repository-relative. */
+export const REGISTRY_ARTIFACT_PATH =
+  'src-server/generated/settings-registry.json';
+const OUTPUT_PATH = join(ROOT, REGISTRY_ARTIFACT_PATH);
+
+/**
+ * Every module the artifact is built from, repository-relative, in the order
+ * `loadRegistrySources` destructures them.
+ *
+ * Exported because the computed specifier below is invisible to the import
+ * graph: a change to any of these never reaches
+ * `scripts/__tests__/gen-settings-registry.test.ts` through `vitest related`,
+ * so the pull-request lane only schedules that suite through the impact
+ * manifest's edges for these paths (#2176). The suite asserts each one is
+ * still selected, so adding a source here without an edge reds it.
+ */
+export const REGISTRY_SOURCE_PATHS = Object.freeze([
+  'src-ui/src/views/settings/settings-catalog.ts',
+  'src-ui/src/views/settings/settings-deep-link.ts',
+  'packages/contracts/src/settings-registry.ts',
+  'packages/contracts/src/device-settings.ts',
+] as const);
 
 /**
  * A floor, not a pin. The catalog stood at 45 entries when this landed; a
@@ -107,12 +130,7 @@ export async function loadRegistrySources(root = ROOT) {
       Record<string, unknown>
     >;
   const [catalogModule, deepLinkModule, appRegistry, deviceRegistry] =
-    await Promise.all([
-      load('src-ui/src/views/settings/settings-catalog.ts'),
-      load('src-ui/src/views/settings/settings-deep-link.ts'),
-      load('packages/contracts/src/settings-registry.ts'),
-      load('packages/contracts/src/device-settings.ts'),
-    ]);
+    await Promise.all(REGISTRY_SOURCE_PATHS.map(load));
 
   const catalog = catalogModule.SETTINGS_CATALOG;
   if (!Array.isArray(catalog)) {
@@ -232,10 +250,7 @@ export async function generateSettingsRegistry({
   return { written: true, entries: document.settings.length };
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (invokedDirectly(import.meta.url)) {
   const check = process.argv.includes('--check');
   try {
     const result = await generateSettingsRegistry({ check });

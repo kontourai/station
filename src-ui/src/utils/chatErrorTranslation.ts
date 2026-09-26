@@ -293,11 +293,48 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *      assertion (archive#3299: "Retry your request." was such an
  *      assertion — a stale credential does not improve on retry).
  */
+/** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
+export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
+const SESSION_START_INDETERMINATE_SUFFIX =
+  /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
+
 export function translateChatError(
   input: ChatErrorInput,
 ): ChatErrorTranslation {
   const { status, message, code } = input;
   const text = message || '';
+
+  // The server wraps EVERY failed engine start in this code
+  // (`runSessionStartWithBoundary`): an expired login and a Codex "thread …
+  // already has an active writer" arrive alike, the engine's text followed by
+  // the boundary's own sentence. Translate the engine's text as usual — its
+  // specific copy is the useful part — and replace only the hint: the start
+  // may have taken effect, so "retrying may help" is the one claim this
+  // failure cannot make. The caller withholds its Retry for the same reason.
+  if (code === SESSION_START_INDETERMINATE_CODE) {
+    const cause = text
+      .replace(SESSION_START_INDETERMINATE_SUFFIX, '')
+      .replace(/[\s.]+$/, '')
+      .trim();
+    // An engine whose login lapsed fails at START as readily as mid-turn.
+    // No cause: the provider call returned but Station could not record the
+    // start, so "an unknown error" would understate what is known.
+    const translated = cause
+      ? (engineAuthTranslation(cause) ??
+        translateChatError({ status, message: cause }))
+      : {
+          title: "The chat's start wasn't confirmed",
+          body: 'The engine answered, but Station could not record that this session started.',
+        };
+    return {
+      ...translated,
+      title:
+        translated.title === 'Error'
+          ? "The chat didn't start"
+          : translated.title,
+      hint: 'Station may already have started this session. Check it before sending again.',
+    };
+  }
 
   // A dispatch refused because the session's lifecycle already ended — a
   // Station-side refusal, not an agent failure. The server's message is

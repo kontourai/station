@@ -176,7 +176,6 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     }),
     resolveStationDefaultApprovalMode: async () => stationDefault,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   const deps: ExecutionTargetExecutionDependencies = {
     resolveEnvironmentAccess: async () => ({
@@ -302,11 +301,22 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     });
     return response;
   };
-  const turnsSettled = async () =>
-    eventually(async () => {
+  // #2540: a follow-up runs in the SAME idle session, which already reads
+  // `idle` from the previous turn — so settling counts this send's own
+  // completed turn across the lineage rather than trusting the state alone.
+  let settledTurns = 0;
+  const turnsSettled = async () => {
+    settledTurns += 1;
+    await eventually(async () => {
       const lineage = store.conversationSessions(CONVERSATION);
       const current = lineage.at(-1);
       expect(current).toBeDefined();
+      const completed = lineage.flatMap((item) =>
+        store
+          .listEvents(item.sessionId)
+          .filter((event) => event.payload.method === 'turn.completed'),
+      );
+      expect(completed.length).toBeGreaterThanOrEqual(settledTurns);
       expect(
         (
           await service.readSession(
@@ -314,8 +324,9 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
             INTERNAL_SESSION_READ_SCOPE,
           )
         )?.session.lifecycleState,
-      ).toBe('completed');
+      ).toBe('idle');
     });
+  };
   const currentThread = () =>
     store.conversationSessions(CONVERSATION).at(-1)?.sessionId;
 

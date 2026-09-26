@@ -60,7 +60,11 @@ describe('ACPProcess spawn failure (#1089)', () => {
       logger: { warn: () => {}, debug: () => {} },
     });
 
-    await expect(acpProcess.start()).rejects.toThrow('not found on PATH');
+    // The failure names the command as context and the fix a person can act
+    // on — not the PATH jargon the throw used to echo.
+    await expect(acpProcess.start()).rejects.toThrow(
+      /could not start station-no-such-engine-cli: it is not installed, or not runnable/,
+    );
     await acpProcess.destroy();
   });
 

@@ -1,14 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type {
-  Client,
-  ContentBlock,
-  PermissionOption,
-  PromptResponse,
-  RequestPermissionRequest,
-  RequestPermissionResponse,
-  StopReason,
+import {
+  type Client,
+  type ContentBlock,
+  type PermissionOption,
+  type PromptResponse,
+  RequestError,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
+  type StopReason,
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -120,7 +121,12 @@ class FakeAcpProcess {
   newSessionConfigOptions: unknown[] = [];
   /** station#1945: older ACP `modes` catalog when no mode config option exists. */
   newSessionModes?: {
-    availableModes: Array<{ id: string; name: string; description?: string }>;
+    availableModes: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      _meta?: Record<string, unknown>;
+    }>;
     currentModeId?: string;
   };
   readonly setModeCalls: string[] = [];
@@ -3737,6 +3743,127 @@ describe('station#1182: runtime-reported model', () => {
     await adapter.stopAll();
   });
 
+  describe('#2569: a full-access ACP mode is approval never', () => {
+    // claude-code-acp's own catalog shape (src/session-mode.ts).
+    const CLAUDE_CODE_ACP_MODES = {
+      currentModeId: 'default',
+      availableModes: [
+        { id: 'default', name: 'Manual', _meta: { kind: 'standard' } },
+        {
+          id: 'acceptEdits',
+          name: 'Accept edits',
+          _meta: { kind: 'standard' },
+        },
+        {
+          id: 'bypassPermissions',
+          name: 'Bypass permissions',
+          _meta: { kind: 'full_access' },
+        },
+      ],
+    };
+
+    test.each([
+      ['a workspace session', 'workspace'],
+      ['a session naming no confinement', undefined],
+    ] as const)(
+      'is not applied at start in %s, and the connection mode is reported',
+      async (_label, confinement) => {
+        const { adapter, processes } = createAdapter({
+          newSessionModes: CLAUDE_CODE_ACP_MODES,
+        });
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: `thread-bypass-${String(confinement)}`,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          modelOptions: { mode: 'bypassPermissions' },
+          ...(confinement ? { confinement } : {}),
+        });
+        await nextEvent(iterator, 'session.started');
+        const configured = await nextEvent(iterator, 'session.configured');
+        expect(processes[0].setModeCalls).toEqual([]);
+        expect(processes[0].setConfigOptionCalls).toEqual([]);
+        const configuredMetadata = (
+          configured as { metadata?: Record<string, unknown> }
+        ).metadata;
+        // The mode the session really runs in, not the one asked for.
+        expect(configuredMetadata?.acpSessionMode).toBe('default');
+        await adapter.stopAll();
+      },
+    );
+
+    test('is applied in a host session', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: CLAUDE_CODE_ACP_MODES,
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-bypass-host',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'bypassPermissions' },
+        confinement: 'host',
+      });
+      expect(processes[0].setModeCalls).toEqual(['bypassPermissions']);
+      await adapter.stopAll();
+    });
+
+    test('a mode the agent declares full access is withheld whatever its id', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: {
+          currentModeId: 'ask',
+          availableModes: [
+            { id: 'ask', name: 'Ask' },
+            {
+              id: 'unleashed',
+              name: 'Unleashed',
+              _meta: { kind: 'full_access' },
+            },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-declared',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'unleashed' },
+        confinement: 'workspace',
+      });
+      expect(processes[0].setModeCalls).toEqual([]);
+      await adapter.stopAll();
+    });
+
+    test('a later turn asking for a known full-access mode is not applied in a workspace session', async () => {
+      const { adapter, processes } = createAdapter({
+        newSessionModes: {
+          currentModeId: 'default',
+          availableModes: [
+            { id: 'default', name: 'Default' },
+            { id: 'yolo', name: 'YOLO' },
+          ],
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-yolo-turn',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        confinement: 'workspace',
+      });
+      await adapter.sendTurn({
+        threadId: 'thread-yolo-turn',
+        input: 'hi',
+        modelOptions: { mode: 'yolo' },
+        confinement: 'workspace',
+      });
+      expect(processes[0].setModeCalls).toEqual([]);
+      processes[0].resolvePrompt('end_turn');
+      await adapter.stopAll();
+    });
+  });
+
   test('sendTurn refuses a mode when the live session advertised none', async () => {
     const { adapter, processes } = createAdapter();
 
@@ -5042,6 +5169,154 @@ describe('AcpAdapter.steerTurn', () => {
     ]);
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+});
+
+describe('AcpAdapter provider-plan quota projection (#2265)', () => {
+  /**
+   * Synthetic fixture of the known OpenCode ACP shape: the genuine SDK
+   * `RequestError` wrapper (numeric JSON-RPC code + engine message) around
+   * a reconstructed provider sentence. Never copied from a private event
+   * window.
+   */
+  const QUOTA_MESSAGE =
+    'quota: Usage limit reached for 5 hour. Your limit will reset at 2026-09-21 18:55:29';
+
+  async function startFailedQuotaTurn(options: {
+    threadId: string;
+    rejection: unknown;
+    notifyMessage?: string;
+  }) {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: options.threadId,
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: options.threadId,
+      input: 'do the thing',
+    });
+    await nextEvent(iterator, 'turn.started');
+    if (options.notifyMessage) {
+      await processes[0].client.extNotification?.(
+        '_kiro.dev/error/rate_limit',
+        { message: options.notifyMessage },
+      );
+      await nextEvent(iterator, 'extension.notification');
+    }
+    processes[0].rejectPrompt(options.rejection);
+    const errorEvent = await nextEvent(iterator, 'runtime.error');
+    return { adapter, processes, iterator, turn, errorEvent };
+  }
+
+  test('a classified quota rejection publishes fixed copy, code, bounded details, and the failed turn id', async () => {
+    const { adapter, processes, turn, errorEvent } = await startFailedQuotaTurn(
+      {
+        threadId: 'thread-quota',
+        rejection: new RequestError(-32603, QUOTA_MESSAGE),
+      },
+    );
+    expect(errorEvent).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: turn.turnId,
+      code: 'provider-plan-quota-exhausted',
+      message:
+        'The provider plan quota was exhausted; the engine refused the turn.',
+      details: {
+        quotaWindow: '5 hour',
+        resetReported: '2026-09-21 18:55:29',
+        resetPrecision: 'unqualified',
+      },
+    });
+    // The raw provider sentence never crosses, even though the terminal
+    // attribution fold retains the fixed message.
+    expect(JSON.stringify(errorEvent)).not.toContain('Usage limit');
+    const sessions = await adapter.listSessions();
+    expect(sessions[0].status).toBe('error');
+    // No automatic retry or duplicate dispatch: exactly one prompt ran.
+    expect(processes[0].promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('a classified quota failure does not promote co-reported notification text into the terminal', async () => {
+    const { adapter, errorEvent } = await startFailedQuotaTurn({
+      threadId: 'thread-quota-notify',
+      rejection: new RequestError(-32603, QUOTA_MESSAGE),
+      notifyMessage: 'The monthly usage limit has been reached',
+    });
+    expect(errorEvent).toMatchObject({
+      method: 'runtime.error',
+      code: 'provider-plan-quota-exhausted',
+      message:
+        'The provider plan quota was exhausted; the engine refused the turn.',
+    });
+    expect(JSON.stringify(errorEvent)).not.toContain(
+      'The monthly usage limit has been reached',
+    );
+    await adapter.stopAll();
+  });
+
+  test('an unknown transport-shaped rejection stays generic and carries no quota code', async () => {
+    const { adapter, turn, errorEvent } = await startFailedQuotaTurn({
+      threadId: 'thread-transport',
+      rejection: new Error('ACP connection closed'),
+    });
+    expect(errorEvent).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: turn.turnId,
+      message: 'ACP connection closed',
+    });
+    expect(errorEvent).not.toMatchObject({
+      code: 'provider-plan-quota-exhausted',
+    });
+    expect('code' in errorEvent && errorEvent.code).toBeFalsy();
+    await adapter.stopAll();
+  });
+
+  test('a hostile quota-like rejection with smuggled text stays generic', async () => {
+    const hostile =
+      `${QUOTA_MESSAGE} https://example.invalid/reset?token=[REDACTED] ` +
+      'at /private/var/user-notes/plan.md';
+    const { adapter, errorEvent } = await startFailedQuotaTurn({
+      threadId: 'thread-hostile',
+      rejection: new RequestError(-32603, hostile),
+    });
+    expect(errorEvent).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      message: hostile,
+    });
+    expect('code' in errorEvent && errorEvent.code).toBeFalsy();
+    await adapter.stopAll();
+  });
+
+  test('the conversation stays resumable: an explicit follow-up turn starts cleanly after a quota failure', async () => {
+    const { adapter, processes, iterator } = await startFailedQuotaTurn({
+      threadId: 'thread-quota-resume',
+      rejection: new RequestError(-32603, QUOTA_MESSAGE),
+    });
+    const followUp = await adapter.sendTurn({
+      threadId: 'thread-quota-resume',
+      input: 'try again after the reset',
+    });
+    await nextEvent(iterator, 'turn.started');
+    // The follow-up is the operator's explicit second prompt — nothing
+    // was redispatched automatically between the failure and this call.
+    expect(processes[0].promptContents).toHaveLength(2);
+    processes[0].resolvePrompt('end_turn');
+    const completed = await nextEvent(iterator, 'turn.completed');
+    expect(completed).toMatchObject({
+      method: 'turn.completed',
+      turnId: followUp.turnId,
+    });
     await adapter.stopAll();
   });
 });

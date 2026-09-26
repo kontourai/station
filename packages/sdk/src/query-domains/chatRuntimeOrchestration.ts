@@ -31,8 +31,12 @@ import {
   continueExecutionMessage,
   getConversationContextBoundaryStatus,
 } from '../client/execution';
-import type { ClientRequestOptions } from '../client/http';
-import { authenticatedFetch } from '../client/http';
+import {
+  type ApiRequestScope,
+  authenticatedFetch,
+  type ClientRequestOptions,
+  isApiRequestScope,
+} from '../client/http';
 import {
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
@@ -41,7 +45,12 @@ import {
   type SessionBuilderRunView,
   type SessionFlowRunView,
 } from '../client/orchestration';
-import { type QueryConfig, resolveApiBase, useApiQuery } from '../query-core';
+import {
+  type MutationOptions,
+  type QueryConfig,
+  resolveApiBase,
+  useApiQuery,
+} from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
 import type {
   OrchestrationCommandDispatchResult,
@@ -251,18 +260,102 @@ export function useSessionBuilderRunQuery(
   );
 }
 
-export async function delegateOrchestrationTask(
-  input: DelegateTaskInput & { apiBase?: string },
-): Promise<DelegatedTaskHandle> {
-  const resolvedApiBase = await resolveApiBase(input.apiBase);
-  const { apiBase: _apiBase, ...body } = input;
-  return delegateTaskClient(resolvedApiBase, body);
+/**
+ * One delegation dispatch, bound to the authority its caller captured (#480
+ * review). `apiBase` + `requestScope` are PER-INVOCATION values, frozen by
+ * the caller before the call: an explicit `apiBase` is used verbatim and the
+ * ambient `_getApiBase()` is never consulted for that invocation, and the
+ * scope travels as `ClientRequestOptions` through the transport's
+ * dispatch/body authority guards — never in the public request body, which
+ * stays exactly `DelegateTaskInput`. A Home/credential rotation that lands
+ * across the awaits therefore refuses (`StationRequestAuthorityError`,
+ * nothing sent) instead of dispatching the old intent under new credentials.
+ * React Query re-renders likewise cannot redirect an in-flight invocation:
+ * the mutation function closes over these variables, not hook options.
+ */
+export interface DelegateOrchestrationTaskInvocation {
+  /** Public request body. Scope and functions never belong here. */
+  input: DelegateTaskInput;
+  /** Per-invocation Home address; hook default applies only when omitted. */
+  apiBase?: string;
+  /**
+   * Per-invocation authority snapshot. Only the `apiBase`/`authorityKey`
+   * scalars are retained (copied at the boundary); functions such as
+   * `isCurrent` are transport-local and never cross it.
+   */
+  requestScope?: ApiRequestScope;
 }
 
-export function useDelegateOrchestrationTaskMutation(apiBase?: string) {
+/** Snapshot the scope scalars at the invocation boundary; never functions. */
+function snapshotInvocationScope(
+  scope: ApiRequestScope | undefined,
+): ApiRequestScope | undefined {
+  if (!isApiRequestScope(scope)) return undefined;
+  return { apiBase: scope.apiBase, authorityKey: scope.authorityKey };
+}
+
+export async function delegateOrchestrationTask(
+  input: DelegateTaskInput & { apiBase?: string },
+  opts?: ClientRequestOptions,
+): Promise<DelegatedTaskHandle> {
+  const invocationApiBase = input.apiBase;
+  const resolvedApiBase = await resolveApiBase(invocationApiBase);
+  const { apiBase: _apiBase, ...body } = input;
+  return delegateTaskClient(resolvedApiBase, body, opts);
+}
+
+/**
+ * What `useDelegateOrchestrationTaskMutation`'s mutation function accepts.
+ * The plain `DelegateTaskInput` form is the ORIGINAL published shape
+ * (station-core 0.x, exported from the SDK barrel): it keeps its exact old
+ * behavior — the hook's `apiBase` default and the ambient authority, no
+ * captured scope — so existing consumers are unaffected. Placement callers
+ * (#480) use the explicit per-invocation envelope instead.
+ */
+export type DelegateOrchestrationTaskMutationVariables =
+  | DelegateTaskInput
+  | DelegateOrchestrationTaskInvocation;
+
+function isDelegateOrchestrationTaskInvocation(
+  variables: DelegateOrchestrationTaskMutationVariables,
+): variables is DelegateOrchestrationTaskInvocation {
+  return (
+    typeof variables === 'object' &&
+    variables !== null &&
+    'input' in variables &&
+    typeof (variables as DelegateOrchestrationTaskInvocation).input === 'object'
+  );
+}
+
+export function useDelegateOrchestrationTaskMutation(
+  apiBase?: string,
+  options?: MutationOptions<
+    DelegatedTaskHandle,
+    DelegateOrchestrationTaskMutationVariables
+  >,
+) {
   return useMutation({
-    mutationFn: (input: DelegateTaskInput) =>
-      delegateOrchestrationTask({ ...input, apiBase }),
+    mutationFn: (variables: DelegateOrchestrationTaskMutationVariables) => {
+      // Legacy published shape: the input IS the request body, resolved
+      // against the hook default and ambient authority exactly as before.
+      if (!isDelegateOrchestrationTaskInvocation(variables)) {
+        return delegateOrchestrationTask({ ...variables, apiBase });
+      }
+      const scope = snapshotInvocationScope(variables.requestScope);
+      const invocationApiBase = variables.apiBase ?? apiBase;
+      return delegateOrchestrationTask(
+        {
+          ...variables.input,
+          ...(invocationApiBase === undefined
+            ? {}
+            : { apiBase: invocationApiBase }),
+        },
+        scope ? { requestScope: scope } : undefined,
+      );
+    },
+    onSuccess: (data, variables) => options?.onSuccess?.(data, variables),
+    onError: (error, variables) =>
+      options?.onError?.(error as Error, variables),
   });
 }
 

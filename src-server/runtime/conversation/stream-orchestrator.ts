@@ -13,7 +13,11 @@ import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
+import {
+  isAutoApproved,
+  isIntrinsicStationEngineGrant,
+} from '../tools/tool-executor.js';
 
 /**
  * Create elicitation callback for tool approval
@@ -51,7 +55,13 @@ export function createElicitationCallback(
         ? isAutoApproved(toolMapping.original, autoApprove)
         : false;
 
-      if (isApproved || isApprovedOriginal) {
+      // #2584: the built-in's bounded-write tools, by exact loader identity.
+      const isIntrinsic = isIntrinsicStationEngineGrant(
+        toolName,
+        toolNameMapping as ReadonlyMap<string, MCPToolNameMappingEntry>,
+      );
+
+      if (isApproved || isApprovedOriginal || isIntrinsic) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {
           toolName,
           originalName: toolMapping?.original,

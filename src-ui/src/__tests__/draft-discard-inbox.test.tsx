@@ -373,4 +373,38 @@ describe('#2312 discarding Drafts from the inbox', () => {
       }),
     );
   });
+
+  it('the mobile inbox names a completed parent with reported background work as active', () => {
+    const parent: OrchestrationSessionSummary = {
+      ...WORKED,
+      status: 'ready',
+      lifecycleState: 'completed',
+      hasActiveTurn: false,
+      conversationActivity: {
+        conversationId: WORKED.threadId,
+        // The server names the current execution; only it reads Running.
+        currentThreadId: WORKED.threadId,
+        asOfSequence: 8,
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    };
+    const rows = items([parent]);
+    expect(rows[0]?.lifecycleLabel).toBe('Running');
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={rows}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        now={NOW}
+      />,
+      { wrapper: withQueryClient },
+    );
+    expect(screen.getByText('Background work running')).toBeTruthy();
+  });
 });

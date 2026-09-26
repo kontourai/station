@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const profileStorage = vi.hoisted(() => ({
   hydrate: vi.fn(async () => {}),
   authorizeDefaultProfile: vi.fn(async () => true),
+  authorizeRememberedProfile: vi.fn(async () => true),
   hasSavedProfiles: vi.fn(() => true),
 }));
 

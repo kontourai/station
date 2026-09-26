@@ -48,6 +48,7 @@ import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
 import { sseOps } from '../../telemetry/metrics.js';
+import { UI_NAVIGATE_AUDIENCE_FIELD } from '../projects/ui-commands.js';
 import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 
 export interface EventRouteDeps {
@@ -105,7 +106,14 @@ export interface EventRouteDeps {
     data: unknown,
     c: Context,
   ) => boolean | Promise<boolean>;
-  connectPairedDevice?: (request: Request) => ClientConnectionLease | undefined;
+  /**
+   * Leases this stream's client-session presence for the caller (a paired
+   * device's document, or an operator tab), held until the stream closes
+   * and refreshed by each keepalive write. Absent or undefined: untracked.
+   */
+  connectClientSession?: (
+    request: Request,
+  ) => ClientConnectionLease | undefined;
   isPairedDeviceConnectionCurrent?: (request: Request) => boolean;
   writeSse?: (
     stream: any,
@@ -133,7 +141,7 @@ export function createEventRoutes({
   canReadAnswerNarrativeEvent,
   canReadPluginEvent,
   canReadPluginDraftEvent,
-  connectPairedDevice,
+  connectClientSession,
   isPairedDeviceConnectionCurrent,
   writeSse,
 }: EventRouteDeps) {
@@ -207,7 +215,7 @@ export function createEventRoutes({
       let unsub: (() => void) | undefined;
       let keepAlive: ReturnType<typeof setInterval> | undefined;
       try {
-        clientLease = connectPairedDevice?.(c.req.raw);
+        clientLease = connectClientSession?.(c.req.raw);
         if (c.req.raw.signal.aborted) return;
         // Subscribe before the first frame is written. Response headers therefore
         // cannot become browser-visible until this connection is ready to observe
@@ -269,7 +277,7 @@ export function createEventRoutes({
             return;
           }
           if (isUiNavigateEvent(evt.event)) {
-            if (canRelayUiNavigateEvent(authority)) relay(evt);
+            if (canRelayUiNavigateEvent(authority, evt.data)) relay(evt);
             return;
           }
           if (isAnswerAssessmentEvent(evt.event)) {
@@ -487,9 +495,19 @@ function canRelayApprovalEvent(
  * `authority.mode`, the other from `hostedTenantRegistry` directly. They
  * agree today only because both close over the same `hostedTenantRegistry`
  * in `runtime-routes.ts`.
+ *
+ * #2377 slice B: a navigation a station-control agent asked for carries its
+ * session owner (`audiencePrincipalId`, set by `ui-commands.ts` from the
+ * guard's record, never from the request body) and reaches only that
+ * principal's own connections. One the operator's own client sent carries
+ * none and is delivered as above.
  */
 function canRelayUiNavigateEvent(
   authority: SessionReadAuthority | undefined,
+  data?: Record<string, unknown>,
 ): boolean {
-  return authority !== undefined && !isHostedSessionReadAuthority(authority);
+  if (authority === undefined || isHostedSessionReadAuthority(authority))
+    return false;
+  const audience = data?.[UI_NAVIGATE_AUDIENCE_FIELD];
+  return audience === undefined || audience === authority.userId;
 }

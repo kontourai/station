@@ -14,9 +14,16 @@ import type {
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   canSessionLifecycleStateResume,
+  isSessionLifecycleStateAtRest,
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  formatProviderQuotaEventText,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  PROVIDER_PLAN_QUOTA_MESSAGE,
+  providerQuotaFactsFromDetails,
+} from '../../providers/provider-plan-quota.js';
 
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;
@@ -201,8 +208,13 @@ export function projectSessionLifecycle(options: {
   // contract. What archive#1296 was protecting — a cleanly `completed` (or
   // `canceled`) session pinned "Attention needed" with no way to dismiss —
   // is protected unchanged: neither state can resume.
+  // #2540: `idle` can resume, but a request still open when its turn
+  // FINISHED is exactly the archive#1296 residue — nothing waits on it, and
+  // a new request would arrive inside a new turn (running), not at rest.
   pendingReview =
-    pendingReviewFromLog && canSessionLifecycleStateResume(lifecycleState);
+    pendingReviewFromLog &&
+    lifecycleState !== 'idle' &&
+    canSessionLifecycleStateResume(lifecycleState);
 
   if (
     pendingReview &&
@@ -340,6 +352,36 @@ function projectTerminalAttribution(options: {
   }
 
   if (options.terminalEvent?.method === 'runtime.error') {
+    // #2265: a classified provider-plan quota exhaustion carries its
+    // wait/check/reset guidance in the notice itself, composed ONLY from
+    // re-validated bounded facts. The reset text is provider-reported
+    // civil time with no timezone — repeated verbatim, never computed on.
+    // The kind stays `runtime_error`, so the existing Failed/Stopped
+    // notice surfaces (SessionsView, Home) render it unchanged. A
+    // quota-coded terminal with forged details never falls through to the
+    // generic `message`-echoing copy below — that would surface arbitrary
+    // provider text under a quota classification. It gets this fixed
+    // allowlisted copy instead (see the hostile-message sentinel in the
+    // fold tests). Unrelated errors keep the existing notice byte-for-byte.
+    if (options.terminalEvent.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
+      const quotaFacts = providerQuotaFactsFromDetails(
+        options.terminalEvent.details,
+      );
+      if (quotaFacts) {
+        return {
+          kind: 'runtime_error',
+          detail:
+            `${formatProviderQuotaEventText(quotaFacts)} — wait for the ` +
+            `reset or check the provider plan, then continue explicitly.`,
+        };
+      }
+      return {
+        kind: 'runtime_error',
+        detail:
+          `${PROVIDER_PLAN_QUOTA_MESSAGE} Wait for the reset or check ` +
+          `the provider plan, then continue explicitly.`,
+      };
+    }
     const detail = compactTerminalDetail(
       options.terminalEvent.message,
       'The engine reported an error: ',
@@ -977,7 +1019,10 @@ function deriveLifecycleTransition(
       // whose only way out is an explicit restart. Genuine states (running,
       // completed, failed, ...) still apply from any prior state, so a
       // resumed thread transitions normally.
-      if (to === 'queued' && isSessionLifecycleStateStopped(from)) return null;
+      // #2540: an `idle` session is at rest the same way — bedrock/ollama
+      // publish state-changed -> 'idle' right after turn.completed, and that
+      // attach report must not relabel a finished turn 'queued'.
+      if (to === 'queued' && isSessionLifecycleStateAtRest(from)) return null;
       return {
         from,
         to,
@@ -1017,9 +1062,12 @@ function deriveLifecycleTransition(
           source: 'runtime',
         };
       }
+      // #2540: a finished turn leaves the session at rest and reusable —
+      // the next message runs in THIS session. `completed` (terminal) is the
+      // explicit close, never an ordinary turn's end.
       return {
         from,
-        to: 'completed',
+        to: 'idle',
         reason: isProviderTriggeredTurn(event)
           ? 'provider_turn_completed'
           : 'turn_completed',
@@ -1054,7 +1102,7 @@ function deriveLifecycleTransition(
       // UX audit AW-8 (live), mirroring the `session.exited` guard below.
       if (
         isUnattributedRuntimeError(event) &&
-        isSessionLifecycleStateStopped(from)
+        isSessionLifecycleStateAtRest(from)
       )
         return null;
       return {
@@ -1109,7 +1157,9 @@ function deriveLifecycleTransition(
       // so the crash-mid-turn -> `failed` fold archive#3451 finding 1 added
       // is untouched. Mirrored by `deriveAgentRunStatus`'s
       // `isTerminalAgentRunStatus(status)` guard on the same event.
-      if (isSessionLifecycleStateStopped(from)) return null;
+      // #2540: `idle` too — a finished turn's resident engine exiting (a
+      // restart, an explicit stop, a reap) is not a new outcome for the work.
+      if (isSessionLifecycleStateAtRest(from)) return null;
       // `from === 'failed'` no longer needs its own arm here: the stopped
       // guard above already returned for it (finding M1's case is a strict
       // subset of the general rule).
@@ -1159,6 +1209,7 @@ function lifecycleStateToRuntimeSessionState(
   if (state === 'needs_input') return 'awaiting-approval';
   if (state === 'review_pending') return 'awaiting-approval';
   if (state === 'blocked') return 'errored';
+  if (state === 'idle') return 'idle';
   if (state === 'completed') return 'completed';
   if (state === 'failed') return 'errored';
   if (state === 'canceled') return 'aborted';

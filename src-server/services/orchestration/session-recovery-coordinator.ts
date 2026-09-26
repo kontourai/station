@@ -854,10 +854,13 @@ export class SessionRecoveryCoordinator {
     }[String(metadata.permissionMode)];
     if (claudeMode) return { approvalMode: claudeMode };
     const codexPair = `${String(metadata.approvalPolicy)}:${String(metadata.sandbox)}`;
+    // #2493: `never` is sent as either pair; which one a respawn gets is
+    // the session's confinement stamp, never this mode.
     const codexMode = {
       'untrusted:workspace-write': 'ask',
       'on-request:workspace-write': 'auto',
       'never:danger-full-access': 'never',
+      'never:workspace-write': 'never',
     }[codexPair];
     return codexMode ? { approvalMode: codexMode } : {};
   }

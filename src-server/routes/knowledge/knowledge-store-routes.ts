@@ -45,6 +45,8 @@ import type {
 } from '@kontourai/station-contracts/knowledge-store';
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
+import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
+import { RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR } from '../../knowledge-store/session-backed-roots.js';
 import { expandTilde } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -100,8 +102,11 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   // (`create`/`validateRoot` function references are dropped by this mapping).
   app.get('/adapters', async (c) => {
     try {
+      // The conversation-store adapter backs only the runtime-registered
+      // conversation root; it is not user-selectable (see POST /roots).
       const adapters = deps.store
         .listAdapters()
+        .filter((a) => a.id !== CONVERSATION_STORE_ADAPTER_ID)
         .map((a) => ({ id: a.id, displayName: a.displayName }));
       return c.json({ success: true, data: adapters });
     } catch (e: unknown) {
@@ -130,6 +135,19 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
         return c.json({ success: false, error: 'Invalid adapterId' }, 400);
       }
       const adapterId = body.adapterId;
+      // Only the runtime registers a conversation-store root. Another root
+      // backed by it would be one more per-caller root to protect, created by
+      // a caller who then drives its builds.
+      if (adapterId === CONVERSATION_STORE_ADAPTER_ID) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'The conversation-store adapter backs only the built-in conversation root',
+          },
+          403,
+        );
+      }
       const knownAdapterIds = deps.store.listAdapters().map((a) => a.id);
       if (!knownAdapterIds.includes(adapterId)) {
         return c.json(
@@ -217,6 +235,17 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   app.delete('/roots/:id', async (c) => {
     try {
       const id = c.req.param('id');
+      // The built-in conversation root is registered by Station at boot;
+      // removing it would orphan its per-caller projections (Refs #2656).
+      if (
+        (await deps.store.getRoot(id))?.adapterId ===
+        CONVERSATION_STORE_ADAPTER_ID
+      ) {
+        return c.json(
+          { success: false, error: RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR },
+          403,
+        );
+      }
       await deps.store.removeRoot(id);
       return c.json({ success: true, data: { id } });
     } catch (e: unknown) {

@@ -16,6 +16,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { parseSendRequest } from '../../../../deploy/push-gateway/src/send-request.js';
 import { verifyStationRequest } from '../../../../deploy/push-gateway/src/station-auth.js';
+import { createAgentActivitySessionReader } from '../../../runtime/routes/agent-activity-session-reader.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { buildOrchestrationSessionSummary } from '../../orchestration/orchestration-session-state.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
@@ -28,6 +29,10 @@ import {
   wireAgentActivityPublisher,
 } from '../agent-activity-publisher.js';
 import type { NativePushRegistration } from '../native-push-registration-store.js';
+import {
+  createNativePushSendFloor,
+  type NativePushSendFloor,
+} from '../native-push-send-floor.js';
 import { PushSigningKeyStore } from '../push-signing-key-store.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -142,9 +147,9 @@ function openRequest(
   });
 }
 
-/** Folds sessions exactly as the runtime wiring does. */
-function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
-  const rows = [...sessions].map(([threadId, events]) => {
+/** The read model's session summaries, folded by the real builder. */
+function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
+  return [...sessions].map(([threadId, events]) => {
     const session = {
       provider: 'claude',
       threadId,
@@ -153,20 +158,40 @@ function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
       createdAt: events[0]?.createdAt,
       updatedAt: events.at(-1)?.createdAt,
     } as never;
-    return agentActivityRowFromSummary(
-      buildOrchestrationSessionSummary({
-        loaded: session,
-        persisted: session,
-        events,
-        answerability: { answerable: true } as never,
-      }),
-      (slug) => (slug === 'login-app' ? 'Login App' : undefined),
-    );
+    return buildOrchestrationSessionSummary({
+      loaded: session,
+      persisted: session,
+      events,
+      answerability: { answerable: true } as never,
+    });
   });
+}
+
+/** Folds sessions exactly as the runtime wiring does. */
+function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
+  const rows = readSummaries(sessions).map((summary) =>
+    agentActivityRowFromSummary(summary, (slug) =>
+      slug === 'login-app' ? 'Login App' : undefined,
+    ),
+  );
   return agentActivityRowsWithEntries(
     rows,
     (ids) => new Map(ids.map((id) => [id, sessions.get(id) ?? []])),
   );
+}
+
+/** The runtime's reader (runtime-route-support.ts) over a pairing registry. */
+function pairingReader(
+  pairing: () => DevicePairingService,
+  sessions: Map<string, CanonicalRuntimeEvent[]>,
+) {
+  return createAgentActivitySessionReader({
+    listDevices: () => pairing().listDevices(),
+    listSessionReadModel: async () => readSummaries(sessions),
+    listProjectionEvents: (ids) =>
+      new Map(ids.map((id) => [id, sessions.get(id) ?? []])),
+    projectNames: () => new Map([['login-app', 'Login App']]),
+  });
 }
 
 type GatewayAnswer = number | Error;
@@ -187,6 +212,13 @@ async function harness(
     ) => { principalId: string; sessionIds: string[] } | null;
     /** Principals whose session read throws. */
     failingPrincipals?: Set<string>;
+    /**
+     * Read through the runtime's own reader over this pairing registry, so a
+     * device's stored scope decides whether it may read, as in production.
+     */
+    readerFromPairing?: boolean;
+    /** The floor shared with the Station notification channel (#2588). */
+    sendFloor?: NativePushSendFloor;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-agent-activity-'));
@@ -253,6 +285,8 @@ async function harness(
     devicePairing: pairing,
     signingKey: keys,
     sessionReaderFor: (deviceId) => {
+      if (options.readerFromPairing)
+        return pairingReader(() => pairing, sessions)(deviceId);
       if (!options.principalFor) return { principalId: 'reader', listSessions };
       const reader = options.principalFor(deviceId);
       if (!reader) return null;
@@ -269,6 +303,7 @@ async function harness(
     },
     gateway: GATEWAY,
     logger: { warn },
+    ...(options.sendFloor ? { sendFloor: options.sendFloor } : {}),
     fetchImpl: fetchImpl as unknown as typeof fetch,
     now: () => clock,
     windowMs: 1,
@@ -428,13 +463,24 @@ describe('agent-activity publisher', () => {
       activity_line_0: 'Working\tFix the flaky login test\tLogin App',
       activity_active_count: '1',
       activity_attention_count: '0',
+      // The session a tap opens (#2515), from the read model's thread id and
+      // project slug — sealed, never in the clear routing fields.
+      activity_session_id: 's1',
+      activity_project_slug: 'login-app',
     });
+    expect(JSON.stringify(a?.data)).not.toContain('login-app');
     expect(a?.card.station_kind).toBeUndefined();
     expect(a?.card.device_id).toBeUndefined();
     // Each phone's card is sealed under its own key.
     expect(() => openCard(a?.data.sealed ?? '', second.registration)).toThrow();
     // Redirects are refused, never followed with the token.
     expect(h.fetchInits.every((init) => init.redirect === 'error')).toBe(true);
+    // The card is not collapsible either (#2588): it sends no collapse key,
+    // so it never competes for FCM's four per device.
+    for (const init of h.fetchInits)
+      expect(
+        JSON.parse(Buffer.from(init.body as Buffer).toString('utf8')),
+      ).not.toHaveProperty('collapseKey');
     await h.publisher.stop();
   });
 
@@ -750,6 +796,96 @@ describe('agent-activity publisher', () => {
         String(message).includes('push signing key file is unreadable'),
       ),
     ).toHaveLength(1);
+    await h.publisher.stop();
+  });
+
+  test('a slot a Station notification reserved on the shared floor holds the card back (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification to this phone went out half a second ago and another
+    // holds the slot two and a half seconds from now.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Paced to the slot after the reserved one, not dropped.
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 5500);
+    // And the card's own send is on the floor for the next notification.
+    expect(sendFloor.lastSendAt(deviceId)).toBe(START + 5500);
+    await h.publisher.stop();
+  });
+
+  test('each time a notification slot holds the card back it counts, so the queue yields it a slot (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    // A notification queue keeps taking the phone's slots.
+    sendFloor.record(deviceId, START - 500);
+    expect(sendFloor.reserve(deviceId, START)).toBe(START + 2500);
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    // Held back once (by a notification's slot, not its own card).
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
+    // The queue takes the slot the card was waiting for, too.
+    expect(sendFloor.reserve(deviceId, START + 2500)).toBe(START + 5500);
+    while (h.now() < START + 5500) await h.fireNextTimer();
+    expect(h.fetchImpl).not.toHaveBeenCalled();
+    // Held back twice: the next slot is the card's.
+    expect(sendFloor.takeCardYield(deviceId)).toBe(true);
+    for (let i = 0; i < 5 && h.delivered.length === 0; i += 1)
+      await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.now()).toBe(START + 8500);
+    await h.publisher.stop();
+  });
+
+  test('held back only by its own last card, the card does not count against notifications (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const deferCard = vi.spyOn(sendFloor, 'deferCard');
+    const h = await harness({ sendFloor });
+    await h.pairAndRegister();
+    const events = sessionEvents('s1', 'running', START);
+    h.sessions.set('s1', events);
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // A change inside the card's own interval: held back, not by a notification.
+    h.advance(1000);
+    events.push(openRequest('s1', 'req-A', 'approval', START + 1000));
+    h.emit('request.opened');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.fireNextTimer();
+    expect(h.delivered).toHaveLength(2);
+    expect(deferCard).not.toHaveBeenCalled();
+    await h.publisher.stop();
+  });
+
+  test('a card with nothing left to send clears its hold-backs, so an idle phone is never skipped (#2588)', async () => {
+    const sendFloor = createNativePushSendFloor();
+    const h = await harness({ sendFloor });
+    const { deviceId } = await h.pairAndRegister();
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // Hold-backs counted earlier, for an update that is no longer waiting.
+    sendFloor.deferCard(deviceId);
+    sendFloor.deferCard(deviceId);
+    h.advance(10_000);
+    h.emit('turn.started');
+    await h.settle();
+    // Nothing changed: no card is pending, and the count is gone.
+    expect(h.delivered).toHaveLength(1);
+    expect(sendFloor.takeCardYield(deviceId)).toBe(false);
     await h.publisher.stop();
   });
 
@@ -1261,6 +1397,9 @@ describe('agent-activity publisher', () => {
         },
         clearNativePush: () => {},
         recordNativePushAlerts: () => {},
+        updateNativePushLiveActivity: () => {},
+        recordNativePushCardShown: () => {},
+        onDeviceAccessChanged: () => () => {},
         environmentId: () => ENVIRONMENT_ID,
       },
       signingKey: h.keys,
@@ -1313,6 +1452,9 @@ describe('agent-activity publisher', () => {
         listNativePushRegistrations: () => [],
         clearNativePush: () => {},
         recordNativePushAlerts: () => {},
+        updateNativePushLiveActivity: () => {},
+        recordNativePushCardShown: () => {},
+        onDeviceAccessChanged: () => () => {},
         environmentId: () => ENVIRONMENT_ID,
       },
       signingKey: { read: () => null },
@@ -1328,10 +1470,242 @@ describe('agent-activity publisher', () => {
   });
 });
 
+describe('agent-activity publisher: a device narrowed below read access (#2517)', () => {
+  const READ_ONLY = ['orchestration:read'] as const;
+  const NO_READ = ['inference:invoke'] as const;
+  const operator = { kind: 'presented-credential' } as const;
+
+  function stored(h: Awaited<ReturnType<typeof harness>>, deviceId: string) {
+    return h.pairing
+      .listNativePushRegistrations()
+      .find((entry) => entry.deviceId === deviceId)?.registration;
+  }
+
+  /**
+   * A new process over the same home: nothing in memory, only what is on
+   * disk. Its boot flush is the only thing that runs.
+   */
+  function restart(h: Awaited<ReturnType<typeof harness>>) {
+    const reopened = new DevicePairingService({
+      homeDir: h.homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    const cards: Array<Record<string, string>> = [];
+    const boot: Array<() => void> = [];
+    const publisher = wireAgentActivityPublisher({
+      eventBus: new EventBus(),
+      devicePairing: reopened,
+      signingKey: h.keys,
+      sessionReaderFor: pairingReader(() => reopened, h.sessions),
+      gateway: GATEWAY,
+      logger: { warn: vi.fn() },
+      now: () => h.now() + 10_000,
+      windowMs: 1,
+      setTimer: (fn) => {
+        boot.push(fn);
+        return () => {};
+      },
+      fetchImpl: (async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(Buffer.from(init.body as Buffer)));
+        const registration = [...h.registered.values()].find(
+          (entry) => entry.registrationId === body.data.device_id,
+        );
+        if (!registration) throw new Error('card for an unknown registration');
+        cards.push(openCard(body.data.sealed, registration));
+        return new Response('{}', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    return {
+      reopened,
+      publisher,
+      cards,
+      async boot() {
+        for (const fn of boot.splice(0)) fn();
+        await publisher.drain();
+      },
+    };
+  }
+
+  test('the scope change itself sends the final empty card, with no other event', async () => {
+    const h = await harness({ readerFromPairing: true });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0]?.card.activity_line_0).toBeDefined();
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+
+    h.advance(5000);
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await h.settle();
+    expect(h.delivered).toHaveLength(2);
+    const last = h.delivered[1]?.card;
+    expect(last?.active).toBe('false');
+    expect(last?.activity_line_0).toBeUndefined();
+    expect(last?.activity_active_count).toBe('0');
+    // The phone now shows nothing, and that is durable.
+    expect(stored(h, deviceId)?.cardShown).toBeUndefined();
+
+    // Nothing after that, whatever happens.
+    h.advance(5000);
+    h.emit('turn.completed');
+    await h.settle();
+    expect(h.delivered).toHaveLength(2);
+    await h.publisher.stop();
+  });
+
+  test('a narrowing inside the send interval is paced, not dropped', async () => {
+    const h = await harness({ readerFromPairing: true });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    h.advance(1000);
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await h.settle();
+    // Inside the three-second floor: held back, with a timer for it.
+    expect(h.delivered).toHaveLength(1);
+    await h.fireNextTimer();
+    expect(h.now()).toBe(START + 3000);
+    expect(h.delivered).toHaveLength(2);
+    expect(h.delivered[1]?.card.activity_line_0).toBeUndefined();
+    await h.publisher.stop();
+  });
+
+  test('a restart between the narrowing and its flush still sends the final empty card', async () => {
+    const h = await harness({ readerFromPairing: true });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    // The process goes away before any flush can follow the narrowing.
+    await h.publisher.stop();
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+
+    const first = restart(h);
+    await first.boot();
+    expect(first.cards).toHaveLength(1);
+    expect(first.cards[0]?.active).toBe('false');
+    expect(first.cards[0]?.activity_line_0).toBeUndefined();
+    expect(
+      first.reopened
+        .listNativePushRegistrations()
+        .find((entry) => entry.deviceId === deviceId)?.registration.cardShown,
+    ).toBeUndefined();
+    await first.publisher.stop();
+
+    // Once only: the next process sends it nothing.
+    const second = restart(h);
+    await second.boot();
+    expect(second.cards).toEqual([]);
+    await second.publisher.stop();
+  });
+
+  test('a device that never showed a row is sent no empty card, before or after a restart', async () => {
+    const h = await harness({ readerFromPairing: true });
+    // Registered while nothing was running: it was only ever sent an empty
+    // card.
+    const quiet = await h.pairAndRegister('Quiet');
+    const never = await h.pairAndRegister(
+      'Never',
+      `fcm-token-${'n'.repeat(60)}`,
+    );
+    h.publisher.requestFlush();
+    await h.settle();
+    expect(h.delivered).toHaveLength(2);
+    expect(h.delivered.every((d) => d.card.activity_line_0 === undefined)).toBe(
+      true,
+    );
+    expect(stored(h, quiet.deviceId)?.cardShown).toBeUndefined();
+    await h.publisher.stop();
+    h.pairing.setDeviceScope(quiet.deviceId, [...NO_READ], operator);
+    h.pairing.setDeviceScope(never.deviceId, [...NO_READ], operator);
+
+    const after = restart(h);
+    await after.boot();
+    expect(after.cards).toEqual([]);
+    await after.publisher.stop();
+
+    // In process too: registered, narrowed, and never sent anything.
+    const fresh = await harness({ readerFromPairing: true });
+    fresh.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await fresh.pairAndRegister();
+    fresh.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await fresh.settle();
+    expect(fresh.fetchImpl).not.toHaveBeenCalled();
+    await fresh.publisher.stop();
+  });
+
+  test('only a card the phone accepted changes the persisted bit', async () => {
+    // A refused final empty card: the phone still shows rows.
+    const h = await harness({ readerFromPairing: true, answers: [200, 422] });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.emit('turn.started');
+    await h.settle();
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+    h.advance(5000);
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await h.settle();
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2);
+    expect(h.delivered).toHaveLength(1);
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+    await h.publisher.stop();
+
+    // A refused card with rows: the phone never showed one.
+    const refused = await harness({ readerFromPairing: true, answers: [422] });
+    refused.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const other = await refused.pairAndRegister();
+    refused.emit('turn.started');
+    await refused.settle();
+    expect(refused.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(refused.delivered).toEqual([]);
+    expect(stored(refused, other.deviceId)?.cardShown).toBeUndefined();
+    await refused.publisher.stop();
+  });
+
+  test('widening sends no spurious empty card, and re-widening restores the real card', async () => {
+    const h = await harness({ readerFromPairing: true });
+    h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    const { deviceId } = await h.pairAndRegister();
+    h.pairing.setDeviceScope(deviceId, [...READ_ONLY], operator);
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0]?.card.activity_line_0).toBeDefined();
+
+    // Widened while it could already read: the card is unchanged, not re-sent.
+    h.advance(5000);
+    h.pairing.setDeviceScope(
+      deviceId,
+      [...READ_ONLY, 'inference:invoke'],
+      operator,
+    );
+    await h.settle();
+    expect(h.delivered).toHaveLength(1);
+
+    // Narrowed, then given read back: the second send is the real card.
+    h.pairing.setDeviceScope(deviceId, [...NO_READ], operator);
+    await h.settle();
+    expect(h.delivered).toHaveLength(2);
+    h.advance(5000);
+    h.pairing.setDeviceScope(deviceId, [...READ_ONLY], operator);
+    await h.settle();
+    expect(h.delivered).toHaveLength(3);
+    expect(h.delivered[2]?.card.activity_line_0).toBeDefined();
+    expect(h.delivered[2]?.card.active).toBe('true');
+    expect(stored(h, deviceId)?.cardShown).toBe(true);
+    await h.publisher.stop();
+  });
+});
+
 describe('resolvePushGatewayConfig', () => {
   test('defaults to the Kontour gateway', () => {
     expect(resolvePushGatewayConfig({})).toEqual({
       sendUrl: 'https://push.kontourai.io/v1/fcm/send',
+      liveActivityUrl: 'https://push.kontourai.io/v1/apns/live-activity',
+      channelsUrl: 'https://push.kontourai.io/v1/apns/channels',
       audience: 'https://push.kontourai.io',
     });
   });
@@ -1343,6 +1717,8 @@ describe('resolvePushGatewayConfig', () => {
       }),
     ).toEqual({
       sendUrl: 'https://push.example.test/v1/fcm/send',
+      liveActivityUrl: 'https://push.example.test/v1/apns/live-activity',
+      channelsUrl: 'https://push.example.test/v1/apns/channels',
       audience: 'https://push.example.test',
     });
   });

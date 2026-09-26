@@ -49,11 +49,18 @@ import type {
   IEmbeddingProvider,
   KnowledgeIndexProvider,
 } from '@kontourai/station-contracts/knowledge-index';
-import type { KnowledgeStoreProvider } from '@kontourai/station-contracts/knowledge-store';
+import type {
+  KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
+} from '@kontourai/station-contracts/knowledge-store';
 import { Hono } from 'hono';
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
+import {
+  knowledgeRootReadKind,
+  SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
+} from '../../knowledge-store/session-backed-roots.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
@@ -65,6 +72,29 @@ interface KnowledgeIndexRouteDeps {
   dataDir: string;
   /** Resolved fresh on every request — see module doc. */
   getEmbedder: () => IEmbeddingProvider | null;
+  /**
+   * Runs index building (rebuild, migration) as the Station's own background
+   * reader, never as the caller. The index is shared: rebuilding a
+   * session-backed root as a caller who reads only part of it would drop
+   * everyone else's hits. Every search re-reads each hit as its own caller.
+   * Defaults to running as-is.
+   */
+  runAsIndexer?: <T>(build: () => Promise<T>) => Promise<T>;
+  /**
+   * Whether this request may build a session-backed (conversation-store)
+   * root's index: only the local operator. Absent, no request may. Other
+   * roots are unaffected.
+   */
+  mayBuildSessionBackedRoot?: (request: Request) => boolean;
+  /**
+   * #2377 slice B: whether this request may see a search hit from `root`,
+   * decided BEFORE the record is read (a hit carries its title and excerpt).
+   * The index is Station-wide; a conversation-backed root re-reads each
+   * record as the caller, but a Project or personal root's records are not
+   * per-caller, so a station-control agent needs its session owner's access
+   * to the root's scope. Absent: every root passes, as before.
+   */
+  mayReadHitRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
 }
 
 interface RebuildRootReport {
@@ -128,6 +158,8 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
   // Drops and re-derives the index partition for each targeted root via
   // `indexProvider.rebuildRoot`, which walks the K2 store's records from scratch —
   // never a read from anything the index itself already holds.
+  const runAsIndexer =
+    deps.runAsIndexer ?? (<T>(build: () => Promise<T>) => build());
   app.post('/index/rebuild', async (c) => {
     try {
       const embedder = deps.getEmbedder();
@@ -149,13 +181,33 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         ? [requestedRootId]
         : (await deps.store.listRoots()).map((root) => root.id);
 
+      // Operator-only for a session-backed root, refused before any rebuild:
+      // a partial rebuild (or its record counts) is itself a disclosure.
+      if (!(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false)) {
+        for (const rootId of rootIds) {
+          // An unregistered root (or one whose adapter is gone) fails in
+          // `rebuildRoot`'s first step, before its partition is touched.
+          if (
+            (await knowledgeRootReadKind(deps.store, rootId)) ===
+            'session-backed'
+          ) {
+            return c.json(
+              { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+              403,
+            );
+          }
+        }
+      }
+
       const roots: RebuildRootReport[] = [];
       for (const rootId of rootIds) {
         try {
-          const result = await deps.indexProvider.rebuildRoot(rootId, {
-            store: deps.store,
-            embedder,
-          });
+          const result = await runAsIndexer(() =>
+            deps.indexProvider.rebuildRoot(rootId, {
+              store: deps.store,
+              embedder,
+            }),
+          );
           roots.push({
             rootId,
             status: 'ok',
@@ -260,7 +312,18 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>
       >();
       const results: KnowledgeSearchResult[] = [];
+      const rootReadable = new Map<string, boolean>();
       for (const hit of hits) {
+        if (deps.mayReadHitRoot) {
+          let readable = rootReadable.get(hit.rootId);
+          if (readable === undefined) {
+            const root = await deps.store.getRoot(hit.rootId);
+            // An unregistered root decides nothing: fail closed.
+            readable = !!root && deps.mayReadHitRoot(c.req.raw, root);
+            rootReadable.set(hit.rootId, readable);
+          }
+          if (!readable) continue;
+        }
         let adapter = resolvedAdapters.get(hit.rootId);
         if (!adapter) {
           try {
@@ -315,6 +378,9 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           ? body.projectSlug
           : undefined;
 
+      // Migration only ever builds the kit-default-store roots it creates
+      // for pre-index namespaces (`ensureMigrationRoot`), never a
+      // session-backed root, so it runs as the caller, not the indexer.
       const result = await migratePreIndexKnowledge(
         {
           dataDir: deps.dataDir,

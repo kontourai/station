@@ -15,18 +15,18 @@
  * for formatting: seconds for whoever wrote it, a whole gate cycle for whoever
  * finds it.
  *
- * This is the same shape #3208 applied to the UI-contract ratchets, and #3033
- * to the entry-bundle ceiling: run the invariant that already exists at the
- * moment the change is still the author's problem.
+ * This is the same shape #3208 applied to the UI-contract ratchets (and #3033
+ * once applied to the entry-bundle ceiling, until #1703 left that to CI): run
+ * the invariant that already exists at the moment the change is still the
+ * author's problem.
  *
  * Scope is deliberately narrow. The barrel can only break when the SDK's own
  * sources change, so a push that touches nothing under `packages/sdk/src/`
  * skips — which is most pushes.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { resolveRef } from './lib/git-ref.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -173,4 +173,4 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

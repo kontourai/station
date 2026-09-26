@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +25,9 @@ const fingerprint = (digest: string) => ({
   startToken: 'Mon Jul 13 10:00:00 2026',
   commandDigest: digest.repeat(64),
 });
+
+const createHashHex = (value: string) =>
+  createHash('sha256').update(value).digest('hex');
 
 describe('inspectProcessFingerprint (station#3049)', () => {
   const psOptions = (exec: ReturnType<typeof vi.fn>) =>
@@ -95,9 +99,14 @@ describe('inspectProcessFingerprint (station#3049)', () => {
 });
 
 describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
-  const psCommand = vi.fn(
-    (_file: string, _args: string[]) => '/usr/bin/node dist-server/main.js\n',
-  );
+  // `ps` without a command column: the fallback this block exercises. Each
+  // call injects it, so no case depends on what the host's own `ps` prints.
+  const noPsCommand = vi.fn(() => '\n');
+  const readCmdline = (command: string) =>
+    vi.fn((path: string) => {
+      if (path !== '/proc/41/cmdline') throw new Error(`unexpected: ${path}`);
+      return `${command}\u0000`;
+    });
 
   it('takes the start token from the /proc birth, never from lstart', () => {
     // The defect: under WSL2 `ps -o lstart=` for one live process walks
@@ -105,26 +114,59 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
     // so a token recorded at start mismatched at stop. The /proc birth
     // (field 22 + boot id) does not move; lstart must not be consulted.
     const birth = vi.fn(() => 'linux:boot-id:68452148');
+    const readFile = readCmdline('/usr/bin/node\u0000dist-server/main.js');
     const first = inspectProcessFingerprint(41, {
-      exec: psCommand as never,
       platform: 'linux',
+      exec: noPsCommand as never,
       birth,
+      readFile: readFile as never,
     });
     expect(first).toEqual({
       pid: 41,
       startToken: 'linux:boot-id:68452148',
       commandDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
-    const psArgs = psCommand.mock.calls.map((call) => call[1]);
-    expect(psArgs).toEqual([['-o', 'command=', '-p', '41']]);
+    expect(readFile).toHaveBeenCalledWith('/proc/41/cmdline', 'utf8');
+  });
+
+  it('falls back to /proc/<pid>/cmdline when `ps` prints no command (#2332 item 2)', () => {
+    // Some embedded/busybox `ps` builds have no `command=` column and print
+    // an empty line for it, which previously made this probe return null
+    // for a LIVE process. Reading /proc directly has no `ps` dependency on
+    // Linux at all, so no ps mock is even wired into this test.
+    const readFile = readCmdline('/usr/bin/node\u0000--flag');
+    const result = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      exec: noPsCommand as never,
+      birth: () => 'linux:boot-id:1',
+      readFile: readFile as never,
+    });
+    expect(result?.commandDigest).toBe(createHashHex('/usr/bin/node --flag'));
+  });
+
+  it('fails closed when /proc/<pid>/cmdline cannot be read', () => {
+    // Unreadable /proc (permissions, an already-reaped pid, or a container
+    // boundary): the caller must NOT read this as a resolved digest.
+    const readFile = vi.fn(() => {
+      throw new Error('ENOENT');
+    });
+    expect(
+      inspectProcessFingerprint(41, {
+        platform: 'linux',
+        exec: noPsCommand as never,
+        birth: () => 'linux:boot-id:1',
+        readFile: readFile as never,
+      }),
+    ).toBeNull();
   });
 
   it('fails closed when the pid is reused between the birth and command reads', () => {
     const births = ['linux:boot-id:100', 'linux:boot-id:200'];
     expect(
       inspectProcessFingerprint(41, {
-        exec: psCommand as never,
         platform: 'linux',
+        exec: noPsCommand as never,
+        readFile: readCmdline('/usr/bin/node') as never,
         birth: () => births.shift() ?? null,
       }),
     ).toBeNull();
@@ -133,11 +175,33 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
   it('fails closed when the process has no birth record', () => {
     expect(
       inspectProcessFingerprint(41, {
-        exec: psCommand as never,
         platform: 'linux',
+        exec: noPsCommand as never,
+        readFile: readCmdline('/usr/bin/node') as never,
         birth: () => null,
       }),
     ).toBeNull();
+  });
+  it('takes the command from `ps` when it prints one, so digests match records from earlier CLIs', () => {
+    const readFile = vi.fn(() => {
+      throw new Error('/proc must not be read when ps answered');
+    });
+    const exec = vi.fn(() => '/usr/bin/node dist-server/main.js\n');
+    const fromPs = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      exec: exec as never,
+      birth: () => 'linux:boot-id:1',
+      readFile: readFile as never,
+    });
+    const fromProc = inspectProcessFingerprint(41, {
+      platform: 'linux',
+      exec: noPsCommand as never,
+      birth: () => 'linux:boot-id:1',
+      readFile: readCmdline('/usr/bin/node\u0000dist-server/main.js') as never,
+    });
+    expect(readFile).not.toHaveBeenCalled();
+    // Same argv through either source gives the same digest.
+    expect(fromPs?.commandDigest).toBe(fromProc?.commandDigest);
   });
 });
 
@@ -228,6 +292,57 @@ describe('fingerprintMatchesRecorded (station#3049)', () => {
     expect(
       fingerprintMatchesRecorded({ ...recorded }, null, { legacyInspect }),
     ).toBe(false);
+  });
+
+  it('refuses a legacy Linux record when the pinned lstart token matches but the command differs (#2332 item 4a)', () => {
+    // The pinned-lstart migration path bridges a lstart-shaped record to a
+    // live /proc-observed process — it must never become a way to skip
+    // identity. A matching lstart token from a DIFFERENT command (e.g. a
+    // pid recycled within the same second, station#1863 M5) must still be
+    // refused; `sameProcessFingerprint`'s digest field is what does that
+    // work, and this proves the caller actually reaches it.
+    const lstartRecord = { ...recorded };
+    const procObservation = { ...recorded, startToken: 'linux:boot:123' };
+    const pinnedLstartInspect = vi.fn(() => ({
+      ...recorded,
+      commandDigest: 'e'.repeat(64),
+    }));
+    const legacyInspect = vi.fn(() => null);
+    expect(
+      fingerprintMatchesRecorded(procObservation, lstartRecord, {
+        pinnedLstartInspect,
+        legacyInspect,
+      }),
+    ).toBe(false);
+    expect(pinnedLstartInspect).toHaveBeenCalledWith(41);
+  });
+
+  describe('default pinnedLstartInspect wiring (#2332 item 4b)', () => {
+    afterEach(async () => {
+      await reapAllLongRunningFixtureChildren();
+    });
+
+    it('resolves a Linux migration match through the real, unmocked lstart probe', async () => {
+      // No `pinnedLstartInspect` override is passed below: the default
+      // (`inspectLstartProcessFingerprint`, which shells out to the real
+      // `ps`) must be the one this call actually reaches. A REAL live
+      // child process stands in for the daemon so the probe has something
+      // genuine to observe, rather than asserting only that a mock got
+      // wired to the right parameter name.
+      const proc = await spawnLongRunningFixtureChild();
+      const pid = proc.pid!;
+      // The real lstart-based observation of this live process, captured
+      // through the exact same (unmocked) code the default dependency
+      // resolves to.
+      const expected = inspectProcessFingerprint(pid, { platform: 'darwin' });
+      expect(expected).not.toBeNull();
+      // A synthetic Linux birth-token OBSERVATION of the very same pid —
+      // the shape that only ever arises post-#2325 on Linux and is exactly
+      // what routes `fingerprintMatchesRecorded` into the pinned-lstart
+      // migration branch.
+      const actual = { ...expected!, startToken: 'linux:boot-id:123' };
+      expect(fingerprintMatchesRecorded(actual, expected)).toBe(true);
+    });
   });
 });
 

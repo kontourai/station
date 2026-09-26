@@ -12,8 +12,7 @@ const TOOL_LABEL = {
 /**
  * Running / required / installed versions of the managed device tools
  * (#1970), fetched only when opened. The check is read-only on the server:
- * it starts and installs nothing. Adapted from t3code's
- * `DeviceToolVersions.tsx` (MIT, © 2026 T3 Tools Inc.).
+ * it starts and installs nothing.
  */
 export function DeviceToolVersions({
   requestScope,

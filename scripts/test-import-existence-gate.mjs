@@ -32,8 +32,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // `process.cwd()`, not a path relative to this script file — matches
 // `git ls-files`'s own working-directory semantics and lets the gate be
@@ -259,15 +259,10 @@ function main() {
   process.exit(0);
 }
 
-// Not a raw `import.meta.url === \`file://${process.argv[1]}\`` string
-// compare: `import.meta.url` percent-encodes characters like spaces while
-// `process.argv[1]` is the literal invocation path, so that comparison
-// silently mismatches (no-op — no output, exit 0, findings never checked)
-// whenever the script is invoked from or through a path containing a space.
-// `resolve()`/`fileURLToPath()` normalize both sides to plain filesystem
-// paths first (the same idiom used by
-// scripts/backlog-priority-policy.mjs and
-// scripts/check-prepush-static-gates.mjs).
-if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+// Not a raw string compare against `process.argv[1]`: `import.meta.url` is
+// percent-encoded and realpathed while argv is the literal invocation path, so
+// that comparison silently mismatches (no output, exit 0, findings never
+// checked) from a path containing a space or through a symlink.
+if (invokedDirectly(import.meta.url)) {
   main();
 }

@@ -39,8 +39,9 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
-  isSessionLifecycleStateStopped,
+  isSessionLifecycleStateAtRest,
   isSessionTransitionReason,
+  sessionLifecycleOutcome,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type SessionReadAuthority,
@@ -61,7 +62,15 @@ import {
   listOrchestrationSessions,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
+import {
+  formatProviderQuotaEventText,
+  formatProviderQuotaReasonDetail,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  providerQuotaFactsFromDetails,
+} from '../providers/provider-plan-quota.js';
+import { verifyDelegationContextAttestation } from '../runtime/agents/delegation-attestation.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
   createConversationHandoffIntent,
   executeForegroundMessage as executeResolvedForegroundMessage,
@@ -221,9 +230,19 @@ export interface DelegateTaskInput {
   sessionId?: string;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
+  delegationAttestation?: string;
+  /** #2601: see `AuthorityBearingForegroundMessageInput.stationControlToolCall`. */
+  stationControlToolCall?: true;
   userId?: string;
   /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
   ownerAttribution?: StartOwnerAttribution;
+  /**
+   * #2493: route-set only, like `ownerAttribution`: the request's proof that
+   * the session this starts may run `host`. Absent (the agent tool, every
+   * in-process caller) starts it confined to its workspace.
+   */
+  fullAccessGrant?: FullAccessGrant | null;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -300,6 +319,19 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
    * Server-only; scoped to the executing thread in the closures below.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #2601: Station's own engine's attestation for `delegation`
+   * (`delegation-attestation.ts`). Forwarded only to THIS Station's route,
+   * which verifies it; another Station holds a different key.
+   */
+  delegationAttestation?: string;
+  /**
+   * #2601: set only by the station-control tools themselves. Their
+   * `delegation` is a model's claim, settled by `delegationToForward` before
+   * any forward; a Station route's own call already carries the context its
+   * `resolveRequestDelegation` settled, and forwards it as it is.
+   */
+  stationControlToolCall?: true;
 };
 
 /**
@@ -467,6 +499,8 @@ export interface ContinueDelegatedTaskInput
    * owner attribution as a fresh delegation (session-owner-attribution.ts).
    */
   ownerAttribution?: StartOwnerAttribution;
+  /** #2493: route-set only; see `DelegateTaskInput.fullAccessGrant`. */
+  fullAccessGrant?: FullAccessGrant | null;
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -542,6 +576,15 @@ export interface DelegatedTaskEvent {
   trigger?: 'provider';
   text?: string;
   truncated?: true;
+  /**
+   * #2265: bounded provider-plan quota facts, present only on a classified
+   * `provider-plan-quota-exhausted` runtime event whose details re-validate.
+   * `resetReported` is provider-reported civil text with no timezone —
+   * display only, never a countdown source.
+   */
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
   toolName?: string;
   status?: string;
   requestId?: string;
@@ -777,14 +820,24 @@ export interface DelegatedTurnSupervision {
 
 /**
  * #2269: a typed, safe reason for a delegated task's current outcome. The
- * `code` is an allowlisted value (a known per-turn budget code or a
- * `TerminalAttribution` kind); `detail`, when present, is host-synthesized
- * fixed text — never a forwarded attribution detail, event message, or
- * provider log. Unknown errors carry a bare generic code with no detail.
+ * `code` is an allowlisted value (a known per-turn budget code, the #2265
+ * provider-plan quota code, or a `TerminalAttribution` kind); `detail`,
+ * when present, is host-synthesized fixed text — never a forwarded
+ * attribution detail, event message, or provider log. Unknown errors carry
+ * a bare generic code with no detail.
+ *
+ * #2265: a quota reason additionally carries the bounded validated facts
+ * re-derived from the terminal event's details — the plan window, the
+ * provider-reported (timezone-less) reset text, and a qualified
+ * retry-after only when one was genuinely supplied. All three are optional
+ * validated scalars; forged or malformed values are dropped, never relayed.
  */
 export interface DelegatedTaskReason {
   code: string;
   detail?: string;
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
 }
 
 /** Upper bound accepted for forwarded supervision limits (24 h; mirrors the muse adapter cap). */
@@ -1001,7 +1054,11 @@ export function delegatedTaskReason(
 ): DelegatedTaskReason | undefined {
   // A clean success carries no reason: an older turn's budget code must
   // never label it (root review 00:40 — observable wrong status, not style).
-  if (session.lifecycleState === 'completed') return undefined;
+  if (
+    isSessionLifecycleState(session.lifecycleState) &&
+    sessionLifecycleOutcome(session.lifecycleState) === 'completed'
+  )
+    return undefined;
   const reversed = [...events].reverse();
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
@@ -1017,24 +1074,44 @@ export function delegatedTaskReason(
     terminal.code
       ? (terminal.code as string)
       : undefined;
+  // Scope a terminal code to the latest turn: an error from a superseded
+  // turn (older than the newest turn.started, different turn id) is
+  // history, not the current outcome. When the start event aged out of the
+  // window there is nothing to scope against, so the newest terminal stands
+  // on its own (honest bounded behavior, documented on
+  // `delegatedTurnSupervision`). A successful continuation or a newer
+  // failure therefore never revives a previous turn's reason.
+  const newestStartTurnId = reversed.find(
+    (event) => event.method === 'turn.started',
+  )?.turnId;
+  const terminalScopedToLatestTurn =
+    typeof newestStartTurnId !== 'string' ||
+    typeof terminal.turnId !== 'string' ||
+    newestStartTurnId === terminal.turnId;
   if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
-    // Scope the budget code to the latest turn: a budget error from a
-    // superseded turn (older than the newest turn.started, different turn
-    // id) is history, not the current outcome. When the start event aged
-    // out of the window there is nothing to scope against, so the newest
-    // terminal stands on its own (honest bounded behavior, documented on
-    // `delegatedTurnSupervision`).
-    const newestStartTurnId = reversed.find(
-      (event) => event.method === 'turn.started',
-    )?.turnId;
-    if (
-      typeof newestStartTurnId === 'string' &&
-      typeof terminal.turnId === 'string' &&
-      newestStartTurnId !== terminal.turnId
-    ) {
-      return undefined;
-    }
+    if (!terminalScopedToLatestTurn) return undefined;
     return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
+  }
+  // #2265: a classified provider-plan quota exhaustion keeps its own
+  // allowlisted code — distinct from Station's per-turn idle/total
+  // supervision budgets above and from generic transport errors below.
+  // The detail is host-synthesized fixed guidance (wait/check, then
+  // continue explicitly — never an automatic retry, model/provider switch,
+  // or paid fallback); the bounded facts are re-validated off the
+  // terminal event's details, never forwarded as-is.
+  if (terminalCode === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
+    if (!terminalScopedToLatestTurn) return undefined;
+    const facts = providerQuotaFactsFromDetails(terminal.details);
+    if (!facts) return { code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE };
+    return {
+      code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+      detail: formatProviderQuotaReasonDetail(facts),
+      quotaWindow: facts.quotaWindow,
+      resetReported: facts.resetReported,
+      ...(facts.retryAfterMs !== undefined
+        ? { retryAfterMs: facts.retryAfterMs }
+        : {}),
+    };
   }
   const attribution =
     session.terminalAttribution &&
@@ -1182,6 +1259,69 @@ function currentControlApiBase(): string {
   return resolveControlApiBase();
 }
 
+/** #2601: this Station's derivation for the calling tool's verified caller. */
+const CALLER_DELEGATION_PATH =
+  '/api/orchestration/station-control/caller/delegation';
+
+type ForwardedDelegation = {
+  delegation?: AgentDelegationContext;
+  delegationAttestation?: string;
+};
+
+/**
+ * #2601: the delegation context a station-control tool call forwards.
+ *
+ * To THIS Station an attested claim goes with its attestation, and nothing
+ * else: its route derives the context from the verified caller, or keeps an
+ * attested one.
+ * To a saved Environment (peer or SSH Station) that route is bypassed, so
+ * the context is settled here first:
+ *  - a verified caller forwards the context THIS Station derives for it
+ *    (the same derivation), and a caller at its depth limit is refused
+ *    before anything is sent;
+ *  - otherwise a context Station's own engine attested is forwarded (the
+ *    attestation itself is not: another Station holds another key);
+ *  - otherwise the pre-#2601 behaviour stands, and it is a claim: a
+ *    `send_message` forwards whatever context it was given, and a
+ *    `delegate_task` forwards none. Only an unverified, unattested
+ *    station-control connection reaches this branch.
+ */
+async function delegationToForward(
+  target: DelegationTarget,
+  input: ForwardedDelegation,
+  unverifiedForwardsClaim: boolean,
+): Promise<ForwardedDelegation> {
+  if (target.kind === 'current')
+    // Only an attested claim can matter to this Station's route (it derives
+    // or drops every other one), so an unattested one is not sent: a
+    // malformed model claim must not fail the call's validation.
+    return input.delegation && input.delegationAttestation
+      ? {
+          delegation: input.delegation,
+          delegationAttestation: input.delegationAttestation,
+        }
+      : {};
+  const derived = await readJson<{
+    delegation?: AgentDelegationContext | null;
+  }>(
+    `${currentControlApiBase()}${CALLER_DELEGATION_PATH}`,
+    trustedRequest(),
+    'Station could not derive this delegation from the calling session',
+  );
+  if (derived.delegation) return { delegation: derived.delegation };
+  if (
+    input.delegation &&
+    verifyDelegationContextAttestation(
+      input.delegation,
+      input.delegationAttestation,
+    )
+  )
+    return { delegation: input.delegation };
+  return unverifiedForwardsClaim && input.delegation
+    ? { delegation: input.delegation }
+    : {};
+}
+
 /**
  * Local delegation reads are externally initiated even when the selected
  * environment is this process.  Personal mode retains its established
@@ -1234,12 +1374,16 @@ function dispatchContextForAuthority(
   // The service stamps it on the new session (`prepareStart`), the one
   // place every start passes.
   ownerAttribution?: StartOwnerAttribution,
+  // #2493: the route's full-access grant for a start this dispatch causes.
+  // `prepareStart` reads it (`startConfinement`); absent confines the start.
+  fullAccessGrant?: FullAccessGrant | null,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
+  fullAccessGrant?: FullAccessGrant;
 } {
   return {
     userId: authority.userId,
@@ -1249,6 +1393,7 @@ function dispatchContextForAuthority(
     ...(clientOrigin ? { clientOrigin } : {}),
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
+    ...(fullAccessGrant ? { fullAccessGrant } : {}),
   };
 }
 
@@ -2758,6 +2903,9 @@ function taskStatus(
   session: Record<string, unknown>,
 ): DelegatedTaskSnapshot['status'] {
   const lifecycle = session.lifecycleState;
+  // #2540: a delegated session whose turn finished is at rest and reusable;
+  // to the delegator the task is done.
+  if (lifecycle === 'idle') return 'completed';
   if (
     lifecycle === 'queued' ||
     lifecycle === 'running' ||
@@ -2899,7 +3047,7 @@ function conversationCanAcceptFollowUp(
   // made only for a state the contract recognizes.
   return (
     isSessionLifecycleState(status) &&
-    (status === 'queued' || isSessionLifecycleStateStopped(status))
+    (status === 'queued' || isSessionLifecycleStateAtRest(status))
   );
 }
 
@@ -3201,7 +3349,33 @@ export function projectDelegatedTaskEvent(
           ? { requestId: optionalString(event.requestId) }
           : {}),
       };
-    case 'runtime.error':
+    case 'runtime.error': {
+      // #2265: a classified provider-plan quota exhaustion projects fixed
+      // actionable copy plus re-validated bounded facts instead of the
+      // generic line. Anything else — unknown codes, forged details, raw
+      // text — stays the redacted generic.
+      if (
+        typeof event.code === 'string' &&
+        event.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE
+      ) {
+        const facts = providerQuotaFactsFromDetails(event.details);
+        if (facts) {
+          return {
+            ...common,
+            kind: 'runtime',
+            severity: 'error',
+            text: formatProviderQuotaEventText(facts),
+            quotaWindow: facts.quotaWindow,
+            resetReported: facts.resetReported,
+            ...(facts.retryAfterMs !== undefined
+              ? { retryAfterMs: facts.retryAfterMs }
+              : {}),
+            ...(typeof event.retriable === 'boolean'
+              ? { retriable: event.retriable }
+              : {}),
+          };
+        }
+      }
       return {
         ...common,
         kind: 'runtime',
@@ -3211,6 +3385,7 @@ export function projectDelegatedTaskEvent(
           ? { retriable: event.retriable }
           : {}),
       };
+    }
     case 'runtime.warning':
       return {
         ...common,
@@ -3741,7 +3916,7 @@ export async function refreshPeerDelegationActivity(
       (session) =>
         session.delegation?.environmentKind === 'peer' &&
         session.delegation.environmentId &&
-        !isSessionLifecycleStateStopped(session.lifecycleState ?? 'queued'),
+        !isSessionLifecycleStateAtRest(session.lifecycleState ?? 'queued'),
     )
     .slice(-20);
   await Promise.allSettled(
@@ -3852,6 +4027,9 @@ export async function continueDelegatedTask(
       userId: readAuthority.userId,
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
+        : {}),
+      ...(input.fullAccessGrant
+        ? { fullAccessGrant: input.fullAccessGrant }
         : {}),
       // The fresh admission rides to the adapter start/sendTurn
       // effects; ordinary follow-ups carry none.
@@ -4197,6 +4375,13 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
+    // #2601: settled before the authority recheck below, so no await sits
+    // between that recheck and the forward.
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, false)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
     // Target discovery and capability probes awaited above. Recheck the
     // sending request before its stored peer credential can cause an effect.
     // postCanonical reaches fetch without another asynchronous preparation.
@@ -4220,6 +4405,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
             // #485: the opt-in correlation rides the portable forward body
             // ONLY (validated at both seams; the receiver re-derives its
             // claim key from its OWN verified view of the caller grant).
@@ -4236,6 +4422,7 @@ export async function delegateTask(
             prompt: input.prompt,
             target: { ...pinnedTarget, environment: { kind: 'current' } },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...forwarded,
           },
           'The selected Station could not start the delegated task',
         );
@@ -4758,6 +4945,7 @@ export async function delegateTask(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           conversationIdentity: {
@@ -5020,20 +5208,54 @@ export async function executeExecutionTargetMessage(
         'Current-host staged attachments cannot be sent to another Station.',
       );
     }
+    // #480 scope correction: the FOREGROUND path has no portable identity
+    // or receiver-offer admission. A non-portable Project workspace
+    // (`kind: 'project'`, sender-local slug) resolved onto a PEER would
+    // execute an unrelated same-slug Project there — refused BEFORE
+    // `postForegroundMessage`, so there is no remote POST and no provider
+    // effect. This covers both the ProjectSettings thread default (a saved
+    // peer default resolved by `projectDefaultEnvironment`) and explicit
+    // peer+Project callers. Verified SSH Project forwarding keeps its
+    // explicit `pinSshDispatchWorkspace` contract, and peer foreground
+    // WITHOUT a Project workspace keeps its prior contract.
+    if (
+      selectedTarget.kind === 'peer' &&
+      input.target.workspace?.kind === 'project'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_not_offered,
+      );
+    }
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
       input.target,
     );
-    const { automaticBackground: _automaticBackground, ...remoteInput } = input;
+    // #2493: a grant is this Station's proof about this request; the peer
+    // derives its own from the credential that reaches it.
+    const {
+      automaticBackground: _automaticBackground,
+      fullAccessGrant: _fullAccessGrant,
+      delegation: _claimedDelegation,
+      delegationAttestation: _claimedAttestation,
+      stationControlToolCall: _stationControlToolCall,
+      ...remoteInput
+    } = input;
+    const forwarded = input.stationControlToolCall
+      ? await delegationToForward(selectedTarget, input, true)
+      : input.delegation
+        ? { delegation: input.delegation }
+        : {};
     return postForegroundMessage(
       selectedTarget,
-      input.delegation
+      forwarded.delegation
         ? '/api/orchestration/chat/delegated'
         : input.automaticBackground
           ? '/api/orchestration/chat/background'
           : '/api/orchestration/chat',
       {
         ...remoteInput,
+        ...forwarded,
         target: {
           ...pinnedTarget,
           environment: { kind: 'current' },
@@ -5213,7 +5435,11 @@ export async function executeExecutionTargetMessage(
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
-      requested: { provider: EngineId; connectionId?: string },
+      requested: {
+        provider: EngineId;
+        connectionId?: string;
+        modelOverride?: string;
+      },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
       // lightweight compatibility doubles (and an older remote Station
@@ -5370,6 +5596,7 @@ export async function executeExecutionTargetMessage(
           input.clientOrigin,
           input.principal,
           input.ownerAttribution,
+          input.fullAccessGrant,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),

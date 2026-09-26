@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { parseInternalTestFlightAuthorityRef } from './ios-testflight-internal-authority.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 export function verifyIosTestFlightAuthority({
@@ -33,10 +32,7 @@ function value(args, name) {
   const at = args.indexOf(`--${name}`);
   return at < 0 ? undefined : args[at + 1];
 }
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const sourceRef = value(process.argv, 'source-ref');
   const sourceSha = value(process.argv, 'source-sha');
   try {

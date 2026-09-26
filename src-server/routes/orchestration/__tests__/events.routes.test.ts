@@ -22,6 +22,7 @@ import {
 } from '../../../__test-utils__/sse-helpers.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../projects/ui-commands.js';
 
 // archive#1205: this file's new real-service ownership-gate suite imports
 // the real `OrchestrationService`, which (via `EventStore`) touches several
@@ -51,7 +52,7 @@ const mockLogger = {
 
 describe('paired-device event-stream lifecycle', () => {
   test('does not acquire a lease or subscribe for an already-aborted request', () => {
-    const connectPairedDevice = vi.fn();
+    const connectClientSession = vi.fn();
     const subscribe = vi.fn();
     const controller = new AbortController();
     controller.abort();
@@ -59,17 +60,17 @@ describe('paired-device event-stream lifecycle', () => {
       eventBus: { subscribe } as unknown as InstanceType<typeof EventBus>,
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice,
+      connectClientSession,
     });
     app.request(
       new Request('http://station.test/', { signal: controller.signal }),
     );
-    expect(connectPairedDevice).not.toHaveBeenCalled();
+    expect(connectClientSession).not.toHaveBeenCalled();
     expect(subscribe).not.toHaveBeenCalled();
   });
   test('releases a registered paired-device lease when subscription setup throws', async () => {
     const release = vi.fn();
-    const connectPairedDevice = vi.fn(() => ({ touch: vi.fn(), release }));
+    const connectClientSession = vi.fn(() => ({ touch: vi.fn(), release }));
     const app = createEventRoutes({
       eventBus: {
         subscribe: () => {
@@ -78,12 +79,12 @@ describe('paired-device event-stream lifecycle', () => {
       } as unknown as InstanceType<typeof EventBus>,
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice,
+      connectClientSession,
     });
 
     app.request('/');
     await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1));
-    expect(connectPairedDevice).toHaveBeenCalledTimes(1);
+    expect(connectClientSession).toHaveBeenCalledTimes(1);
   });
 
   test('releases after the initial SSE write fails before a keepalive can touch', async () => {
@@ -93,7 +94,7 @@ describe('paired-device event-stream lifecycle', () => {
       eventBus: new EventBus(),
       getACPStatus: () => ({ connected: false, connections: [] }),
       logger: mockLogger,
-      connectPairedDevice: () => ({ touch, release }),
+      connectClientSession: () => ({ touch, release }),
       writeSse: () =>
         Promise.reject(new Error('injected initial write failure')),
     });
@@ -113,7 +114,7 @@ describe('paired-device event-stream lifecycle', () => {
         eventBus: new EventBus(),
         getACPStatus: () => ({ connected: false, connections: [] }),
         logger: mockLogger,
-        connectPairedDevice: () => ({ touch, release }),
+        connectClientSession: () => ({ touch, release }),
         isPairedDeviceConnectionCurrent: () => authorized,
       });
       app.request('/');
@@ -136,7 +137,7 @@ describe('paired-device event-stream lifecycle', () => {
         eventBus: new EventBus(),
         getACPStatus: () => ({ connected: false, connections: [] }),
         logger: mockLogger,
-        connectPairedDevice: () => ({ touch, release }),
+        connectClientSession: () => ({ touch, release }),
         writeSse: async (stream, frame) => {
           if (frame.event === 'ping')
             (stream as { closed?: boolean }).closed = true;
@@ -555,6 +556,38 @@ describe('Event Routes (SSE)', () => {
       expect(payload).toContain('"marker":"after"');
       expect(payload).not.toContain('event: ui:navigate');
       expect(payload).not.toContain('private-target');
+    });
+
+    // #2377 slice B: a navigation a station-control agent asked for names
+    // its session's owner, and only that principal's connections receive it.
+    test('a navigation naming an audience reaches only that principal’s connections', async () => {
+      const relayTo = async (viewer: string) => {
+        const bus = new EventBus();
+        const app = createEventRoutes({
+          eventBus: bus,
+          getACPStatus: () => ({ connected: false, connections: [] }),
+          logger: mockLogger,
+          readAuthorityForRequest: () => personalAuthority(viewer),
+        });
+        const res = await app.request('/');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'before' });
+        bus.emit(SERVER_EVENTS.UI_NAVIGATE, {
+          path: '/agents/owner-target',
+          [UI_NAVIGATE_AUDIENCE_FIELD]: 'human:tailscale-serve:owner',
+        });
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'after' });
+        return readStreamUntil(res.body!, (text) =>
+          text.includes('"marker":"after"'),
+        );
+      };
+      const owner = await relayTo('human:tailscale-serve:owner');
+      expect(owner).toContain('event: ui:navigate');
+      expect(owner).toContain('owner-target');
+      const other = await relayTo('human:local:operator');
+      expect(other).toContain('"marker":"after"');
+      expect(other).not.toContain('event: ui:navigate');
+      expect(other).not.toContain('owner-target');
     });
 
     // archive#3567 second fix round FIX 2: fail-CLOSED, not fail-open, when

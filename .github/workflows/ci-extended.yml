@@ -15,20 +15,90 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Coverage runs the resource-profiled corpus slices one after another in
-  # this ONE job, then merges their reports (scripts/run-coverage-corpus.mjs).
-  # Not a matrix: every fleet runner shares the one physical host (desktop-win,
-  # 10 capacity units), so matrix legs would queue on the capacity lease rather
-  # than run in parallel, each would repeat checkout, install, Chromium and
-  # the SDK builds, and the merge would need every leg's report carried across
-  # jobs as artifacts. The owner lifetime is a fixed host-manifest value
-  # (7800 s), which caps a capacity job at 125 minutes; the coordinated lane's
-  # own 100-minute deadline sits inside that with room for setup.
-  coverage:
-    needs: playwright-full
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' }}
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
-    timeout-minutes: 125
+  # Coverage needs nothing from the physical fleet host: unlike the
+  # uninstrumented corpus below (playwright-full), every slice here is a
+  # plain Vitest process with `--coverage.enabled`. #2416 measured the
+  # previous single self-hosted job (every slice serial, one capacity-leased
+  # host) missing its 100-minute lane deadline after only the 8 ordinary
+  # shards, so the merge refused (13 missing slices) without ever reaching a
+  # threshold — and it still had to wait its turn behind playwright-full for
+  # the one physical host's lease.
+  #
+  # `coverage-shard` runs the resource-profiled corpus plan
+  # (`coverageShardIds()`, scripts/run-coverage-corpus.mjs) as one hosted job
+  # PER SLICE — the same shape merge-queue-regression.yml already uses for
+  # the uninstrumented corpus — and uploads each slice's `coverage-final.json`
+  # as its own artifact. `coverage-merge` downloads every shard and runs the
+  # exact fail-closed merge and thresholds the serial lane always ran. The
+  # matrix must name every slice the plan expects, or the merge correctly
+  # refuses on whichever slice(s) never got a job: pinned by
+  # scripts/__tests__/ci-workflow-contract.test.ts, which derives the
+  # expected slice set from `coverageShardIds()` rather than restating it.
+  #
+  # Not gated on playwright-full any more: a hosted job holds no physical
+  # host capacity, so nothing forces these two surfaces to serialize the way
+  # sharing one lease used to. They now run concurrently, which is the other
+  # half of the time this recovers — coverage stops eating fleet-host wall
+  # time playwright-full could otherwise use.
+  coverage-shard:
+    name: Coverage corpus ${{ matrix.id }}
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      # `timeoutMinutes` is `ceil(phase.timeoutMs / 60000 * 1.5) + 15`: the
+      # canonical full-regression phase fence for this slice
+      # (scripts/verification-lanes.mjs), scaled by the same
+      # COVERAGE_SLICE_TIMEOUT_SCALE the serial lane already applied for V8
+      # instrumentation overhead (scripts/run-coverage-corpus.mjs), plus a
+      # flat 15-minute setup allowance (checkout, deps, Chromium, SDK
+      # builds) — pinned by ci-workflow-contract.test.ts against those same
+      # constants, not restated as a bare number there.
+      matrix:
+        include:
+          - id: ordinary-1-of-8
+            args: --group=ordinary --shard=1/8
+            timeoutMinutes: 45
+          - id: ordinary-2-of-8
+            args: --group=ordinary --shard=2/8
+            timeoutMinutes: 45
+          - id: ordinary-3-of-8
+            args: --group=ordinary --shard=3/8
+            timeoutMinutes: 45
+          - id: ordinary-4-of-8
+            args: --group=ordinary --shard=4/8
+            timeoutMinutes: 45
+          - id: ordinary-5-of-8
+            args: --group=ordinary --shard=5/8
+            timeoutMinutes: 45
+          - id: ordinary-6-of-8
+            args: --group=ordinary --shard=6/8
+            timeoutMinutes: 45
+          - id: ordinary-7-of-8
+            args: --group=ordinary --shard=7/8
+            timeoutMinutes: 45
+          - id: ordinary-8-of-8
+            args: --group=ordinary --shard=8/8
+            timeoutMinutes: 45
+          - id: process-heavy
+            args: --group=process-heavy
+            timeoutMinutes: 60
+          - id: process-exclusive
+            args: --group=process-exclusive
+            timeoutMinutes: 21
+          - id: coordinator-exclusive
+            args: --group=coordinator-exclusive
+            timeoutMinutes: 21
+          - id: credential-ledger-exclusive
+            args: --group=credential-ledger-exclusive
+            timeoutMinutes: 21
+          - id: shared-output
+            args: --group=shared-output
+            timeoutMinutes: 21
+          - id: dogfood-reconcile
+            args: --group=dogfood-reconcile
+            timeoutMinutes: 23
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,37 +108,46 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          # 9, as for the other full-corpus Vitest job on this host
-          # (windows-vitest-diagnostic.yml): the slices run at the corpus
-          # worker bounds (four ordinary workers), not the single worker the
-          # former lane reserved 6 units for.
-          lease-weight: "9"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
-
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - run: npm run dependencies:ci
 
-      # The corpus includes real-Chromium geometry tests, and the lane checks
-      # for the pinned browser before any slice runs. Same install as
-      # playwright-full below; see its comment for why this calls the script
-      # directly and never passes --with-deps.
-      - name: Install Playwright browsers
+      # Same fixture prerequisite as merge-queue-regression.yml's hosted
+      # corpus jobs: some process-heavy/exclusive-group installer fixtures
+      # exercise zsh directly.
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
+
+      # The corpus includes real-Chromium geometry tests. Same retry-and-cap
+      # install merge-queue-regression.yml's hosted jobs already use.
+      - name: Install Chromium for full-corpus browser assertions
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" node scripts/install-playwright-browsers.mjs chromium
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              installed=true
+              break
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
 
       # The canonical lane builds the SDKs and the connect/CLI bundles before
       # its corpus phases; the merge-queue regression prepares the same way.
@@ -77,26 +156,95 @@ jobs:
           node scripts/run-full-regression-phases.mjs --phase=browser-prerequisite --phase=sdk-builds
           npm run prepare:verify-static
 
-      # `ci:extended` is intentionally not used here: it reruns ci:fast.
-      # Coverage follows Playwright even when Playwright fails, so both remain
-      # truthful without one job's skip hiding the other.
-      - name: Run coordinated coverage lane
-        run: npm run test:coverage
+      # `--coverage-root` writes only this slice's istanbul JSON, under
+      # `coverage/shards/<id>/` — never the raw, uninstrumented corpus
+      # command a package.json `:raw` script would name (this repo forbids
+      # spelling those directly in a workflow; see scripts/AGENTS.md).
+      - name: Run coverage slice
+        run: node scripts/run-vitest-corpus.mjs ${{ matrix.args }} --coverage-root=coverage/shards
 
-      - name: Upload coverage verification diagnostics
+      # A slice whose tests failed writes no report (Vitest's
+      # `reportOnFailure: false`), so a failed step here uploads nothing and
+      # coverage-merge correctly reports that slice missing rather than
+      # reading a stale or partial report.
+      - name: Upload coverage shard report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-shard-${{ matrix.id }}
+          path: coverage/shards/${{ matrix.id }}/
+          if-no-files-found: ignore
+          retention-days: 1
+
+  coverage-merge:
+    name: Coverage merge and thresholds
+    needs: coverage-shard
+    # always(): a run that reports every missing slice by name is more useful
+    # than one that stops at the first shard failure — the same fail-closed
+    # philosophy scripts/run-coverage-corpus.mjs already applies to a live
+    # serial run (it collects every problem before refusing).
+    if: always() && !cancelled() && github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - run: npm run dependencies:ci
+
+      # Every `coverage-shard` leg uploads its own artifact (a job whose
+      # tests failed uploads nothing); an id the plan expects but no leg
+      # produced simply has no matching artifact here; if-no-artifact-found:
+      # warn keeps that a report line rather than a hard failure of THIS
+      # step, so the merge below can still name every missing slice by id.
+      - name: Download coverage shard reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-shard-*
+          path: coverage-shards-download
+          if-no-artifact-found: warn
+
+      # Reconstitutes exactly the `coverage/shards/<id>/coverage-final.json`
+      # tree the serial lane produced in one job, from the id each artifact's
+      # name carries (download-artifact nests each matched artifact under its
+      # own name by default).
+      - name: Arrange downloaded shard reports for the merge
+        run: |
+          set -euo pipefail
+          mkdir -p coverage/shards
+          shopt -s nullglob
+          for dir in coverage-shards-download/coverage-shard-*/; do
+            id="$(basename "$dir")"
+            id="${id#coverage-shard-}"
+            mkdir -p "coverage/shards/$id"
+            cp -R "$dir." "coverage/shards/$id/"
+          done
+
+      # Runs no tests of its own: applies the same fail-closed merge and
+      # thresholds scripts/run-coverage-corpus.mjs always applied to a live
+      # serial run, to the shard reports downloaded above.
+      - name: Merge coverage shards and evaluate thresholds
+        run: npm run test:coverage:merge
+
+      - name: Upload merged coverage report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
-        # whose work passed (station#2218). Only the merged report and its
-        # summary are kept: each per-slice report under coverage/shards/ is
-        # tens of megabytes and is fully contained in the merge.
+        # whose work passed (station#2218).
         continue-on-error: true
         with:
           name: coverage-verification-${{ github.run_id }}
           path: |
-            .kontourai/verification-receipts/
-            .kontourai/verification-output/
             coverage/*.json
           if-no-files-found: ignore
           retention-days: 7
@@ -105,7 +253,21 @@ jobs:
     name: Full Playwright Coverage
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
-    timeout-minutes: 90
+    # #2416: this job hit its own 90-minute timeout at 88 minutes because one
+    # bucket (smoke-live) alone spent 49 of those minutes, mostly timing out
+    # on engine-dependent tests since removed by #2422 — no bucket had a
+    # budget of its own, so one slow bucket could eat every minute the others
+    # needed. The buckets stay serial-with-overlap in this ONE job (still the
+    # one physical-host capacity lease below; a per-bucket matrix would each
+    # need its own lease and just queue behind itself, repeating checkout,
+    # install, Chromium and the SDK builds like the coverage job used to).
+    # Each bucket now carries its own deadline instead
+    # (scripts/run-e2e-coverage.mjs BUCKETS[].timeoutMs): a bucket that
+    # exceeds it is cancelled and reported TIMEOUT, distinct from FAIL, and
+    # every other bucket still runs to its own completion or deadline. 110
+    # minutes covers every bucket's deadline running back-to-back (worst
+    # case; the weighted scheduler already overlaps some of them) plus setup.
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

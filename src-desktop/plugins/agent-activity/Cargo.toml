@@ -1,7 +1,7 @@
 [package]
 name = "tauri-plugin-station-agent-activity"
 version = "0.1.0"
-description = "Native agent-activity notifications (Android Live Updates) for Station"
+description = "Native agent-activity notifications (Android Live Updates, iOS Live Activities) for Station"
 edition = "2021"
 publish = false
 # Tauri's build helper exports the plugin's Android library path through this

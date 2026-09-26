@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -41,9 +46,14 @@ import {
   type ClaudeProviderTurnFixtureLine,
   loadClaudeProviderTurnFixture,
 } from '../../../providers/__tests__/claude-provider-turns-fixtures.js';
+import {
+  loadClaudeBackgroundBashCapture,
+  loadClaudeTaskCapture,
+} from '../../../providers/__tests__/claude-task-captures.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -328,7 +338,7 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
       ).toBe(true);
       // And the session ends settled on U2's reply, not the engine's.
       expect(detail?.session).toMatchObject({
-        lifecycleState: 'completed',
+        lifecycleState: 'idle',
         transitionReason: 'turn_completed',
       });
       expect(activeTurnIdForEvents(events)).toBeUndefined();
@@ -356,5 +366,408 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
     expect(u2Events[0]).toMatchObject({ prompt: 'U2' });
     expect(u2Events[1]).toMatchObject({ reason: 'engine-ended-before-start' });
     expect(possibleEffect).toEqual({ kind: 'available', active: false });
+  });
+});
+
+/**
+ * #2457: the Claude adapter's child work, from live captures, THROUGH
+ * `OrchestrationService` (and, for the stop, its HTTP route): the session
+ * summary carries the running child mid-stream and not after, the persisted
+ * log holds `child-work.updated` and no pre-contract task tuple, and a stop
+ * reaches `Query.stopTask` and settles the child from the engine's own
+ * `stopped` notification.
+ */
+describe('#2457: Claude child work through OrchestrationService', () => {
+  let directory: string;
+  let eventStore: EventStore;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'claude-child-work-service-'));
+    eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    mockFindCliBinaryAsync.mockResolvedValue(null);
+    mockRunCliCommand.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    eventStore.close();
+    rmSync(directory, { recursive: true, force: true });
+    mockQuery.mockReset();
+  });
+
+  async function startService() {
+    const query = Object.assign(controlledQuery(), {
+      stopTask: vi.fn<(taskId: string) => Promise<void>>(),
+    });
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: registry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const bindings: Array<{
+      method: string;
+      activity: ConversationTurnActivity | undefined;
+    }> = [];
+    eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const payload = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (!payload) return;
+      bindings.push({
+        method: payload.method,
+        activity: service.conversationStreamBinding(payload)?.activity,
+      });
+    });
+    const threadId = `service-${crypto.randomUUID()}`;
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'claude' },
+    });
+    const routes = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'user-1',
+    });
+    const children = async () =>
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.childWork?.children;
+    const persisted = () =>
+      eventStore.listEvents(threadId).map((row) => row.payload);
+    const pushMessage = async (message: SDKMessage) => {
+      const next = JSON.parse(JSON.stringify(message)) as Record<
+        string,
+        unknown
+      >;
+      if (next.subtype === 'init') next.cwd = directory;
+      query.push(next);
+      await settle();
+    };
+    return {
+      query,
+      service,
+      threadId,
+      routes,
+      children,
+      persisted,
+      pushMessage,
+      bindings,
+    };
+  }
+
+  function legacyTuples(events: CanonicalRuntimeEvent[]) {
+    return events.filter(
+      (event) =>
+        event.method === 'extension.notification' &&
+        (event.type === 'task/registry' || event.type === 'task/settled'),
+    );
+  }
+
+  test('background-agent: the summary lists the child while it runs and not after; no legacy tuple is persisted', async () => {
+    const { service, threadId, children, persisted, pushMessage, query } =
+      await startService();
+    const lines = loadClaudeTaskCapture('background-agent');
+    const [childId] = lines.flatMap((line) =>
+      line.message?.type === 'system' &&
+      line.message.subtype === 'task_started' &&
+      (line.message as { task_type?: string }).task_type === 'local_agent'
+        ? [line.message.task_id]
+        : [],
+    );
+    let listedMidStream = false;
+    for (const line of lines) {
+      if (line.probe?.startsWith('PUSH ')) {
+        await service.dispatch({
+          type: 'sendTurn',
+          input: { threadId, input: line.probe.slice('PUSH '.length) },
+        });
+        await settle();
+        continue;
+      }
+      if (line.probe === 'CLOSE INPUT') {
+        query.end();
+        await settle();
+        break;
+      }
+      if (!line.message) continue;
+      await pushMessage(line.message);
+      const view = await children();
+      if (
+        view?.observability === 'reported' &&
+        view.running.some(
+          (item) => item.childId === childId && item.status === 'running',
+        )
+      ) {
+        listedMidStream = true;
+      }
+    }
+    expect(listedMidStream).toBe(true);
+    expect(await children()).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+    const events = persisted();
+    expect(legacyTuples(events)).toEqual([]);
+    const settles = events.flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === childId
+        ? [event.delta.status]
+        : [],
+    );
+    expect(settles).toEqual(['completed', 'completed']);
+  });
+
+  test.each(['background-bash', 'background-agent'] as const)(
+    '%s: parent activity stays live from the first turn through child settlement and provider follow-up',
+    async (capture) => {
+      const { service, threadId, pushMessage, query, persisted, bindings } =
+        await startService();
+      const lines =
+        capture === 'background-bash'
+          ? loadClaudeBackgroundBashCapture()
+          : loadClaudeTaskCapture(capture);
+      const capturedSend = lines.find((line) => {
+        const message = line.message as unknown as
+          | { type?: string; state?: string }
+          | undefined;
+        return (
+          message?.type === 'command_lifecycle' && message.state === 'queued'
+        );
+      })?.message as { command_uuid: string } | undefined;
+      expect(capturedSend).toBeDefined();
+      const prompts = mockQuery.mock.calls
+        .at(-1)![0]
+        .prompt[Symbol.asyncIterator]() as AsyncIterator<{ uuid: string }>;
+      let actualSend = '';
+      const states: Array<'turn' | 'child' | 'pending' | 'idle'> = [];
+      let sawChildOnly = false;
+      let sawPendingOnly = false;
+      let sawProviderTurn = false;
+      let firstResultSeen = false;
+      for (const line of lines) {
+        if (line.probe?.startsWith('PUSH ')) {
+          await service.dispatch({
+            type: 'sendTurn',
+            input: { threadId, input: line.probe.slice(5) },
+          });
+          actualSend = (await prompts.next()).value.uuid;
+          await settle();
+          continue;
+        }
+        if (
+          line.probe?.startsWith('CLOSE INPUT') ||
+          line.probe === 'ITERATOR END'
+        )
+          continue;
+        if (!line.message) continue;
+        let encoded = JSON.stringify(line.message);
+        encoded = encoded.split(capturedSend!.command_uuid).join(actualSend);
+        const message = JSON.parse(encoded) as SDKMessage;
+        await pushMessage(message);
+        const activity = (
+          await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE)
+        )?.session.conversationActivity;
+        expect(activity).toBeDefined();
+        const state = activity?.openTurn
+          ? 'turn'
+          : (activity?.runningChildWork?.count ?? 0) > 0
+            ? 'child'
+            : activity?.runningChildWork?.followUpPending
+              ? 'pending'
+              : 'idle';
+        states.push(state);
+        if (activity?.openTurn?.trigger === 'provider') sawProviderTurn = true;
+        if (state === 'pending') sawPendingOnly = true;
+        if (state === 'child') sawChildOnly = true;
+        if (message.type === 'result' && !firstResultSeen) {
+          firstResultSeen = true;
+          expect(state).toBe('child');
+          expect(activity?.openTurn).toBeUndefined();
+          expect(
+            (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+              ?.session.conversationActivity?.runningChildWork?.count,
+          ).toBeGreaterThan(0);
+          expect(
+            await service.dispatch({ type: 'interruptTurn', threadId }),
+          ).toMatchObject({ outcome: 'no-active-turn' });
+        }
+      }
+      expect(sawChildOnly).toBe(true);
+      expect(sawPendingOnly).toBe(true);
+      expect(sawProviderTurn).toBe(true);
+      const firstTurn = states.indexOf('turn');
+      expect(firstTurn).toBeGreaterThanOrEqual(0);
+      expect(states.slice(firstTurn, -1)).not.toContain('idle');
+      expect(states.at(-1)).toBe('idle');
+      expect(
+        bindings.filter((frame) => frame.method === 'child-work.updated')
+          .length,
+      ).toBeGreaterThan(0);
+      expect(
+        bindings
+          .filter((frame) => frame.method === 'child-work.updated')
+          .every((frame) => frame.activity !== undefined),
+      ).toBe(true);
+      const childOnlyFrame = bindings.findIndex(
+        (frame) =>
+          !frame.activity?.openTurn &&
+          (frame.activity?.runningChildWork?.count ?? 0) > 0,
+      );
+      const providerFrame = bindings.findIndex(
+        (frame, index) =>
+          index > childOnlyFrame &&
+          frame.method === 'turn.started' &&
+          frame.activity?.openTurn?.trigger === 'provider',
+      );
+      expect(childOnlyFrame).toBeGreaterThanOrEqual(0);
+      expect(providerFrame).toBeGreaterThan(childOnlyFrame);
+      // The provider turn.started binding is the immediate read after the
+      // provider takes over. Its pending fact must already be cleared there,
+      // before the eventual result/end-of-turn cleanup can mask a stale fact.
+      expect(
+        bindings[providerFrame].activity?.runningChildWork?.followUpPending,
+      ).toBeUndefined();
+      expect(
+        bindings
+          .slice(childOnlyFrame, providerFrame + 1)
+          .filter((frame) => frame.activity)
+          .every(
+            (frame) =>
+              frame.activity?.openTurn !== undefined ||
+              frame.activity?.runningChildWork !== undefined,
+          ),
+      ).toBe(true);
+      expect(
+        persisted().some(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'provider/follow-up-pending',
+        ),
+      ).toBe(true);
+      query.end();
+      await settle();
+    },
+  );
+
+  test('provider turn.started clears a pending follow-up before its result', async () => {
+    const { service, threadId, pushMessage, bindings, persisted, query } =
+      await startService();
+    const capture = loadClaudeTaskCapture('background-agent');
+    const init = capture.find(
+      (line) =>
+        line.message?.type === 'system' && line.message.subtype === 'init',
+    )?.message;
+    const reply = capture.find(
+      (line) =>
+        line.message?.type === 'stream_event' &&
+        line.message.event.type === 'message_start',
+    )?.message;
+    expect(init).toBeDefined();
+    expect(reply).toBeDefined();
+    await pushMessage(init!);
+    expect(
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.conversationActivity?.runningChildWork?.followUpPending,
+    ).toBe(true);
+    const providerReply = JSON.parse(JSON.stringify(reply)) as Record<
+      string,
+      unknown
+    >;
+    delete providerReply.user_message_uuid;
+    delete providerReply.user_message_uuids;
+    await pushMessage(providerReply as SDKMessage);
+    const started = bindings.find(
+      (frame) =>
+        frame.method === 'turn.started' &&
+        frame.activity?.openTurn?.trigger === 'provider',
+    );
+    expect(started).toBeDefined();
+    expect(
+      started?.activity?.runningChildWork?.followUpPending,
+    ).toBeUndefined();
+    expect(
+      (await service.readSession(threadId, INTERNAL_SESSION_READ_SCOPE))
+        ?.session.conversationActivity?.runningChildWork?.followUpPending,
+    ).toBeUndefined();
+    // The activity projection also clears on turn.started. Require the
+    // adapter's explicit false fact before any result/end cleanup, so that
+    // projection behavior cannot hide a missing publisher call.
+    const events = persisted();
+    const startedIndex = events.findIndex(
+      (event) =>
+        event.method === 'turn.started' &&
+        event.turnId === started?.activity?.openTurn?.turnId,
+    );
+    expect(startedIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      events
+        .slice(startedIndex + 1)
+        .some(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'provider/follow-up-pending' &&
+            (event.payload as { pending?: boolean }).pending === false,
+        ),
+    ).toBe(true);
+    query.end();
+    await settle();
+  });
+
+  test('stop-task: POST …/provider-tasks/:taskId/stop reaches Query.stopTask and the engine’s stopped settle cancels the child', async () => {
+    const { query, threadId, routes, children, persisted, pushMessage } =
+      await startService();
+    const lines = loadClaudeTaskCapture('stop-task');
+    const stopAt = lines.findIndex((line) =>
+      line.probe?.startsWith('STOP_TASK '),
+    );
+    const childId = lines[stopAt].probe!.slice('STOP_TASK '.length);
+    // The engine's answer to the stop, exactly as captured.
+    query.stopTask.mockImplementation(async (taskId) => {
+      for (const line of lines.slice(stopAt + 1)) {
+        const message = line.message as { task_id?: string } | undefined;
+        if (message?.task_id === taskId) query.push(line.message);
+      }
+    });
+    for (const line of lines.slice(0, stopAt)) {
+      if (line.message) await pushMessage(line.message);
+    }
+    expect(await children()).toMatchObject({
+      running: [
+        expect.objectContaining({
+          childId,
+          controls: { stop: 'provider-task-stop' },
+        }),
+      ],
+    });
+
+    const stop = () =>
+      routes.request(`/sessions/${threadId}/provider-tasks/${childId}/stop`, {
+        method: 'POST',
+      });
+    const response = await stop();
+    expect(await response.json()).toEqual({
+      success: true,
+      data: { outcome: 'stopped', taskId: childId },
+    });
+    expect(query.stopTask).toHaveBeenCalledWith(childId);
+    await settle();
+
+    expect(await children()).toMatchObject({ running: [] });
+    const settled = persisted().flatMap((event) =>
+      event.method === 'child-work.updated' &&
+      event.delta.kind === 'settle' &&
+      event.delta.childId === childId
+        ? [event.delta.status]
+        : [],
+    );
+    expect(settled).toEqual(['cancelled', 'cancelled']);
+    // Settled: a second stop is the documented race, not an error.
+    expect(await (await stop()).json()).toEqual({
+      success: true,
+      data: { outcome: 'no-active-task', taskId: childId },
+    });
+    expect(query.stopTask).toHaveBeenCalledTimes(1);
   });
 });

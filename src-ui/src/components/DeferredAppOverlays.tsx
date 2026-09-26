@@ -27,7 +27,10 @@ import { useEffect } from 'react';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
-import { AgentActivityRefresher } from './AgentActivityRefresher';
+import {
+  AgentActivityLaunchRoutes,
+  AgentActivityRefresher,
+} from './AgentActivityRefresher';
 import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
@@ -58,6 +61,7 @@ export default function DeferredAppOverlays() {
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
       <AgentActivityRefresher />
+      <AgentActivityLaunchRoutes />
     </>
   );
 }

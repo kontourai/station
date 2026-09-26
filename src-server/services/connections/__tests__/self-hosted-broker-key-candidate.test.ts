@@ -1,6 +1,4 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
@@ -20,6 +18,7 @@ import {
   generateKeyPair,
 } from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import { createSelfHostedBrokerPionRuntime } from '../../../runtime/bootstrap/self-hosted-broker-pion-runtime.js';
 import { ConnectionKeyCandidateIssuer } from '../../ssh/connection-key-candidate-issuer.js';
@@ -34,12 +33,12 @@ import {
 } from '../self-hosted-broker-service.js';
 
 const cleanup: Array<() => void | Promise<void>> = [];
+const makeTempDir = trackTempDirs();
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 async function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'candidate-courier-'));
-  cleanup.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('candidate-courier-');
   await new EnvironmentSecurityService({ homeDir: home }).initialize();
   const custody = new ConnectionSigningKeyStore(home);
   const trust = await custody.initialize();

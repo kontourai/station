@@ -184,11 +184,16 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
     timeout: 10_000,
   });
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
-  const named = `Manage Stations — Connected · ${GALLERY_CONNECTION_NAME}`;
+  // Since #2426 the healthy compact chip shows a short visible Station label
+  // (`Station · <name>`), and the accessible name carries that visible text
+  // after the state (WCAG 2.5.3).
+  const visible = `Station · ${GALLERY_CONNECTION_NAME}`;
+  const named = `Manage Stations — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
-  // Collapsed means collapsed: neither text span renders, which is the width
-  // this change reclaims.
+  await expect(chip.locator('.app-toolbar__conn-label')).toHaveText(visible);
+  // Compact still means the separate state and name spans do not render; the
+  // single short label replaces them.
   await expect(chip.locator('.app-toolbar__conn-state')).toHaveCount(0);
   await expect(chip.locator('.app-toolbar__conn-name')).toHaveCount(0);
   // The gallery is a browser E2E instance, never a supervised desktop
@@ -1279,7 +1284,7 @@ interface Screen {
 const SCREENS: Screen[] = [
   {
     name: 'mobile-activity-compact',
-    title: 'Mobile — Activity controls in a short dock',
+    title: 'Mobile — Activity opened over Chat (#2549)',
     path: '/?surface=activity',
     viewport: MOBILE,
     waitFor: '.sessions-axis-tabs',
@@ -1862,19 +1867,24 @@ const SCREENS: Screen[] = [
     reducedMotion: true,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'motion-gallery',
             category: 'test',
             title: 'Reduced motion is active',
             body: 'Notification state remains visible without entrance motion.',
             ttl: 15_000,
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Reduced motion is active"').toBe(
+        201,
+      );
       await expect(page.getByText('Reduced motion is active')).toBeVisible({
         timeout: 10_000,
       });
@@ -2325,19 +2335,24 @@ const SCREENS: Screen[] = [
       // reduced-motion emulation — nothing about producing the toast itself
       // is motion-preference-specific. `hideVolatileChrome` already hides
       // `.toast-card__time`'s live relative timestamp.
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Overlay gallery toast',
             body: 'A toast captured at normal (non-reduced) motion.',
             ttl: 15_000,
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Overlay gallery toast"').toBe(
+        201,
+      );
       await expect(page.getByText('Overlay gallery toast')).toBeVisible({
         timeout: 10_000,
       });
@@ -2359,12 +2374,11 @@ const SCREENS: Screen[] = [
       // (src-server/routes/schemas/schema-definitions/system.ts) is
       // `.passthrough()`, so `metadata` rides through the same POST
       // `overlay-toast` already uses.
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Toast with an action',
             body: 'This toast carries a View action button.',
@@ -2372,7 +2386,13 @@ const SCREENS: Screen[] = [
             metadata: { navigateTo: { path: '/agents' } },
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Toast with an action"').toBe(
+        201,
+      );
       const toast = page.locator('.toast-card', {
         hasText: 'Toast with an action',
       });

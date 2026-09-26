@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const channels = ['stable', 'beta', 'nightly'];
@@ -79,10 +80,7 @@ export function checkChannelPlatformMatrix(rootDir = root) {
   }
   return drift;
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === resolve(import.meta.filename)
-) {
+if (invokedDirectly(import.meta.url)) {
   const matrix = readChannelPlatformMatrix();
   const drift = checkChannelPlatformMatrix();
   if (process.argv.includes('--check')) {

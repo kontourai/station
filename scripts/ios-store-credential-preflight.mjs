@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { writeIosStoreSigningConfig } from './ios-store-signing-config.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REQUIRED = [
   'station',
@@ -45,18 +44,7 @@ export function parseCredentialPreflightOptions(args) {
   };
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const profile = writeIosStoreSigningConfig(
       parseCredentialPreflightOptions(process.argv.slice(2)),

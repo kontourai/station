@@ -66,6 +66,9 @@ export function sessionLifecycleLabel(
       return 'Review pending';
     case 'blocked':
       return 'Blocked';
+    // #2540: a finished turn on a live session reads as done, exactly as the
+    // terminal `completed` did before ordinary turns stopped ending sessions.
+    case 'idle':
     case 'completed':
       return 'Completed';
     case 'failed':
@@ -135,11 +138,6 @@ export function activeTurnProgress(
 export function orchestrationLifecycleLabel(
   session: OrchestrationSessionSummary,
 ): SessionStateLabel {
-  // `canceled` is a recorded stopped outcome, not a completed run. The shared
-  // attention fold intentionally files both under its coarse `finished`
-  // bucket; this client vocabulary refinement is what keeps that bucket from
-  // claiming success for an interrupted session.
-  if (session.lifecycleState === 'canceled') return 'Stopped';
   // The ordered failed → finished → awaiting → active adjudication is the
   // SHARED fold (archive#3227): `sessionAttentionDisposition` in
   // `@kontourai/station-contracts/session-attention`, the same derivation the
@@ -169,6 +167,23 @@ export function orchestrationLifecycleLabel(
   //   Observed live: 13 of 24 sessions labelled Running with
   //   `hasActiveTurn: false` on every one.
   const disposition = sessionAttentionDisposition(session);
+  const currentChildWork =
+    session.conversationActivity?.currentThreadId === session.threadId &&
+    session.conversationActivity.runningChildWork !== undefined;
+  // A completed or stopped parent turn may leave reported children running.
+  // Keep the attention fold unchanged: background work is not a request to
+  // the user. A closed or failed session retains its terminal outcome.
+  if (
+    (session.lifecycleState === 'completed' ||
+      session.lifecycleState === 'canceled') &&
+    session.status !== 'closed' &&
+    currentChildWork &&
+    disposition.state === 'finished'
+  )
+    return 'Running';
+  // The shared attention fold files a canceled turn under `finished`. Refine
+  // that recorded outcome to Stopped when no child work remains.
+  if (session.lifecycleState === 'canceled') return 'Stopped';
   switch (disposition.state) {
     case 'failed':
       return 'Failed';
@@ -186,7 +201,7 @@ export function orchestrationLifecycleLabel(
       // reader did not consult the lineage, not "is a draft". Only the
       // active arm refines to it: a never-prompted session that failed,
       // finished or is waiting on the user keeps that more specific word.
-      if (session.hasActiveTurn) return 'Running';
+      if (session.hasActiveTurn || currentChildWork) return 'Running';
       return session.draft === true ? 'Draft' : 'Ready';
   }
 }

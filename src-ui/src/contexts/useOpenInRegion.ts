@@ -163,6 +163,8 @@ export interface OpenFilePreviewRequest {
   projectSlug: string | null;
   path: string;
   lineRange?: WorkspaceFilePreviewLineRange;
+  /** The session whose directory the preview reads (#2476). */
+  thread?: string;
 }
 
 /**
@@ -185,7 +187,7 @@ export function openFilePreviewInRegion(
   request: OpenFilePreviewRequest,
   options?: OpenInRegionOptions,
 ): OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal } {
-  const { projectId, projectSlug, path, lineRange } = request;
+  const { projectId, projectSlug, path, lineRange, thread } = request;
   if (projectId === null || projectSlug === null)
     return { ok: false, reason: 'unsupplied' };
   const state: WorkspaceFilePreviewPaneState = {
@@ -194,12 +196,19 @@ export function openFilePreviewInRegion(
     path,
     ...(lineRange ? { lineRange } : {}),
     wrap: true,
+    ...(thread ? { thread } : {}),
   };
   const storage = window.localStorage;
   const held = placedPaneIds(model.regions).find((id) => {
     if (!id.startsWith('file-preview:')) return false;
     const stored = readFilePreviewPaneState(storage, id);
-    return stored?.projectSlug === projectSlug && stored.path === path;
+    // The session is part of which file this is: a worktree's copy and the
+    // checkout's are different files under one path.
+    return (
+      stored?.projectSlug === projectSlug &&
+      stored.path === path &&
+      stored.thread === thread
+    );
   });
   if (held !== undefined) {
     // The dedupe matches on project and path, so `src/app.ts#L400` finds the

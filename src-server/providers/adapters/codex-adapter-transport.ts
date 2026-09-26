@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
-import { findCliBinary } from '../auth/cli-auth.js';
+import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   routeCodexChildNotification,
@@ -23,9 +23,10 @@ import {
   handleCodexNotification,
   settleUnresolvedCodexToolCalls,
 } from './codex-adapter-notifications.js';
-import type {
-  CodexProcessLike,
-  CodexSessionRecord,
+import {
+  type CodexProcessLike,
+  type CodexSessionRecord,
+  markCodexTurnTerminal,
 } from './codex-adapter-types.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
@@ -1065,7 +1066,7 @@ export class CodexAdapterTransport {
     }
     const turnId = record.activeTurnId;
     record.activeTurnId = undefined;
-    record.terminalPublishedForTurnId = turnId;
+    markCodexTurnTerminal(record, turnId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: 'codex',
@@ -1112,11 +1113,21 @@ export class CodexAdapterTransport {
 }
 
 /** archive#896 wave 2: layered subprocess env for a codex session pointed at an
- * app-home profile. Always a copy: boot-internal secrets are scrubbed. */
+ * app-home profile. Always a copy: boot-internal secrets are scrubbed.
+ *
+ * #2663: PATH is the augmented search PATH the `codex` binary was resolved
+ * from, as the Claude and ACP spawns already get through `augmentedSpawnEnv`.
+ * An npm-installed codex is `#!/usr/bin/env node`; found through a login-shell
+ * or mise directory the service PATH lacks, it was adopted and then died with
+ * `env: node: No such file or directory`. Layered UNDER `extraEnv`, so a
+ * per-connection override still wins, and the scrub still runs last. */
 export function codexSpawnEnv(
   extraEnv?: Record<string, string>,
 ): NodeJS.ProcessEnv {
-  return childProcessEnvironment(extraEnv);
+  return childProcessEnvironment({
+    PATH: resolveAugmentedPathSync(),
+    ...extraEnv,
+  });
 }
 
 function spawnCodexProcess(

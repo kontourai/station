@@ -86,12 +86,21 @@ class TerminalAgreementAdapter extends GateTestAdapter {
     };
   }
 
+  /**
+   * A live engine session keeps its own context across turns (#2540): a
+   * follow-up in the SAME session carries no transcript seed, so this double
+   * remembers per session what a real engine would.
+   */
+  private readonly memory = new Map<string, string>();
+
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turn += 1;
     const turnId = `qualification-turn-${this.turn}`;
-    const token = /CARRY-[0-9]+/.exec(
-      `${input.ambientContext ?? ''}\n${input.input}`,
-    )?.[0];
+    const token =
+      /CARRY-[0-9]+/.exec(
+        `${input.ambientContext ?? ''}\n${input.input}`,
+      )?.[0] ?? this.memory.get(input.threadId);
+    if (token) this.memory.set(input.threadId, token);
     const outputText = token
       ? `Recalled ${token} on turn ${this.turn}`
       : 'CONTEXT_MISSING';
@@ -204,7 +213,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
     { label: 'project' },
     { label: 'worktree', worktree: true },
   ])(
-    '$label binding reaches three completed turns through root plus two child Sessions and reloads once',
+    '$label binding runs three turns in one live Session, switches model per turn, and reloads once',
     async (workspaceCase) => {
       const root = mkdtempSync(join(tmpdir(), 'station-dd-real-agreement-'));
       roots.push(root);
@@ -239,7 +248,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           agent: { slug: 'claude' },
         }),
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const conversationId = `conversation:qualification:${workspaceCase.label}`;
       const starts: ProviderSessionStartInput[] = [];
@@ -385,16 +393,17 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           ...(workspace ? { workspace } : {}),
         },
       });
+      const rootLifecycle = async () =>
+        (await service.readSession(conversationId, INTERNAL_SESSION_READ_SCOPE))
+          ?.session.lifecycleState;
+      const completedTurns = () =>
+        store
+          .listEvents(conversationId)
+          .filter((event) => event.payload.method === 'turn.completed');
       await eventually(async () => {
         expect(store.conversationSessions(conversationId)).toHaveLength(1);
-        expect(
-          (
-            await service.readSession(
-              conversationId,
-              INTERNAL_SESSION_READ_SCOPE,
-            )
-          )?.session.lifecycleState,
-        ).toBe('completed');
+        // #2540: a finished turn leaves the session at rest and reusable.
+        expect(await rootLifecycle()).toBe('idle');
         expect(latestBinding(store, conversationId)).not.toBeNull();
       });
       await send(
@@ -402,16 +411,8 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         { message: 'Continue without repeating it.' },
       );
       await eventually(async () => {
-        const lineage = store.conversationSessions(conversationId);
-        expect(lineage).toHaveLength(2);
-        expect(
-          (
-            await service.readSession(
-              lineage[1]!.sessionId,
-              INTERNAL_SESSION_READ_SCOPE,
-            )
-          )?.session.lifecycleState,
-        ).toBe('completed');
+        expect(completedTurns()).toHaveLength(2);
+        expect(await rootLifecycle()).toBe('idle');
       });
       await send(
         `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
@@ -421,42 +422,27 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         },
       );
       await eventually(() => {
-        const lineage = store.conversationSessions(conversationId);
-        expect(lineage).toHaveLength(3);
-        expect(new Set(lineage.map((item) => item.sessionId))).toHaveLength(3);
-        expect(lineage.map((item) => item.ordinal)).toEqual([0, 1, 2]);
-        expect(lineage[1]?.predecessorSessionId).toBe(lineage[0]?.sessionId);
-        expect(lineage[2]?.predecessorSessionId).toBe(lineage[1]?.sessionId);
-        for (const item of lineage)
-          expect(
-            store
-              .listEvents(item.sessionId)
-              .some((event) => event.payload.method === 'turn.completed'),
-          ).toBe(true);
+        expect(completedTurns()).toHaveLength(3);
       });
 
+      // One conversation, one Session, one engine start: every follow-up ran
+      // in the live Session instead of a successor with a new process.
       const lineage = store.conversationSessions(conversationId);
-      expect(starts.map((input) => input.threadId)).toEqual(
-        lineage.map((item) => item.sessionId),
-      );
-      if (!workspace) {
-        expect(starts[0]?.cwd).toBeUndefined();
-        expect(new Set(starts.slice(1).map((input) => input.cwd)).size).toBe(1);
-      } else {
-        expect(new Set(starts.map((input) => input.cwd))).toEqual(
-          new Set([
-            workspaceCase.worktree ? worktreeDirectory : projectDirectory,
-          ]),
+      expect(lineage.map((item) => item.sessionId)).toEqual([conversationId]);
+      expect(starts.map((input) => input.threadId)).toEqual([conversationId]);
+      if (workspace) {
+        expect(starts[0]?.cwd).toBe(
+          workspaceCase.worktree ? worktreeDirectory : projectDirectory,
         );
+      } else {
+        expect(starts[0]?.cwd).toBeUndefined();
       }
-      expect(starts[1]?.metadata?.conversationId).toBe(conversationId);
-      expect(starts[2]?.metadata?.conversationId).toBe(conversationId);
-      expect(starts[2]?.modelId).toBe('claude-opus');
-      expect(
-        store
-          .listEvents(lineage[2]!.sessionId)
-          .find((item) => item.payload.method === 'turn.completed')?.payload,
-      ).toMatchObject({ outputText: `Recalled ${CONTEXT_TOKEN} on turn 3` });
+      // The model switch was applied to turn 3 itself (per-turn override).
+      const lastTurn = completedTurns().at(-1)?.payload;
+      expect(lastTurn).toMatchObject({
+        outputText: `Recalled ${CONTEXT_TOKEN} on turn 3`,
+        metadata: { effectiveModel: 'claude-opus' },
+      });
 
       await service.shutdown();
       store.close();
@@ -470,7 +456,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           agent: { slug: 'claude' },
         }),
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const restored = await service.readConversationEventWindow(
         conversationId,
@@ -479,7 +464,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           turnLimit: 10,
         },
       );
-      expect(restored?.currentSessionId).toBe(lineage[2]!.sessionId);
+      expect(restored?.currentSessionId).toBe(conversationId);
       const restoredEvents = restored?.events.map((item) => item.event) ?? [];
       expect(
         restoredEvents.filter((event) => event.method === 'turn.completed'),
@@ -497,7 +482,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
     },
   );
 
-  test('negative control: reusing a terminal root Session is refused', async () => {
+  test('negative control: an explicitly closed Session refuses another turn', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-dd-terminal-control-'));
     roots.push(root);
     const store = new EventStore(join(root, 'orchestration.sqlite'));
@@ -511,7 +496,6 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         agent: { slug: 'claude' },
       }),
       logger: { debug: vi.fn(), warn: vi.fn() },
-      ownerlessSessionAccess: 'single-user-compat',
     });
     service.initialize();
     const started = await service.startSessionInternal(
@@ -569,7 +553,13 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
             INTERNAL_SESSION_READ_SCOPE,
           )
         )?.session.lifecycleState,
-      ).toBe('completed');
+      ).toBe('idle');
+    });
+    // #2540: a finished turn does not end a Session; closing it does.
+    await service.sessionLifecycles.transition({
+      threadId: 'terminal-root',
+      authority: INTERNAL_SESSION_READ_SCOPE,
+      to: 'completed',
     });
     await expect(
       service.dispatchWithReceipt(

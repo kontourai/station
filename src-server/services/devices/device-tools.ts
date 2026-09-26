@@ -29,11 +29,8 @@
  * route's job (`routes/device-tools.ts`); {@link deviceControlConflict}
  * is the lease half of it.
  *
- * Adapted from t3code (apps/server/src/device/DeviceActions.ts and
- * apps/web/src/components/device/deviceHubApi.ts), MIT License, Copyright
- * (c) 2026 T3 Tools Inc. Unlike t3code, iOS permission changes use only
- * `simctl privacy` (no serve-sim CLI), and nothing here runs a helper binary
- * spawned inside the simulator.
+ * iOS permission changes use only `simctl privacy` (no serve-sim CLI), and
+ * nothing here runs a helper binary spawned inside the simulator.
  */
 import type {
   DeviceAccessibilityElement,
@@ -164,7 +161,7 @@ const IOS_PRIVACY_SERVICES: Partial<Record<DevicePermission, string>> = {
   reminders: 'reminders',
 };
 
-/** Runtime permissions, by drawer permission (from t3code, see header). */
+/** Android runtime permissions granted or revoked for each drawer permission. */
 const ANDROID_PERMISSIONS: Partial<
   Record<DevicePermission, readonly string[]>
 > = {
@@ -455,7 +452,7 @@ function parseAndroidNight(stdout: string): DeviceAppearance | null {
 /**
  * The focused app from `dumpsys window` (`mCurrentFocus` or
  * `mFocusedApp`). `dumpsys window windows` stopped printing the focus on
- * API 36; the unfiltered dump still does (t3code).
+ * API 36; the unfiltered dump still does.
  */
 export function parseAndroidForeground(
   stdout: string,
@@ -556,8 +553,8 @@ function boundedText(value: unknown): string {
 
 /**
  * serve-sim's helper answers the native nested tree; the first root is the
- * application covering the whole screen. Flatten it the way t3code does
- * (see the header): skip nodes the size of the screen, cap the count.
+ * application covering the whole screen. Flatten it, skipping nodes the size
+ * of the screen and capping the count.
  */
 export function flattenIosAccessibility(
   payload: unknown,

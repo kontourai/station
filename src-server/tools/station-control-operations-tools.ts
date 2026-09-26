@@ -532,7 +532,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). The local operator (this tool's process-local hop, the operator credential, a same-origin UI-bootstrap / local-grant session) receives unredacted lines; pairing credentials receive the same redacted bytes as before, including over loopback.",
+    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])
@@ -710,6 +710,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .optional()
         .describe('Navigate the UI to show this conversation'),
       _delegation: delegationContextSchema.optional(),
+      _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
     },
     async ({
@@ -722,6 +723,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       conversationId,
       navigate: shouldNavigate,
       _delegation,
+      _delegationAttestation,
       _userId,
     }) => {
       const target = {
@@ -746,8 +748,15 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         target,
         message,
         ...(conversationId ? { conversationId } : {}),
+        // #2601: a claim only. Station's route derives the child context
+        // from the verified caller, or keeps this one only when Station's own
+        // runtime attested it.
         ...(_delegation ? { delegation: _delegation } : {}),
+        ...(_delegation && _delegationAttestation
+          ? { delegationAttestation: _delegationAttestation }
+          : {}),
         ...(_userId ? { userId: _userId } : {}),
+        stationControlToolCall: true,
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
@@ -926,9 +935,10 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .describe('Parent task for worker or subagent topology'),
       navigate: z.boolean().optional(),
       _delegation: delegationContextSchema.optional(),
+      _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
     },
-    async ({ _delegation, _userId, ...input }) => {
+    async ({ _delegation, _delegationAttestation, _userId, ...input }) => {
       const target = {
         environment: input.environmentId
           ? ({
@@ -960,8 +970,13 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         target,
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        // #2601: a claim only, like `send_message`'s.
         delegation: _delegation,
+        ...(_delegation && _delegationAttestation
+          ? { delegationAttestation: _delegationAttestation }
+          : {}),
         userId: _userId,
+        stationControlToolCall: true,
         clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: see the matching comment on

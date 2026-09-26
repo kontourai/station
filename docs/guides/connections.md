@@ -289,6 +289,12 @@ For Codex, prefer `configHome` pointing at a dedicated home whose
 `config.toml` sets `model_provider` to the proxy's provider entry, so model
 discovery lists what the proxy serves.
 
+The Engine's login readiness is checked under the same `env` and `configHome`:
+a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
+empty-string value masks the inherited key, and Codex's login probe reads the
+configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
+selected credential profile.
+
 Two boundaries to know: credential login/enrolment children do not receive
 `env` (they always run against the engine's normal config root), and changing
 `configHome` after sessions exist does not migrate their history — a resumed

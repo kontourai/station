@@ -15,6 +15,7 @@ import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -1209,7 +1210,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
   };
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   createMacosNotarizedArtifacts(
     parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
   ).catch((error) => {

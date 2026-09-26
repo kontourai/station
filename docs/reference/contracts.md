@@ -57,6 +57,25 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`OrchestrationSessionSummary.openRequestIds` is present when the server reads
+its durable request state. An empty array means no requests remain open;
+absence means that server did not report this projection.
+
+`OrchestrationSessionSummary.currentSessionId` names the current durable
+execution child for the row's conversation, including when no turn is open.
+It is omitted when the current child is outside the caller's readable scope.
+`lastRuntimeErrorMessage` carries the current terminal error when the event
+fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
+reason. A later successful terminal clears them.
+
+`ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
+current conversation activity after a burst of coalesced runtime events. It
+updates liveness without advancing the event replay cursor.
+
+`ChildWorkSessionView` may include bounded `settled` items with a reported
+running set. A missing `children` view still means the server made no
+child-work report for that row; clients retain their existing state.
+
 ## Import examples
 
 ```ts
@@ -209,6 +228,23 @@ aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
 
+Muse through `muse serve` (#2452). The Station runtime drives each Muse
+session through one `muse serve` (MSP) host, and everything above about
+`muse exec` describes its fallback: a session whose host cannot be used (no
+`serve` subcommand, a failed handshake, a protocol schema Station has not
+verified, or a host that applied a different approval mode than requested)
+runs on exec and publishes a `muse-serve-unavailable` warning, because on
+that path no approval can reach Station. On serve, a Station turn ends at
+Muse's own terminal (a `cancelled` terminal nobody in Station asked for is
+`finishReason: 'cancelled'`, never `stop`); the follow-up turn Muse starts
+after background work is adopted as a provider turn as above; tool approvals,
+a workflow subagent's included, are `request.opened` events (attributed to
+the child by `payload.childWork`), resolved from Muse's own
+`approval/resolved`. Muse never expires an unanswered approval, so Station
+declines one after 30 minutes (`muse-approval-expired`) and resolves it
+`expired`. Workflow subagents are `child-work.updated` deltas, and an exec
+session reports its child work `not-reported`.
+
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build
@@ -259,6 +295,65 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
   attribution details, and provider logs are never forwarded.
 - `transitionReason` crosses only when it names the
   `SessionTransitionReason` vocabulary; anything else is dropped.
+
+## Provider plan quota (#2265)
+
+A provider coding-plan quota exhaustion is a provider limit, not a Station
+budget and not a transport outage. When an ACP engine's `session/prompt`
+rejects with the evidenced quota shape (observed: OpenCode reporting ZAI
+plan exhaustion as a JSON-RPC request failure), the owning adapter
+classifies it at the terminal rejection seam
+(`src-server/providers/adapters/acp-adapter.ts`, via the engine-neutral
+`src-server/providers/provider-plan-quota.ts` helper, which is currently
+wired only to that observed shape) and publishes `runtime.error` with:
+
+- `code: 'provider-plan-quota-exhausted'` — the allowlisted code the
+  delegation `reason` and events projections branch on;
+- fixed safe `message` (`The provider plan quota was exhausted; the engine
+  refused the turn.`) — the engine's raw text and any co-reported
+  notification text never cross;
+- bounded `details`: the plan window (`quotaWindow`, e.g. `'5 hour'`),
+  the provider-reported reset text (`resetReported`, civil timestamp with
+  NO timezone), `resetPrecision: 'unqualified'`, and a qualified
+  `retryAfterMs` only when one was genuinely supplied alongside the
+  failure (none is supplied on the observed wire, so it stays absent).
+
+The terminal publication names the failed `turnId`, so the reason seam can
+scope the quota to the current turn: a successful continuation or a newer
+unrelated failure ends the quota story instead of reviving it. The
+lifecycle fold still classifies the session as `runtime_error`
+(failed, resumable); the quota code keeps plan limits distinct from
+Station's per-turn idle/total supervision budgets and from generic
+transport errors, which stay a redacted generic with no detail.
+
+Bounds: the window must be a positive whole-hour count (`0 hour` stays
+generic); the reset day must exist in its month (February 31 and February
+29 on a non-leap year stay generic — display-only calendar plausibility,
+never a timezone or epoch); the protocol code must be a finite number.
+
+Session notice: the lifecycle fold's terminal attribution composes the
+same fixed guidance from the re-validated facts (window, reset text
+labelled timezone-less, wait/check then continue explicitly), so the
+existing session failure notice (SessionsView, Home) renders it with no
+UI changes and no raw provider text. A quota-coded terminal with forged
+details falls back to the generic fixed copy.
+
+Surfaces (`snapshotFor` → `DelegatedTaskSnapshot.reason`;
+`projectDelegatedTaskEvent`; `station delegate status`/`events`/`wait`):
+
+- `reason` carries the quota code, host-synthesized fixed guidance
+  (wait for the reset or check the provider plan, then continue
+  explicitly — Station never retries, switches models/providers, or
+  spends on a fallback), and the re-validated bounded facts. Forged or
+  malformed details read as the bare code.
+- Delegated events project the same fixed copy plus validated facts;
+  unknown quota-shaped claims stay `The delegated runtime reported an
+  error.`
+- `station delegate status` (and `wait`'s summary, which reuses it)
+  prints the reason plus `Provider limit window` and
+  `Provider-reported reset … (no timezone given; wait before continuing)`
+  lines. The reset text is repeated verbatim for display — never parsed
+  as UTC/machine-local, never a countdown, never an invented instant.
 
 ## Compatibility
 

@@ -33,6 +33,16 @@ vi.mock('node:child_process', async (importOriginal) => ({
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: existsSyncMock,
+  // #2663: a hit must be a runnable file. These cases describe presence
+  // only, so the same predicate answers the file and execute-bit checks.
+  statSync: (path: string) => {
+    if (existsSyncMock(path)) return { isFile: () => true };
+    throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+  },
+  accessSync: (path: string) => {
+    if (!existsSyncMock(path))
+      throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+  },
 }));
 
 const { findCliBinaryAsync } = await import('../cli-auth.js');

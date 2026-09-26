@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * station#3392. A control filled with the accent and painted with a foreground
@@ -305,7 +306,7 @@ export function validateAccentForegroundInventory(
   return { total: discovered.length };
 }
 
-if (process.argv[1]?.endsWith('accent-foreground-ratchet.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const result = validateAccentForegroundInventory();
   console.log(
     `Accent-foreground ratchet: ${result.total} reviewed accent fills with an underived foreground; new ones are blocked.`,
