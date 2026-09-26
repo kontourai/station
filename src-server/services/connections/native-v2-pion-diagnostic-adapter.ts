@@ -58,6 +58,13 @@ function sameDescriptor(
 }
 
 type DiagnosticPeer = Awaited<ReturnType<typeof startPionApplicationAdapter>>;
+interface DiagnosticOperation {
+  readonly controller: AbortController;
+  readonly startupComplete: Promise<void>;
+  cancel(reason: unknown): void;
+  peer?: DiagnosticPeer;
+  retirement?: Promise<void>;
+}
 
 export interface NativeV2PionDiagnosticAdapterInput {
   surface: SelfHostedBrokerNativeClientSurfaceV2;
@@ -98,15 +105,17 @@ export function createNativeV2PionDiagnosticAdapter(
   const issuerOwner = input.issuer;
   const peers = new Set<DiagnosticPeer>();
   const retirements = new Map<DiagnosticPeer, Promise<void>>();
-  const lifetime = new AbortController();
+  const retiredPeers = new WeakSet<DiagnosticPeer>();
+  const peerSignals = new WeakMap<DiagnosticPeer, AbortSignal>();
+  const operations = new Set<DiagnosticOperation>();
   let closed = false;
+  let closeTask: Promise<void> | undefined;
 
   const assertCurrent = (
     expected: ApprovedStationConnectionTrust,
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
-    lifetime.signal.throwIfAborted();
     if (closed || !trustOwner.isCurrent(expected))
       throw new Error('native_pion_diagnostic_trust_retired');
   };
@@ -145,30 +154,51 @@ export function createNativeV2PionDiagnosticAdapter(
         throw new Error('native_pion_diagnostic_trust_unavailable');
       const clientFingerprint = fingerprint(offer.offerSdp);
       const controller = new AbortController();
-      const abortFromCaller = () => controller.abort(signal.reason);
-      const abortFromOwner = () => controller.abort(lifetime.signal.reason);
+      let finishStartup!: () => void;
+      const startupComplete = new Promise<void>((resolve) => {
+        finishStartup = resolve;
+      });
+      let cancellation: unknown;
+      const operation: DiagnosticOperation = {
+        controller,
+        startupComplete,
+        cancel: (reason) => {
+          if (cancellation !== undefined) return;
+          cancellation = reason;
+          if (operation.peer) {
+            operation.retirement = retirePeer(operation.peer);
+            void operation.retirement.catch(() => {});
+          } else {
+            controller.abort(reason);
+          }
+        },
+      };
+      operations.add(operation);
+      const abortFromCaller = () => operation.cancel(signal.reason);
       signal.addEventListener('abort', abortFromCaller, { once: true });
-      lifetime.signal.addEventListener('abort', abortFromOwner, { once: true });
       if (signal.aborted) abortFromCaller();
-      if (lifetime.signal.aborted) abortFromOwner();
       let peer: DiagnosticPeer | undefined;
       let disposed = false;
       const dispose = async () => {
         if (disposed) return;
         disposed = true;
-        controller.abort(new Error('native_pion_diagnostic_peer_retired'));
+        operation.cancel(new Error('native_pion_diagnostic_peer_retired'));
         signal.removeEventListener('abort', abortFromCaller);
-        lifetime.signal.removeEventListener('abort', abortFromOwner);
         if (peer) {
-          await retirePeer(peer);
+          operation.retirement ??= retirePeer(peer);
+          await operation.retirement;
         }
+      };
+      const assertOperationCurrent = () => {
+        if (cancellation !== undefined) throw cancellation;
+        assertCurrent(captured, controller.signal);
       };
 
       try {
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         const stationSigningKeyId =
           await stationConnectionSigningKeyId(captured);
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         if (
           offer.stationSigningKeyId !== stationSigningKeyId ||
           offer.stationSigningGeneration !== captured.generation
@@ -190,17 +220,20 @@ export function createNativeV2PionDiagnosticAdapter(
           signal: controller.signal,
           maxLifetimeMs: 90_000,
         });
+        operation.peer = peer;
         peers.add(peer);
+        peerSignals.set(peer, controller.signal);
+        finishStartup();
         void peer.cleanupComplete.then(
           () => peers.delete(peer!),
           () => {},
         );
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
 
         const offerSha256 = await connectionDescriptionDigest(offer.offerSdp);
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         const answerSha256 = await connectionDescriptionDigest(peer.answer.sdp);
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         const binding: StationConnectionProofBinding = {
           stationId: captured.stationId,
           enrollmentId: captured.enrollmentId,
@@ -213,20 +246,21 @@ export function createNativeV2PionDiagnosticAdapter(
           answerSha256,
         };
         const stationProof = await issuerOwner.issue(binding);
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         const verifier = createStationConnectionProofVerifier({
           trust: captured,
           expected: binding,
           isCurrent: () => trustOwner.isCurrent(captured),
         });
         await verifier.verifyAndConsume(stationProof);
-        assertCurrent(captured, controller.signal);
+        assertOperationCurrent();
         return {
           answerSdp: peer.answer.sdp,
           stationProof,
           dispose,
         };
       } catch (error) {
+        finishStartup();
         try {
           await dispose();
         } catch (cleanupError) {
@@ -236,6 +270,9 @@ export function createNativeV2PionDiagnosticAdapter(
           );
         }
         throw error;
+      } finally {
+        signal.removeEventListener('abort', abortFromCaller);
+        operations.delete(operation);
       }
     },
   });
@@ -245,37 +282,71 @@ export function createNativeV2PionDiagnosticAdapter(
     get activePeerCount() {
       return peers.size;
     },
-    async close() {
-      if (!closed) {
-        closed = true;
-        lifetime.abort(new Error('native_pion_diagnostic_adapter_closed'));
+    get retiringPeerCount() {
+      return retirements.size;
+    },
+    close() {
+      if (!closeTask) {
+        closeTask = (async () => {
+          closed = true;
+          const pending = [...operations];
+          const reason = new Error('native_pion_diagnostic_adapter_closed');
+          for (const operation of pending) operation.cancel(reason);
+          await Promise.all(
+            pending.map((operation) => operation.startupComplete),
+          );
+          const errors: unknown[] = [];
+          for (const operation of pending) {
+            if (!operation.retirement) continue;
+            try {
+              await operation.retirement;
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+          for (const peer of [...peers]) {
+            try {
+              await retirePeer(peer);
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+          if (errors.length)
+            throw new AggregateError(
+              errors,
+              'native_pion_diagnostic_close_failed',
+            );
+        })();
       }
-      const errors: unknown[] = [];
-      for (const peer of [...peers]) {
-        try {
-          await retirePeer(peer);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-      if (errors.length)
-        throw new AggregateError(errors, 'native_pion_diagnostic_close_failed');
+      return closeTask;
     },
   };
 
   async function retirePeer(peer: DiagnosticPeer) {
     const existing = retirements.get(peer);
     if (existing) return await existing;
+    if (retiredPeers.has(peer)) return;
     const task = (async () => {
       let closeError: unknown;
-      try {
-        await peer.close();
-      } catch (error) {
-        closeError = error;
+      if (peerSignals.get(peer)?.aborted) {
+        // Pion owns its abort listener and has already begun closing. Calling
+        // close again would surface the expected abort as an operational
+        // error, so join its cleanup receipt instead.
+        await peer.cleanupComplete;
+        peers.delete(peer);
+        retiredPeers.add(peer);
+        return;
+      } else {
+        try {
+          await peer.close();
+        } catch (error) {
+          closeError = error;
+        }
       }
       try {
         await peer.cleanupComplete;
         peers.delete(peer);
+        retiredPeers.add(peer);
       } catch (cleanupError) {
         throw closeError === undefined
           ? cleanupError
@@ -289,6 +360,7 @@ export function createNativeV2PionDiagnosticAdapter(
     retirements.set(peer, task);
     try {
       await task;
+      retirements.delete(peer);
     } catch (error) {
       retirements.delete(peer);
       throw error;

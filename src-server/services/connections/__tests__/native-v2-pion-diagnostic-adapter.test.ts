@@ -90,7 +90,7 @@ async function fixture() {
     expiresAt: Date.now() + 60_000,
   };
   let closeCalls = 0;
-  const makePeer = () => {
+  const makePeer = (signal: AbortSignal) => {
     let resolveCleanup!: () => void;
     const cleanupComplete = new Promise<void>((resolve) => {
       resolveCleanup = resolve;
@@ -100,15 +100,20 @@ async function fixture() {
       close: async () => {
         closeCalls++;
         resolveCleanup();
+        if (signal.aborted) throw new Error('pion_close_after_abort');
       },
       cleanupComplete,
     };
   };
   const startAdapter = vi.fn(
-    async (options: { profile: string; applicationChannelLabel?: string }) => {
+    async (options: {
+      profile: string;
+      applicationChannelLabel?: string;
+      signal: AbortSignal;
+    }) => {
       expect(options.profile).toBe('diagnosticEcho');
       expect(options.applicationChannelLabel).toBeUndefined();
-      return makePeer();
+      return makePeer(options.signal);
     },
   );
   const dependencies = {
@@ -135,11 +140,14 @@ describe('native v2 Pion diagnostic adapter', () => {
       f.input,
       f.dependencies,
     );
+    const caller = new AbortController();
+    const removeListener = vi.spyOn(caller.signal, 'removeEventListener');
     const result = await runtime.adapter.answer(
       f.offer,
       f.trust,
-      new AbortController().signal,
+      caller.signal,
     );
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(runtime.activePeerCount).toBe(1);
     expect(f.issued).toHaveLength(1);
     const binding = f.issued[0]!;
@@ -163,6 +171,7 @@ describe('native v2 Pion diagnostic adapter', () => {
     await result.dispose();
     expect(f.closeCalls).toBe(1);
     expect(runtime.activePeerCount).toBe(0);
+    expect(runtime.retiringPeerCount).toBe(0);
     await runtime.close();
   });
 
@@ -193,7 +202,7 @@ describe('native v2 Pion diagnostic adapter', () => {
   test('retires a newly started peer if trust changes while Pion is starting', async () => {
     const f = await fixture();
     let closeCalls = 0;
-    const startAdapter = vi.fn(async () => {
+    const startAdapter = vi.fn(async (options: { signal: AbortSignal }) => {
       f.trustOwner.retire();
       let resolveCleanup!: () => void;
       const cleanupComplete = new Promise<void>((resolve) => {
@@ -204,6 +213,7 @@ describe('native v2 Pion diagnostic adapter', () => {
         close: async () => {
           closeCalls++;
           resolveCleanup();
+          if (options.signal.aborted) throw new Error('pion_close_after_abort');
         },
         cleanupComplete,
       };
@@ -237,7 +247,7 @@ describe('native v2 Pion diagnostic adapter', () => {
         },
       },
       {
-        startAdapter: async () => {
+        startAdapter: async (options: { signal: AbortSignal }) => {
           let resolveCleanup!: () => void;
           const cleanupComplete = new Promise<void>((resolve) => {
             resolveCleanup = resolve;
@@ -247,6 +257,8 @@ describe('native v2 Pion diagnostic adapter', () => {
             close: async () => {
               closeCalls++;
               resolveCleanup();
+              if (options.signal.aborted)
+                throw new Error('pion_close_after_abort');
             },
             cleanupComplete,
           };
@@ -276,7 +288,75 @@ describe('native v2 Pion diagnostic adapter', () => {
     await runtime.close();
     expect(runtime.activePeerCount).toBe(0);
     expect(f.closeCalls).toBe(1);
+    expect(runtime.retiringPeerCount).toBe(0);
     await expect(result.dispose()).resolves.toBeUndefined();
     expect(f.closeCalls).toBe(1);
+    expect(runtime.retiringPeerCount).toBe(0);
+  });
+
+  test('close joins abort-aware startup and its late cleanup receipt', async () => {
+    const f = await fixture();
+    let startSignal: AbortSignal | undefined;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let resolveStartup!: (peer: {
+      answer: { type: 'answer'; sdp: string };
+      close(): Promise<void>;
+      cleanupComplete: Promise<void>;
+    }) => void;
+    let releaseStartup!: () => void;
+    let abortObserved = false;
+    let closeCalls = 0;
+    const runtime = createNativeV2PionDiagnosticAdapter(f.input, {
+      startAdapter: (options: { signal: AbortSignal }) => {
+        startSignal = options.signal;
+        signalStarted();
+        return new Promise((resolve) => {
+          resolveStartup = resolve;
+          releaseStartup = () =>
+            resolveStartup({
+              answer: { type: 'answer', sdp: answerSdp },
+              close: async () => {
+                closeCalls++;
+                if (options.signal.aborted)
+                  throw new Error('pion_close_after_abort');
+              },
+              cleanupComplete: Promise.resolve(),
+            });
+          options.signal.addEventListener(
+            'abort',
+            () => {
+              abortObserved = true;
+            },
+            { once: true },
+          );
+        });
+      },
+    } as unknown as NativeV2PionDiagnosticAdapterDependencies);
+    const answering = runtime.adapter.answer(
+      f.offer,
+      f.trust,
+      new AbortController().signal,
+    );
+    await started;
+    let closeFinished = false;
+    const closing = runtime.close().then(() => {
+      closeFinished = true;
+    });
+    expect(startSignal?.aborted).toBe(true);
+    expect(abortObserved).toBe(true);
+    await Promise.resolve();
+    expect(closeFinished).toBe(false);
+    releaseStartup();
+    await expect(answering).rejects.toThrow(
+      'native_pion_diagnostic_adapter_closed',
+    );
+    await closing;
+    expect(closeFinished).toBe(true);
+    expect(closeCalls).toBe(0);
+    expect(runtime.activePeerCount).toBe(0);
+    expect(runtime.retiringPeerCount).toBe(0);
   });
 });
