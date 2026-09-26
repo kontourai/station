@@ -51,6 +51,7 @@ on:
       - 'scripts/lib/elf-symbol-floor.mjs'
       - 'scripts/lib/free-ports.mjs'
       - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/lib/server-build-config.mjs'
   pull_request_target:
@@ -77,6 +78,7 @@ on:
       - 'scripts/lib/elf-symbol-floor.mjs'
       - 'scripts/lib/free-ports.mjs'
       - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/lib/server-build-config.mjs'
 
