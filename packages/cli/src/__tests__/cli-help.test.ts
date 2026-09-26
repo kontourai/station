@@ -56,10 +56,6 @@ async function loadCli() {
     createPlugin: vi.fn(),
     init: vi.fn(),
   }));
-  vi.doMock('../commands/install-registry.js', () => ({
-    recordRegistryInstall: vi.fn(),
-    resolveRegistryPluginSource: vi.fn(),
-  }));
   vi.doMock('../commands/install.js', () => ({
     info: vi.fn(),
     install: vi.fn(),

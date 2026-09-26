@@ -25,7 +25,7 @@
     "packages/cli/src/__tests__/environment.test.ts": 2,
     "packages/cli/src/__tests__/helpers.test.ts": 3,
     "packages/cli/src/__tests__/home-recovery-plan.test.ts": 1,
-    "packages/cli/src/__tests__/install-registry.test.ts": 8,
+    "packages/cli/src/__tests__/install-registry.test.ts": 2,
     "packages/cli/src/__tests__/install.test.ts": 1,
     "packages/cli/src/__tests__/kontour-dependency-drift.test.ts": 1,
     "packages/cli/src/__tests__/lifecycle.test.ts": 34,

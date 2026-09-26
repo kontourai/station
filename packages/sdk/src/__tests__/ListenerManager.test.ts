@@ -53,9 +53,17 @@ describe('ListenerManager', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('subscribe is a stable bound property (no per-call binding needed)', () => {
+  it('subscribe works detached from its instance, as useSyncExternalStore calls it', () => {
     const m = new TestManager();
-    // subscribe should be the same reference each time (class field, not a method)
-    expect(m.subscribe).toBe(m.subscribe);
+    // useSyncExternalStore(provider.subscribe, ...) invokes the function
+    // without its receiver; a prototype method would lose `this` here.
+    const { subscribe } = m;
+    const fn = vi.fn();
+    const unsub = subscribe(fn);
+    m.notify();
+    expect(fn).toHaveBeenCalledTimes(1);
+    unsub();
+    m.notify();
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
