@@ -368,7 +368,7 @@ export async function buildPortableServerArchive({
   // A short, fixed stage path keeps deep node_modules paths well inside
   // Windows MAX_PATH while the archive is assembled.
   const stageParent = join(outputDir, `stage-${target.id}`);
-  rmSync(stageParent, { recursive: true, force: true });
+  rmSync(stageParent, { recursive: true, force: true, maxRetries: 5 });
   const stageRoot = join(stageParent, PORTABLE_ARCHIVE_ROOT);
   try {
     const footprint = stagePortableServerTree({
@@ -393,6 +393,14 @@ export async function buildPortableServerArchive({
     writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
     return { archivePath, descriptorPath, descriptor };
   } finally {
-    if (!keepStage) rmSync(stageParent, { recursive: true, force: true });
+    if (!keepStage) {
+      try {
+        rmSync(stageParent, { recursive: true, force: true, maxRetries: 5 });
+      } catch (error) {
+        // A leftover stage is only disk; it must not turn a verified archive
+        // into a failed build. The next build removes it before staging.
+        console.warn(`warning: could not remove ${stageParent}: ${error}`);
+      }
+    }
   }
 }
