@@ -13,7 +13,6 @@ import {
   closestBasePreset,
   DeviceScopeEditor,
   scopeChoiceTokens,
-  scopeSelectionTokens,
 } from '../react/connection-manager-modal/DeviceScopeEditor';
 
 /**
@@ -235,11 +234,13 @@ test('the derivations agree with the contracts vocabulary', () => {
   expect(closestBasePreset('home:transfer')).toBeNull();
   expect(closestBasePreset('legacy-unparseable')).toBeNull();
 
-  expect(
-    scopeSelectionTokens('delegation', new Set(['access:approve'])),
-  ).toEqual(['orchestration:read', 'orchestration:operate', 'access:approve']);
-  expect(scopeSelectionTokens(null, new Set())).toEqual([]);
-  expect(scopeSelectionTokens(null, new Set(['home:transfer']))).toEqual([
+  expect(scopeChoiceTokens('delegation', new Set(['access:approve']))).toEqual([
+    'orchestration:read',
+    'orchestration:operate',
+    'access:approve',
+  ]);
+  expect(scopeChoiceTokens(null, new Set())).toEqual([]);
+  expect(scopeChoiceTokens(null, new Set(['home:transfer']))).toEqual([
     'home:transfer',
   ]);
 });
@@ -428,7 +429,7 @@ test('every operator-promotion token in the contracts is offered by the editor',
   );
   expect(promotionTokens.length).toBeGreaterThan(0);
 
-  const offered = scopeSelectionTokens(null, new Set(promotionTokens));
+  const offered = scopeChoiceTokens(null, new Set(promotionTokens));
 
   expect([...offered].sort()).toEqual([...promotionTokens].sort());
 });

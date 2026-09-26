@@ -157,16 +157,3 @@ export function classifyNotificationCategory(
 ): NotificationOutcome | undefined {
   return CATEGORY_OUTCOME[category];
 }
-
-/**
- * Outcome-first framing for an "all quiet" summary/badge (station#1100):
- * leads with what happened, never a bare zero count like "0 active agents".
- * No live summary/badge surface reads this today (no such surface exists in
- * the codebase yet — disclosed in the PR); it's a tested, reusable composer
- * ready for the push payload path and whatever summary surface follows.
- */
-export function outcomeFirstAllQuietHeadline(
-  outcome: 'done' | 'failed',
-): string {
-  return outcome === 'failed' ? 'Agent work failed' : 'Agent work completed';
-}
