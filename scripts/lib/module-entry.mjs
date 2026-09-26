@@ -24,19 +24,23 @@
  *
  * ## Which failures mean "not the entry point"
  *
- * No `argv[1]` (a REPL, `node -e`), or an `argv[1]` that names no file
- * (ENOENT/ENOTDIR — e.g. a test that points `argv[1]` at a fixture path and
- * then imports the module), cannot be this module, which exists: `false`. Any
- * other resolution failure is a real problem and is thrown, not read as
- * "imported": swallowing it would make a gate silently do nothing and exit 0,
- * the failure this helper exists to prevent.
+ * No `argv[1]` (a REPL), or an `argv[1]` that cannot name a file —
+ * ENOENT/ENOTDIR (a test that points `argv[1]` at a fixture path, then
+ * imports the module) or ENAMETOOLONG (`node -e 'import(…)' <long data>`, where
+ * argv[1] is data) — cannot be this module, which exists: `false`. Any other
+ * resolution failure (EACCES, ELOOP) is a real problem and is thrown, not read
+ * as "imported": swallowing it would make a gate silently do nothing and exit
+ * 0, the failure this helper exists to prevent.
  *
- * Four scripts run as lone files, so they keep an inline realpath comparison
- * instead of importing this module: `scripts/station-dev.mjs`,
+ * Four scripts run away from scripts/lib, so they keep an inline realpath
+ * comparison instead of importing this module: `scripts/station-dev.mjs` is
+ * copied onto PATH by `install-station-dev.mjs`;
  * `scripts/station-dogfood-reconcile.mjs` and
- * `scripts/station-dogfood-health.mjs` are installed as single-file copies,
- * and three workflows run `git show "$BASE_SHA:scripts/classify-ci-change.mjs"`
- * from a temp path. The scan test names the one whose spelling it would flag.
+ * `scripts/station-dogfood-health.mjs` are installed on their own by
+ * `ops/dogfood/install-macos.zsh` (health already imports from
+ * `packages/shared`, a separate defect); and three workflows run
+ * `git show "$BASE_SHA:scripts/classify-ci-change.mjs"` from a temp path.
+ * `scripts/__tests__/module-entry.scan.test.ts` pins all four.
  */
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -54,7 +58,8 @@ export function invokedDirectly(moduleUrl, argv1 = process.argv[1]) {
     entry = realpathSync(resolve(argv1));
   } catch (error) {
     const code = /** @type {NodeJS.ErrnoException} */ (error).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return false;
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENAMETOOLONG')
+      return false;
     throw error;
   }
   return entry === realpathSync(fileURLToPath(moduleUrl));

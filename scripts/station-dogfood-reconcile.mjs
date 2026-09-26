@@ -3049,7 +3049,8 @@ function invokedDirectly() {
   try {
     real = realpathSync(path.resolve(entry));
   } catch (error) {
-    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return false;
+    if (['ENOENT', 'ENOTDIR', 'ENAMETOOLONG'].includes(error?.code))
+      return false;
     throw error;
   }
   return real === realpathSync(fileURLToPath(import.meta.url));

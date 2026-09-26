@@ -7,9 +7,14 @@
  * `invokedDirectly(import.meta.url)` is the one comparison that holds.
  *
  * This reads every tracked code file under the pinned roots with comment
- * lines removed. It is a text scan, not a parse: a guard spelled through an
- * alias (`const a = process.argv; a[1]`) is invisible to it. The behaviour
- * the helper promises is proven by child processes in `module-entry.test.ts`.
+ * lines removed. It is a text scan, not a parse. It sees `process.argv[1]`,
+ * `process.argv.at(1)`, and a name bound to either or destructured as the
+ * second element (`const [, entry] = process.argv`), wherever that name is
+ * later used within two lines of `import.meta`. It does not see an alias of
+ * `process.argv` itself (`const a = process.argv; a[1]`), a binding made in
+ * another module, or a comparison more than two lines from `import.meta`.
+ * The behaviour the helper promises is proven by child processes in
+ * `module-entry.test.ts`.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -26,7 +31,12 @@ const CODE_PATH = /\.[cm]?[jt]sx?$/;
 const TEST_PATH = /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/;
 const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
 
-const ARGV1 = /process\.argv\[1\]/;
+const ARGV1 = /process\.argv(?:\[1\]|\.at\(\s*1\s*\))/;
+/** `const x = process.argv[1]`, `.at(1)`, or `const [, x] = process.argv`. */
+const ARGV1_BINDINGS = [
+  /\b(?:const|let|var)\s+(\w+)\s*=\s*process\.argv(?:\[1\]|\.at\(\s*1\s*\))/g,
+  /\b(?:const|let|var)\s*\[\s*(?:\w+\s*)?,\s*(\w+)[^\]]*\]\s*=\s*process\.argv(?![\w.[])/g,
+];
 const META = /import\.meta\.(url|filename|dirname)\b/;
 const RULES: ReadonlyArray<{
   rule: string;
@@ -43,12 +53,14 @@ const RULES: ReadonlyArray<{
   },
   {
     rule: 'argv[1] suffix match',
-    test: (text) => /process\.argv\[1\]\??\.endsWith\(/.test(text),
+    test: (text) =>
+      /process\.argv(?:\[1\]|\.at\(\s*1\s*\))\??\.endsWith\(/.test(text),
   },
   {
-    // Any other spelling: argv[1] within three lines of import.meta.
+    // Any other spelling: argv[1] (or a name bound to it) within two lines
+    // of import.meta. The window is centred on that reference.
     rule: 'argv[1] compared with import.meta',
-    test: (text) => ARGV1.test(text) && META.test(text),
+    test: (text) => META.test(text),
   },
 ];
 
@@ -58,9 +70,16 @@ function findHandRolledEntryGuards(
   const lines = source
     .split('\n')
     .map((line) => (COMMENT_LINE.test(line) ? '' : line));
+  const code = lines.join('\n');
+  const aliases = ARGV1_BINDINGS.flatMap((binding) =>
+    [...code.matchAll(binding)].map((match) => match[1]),
+  );
+  const reference = aliases.length
+    ? new RegExp(`${ARGV1.source}|\\b(?:${aliases.join('|')})\\b`)
+    : ARGV1;
   const found: Array<{ line: number; rule: string }> = [];
   lines.forEach((line, index) => {
-    if (!ARGV1.test(line)) return;
+    if (!reference.test(line)) return;
     const window = lines.slice(Math.max(0, index - 2), index + 3).join('\n');
     const hit = RULES.find(({ test }) => test(window));
     if (hit) found.push({ line: index + 1, rule: hit.rule });
@@ -69,17 +88,39 @@ function findHandRolledEntryGuards(
 }
 
 /**
- * Scripts that must stay importless because they run as lone files, whose
- * inline guard already realpaths both sides. Each entry is re-proven below:
- * still flagged (or the entry is stale), still import-free, still realpath,
- * and the lone-file use still exists.
+ * Scripts that run as lone files, away from scripts/lib, so they keep an
+ * inline realpath guard instead of importing the helper. Each entry is
+ * re-proven below: the lone-file use still exists, the guard still realpaths,
+ * and (where it is true today) the file imports nothing relative.
  */
 const LONE_FILE_SCRIPTS: Readonly<
-  Record<string, { usedAt: string; use: string }>
+  Record<string, { usedAt: string; use: string; importFree: boolean }>
 > = {
+  // Three workflows extract it from the base commit into $RUNNER_TEMP.
   'scripts/classify-ci-change.mjs': {
     usedAt: '.github/workflows/windows-pr-verification.yml',
     use: 'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+    importFree: true,
+  },
+  // Copied (never symlinked) onto PATH as `station-dev`.
+  'scripts/station-dev.mjs': {
+    usedAt: 'scripts/install-station-dev.mjs',
+    use: "'station-dev.mjs'",
+    importFree: true,
+  },
+  'scripts/station-dogfood-reconcile.mjs': {
+    usedAt: 'ops/dogfood/install-macos.zsh',
+    use: 'install -m 0755 "$REPO_ROOT/scripts/station-dogfood-reconcile.mjs" "$RUNNER"',
+    importFree: true,
+  },
+  // Installed alone too, but it ALREADY imports
+  // ../packages/shared/src/process-identity.mjs, so the installed copy cannot
+  // resolve it. That is a separate, pre-existing defect; this pins only what
+  // is true: no module-entry import and a realpath guard.
+  'scripts/station-dogfood-health.mjs': {
+    usedAt: 'ops/dogfood/install-macos.zsh',
+    use: 'install -m 0755 "$REPO_ROOT/scripts/station-dogfood-health.mjs" "$HEALTH_HELPER"',
+    importFree: false,
   },
 };
 const RELATIVE_IMPORT = /\bfrom\s+['"]\.\.?\/|\bimport\(\s*['"]\.\.?\//;
@@ -127,18 +168,16 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
 
   test.each(Object.entries(LONE_FILE_SCRIPTS))(
     '%s stays a lone file with a realpath guard',
-    (path, { usedAt, use }) => {
+    (path, { usedAt, use, importFree }) => {
       expect(scannedFiles()).toContain(path);
       const source = readFileSync(join(repoRoot, path), 'utf8');
-      expect(
-        findHandRolledEntryGuards(source).length,
-        'stale entry',
-      ).toBeGreaterThan(0);
-      expect(RELATIVE_IMPORT.test(source)).toBe(false);
-      expect(
-        source.match(/realpathSync\(/g)?.length ?? 0,
-      ).toBeGreaterThanOrEqual(2);
       expect(readFileSync(join(repoRoot, usedAt), 'utf8')).toContain(use);
+      expect(source).not.toMatch(/from\s+['"][^'"]*module-entry\.mjs['"]/);
+      if (importFree) expect(RELATIVE_IMPORT.test(source)).toBe(false);
+      // The inline guard realpaths argv[1] and compares with import.meta.url.
+      expect(source).toMatch(/realpathSync\(/);
+      expect(source).toMatch(/process\.argv\[1\]/);
+      expect(source).toMatch(/import\.meta\.url/);
     },
   );
 
@@ -159,6 +198,12 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
     'const invokedUrl = process.argv[1]\n  ? pathToFileURL(resolve(process.argv[1])).href\n  : null;\nif (import.meta.url === invokedUrl) {',
     "if (\n  process.argv[1] &&\n  join(\n    fileURLToPath(new URL('.', import.meta.url)),\n    'x.mjs',\n  ) === process.argv[1]\n) {",
     'function isMainModule() {\n  try {\n    return (\n      process.argv[1] &&\n      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)\n    );',
+    // Destructured, `.at(1)`, and bound far from the comparison.
+    'const [, entry] = process.argv;\nif (resolve(entry) === fileURLToPath(import.meta.url)) main();',
+    'const [node, script] = process.argv;\nif (script === fileURLToPath(import.meta.url)) main();',
+    'if (import.meta.url === pathToFileURL(process.argv.at(1)).href) main();',
+    "if (process.argv.at(1)?.endsWith('x.mjs')) main();",
+    'const entry = process.argv[1];\nconst a = 1;\nconst b = 2;\nconst c = 3;\nif (entry === fileURLToPath(import.meta.url)) main();',
   ])('flags %s', (source) => {
     expect(findHandRolledEntryGuards(source).length).toBeGreaterThan(0);
   });
@@ -170,6 +215,10 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
     '// never `import.meta.url === `file://${process.argv[1]}``',
     // argv[1] as data, far from any import.meta.
     'const pty = require(process.argv[1]);\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst here = import.meta.url;',
+    // A later positional destructured as data, not the entry path.
+    'const [, , command] = process.argv;\nconst here = import.meta.url;',
+    // Positional arguments sliced off argv, next to the helper call.
+    'if (invokedDirectly(import.meta.url)) {\n  const [app, identity] = process.argv.slice(2);\n}',
   ])('does not flag %s', (source) => {
     expect(findHandRolledEntryGuards(source)).toEqual([]);
   });

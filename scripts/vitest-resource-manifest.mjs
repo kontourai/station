@@ -359,6 +359,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and a symlink to prove `invokedDirectly` reaches the script body.
   // Bounded single-shot children per case.
   'scripts/__tests__/module-entry.test.ts',
+  // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
+  // child process with an empty PATH to prove it needs no npx shim.
+  'scripts/__tests__/a11y-ratchet.test.ts',
   // #2682: the real-tree half — one `git ls-files` over scripts/ and ops/.
   'scripts/__tests__/module-entry.scan.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as

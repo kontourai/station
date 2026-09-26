@@ -140,23 +140,32 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
     expect(result.stdout.trim()).toBe('imported');
   });
 
-  test('does not run the body, or throw, when imported with no argv[1] (node -e)', () => {
-    const scripts = installProbes(realTempDir());
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--input-type=module',
-        '-e',
-        `await import(${JSON.stringify(pathToFileURL(join(scripts, 'probe.mjs')).href)}); console.log('imported');`,
-      ],
-      { encoding: 'utf8', timeout: 30_000, windowsHide: true },
-    );
-    expect({ status: result.status, stderr: result.stderr }).toEqual({
-      status: 0,
-      stderr: '',
-    });
-    expect(result.stdout.trim()).toBe('imported');
-  });
+  test.each([
+    ['no argv[1]', []],
+    // argv[1] is data here; 300 bytes is past NAME_MAX, so realpath fails
+    // with ENAMETOOLONG rather than ENOENT.
+    ['a long data argv[1]', ['x'.repeat(300)]],
+  ])(
+    'does not run the body, or throw, when imported by node -e with %s',
+    (_label, extra) => {
+      const scripts = installProbes(realTempDir());
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `await import(${JSON.stringify(pathToFileURL(join(scripts, 'probe.mjs')).href)}); console.log('imported');`,
+          ...extra,
+        ],
+        { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      );
+      expect({ status: result.status, stderr: result.stderr }).toEqual({
+        status: 0,
+        stderr: '',
+      });
+      expect(result.stdout.trim()).toBe('imported');
+    },
+  );
 });
 
 describe('invokedDirectly decisions', () => {
@@ -167,6 +176,8 @@ describe('invokedDirectly decisions', () => {
     expect(
       invokedDirectly(here, join(makeTempDir('station-entry-'), 'nope.mjs')),
     ).toBe(false);
+    // ENAMETOOLONG: argv[1] is data (`node -e 'import(…)' <long arg>`).
+    expect(invokedDirectly(here, 'x'.repeat(300))).toBe(false);
     // ENOTDIR: a path "inside" a regular file.
     expect(invokedDirectly(here, join(HELPER, 'child.mjs'))).toBe(false);
   });

@@ -21,6 +21,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
@@ -96,15 +97,35 @@ export function evaluate(measured, baseline) {
  * throwing path — measures an empty string and silently reports a clean tree.
  * Always merge both streams, on both paths.
  */
+/**
+ * Biome's own JS launcher under the current Node, never an `npx` shim: on
+ * Windows `npx.cmd` cannot be spawned without a shell (`EINVAL` since Node's
+ * CVE-2024-27980 hardening), which threw here once this gate first ran on
+ * Windows (#2682). Same form as `generate-basis-mcp-apps.mjs`.
+ */
+export function biomeLintInvocation() {
+  return {
+    command: process.execPath,
+    args: [
+      fileURLToPath(import.meta.resolve('@biomejs/biome/bin/biome')),
+      'lint',
+      '--max-diagnostics=5000',
+      ...SOURCE_ROOTS,
+    ],
+  };
+}
+
 function runBiome() {
   // spawnSync rather than execFileSync: execFileSync only hands back stderr on
   // the throwing path, so a run that exits 0 with warnings loses every
   // diagnostic and measures as a clean tree.
-  const result = spawnSync(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['biome', 'lint', '--max-diagnostics=5000', ...SOURCE_ROOTS],
-    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+  const { command, args } = biomeLintInvocation();
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
   if (result.error) {
     throw new Error(`failed to run biome: ${result.error.message}`);
   }

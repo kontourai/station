@@ -1,6 +1,10 @@
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+// fallow's JS launcher under the current Node rather than an `npx` shim, which
+// Windows refuses to spawn without a shell (EINVAL, CVE-2024-27980); the form
+// `run-fallow-audit.mjs` uses.
+const fallowBin = fileURLToPath(import.meta.resolve('fallow/bin/fallow'));
 
 const commands = [
   ['fallow', 'dead-code', '--save-baseline', 'fallow-baselines/dead-code.json'],
@@ -9,7 +13,7 @@ const commands = [
 ];
 
 for (const args of commands) {
-  const result = spawnSync(executable, args, {
+  const result = spawnSync(process.execPath, [fallowBin, ...args], {
     stdio: 'inherit',
     windowsHide: true,
   });
