@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -31,9 +31,11 @@ vi.mock('../../../utils/git-exec.js', () => ({
   execGit: vi.fn(),
 }));
 
-const { createSystemUpdateRoutes, performGitPullRestart } = await import(
-  '../system-update-routes.js'
-);
+const {
+  coreUpdateSupervision,
+  createSystemUpdateRoutes,
+  performGitPullRestart,
+} = await import('../system-update-routes.js');
 const {
   resolveInstallProvenance,
   fetchChannelLatestSha,
@@ -92,10 +94,41 @@ beforeEach(() => {
     'STATION_BUILD_BUILT_AT',
     'STATION_INSTANCE_ID',
     'STATION_BOOT_ID',
+    'STATION_SUPERVISOR_PID',
+    'STATION_SERVICE_MANAGED',
   ]) {
     delete process.env[key];
   }
 });
+
+/**
+ * What `station upgrade` checks before running the owned installer (#2673):
+ * the `dependencies:install` binding and the lifecycle script it runs. A
+ * source-checkout apply fixture that omits them models a tree the route now
+ * refuses to install into.
+ */
+function writeOwnedDependencyLifecycle(root: string) {
+  writeFileSync(
+    joinPath(root, 'package.json'),
+    `${JSON.stringify({
+      scripts: {
+        'dependencies:install': 'node scripts/dependency-lifecycle.mjs install',
+      },
+    })}\n`,
+  );
+  mkdirSync(joinPath(root, 'scripts'), { recursive: true });
+  writeFileSync(
+    joinPath(root, 'scripts', 'dependency-lifecycle.mjs'),
+    'export {};\n',
+  );
+}
+
+/** The `[file, args]` pairs every execFile call ran, in order. */
+function execFileCommands(): Array<[string, string[]]> {
+  return execFileMock.mock.calls.map(
+    (call) => [call[0] as string, call[1] as string[]] as [string, string[]],
+  );
+}
 
 describe('GET /core-update on a desktop bundle', () => {
   test('reports channel provenance and update availability, never an error field (AC1)', async () => {
@@ -118,6 +151,7 @@ describe('GET /core-update on a desktop bundle', () => {
       // The beforeEach default refusal reason surfaces as a diagnostic —
       // this is what lets the UI say WHY apply is unavailable.
       selfUpdateUnavailableReason: 'no source checkout recorded',
+      selfUpdateUnavailableCode: null,
     });
     expect(body.error).toBeUndefined();
   });
@@ -486,9 +520,10 @@ describe('POST self-update apply (#1624)', () => {
 
 describe('POST /core-update git-pull restart (station#1903)', () => {
   let tmpDirs: string[] = [];
-  function tmpGitRoot(): string {
+  function tmpGitRoot({ ownedLifecycle = true } = {}): string {
     const dir = mkdtempSync(joinPath(tmpdir(), 'core-update-git-pull-'));
     tmpDirs.push(dir);
+    if (ownedLifecycle) writeOwnedDependencyLifecycle(dir);
     return dir;
   }
 
@@ -763,6 +798,245 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
       readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
     ).toBeNull();
   });
+
+  function armBehindSourceCheckout(gitRoot: string) {
+    vi.mocked(resolveInstallProvenance).mockReturnValue({
+      installKind: 'source-checkout',
+      gitRoot,
+      branch: 'main',
+      sha: 'abc1234',
+    });
+    vi.mocked(execGit).mockClear();
+    vi.mocked(execGit).mockImplementation(async (args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return { stdout: `${SHA}\n`, stderr: '' } as never;
+      }
+      if (args[0] === 'rev-parse' && args.includes('@{u}')) {
+        return { stdout: `${OTHER_SHA}\n`, stderr: '' } as never;
+      }
+      if (args[0] === 'rev-list' && args[1] === 'HEAD..@{u}') {
+        return { stdout: '3\n', stderr: '' } as never;
+      }
+      if (args[0] === 'rev-list' && args[1] === '@{u}..HEAD') {
+        return { stdout: '0\n', stderr: '' } as never;
+      }
+      return { stdout: '', stderr: '' } as never;
+    });
+    spawnMock.mockReturnValue({ pid: 7777, unref: vi.fn() });
+  }
+
+  // The unit's marker names the installed service; a bare supervisor PID
+  // (Windows service, desktop, dev harness) names only "a supervisor", and
+  // its remedy must not claim the service (review L3).
+  const SUPERVISION_CASES = [
+    ['STATION_SUPERVISOR_PID', '4242', 'supervised', 'a supervising process'],
+    [
+      'STATION_SERVICE_MANAGED',
+      '1',
+      'service-managed',
+      'runs under the installed Station service',
+    ],
+  ] as const;
+
+  test.each(SUPERVISION_CASES)(
+    'under a supervisor (%s=%s) POST refuses 409 as %s with its remedy before any git or build work (#2674)',
+    async (key, value, code, phrase) => {
+      const gitRoot = tmpGitRoot();
+      armBehindSourceCheckout(gitRoot);
+      vi.stubEnv(key, value);
+
+      const res = await createApp().request('/core-update', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(409);
+      const body = await json(res);
+      expect(body.success).toBe(false);
+      expect(body.selfUpdateUnavailableCode).toBe(code);
+      expect(body.error).toContain(phrase);
+      expect(body.error).toContain('"station upgrade"');
+      expect(body.error).toContain('"station service stop"');
+      expect(body.error).toContain('"station service start"');
+      // Rendered as plain text in the settings card: no literal backticks.
+      expect(body.error).not.toContain('`');
+      expect(vi.mocked(execGit)).not.toHaveBeenCalled();
+      expect(execFileMock).not.toHaveBeenCalled();
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(
+        readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+      ).toBeNull();
+    },
+  );
+
+  test('an unsupervised checkout is not refused: STATION_SERVICE_MANAGED other than "1" is not the marker', async () => {
+    const gitRoot = tmpGitRoot();
+    armBehindSourceCheckout(gitRoot);
+    vi.stubEnv('STATION_SERVICE_MANAGED', '0');
+    vi.stubEnv('STATION_SUPERVISOR_PID', '');
+
+    const res = await createApp().request('/core-update', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect((await json(res)).restarting).toBe(true);
+    expect(vi.mocked(execGit)).toHaveBeenCalledWith(
+      ['pull', '--ff-only'],
+      expect.objectContaining({ cwd: gitRoot }),
+    );
+  });
+
+  test("installs through the owned dependency lifecycle, then builds through the checkout's own `station build`, never raw build:* (#2673)", async () => {
+    const gitRoot = tmpGitRoot();
+    armBehindSourceCheckout(gitRoot);
+
+    const res = await createApp().request('/core-update', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect(execFileCommands()).toEqual([
+      ['npm', ['run', 'dependencies:install']],
+      [joinPath(gitRoot, 'station'), ['build', '--instance=default']],
+    ]);
+    for (const call of execFileMock.mock.calls) {
+      expect(call[2]).toMatchObject({ cwd: gitRoot, windowsHide: true });
+      // execFile kills a child past 1 MiB of buffered output by default; an
+      // install + Vite build prints more than that (review L6).
+      expect(
+        (call[2] as { maxBuffer?: number }).maxBuffer,
+      ).toBeGreaterThanOrEqual(16 * 1024 * 1024);
+    }
+    // The pull precedes the install: the pulled tree's dependencies are the
+    // ones installed.
+    const pullOrder = vi.mocked(execGit).mock.invocationCallOrder[0];
+    expect(pullOrder).toBeLessThan(execFileMock.mock.invocationCallOrder[0]);
+  });
+
+  test('a build failure after the install says dependencies may already be updated under the running server, and restarts nothing', async () => {
+    const gitRoot = tmpGitRoot();
+    armBehindSourceCheckout(gitRoot);
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const callback = (typeof args[2] === 'function' ? args[2] : args[3]) as
+        | ((error: unknown, result: unknown) => void)
+        | undefined;
+      const failed = args[0] !== 'npm';
+      callback?.(failed ? new Error('vite build exploded') : null, {
+        stdout: '',
+        stderr: '',
+      });
+    });
+    try {
+      const res = await createApp().request('/core-update', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(500);
+      const body = await json(res);
+      expect(body.error).toContain('Core update failed while building');
+      expect(body.error).toContain('vite build exploded');
+      expect(body.error).toContain(
+        'dependencies may already be updated under this running server',
+      );
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(
+        readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+      ).toBeNull();
+    } finally {
+      execFileMock.mockImplementation((...args: unknown[]) => {
+        const callback = (typeof args[2] === 'function' ? args[2] : args[3]) as
+          | ((error: unknown, result: unknown) => void)
+          | undefined;
+        callback?.(null, { stdout: '', stderr: '' });
+      });
+    }
+  });
+
+  test('a pulled tree without the owned dependency lifecycle fails closed: nothing installed, built, or restarted (#2673)', async () => {
+    const gitRoot = tmpGitRoot({ ownedLifecycle: false });
+    armBehindSourceCheckout(gitRoot);
+    writeFileSync(
+      joinPath(gitRoot, 'package.json'),
+      `${JSON.stringify({ scripts: {} })}\n`,
+    );
+
+    const res = await createApp().request('/core-update', { method: 'POST' });
+
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain(
+      'does not define the "dependencies:install" script',
+    );
+    expect(body.error).toContain('raw "npm install" is not a substitute');
+    expect(execFileMock).not.toHaveBeenCalled();
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(
+      readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+    ).toBeNull();
+  });
+
+  test('a pulled tree missing the lifecycle script itself also fails closed', async () => {
+    const gitRoot = tmpGitRoot();
+    armBehindSourceCheckout(gitRoot);
+    rmSync(joinPath(gitRoot, 'scripts', 'dependency-lifecycle.mjs'));
+
+    const res = await createApp().request('/core-update', { method: 'POST' });
+
+    expect(res.status).toBe(500);
+    expect((await json(res)).error).toMatch(
+      /dependency-lifecycle\.mjs is missing/,
+    );
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  test.each(SUPERVISION_CASES)(
+    'GET under a supervisor (%s=%s) keeps the comparison facts and states %s with its remedy',
+    async (key, value, code, phrase) => {
+      armBehindSourceCheckout(tmpGitRoot());
+      vi.stubEnv(key, value);
+
+      const body = await json(await createApp().request('/core-update'));
+
+      expect(body).toMatchObject({
+        installKind: 'source-checkout',
+        applyMethod: 'git-pull',
+        behind: 3,
+        updateAvailable: true,
+        selfUpdateUnavailableCode: code,
+      });
+      expect(body.selfUpdateUnavailableReason).toContain(phrase);
+      expect(body.selfUpdateUnavailableReason).toContain(
+        '"station service stop"',
+      );
+      expect(body.selfUpdateUnavailableReason).toContain('"station upgrade"');
+      expect(body.selfUpdateUnavailableReason).not.toContain('`');
+    },
+  );
+
+  test('GET on an unsupervised checkout states no refusal', async () => {
+    armBehindSourceCheckout(tmpGitRoot());
+
+    const body = await json(await createApp().request('/core-update'));
+
+    expect(body.updateAvailable).toBe(true);
+    expect(body.selfUpdateUnavailableCode).toBeNull();
+    expect(body.selfUpdateUnavailableReason).toBeNull();
+  });
+});
+
+describe('coreUpdateSupervision', () => {
+  test.each([
+    [{}, null],
+    [{ STATION_SUPERVISOR_PID: '' }, null],
+    [{ STATION_SUPERVISOR_PID: '  ' }, null],
+    [{ STATION_SERVICE_MANAGED: '0' }, null],
+    [{ STATION_SERVICE_MANAGED: 'true' }, null],
+    [{ STATION_SUPERVISOR_PID: '123' }, 'supervised'],
+    [
+      { STATION_SUPERVISOR_PID: '123', STATION_SERVICE_MANAGED: '1' },
+      'service-managed',
+    ],
+    [{ STATION_SERVICE_MANAGED: '1' }, 'service-managed'],
+  ] as const)('%o -> %s', (env, expected) => {
+    expect(coreUpdateSupervision(env as NodeJS.ProcessEnv)).toBe(expected);
+  });
 });
 
 describe('performGitPullRestart (station#1903)', () => {
@@ -776,6 +1050,7 @@ describe('performGitPullRestart (station#1903)', () => {
     const exitFn = vi.fn();
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     vi.stubEnv('STATION_SUPERVISOR_PID', 'old-supervisor');
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
 
     performGitPullRestart({
       gitRoot: '/repo',
@@ -812,6 +1087,13 @@ describe('performGitPullRestart (station#1903)', () => {
     expect(spawnFn.mock.calls[0][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
+    // Deliberately inherited (#2674): the replacement still lives in the
+    // service's unit, and this marker is what lets IT refuse a later in-place
+    // update now that the PID is gone. This spawn does not use the child-env
+    // scrub, which removes the marker for every other child.
+    expect(spawnFn.mock.calls[0][2].env).toMatchObject({
+      STATION_SERVICE_MANAGED: '1',
+    });
     expect(childHandle.unref).toHaveBeenCalled();
 
     const [watchdogCmd, watchdogArgs, watchdogOpts] = spawnFn.mock.calls[1] as [

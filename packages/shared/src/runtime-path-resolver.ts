@@ -156,7 +156,7 @@ function equalOrDescendant(path: string, parent: string): boolean {
   );
 }
 
-function sameRuntimePath(left: string, right: string): boolean {
+export function sameRuntimePath(left: string, right: string): boolean {
   return equalOrDescendant(left, right) && equalOrDescendant(right, left);
 }
 

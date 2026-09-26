@@ -3,7 +3,11 @@ import { symlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { isEntrypoint, runRepoScans } from '../run-repo-scan-suites.mjs';
+import {
+  ensureCliBundle,
+  isEntrypoint,
+  runRepoScans,
+} from '../run-repo-scan-suites.mjs';
 import { REPO_SCAN_SUITES } from '../test-impact-manifest.mjs';
 
 const makeTempDir = trackTempDirs();
@@ -33,6 +37,29 @@ describe('repo-scans runner (#2176)', () => {
         },
       }),
     ).rejects.toThrow('vitest did not start');
+  });
+
+  it('ensures the CLI bundle before handing off to the runner', async () => {
+    const run = vi.fn(async (_args: string[]) => 0);
+    const ensureCli = vi.fn(() => false);
+    await runRepoScans({ run, ensureCli });
+    expect(ensureCli).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the missing CLI bundle once, then runs the scans', () => {
+    const root = makeTempDir('station-repo-scans-dist-');
+    const build = vi.fn();
+    expect(ensureCliBundle({ root, exists: () => false, build })).toBe(true);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(build.mock.calls[0]?.[0]).toBe(root);
+  });
+
+  it('leaves a present CLI bundle alone', () => {
+    const root = makeTempDir('station-repo-scans-dist-');
+    const build = vi.fn();
+    expect(ensureCliBundle({ root, exists: () => true, build })).toBe(false);
+    expect(build).not.toHaveBeenCalled();
   });
 
   it('reaches the runner when invoked through a symlink, not only directly', () => {

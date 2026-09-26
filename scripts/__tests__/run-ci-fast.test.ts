@@ -135,6 +135,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      ['npm', ['run', 'content:excluded-names']],
       // CLI help ↔ docs/reference/cli.md parity: a help topic without a
       // reference heading must red the PR lane, not the nightly (the `open`
       // verb shipped green and failed Nightly a day later).

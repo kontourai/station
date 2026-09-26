@@ -38,6 +38,10 @@ import {
 } from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
+import {
+  runAsStationServer,
+  stationServerScopeHeaders,
+} from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type {
   EventBus,
@@ -1005,99 +1009,109 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             nativeForeground,
           )
         : undefined;
-      response = await (this.options.fetch ?? fetch)(
-        `${this.options.apiBase}/api/agents/${encodeURIComponent(record.agentId)}/chat`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-            [INTERNAL_PROXY_CALLER_HEADER]: 'local',
-            // #2589: this stream's tool approvals become this thread's
-            // `request.opened` (below), so their registry twins are on the
-            // card. Same value as `options.conversationId`.
-            [INTERNAL_ORCHESTRATION_THREAD_HEADER]: input.threadId,
-            ...(relayHandoff
-              ? {
-                  [INTERNAL_TURN_CORRELATION_HEADER]: relayHandoff,
-                  ...(nativeOutputRelay?.workspaceRequired
-                    ? { [INTERNAL_NATIVE_WORKSPACE_HEADER]: relayHandoff }
-                    : {}),
-                  ...(nativeForeground
-                    ? { [INTERNAL_NATIVE_FOREGROUND_HEADER]: relayHandoff }
-                    : {}),
-                }
-              : {}),
-            ...(record.tenantExecutionContext
-              ? {
-                  [INTERNAL_TENANT_HEADER]:
-                    record.tenantExecutionContext.tenantId,
-                }
-              : {}),
-          },
-          body: JSON.stringify({
-            // Relay contract (archive#685): forward the TYPED text plus the raw
-            // ambient context so /chat's own choke point composes exactly
-            // once and its persistence surfaces (conversation title, temp
-            // agent messages) keep typed content only. archive#1885: when
-            // the turn carries attachments, `buildRelayInput` composes the
-            // multipart `input` shape `/chat` consumes so the attachment is
-            // forwarded (not silently dropped after the gate passed).
-            input: buildRelayInput(
-              input.displayInput ?? input.input,
-              input.attachments,
-            ),
-            ...(input.ambientContext
-              ? { ambientContext: input.ambientContext }
-              : {}),
-            options: {
-              conversationId: input.threadId,
-              ...(record.userId ? { userId: record.userId } : {}),
-              ...(record.delegation ? { delegation: record.delegation } : {}),
-              ...(modelId ? { model: modelId } : {}),
-              // archive#1288: `/chat`'s model-override guard
-              // (chat-model-override.ts) 400s any request that carries a
-              // bare `options.model` without a resolved provider connection
-              // — `chat-request-preparation.ts` only resolves one when
-              // `providerManagedFallback` is set. This relay is the ONLY
-              // caller of `/chat` that can reach here with `input.modelId`
-              // set but no provider connection of its own to hand over (the
-              // station-agent adapter has no `providerId` in hand — see
-              // `ProviderSendTurnInput`/`ProviderSessionStartInput`, neither
-              // carries one), so every flipped managed-chat turn and every
-              // `delegateTask` call with an explicit model 400ed. Setting
-              // the fallback flag (plus `providerModel` so
-              // `resolveProvider`'s `conversationModel` sees the same value
-              // `model` already carries) lets `resolveProvider` apply this
-              // model against its own resolved default connection
-              // (`ProviderService.resolveDefaultProviderId`'s
-              // `modelOnlyFallback` branch) instead of rejecting a lone
-              // model as a partial override. This is NOT the same shape as
-              // the direct managed-chat send path
-              // (`useActiveChatSessionMessaging.ts`): that path always
-              // pairs an explicit `providerId` with `providerModel` (it has
-              // a resolved connection to hand over); this relay never does,
-              // by construction, because it has none.
-              ...(modelId
+      // #2377 slice A: the relay is Station's own server code (the built-in
+      // engine's turn), so it runs in the server scope and carries the
+      // server-self attestation. The station-control authority guard has no
+      // path carve-out for this route: a bare internal token is refused.
+      const relayFetch = this.options.fetch ?? fetch;
+      response = await runAsStationServer(() =>
+        relayFetch(
+          `${this.options.apiBase}/api/agents/${encodeURIComponent(record.agentId)}/chat`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+              [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+              // #2589: this stream's tool approvals become this thread's
+              // `request.opened` (below), so their registry twins are on the
+              // card. Same value as `options.conversationId`.
+              [INTERNAL_ORCHESTRATION_THREAD_HEADER]: input.threadId,
+              ...stationServerScopeHeaders(),
+              ...(relayHandoff
                 ? {
-                    providerManagedFallback: true,
-                    providerModel: modelId,
+                    [INTERNAL_TURN_CORRELATION_HEADER]: relayHandoff,
+                    ...(nativeOutputRelay?.workspaceRequired
+                      ? { [INTERNAL_NATIVE_WORKSPACE_HEADER]: relayHandoff }
+                      : {}),
+                    ...(nativeForeground
+                      ? { [INTERNAL_NATIVE_FOREGROUND_HEADER]: relayHandoff }
+                      : {}),
                   }
                 : {}),
-              // archive#1224 (offline): forward the caller's
-              // idempotency key so `/chat`'s own dedup (`chat-turn-dedup.ts`)
-              // also recognizes a replayed turn on this relay path — defense
-              // in depth alongside the orchestration-service-level dedup
-              // that already prevents this adapter's `sendTurn` from being
-              // called twice for the same `clientTurnId`.
-              ...(input.clientTurnId
-                ? { clientTurnId: input.clientTurnId }
+              ...(record.tenantExecutionContext
+                ? {
+                    [INTERNAL_TENANT_HEADER]:
+                      record.tenantExecutionContext.tenantId,
+                  }
                 : {}),
             },
-            ...(record.projectSlug ? { projectSlug: record.projectSlug } : {}),
-          }),
-          signal: controller.signal,
-        },
+            body: JSON.stringify({
+              // Relay contract (archive#685): forward the TYPED text plus the raw
+              // ambient context so /chat's own choke point composes exactly
+              // once and its persistence surfaces (conversation title, temp
+              // agent messages) keep typed content only. archive#1885: when
+              // the turn carries attachments, `buildRelayInput` composes the
+              // multipart `input` shape `/chat` consumes so the attachment is
+              // forwarded (not silently dropped after the gate passed).
+              input: buildRelayInput(
+                input.displayInput ?? input.input,
+                input.attachments,
+              ),
+              ...(input.ambientContext
+                ? { ambientContext: input.ambientContext }
+                : {}),
+              options: {
+                conversationId: input.threadId,
+                ...(record.userId ? { userId: record.userId } : {}),
+                ...(record.delegation ? { delegation: record.delegation } : {}),
+                ...(modelId ? { model: modelId } : {}),
+                // archive#1288: `/chat`'s model-override guard
+                // (chat-model-override.ts) 400s any request that carries a
+                // bare `options.model` without a resolved provider connection
+                // — `chat-request-preparation.ts` only resolves one when
+                // `providerManagedFallback` is set. This relay is the ONLY
+                // caller of `/chat` that can reach here with `input.modelId`
+                // set but no provider connection of its own to hand over (the
+                // station-agent adapter has no `providerId` in hand — see
+                // `ProviderSendTurnInput`/`ProviderSessionStartInput`, neither
+                // carries one), so every flipped managed-chat turn and every
+                // `delegateTask` call with an explicit model 400ed. Setting
+                // the fallback flag (plus `providerModel` so
+                // `resolveProvider`'s `conversationModel` sees the same value
+                // `model` already carries) lets `resolveProvider` apply this
+                // model against its own resolved default connection
+                // (`ProviderService.resolveDefaultProviderId`'s
+                // `modelOnlyFallback` branch) instead of rejecting a lone
+                // model as a partial override. This is NOT the same shape as
+                // the direct managed-chat send path
+                // (`useActiveChatSessionMessaging.ts`): that path always
+                // pairs an explicit `providerId` with `providerModel` (it has
+                // a resolved connection to hand over); this relay never does,
+                // by construction, because it has none.
+                ...(modelId
+                  ? {
+                      providerManagedFallback: true,
+                      providerModel: modelId,
+                    }
+                  : {}),
+                // archive#1224 (offline): forward the caller's
+                // idempotency key so `/chat`'s own dedup (`chat-turn-dedup.ts`)
+                // also recognizes a replayed turn on this relay path — defense
+                // in depth alongside the orchestration-service-level dedup
+                // that already prevents this adapter's `sendTurn` from being
+                // called twice for the same `clientTurnId`.
+                ...(input.clientTurnId
+                  ? { clientTurnId: input.clientTurnId }
+                  : {}),
+              },
+              ...(record.projectSlug
+                ? { projectSlug: record.projectSlug }
+                : {}),
+            }),
+            signal: controller.signal,
+          },
+        ),
       );
       if (!response.ok || !response.body) {
         // archive#1071: /chat rejections carry the actionable reason in their JSON
