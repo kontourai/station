@@ -40,7 +40,7 @@ export interface ParsedCoreArgs {
    * Every value seen for each `--flag=value` occurrence, in argv order —
    * `flags` only keeps the last (a bare `--flag` with no `=value` is never
    * recorded here). Needed for a genuinely repeatable flag like
-   * `--model-option key=value` (station#978 AC7, `collectModelOptions`);
+   * `--model-option=key=value` (archive#978 AC7, `collectModelOptions`);
    * every other flag ignores this and reads `flags` exactly as before —
    * fully additive, no behavior change for existing callers.
    */

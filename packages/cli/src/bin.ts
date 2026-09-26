@@ -8,10 +8,10 @@
  *
  * The contributor path is deliberately different: the repo-root `./station`
  * launcher runs `scripts/station-cli.ts`, which additionally injects
- * `EnvironmentSecurityService` from `src-server/`. That server source must
- * never ship in a CLI tarball, so the host-local `station environment`
- * subcommands are wired to no factory here and fail with the message that
- * names `./station` (`commands/environment.ts`'s `requireSecurityService`).
+ * `EnvironmentSecurityService` from `src-server/`. That source must not ship
+ * in the tarball. The package uses client-side existing-home admission for
+ * selected local operations; distribution.ts keeps mutations requiring the
+ * injected service behind the checkout launcher.
  */
 
 import { describeCliError, runCli } from './cli.js';

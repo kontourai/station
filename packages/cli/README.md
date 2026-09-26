@@ -32,7 +32,10 @@ latency-sensitive or scripted use, an explicit global install pins one version
 instead: `npm install -g @kontourai/station-cli@<version-or-published-tag>`.
 Use a channel tag only after `npm view` reports it.
 
-**Inside a Station checkout**, `./station` runs that tree's own build directly
+The examples below use `station` for a globally installed command. With `npx`,
+keep the `npx @kontourai/station-cli@latest` prefix on subsequent commands too.
+
+**Inside a Station checkout**, `./station` runs that tree's TypeScript sources
 — this is the local-invocation path when the registry isn't the point (working
 on the CLI itself, or a channel tag you don't want to depend on):
 
@@ -40,14 +43,14 @@ on the CLI itself, or a channel tag you don't want to depend on):
 ./station <command> [args]
 ```
 
-It refuses to run against a stale build rather than silently executing old
-code — see [the CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#invocation)
-for the freshness gate and the three-tier invocation story (`npx` / `./station`
-/ the `station-dev` global dev shim).
+The separate `station-dev` shim runs the checkout's built CLI bundle and
+checks its source timestamps for obvious staleness. That check is approximate;
+`./station` does not use it. See [the CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#invocation)
+for the entry-point and build boundaries.
 
-Every invocation reports where it came from: `station --version` prints the
-CLI version, its build channel, and the source revision the artifact was built
-from, so a wrong-binary mistake is visible instead of guessed at.
+`station --version` reports the CLI version. Bundles also report their stamped
+build channel and source revision; the source launcher reports
+`development source checkout` without a revision.
 
 ## Sixty seconds to a working setup
 
@@ -166,11 +169,13 @@ records the canonical invoked directory and selected Station in the
 owner-controlled shared store; repository files cannot redirect the target.
 The selection names a saved Station and never embeds an endpoint or credential.
 
-Requests give up after 30 seconds. Override with
+SDK-backed requests give up after 30 seconds. Override with
 `STATION_REQUEST_TIMEOUT_MS=<ms>`, or `0` to disable the deadline. Streams —
-chat and session turns, orchestration and approval event streams, live
-monitoring, knowledge reindexing — are deliberately exempt, because they are
-open-ended by design.
+orchestration and approval events and live monitoring — have no overall
+deadline. Chat sends a bounded JSON acceptance request, then observes the turn
+on a separate event stream. Knowledge reindexing and migration also opt out of
+the request deadline. The current checkpoint-restore command bypasses the
+shared client and cannot authenticate to a protected Station; see the reference.
 
 ## What this CLI does not do
 
@@ -209,9 +214,10 @@ how to use `./station` from a checkout. The command admission authority is
 
 `station --version` reports immutable bundle metadata: the CLI version, its
 build channel, and the source revision stamped when that artifact was built.
-It does not inspect a nearby checkout or a backend build manifest. Local source
-builds report the `development` channel (and a dirty revision when applicable),
-independent of `STATION_CHANNEL`.
+It does not inspect a nearby checkout or a backend build manifest. Invoking
+`./station --version` reports `development source checkout`, independent of
+`STATION_CHANNEL`; it does not print a source SHA. A locally built bundle has
+its own build-time provenance, including a dirty revision when applicable.
 
 The package test packs one exact tarball, records its SHA-256, then installs
 that same tarball into an isolated consumer with `npm install --ignore-scripts`.
@@ -250,11 +256,13 @@ station --version
 ```
 
 `--help` is recognised at any depth, and per-command help carries the flag
-detail. Unknown input is always a failure, never a help request: the CLI exits
-non-zero and names the nearest real command or action.
+detail. Unknown commands and actions fail with a diagnostic. Flag validation
+belongs to each command; use the documented spelling, including
+`--model-option=key=value` rather than a space-separated value.
 
-The full prose reference — every verb, every flag, and the complete tier
-table — ships with the Station repository as `docs/reference/cli.md`.
+The prose reference and availability table ship with the Station repository as
+`docs/reference/cli.md`. Its implementation links and stated limits distinguish
+current behavior from commands that need further qualification.
 
 ## Related packages
 

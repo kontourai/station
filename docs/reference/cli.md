@@ -1,10 +1,16 @@
 # CLI Reference
 
-The Station CLI manages the application lifecycle, plugin system, and plugin development workflow.
+The Station CLI controls running Stations and supports selected local and
+checkout operations. Availability depends on how it was launched.
 
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
+
+Examples use `station` as the command name. Use `./station` in a checkout or
+the full `npx @kontourai/station-cli@<version-or-published-tag>` prefix when
+you have not installed a global command. The package does not add itself to
+your PATH merely because an earlier `npx` command ran.
 
 ### The operator entry point: `npx @kontourai/station-cli@<version-or-published-tag>`
 
@@ -37,9 +43,14 @@ From the repo root, use the `./station` shell script:
 ./station <command> [args]
 ```
 
-On first run, `./station` bootstraps by running `npm install` if `node_modules` is missing, installs the repo-local Playwright Chromium bundle, then delegates to `scripts/station-cli.ts` (which imports `packages/cli/src/cli.ts`) via `tsx`. It additionally injects `EnvironmentSecurityService` from `src-server/`, which is why the host-local `station environment` subcommands answer here and nowhere else.
+If `node_modules` is missing, `./station` runs `npm run dependencies:ci` using
+the pinned package manager, then installs the repo-local Playwright browser
+bundle. It executes `scripts/station-cli.ts` through `tsx`; that wrapper loads
+the CLI sources and supplies source-only server capabilities. Selected local
+operations also work in the packaged client, as listed below.
 
-**Every command in this reference works from `./station`.** This is also the
+`./station` admits the checkout command surface, subject to each command's
+platform, configuration, and authorization requirements. This is also the
 *local invocation way* when the registry isn't the point — developing the CLI
 itself, or deliberately not depending on a published channel tag.
 
@@ -51,9 +62,10 @@ fixed pointer into one checkout: every invocation walks up from the current
 working directory to find the enclosing Station checkout and runs *that
 tree's* built bundle (`packages/cli/dist/station.mjs`, the same artifact `npx`
 runs), so it behaves correctly across many worktrees on the same machine. It
-refuses to run against a stale `packages/cli/dist` rather than silently
-executing old code, naming `npm run build:cli` as the remedy. Outside any
-checkout it names the `npx` form above instead of failing silently.
+refuses a missing bundle or one older than the source timestamps it inspects,
+naming `npm run build:cli` as the remedy. This is an approximate mtime check,
+not the content-based dist-freshness gate; preserved or skewed timestamps can
+miss drift. Outside a checkout it names the `npx` form instead.
 
 ```bash
 npm run station-dev:install   # once, from any Station checkout
@@ -62,9 +74,8 @@ station-dev agents list       # runs THAT worktree's build, not the one installe
 ```
 
 Because it runs the *bundle*, not `scripts/station-cli.ts`, `station-dev`
-follows the bundle's own tier support below (Client tier only) — the
-host-local and contributor tiers still need `./station` directly, from the
-checkout that has them.
+follows the bundle's Client and selected host-local support below. Building,
+installing a backend, and other checkout-only operations still need `./station`.
 
 ### The published entry point: the bundled `station` binary
 
@@ -75,7 +86,16 @@ npm run build:cli          # from the repo root
 node packages/cli/dist/station.mjs --help
 ```
 
-The bundle inlines every `@kontourai/station-*` workspace package, so it needs no `tsx`, no repo checkout, and no raw-TypeScript resolution at runtime. Its one declared runtime dependency is `esbuild`, which `station plugin build` and `station plugin dev` drive through its native binary. `packages/cli`'s `prepack` hook rebuilds the bundle on `npm pack`/`publish` — EXCEPT when run from inside this checkout, where the repo-root `.npmrc`'s `ignore-scripts=true` silently suppresses it, so a bare `npm publish` from `packages/cli` here would pack whatever `dist/station.mjs` already exists (stale or missing) at exit 0. CI never depends on the hook — `publish-packages.yml` builds this package as its own explicit workflow step — and a human publishing from this checkout must run `npm run build:cli` first (see `publish-packages.yml`'s bootstrap note).
+The bundle inlines the Station workspace packages, so it needs neither `tsx`
+nor a checkout at runtime. The package declares `@napi-rs/keyring` and `qrcode`
+dependencies. `esbuild` is an optional peer loaded for plugin-authoring builds;
+client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
+and [bundle externals](../../packages/cli/bundle-externals.mjs).
+
+The `prepack` hook builds the bundle, but this checkout's `ignore-scripts=true`
+suppresses lifecycle scripts. Build explicitly with `npm run build:cli` before
+packing here. The publication workflow builds explicitly too; neither an
+existing `dist/` directory nor a successful package command proves freshness.
 
 The bundle is the *published* path; `./station` is the *contributor* path. Both stay supported. There is deliberately no `npm link`-based way to develop the CLI itself: a machine-global symlink into one checkout would silently run whatever branch that tree happens to be on, with no staleness gate in front of it — `station-dev` above gives the same on-`PATH` ergonomics without either failure mode.
 
@@ -130,7 +150,11 @@ Run it from the root of a Station checkout with the bundled launcher:
 The published CLI drives Stations that are already running — see `station stations`, `station setup hosted`, and `--api-base`.
 ```
 
-`station --help` from the bundle names the same set in a closing note, so the printed reference never claims a verb it cannot run. `station <verb> --help` still answers for those verbs from either entry point.
+`station --help` from the bundle includes a checkout-command note. It currently
+lists `service` as a whole even though packaged `service status|start|stop` are
+admitted. Per-command help describes the combined surface; admission remains
+owned by [distribution.ts](../../packages/cli/src/distribution.ts).
+`station <verb> --help` answers before that admission check.
 
 `stop` is contributor-only. Its instance state is checkout-local, so a global
 client could silently target the wrong instance; use `./station stop` from the
@@ -150,9 +174,9 @@ prints the `agents` help rather than being read as an argument. The top-level
 summary is deliberately short; per-command help carries the flag detail, and
 this reference carries the prose.
 
-Unknown input is a failure, never a help request: the process exits non-zero,
-names the nearest real command or action, and points at the relevant help
-instead of reprinting the whole manual.
+Unknown commands and actions fail and point at relevant help. Flag validation
+is command-specific; not every unknown or malformed flag is rejected. Use the
+documented `--key=value` spelling for core commands.
 
 ```console
 $ station agnts
@@ -227,7 +251,7 @@ of `STATION_CHANNEL`.
 
 ## Interactive `station service` menu
 
-`station service` with no action, in a terminal, presents a menu of the service
+From a checkout, `./station service` with no action, in a terminal, presents a menu of the service
 actions (status, install, start, stop, uninstall) and dispatches your choice
 through the ordinary `station service <action>` path — so the setup receipt and
 rollback behaviour are identical to naming the action outright. With no TTY it
@@ -236,16 +260,18 @@ error and does nothing, so scripts see the same deterministic failure as before.
 
 ## Native installation
 
-When #818 publishes a required signed ring manifest, this no-clone macOS/Linux
-path can install that exact portable GitHub release and start Station. Until
-then it is protocol documentation, not a currently available installer claim:
+For an available signed portable release ring, this macOS/Linux path installs
+that exact release and starts Station without a manual clone. Check the
+[release list](https://github.com/kontourai/station/releases) and
+[release-ring guide](../guides/release-rings.md) for availability; desktop
+channel tags and npm package tags are separate distribution surfaces:
 
 ```bash
 sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; token=$(gh auth token); GH_TOKEN="$token" gh api repos/kontourai/station/contents/install.sh -H "Accept: application/vnd.github.raw+json" >"$file"; chmod 600 "$file"; GH_TOKEN="$token" sh "$file"'
 ```
 
-When a signed stable ring manifest is published, this authenticated one-liner
-uses the existing GitHub CLI login while the Station repository is private. It verifies its
+The authenticated one-liner uses an existing GitHub CLI login for release
+verification. It verifies the
 stable-ring manifest,
 checksum, and archive attestations before parsing or using them; there is no
 anonymous or unsigned fallback. Set `STATION_CHANNEL=beta` for the beta runtime
@@ -442,7 +468,7 @@ convenience verb wrapping steps 2–4; that remains an open follow-up decision
 
 ### Request deadlines and unreachable Stations
 
-Every Station request the CLI makes has a **30 second deadline**. Without one, a
+SDK-backed Station requests default to a **30 second deadline**. Without one, a
 Station that accepts the connection but never answers left commands printing
 nothing at all, indefinitely — the worst failure mode for a command inside a
 script. Set `STATION_REQUEST_TIMEOUT_MS=<ms>` to change it, or `0` to disable
@@ -453,12 +479,16 @@ deadline would abandon healthy work:
 
 | Exempt | Why |
 |--------|-----|
-| `chat` / `sessions` streaming turns | The POST response *is* the token stream; it lasts as long as the agent takes. |
+| Chat observation SSE | Chat POST returns a JSON acceptance handle under the ordinary request deadline. A separate SSE connection observes the accepted turn without an overall turn deadline. |
 | Orchestration and approval SSE streams (`operate`, `approvals`, `sessions`) | Long-lived event streams; they carry their own `AbortSignal`. |
 | `monitoring events` (live form) | Same — a live stream, ended by interrupting it. |
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
+
+This is the shared SDK client contract, not a guarantee for every raw network
+call in the CLI. The current `checkpoints restore` path bypasses that client;
+its authentication, target, and deadline limitations are described below.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake is visible without re-deriving the
@@ -642,7 +672,7 @@ station config set <key> <value> [--offline]
 | Argument | Description |
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
-| `<value>` | The new value. `true`/`false` are stored as booleans, all-digit values as numbers, the literal `null` unsets the key, and everything else is stored as a string. |
+| `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
 | `--offline` | Skip the live Station route and write `config/app.json` directly. |
 
 `config get <key>` prints `(not set)` for an absent key.
@@ -665,9 +695,10 @@ Station is reachable, the command errors and names both ways forward: retry
 once Station is reachable, or pass `--offline` to write `config/app.json`
 directly — that offline path still runs the same registry validation
 locally, it just cannot apply a running Station's live reload/event-emit
-side effects. `config get` has no such divergence risk: it reads through the
-live route when reachable (showing an env-override provenance note where one
-applies) and falls back to the file quietly when it isn't.
+side effects. `config get` reads through the live route when reachable
+(showing an env-override provenance note where one applies). On a transport
+failure it prints a notice and shows the local home's file instead; that is
+not a reading of the unavailable target Station's configuration.
 
 A mistyped action is a failure, not a listing: `station config sett` exits
 non-zero and names the valid actions.
@@ -778,16 +809,22 @@ station agents workflows list planner
 station agents chat planner "Summarize the open work"
 ```
 
-`--project=<project-slug>` on both `agents chat` and `chat` (below) binds a
-**new** orchestration session's `cwd`/`metadata.projectSlug` to that
-project's configured `workingDirectory` when the target agent is
-bound to an external engine — this is a no-op for Station-engine Agents, which
-are already project-scoped server-side. If the project has no `workingDirectory`
-configured, the command fails with an actionable error instead of silently
-starting an unscoped session. If `--project` is passed while continuing an
-already-loaded session (`--conversation=<id>` on an active thread), the CLI
-prints a stderr warning that the flag has no effect rather than silently
-dropping it.
+For a new chat, `--project=<slug>` selects Project context for either engine
+kind. The current CLI also sends `process.cwd()` as that target's workspace
+directory; it does not simply request the Project's configured directory. The
+server resolves and validates the target. Use `--project` or `--cwd`, not both.
+
+The checkout launcher changes directory to the Station checkout before running
+the CLI. Chat currently uses that process directory rather than the preserved
+`STATION_INVOKED_CWD`; an invocation from another repository can therefore use
+the Station checkout. For directory-based work, pass an explicit target-visible
+`--cwd`. This is a current caller limitation, not a Project authorization grant.
+
+On continuation, the current caller omits workspace selection: `--project`
+and `--cwd` have no effect and are not warned about. The Conversation keeps its
+persisted workspace. Omit those flags when continuing; start a new chat to
+choose another workspace. [#2733](https://github.com/kontourai/station/issues/2733)
+tracks these caller limitations.
 
 ### `chat`
 
@@ -800,7 +837,7 @@ does not silently discard it. Conversation naming will return when it is part
 of the shared execution contract.
 
 ```
-station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
+station chat <agent> <message> [--on=<environment>] [--project=<project-slug>|--cwd=<path>] [--conversation=<id>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--api-base=<url>]
 ```
 
 Examples:
@@ -808,11 +845,12 @@ Examples:
 ```bash
 station chat station "What changed in this repo?"
 printf 'Review the latest project state' | station chat planner
-station chat ollama "Reply with exactly: OK" --conversation=runtime-demo --model=llama3.2:latest
+station chat ollama "Reply with exactly: OK" --model=llama3.2:latest
 station chat codex "Summarize the open work" --project=launchpad
 station chat codex "Probe the media host" --on=env-media-host --project=my-project
 station chat codex "Fix the failing test" --cwd=/repos/launchpad --approval-mode=auto --effort=high
-station chat codex "Continue" --conversation=runtime-demo --approval-mode=never
+# Use the Conversation ID returned by an earlier chat:
+station chat codex "Continue" --conversation="$CONVERSATION_ID" --approval-mode=auto
 ```
 
 `--on=<environment>` selects a saved Environment; omitting it means the current
@@ -821,20 +859,24 @@ target to that Environment for resolution. The CLI never selects an engine,
 connection, provider, tunnel, or remote API URL for execution.
 
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
-per-invocation settings on an Agent whose resolved engine supports them. A Station-engine Agent has no
-per-invocation engine settings surface and the CLI rejects these flags for
-one rather than silently dropping them. `--approval-mode` accepts exactly
+per-invocation settings on an Agent whose resolved engine supports them. The
+server validates option keys after resolving the target; Station's engine does
+not support this engine-options bag. `--approval-mode` accepts exactly
 `ask`, `auto`, `never`, or `connection-default` (an invalid value is a usage
 error, exit 1, before any request); `--effort` and `--thinking` are
-otherwise engine-specific. `--model-option key=value` is a repeatable
+otherwise engine-specific. `--model-option=key=value` is a repeatable
 escape hatch for any `modelOptions` key not covered by a named flag — named
-flags always win a key collision. An option key the target engine's adapter
+flags always win a key collision. The equals form is required by the current
+parser: a space-separated `--model-option key=value` is not supported and may
+become prompt text instead of an option. [#2732](https://github.com/kontourai/station/issues/2732)
+tracks rejection or support for that spelling. An option key the target engine's adapter
 doesn't actually read is rejected with an explicit 400 naming the option
 and target (nothing is silently dropped); see
 `packages/contracts/src/provider.ts`'s `PROVIDER_MODEL_OPTION_SUPPORT` for
-the authoritative per-engine list. Resuming with `--session=<id>` retains the
-original model and workspace binding. Model/workspace flags on a resume are
-rejected; start a new Agent-targeted chat to request different launch controls.
+the authoritative per-engine list. `--session=<id>` (or `--conversation=<id>`)
+continues the durable Conversation. Supported model overrides/options are
+forwarded for that turn; omission retains the current choice. Workspace flags
+are currently omitted as described above, not rejected.
 
 `--model` is capability-gated at the same shared orchestration dispatch seam as
 the API. Omission may deliberately be engine-selected (Codex does not receive a
@@ -856,12 +898,12 @@ canonical execution request rather than silently spawning the adapter somewhere 
 
 `--on-request=<wait|fail>` (station#979, default `wait`) governs what
 happens when the target opens a pending request (approval/permission/
-confirmation/input) mid-turn — on both the orchestration (runtime) and
-managed (Station-agent) dispatch paths. Previously this hung the CLI
+confirmation/input) mid-turn through the canonical orchestration path for
+either engine kind. Previously this hung the CLI
 silently until the request was resolved out-of-band or a ~60s auto-deny
 elapsed, with no indication. Now a notice always prints to stderr naming
-the `requestType`, `title`, `requestId`, `threadId`, and (on the runtime
-path) the ready-to-run command to answer it:
+the `requestType`, `title`, `requestId`, `threadId`, and a responder command
+for approval/permission decisions:
 
 ```bash
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel>
@@ -872,10 +914,7 @@ out-of-band (the notice just makes the wait legible). `--on-request=fail`
 stops waiting and exits **4** instead, leaving the session alive and
 resumable — it is never torn down (no `stopSession`) just because a
 request opened. `--json` carries a typed `pendingRequest` field
-(`requestId`/`requestType`/`title`/`respondCommand` on the runtime path;
-the managed path's `tool-approval-request` chunk has no CLI responder yet,
-so its `pendingRequest` omits `respondCommand` rather than naming a command
-that doesn't exist) plus `lifecycleState` (the session's
+(`requestId`/`requestType`/`title`/`respondCommand`) plus `lifecycleState` (the session's
 `SessionLifecycleState`, e.g. `needs_input`/`review_pending`) whenever
 either is present — distinguishing a stalled turn from a merely slow one.
 
@@ -944,11 +983,11 @@ delegation uses, over `station-control-delegation.ts`'s service functions
 the already-wired `POST /delegations` and `POST /delegations/options`).
 
 ```
-station delegate --agent=<slug> [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
-station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] <message>
+station delegate --agent=<slug> [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
+station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
 station delegate status <task-id> [--on=<environment>] [--json]
 station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
-station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
+station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
 station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
@@ -1013,7 +1052,7 @@ station delegate --agent=codex --model-option=fastMode=true "Quick check" --json
 
 `--approval-mode` accepts exactly `ask`, `auto`, `never`, or
 `connection-default` (an invalid value is a usage error, exit 1, before any
-request). `--model-option key=value` is a repeatable escape hatch for any
+request). `--model-option=key=value` is a repeatable escape hatch for any
 `modelOptions` key not covered by a named flag; named flags always win a
 key collision. An option key the target's adapter doesn't actually read is
 rejected with an explicit exit-3 error naming the option and target —
@@ -1893,7 +1932,6 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--build` | — | Force a rebuild before starting |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
-| `--allow-shared-home` | — | Start even though another live instance owns this home. Default: refuse — the stores are not multi-writer safe, so concurrent writers silently lose conversation data (station#2904) |
 | `--features=<flags>` | — | Comma-separated feature flags |
 | `--dry-run` | — | Print the resolved ports/instance/home and exit without starting |
 
@@ -1917,17 +1955,20 @@ If the derived pair is already busy (a rare hash collision between two
 worktrees), the allocator scans forward to the next free pair and reports the
 move.
 
-**Isolated home.** Each instance runs against `~/.station/instances/dev/<instance>`,
-where `<instance>` is `dev-<worktree-basename>` (or `dev-<STATION_DEV_INSTANCE>`
-when the seed is set). The home is EXTERNAL to the worktree, so it survives a
-worktree cleanup and a recreated worktree at the same path reuses it.
+**Isolated home.** Each instance runs against
+`<STATION_ROOT>/instances/dev/<instance>`. Automatic names are
+`dev-<sanitized-basename>-<hash8(resolved-path)>`; an explicit
+`STATION_DEV_INSTANCE` uses `dev-<sanitized-seed>` instead. Recreating a worktree
+at the same path reuses its home. Reusing an explicit seed across worktrees
+deliberately selects the same home. Use the actual identity printed by `dev`;
+this command does not accept `--allow-shared-home`.
 
 ```bash
 station dev                       # deterministic ports from this worktree's path
 station dev --dry-run             # inspect the resolved ports/home, start nothing
 station dev --port-offset=7       # pin server 39147 / ui 40147
 STATION_DEV_INSTANCE=alpha station dev
-station stop --instance=dev-<worktree-basename>
+station stop --instance=<instance-printed-by-dev>
 ```
 
 `station start` resolves its channel ports through the shared runtime context.
@@ -1967,9 +2008,10 @@ station environment peers remove <environment-id>
 - `environment credential show` is the only reveal command. It prints the raw
   credential so it can be entered in Station Connect's masked field. Do not
   redirect, log, screenshot, or paste this output into a URL.
-- `environment credential rotate` preserves the environment ID, invalidates all
-  saved remote credentials immediately, and prints the replacement after
-  confirmation.
+- `environment credential rotate` preserves the environment ID and replaces
+  only the operator bootstrap credential after confirmation. Independently
+  issued Device credentials remain valid until separately revoked or the
+  environment is reset.
 - `environment reset` rotates both the environment ID and credential. It prints
   only non-secret reset metadata; run the explicit credential show command to
   bootstrap a client afterward.
@@ -2225,6 +2267,14 @@ Station required, and they act on the machine the command runs on, not
 necessarily wherever `--api-base` points. `restore` is the one subcommand
 that calls a running Station instead.
 
+**Current restore limitation ([#2734](https://github.com/kontourai/station/issues/2734)).**
+The restore caller uses raw `fetch`, sends no authorization, and defaults to
+`http://127.0.0.1:3141` unless `--api-base` is supplied. It does not use saved
+Station selection, `STATION_API_CREDENTIAL`, or the shared request deadline.
+A protected Station therefore refuses its preview; supplying a credential flag
+does not repair this caller. Use the authenticated workspace checkpoint UI or
+API described in [workspace checkpoints](../user/workspace-checkpoints.md).
+
 ```
 station checkpoints [status] [--json]
 station checkpoints prune (--thread=<threadId> | --all) [--gc] [--json]
@@ -2239,7 +2289,7 @@ station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baselin
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
 | `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Destructive — requires `--confirm`. The CLI first creates a short-lived restore preview, displays the exact changed paths, target tree, and current tree, then confirms that exact preview against the same running Station. The server refuses expired, reused, owner-mismatched, session/turn-mismatched, or current-tree-mismatched previews. It restores the earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint only while the workspace has no active or starting local turn. |
+| `restore` | Currently cannot authenticate to a protected Station (see above). The caller requires `--confirm`, requests a preview, then immediately submits its `previewId` and `currentTreeSha`; it does not display the changed paths/tree before confirming. The server owns preview identity, expiry, current-tree, and active-turn checks. |
 
 `--json` on every action prints one JSON document instead of the
 human-readable form.
@@ -2248,7 +2298,7 @@ human-readable form.
 station checkpoints
 station checkpoints prune --thread=abc123 --gc
 station checkpoints prune --all --gc
-station checkpoints restore --thread=abc123 --turn=turn-7 --confirm
+# Restore is currently unavailable through this CLI; use the authenticated UI/API.
 ```
 
 Restore changes workspace files only. It does not rewind conversation history
@@ -2777,7 +2827,8 @@ recorded in the pre-registry `<home>/service/*.json` manifest on first install.
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `PORT` | `start` | Overridden by `--port=<n>`. Sets the API server listen port. |
+| `STATION_SERVER_PORT` | lifecycle | Server port override read by the lifecycle parser; `--port=<n>` takes precedence. |
+| `STATION_UI_PORT` | lifecycle | UI port override read by the lifecycle parser; `--ui-port=<n>` takes precedence. |
 | `STATION_ROOT` | shared app data | App-owned root for saved-Station metadata, cache, channel installs, and runtime containers. Defaults to `~/.station`; never a runtime cleanup target. |
 | `STATION_HOME` | lifecycle + server runtime | One runtime home. Defaults to `<STATION_ROOT>/instances/<channel>`. Lifecycle commands also accept `--home=<dir>` (which wins over this variable), its original name `--base=<dir>`, and `--temp-home`. |
 | `STATION_INSTANCE_ID` | server runtime | Stable instance identity injected by the CLI for targeted restart/update flows. |
@@ -2790,7 +2841,8 @@ recorded in the pre-registry `<home>/service/*.json` manifest on first install.
 | `STATION_PORT` | loopback override | Overrides the selected channel runtime context's server port for the loopback default target. |
 | `STATION_REQUEST_TIMEOUT_MS` | commands that talk to a Station | Request deadline in milliseconds (default `30000`). `0` disables it. See [request deadlines](#request-deadlines-and-unreachable-stations). |
 
-Environment variables are station-only (`STATION_*`). Shared app data resolves
+Station-owned identity and path variables use the `STATION_*` prefix; the
+table also includes telemetry and UI-build settings. Shared app data resolves
 from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 `STATION_HOME` → `<STATION_ROOT>/instances/<channel>`. The source launcher is
 `./station`.
