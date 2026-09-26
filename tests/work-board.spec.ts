@@ -50,7 +50,9 @@ test.describe
       expect(project.id).toBeTruthy();
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: /Add pane/i }).click();
+      await page
+        .getByRole('button', { name: '+ Add pane', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
       await expect(picker).toBeVisible({ timeout: 20_000 });
       await picker.getByRole('button', { name: /Open Work Board/i }).click();
@@ -326,7 +328,9 @@ test.describe
       });
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: /Add pane/i }).click();
+      await page
+        .getByRole('button', { name: '+ Add pane', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add workspace pane' });
       await expect(picker).toBeVisible({ timeout: 20_000 });
       await picker.getByRole('button', { name: /Open Work Board/i }).click();
