@@ -381,7 +381,7 @@ function collectModuleReferences(path, source) {
       )
     )
       add(specifier, null);
-  return { references, opaque };
+  return { references, opaque, viEscapes };
 }
 
 function bindingNames(name, into) {
@@ -764,7 +764,11 @@ function statementHasSideEffect(statement, imported) {
       if (
         ts.isIdentifier(declaration.name) &&
         declaration.initializer &&
-        readsImported(declaration.initializer, imported)
+        // An alias (`const a = imported`) or a container holding an imported
+        // value (`const l = [imported]`): touching it can touch the import.
+        [...referencedIdentifiers(declaration.initializer)].some((name) =>
+          imported.has(name),
+        )
       )
         imported.add(declaration.name.text);
     return !pure;
@@ -906,7 +910,10 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
     return [module];
   };
 
-  /** A named import of `name` from `barrel`: the modules it depends on. */
+  /**
+   * A named import of `name` from `barrel` — or from any SDK module: the
+   * resolution is the same — and the modules it depends on.
+   */
   const nameCache = new Map();
   const resolveBarrelName = (barrel, name) => {
     const key = `${barrel}\0${name}`;
@@ -940,8 +947,14 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
       fileEdges.push({ target, names: reference.names });
     }
     // A computed import or glob inside the SDK, or in a file that also
-    // references it, could name any SDK module.
-    if (collected.opaque && (isSdkPath(path) || fileEdges.length))
+    // references it, could name any SDK module. A `vi` this scan cannot
+    // follow can mock or load the SDK with no static SDK import at all
+    // (`vi['importActual']('@kontourai/station-sdk')`), and every file here
+    // already mentions the SDK, so it is opaque on its own.
+    if (
+      collected.viEscapes ||
+      (collected.opaque && (isSdkPath(path) || fileEdges.length))
+    )
       opaque.add(path);
     edges.set(path, fileEdges);
   }
@@ -952,6 +965,7 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
     opaque,
     resolveBarrelName,
     resolveSpecifier: resolveFrom,
+    exportsOf,
   };
 }
 
@@ -1146,20 +1160,33 @@ function runtimeImportKey(path, source) {
  * that references a binding it imports from `changed` — `registry.add(fn)`
  * with `fn` from the changed module. Every barrel importer evaluates that
  * statement, so the change is observable without importing any of its
- * names. Direct importers only; a call through an intermediate module's
- * function is not traced.
+ * names. The binding may come directly or through any re-exporter (a
+ * barrel or `export { f as g } from`); a call that reaches the changed
+ * module only inside another module's function body is not traced.
  */
 function topLevelUseOf(graph, changed) {
+  // Does importing `name` from `target` bind something `changed` provides?
+  // Resolved through any re-exporter, not only the barrels.
+  const provides = (target, name) =>
+    target === changed ||
+    graph.resolveBarrelName(target, name).includes(changed);
+  // A namespace import binds every export; a star re-export is not
+  // enumerated here, so it counts.
+  const namespaceProvides = (target) => {
+    if (target === changed) return true;
+    const table = graph.exportsOf(target);
+    if (!table || table.stars.length) return true;
+    return [...table.local, ...table.named.keys()].some((name) =>
+      provides(target, name),
+    );
+  };
   for (const [importer, fileEdges] of graph.edges) {
     if (importer === changed) continue;
     if (!isSdkSourceModule(importer) && !graph.barrels.has(importer)) continue;
     const reaches = (edge) =>
-      edge.target === changed ||
-      (graph.barrels.has(edge.target) &&
-        (edge.names === null ||
-          edge.names.some((name) =>
-            graph.resolveBarrelName(edge.target, name).includes(changed),
-          )));
+      edge.names === null
+        ? namespaceProvides(edge.target)
+        : edge.names.some((name) => provides(edge.target, name));
     if (!fileEdges.some(reaches)) continue;
     const file = parse(importer, graph.sources.get(importer), true);
     const bound = new Set();
@@ -1172,20 +1199,18 @@ function topLevelUseOf(graph, changed) {
         statement.moduleSpecifier.text,
       );
       if (target === null || target === UNKNOWN) continue;
-      const whole = target === changed;
-      const viaBarrel = graph.barrels.has(target);
-      if (!whole && !viaBarrel) continue;
-      if (clause.name && whole) bound.add(clause.name.text);
+      if (clause.name && provides(target, 'default'))
+        bound.add(clause.name.text);
       const bindings = clause.namedBindings;
-      if (bindings && ts.isNamespaceImport(bindings))
-        bound.add(bindings.name.text);
-      else if (bindings)
-        for (const element of bindings.elements) {
-          if (element.isTypeOnly) continue;
-          const name = (element.propertyName ?? element.name).text;
-          if (whole || graph.resolveBarrelName(target, name).includes(changed))
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        if (namespaceProvides(target)) bound.add(bindings.name.text);
+      } else if (bindings)
+        for (const element of bindings.elements)
+          if (
+            !element.isTypeOnly &&
+            provides(target, (element.propertyName ?? element.name).text)
+          )
             bound.add(element.name.text);
-        }
     }
     if (bound.size === 0) continue;
     const imported = importedBindings(file);

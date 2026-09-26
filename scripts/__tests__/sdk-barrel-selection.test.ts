@@ -409,6 +409,23 @@ describe('factory mocks evaluate nothing real unless they can reach the original
     },
   );
 
+  test.each([
+    [
+      'element access',
+      "const sdk = await vi['importActual']('@kontourai/station-sdk');",
+    ],
+    [
+      'an aliased vi',
+      "import { vi as v } from 'vitest';\nconst sdk = await v.importActual('@kontourai/station-sdk');",
+    ],
+  ])(
+    'a vi escape through %s selects the file even with no static SDK import',
+    (_form, body) => {
+      const only = 'src-ui/src/__tests__/escape-only.test.ts';
+      expect(seedsFor(SCHEDULER, { [only]: body })).toContain(only);
+    },
+  );
+
   test('vi in a type position or as a direct property access is not an escape (control)', () => {
     const body =
       "import { vi } from 'vitest';\nvi.mock('@kontourai/station-sdk', () => ({ fetchBoard: vi.fn() }));\nlet m: ReturnType<typeof vi.fn>;";
@@ -512,11 +529,23 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'through a barrel',
         "import { listJobs } from './index';\nexport const registered = register(listJobs);",
       ],
+      [
+        'through a renaming re-exporter that is not a barrel',
+        "import { midJobs } from './mid';\nregistry.push(midJobs());",
+      ],
+      [
+        'through a namespace import of that re-exporter',
+        "import * as mid from './mid';\nregistry.push(mid.midJobs());",
+      ],
     ])(
       'a barrel-graph module calling into it at top level %s keeps whole-barrel',
       (_label, source) => {
         const result = decide(
-          { 'packages/sdk/src/registration.ts': source },
+          {
+            'packages/sdk/src/registration.ts': source,
+            'packages/sdk/src/mid.ts':
+              "export { listJobs as midJobs } from './client/scheduler';",
+          },
           SDK_SOURCES[SCHEDULER],
         );
         expect(result.paths).toEqual([SCHEDULER]);
@@ -720,6 +749,10 @@ describe('topLevelSideEffect', () => {
     [
       'freezing an imported object (mutates another module)',
       "import { obj } from './o';\nexport const f = Object.freeze(obj);",
+    ],
+    [
+      'freezing an element of a local container of imported values',
+      "import { obj } from './o';\nconst list = [obj];\nexport const f = Object.freeze(list[0]);",
     ],
     [
       'freezing a local alias of an imported object',
