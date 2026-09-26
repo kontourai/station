@@ -12,16 +12,8 @@ import {
 
 // Mutable SDK query/mutation state, reset per test.
 const state = {
-  flow: { data: undefined as unknown },
   readiness: { data: undefined as unknown, isLoading: false, error: null },
   bundles: { data: undefined as unknown, isLoading: false, error: null },
-  // #2064: the Reviews tab's own source. Its default here is the empty
-  // aggregate, which is what a project with no review evidence really reads.
-  reviewEvidence: {
-    data: { receipts: [], unavailableProjects: [] } as unknown,
-    isLoading: false,
-    isError: false,
-  },
   trustReport: { data: undefined as unknown, isLoading: false, error: null },
   initReadinessResult: undefined as unknown,
 };
@@ -31,7 +23,6 @@ const initReadinessMutate = vi.fn();
 const refreshMutate = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useFlowDefinitionsQuery: () => state.flow,
   useReadinessQuery: () => state.readiness,
   useRefreshReadinessMutation: () => ({
     mutate: refreshMutate,
@@ -39,7 +30,6 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
   }),
   useTrustBundlesQuery: () => state.bundles,
-  useReviewEvidenceQuery: () => state.reviewEvidence,
   useTrustReportQuery: () => state.trustReport,
   useInitFlowMutation: () => ({
     mutate: initFlowMutate,
@@ -55,41 +45,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+// The content components the builtin workspace pane registry mounts for the
+// Coding Plan, Readiness and Trust panes (`builtinWorkspacePaneRegistry.tsx`).
 import {
-  CodingInspectorPanel,
-  CodingInspectorStrip,
-  type InspectorTabState,
-  useInspectorTabs,
+  ReadinessInspectorContent,
+  TrustInspectorContent,
+  WorkflowPlanInspectorContent,
 } from '../components/coding-layout/CodingInspectorPanel';
 
-function harnessTabs(): InspectorTabState[] {
-  return [
-    { id: 'plan', configured: false, attention: false },
-    { id: 'readiness', configured: false, attention: false },
-    { id: 'trust', configured: false, attention: false },
-    { id: 'reviews', configured: false, attention: false },
-  ];
-}
-
-function renderPanel(
-  overrides: Partial<Parameters<typeof CodingInspectorPanel>[0]> = {},
-) {
-  return render(
-    <CodingInspectorPanel
-      projectSlug="dev"
-      tabs={overrides.tabs ?? harnessTabs()}
-      activeTab={overrides.activeTab ?? 'plan'}
-      onSelectTab={overrides.onSelectTab ?? vi.fn()}
-      onCollapse={overrides.onCollapse ?? vi.fn()}
-      artifact={overrides.artifact ?? null}
-      sessionTitle={overrides.sessionTitle ?? null}
-      runtimeState={overrides.runtimeState}
-    />,
-  );
-}
-
 beforeEach(() => {
-  state.flow = { data: undefined };
   state.readiness = { data: undefined, isLoading: false, error: null };
   state.bundles = { data: undefined, isLoading: false, error: null };
   state.trustReport = { data: undefined, isLoading: false, error: null };
@@ -100,76 +64,15 @@ beforeEach(() => {
   refreshMutate.mockClear();
 });
 
-describe('CodingInspectorPanel — tabs', () => {
-  test('renders a tab bar and the active tab body', () => {
-    renderPanel({ activeTab: 'plan' });
-    expect(
-      screen.getByRole('tablist', { name: 'Coding inspector' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Plan' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Readiness' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Trust' })).toBeTruthy();
-  });
-
-  test('includes attention state in the tab name while keeping the dot decorative', () => {
-    const tabs = harnessTabs();
-    tabs[1] = { ...tabs[1], attention: true };
-    const { container } = renderPanel({ tabs });
-
-    expect(
-      screen.getByRole('tab', { name: 'Readiness, needs attention' }),
-    ).toBeTruthy();
-    expect(
-      container
-        .querySelector('.coding-inspector__tab-badge')
-        ?.getAttribute('aria-hidden'),
-    ).toBe('true');
-  });
-
-  test('each tab renders its Kontour product mark (Plan→flow, Readiness→veritas, Trust→surface)', () => {
-    const { container } = renderPanel({ activeTab: 'plan' });
-    expect(
-      container.querySelector(
-        '.coding-inspector__tab-icon[data-product="flow"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      container.querySelector(
-        '.coding-inspector__tab-icon[data-product="veritas"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      container.querySelector(
-        '.coding-inspector__tab-icon[data-product="surface"]',
-      ),
-    ).toBeTruthy();
-    // The marks are real SVGs, not the old Unicode glyphs.
-    expect(
-      container.querySelector('svg.coding-inspector__tab-icon'),
-    ).toBeTruthy();
-  });
-
-  test('clicking a tab calls onSelectTab', () => {
-    const onSelectTab = vi.fn();
-    renderPanel({ onSelectTab });
-    fireEvent.click(screen.getByRole('tab', { name: 'Readiness' }));
-    expect(onSelectTab).toHaveBeenCalledWith('readiness');
-  });
-
-  test('the collapse button calls onCollapse', () => {
-    const onCollapse = vi.fn();
-    renderPanel({ onCollapse });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Collapse inspector panel' }),
-    );
-    expect(onCollapse).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('CodingInspectorPanel — Plan tab', () => {
+describe('WorkflowPlanInspectorContent — the Coding Plan pane', () => {
   test('not-configured shows the "Add a delivery flow" CTA and confirms before init', () => {
-    state.flow = { data: { initialized: false, definitions: [] } };
-    renderPanel({ activeTab: 'plan' });
+    render(
+      <WorkflowPlanInspectorContent
+        projectSlug="dev"
+        artifact={null}
+        configured={false}
+      />,
+    );
 
     expect(screen.getByText('No delivery flow')).toBeTruthy();
     const cta = screen.getByRole('button', { name: 'Add a delivery flow' });
@@ -183,33 +86,26 @@ describe('CodingInspectorPanel — Plan tab', () => {
   });
 
   test('configured renders the workflow plan panel, not the CTA', () => {
-    state.flow = {
-      data: {
-        initialized: true,
-        definitions: [{ id: 'd', path: 'p', valid: true }],
-      },
-    };
-    renderPanel({
-      activeTab: 'plan',
-      tabs: [
-        { id: 'plan', configured: true, attention: false },
-        { id: 'readiness', configured: false, attention: false },
-        { id: 'trust', configured: false, attention: false },
-      ],
-    });
+    render(
+      <WorkflowPlanInspectorContent
+        projectSlug="dev"
+        artifact={null}
+        configured
+      />,
+    );
     expect(screen.queryByText('No delivery flow')).toBeNull();
     expect(screen.getByText('Workflow plan')).toBeTruthy();
   });
 });
 
-describe('CodingInspectorPanel — Readiness tab', () => {
+describe('ReadinessInspectorContent — the Coding Readiness pane', () => {
   test('not-configured shows the "Set up readiness" CTA and confirms before init', () => {
     state.readiness = {
       data: { configured: false, reason: 'no-veritas-dir' },
       isLoading: false,
       error: null,
     };
-    renderPanel({ activeTab: 'readiness' });
+    render(<ReadinessInspectorContent projectSlug="dev" />);
 
     expect(screen.getByText('Veritas not configured')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Set up readiness' }));
@@ -220,10 +116,10 @@ describe('CodingInspectorPanel — Readiness tab', () => {
   });
 });
 
-describe('CodingInspectorPanel — Trust tab', () => {
+describe('TrustInspectorContent — the Coding Trust pane', () => {
   test('renders guidance and a docs link, no one-click action', () => {
     state.bundles = { data: [], isLoading: false, error: null };
-    renderPanel({ activeTab: 'trust' });
+    render(<TrustInspectorContent projectSlug="dev" />);
     expect(screen.getByText(/Trust bundles/)).toBeTruthy();
     // Guidance docs link is present; there is no init button.
     expect(
@@ -232,96 +128,10 @@ describe('CodingInspectorPanel — Trust tab', () => {
   });
 });
 
-describe('CodingInspectorStrip — collapsed', () => {
-  test('renders per-tool product marks and expands on click', () => {
-    const onExpand = vi.fn();
-    const { container } = render(
-      <CodingInspectorStrip
-        tabs={[
-          { id: 'plan', configured: false, attention: false },
-          { id: 'readiness', configured: true, attention: true },
-          { id: 'trust', configured: false, attention: false },
-        ]}
-        onExpand={onExpand}
-      />,
-    );
-    expect(
-      screen.getByRole('region', { name: 'Coding inspector (collapsed)' })
-        .tagName,
-    ).toBe('SECTION');
-    // The strip icons are the real product marks, keyed by product.
-    expect(
-      container.querySelector(
-        '.coding-inspector-strip__icon-mark[data-product="flow"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      container.querySelector(
-        '.coding-inspector-strip__icon-mark[data-product="veritas"]',
-      ),
-    ).toBeTruthy();
-    expect(
-      container.querySelector(
-        '.coding-inspector-strip__icon-mark[data-product="surface"]',
-      ),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: /Open Readiness, needs attention/ }),
-    );
-    expect(onExpand).toHaveBeenCalledWith('readiness');
-  });
-});
-
-describe('useInspectorTabs', () => {
-  test('derives configured flags and a readiness attention badge', () => {
-    state.flow = { data: { initialized: true, definitions: [] } };
-    state.readiness = {
-      data: { configured: true, overall: 'not-ready' },
-      isLoading: false,
-      error: null,
-    };
-    state.bundles = { data: [], isLoading: false, error: null };
-
-    let captured: ReturnType<typeof useInspectorTabs> | null = null;
-    function Probe() {
-      captured = useInspectorTabs('dev');
-      return null;
-    }
-    render(<Probe />);
-
-    expect(captured!.anyConfigured).toBe(true);
-    const plan = captured!.tabs.find((t) => t.id === 'plan')!;
-    const readiness = captured!.tabs.find((t) => t.id === 'readiness')!;
-    const trust = captured!.tabs.find((t) => t.id === 'trust')!;
-    expect(plan.configured).toBe(true);
-    expect(readiness.configured).toBe(true);
-    expect(readiness.attention).toBe(true);
-    expect(trust.configured).toBe(false);
-  });
-
-  test('anyConfigured is false when nothing is set up', () => {
-    state.flow = { data: { initialized: false, definitions: [] } };
-    state.readiness = {
-      data: { configured: false, reason: 'no-veritas-dir' },
-      isLoading: false,
-      error: null,
-    };
-    state.bundles = { data: [], isLoading: false, error: null };
-
-    let captured: ReturnType<typeof useInspectorTabs> | null = null;
-    function Probe() {
-      captured = useInspectorTabs('dev');
-      return null;
-    }
-    render(<Probe />);
-    expect(captured!.anyConfigured).toBe(false);
-  });
-});
-
 // archive#3341 Class B: `await navigator.clipboard?.writeText(command)` inside
 // a try/catch RESOLVES when there is no clipboard at all, so the insecure-origin
 // case — the one this button most needs to report — rendered "Copied".
-describe('CodingInspectorPanel — copyable setup command', () => {
+describe('ReadinessInspectorContent — copyable setup command', () => {
   function renderNoCliCta() {
     state.readiness = {
       data: { configured: false, reason: 'no-veritas-dir' },
@@ -332,7 +142,7 @@ describe('CodingInspectorPanel — copyable setup command', () => {
       outcome: 'no-cli',
       command: 'npx veritas init --non-interactive',
     };
-    return renderPanel({ activeTab: 'readiness' });
+    return render(<ReadinessInspectorContent projectSlug="dev" />);
   }
 
   function copyButton() {

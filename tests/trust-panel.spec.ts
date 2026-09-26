@@ -4,9 +4,7 @@ import {
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
 
-// The coding-layout inspector is now tabbed + collapsible. Seed Flow as
-// not-configured, then open the Trust tab (expanding from the slim strip first
-// when the rail is collapsed — which it is when nothing is configured).
+// Seed Flow as not-configured, then open the code layout's Trust pane tab.
 async function seedFlowNotConfigured(page: Page) {
   await page.route('**/api/projects/*/flow/definitions**', (route) =>
     route.fulfill({
@@ -21,12 +19,7 @@ async function seedFlowNotConfigured(page: Page) {
 }
 
 async function openTrustTab(page: Page) {
-  const strip = page.locator('.coding-inspector-strip');
-  if (await strip.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: /Open Trust/ }).click();
-  } else {
-    await page.getByRole('tab', { name: 'Trust' }).click();
-  }
+  await page.getByRole('tab', { name: 'Trust' }).click();
 }
 
 const BUNDLES = [

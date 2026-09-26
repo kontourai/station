@@ -65,10 +65,6 @@
       "count": 1,
       "reason": "Two-row wrap at mobile: the commit field takes its own line while Push stays beside it."
     },
-    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": {
-      "count": 1,
-      "reason": "The inspector stacks BELOW the editor on mobile, so its collapsed strip becomes a horizontal icon bar rather than a tall orphaned column."
-    },
     "src-ui/src/components/coding-layout/CodingLayout.css": {
       "count": 1,
       "reason": "The terminal strip, its tab scroller and the new-terminal sheet \u2014 plus the 16px input floor that stops iOS zooming the viewport on focus."

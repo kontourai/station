@@ -163,7 +163,7 @@
       "testProofs": [
         {
           "path": "src-ui/src/__tests__/CodingInspectorPanel.test.tsx",
-          "anchor": "describe('CodingInspectorPanel \u2014 tabs',"
+          "anchor": "describe('WorkflowPlanInspectorContent \u2014 the Coding Plan pane',"
         },
         {
           "path": "src-server/services/projects/__tests__/workspace-pane-known-declarations.test.ts",

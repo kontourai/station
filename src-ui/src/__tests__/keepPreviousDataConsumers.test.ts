@@ -15,7 +15,7 @@ import { describe, expect, test } from 'vitest';
  * marks the render. This is exactly the gap that shipped once:
  * `CodingInspectorPanel` consumed two opted-in hooks with no marking and no
  * opt-out, rendering the outgoing project's attention dot under the
- * incoming project (fixed by opting both calls out here).
+ * incoming project (fixed by opting both calls out at the call site).
  *
  * This test enforces the consumer half. It is deliberately grep/AST-shaped
  * against SYNTAX, not semantics: it proves `isPlaceholderData` is
