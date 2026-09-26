@@ -4,9 +4,9 @@ import { errorMessage } from '../../utils/error-message.js';
  * How an ACP session injects mid-turn user input.
  *
  * Native channels (`_session/steer`, `_x.ai/interject`) are additive: the
- * in-flight `session/prompt` keeps running. The T3-style fallback cancels
- * that prompt and re-prompts on the same Station turn id — interruptive, but
- * still a steer (same turn), not a queued follow-up.
+ * in-flight `session/prompt` keeps running. The cancel + re-prompt fallback
+ * cancels that prompt and re-prompts on the same Station turn id —
+ * interruptive, but still a steer (same turn), not a queued follow-up.
  */
 export type AcpSteerChannel = 'session-steer' | 'interject' | 'cancel-reprompt';
 

@@ -607,6 +607,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // because the scan is `git grep` over TRACKED files and a fixture written
   // to a loose directory would prove nothing about what runs in CI.
   'scripts/__tests__/content-integrity-gate.test.ts',
+  // The excluded-names gate is `git grep` over TRACKED files too, so its test
+  // commits fixtures into throwaway repos and runs the gate as a child
+  // process to assert the real exit status. Single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/excluded-names-gate.test.ts',
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/content-integrity-gate.scan.test.ts',

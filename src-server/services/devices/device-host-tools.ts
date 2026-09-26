@@ -216,9 +216,9 @@ export function runBoundedToolCapture(
 /**
  * Gravity vectors that make an emulator report each orientation. Tilting the
  * emulated accelerometer rotates the display the encoder captures; a
- * `user-rotation lock` would only rotate window content. From t3code
- * (apps/server/src/device/DeviceActions.ts, `ANDROID_GRAVITY`), MIT License,
- * Copyright (c) 2026 T3 Tools Inc.
+ * `user-rotation lock` would only rotate window content. Each vector is
+ * standard gravity (9.81 m/s²) along the axis that points down in that
+ * orientation.
  */
 const ANDROID_GRAVITY: Record<LiveSurfaceOrientation, string> = {
   portrait: '0:9.81:0',

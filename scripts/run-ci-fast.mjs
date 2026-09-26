@@ -117,6 +117,8 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
+  // Names Station must not reference, in any tracked file.
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help topics must have a `###` heading in docs/reference/cli.md
   // (scripts/cli-doc-parity.mjs). Pure source read, no build, ~50ms. Until
   // this joined the lane, the CLI↔docs contract was enforced ONLY by the
