@@ -16,8 +16,8 @@ Portable package data remains in the closed root `plugin.json` shape. Station
 reserves one client extension namespace, `io.kontourai.station`, for both the
 manifest entry and a future optional top-level extension directory. Runtime
 discovery now exposes that directory only after filesystem containment succeeds;
-later namespace-owned features decide its contents. Other namespaces remain
-opaque and are ignored without validation.
+later namespace-owned features decide its contents. Every namespace member must
+be an object. Station leaves unknown objects' contents opaque.
 
 ## Field classification
 
@@ -56,26 +56,50 @@ rejects `layout` and `layouts`; provider entries explicitly reject `layout`.
 remain responsible for the complete nested Workspace Pane, provider, event,
 knowledge, prompt, and agent contracts.
 
-Invalid Station extension data disables Station-specific contributions; it
-must not suppress independently valid portable skills or MCP servers. Unknown
-portable root fields and a non-object `extensions` value follow the upstream
-non-fatal reporting rules, not Station's extension-schema policy.
+An object-valued Station extension that fails its schema disables only
+Station-specific contributions; independently valid portable Skills and MCP
+servers can still load. A non-object namespace member, including an unknown
+namespace or the Station namespace, is a fatal manifest error in the
+[shared parser](../../packages/shared/src/agent-plugin-manifest.ts). This is
+different from the runtime's warning-and-ignore handling of a non-object
+`extensions` container. Unknown portable root fields are reported and ignored.
 
 ## Identity
 
 The v1 target uses the Agent Plugins 1.0 name alphabet at storage boundaries:
 1–64 lowercase ASCII letters, digits, hyphens, or periods; alphanumeric first
 and last characters; no `--` or `..`. There is no second Station-only plugin ID
-grammar. The legacy loader still rejects the otherwise-valid names
-`constructor` and `prototype` because older object-keyed stores are not all
-hardened; #344/#346 must remove that temporary conformance exception rather
-than teaching it as a second identifier grammar.
+grammar. Both the shared portable parser and the legacy loader also reject the
+otherwise-valid names `constructor` and `prototype` for compatibility with
+Station's object-keyed stores. Installation additionally refuses Station's
+[reserved route identities](../guides/plugins.md#reserved-plugin-names).
+The logical plugin name identifies contributions and installation records; a
+managed portable package's retained materialization directory need not have
+that name.
 
 ## Secret boundary
 
-`secretReferences` declares slots only. Secret values remain in Station's
-secret authority and are injected through a mediated capability. They are
-never written into `plugin.json`, `mcp.json` `env`, or MCP HTTP headers.
+Authors must not commit secret values in `plugin.json`, `mcp.json` `env`, or
+MCP HTTP headers. `secretReferences` declares named inputs without embedding
+their values, but its name does not imply a secret-store resolver.
+
+The [manifest adapter](../../src-server/services/plugins/plugin-manifest-loader.ts)
+currently converts each declaration to an ordinary string setting with
+`secret: true`. The settings UI masks that input, the settings GET returns
+`null` for its value, and the settings-change event withholds declared secrets.
+The [settings PUT](../../src-server/routes/plugins/plugin-config-routes.ts)
+persists submitted values through
+[`ConfigLoader.savePluginOverrides`](../../src-server/domain/config-loader.ts)
+as plaintext JSON in `<STATION_HOME>/config/plugin-overrides.json`.
+[Provider factories](../../src-server/providers/plugin-provider-loader.ts)
+receive those settings directly at construction. Masking and response
+redaction do not encrypt storage or mediate provider access.
+
+The [portable MCP loader](../../src-server/services/plugins/agent-plugin-loader.ts)
+accepts literal environment and HTTP-header values; it does not resolve
+`secretReferences` into them. Its placeholder expansion supports only
+`PLUGIN_ROOT` and `PLUGIN_DATA`. A mediated secret authority for these plugin
+inputs remains unimplemented.
 
 ## Current consumer behavior
 
