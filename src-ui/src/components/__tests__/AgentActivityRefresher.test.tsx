@@ -132,4 +132,69 @@ describe('AgentActivityRefresher', () => {
     await foreground();
     expect(register).not.toHaveBeenCalled();
   });
+
+  it('re-registers an iOS registration on return to the foreground when the push-to-start token rotated', async () => {
+    target = 'ios';
+    let iosToken = 'ab'.repeat(32);
+    const adapter = new TauriNativePlatformAdapter({
+      async invoke<T>(command: string) {
+        if (command === 'native_capability_report') {
+          return completeNativeCapabilityReport('ios', {
+            'remote-push': { state: 'enabled' },
+          }) as T;
+        }
+        if (command.endsWith('|status')) {
+          return {
+            platform: 'ios',
+            osVersion: '18.4',
+            packageName: 'io.kontourai.station',
+            liveActivitiesSupported: true,
+            liveActivitiesEnabled: true,
+            frequentPushesEnabled: false,
+            pushConfigured: true,
+            configured: true,
+            apnsEnvironment: 'production',
+          } as T;
+        }
+        if (command.endsWith('|push_token'))
+          return {
+            state: 'available',
+            token: iosToken,
+            apnsEnvironment: 'production',
+          } as T;
+        return null as T;
+      },
+      listen: async () => () => {},
+    });
+    await adapter.getCapabilityReport();
+    controller = createAgentActivityController({
+      adapter,
+      register,
+      unregister: async () => {},
+      store: localAgentActivityRegistrationStore(window.localStorage),
+      requestNotificationPermission: async () => true,
+      now: () => 0,
+    });
+    await controller.enable({
+      environmentId: 'env-a',
+      apiBase: 'https://station.test',
+    });
+    register.mockClear();
+    render(<AgentActivityRefresher />);
+    await foreground();
+    expect(register).not.toHaveBeenCalled();
+
+    iosToken = 'cd'.repeat(32);
+    await foreground();
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(register.mock.calls[0]).toEqual([
+      {
+        token: 'cd'.repeat(32),
+        packageName: 'io.kontourai.station',
+        platform: 'ios',
+        apnsEnvironment: 'production',
+      },
+      'https://station.test',
+    ]);
+  });
 });

@@ -7,6 +7,8 @@
  * See docs/design/notification-delivery.md ("Station contract").
  */
 
+import type { NotificationUrgency } from './notification.js';
+
 /** Registers (or re-registers after token rotation) the calling device. */
 export const NATIVE_PUSH_REGISTER_PATH = '/api/system/native-push/register';
 
@@ -209,3 +211,71 @@ export interface NativePushLiveActivityState {
 export interface NativePushLiveActivityAttributes {
   rid: string;
 }
+
+/**
+ * A Station notification (#2588) as the gateway and FCM carry it to an
+ * Android phone: like the card, only routing data in clear, and the
+ * notification itself in `sealed` (same format and registration key as the
+ * card, under {@link NATIVE_PUSH_NOTIFICATION_AAD_PREFIX}, so a card never
+ * opens as a notification or the reverse).
+ */
+export interface NativePushNotificationData {
+  station_kind: 'station_notification';
+  device_id: string;
+  sealed: string;
+}
+
+/**
+ * Additional authenticated data for a sealed notification: this prefix
+ * followed by the registrationId.
+ */
+export const NATIVE_PUSH_NOTIFICATION_AAD_PREFIX = 'station-notification:v1:';
+
+/**
+ * A sealed notification's plaintext: one JSON object of strings, as the
+ * phone's opener reads it.
+ *
+ * - `v`: `"1"`; the phone drops any other version.
+ * - `user_id`: the Station id, checked like the card's.
+ * - `id`: the Station notification id. The phone keeps one Android
+ *   notification per id; `kind: 'retract'` cancels it.
+ * - `created_at`, `expires_at`: epoch milliseconds. `created_at` is when this
+ *   delivery was composed and orders deliveries of one id (an alert older
+ *   than one already seen, or than its retraction, is dropped); an alert
+ *   past `expires_at` is not shown.
+ * - An alert also carries `title`, `urgency`, and optionally `body`. When the
+ *   phone asked to hide content they are generic ("Station"), never the
+ *   notification's own text.
+ * - `session_id` / `project_slug`: optional, only on an alert, only in the
+ *   {@link NATIVE_PUSH_SESSION_REFERENCE_PATTERN} grammar: the session a tap
+ *   opens (through the phone's one-time tap nonce, as for the card). There
+ *   is no link or path: neither the Station nor the phone supplies a URL.
+ */
+export interface NativePushNotificationPlaintext {
+  v: '1';
+  user_id: string;
+  id: string;
+  kind: 'alert' | 'retract';
+  title?: string;
+  body?: string;
+  urgency?: NotificationUrgency;
+  created_at: string;
+  expires_at: string;
+  session_id?: string;
+  project_slug?: string;
+}
+
+/**
+ * Known-answer vector for a sealed notification: the Station's sealer is
+ * tested against it, and the phone's opener (StationNotificationsTest.kt)
+ * against its own copy, which a server test pins to this one.
+ */
+export const NATIVE_PUSH_NOTIFICATION_TEST_VECTOR = {
+  payloadKey: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
+  registrationId: 'AAECAwQFBgcICQoLDA0ODw',
+  nonce: 'DA0ODxAREhMUFRYX',
+  plaintext:
+    '{"v":"1","user_id":"11111111-1111-4111-8111-111111111111","id":"notification-0001","kind":"alert","title":"Approval needed","body":"Fix the flaky login test · Login App","urgency":"attention","created_at":"1800000000000","expires_at":"1800003600000","session_id":"thread-1","project_slug":"login-app"}',
+  sealed:
+    'DA0ODxAREhMUFRYX49wf-kVUzXEbCD2m9Pl5jjEh18zHTAqbqpPL0cmR8csd2l4U0PQLWS7CP3_fnSvrvWeK4JjFJYJs01g13s9wmnVFNKKX278wgRHYFW08OrgLCuBlOr9uUrQX7apywVfvl4_8nFRCNsFLtwnkme5WnxdOEBybGkgQAITmtkGfi0pGxdFfMSn0EWW9coEptTZP-q9-Z_e4oGlNwX_reD16cy4LPIm8HHztnP__FO2bi78BGsjrQ51YuzZETY-qsIUKnJEh3xt1dgueHC-vAXJ-dq9-u2E4Ydx8HMKN9uLGkQxyvT9KVw-We2VSvf_D1boEwL-8GUoYB6EinIib_WbSBtR9Mg6zhXQ76mlxocHnBmdHYe4MSijiK_jHxyIao_bZ5HD5gmGWv3GPpFkv5SUPNvWcqfZYQnkkLRxhRvnn',
+} as const;

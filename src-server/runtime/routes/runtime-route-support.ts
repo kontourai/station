@@ -23,6 +23,7 @@ import type {
   FocusSource,
   InAppLiveness,
 } from '../../services/notifications/delivery/router.js';
+import { createNativePushSendFloor } from '../../services/notifications/native-push-send-floor.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import { registerPluginNotificationProviders } from '../../services/notifications/plugin-notification-providers.js';
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
@@ -575,6 +576,9 @@ export function configureRuntimeSupportServices(
     () => context.environmentSecurityService.devicePairing.environmentId(),
   );
   const pushGateway = resolvePushGatewayConfig();
+  // One per-phone FCM send floor for the card and Station notifications,
+  // which share each phone's push token budget at the gateway (#2588).
+  const nativePushSendFloor = createNativePushSendFloor();
   if (!pushGateway)
     context.logger.warn(
       'STATION_PUSH_GATEWAY_URL must be an https origin with no path, query or credentials; agent-activity push is off',
@@ -598,14 +602,20 @@ export function configureRuntimeSupportServices(
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     listNotifications: () => notificationService.list(),
-    // #2589: iOS alerts through the push gateway; dormant until a phone
-    // registers an alert token.
+    // #2589 iOS alerts and #2588 Android alerts through the push gateway;
+    // each channel is dormant until a phone of its platform registers.
     ...(pushGateway
       ? {
           apnsAlert: {
             devicePairing: context.environmentSecurityService.devicePairing,
             signingKey: pushSigningKeyStore,
             gateway: pushGateway,
+          },
+          fcmAlert: {
+            devicePairing: context.environmentSecurityService.devicePairing,
+            signingKey: pushSigningKeyStore,
+            gateway: pushGateway,
+            sendFloor: nativePushSendFloor,
           },
         }
       : {}),
@@ -625,6 +635,7 @@ export function configureRuntimeSupportServices(
       audience: '',
     },
     enabled: webPushEnabled && pushGateway !== null,
+    sendFloor: nativePushSendFloor,
     logger: context.logger,
     // Each phone reads what its own paired device may read (see
     // agent-activity-session-reader.ts); hosted mode never reaches this.

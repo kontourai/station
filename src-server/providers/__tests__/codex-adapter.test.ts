@@ -1,11 +1,18 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
@@ -3637,6 +3644,74 @@ describe('CodexAdapter', () => {
         }),
       ]),
     );
+  });
+
+  describe('the login probe runs under the connection env', () => {
+    const makeTempDir = trackTempDirs();
+    let globalHome: string;
+    let probedEnvs: Array<Record<string, string> | undefined>;
+
+    // Stands in for `codex login status`: it reports on whichever CODEX_HOME
+    // it is launched with, exactly as the real CLI does. The global home is
+    // an empty temp dir, so no credentials on this host can leak in.
+    const runCommand = async (
+      _command: string,
+      args: string[],
+      _signal?: AbortSignal,
+      envOverlay?: Record<string, string>,
+    ) => {
+      if (args[0] === '--version') {
+        return { stdout: 'codex-cli 0.0.0', stderr: '', code: 0 };
+      }
+      probedEnvs.push(envOverlay);
+      const codexHome = envOverlay?.CODEX_HOME ?? globalHome;
+      return existsSync(join(codexHome, 'auth.json'))
+        ? { stdout: 'Logged in using ChatGPT', stderr: '', code: 0 }
+        : { stdout: '', stderr: 'Not logged in', code: 1 };
+    };
+
+    const loginStatus = async (
+      connectionEnv: Record<string, string> | undefined,
+    ) => {
+      const adapter = new CodexAdapter({
+        findBinary: () => '/test/bin/codex',
+        runCommand,
+        getConnectionEnv: async () => connectionEnv,
+      });
+      const prerequisites = await adapter.getPrerequisites();
+      return prerequisites.find((entry) => entry.id === 'codex-auth')?.status;
+    };
+
+    test('configHome (CODEX_HOME) is the account readiness reports on', async () => {
+      const root = makeTempDir('station-codex-readiness-auth-');
+      globalHome = join(root, 'global');
+      mkdirSync(globalHome);
+      const configHome = join(root, 'codex-proxy');
+      mkdirSync(configHome);
+      writeFileSync(
+        join(configHome, 'auth.json'),
+        JSON.stringify({ OPENAI_API_KEY: 'sk-proxy' }),
+      );
+      probedEnvs = [];
+
+      await expect(
+        loginStatus({
+          CODEX_HOME: configHome,
+          OPENAI_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      ).resolves.toBe('installed');
+      expect(probedEnvs).toEqual([
+        { CODEX_HOME: configHome, OPENAI_BASE_URL: 'http://127.0.0.1:8318' },
+      ]);
+
+      // Negative control: the same host without the connection env. The
+      // probe must receive no overlay at all, so a regression that always
+      // hands it one (even an empty one) is caught here.
+      probedEnvs = [];
+      await expect(loginStatus(undefined)).resolves.toBe('missing');
+      expect(probedEnvs).toHaveLength(1);
+      expect(probedEnvs[0]).toBeUndefined();
+    });
   });
 
   test('lists models from Codex app-server model/list', async () => {

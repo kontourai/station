@@ -8,6 +8,8 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const ACCESS_TOKEN_REUSE_SECONDS = 50 * 60; // Google issues one-hour tokens.
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Matches the Station's sealed `expires_at` for a notification (one hour). */
+const NOTIFICATION_TTL = '3600s';
 
 export interface ServiceAccount {
   projectId: string;
@@ -180,11 +182,17 @@ export class FcmSender {
             token: request.token,
             // Data-only: the app renders the card itself and applies its own
             // registration and freshness checks. Activity must be high
-            // priority or Doze holds it past the app's ten-minute freshness window.
+            // priority or Doze holds it past the app's ten-minute freshness
+            // window; a notification is high unless the Station asked for
+            // normal (info and done), and lives as long as the phone would
+            // still show it (its sealed expires_at).
             data: request.data,
             android: {
-              priority: 'HIGH',
-              ttl: '300s',
+              priority: request.priority === 'normal' ? 'NORMAL' : 'HIGH',
+              ttl:
+                request.data.station_kind === 'station_notification'
+                  ? NOTIFICATION_TTL
+                  : '300s',
               restricted_package_name: request.packageName,
               ...(request.collapseKey
                 ? { collapse_key: request.collapseKey }

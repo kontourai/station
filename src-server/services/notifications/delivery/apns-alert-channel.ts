@@ -46,14 +46,13 @@
  *   Never throws: every failure is caught and logged without the token.
  */
 import { createHash } from 'node:crypto';
-import { NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX } from '@kontourai/station-contracts/native-push';
 import type {
   Notification,
   NotificationEnvelopeV1,
   NotificationUrgency,
 } from '@kontourai/station-contracts/notification';
 import { errorMessage } from '../../../utils/error-message.js';
-import { sealAgentActivityCard } from '../agent-activity-seal.js';
+import { sealApnsAlert } from '../agent-activity-seal.js';
 import type {
   NativePushIosRegistration,
   NativePushRegistration,
@@ -239,7 +238,7 @@ export class ApnsAlertChannel implements DeliveryChannel {
         registrationId: registration.registrationId,
         kind,
         collapseId: apnsAlertCollapseId(stationId, notification.id),
-        sealed: sealAgentActivityCard({
+        sealed: sealApnsAlert({
           plaintext: composeApnsAlertPlaintext({
             stationId,
             notification,
@@ -249,7 +248,6 @@ export class ApnsAlertChannel implements DeliveryChannel {
           }),
           payloadKey: registration.payloadKey,
           registrationId: registration.registrationId,
-          aadPrefix: NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX,
         }),
       };
     } catch (error) {
