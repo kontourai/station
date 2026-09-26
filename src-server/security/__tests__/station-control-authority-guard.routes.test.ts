@@ -109,6 +109,20 @@ let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
+const PEER_ENVIRONMENT_ID = 'env-authority-peer';
+let peerServer: ReturnType<typeof serve>;
+let peerBaseUrl: string;
+const peerReceived: Array<{ path: string; body: any }> = [];
+const derivations: Array<string | null> = [];
+const DERIVED_LINEAGE = {
+  mode: 'isolated-child' as const,
+  depth: 1,
+  maxDepth: 2,
+  parentAgentSlug: 'planner',
+  parentConversationId: 'conversation-derived',
+  rootAgentSlug: 'planner',
+  rootConversationId: 'conversation-derived',
+};
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -212,8 +226,64 @@ beforeAll(async () => {
   );
   app.route(
     '/api/orchestration',
-    createStationControlCallerRoutes({ resolveRecord }),
+    createStationControlCallerRoutes({
+      resolveRecord,
+      // #2601: the lineage this Station derives for the verified caller,
+      // read before a forward to a saved Environment.
+      deriveCallerDelegation: async (request) => {
+        derivations.push(
+          resolveStationControlCallerForRequest(request, resolveRecord)
+            ?.sessionId ?? null,
+        );
+        return DERIVED_LINEAGE;
+      },
+    }),
   );
+  // A saved peer Environment: no SSH profile, one paired peer credential,
+  // and the peer Station itself on its own loopback listener.
+  app.get('/.well-known/station/v1', (c) =>
+    c.json({ environmentId: 'env-authority-current' }),
+  );
+  app.get('/api/environments/ssh', (c) => c.json({ success: true, data: [] }));
+  app.get('/api/environments/peers/:id/credential', (c) =>
+    c.req.param('id') === PEER_ENVIRONMENT_ID
+      ? c.json({
+          success: true,
+          data: {
+            environmentId: PEER_ENVIRONMENT_ID,
+            apiBase: peerBaseUrl,
+            scope: 'delegation',
+            credential: 'test-only-peer-credential-authority',
+            label: 'Peer',
+          },
+        })
+      : c.json({ success: false, error: 'not found' }, 404),
+  );
+  const peerApp = new Hono();
+  peerApp.post('/api/orchestration/*', async (c) => {
+    peerReceived.push({ path: c.req.path, body: await c.req.json() });
+    return c.json({
+      success: true,
+      data: {
+        taskId: 'task:peer',
+        sessionId: 'task:peer',
+        conversationId: 'conversation-peer-child',
+        status: 'dispatched',
+        resumable: true,
+        providerTurnId: 'turn-peer',
+        target: { kind: 'agent', id: 'writer' },
+      },
+    });
+  });
+  let resolvePeerPort!: (value: number) => void;
+  const peerListening = new Promise<number>((resolve) => {
+    resolvePeerPort = resolve;
+  });
+  peerServer = serve(
+    { fetch: peerApp.fetch, hostname: '127.0.0.1', port: 0 },
+    (info) => resolvePeerPort((info as AddressInfo).port),
+  );
+  peerBaseUrl = `http://127.0.0.1:${await peerListening}`;
   // Stubs for the Station routes the representative tools call. Each records
   // that it was reached, so "allowed" means the request got through.
   const record = (label: string, body: unknown) => (c: any) => {
@@ -256,6 +326,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => peerServer.close(() => resolve()));
   delete process.env.STATION_API_BASE;
   __resetStationControlStdioCallerCredentialForTests();
   __resetStationServerSelfAttestationForTests();
@@ -1212,5 +1283,26 @@ describe('every tool route, table-driven through the real boundary', () => {
           : 'passed';
     }
     expect(outcomes).toEqual(expected);
+  });
+});
+
+describe('a verified forward to a saved Environment (#2601 leaf)', () => {
+  test('a bound operator’s delegate_task reaches the peer through the caller-delegation leaf', async () => {
+    peerReceived.length = 0;
+    derivations.length = 0;
+    const sessionId = nextSession('op-');
+    const { result } = await callTool('bound', sessionId, 'delegate_task', {
+      prompt: 'Draft the plan',
+      agent: 'writer',
+      environmentId: PEER_ENVIRONMENT_ID,
+    });
+    expect(result?.code).toBeUndefined();
+    // The guard let the verified caller through to its own lineage...
+    expect(derivations).toEqual([sessionId]);
+    // ...and the peer received the context this Station derived.
+    expect(peerReceived).toHaveLength(1);
+    expect(peerReceived[0]!.path).toBe('/api/orchestration/delegations');
+    expect(peerReceived[0]!.body.delegation).toEqual(DERIVED_LINEAGE);
+    expect(refusals).toEqual([]);
   });
 });
