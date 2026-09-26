@@ -58,7 +58,15 @@ const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_NATIVE_SIGNAL_SDP_BYTES: usize = 128 * 1024;
 const MAX_NATIVE_SIGNAL_PROOF_BYTES: usize = 4096;
-const MAX_NATIVE_SIGNAL_LIFETIME_MS: u64 = 60 * 1000;
+const MAX_NATIVE_SIGNAL_LIFETIME_MS: u64 = 30 * 1000;
+// The broker accepts request proofs up to 30 seconds old. Include that
+// maximum client clock lag, the fixed 15-second transport timeout, and a
+// one-second rounding margin so its 30-second offer cannot outlive the grant.
+const NATIVE_SIGNAL_BROKER_PROOF_CLOCK_LAG_MS: u64 = 30 * 1000;
+const MIN_NATIVE_SIGNAL_OPEN_GRANT_LIFETIME_MS: u64 = MAX_NATIVE_SIGNAL_LIFETIME_MS
+    + (BROKER_REQUEST_TIMEOUT.as_secs() * 1000)
+    + NATIVE_SIGNAL_BROKER_PROOF_CLOCK_LAG_MS
+    + 1000;
 const MAX_GRANT_INDEX_ENTRIES: usize = 10_000;
 const MAX_BACKGROUND_CLEANUP_RETRIES: usize = 8;
 const GRANT_ACCOUNT_PREFIX: &str = "relay-native-client-grant:v2:";
@@ -3137,6 +3145,7 @@ mod tests {
         status: u16,
         response_body: Vec<u8>,
         mutate_profile_after_request: bool,
+        return_transport_error: bool,
         observed: Mutex<Option<(String, Vec<u8>, bool)>>,
     }
 
@@ -3165,6 +3174,9 @@ mod tests {
                     .lock()
                     .map_err(|_| NativeRedemptionError::StaleProfile)?;
                 current.profile.revision += 1;
+            }
+            if self.return_transport_error {
+                return Err(NativeRedemptionError::BrokerTransport);
             }
             Ok(BrokerResponse {
                 status: self.status,
@@ -3195,8 +3207,15 @@ mod tests {
     }
 
     fn stored_signal_grant(prepared: &Prepared) -> NativeRelayGrantVault<MemoryNativeGrantBackend> {
+        stored_signal_grant_until(prepared, NOW + 3_600_000)
+    }
+
+    fn stored_signal_grant_until(
+        prepared: &Prepared,
+        expires_at: u64,
+    ) -> NativeRelayGrantVault<MemoryNativeGrantBackend> {
         let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
-        let grant = sample_grant(prepared, NOW + 3_600_000);
+        let grant = sample_grant(prepared, expires_at);
         grants.store(&prepared.owner, &grant, NOW).unwrap();
         grants
     }
@@ -3214,15 +3233,17 @@ mod tests {
             }))
             .unwrap(),
             mutate_profile_after_request: false,
+            return_transport_error: false,
             observed: Mutex::new(None),
         };
+        let open_request = NativeRelaySignalOpenRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+            offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+        };
         let opened = native_signal_service(&prepared, &open_transport, &grants)
-            .open(NativeRelaySignalOpenRequest {
-                profile_name: "Local".to_owned(),
-                expected_profile_revision: 7,
-                nonce: "signal-nonce-01".to_owned(),
-                offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
-            })
+            .open(&open_request)
             .unwrap();
         assert_eq!(opened.expires_at, NOW + 30_000);
         let (path, body, valid_proof) = open_transport.observed.lock().unwrap().clone().unwrap();
@@ -3246,14 +3267,16 @@ mod tests {
             }))
             .unwrap(),
             mutate_profile_after_request: false,
+            return_transport_error: false,
             observed: Mutex::new(None),
         };
+        let read_request = NativeRelaySignalReadRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+        };
         let answer = native_signal_service(&prepared, &read_transport, &grants)
-            .read(NativeRelaySignalReadRequest {
-                profile_name: "Local".to_owned(),
-                expected_profile_revision: 7,
-                nonce: "signal-nonce-01".to_owned(),
-            })
+            .read(&read_request)
             .unwrap();
         assert_eq!(
             answer.station_proof.as_deref(),
@@ -3283,15 +3306,15 @@ mod tests {
             }))
             .unwrap(),
             mutate_profile_after_request: true,
+            return_transport_error: false,
             observed: Mutex::new(None),
         };
-        let result = native_signal_service(&prepared, &transport, &grants).read(
-            NativeRelaySignalReadRequest {
-                profile_name: "Local".to_owned(),
-                expected_profile_revision: 7,
-                nonce: "signal-nonce-01".to_owned(),
-            },
-        );
+        let read_request = NativeRelaySignalReadRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+        };
+        let result = native_signal_service(&prepared, &transport, &grants).read(&read_request);
         assert_eq!(result.unwrap_err(), NativeRedemptionError::StaleProfile);
     }
 
@@ -3304,10 +3327,11 @@ mod tests {
             status: 200,
             response_body: Vec::new(),
             mutate_profile_after_request: false,
+            return_transport_error: false,
             observed: Mutex::new(None),
         };
         let oversized = native_signal_service(&prepared, &oversized_transport, &grants).open(
-            NativeRelaySignalOpenRequest {
+            &NativeRelaySignalOpenRequest {
                 profile_name: "Local".to_owned(),
                 expected_profile_revision: 7,
                 nonce: "signal-nonce-01".to_owned(),
@@ -3327,10 +3351,11 @@ mod tests {
             }))
             .unwrap(),
             mutate_profile_after_request: false,
+            return_transport_error: false,
             observed: Mutex::new(None),
         };
         let incomplete = native_signal_service(&prepared, &incomplete_transport, &grants).read(
-            NativeRelaySignalReadRequest {
+            &NativeRelaySignalReadRequest {
                 profile_name: "Local".to_owned(),
                 expected_profile_revision: 7,
                 nonce: "signal-nonce-01".to_owned(),
@@ -3340,6 +3365,162 @@ mod tests {
             incomplete.unwrap_err(),
             NativeRedemptionError::BrokerRejected
         );
+    }
+
+    #[test]
+    fn native_signal_open_requires_full_broker_offer_lifetime_before_network() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant_until(
+            &prepared,
+            NOW + MIN_NATIVE_SIGNAL_OPEN_GRANT_LIFETIME_MS - 1,
+        );
+        let transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        let request = NativeRelaySignalOpenRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+            offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+        };
+        let result = native_signal_service(&prepared, &transport, &grants).open(&request);
+        assert_eq!(result.unwrap_err(), NativeRedemptionError::GrantExpired);
+        assert!(transport.observed.lock().unwrap().is_none());
+        // The request remains available to the owner so a lost response can
+        // be recovered with the same nonce using the bounded read operation.
+        assert_eq!(request.nonce, "signal-nonce-01");
+    }
+
+    #[test]
+    fn native_signal_lost_open_response_retains_nonce_for_bounded_read_recovery() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let open_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 0,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            return_transport_error: true,
+            observed: Mutex::new(None),
+        };
+        let open_request = NativeRelaySignalOpenRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+            offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+        };
+        let open_result =
+            native_signal_service(&prepared, &open_transport, &grants).open(&open_request);
+        assert_eq!(
+            open_result.unwrap_err(),
+            NativeRedemptionError::BrokerTransport
+        );
+        assert_eq!(open_request.nonce, "signal-nonce-01");
+
+        let read_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_ANSWER_VERSION,
+                "answerSdp": null,
+                "stationProof": null,
+                "expiresAt": NOW + 30_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        let read_request = NativeRelaySignalReadRequest {
+            profile_name: open_request.profile_name.clone(),
+            expected_profile_revision: open_request.expected_profile_revision,
+            nonce: open_request.nonce.clone(),
+        };
+        let result = native_signal_service(&prepared, &read_transport, &grants).read(&read_request);
+        assert_eq!(result.unwrap().answer_sdp, None);
+        let (path, body, proof_valid) = read_transport.observed.lock().unwrap().clone().unwrap();
+        assert_eq!(path, READ_PATH);
+        assert!(proof_valid);
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["nonce"], "signal-nonce-01");
+    }
+
+    #[test]
+    fn native_signal_refuses_revoked_trust_and_quarantined_grants() {
+        let prepared_revoked = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared_revoked);
+        let transport = NativeSignalTransport {
+            authority: prepared_revoked.authority.clone(),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        prepared_revoked
+            .authority
+            .0
+            .lock()
+            .unwrap()
+            .station_trust
+            .status = NativeStationTrustStatus::Revoked;
+        let request = NativeRelaySignalOpenRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+            offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+        };
+        let revoked = native_signal_service(&prepared_revoked, &transport, &grants).open(&request);
+        assert_eq!(
+            revoked.unwrap_err(),
+            NativeRedemptionError::StationTrustRequired
+        );
+        assert!(transport.observed.lock().unwrap().is_none());
+
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let active_grant = sample_grant(&prepared, NOW + 3_600_000);
+        grants
+            .stage_cleanup(&prepared.owner, &active_grant, true, NOW)
+            .unwrap();
+        let transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        let quarantined = native_signal_service(&prepared, &transport, &grants).open(&request);
+        assert_eq!(quarantined.unwrap_err(), NativeRedemptionError::GrantStore);
+        assert!(transport.observed.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn native_signal_rechecks_context_when_transport_fails() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 0,
+            response_body: Vec::new(),
+            mutate_profile_after_request: true,
+            return_transport_error: true,
+            observed: Mutex::new(None),
+        };
+        let request = NativeRelaySignalReadRequest {
+            profile_name: "Local".to_owned(),
+            expected_profile_revision: 7,
+            nonce: "signal-nonce-01".to_owned(),
+        };
+        let result = native_signal_service(&prepared, &transport, &grants).read(&request);
+        assert_eq!(result.unwrap_err(), NativeRedemptionError::StaleProfile);
+        assert_eq!(request.nonce, "signal-nonce-01");
     }
 
     struct SuccessfulRetirement;
@@ -5360,9 +5541,13 @@ where
         }
     }
 
+    /// The caller retains `request.nonce` if transport fails: open may have
+    /// committed at the broker before its response was lost. The broker
+    /// expires that offer after 30 seconds; use the same nonce with `read`
+    /// during that window instead of retrying open (which is replay-rejected).
     pub(crate) fn open(
         &self,
-        request: NativeRelaySignalOpenRequest,
+        request: &NativeRelaySignalOpenRequest,
     ) -> RedemptionResult<NativeRelaySignalOpened> {
         if !valid_safe_id(&request.nonce)
             || request.offer_sdp.is_empty()
@@ -5372,6 +5557,10 @@ where
         }
         let (context, owner, grant) =
             self.load_current_grant(&request.profile_name, request.expected_profile_revision)?;
+        let now = (self.now)();
+        if grant.expires_at.saturating_sub(now) < MIN_NATIVE_SIGNAL_OPEN_GRANT_LIFETIME_MS {
+            return Err(NativeRedemptionError::GrantExpired);
+        }
         let challenge = NativeBrokerRequestProofChallenge::from_request(
             native_request_identity(&grant),
             NativeBrokerRequestBody::Open {
@@ -5414,7 +5603,7 @@ where
 
     pub(crate) fn read(
         &self,
-        request: NativeRelaySignalReadRequest,
+        request: &NativeRelaySignalReadRequest,
     ) -> RedemptionResult<NativeRelaySignalAnswer> {
         if !valid_safe_id(&request.nonce) {
             return Err(NativeRedemptionError::GrantInvalid);
