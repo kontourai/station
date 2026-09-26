@@ -244,6 +244,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -361,4 +362,3 @@ jobs:
             echo "NOT_VERIFIED: Veritas readiness evidence has no diff range available." >&2
             exit 2
           fi
-

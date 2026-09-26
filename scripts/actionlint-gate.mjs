@@ -1297,13 +1297,20 @@ function checkoutSteps(job) {
   );
 }
 
-function hasExplicitCheckout(job, repository, ref) {
+function hasExplicitCheckout(
+  job,
+  repository,
+  ref,
+  allowUnsafePrCheckout = false,
+) {
   const checkouts = checkoutSteps(job);
   return (
     checkouts.length === 1 &&
     checkouts.every(
       (checkout) =>
         checkout?.with?.['persist-credentials'] === false &&
+        (!allowUnsafePrCheckout ||
+          checkout?.with?.['allow-unsafe-pr-checkout'] === true) &&
         checkout.with.repository === repository &&
         checkout.with.ref === ref,
     )
@@ -1315,6 +1322,7 @@ function hasExactPullRequestTitleGateTopology(
   candidateRepository,
   candidateRef,
   titleGateIf,
+  allowUnsafePrCheckout = false,
 ) {
   const steps = job?.steps ?? [];
   const checkouts = checkoutSteps(job);
@@ -1341,6 +1349,8 @@ function hasExactPullRequestTitleGateTopology(
     candidateCheckout?.uses === CHECKOUT_ACTION &&
     candidateCheckout?.with?.['fetch-depth'] === 0 &&
     candidateCheckout?.with?.['persist-credentials'] === false &&
+    (!allowUnsafePrCheckout ||
+      candidateCheckout?.with?.['allow-unsafe-pr-checkout'] === true) &&
     candidateCheckout.with.repository === candidateRepository &&
     candidateCheckout.with.ref === candidateRef &&
     titleGate?.if === titleGateIf &&
@@ -1408,12 +1418,14 @@ function hasExactSecurityAnalysisSteps(job) {
     hasExactKeys(candidate?.with, [
       'fetch-depth',
       'persist-credentials',
+      'allow-unsafe-pr-checkout',
       'repository',
       'ref',
       'path',
     ]) &&
     candidate.with?.['fetch-depth'] === 1 &&
     candidate.with?.['persist-credentials'] === false &&
+    candidate.with?.['allow-unsafe-pr-checkout'] === true &&
     candidate.with.repository === FAST_CHECKOUT_REPOSITORY &&
     candidate.with.ref === FAST_CHECKOUT_REF &&
     candidate.with.path === SECURITY_CANDIDATE_CHECKOUT_PATH &&
@@ -1965,6 +1977,7 @@ function primaryCiRouterFindings(file, document) {
         FORK_CHECKOUT_REPOSITORY,
         FORK_CHECKOUT_REF,
         undefined,
+        true,
       )
     )
       findings.push({
@@ -2103,6 +2116,7 @@ function baseControlledPrWorkflowFindings(file, document) {
                 job,
                 FAST_CHECKOUT_REPOSITORY,
                 FAST_CHECKOUT_REF,
+                true,
               );
     if (!hasExactReviewedSteps)
       findings.push({
