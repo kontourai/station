@@ -799,6 +799,36 @@ function configureRuntimeSecurity(
       return next();
     }
 
+    // Admission refused a credential the server still recognizes. A 401
+    // tells the browser the device session is dead: it drops the cookie,
+    // remounts the protected tree, and asks again. Settings does that on a
+    // loop because notification delivery reads `/api/pairing/devices` on
+    // desktop and mobile, and an ordinary device credential is not admitted
+    // to that inventory. Answer 403, the same status an authenticated caller
+    // already receives when a route will not serve them.
+    if (
+      credential !== undefined &&
+      (await security.recognizeCredential?.(credential))
+    ) {
+      if (cookieCredential) {
+        deviceSessionAuthorizations.add(1, {
+          outcome: 'denied',
+          reason: 'insufficient_scope',
+        });
+      }
+      emitSecurityAudit(security, c, routeLabeler, {
+        event: 'station.auth.failure',
+        outcome: 'denied',
+        reason: 'insufficient_scope',
+        routeClass,
+        peerClass: effectivePeerClass,
+        transport: 'http',
+        timestamp: security.now?.() ?? Date.now(),
+      });
+      limiter.clear(limiterKey);
+      return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+
     if (cookieCredential) {
       deviceSessionAuthorizations.add(1, {
         outcome: 'denied',
