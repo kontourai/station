@@ -56,6 +56,9 @@ const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS: u64 = 12 * 60 * 60 * 1000;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_NATIVE_SIGNAL_SDP_BYTES: usize = 128 * 1024;
+const MAX_NATIVE_SIGNAL_PROOF_BYTES: usize = 4096;
+const MAX_NATIVE_SIGNAL_LIFETIME_MS: u64 = 60 * 1000;
 const MAX_GRANT_INDEX_ENTRIES: usize = 10_000;
 const MAX_BACKGROUND_CLEANUP_RETRIES: usize = 8;
 const GRANT_ACCOUNT_PREFIX: &str = "relay-native-client-grant:v2:";
@@ -3129,6 +3132,216 @@ mod tests {
         }
     }
 
+    struct NativeSignalTransport {
+        authority: Arc<MemoryAuthority>,
+        status: u16,
+        response_body: Vec<u8>,
+        mutate_profile_after_request: bool,
+        observed: Mutex<Option<(String, Vec<u8>, bool)>>,
+    }
+
+    impl NativeBrokerRequestTransport for NativeSignalTransport {
+        fn send_fixed_request(
+            &self,
+            grant: &NativeRelayClientGrantV2,
+            challenge: &NativeBrokerRequestProofChallenge,
+            compact_proof: &str,
+        ) -> RedemptionResult<BrokerResponse> {
+            assert_eq!(grant.broker_origin, "https://broker.example");
+            let body = challenge.body().to_vec();
+            let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(parsed.get("credential").is_none());
+            assert!(parsed.get("proofKey").is_none());
+            let proof_shape_valid = compact_proof.split('.').count() == 3;
+            *self
+                .observed
+                .lock()
+                .map_err(|_| NativeRedemptionError::BrokerTransport)? =
+                Some((challenge.path().to_owned(), body, proof_shape_valid));
+            if self.mutate_profile_after_request {
+                let mut current = self
+                    .authority
+                    .0
+                    .lock()
+                    .map_err(|_| NativeRedemptionError::StaleProfile)?;
+                current.profile.revision += 1;
+            }
+            Ok(BrokerResponse {
+                status: self.status,
+                body: Zeroizing::new(self.response_body.clone()),
+            })
+        }
+    }
+
+    fn native_signal_service<'a, H: NativeBrokerRequestTransport>(
+        prepared: &'a Prepared,
+        transport: &'a H,
+        grants: &'a NativeRelayGrantVault<MemoryNativeGrantBackend>,
+    ) -> NativeRelaySignalService<
+        'a,
+        MemoryAuthority,
+        crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault,
+        H,
+        NativeRelayGrantVault<MemoryNativeGrantBackend>,
+        impl Fn() -> u64,
+    > {
+        NativeRelaySignalService::new(
+            prepared.authority.as_ref(),
+            &prepared.proof_keys,
+            transport,
+            grants,
+            || NOW,
+        )
+    }
+
+    fn stored_signal_grant(prepared: &Prepared) -> NativeRelayGrantVault<MemoryNativeGrantBackend> {
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let grant = sample_grant(prepared, NOW + 3_600_000);
+        grants.store(&prepared.owner, &grant, NOW).unwrap();
+        grants
+    }
+
+    #[test]
+    fn native_signal_service_uses_fixed_proven_requests_and_returns_secret_free_dtos() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let open_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_OPENED_VERSION,
+                "expiresAt": NOW + 30_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            observed: Mutex::new(None),
+        };
+        let opened = native_signal_service(&prepared, &open_transport, &grants)
+            .open(NativeRelaySignalOpenRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-nonce-01".to_owned(),
+                offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+            })
+            .unwrap();
+        assert_eq!(opened.expires_at, NOW + 30_000);
+        let (path, body, valid_proof) = open_transport.observed.lock().unwrap().clone().unwrap();
+        assert_eq!(path, OPEN_PATH);
+        assert!(valid_proof);
+        let open_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(open_body["connection"]["nonce"], "signal-nonce-01");
+        assert_eq!(
+            open_body["connection"]["offerSdp"],
+            "v=0\r\no=- native-diagnostic\r\n"
+        );
+
+        let read_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_ANSWER_VERSION,
+                "answerSdp": "v=0\r\no=- station-answer\r\n",
+                "stationProof": "opaque-station-proof",
+                "expiresAt": NOW + 30_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            observed: Mutex::new(None),
+        };
+        let answer = native_signal_service(&prepared, &read_transport, &grants)
+            .read(NativeRelaySignalReadRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-nonce-01".to_owned(),
+            })
+            .unwrap();
+        assert_eq!(
+            answer.station_proof.as_deref(),
+            Some("opaque-station-proof")
+        );
+        let (path, _body, valid_proof) = read_transport.observed.lock().unwrap().clone().unwrap();
+        assert_eq!(path, READ_PATH);
+        assert!(valid_proof);
+        let serialized = serde_json::to_string(&answer).unwrap();
+        assert!(!serialized.contains(&"S".repeat(43)));
+        assert!(!serialized.contains("credential"));
+        assert!(!serialized.contains("proofKey"));
+    }
+
+    #[test]
+    fn native_signal_service_rechecks_profile_after_broker_response() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_ANSWER_VERSION,
+                "answerSdp": null,
+                "stationProof": null,
+                "expiresAt": NOW + 30_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: true,
+            observed: Mutex::new(None),
+        };
+        let result = native_signal_service(&prepared, &transport, &grants).read(
+            NativeRelaySignalReadRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-nonce-01".to_owned(),
+            },
+        );
+        assert_eq!(result.unwrap_err(), NativeRedemptionError::StaleProfile);
+    }
+
+    #[test]
+    fn native_signal_service_bounds_offer_and_requires_complete_answer_envelope() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let oversized_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            observed: Mutex::new(None),
+        };
+        let oversized = native_signal_service(&prepared, &oversized_transport, &grants).open(
+            NativeRelaySignalOpenRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-nonce-01".to_owned(),
+                offer_sdp: "o".repeat(MAX_NATIVE_SIGNAL_SDP_BYTES + 1),
+            },
+        );
+        assert_eq!(oversized.unwrap_err(), NativeRedemptionError::GrantInvalid);
+        assert!(oversized_transport.observed.lock().unwrap().is_none());
+
+        let incomplete_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_ANSWER_VERSION,
+                "stationProof": null,
+                "expiresAt": NOW + 30_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            observed: Mutex::new(None),
+        };
+        let incomplete = native_signal_service(&prepared, &incomplete_transport, &grants).read(
+            NativeRelaySignalReadRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-nonce-01".to_owned(),
+            },
+        );
+        assert_eq!(
+            incomplete.unwrap_err(),
+            NativeRedemptionError::BrokerRejected
+        );
+    }
+
     struct SuccessfulRetirement;
 
     impl NativeBrokerTransport for SuccessfulRetirement {
@@ -5041,6 +5254,275 @@ pub(crate) struct NativeRelayRedemptionService<'a, P, K, H, G, C> {
     http: &'a H,
     grants: &'a G,
     now: C,
+}
+
+/// Renderer-safe input for the host-owned native signaling diagnostic. The
+/// credential and proof key are deliberately absent; the host loads and uses
+/// them from OS custody after resolving the selected saved profile.
+pub(crate) struct NativeRelaySignalOpenRequest {
+    pub(crate) profile_name: String,
+    pub(crate) expected_profile_revision: u64,
+    pub(crate) nonce: String,
+    pub(crate) offer_sdp: String,
+}
+
+pub(crate) struct NativeRelaySignalReadRequest {
+    pub(crate) profile_name: String,
+    pub(crate) expected_profile_revision: u64,
+    pub(crate) nonce: String,
+}
+
+/// Secret-free broker receipt; it contains no URL, bearer, or signing key.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelaySignalOpened {
+    pub(crate) expires_at: u64,
+}
+
+/// Signaling-only data returned to the native host. This does not authorize or
+/// carry application traffic; the transport proof is returned as opaque data
+/// for the separate native verification layer.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelaySignalAnswer {
+    pub(crate) answer_sdp: Option<String>,
+    pub(crate) station_proof: Option<String>,
+    pub(crate) expires_at: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeRelaySignalOpenedWire {
+    version: String,
+    expires_at: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeRelaySignalAnswerWire {
+    version: String,
+    answer_sdp: RequiredNullableText,
+    station_proof: RequiredNullableText,
+    expires_at: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RequiredNullableText {
+    Text(String),
+    Null(()),
+}
+
+impl RequiredNullableText {
+    fn into_option(self) -> Option<String> {
+        match self {
+            Self::Text(value) => Some(value),
+            Self::Null(()) => None,
+        }
+    }
+}
+
+const NATIVE_SIGNAL_OPENED_VERSION: &str = "station-broker-native-connection-opened/v2";
+const NATIVE_SIGNAL_ANSWER_VERSION: &str = "station-broker-native-connection-answer/v2";
+
+/// Narrow host service for v2 broker signaling. It has no route or URL input,
+/// never returns a grant bearer, and rechecks the saved profile, approved
+/// Station trust and exact keyring grant after every broker round trip.
+pub(crate) struct NativeRelaySignalService<'a, P, K, H, G, C> {
+    context_provider: &'a P,
+    proof_keys: &'a K,
+    http: &'a H,
+    grants: &'a G,
+    now: C,
+}
+
+impl<'a, P, K, H, G, C> NativeRelaySignalService<'a, P, K, H, G, C>
+where
+    P: NativeRedemptionContextProvider,
+    K: NativeProofKeyOperations,
+    H: NativeBrokerRequestTransport,
+    G: NativeGrantCustody,
+    C: Fn() -> u64,
+{
+    pub(crate) fn new(
+        context_provider: &'a P,
+        proof_keys: &'a K,
+        http: &'a H,
+        grants: &'a G,
+        now: C,
+    ) -> Self {
+        Self {
+            context_provider,
+            proof_keys,
+            http,
+            grants,
+            now,
+        }
+    }
+
+    pub(crate) fn open(
+        &self,
+        request: NativeRelaySignalOpenRequest,
+    ) -> RedemptionResult<NativeRelaySignalOpened> {
+        if !valid_safe_id(&request.nonce)
+            || request.offer_sdp.is_empty()
+            || request.offer_sdp.as_bytes().len() > MAX_NATIVE_SIGNAL_SDP_BYTES
+        {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        let (context, owner, grant) =
+            self.load_current_grant(&request.profile_name, request.expected_profile_revision)?;
+        let challenge = NativeBrokerRequestProofChallenge::from_request(
+            native_request_identity(&grant),
+            NativeBrokerRequestBody::Open {
+                nonce: &request.nonce,
+                offer_sdp: &request.offer_sdp,
+            },
+            (self.now)() / 1000,
+        )
+        .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+        let signature = self
+            .proof_keys
+            .sign_native_request(&owner, &challenge)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let compact_proof = challenge
+            .compact_jws(&signature)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let response = self
+            .http
+            .send_fixed_request(&grant, &challenge, &compact_proof);
+        let recheck = self.recheck_current_grant(&request.profile_name, &context, &owner, &grant);
+        recheck?;
+        let response = response?;
+        if response.status != 200 || response.body.len() > MAX_RESPONSE_BYTES {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        let receipt: NativeRelaySignalOpenedWire = serde_json::from_slice(&response.body)
+            .map_err(|_| NativeRedemptionError::BrokerRejected)?;
+        let now = (self.now)();
+        if receipt.version != NATIVE_SIGNAL_OPENED_VERSION
+            || receipt.expires_at <= now
+            || receipt.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_LIFETIME_MS)
+            || receipt.expires_at > grant.expires_at
+        {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        Ok(NativeRelaySignalOpened {
+            expires_at: receipt.expires_at,
+        })
+    }
+
+    pub(crate) fn read(
+        &self,
+        request: NativeRelaySignalReadRequest,
+    ) -> RedemptionResult<NativeRelaySignalAnswer> {
+        if !valid_safe_id(&request.nonce) {
+            return Err(NativeRedemptionError::GrantInvalid);
+        }
+        let (context, owner, grant) =
+            self.load_current_grant(&request.profile_name, request.expected_profile_revision)?;
+        let challenge = NativeBrokerRequestProofChallenge::from_request(
+            native_request_identity(&grant),
+            NativeBrokerRequestBody::Read {
+                nonce: &request.nonce,
+            },
+            (self.now)() / 1000,
+        )
+        .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+        let signature = self
+            .proof_keys
+            .sign_native_request(&owner, &challenge)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let compact_proof = challenge
+            .compact_jws(&signature)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let response = self
+            .http
+            .send_fixed_request(&grant, &challenge, &compact_proof);
+        let recheck = self.recheck_current_grant(&request.profile_name, &context, &owner, &grant);
+        recheck?;
+        let response = response?;
+        if response.status != 200 || response.body.len() > MAX_RESPONSE_BYTES {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        let answer: NativeRelaySignalAnswerWire = serde_json::from_slice(&response.body)
+            .map_err(|_| NativeRedemptionError::BrokerRejected)?;
+        let now = (self.now)();
+        let answer_sdp = answer.answer_sdp.into_option();
+        let station_proof = answer.station_proof.into_option();
+        if answer.version != NATIVE_SIGNAL_ANSWER_VERSION
+            || answer_sdp.is_some() != station_proof.is_some()
+            || answer_sdp.as_ref().is_some_and(|sdp| {
+                sdp.is_empty() || sdp.as_bytes().len() > MAX_NATIVE_SIGNAL_SDP_BYTES
+            })
+            || station_proof.as_ref().is_some_and(|proof| {
+                proof.is_empty() || proof.as_bytes().len() > MAX_NATIVE_SIGNAL_PROOF_BYTES
+            })
+            || answer.expires_at <= now
+            || answer.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_LIFETIME_MS)
+            || answer.expires_at > grant.expires_at
+        {
+            return Err(NativeRedemptionError::BrokerRejected);
+        }
+        Ok(NativeRelaySignalAnswer {
+            answer_sdp,
+            station_proof,
+            expires_at: answer.expires_at,
+        })
+    }
+
+    fn load_current_grant(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+    ) -> RedemptionResult<(
+        NativeRedemptionContext,
+        NativeProofKeyOwner,
+        NativeRelayClientGrantV2,
+    )> {
+        self.context_provider
+            .with_current_context(profile_name, |context| {
+                validate_profile_context(&context)?;
+                if context.profile.profile_name != profile_name
+                    || context.profile.revision != expected_profile_revision
+                {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let owner = NativeProofKeyOwner::new(
+                    &context.profile.app_identifier,
+                    context.profile.channel,
+                    &context.profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let record =
+                    self.grants
+                        .load_request_grant(&owner, &context, (self.now)(), false)?;
+                Ok((context, owner, record.grant))
+            })
+    }
+
+    fn recheck_current_grant(
+        &self,
+        profile_name: &str,
+        expected_context: &NativeRedemptionContext,
+        owner: &NativeProofKeyOwner,
+        expected_grant: &NativeRelayClientGrantV2,
+    ) -> RedemptionResult<()> {
+        self.context_provider
+            .with_current_context(profile_name, |context| {
+                validate_profile_context(&context)?;
+                if &context != expected_context {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let record =
+                    self.grants
+                        .load_request_grant(owner, &context, (self.now)(), false)?;
+                if !same_native_grant(&record.grant, expected_grant) {
+                    return Err(NativeRedemptionError::GrantInvalid);
+                }
+                Ok(())
+            })
+    }
 }
 
 impl<'a, P, K, H, G, C> NativeRelayRedemptionService<'a, P, K, H, G, C>
