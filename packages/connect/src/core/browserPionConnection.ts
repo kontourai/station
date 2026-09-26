@@ -17,13 +17,37 @@ import {
   raceOwnedLifetime,
   waitForBrowserTransport as waitFor,
 } from './browserTransportWait.js';
-import {
-  type BrokerBrowserAnswer,
-  SelfHostedBrokerBrowserClient,
+import type {
+  BrokerBrowserAnswer,
+  BrokerBrowserConnection,
 } from './selfHostedBrokerBrowserClient.js';
 
 const MAX_OPEN_CHANNELS = 32;
 const FINGERPRINT = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
+
+/**
+ * Credential custody and signaling belong to the adapter. The Pion consumer
+ * owns peer lifetime and independently verifies the Station answer proof.
+ * A host adapter must revalidate its current profile, trust and grant here;
+ * implementing this contract alone does not enable native route selection.
+ */
+export interface PionSignalingClient {
+  readonly scope: {
+    readonly stationId: string;
+    readonly enrollmentId: string;
+  };
+  assertCredentialBoundToTrust(
+    record: DeviceConnectionTrustRecord,
+  ): Promise<boolean>;
+  open(
+    connection: BrokerBrowserConnection & { readonly offerSdp: string },
+    signal: AbortSignal,
+  ): Promise<{ readonly expiresAt: number }>;
+  read(
+    connection: BrokerBrowserConnection,
+    signal: AbortSignal,
+  ): Promise<BrokerBrowserAnswer>;
+}
 
 export interface BrowserConnectionTrustStore {
   isCurrent(record: DeviceConnectionTrustRecord): Promise<boolean>;
@@ -65,7 +89,7 @@ function cloneIce(value: RTCConfiguration): RTCConfiguration {
 }
 
 export function createBrowserPionConnection(input: {
-  broker: SelfHostedBrokerBrowserClient;
+  broker: PionSignalingClient;
   applicationOrigin: string;
   applicationChannelLabel?: string;
   trustRecord: DeviceConnectionTrustRecord;
@@ -172,14 +196,8 @@ export function createBrowserPionConnection(input: {
     const attemptGeneration = ++generation;
     const isOwned = () =>
       attemptController === owned && attemptGeneration === generation;
-    const assertGrantBinding = () => {
-      const assertion = broker.assertCredentialBoundToTrust;
-      // Direct broker stubs are the legacy fixture/lab path. Production
-      // routing grants always expose the binding guard through the client.
-      return typeof assertion === 'function'
-        ? assertion.call(broker, trustRecord)
-        : Promise.resolve(undefined);
-    };
+    const assertGrantBinding = () =>
+      broker.assertCredentialBoundToTrust(trustRecord);
     let peer: RTCPeerConnection | undefined;
     try {
       const trustedAtStart = await raceOwnedLifetime(
@@ -191,7 +209,7 @@ export function createBrowserPionConnection(input: {
         assertGrantBinding(),
         lifetime,
       );
-      if (grantBoundAtStart === false)
+      if (grantBoundAtStart !== true)
         throw new Error('browser_transport_grant_trust_retired');
       const ice = iceProvider.capture();
       if (!ice.isCurrent()) throw new Error('browser_ice_configuration_stale');
@@ -264,7 +282,7 @@ export function createBrowserPionConnection(input: {
             assertGrantBinding(),
             lifetime,
           );
-          if (grantBound === false)
+          if (grantBound !== true)
             throw new Error('browser_transport_grant_trust_retired');
           const opened = await raceOwnedLifetime(
             broker.open({ clientId: connectionId, nonce, offerSdp }, lifetime),
@@ -288,7 +306,7 @@ export function createBrowserPionConnection(input: {
               assertGrantBinding(),
               lifetime,
             );
-            if (grantStillBound === false)
+            if (grantStillBound !== true)
               throw new Error('browser_transport_grant_trust_retired');
             const value = await raceOwnedLifetime(
               broker.read({ clientId: connectionId, nonce }, lifetime),
