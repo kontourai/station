@@ -262,6 +262,26 @@ describe('isValidNativePushRequest (the registration union)', () => {
       false,
     ],
     ['an unknown platform', { ...REQUEST, platform: 'web' }, false],
+    [
+      'ios with an alert token',
+      { ...IOS_REQUEST, alertToken: 'cd'.repeat(32) },
+      true,
+    ],
+    [
+      'ios with an uppercase alert token',
+      { ...IOS_REQUEST, alertToken: 'CD'.repeat(32) },
+      false,
+    ],
+    [
+      'ios with a short alert token',
+      { ...IOS_REQUEST, alertToken: 'cd'.repeat(31) },
+      false,
+    ],
+    [
+      'ios with a non-string alert token',
+      { ...IOS_REQUEST, alertToken: 7 },
+      false,
+    ],
   ])('%s', (_label, value, valid) => {
     expect(isValidNativePushRequest(value)).toBe(valid);
   });
@@ -424,6 +444,74 @@ describe('NativePushIosRegistrationStore', () => {
       }),
       { mode: 0o600 },
     );
+    expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
+  });
+
+  test('alertToken (#2589): stored when sent, restated by every registration, absent otherwise', () => {
+    const { ios, reopenIos, iosPath } = iosFixture();
+    const plain = ios.upsert('device-1', IOS_REQUEST, KEY, 1);
+    // Without one, the record is exactly what earlier Stations wrote.
+    expect(Object.keys(plain).sort()).toEqual([
+      'apnsEnvironment',
+      'packageName',
+      'payloadKey',
+      'platform',
+      'registrationId',
+      'stationKey',
+      'token',
+      'updatedAt',
+    ]);
+    expect(readFileSync(iosPath, 'utf8')).not.toContain('alertToken');
+    const alertToken = 'cd'.repeat(32);
+    const withAlert = ios.upsert(
+      'device-1',
+      { ...IOS_REQUEST, alertToken },
+      KEY,
+      2,
+    );
+    expect(withAlert).toMatchObject({
+      alertToken,
+      registrationId: plain.registrationId,
+      payloadKey: plain.payloadKey,
+    });
+    expect(reopenIos().list().get('device-1')).toEqual(withAlert);
+    // A later registration without one (notifications turned off) drops it.
+    const without = ios.upsert('device-1', IOS_REQUEST, KEY, 3);
+    expect(without.alertToken).toBeUndefined();
+    expect(reopenIos().list().get('device-1')?.alertToken).toBeUndefined();
+  });
+
+  test('clearAlertToken drops only a still-current alert token and keeps the activity', () => {
+    const { ios, reopenIos } = iosFixture();
+    const alertToken = 'cd'.repeat(32);
+    const { registrationId } = ios.upsert(
+      'device-1',
+      { ...IOS_REQUEST, alertToken },
+      KEY,
+      1,
+    );
+    ios.updateLiveActivity('device-1', registrationId, { activity: ACTIVITY });
+    // A token the phone has since replaced is not the one to drop.
+    expect(ios.clearAlertToken('device-1', 'ef'.repeat(32))).toBe(false);
+    expect(reopenIos().list().get('device-1')?.alertToken).toBe(alertToken);
+    expect(ios.clearAlertToken('device-1', alertToken)).toBe(true);
+    const after = reopenIos().list().get('device-1');
+    expect(after?.alertToken).toBeUndefined();
+    expect(after).toMatchObject({ registrationId, activity: ACTIVITY });
+    expect(ios.clearAlertToken('device-2', alertToken)).toBe(false);
+  });
+
+  test('a stored alertToken the pattern refuses makes the iOS file unreadable', () => {
+    const { ios, reopenIos, iosPath } = iosFixture();
+    ios.upsert(
+      'device-1',
+      { ...IOS_REQUEST, alertToken: 'cd'.repeat(32) },
+      KEY,
+      1,
+    );
+    const file = JSON.parse(readFileSync(iosPath, 'utf8'));
+    file.registrations['device-1'].alertToken = 'not-hex';
+    writeFileSync(iosPath, JSON.stringify(file), { mode: 0o600 });
     expect(() => reopenIos().list()).toThrow(NativePushRegistrationStoreError);
   });
 

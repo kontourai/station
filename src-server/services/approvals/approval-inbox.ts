@@ -12,6 +12,7 @@ import {
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { RequestReplayOutcome } from '../orchestration/open-requests.js';
@@ -46,7 +47,10 @@ interface ApprovalInboxDependencies {
   };
   orchestrationService: Pick<
     OrchestrationService,
-    'dispatch' | 'readRequestOutcome' | 'resolveSessionProjectSlug'
+    | 'dispatch'
+    | 'isEphemeralSession'
+    | 'readRequestOutcome'
+    | 'resolveSessionProjectSlug'
   >;
 }
 
@@ -257,6 +261,21 @@ export class ApprovalInboxNotificationProvider
   }
 
   /**
+   * #2589: whether `threadId` is in the session read model the
+   * agent-activity card is built from (`listSessionReadModel`, which leaves
+   * out ephemeral webhook sessions). Only then is an approval in it on the
+   * card. Fail-soft to `false`: an unmarked notification still alerts, and a
+   * duplicate beats a silenced alert.
+   */
+  isListedSession(threadId: string): boolean {
+    try {
+      return !this.deps.orchestrationService.isEphemeralSession(threadId);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * archive#1284 (HIGH 2): what the persisted log says about this
    * notification's request — see `OrchestrationService.readRequestOutcome`.
    * Exposed on the provider for the same reason `resolveProjectSlug` is:
@@ -322,6 +341,14 @@ export function wireApprovalInboxNotifications(
   const unsubscribe = eventBus.subscribe((message) => {
     notificationService.dispatch('approval-inbox-event', async () => {
       if (message.event === SERVER_EVENTS.APPROVAL_OPENED) {
+        // #2589: a Station-agent relay's approval, which the adapter also
+        // opens as the thread's orchestration request: on the card only when
+        // it is the relayed conversation's own and that thread is listed.
+        const relayThread = message.data?.orchestrationThreadId;
+        const onActivityCard =
+          typeof relayThread === 'string' &&
+          relayThread === message.data?.conversationId &&
+          provider.isListedSession(relayThread);
         const notification = await notificationService.schedule(
           APPROVAL_INBOX_SOURCE,
           {
@@ -340,6 +367,10 @@ export function wireApprovalInboxNotifications(
               approvalId: message.data?.approvalId,
               conversationId: message.data?.conversationId,
               conversationTitle: message.data?.conversationTitle,
+              orchestrationThreadId: relayThread,
+              ...(onActivityCard
+                ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true }
+                : {}),
               sessionId: message.data?.conversationId,
               sessionKind: REGISTRY_SESSION_KIND,
               detail: message.data?.description,
@@ -428,6 +459,11 @@ export function wireApprovalInboxNotifications(
               requestKey: buildOrchestrationRequestKey(event),
               requestKind: 'orchestration',
               requestType: event.requestType,
+              // #2589: the card carries this request unless its session is
+              // left out of the read model the card is built from.
+              ...(provider.isListedSession(event.threadId)
+                ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true }
+                : {}),
               sessionId: event.threadId,
               sessionKind: ORCHESTRATION_SESSION_KIND,
               threadId: event.threadId,
