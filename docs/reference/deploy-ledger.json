@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-09-26T17:18:51Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2460.36254706366",
+    "sha": "719e0042f6f2941fbc47b402c1df60de2bfc4915",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36254706366",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2460.36254706366 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "3c43c43a71ba9908bcb1030326491320a0b90d1f",
+      "groups": {
+        "feat": [
+          "[#2685](https://github.com/kontourai/station/pull/2685) feat(station-control): per-call authority for every station-control tool (#2377 slice A)"
+        ],
+        "fix": [
+          "[#2695](https://github.com/kontourai/station/pull/2695) fix(service): report service PATH drift in status, with a faithful reinstall hint",
+          "[#2693](https://github.com/kontourai/station/pull/2693) fix(ci): build the CLI before the repository source scans"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-09-26T16:24:11Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2460.3",
