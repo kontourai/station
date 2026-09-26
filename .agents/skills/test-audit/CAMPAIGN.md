@@ -102,7 +102,7 @@ on the same harness.
 
 ## 8. Reconcile and hand off
 
-Campaigns outlive many `main` commits. Merge `main` rather than rebasing a
+Campaigns outlive many `main` commits. Run `git merge origin/main` rather than rebasing a
 long, many-commit campaign. When `main` modified a file the campaign
 deleted, keep the deletion. Port the new contract into the keeper instead, and
 confirm every new regression `main` added still has a home. Rerun the whole

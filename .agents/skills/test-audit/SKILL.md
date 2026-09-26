@@ -13,7 +13,9 @@ PRs; optimize for confidence, not deletion count. Campaign mode prunes one
 whole subsystem's test surface (every test file a package or server/UI area
 owns); before starting one, read [CAMPAIGN.md](CAMPAIGN.md).
 
-Adapted from OpenClaw's `test-audit` skill (MIT, openclaw/openclaw@80930af).
+Adapted from OpenClaw's `test-audit` skill (openclaw/openclaw@80930af),
+Copyright (c) 2026 OpenClaw Foundation, used under the MIT License; see
+[LICENSE-MIT](LICENSE-MIT).
 The method is unchanged; discovery lanes, validation, and landing use
 Station's commands. Station's own testing rules in
 [docs/guides/testing.md](../../../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness)
@@ -160,10 +162,10 @@ sibling worktree under `../station-worktrees/`.
 4. For removed source greps or plan assertions, run the executable script or
    gate that owns the real contract, as a child process, and assert its exit
    status.
-5. Run `git diff --check`,
+5. Run `git diff --check origin/main...HEAD`,
    `npm run test:changed -- --base=origin/main --explain`, then
    `npm run ci:fast`. Exit 3 from the selector is provisional, not completion.
-6. Inspect `git diff --numstat`; report production/tooling separately from
+6. Inspect `git diff --numstat origin/main...HEAD`; report production/tooling separately from
    tests and test support. Update `scripts/test-fixture-policy-baseline.json`
    when a deleted test removes a legacy site.
 7. After final audit edits, get an independent report-only review of the

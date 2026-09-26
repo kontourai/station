@@ -7,7 +7,9 @@ description: "Diff-scoped AI-slop cleanup pass: strip comment slop, defensive-ch
 
 Clean only the current branch diff before review. Preserve behavior absolutely.
 
-Adapted from OpenClaw's `deslop` skill (MIT, openclaw/openclaw@203aafc).
+Adapted from OpenClaw's `deslop` skill (openclaw/openclaw@203aafc),
+Copyright (c) 2026 OpenClaw Foundation, used under the MIT License; see
+[LICENSE-MIT](LICENSE-MIT).
 
 ## Checklist
 
@@ -23,4 +25,4 @@ Adapted from OpenClaw's `deslop` skill (MIT, openclaw/openclaw@203aafc).
 4. Fix a finding inline only when the cleanup is trivial and behavior-neutral. Otherwise note it for the author.
 5. Report the result in 1–3 sentences, including whether anything changed and any non-trivial item left for review.
 
-Run `$deslop` before independent review, never instead of it. The report-only review and verification described in the root [AGENTS.md](../../../AGENTS.md) remain the required correctness and safety gate.
+Run `$deslop` before independent review, never instead of it. An independent report-only review and verification remain the required correctness and safety gate.
