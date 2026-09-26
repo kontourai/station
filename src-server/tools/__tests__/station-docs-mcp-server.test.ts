@@ -5,7 +5,10 @@ import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-p
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
-import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
+import {
+  STATION_DOCS_CONTENT_DIGEST,
+  STATION_DOCS_TOPICS,
+} from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
   findStationDocsTopic,
@@ -408,6 +411,36 @@ describe('station-docs plugin-authoring topic', () => {
         'plugin-authoring',
         'A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
       ],
+      // Existing architecture statements describe captured identity, inventory,
+      // and grant reconciliation. They grant no new installation authority.
+      [
+        'architecture-workspacepanehostadmission',
+        'It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body.',
+      ],
+      [
+        'architecture-workspacepanehostadmission',
+        '**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser.',
+      ],
+      [
+        'architecture-installedplugininventory',
+        '**Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory.',
+      ],
+      [
+        'architecture-installedplugininventory',
+        'Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries.',
+      ],
+      [
+        'architecture-pluginforegroundruns',
+        "Run identity includes installation, account, and optional machine scope before applying the plugin's idempotency key.",
+      ],
+      [
+        'architecture-plugingrantreconciliation',
+        '**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes.',
+      ],
+      [
+        'architecture-operationaleventsubscriptions',
+        '`PluginOperationalEventSubscriptionService` is the first production registrar: it strictly reads versioned installed-manifest declarations, derives stable consumer identity from plugin/subscription identity, requires current `plugin.server` plus `events.subscribe` grants (and `events.read-payload` for an envelope), acquires the existing quiescence-aware server module, and gives every subscription its own bounded dispatch queue.',
+      ],
     ];
     const found = STATION_DOCS_TOPICS.flatMap((entry) =>
       entry.body
@@ -511,6 +544,37 @@ describe('station-docs MCP server', () => {
     expect(payload.query).toBe('engine');
     expect(payload.results.length).toBeGreaterThan(0);
     expect(payload.kind).toBe('shipped-documentation');
+  });
+
+  test('navigates the same architecture tree and identifies its compiled content', async () => {
+    const roots = await callTool('list_station_docs_topics', {
+      parentId: 'architecture',
+    });
+    expect(roots.topics).toHaveLength(10);
+    expect(
+      roots.topics.every(
+        (topic: { parentId: string }) => topic.parentId === 'architecture',
+      ),
+    ).toBe(true);
+    const children = await callTool('list_station_docs_topics', {
+      parentId: 'architecture-execution',
+    });
+    expect(children.topics.map((topic: { id: string }) => topic.id)).toContain(
+      'architecture-sessioncommandmodule',
+    );
+    const topic = await callTool('get_station_docs_topic', {
+      id: 'architecture-sessioncommandmodule',
+    });
+    expect(topic.topic.sourcePath).toBe('docs/architecture/module-map.md');
+    expect(topic.topic.sourceAnchor).toBe('sessioncommandmodule');
+    expect(topic.topic.body).toContain('indeterminate');
+    expect(topic.topic.body).toContain('do not establish live state');
+    expect(topic.documentationDigest).toBe(STATION_DOCS_CONTENT_DIGEST);
+    expect(topic.documentationDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(
+      (await callTool('list_station_docs_topics', { parentId: 'missing' }))
+        .topics,
+    ).toEqual([]);
   });
 });
 

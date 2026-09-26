@@ -102,6 +102,10 @@
     "gen:settings-registry": "tsx scripts/gen-settings-registry.ts",
     "project-shadow:report": "tsx scripts/project-resource-shadow-report.ts",
     "docs:links:check": "node scripts/check-markdown-links.mjs",
+    "docs:learn:build": "node scripts/build-learning-guide.mjs",
+    "docs:learn:check": "node scripts/build-learning-guide.mjs --check",
+    "docs:mcp:generate": "node scripts/generate-station-docs.mjs",
+    "docs:mcp:check": "node scripts/generate-station-docs.mjs --check",
     "contribution:gate": "node scripts/public-contribution-surfaces.mjs",
     "labels:check": "node scripts/label-manifest.mjs",
     "docs:issue-lifecycle:check": "node scripts/generate-issue-lifecycle-reference.mjs --check",
@@ -115,7 +119,7 @@
     "docs:hygiene:repo": "node scripts/repo-docs-hygiene.mjs",
     "docs:cli-parity:check": "node scripts/cli-doc-parity.mjs",
     "evidence:archive": "node scripts/build-evidence-archive.mjs",
-    "docs:truth:biome": "npx biome check .github/labels.json docs/pages/public-docs.json docs/pages/styles.css",
+    "docs:truth:biome": "npx biome check .github/labels.json docs/pages/public-docs.json docs/pages/styles.css docs/learn/atlas.css docs/learn/atlas.js docs/learn/diagrams.js docs/learn/atlas.json docs/learn/mcp-topics.json",
     "docs:truth:gate": "node scripts/docs-truth-gate-aggregate.mjs",
     "docs:pages:check": "node scripts/check-generated-pages-links.mjs",
     "docs:pages:build": "npm run docs:links:check && node scripts/build-github-pages.mjs && npm run docs:pages:check",
@@ -379,6 +383,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "mermaid": "11.17.2",
     "@ai-sdk/provider": "^3.0.15",
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.12",

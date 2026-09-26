@@ -5,6 +5,7 @@ import {
   findBrokenReferences,
   LIVE_DOC_DIRECTORIES,
   LIVE_DOC_FILES,
+  LIVE_DOC_PATTERNS,
   liveDocs,
   normalizeReferencedPath,
   referencedPaths,
@@ -148,6 +149,7 @@ describe('the repo’s own live docs', () => {
 
 describe('live documentation discovery', () => {
   const expectedDirectories = [
+    'docs/user',
     'docs/guides',
     'docs/reference',
     'docs/architecture',
@@ -165,9 +167,15 @@ describe('live documentation discovery', () => {
     'CONTEXT.md',
     'CONTEXT-MAP.md',
     'SECURITY.md',
+    'CONTRIBUTING.md',
   ];
   const regularDirectory = () => ({ isDirectory: () => true });
   const validEntries = [
+    'docs/user/getting-started.md',
+    'packages/sdk/README.md',
+    'examples/deep/README.md',
+    'src-ui/AGENTS.md',
+    '.agents/skills/documentation-audit/SKILL.md',
     'docs/guides/README.md',
     'docs/guides/deep/café notes.md',
     'docs/reference/root.md',
@@ -198,12 +206,38 @@ describe('live documentation discovery', () => {
     expect(calls).toEqual([
       [
         'git',
-        ['ls-files', '-z', '--', ...expectedDirectories, ...expectedFiles],
-        { cwd: '/repo', encoding: 'buffer' },
+        [
+          'ls-files',
+          '-z',
+          '--',
+          ...expectedDirectories,
+          ...expectedFiles,
+          ...LIVE_DOC_PATTERNS,
+        ],
+        { cwd: '/repo', encoding: 'buffer', windowsHide: true },
       ],
     ]);
-    expect(describeLiveDocScope()).toContain('7 recursive tracked directory');
-    expect(describeLiveDocScope()).toContain('8 named file scope');
+    expect(describeLiveDocScope()).toContain('8 recursive tracked directory');
+    expect(describeLiveDocScope()).toContain('9 named file scope');
+  });
+
+  it('catches a removed source named only by a nested README or user guide', () => {
+    const files = liveDocs({
+      root: '/repo',
+      runGit: () => nulOutput(),
+      stat: regularDirectory,
+    });
+    const affected = new Set([
+      'packages/sdk/README.md',
+      'examples/deep/README.md',
+      'docs/user/getting-started.md',
+    ]);
+    const read = (file: string) =>
+      affected.has(file) ? '`src-server/removed.ts`' : '# Entry';
+    expect([
+      ...findBrokenReferences(files, () => false, read).entries(),
+    ]).toEqual([['src-server/removed.ts', affected]]);
+    expect(findBrokenReferences(files, () => true, read).size).toBe(0);
   });
 
   it('keeps the Module map in the path-validation scope', () => {
@@ -220,14 +254,14 @@ describe('live documentation discovery', () => {
           throw new Error('missing');
         },
       }),
-    ).toThrow("could not inspect required directory 'docs/guides'");
+    ).toThrow("could not inspect required directory 'docs/user'");
     expect(() =>
       liveDocs({
         root: '/repo',
         runGit: nulOutput,
         stat: () => ({ isDirectory: () => false }),
       }),
-    ).toThrow("requires directory 'docs/guides'");
+    ).toThrow("requires directory 'docs/user'");
     expect(() =>
       liveDocs({
         root: '/repo',

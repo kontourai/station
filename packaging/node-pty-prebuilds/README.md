@@ -21,7 +21,7 @@ staging slots into upstream with no fork and no vendored package.
 1. Artifacts are built by `.github/workflows/node-pty-prebuilds.yml`: the
    approved dependency lifecycle compiles node-pty from the integrity-pinned
    lockfile tarball, `scripts/verify-node-pty-prebuild.mjs` re-proves the
-   artifact standalone (upstream `scripts/prebuild.js` exits 0, the module
+   artifact standalone (node-pty's upstream `node scripts/prebuild.js` exits 0, the module
    loads from `prebuilds/` with no `build/` directory and no node-gyp, and it
    passes Station's real-PTY handshake), and
    `actions/attest-build-provenance` binds the file to the workflow run.

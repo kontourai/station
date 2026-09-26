@@ -1,28 +1,9 @@
 #!/usr/bin/env node
-/**
- * Run every independent `docs:truth:gate` check to completion and report
- * every failing one (station#4249 slice 2).
- *
- * `npm run docs:truth:gate` used to chain 12 independent repo-hygiene checks
- * with `&&`. The first failure ended the run: station#4249's motivating
- * incident died on `docs:index:check` (attempt #9 of twelve) with no way to
- * know whether `docs:links:check`, right behind it in the same chain, was
- * also red.
- *
- * Every check's own command is UNCHANGED -- this script only changes how many
- * of the 12 independent checks run per invocation, never what any one of them
- * inspects. The final biome check over the docs-tooling source files is
- * pulled out into its own named script, `docs:truth:biome`, purely so it has
- * an id to run uniformly alongside the other 11 npm-script checks; its
- * command text is byte-identical to what `docs:truth:gate` used to run last.
- */
+// Run all independent checks after a failure so one red lane cannot hide
+// another (archive#4249). Each lane still owns its validation semantics.
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runLanesToCompletion } from './lib/npm-lane-aggregate.mjs';
 
-/**
- * The same 12 independent checks `docs:truth:gate`'s old `&&` chain named, in
- * the same order, each pointing at the SAME unmodified npm script.
- */
 export const DOCS_TRUTH_GATE_LANES = [
   { id: 'contribution:gate', script: 'contribution:gate' },
   { id: 'labels:check', script: 'labels:check' },

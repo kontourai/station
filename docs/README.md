@@ -16,6 +16,14 @@ row that matches the job you are doing.
 
 ## Choose a path
 
+### Learn the whole application
+
+Use [Learn Station](learn/README.md) for a guided reading path and a local
+interactive concept tree. It connects high-level responsibilities to module
+interfaces, canonical documents, source, evidence, and architecture questions.
+The searchable library includes all tracked Markdown, with historical material
+kept distinct from current implementation claims.
+
 ### Product and marketing
 
 Start with the [project README](../README.md), then use [Getting started](user/getting-started.md)
@@ -35,6 +43,15 @@ The [example catalog](../examples/README.md) groups runnable fixtures by
 contract and states which live-provider paths remain unverified.
 
 ## Authority
+
+For a high-level-to-code reading path, start with the
+[system overview](architecture.md#reading-path), then choose a subsystem in the
+[module map](architecture/module-map.md). Follow its implementation and evidence
+links before treating a behavioral claim as verified. The
+[documentation guide](guides/documentation.md) explains how to maintain those
+links, diagrams, READMEs, and code comments. The
+[documentation audit plan](plans/documentation-code-audit.md) records the
+repository-wide review scope and its remaining work.
 
 - [glossary.md](glossary.md) owns canonical Station vocabulary.
 - [CONTEXT.md](../CONTEXT.md) owns product and domain context.

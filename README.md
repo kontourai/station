@@ -135,7 +135,7 @@ services and agent engines with their exact setup steps.
 | CLI | [CLI reference](docs/reference/cli.md); `npx @kontourai/station-cli@latest --help` runs the published client against any Station |
 | HTTP API and contracts | [API reference](docs/reference/api.md), [endpoint authorities](docs/reference/endpoints.md), [contracts](docs/reference/contracts.md) |
 | Integrating Station | [Integrating Station into your company or project](docs/guides/integrating-station.md) |
-| Architecture | [Module map](docs/architecture/module-map.md), [CONTEXT.md](CONTEXT.md), [design records](docs/design/README.md) |
+| Architecture | [System overview and reading path](docs/architecture.md), [module interfaces and evidence](docs/architecture/module-map.md), [CONTEXT.md](CONTEXT.md), [design records](docs/design/README.md) |
 | Operating | [Deployment](docs/guides/deployment.md), [computer relationships](docs/guides/machine-relationships.md), [config reference](docs/reference/config.md) |
 | Releases | [Release rings](docs/guides/release-rings.md), [Nightly](docs/guides/nightly.md), [channel ports](docs/guides/release-channel-ports.md) |
 
@@ -155,6 +155,11 @@ The rendered [documentation site](https://kontourai.github.io/station/docs/)
 publishes the end-user guides. The [documentation map](docs/README.md) routes
 users, operators, plugin authors, contributors, and maintainers to everything
 else in the repository.
+
+For a guided overview-to-code path, use [Learn Station](docs/learn/README.md).
+Its local interactive atlas connects concepts, module interfaces, canonical
+documents, implementation, and evidence; Station Docs MCP draws from the same
+manual and architecture sources.
 
 ## Contributing and support
 

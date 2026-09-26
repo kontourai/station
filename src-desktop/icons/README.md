@@ -23,7 +23,7 @@ set precedence cannot mask the release identity. The TestFlight delivery
 workflow (`testflight-delivery.yml`) deletes `gen/apple` and runs
 `tauri ios init`, which renders `Assets.xcassets/AppIcon.appiconset` from
 Tauri's template with Tauri's own default PNGs, so it calls
-`scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
+`node scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
 committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from
 the square master, because iOS rejects alpha and the generator refuses any
 translucent pixel) over it, and `ios-channel-icons.mjs verify` proves the built

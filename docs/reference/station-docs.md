@@ -1,0 +1,315 @@
+# Station shipped documentation
+
+This is the canonical prose served by the credential-free Station Docs MCP.
+The build compiles these topics and the architecture module sections into static
+content. The interactive learning library reads the same Markdown. This manual
+describes the product, not a particular Station's live state. Topic metadata and
+stable IDs are maintained in [the topic catalog](../learn/mcp-topics.json).
+
+Update the owning implementation and tests when revising a claim. Run
+`npm run docs:mcp:generate` after editing, then `npm run docs:mcp:check` to check
+that the shipped content matches its sources. See [Learn Station](../learn/README.md)
+for navigation and [the audit ledger](../plans/documentation-code-audit.md) for
+remaining semantic review.
+
+## What Station is
+
+Station is an agent workspace: the place where you direct agent work, watch it run, and see the evidence for whether it is actually finished. It is not a chat wrapper and not an IDE.
+
+Its distinguishing idea is evidence over confidence. An agent saying it is done is an assertion, not a fact. Work in Station ends in one of three honest states: gates passed with fresh evidence, an exception a human explicitly accepted, or NOT_VERIFIED stated plainly. There is no fourth state where confident prose stands in for receipts.
+
+Station is local-first and does not require a cloud account for local operation. The Station-owned root defaults to `~/.station`; `STATION_HOME` selects one runtime home, such as `~/.station/instances/stable`. Persistence includes files and databases. Use the documented archive and recovery operations when moving a home; a directory copy is not automatically a consistent backup.
+
+The core owns durable product responsibilities including Projects, Tasks, Sessions, authorization, execution, and evidence projection. Plugins extend the product through published contracts and admitted capabilities. The architecture learning tree explains these responsibilities and their interfaces; plugins do not acquire unrestricted access to core internals.
+
+## These docs, and what they cannot do
+
+You are reading `station-docs`, a built-in MCP tool server that serves Station's own shipped documentation. It is static content compiled into Station and versioned with it. It never reads files from disk at request time, never makes network calls, and needs no credential of any kind.
+
+That design has a consequence worth being blunt about. These docs describe Station in general. They do NOT describe the Station you are connected to. Nothing here can tell you which agents exist, what is currently running, what a particular job did, what a setting is set to, or what is in a project. If you are asked any of those questions, say plainly that you can explain how Station works but cannot read this Station.
+
+Operating a Station — creating agents, running jobs, changing settings, listing plugins and checking them for updates, validating a plugin you wrote — is done through a different built-in server, `station-control`. Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one (see the `plugin-authoring` topic). That one talks to the Station API and therefore needs a credential, which means it can only be delivered to engines that have a reviewed, non-secret-crossing way to receive it. Some engines can receive it; others cannot.
+
+So the capability split is real and it is asymmetric: docs go to every engine, control does not. An engine with docs and no `station-control` can explain Station, answer questions about it, and help you plan the work — and cannot perform it. Do not answer as if you had acted. Say what you can do, and say what you cannot.
+
+## Projects
+
+A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
+
+Projects scope which agents are available. A project can opt-in-filter the globally available agents, and an agent can also be OWNED by a project: an owned agent appears only inside that project and never in the global context. Deleting the owning project orphans the agent visibly rather than silently deleting it.
+
+Projects present themselves as layouts — arrangements of panels for a particular way of working. Layouts can come from Station or from plugins, so a project page can be a chat surface, a review workbench, a readiness console, or a domain-specific vertical.
+
+Station records whether a project's captured workspace binding is still `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other two preserve the recorded identity without pretending the path is still current.
+
+## Agents and engines
+
+The one question that classifies any agent is: what runs it? That answer is a property of the agent — which engine it binds to — not a separate species of agent.
+
+Station's own engine runs an agent directly against a Model connection. In that case Station owns everything about the agent: its prompt, skills, tools, commands, and model.
+
+An external engine — Claude Code, Codex, or a custom CLI engine such as OpenCode or Kiro — runs its own loop. There, the engine owns behavior and tools, and Station owns only the abstractions it can set for that engine (model, effort, thinking) plus whatever capabilities that engine has a channel to receive.
+
+How Station reaches an engine is an implementation detail, not a category. Some engines are reached through a native SDK and some are driven as a subprocess over the Agent Client Protocol; users see the engine's name either way, and every resolved agent renders an engine chip naming its engine.
+
+What an engine can be given differs per engine, and Station is explicit about it rather than silently dropping things. Each engine has a capability matrix covering the system prompt, tool servers, skills, commands, and model selection; a capability an engine has no channel for is recorded as undelivered instead of being quietly ignored.
+
+## Connections
+
+Connections separates Models and Engines. The Models tab contains Model connections; the Engines tab contains Engines. Choose the service or engine you recognize, then a model within it. Provider remains an implementation term, not the user-facing umbrella for both tabs.
+
+A model connection is an LLM endpoint — a local Ollama, an OpenAI-compatible service, a gateway, or a cloud model service. It powers Station's own engine, which drives the inference loop itself.
+
+An engine connection is how Station reaches an external engine that runs its own loop, such as Claude Code, Codex, or a custom CLI engine. Station hands it a model plus effort/thinking settings and receives its events back.
+
+The dividing line is who runs the loop, not who has models. Both kinds have models to choose from. Station's engine drives a model connection directly; an external engine runs its own loop and Station selects a model within that engine's own list.
+
+A configured, reachable local model is one credential-free option. Discovery, configuration, and readiness are different facts; inspect the Connections surface before assuming a detected service is ready for a conversation.
+
+## The built-in assistant, and what it needs
+
+Station ships one default, non-deletable agent whose job is to operate Station itself: create agents, run jobs, change settings, list plugins and check them for updates, check plugins it helped write, and generally reshape the workspace the way the UI does.
+
+It cannot install a plugin. An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`. Asked to install one, the assistant says so and points there. It proposes instead: `propose_plugin_install`, `update_plugin` and `remove_plugin` leave an ask that a person completes from Plugins.
+
+That capability comes entirely from the `station-control` MCP tool server. `station-control` calls Station's own API, so it needs a credential for this running instance. A credential can only be handed to an engine over a channel that has been reviewed as not crossing the secret boundary.
+
+The consequence: not every connected engine can run the built-in assistant. An engine without a reviewed delivery mechanism for `station-control` can still chat, and it still receives `station-docs` — so it can explain Station, answer questions about it, and help you plan — but it cannot create agents, run jobs, or change settings.
+
+Station states this rather than hiding it. If no connected engine can run the built-in assistant, the engine picker says so, names what the connected engines can still do, and names which engines can run it today. An assistant that answers confidently while silently unable to act is exactly the failure this honesty is meant to prevent.
+
+## Sessions, turns, and runs
+
+A session is a bounded episode of agent work. It can be associated with a project, a layout, an agent, and an evidence-gated Flow run. Starting a direct chat creates a session; it does not silently create a durable Task.
+
+A turn is one user-to-agent interaction inside a session. A turn may stream text, reasoning, tool calls, approval requests, and terminal or artifact events.
+
+A run is the execution accounting: status, attempt count, retry eligibility, output references, and failure classification. An agent run is tied to an agent session; a scheduled run comes from a scheduled job instead of an interactive session.
+
+Every engine, Station's own or external, reports through one canonical event model, so the session lifecycle, tool events, and completion transitions look the same regardless of what ran the work. That uniformity is what lets one policy and gate model apply across engines.
+
+## Tasks and the task workspace
+
+A task is a durable, user-addressable work identity belonging to a project. Unlike a session, it survives restarts and is not tied to one execution episode. A task may correlate an exact session, or none at all.
+
+A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
+
+The task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.
+
+A task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
+
+## Scheduled jobs and notifications
+
+A scheduled job runs an agent on a cron schedule. Jobs are managed through Station's schedule surface, stream their output while running, and produce scheduled runs that appear alongside interactive ones.
+
+Because a scheduled run is a run like any other, the same evidence, gate, and receipt machinery applies to it. Unattended work is not exempt from having to prove it did something.
+
+Notifications are provider-based: subsystems and plugins contribute notifications that Station aggregates, persists, and delivers, so a long-running or scheduled piece of work can tell you it needs attention.
+
+## Skills
+
+A skill is a reusable bundle of instructions and behavior that an agent adopts — a way to give several agents the same competence without duplicating a prompt.
+
+Skills are a capability Station owns for agents it runs. For an agent bound to an external engine, whether the skill reaches the engine depends on that engine having a delivery channel for skills. Some engines do; others do not.
+
+When an engine has no channel for an authored skill, Station records that as undelivered rather than silently dropping it, and the agent editor shows the authored content read-only with a diagnostic naming the engine that cannot deliver it.
+
+Skills are installed and browsed from the registry, like agents and tool servers.
+
+A skill can also declare itself runnable as a slash command, which is how a reusable instruction sequence is invoked directly in a chat or assigned to a task. There is one authored concept here, not two.
+
+## MCP tool servers, integrations, and tools
+
+Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
+
+Station ships two built-in servers. `station-control` exposes Station's own platform operations — agents, skills, integrations, jobs, plugins, providers — as tools, which is how an agent can manage Station itself. `station-docs` is this documentation server: static shipped prose, no credential, no live state.
+
+Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
+
+Mutating tool calls are governed work. Platform mutations can require approval, are recorded, and produce receipts when they run inside a gated session; approvals surface in an approval inbox where the decision and its resolution are both kept.
+
+## Trust, gates, evidence, and receipts
+
+A gate is a condition that must be satisfied by evidence, routed back, blocked, or explicitly excepted. Gate verdicts are computed from evidence, not from an agent saying it finished.
+
+Evidence is an artifact that supports or refutes a claim about work: command output, files, test results, readiness checks, human attestations, trust artifacts. A receipt is the durable record connecting a claim, its evidence, and the resulting verdict, so a future reader can see why work was allowed to continue.
+
+Two outcomes are first-class and deliberately visible. A route-back means the work can continue but is not complete. An exception is a human-accepted override of missing or failing evidence — explicit debt in the receipt trail, never a silent bypass. And when something simply has not been checked, the honest statement is NOT_VERIFIED.
+
+Station renders this state; it does not own it. The evidence-gated process semantics, repo-standards and merge-readiness derivations, and claim/trust-bundle semantics each belong to the separate products that define them. Station consumes them through their published contracts, the same ones any other consumer can use, and shows the resulting gaps rather than hiding them behind a summary status.
+
+## Fleet inference across Stations
+
+People often run more than one Station: a laptop, a desktop with a GPU, a home server. Fleet inference is the capability that lets a Station borrow model capacity from another Station you control instead of every machine needing its own local model.
+
+Contributing capacity is opt-in and off by default. A Station that opts in publishes a manifest describing exactly the subset of its models it is contributing; nothing is shared implicitly.
+
+Routing is receipted. Station records which candidates were considered, which were excluded and why, and which Station actually served a request, so a routing decision is inspectable after the fact rather than being an opaque choice. Those routing and serving receipts render in the monitoring surface.
+
+Reaching another Station is a relationship you set up deliberately — pairing a device or configuring an environment — not something that happens automatically because two Stations are on the same network.
+
+## Plugins and the registry
+
+Station's core owns durable product and authorization behavior as well as runtime composition, streaming, routing, and provider registration. Plugins add capabilities and work surfaces at the published extension boundaries.
+
+A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors use the published SDK and contracts; private core capabilities are not automatically available to a plugin.
+
+The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
+
+Where open standards exist, Station adopts them rather than inventing an equivalent: MCP for tools, the Agent Client Protocol for reaching external engines, OpenTelemetry for observability, and MCP-UI for rendered tool resources.
+
+## Writing a plugin: manifest, Workspace Panes, SDK hooks, validation and install
+
+This topic is enough to write a working plugin without a Station source checkout. A plugin is a folder with a `plugin.json` manifest at its root and, for a pane with its own UI, a React entrypoint. Station builds the bundle itself when the plugin is installed, so a plugin ships source, not a `dist/` folder.
+
+A minimal plugin folder:
+my-pulse/
+  plugin.json
+  src/index.tsx
+  src/pulse.css      (imported by index.tsx; drop the import if you have no CSS)
+  package.json       (optional; see BUILD below)
+
+THE MANIFEST. `plugin.json` is an Agent Plugins 1.0 document. The root holds only portable fields: `$schema`, `name`, `version`, `description` (and optionally `author`, `homepage`, `repository`, `license`, `keywords`). Everything Station-specific lives under `extensions["io.kontourai.station"]`: `schemaVersion` (always "1.0"), `title` (the display name), `entrypoint` (path to the React module, starting with "./"), `capabilities` (descriptive tags such as "chat" or "navigation"), `permissions` (what the plugin asks a person to grant) and `workspacePanes` (the panes it adds). Station fields placed at the root are ignored with a warning, and a root `layout` or `layouts` makes the manifest invalid.
+
+A complete minimal manifest, one plugin-component pane that needs a Project:
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "my-pulse",
+  "version": "1.0.0",
+  "description": "Live agent and integration status for a Project.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "My Pulse",
+      "entrypoint": "./src/index.tsx",
+      "capabilities": ["chat", "navigation"],
+      "permissions": ["navigation.dock"],
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Amy-pulse:pulse:workspace",
+          "name": "My Pulse",
+          "rendererId": "renderer:plugin%3Amy-pulse:plugin-component:my-pulse-workspace",
+          "renderer": { "kind": "plugin-component", "name": "my-pulse-workspace" },
+          "placement": { "supportedRegions": ["primary"], "preferredRegion": "primary" },
+          "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+          "provenance": { "origin": "plugin", "pluginId": "my-pulse" },
+          "lifecycle": { "stage": "stable" }
+        }
+      ]
+    }
+  }
+}
+
+NAMES AND IDS. `name` is the plugin id: 1-64 lowercase letters, digits, hyphens or periods, starting and ending with a letter or digit, with no "--" or "..". Capability and permission entries are lowercase too; Station disables the whole extension when one has an uppercase letter or a space. Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.
+
+PROVENANCE depends on the renderer kind. A "plugin-component" pane declares exactly `{ "origin": "plugin", "pluginId": "<your plugin name>" }`, with no `mcpServerId`. An "mcp-tool-ui" pane declares `{ "origin": "plugin", "pluginId": "<your plugin name>", "mcpServerId": "<serverId>" }`, where `<serverId>` is the same server id its `renderer.ref` names. Any other combination makes the pane invalid, and Station then disables the plugin's whole Station extension.
+
+WORKSPACE PANE FIELDS:
+- version: "1.0".
+- name: what a person sees in Add pane.
+- placement.supportedRegions: one or more of "primary", "secondary", "standalone", "docked". placement.preferredRegion, if given, must be one of them. placement.order is an optional number.
+- modes: at least one entry, each with a unique `id`. A mode's contextRequirement sets any of these keys to `true` when the pane needs it: "project", "task", "session", "run", "workspace", "source". "default" with `{ "project": true }` means the pane is offered inside a Project.
+- lifecycle.stage: one of "stable", "preview", "deprecated".
+- Optional: description, icon, and requiredRendererCapabilities (see the mcp-tool-ui example).
+- Refused: a top-level `contextRequirement` or `dockability` on the pane. Put the requirement inside a mode.
+
+RENDERER KINDS. Use "plugin-component" when the pane is your own React UI: `renderer.name` must be a key of the `components` object your entrypoint exports, and the component runs in Station's page with the SDK available. Use "mcp-tool-ui" when the UI is served by a tool on an MCP tool server (an integration) Station has: the renderer is `{ "kind": "mcp-tool-ui", "ref": "<serverId>/<toolName>" }`, Station renders that tool's UI resource in a sandboxed frame, and no entrypoint is needed. Name the integration in `integrations.required` so the install preview shows whether it is present. Prefer "plugin-component" for panes that read Station data through SDK hooks; prefer "mcp-tool-ui" when the data and the UI already live behind an MCP server.
+
+A complete minimal manifest, one mcp-tool-ui pane:
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "my-activity",
+  "version": "1.0.0",
+  "description": "Session activity rendered by an MCP tool.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "My Activity",
+      "integrations": { "required": ["activity-mcp"] },
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Amy-activity:activity:panel",
+          "name": "Activity",
+          "rendererId": "renderer:plugin%3Amy-activity:mcp-tool-ui:activity-panel",
+          "renderer": { "kind": "mcp-tool-ui", "ref": "activity-mcp/activity_panel" },
+          "requiredRendererCapabilities": ["sandboxed-mcp-app"],
+          "placement": { "supportedRegions": ["secondary", "standalone"], "preferredRegion": "secondary" },
+          "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+          "provenance": { "origin": "plugin", "pluginId": "my-activity", "mcpServerId": "activity-mcp" },
+          "lifecycle": { "stage": "stable" }
+        }
+      ]
+    }
+  }
+}
+
+THE ENTRYPOINT AND THE COMPONENTS EXPORT. The entrypoint exports a `components` object mapping each "plugin-component" renderer name to a React component. Component names are global across plugins too, so prefix them with the plugin name. React, the SDK and @tanstack/react-query are provided by Station at runtime; import them normally and never bundle your own copy.
+import { useAgents, useNavigation, useToast } from "@kontourai/station-sdk";
+import "./pulse.css";
+function MyPulse() {
+  const agents = useAgents();
+  const { setDockState } = useNavigation();
+  const { showToast } = useToast();
+  return (
+    <main className="my-pulse">
+      <h1>Agents</h1>
+      <ul>{agents.map((agent) => <li key={agent.slug}>{agent.name}</li>)}</ul>
+      <button type="button" onClick={() => { setDockState(true); showToast({ type: "info", message: "Chat opened" }); }}>
+        Open chat
+      </button>
+    </main>
+  );
+}
+export const components = { "my-pulse-workspace": MyPulse };
+export default MyPulse;
+
+SDK HOOKS A PANE CAN USE (all imported from "@kontourai/station-sdk"):
+- useAgents() → the agents this person can use, each with `slug` and `name`. useAgent(slug) returns one.
+- useIntegrationsQuery() → a query result whose `data` lists the configured MCP tool servers (integrations).
+- useOrchestrationSessionsQuery() → a query result whose `data` lists sessions.
+- useProjects() / useProject(slug) → Projects this person can see.
+- useSendToChat(agentSlug) → a FUNCTION. Call it with a message: it opens a new chat with that agent in the dock and sends the message.
+- useLaunchChat() → a function (agentSlug, agentName, initialMessage?, projectSlug?) that opens a chat with more control.
+- useNavigation() → `setDockState(open)` to open or close the chat dock, plus the current navigation state. useDockState() wraps just the dock.
+- useToast() → `{ showToast }`; call `showToast({ type: "info" | "success" | "warning" | "error", message })`.
+- useAuth() → the signed-in person and auth status.
+- useServerFetch() → a function that fetches a URL through Station's server; it needs the "network.fetch" permission.
+Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, and render a loading and an empty state.
+
+PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:
+- passive (granted automatically at install): "navigation.dock"
+- active (the person consents at install): "ui.confirm", "network.fetch", "agents.invoke", "tools.invoke"
+- trusted (a separate host approval after install): "events.subscribe", "events.read-payload", "providers.register", "plugin.server", "system.config"
+A permission Station does not recognise is treated as trusted, the strictest tier.
+
+BUILD. Station bundles the entrypoint with esbuild when the plugin is installed and serves `dist/bundle.js` (and `dist/bundle.css` if the entrypoint imports CSS). A `package.json` is optional. If there is one, the install runs `npm install` for its dependencies, so list only what the pane really needs and leave React and the SDK as peer or dev dependencies. For local typechecking, `npm install @kontourai/station-sdk react @types/react typescript` in the plugin folder is enough.
+
+VALIDATE BEFORE ASKING FOR AN INSTALL. If you have `station-control`, call `validate_plugin` with the absolute path of the plugin folder. It checks local folders only: it refuses git URLs and network paths (UNC or /net/…), so copy a plugin to a local folder first. It runs part of what the install preview checks and reports each problem as a diagnostic: manifest errors, an io.kontourai.station extension Station would disable (which silently drops every pane), unsafe prompt files, pane ids already taken by another plugin, and a missing entrypoint. It does not resolve plugin dependencies (it warns `dependencies-not-checked` when you declare any) and it does not build the bundle, so a TypeScript or import error only shows at install; typecheck locally first. `valid: true` means no error-level diagnostic, not a guaranteed install. Fix every error and validate again before handing the plugin over.
+
+INSTALL IS A PERSON'S DECISION. Agents must not install plugins, and `install_plugin` refuses. What an agent can do is propose: call `propose_plugin_install` with the absolute folder path (or a git URL: https://host/path or git@host:path, with no credentials, port, query or fragment) and a rationale. Station records a proposal and changes nothing else. The person sees it in Needs attention, and opening it takes them to the ordinary preview, which names the agent that proposed it and warns when the folder changed after you proposed it; the person then decides. Updates and removals work the same way: `update_plugin` and `remove_plugin` record proposals the person completes from Plugins, and Station refuses the update and removal requests themselves from agent tools. Those refusals cover Station's agent tools only. They are not a sandbox: code with a shell that runs as the same operating-system user as Station is not stopped by them, and must not use that to act for the person. A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal. Station shows what the plugin contributes and the permissions it asks for, and installs only after the person consents. `station plugin install --yes` is that consent typed by the person, so never run it on their behalf. After installing, the person adds the pane to a Project with Add pane. When you finish a plugin, validate it, propose it, and tell the person the folder path and what you proposed.
+
+COMMON MISTAKES:
+- Destructuring useSendToChat. It returns the function itself: write `const sendToChat = useSendToChat(agent.slug); sendToChat("Summarize this");`, never `const { sendToChat } = useSendToChat(...)`. Take the slug from useAgents() rather than guessing one; an unknown slug does nothing.
+- Uppercase or spaced names, capabilities or permissions. Keep ids lowercase.
+- Reusing an id. Every pane needs a unique `id` and a unique `rendererId`, and each "plugin-component" renderer name must match exactly one key in `components`.
+- Station fields at the manifest root. `entrypoint`, `permissions`, `workspacePanes` and the rest go under extensions["io.kontourai.station"].
+- Provenance that does not match: `pluginId` must be the manifest `name`, and an mcp-tool-ui pane needs `mcpServerId` equal to its ref's server id.
+- Bundling React or the SDK, or committing `dist/`. Station provides both and rebuilds on install.
+
+## Station vocabulary
+
+Station — the product, and also one host instance you connect to. Because there is usually more than one, prefer "a Station" or "this Station" when you mean a single instance.
+
+Device — what you connect from: a phone, a laptop, a browser. A device pairs with a Station. Do not call a device a "client".
+
+Engine — what executes an Agent: Station's own engine, or an external engine such as Claude Code, Codex, or a custom CLI engine. Agent — the actor a user selects to do work. Model connection — a configured inference service used by Station's engine. Model — a selectable inference option. Provider — an implementation term; the Connections interface separates Models and Engines.
+
+Project — the working context an agent operates in. Task — a durable work identity owned by a project. Session — one bounded execution episode. Turn — one interaction inside a session. Run — the execution accounting for work.
+
+Gate — a condition satisfied by evidence. Gate verdict — the outcome (pass, wait, route-back, block, exception), never "done" as a vibe. Evidence — an artifact supporting or refuting a claim. Receipt — the durable claim-evidence-verdict record. Exception — an explicitly accepted override. NOT_VERIFIED — the honest statement when something has not been checked.
+
+Skill — a reusable bundle of instructions and behavior, optionally runnable as a slash command. Integration — an MCP server exposing tools. Tool — one callable. Plugin — an installable platform extension.
+
+"Runtime" is retired as a user-facing word because it meant too many things. Say "Station's engine" for the built-in execution engine, "Station core" or "the server" for the orchestrator, and "engine connection" for a configured external engine.

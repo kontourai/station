@@ -8,8 +8,9 @@ server, or another machine on your tailnet.
 This package is the **client** CLI for those Stations. It is a terminal front end
 for Stations that are already running: chat with agents, read and interrupt
 sessions, drive projects, tasks, skills, and every other Station
-surface, over HTTP. It does not run a Station itself — see
-[What this CLI does not do](#what-this-cli-does-not-do).
+surface, over HTTP. It also supports selected host-local operations against an
+existing installation. Building and installing a backend remain checkout
+operations; see [What this CLI does not do](#what-this-cli-does-not-do).
 
 ## Availability
 
@@ -60,7 +61,8 @@ npx @kontourai/station-cli@latest setup hosted
 ```
 
 The CLI registers a device request and waits. An operator approves it **on the
-host** (`station environment access approve <request-id>` there). When they do,
+host** (`station environment access approve <request-id>` there, with the
+existing Station home selected). When they do,
 the CLI stores the issued bearer credential in the operating-system keyring and
 saves only its reference with the Station entry. That Station becomes the
 default only after pairing succeeds.
@@ -172,15 +174,10 @@ open-ended by design.
 
 ## What this CLI does not do
 
-**It does not run a Station.** These verbs act on a Station *repository
-checkout* — building the app, starting or upgrading it, installing OS
-services, putting the launcher on PATH:
-
-`build` · `doctor` · `fresh` · `link` · `service` · `shortcut` · `start` ·
-`upgrade`
-
-They are not part of the published CLI. Run them from the root of a Station
-checkout with its own launcher, which is where they have always lived:
+**It does not build or install a backend.** Source-oriented commands such as
+`build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and
+`upgrade`, plus `setup local` and service installation, require a Station
+repository checkout. Use its own launcher:
 
 ```console
 $ station start
@@ -190,25 +187,25 @@ Run it from the root of a Station checkout with the bundled launcher:
 The published CLI drives Stations that are already running — see `station stations`, `station setup hosted`, and `--api-base`.
 ```
 
-**Some `environment` verbs are host-local.** Identity, credential, and
-device-approval commands read secrets that only exist on the machine running
-the Station, so they answer from the host's own `./station` and nowhere else:
-`environment show`, `environment credential`, `environment reset`, and
-`environment offer`, and `environment access list|approve|deny`.
+**Selected local operations are available in the published CLI.** `open`,
+`doctor`, `environment show`, `environment credential show`, `environment offer`,
+`environment access list|approve|deny`, and `service status|start|stop` support
+an existing local installation. Local authorization validates the selected
+owner-only home and the loopback listener; it does not create a missing home.
+Service start/stop controls an existing OS service rather than building or
+installing a backend. See the [availability table](../../docs/reference/cli.md)
+for the full boundary and prerequisites.
 
-```console
-$ station environment show
-Error: Environment security commands require the Station repository launcher (./station).
-```
+`environment peers`, `environment credential rotate`, and `environment reset`
+remain checkout-only. `station environment access request` is the requester
+side of pairing and works as a remote client operation.
 
-`station environment access request` is the exception, and the one you want
-here: it is the *requester* side of pairing, and it is a pure client.
-
-The packaged CLI never starts, stops, builds, installs, or otherwise manages a
-Station backend implicitly. A bare invocation (including `--inline`,
+The packaged CLI never creates or starts a backend implicitly. A bare invocation (including `--inline`,
 `--service`, and `--temp-home`) explains how to pair with an existing host or
-how to use `./station` from a checkout. Host-side pairing offers and approvals
-remain in that host's UI/checkout; the packaged client only requests access.
+how to use `./station` from a checkout. The command admission authority is
+[distribution.ts](src/distribution.ts); command behavior is composed in
+[cli.ts](src/cli.ts). This distribution distinction also appears in the
+[architecture reading path](../../docs/architecture.md#reading-path).
 
 `station --version` reports immutable bundle metadata: the CLI version, its
 build channel, and the source revision stamped when that artifact was built.

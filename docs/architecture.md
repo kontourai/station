@@ -6,6 +6,46 @@
 > family. New behaviour belongs behind an intent-shaped Interface, not a raw
 > store or a post-construction setter.
 
+## Reading path
+
+Read this page for the system shape, then follow one journey through its
+contract, caller, implementation, and tests. The [module map](architecture/module-map.md)
+is the detailed interface catalog; it is not a prerequisite for understanding
+the product. [Concepts](user/concepts.md) and the [glossary](glossary.md) explain
+the user-facing vocabulary first.
+
+```mermaid
+flowchart LR
+    Person[Person] --> Device[Web or native Device]
+    Device -->|SDK and Connect| API[Station HTTP API and event streams]
+    CLI[Published CLI] -->|HTTP| API
+    Launcher[Checkout launcher] -->|start and supervise| Runtime[Station runtime]
+    Runtime -->|compose| API
+    API --> Domain[Projects, Tasks, Sessions, knowledge and approvals]
+    Domain --> Storage[Station home and configured storage]
+    Domain --> Engines[Engine adapters and tools]
+    Plugins[Admitted plugin contributions] -->|registered capabilities| Runtime
+```
+
+This is a logical overview, not a complete network or authorization diagram.
+Device, account, Project, and tool authorization are distinct boundaries;
+follow their owning guides when changing a request path.
+
+| Question | Explanation | Code entry point |
+| --- | --- | --- |
+| How does a Station start? | [Development](guides/development.md) and [deployment](guides/deployment.md) | [Server entry](../src-server/index.ts), [runtime composition](../src-server/runtime/bootstrap/station-runtime.ts) |
+| How do clients find and access it? | [Connections](guides/connections.md), [Connect reference](reference/connect.md), [deployment authentication](guides/deployment-authentication.md) | [Connect package](../packages/connect/README.md), [HTTP composition](../src-server/runtime/bootstrap/runtime-http.ts) |
+| How does a chat become execution and visible events? | [Chat request sequence](#data-flow-chat-request), [Session API](reference/session-api.md) | [Foreground execution](../src-server/services/execution-target/execution-target-execution.ts), [orchestration service](../src-server/services/orchestration/orchestration-service.ts) |
+| Who owns Projects, Tasks, and their state? | [Concepts](user/concepts.md), [module interfaces](architecture/module-map.md) | [Project contracts](../packages/contracts/src/project.ts), [Project services](../src-server/services/projects/) |
+| How do plugins extend the application? | [Plugin guide](guides/plugins.md), [runnable examples](../examples/README.md) | [Plugin contract](../packages/contracts/src/plugin.ts), [provider admission](../src-server/providers/plugin-provider-loader.ts) |
+| Which CLI operations run locally? | [CLI availability](reference/cli.md), [package README](../packages/cli/README.md) | [Distribution boundary](../packages/cli/src/distribution.ts), [command dispatch](../packages/cli/src/cli.ts) |
+| Where do I find behavior evidence? | [Testing](guides/testing.md), each module's evidence section | [Verification lane definitions](../scripts/verification-lanes.mjs) |
+
+Source links locate the implementation; they do not certify every claim on this
+page. A source review, an executed integration test, and a verified deployment
+are different evidence. See the [audit plan](plans/documentation-code-audit.md)
+for the scope still awaiting review.
+
 ## System Overview
 
 Station is a local-first agent workspace built around pluggable Providers and
@@ -40,8 +80,9 @@ graph TB
         RT --> |manages| MCP[MCPManager]
         RT --> |emits| EB[EventBus]
         RT --> |emits| ME[MonitoringEmitter]
-        ME --> |SSE fan-out| EB
-        ME --> |disk| MEVT[events-DATE.ndjson]
+        ME --> |redacted observation| MON[Monitoring EventEmitter]
+        MON --> |monitoring SSE| MON_STREAM[Monitoring subscribers]
+        ME --> |best-effort persistence| MEVT[events-DATE.ndjson]
 
         ROUTES --> |POST /api/orchestration/chat| FOREGROUND[executeForegroundMessage]
         FOREGROUND --> ORCH[OrchestrationService]
@@ -56,7 +97,7 @@ graph TB
         PRIVATE_CHAT --> STREAM[StreamPipeline]
 
         ROUTES --> |/knowledge/*| KS[KnowledgeService]
-        KS --> SQV[(sqlite-vec)]
+        KS --> VECTOR[Configured vector and embedding providers]
     end
 
     subgraph Voice [:port+2]
@@ -87,9 +128,9 @@ graph TB
     end
 
     subgraph Packages
-        SDK[@kontourai/station-sdk]
-        CONN[@kontourai/station-connect]
-        SHARED[@kontourai/station-shared]
+        SDK["@kontourai/station-sdk"]
+        CONN["@kontourai/station-connect"]
+        SHARED["@kontourai/station-shared"]
     end
 
     UI --> |HTTP JSON + authenticated SSE| ROUTES
@@ -138,7 +179,7 @@ be used to bypass orchestration. See [ADR 0014](adr/0014-the-chat-convergence-la
 | `SchedulerService` | `src-server/services/scheduling/scheduler-service.ts` | Cron-based agent invocation scheduling |
 | `EventBus` | `src-server/services/orchestration/event-bus.ts` | In-process pub/sub for SSE fan-out to connected clients |
 | `MonitoringEmitter` | `src-server/monitoring/emitter.ts` | Emits structured GenAI-aligned events (chat turns, tool calls, completions) to EventBus and disk |
-| `KnowledgeService` | `src-server/services/knowledge/knowledge-service.ts` | sqlite-vec-backed vector store (ADR-0009) for document indexing, chunking, and semantic search; supports namespaces |
+| `KnowledgeService` | `src-server/services/knowledge/knowledge-service.ts` | Namespace and document operations with injected vector and embedding provider resolvers; availability depends on configured providers |
 | `VoiceSessionService` | `src-server/voice/` | Manages voice sessions; connects to S2S providers (Nova Sonic); handles tool execution during voice; WebSocket on port+2 |
 | `ConfigLoader` | `src-server/domain/config-loader.ts` | Reads/writes agent YAML, app config, ACP config; watches for file changes |
 | `FileMemoryAdapter` | `src-server/adapters/file/memory-adapter.ts` | Persists conversations and messages to `.station/` on disk |
@@ -240,48 +281,80 @@ configuration and process diagnostics.
 ## Plugin Lifecycle
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Installed: POST /api/plugins/install
-    Installed --> Built: build.mjs / build.sh runs
-    Built --> Loaded: server restart or reload
-    Loaded --> Active: providers registered in registry
-    Active --> Uninstalled: DELETE /api/plugins/:name
-    Uninstalled --> [*]: files removed, registry cleared
+flowchart LR
+    Source[Package source] --> Preview[Inspect manifest and preview effects]
+    Preview --> Approval[Person approves the preview]
+    Approval --> Install[Install and build admitted content]
+    Install --> Prepare[Prepare contributions]
+    Prepare --> Grants[Check current grants and content generation]
+    Grants --> Active[Publish capabilities]
+    Active --> Change[Update, revoke, reload, or remove]
+    Change --> Reconcile[Quiesce and reconcile affected capabilities]
+    Reconcile --> Grants
 ```
 
-**Install** — The plugin directory is copied into `<STATION_HOME>/plugins/<name>/`. If a `build.mjs` or `build.sh` exists, it runs to produce `dist/`.
+This is the lifecycle's responsibility flow, not an exhaustive state machine.
+Installed, approved, granted, and active are different facts. Refusals and
+partial reconciliation must stay visible; an HTTP response does not by itself
+prove every old capability has finished winding down.
 
-**Load** — On startup (or after a reload), `loadPluginProviders()` scans `plugins/`, reads each `plugin.json` manifest, and dynamically imports provider modules. Each provider is registered in the appropriate singleton slot (auth, branding, agentRegistry, etc.).
+**Install and change** — [Install routes](../src-server/routes/plugins/plugin-install-routes.ts)
+validate the approved preview before effects. [Lifecycle routes](../src-server/routes/plugins/plugin-lifecycle-routes.ts)
+coordinate update/removal with capability cleanup. The [plugin guide](guides/plugins.md)
+owns the concrete authoring, build, and approval requirements.
 
-**Render** — Plugin UI bundles are served from `/api/plugins/:name/dist/:file`. The web UI loads them as IIFE bundles via `<script>` injection. Plugins use `@kontourai/station-sdk` hooks and components — they never call the server directly.
+**Load and grant** — [Runtime loading](../src-server/runtime/plugins/runtime-plugin-loader.ts)
+selects valid installed content. [Provider publication](../src-server/providers/plugin-provider-loader.ts)
+prepares adapters and checks the current grant/content generation before
+publication. [Grant reconciliation](architecture/module-map.md#plugingrantreconciliation)
+owns convergence after authority changes. A package's presence on disk alone
+does not authorize its capabilities.
 
-**Uninstall** — The plugin directory is deleted. On next reload, the registry is cleared and rebuilt without the removed plugin. Agents and tools installed by the plugin are also removed.
+**Render** — Plugin UIs consume the published SDK and Pane contracts. See
+[Pane authoring](guides/workspace-pane-authoring.md) for renderer types and host
+boundaries, and [composition](architecture/module-map.md#plugincompositionmodule)
+for staged activation and rollback. Those interfaces are more precise than a
+single install → load → active sequence.
 
 ---
 
 ## Agent Lifecycle
 
+Agent configuration, a loaded engine, and an execution Session have different
+lifetimes. This diagram shows those responsibilities; it is not a formal
+Session state machine.
+
 ```mermaid
-stateDiagram-v2
-    [*] --> Defined: agent JSON written to <STATION_HOME>/agents/
-    Defined --> Loading: framework.createAgent()
-    Loading --> MCPConnect: framework.loadTools()
-    MCPConnect --> Ready: agent registered in activeAgents
-    Ready --> Running: POST /api/orchestration/chat
-    Running --> Ready: stream complete
-    Ready --> Reloaded: config file change detected
-    Reloaded --> Loading
-    Ready --> Removed: agent JSON deleted
-    Removed --> [*]
+flowchart TD
+    Definition[Agent definition and selected Engine] --> Resolve[Resolve engine binding and capabilities]
+    Resolve --> Station[Station engine agent preparation]
+    Resolve --> External[External engine connection]
+    Intent[Foreground or Task execution intent] --> Session[Session command and authority]
+    Session --> Adapter[Selected engine adapter]
+    Station --> Adapter
+    External --> Adapter
+    Adapter --> Events[Canonical output and execution outcome]
+    Events --> Lifecycle[Durable Session lifecycle and recovery]
 ```
 
 **Define** — An agent is a JSON file in `<STATION_HOME>/agents/<slug>/agent.json` (schema: `schemas/agent.schema.json`). It specifies model, prompt, tools, guardrails, and MCP server references.
 
-**Load** — `framework.createAgent()` reads the spec, resolves the model via the configured provider, creates a `FileMemoryAdapter`, and delegates to the active framework adapter (VoltAgent or Strands).
+**Resolve and prepare** — [Engine classification](../src-server/runtime/agents/agent-engine-classification.ts)
+resolves how the Agent runs. [Agent construction](../src-server/runtime/agents/runtime-agent-builder.ts)
+and [runtime lifecycle](../src-server/runtime/agents/runtime-agent-lifecycle.ts)
+own Station-engine preparation and replacement. External engines retain their
+own loop and capability limits; a configured connection does not prove an
+external process is currently running.
 
-**Chat** — `agent.streamText()` is called with the user input and conversation context. The result's `fullStream` is piped through the `StreamPipeline` and written as SSE.
+**Execute** — [Session commands](architecture/module-map.md#sessioncommandmodule),
+[turn boundaries](architecture/module-map.md#sessionturnboundaryauthority), and
+[lifecycle transitions](architecture/module-map.md#sessionlifecyclemodule) own
+the durable execution facts. Only Station-engine turns traverse the private
+`StreamPipeline`; the public caller consumes canonical orchestration events.
 
-**Monitor** — `agent-start` and `agent-complete` events are emitted to `monitoringEvents` and persisted to `<STATION_HOME>/monitoring/events-<date>.ndjson`. OTel spans and metrics are recorded for each request.
+**Observe** — Monitoring and telemetry describe execution, but do not replace
+the Session's durable outcome or establish that a provider effect was undone.
+Follow the [monitoring guide](guides/monitoring.md) for the observation surfaces.
 
 ---
 
@@ -312,7 +385,17 @@ Voice providers are pluggable — plugins can register `STTProvider`, `TTSProvid
 
 ## Knowledge Service
 
-`KnowledgeService` (`src-server/services/knowledge/knowledge-service.ts`) is a sqlite-vec-backed vector store (ADR-0009 replaced the original LanceDB-named store, which was never actually the LanceDB library). It handles document ingestion (chunking + embedding), namespace-scoped indexing, and semantic search. Routes are mounted at `/knowledge/*`. Namespaces allow agents and plugins to maintain isolated knowledge domains within the same store.
+`KnowledgeService` (`src-server/services/knowledge/knowledge-service.ts`) owns
+namespace and document operations and delegates retrieval to configured vector
+and embedding providers. [Runtime service bootstrap](../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)
+supplies those resolvers and the storage adapter. Provider availability is a
+runtime condition, not a guarantee of one fixed backend.
+
+Knowledge also has source records, store adapters, indexes, graph views, and
+reviewed learning. These are distinct responsibilities; start with the
+[knowledge guide](guides/knowledge.md), then follow
+[source observation](architecture/module-map.md#knowledgesourceobservation)
+and [file transactions](architecture/module-map.md#knowledgefiletransactions).
 
 ---
 
@@ -320,10 +403,17 @@ Voice providers are pluggable — plugins can register `STTProvider`, `TTSProvid
 
 `MonitoringEmitter` (`src-server/monitoring/emitter.ts`) is the application-level event system, separate from OTel. It emits structured events aligned to the GenAI semantic conventions — chat turns, tool calls, and completions. Each event is:
 
-1. Published to `EventBus` for real-time SSE delivery to connected clients
-2. Persisted to `<STATION_HOME>/monitoring/events-<date>.ndjson` for offline analysis
+1. Redacted before it leaves the emitter, then published on the monitoring
+   `EventEmitter` for its subscribers.
+2. Passed to the injected persistence callback. Writes are tracked for flush;
+   persistence rejection is caught, so observation is not a durable receipt.
 
-This is distinct from the OTel pipeline: OTel handles infrastructure-level spans and metrics; `MonitoringEmitter` handles product-level event tracking. `UsageAggregator` reads the persisted NDJSON files to compute token usage summaries.
+The runtime's [event log](../src-server/runtime/conversation/runtime-event-log.ts)
+owns daily NDJSON storage. This monitoring channel and OTel instrumentation are
+separate from the canonical orchestration EventStore and replay stream.
+`UsageAggregator` reads retained monitoring events for usage summaries; consult
+[usage telemetry](reference/usage-telemetry.md) for evidence and missing-data
+semantics.
 
 ---
 
@@ -335,8 +425,7 @@ The `StreamPipeline` is a chain of `StreamHandler` instances, each implemented a
 graph LR
     FS[fullStream] --> IS[InjectableStream.wrap]
     IS --> RH[ReasoningHandler]
-    RH --> TDH[TextDeltaHandler]
-    TDH --> TCH[ToolCallHandler]
+    RH --> TCH[ToolCallHandler]
     TCH --> MH[MetadataHandler]
     MH --> CH[CompletionHandler]
     CH --> SSE[SSE writer]
@@ -345,12 +434,18 @@ graph LR
 | Handler | Responsibility |
 |---|---|
 | `ReasoningHandler` | Buffers `<thinking>` blocks; emits `reasoning` events; holds all chunks during thinking so injected approval events appear at the right boundary |
-| `TextDeltaHandler` | Pass-through for text events (reasoning handler already formats them correctly) |
 | `ToolCallHandler` | Augments `tool-call` events with parsed `server` and `tool` fields for UI display |
 | `MetadataHandler` | Emits usage stats and monitoring events on stream completion |
 | `CompletionHandler` | Tracks accumulated text, finish reason, and whether any output was produced |
 
 The `InjectableStream` wrapper allows the elicitation callback to inject `tool-approval-request` events into the stream at chunk boundaries without modifying the underlying `fullStream`.
+
+The handler order is composed by
+[`createStreamingPipeline`](../src-server/runtime/conversation/stream-orchestrator.ts).
+The [pipeline](../src-server/runtime/streaming/StreamPipeline.ts) executes that
+order; [integration tests](../src-server/runtime/streaming/__tests__/pipeline.integration.test.ts)
+exercise handler composition. This is the Station-engine private chat pipeline,
+not a second public orchestration event protocol.
 
 Abort is handled via `AbortController` — the pipeline checks the signal before each yielded chunk, and the client disconnect listener calls `abort()`.
 
@@ -506,7 +601,11 @@ Canonical cross-package API, runtime, and orchestration contracts. Owns stable d
 Compatibility re-exports plus explicit helper subpaths. The package root is now for shared type compatibility, while helper utilities such as `buildPlugin()`, `copyPluginIntegrations()`, `readPluginManifest()`, and `resolveGitInfo()` live on `@kontourai/station-shared/build`, `@kontourai/station-shared/parsers`, and `@kontourai/station-shared/git`.
 
 ### `packages/cli/` — `@kontourai/station-cli`
-The `station` CLI binary. Wraps the server startup and provides developer commands.
+The published `station` CLI calls running Stations over HTTP and exposes selected
+operations against an existing local installation. The repository's `./station`
+launcher also exposes source build, setup, and lifecycle commands. The exact
+boundary is owned by [distribution.ts](../packages/cli/src/distribution.ts);
+see the [CLI reference](reference/cli.md) for prerequisites and available commands.
 
 ### `src-ui/` — Web UI
 React + Vite frontend. Consumes `@kontourai/station-sdk`. Built to `dist-ui/` and served by the server in production. In development, runs on port 5173 with `VITE_API_BASE` pointing at the server.

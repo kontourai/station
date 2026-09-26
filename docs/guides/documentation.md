@@ -28,6 +28,62 @@ Proposals and historical records should declare their status near the top and
 name the current owner or successor. Query GitHub for live issue, release, and
 delivery state instead of copying status tables into operating guides.
 
+For a behavioral explanation, follow the actual entry point and caller into
+the implementation and its tests. Record what the evidence establishes:
+source inspection, an executed test, a real provider/device journey, or an
+observed release. A link to an existing source file proves location, not the
+claim beside it. Mark missing evidence explicitly.
+
+## Make the application learnable
+
+The reading path is product purpose → system overview → subsystem or user
+journey → public contract → implementation and evidence. Keep the root README
+short and route readers into that path. Package and example READMEs explain
+their purpose, prerequisites, supported usage, boundaries, and next reading.
+Instruction files route work rather than duplicating the guides.
+
+For each subsystem, explain the problem it solves, how it connects to other
+parts, who owns state and authorization, and what happens on success and
+failure. Cover cancellation, recovery, persistence, and platform differences
+where they affect the journey. Link design tradeoffs and known limitations so
+a reader can propose an improvement with enough context to judge it.
+
+Use interactive navigation to reveal detail without hiding essential claims:
+search by concept, follow a journey in order, open source and tests, and link
+to a specific section. Keep ordinary Markdown readable without JavaScript.
+An interactive map should consume canonical content rather than maintain a
+second account of the architecture.
+
+Diagrams name their scope and use the same vocabulary as the prose. Check each
+edge against a real caller, event subscription, or storage operation; distinguish
+these kinds of flow and label optional or planned paths. Put a source/evidence
+route beside the diagram. Verify the rendering, labels, and narrow-screen
+reading order; valid Mermaid syntax alone is not a readability check.
+
+## Maintain comments with their code
+
+Prefer clear names, types, and small functions over comments that narrate the
+next statement. Remove redundant narration and correct stale behavior claims.
+Keep concise explanations of non-obvious invariants, ownership, ordering,
+security boundaries, external compatibility constraints, and previous defects.
+These explain why an apparently simpler change would be wrong.
+
+Long rationale belongs in a canonical guide or ADR, with a short local pointer
+when the decision is easy to accidentally undo. Preserve regression-test and
+issue references when moving it. Tests should encode the reproducible failure;
+they do not always replace the explanation of why it matters.
+
+Do not remove licenses, public API documentation, compiler/linter directives,
+generated markers, or unresolved TODO obligations as prose cleanup. Deliberately
+malformed comments in fixtures are test inputs. Review comments in context,
+never with a bulk stripping regex or a target deletion percentage. Keep comment
+cleanup behavior-neutral and validate it separately from functional changes.
+
+The repository [documentation-audit skill](../../.agents/skills/documentation-audit/SKILL.md)
+applies this workflow to feature changes and full audits. Its
+[audit plan](../plans/documentation-code-audit.md) retains the complete scope,
+including Markdown outside `docs/` and historical material.
+
 Keep generated blocks under their existing generator. For example,
 `npm run docs:index` generates the design and plan indexes. Edit generator
 inputs, regenerate, and review the output.
@@ -69,6 +125,8 @@ Start with `npm run gate:for -- <changed-paths...>` and the
 npm run docs:truth:gate
 npm run docs:reference:gate
 npm run docs:pages:build
+npm run docs:learn:check
+npm run docs:mcp:check
 ```
 
 These check links, indexes, public content policy, examples, source paths,
@@ -76,3 +134,9 @@ documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report
 runtime steps not exercised. New Pages content must be explicitly admitted in
 `docs/pages/public-docs.json`; creating a guide does not publish it there.
+
+The learning atlas and Station Docs MCP share the concept catalog and module
+map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory
+and authoring topics. Run `npm run docs:mcp:generate` when those inputs change;
+do not hand-edit `src-server/tools/station-docs-content.ts`. Keep generated
+payloads static so documentation retrieval cannot acquire live-state access.

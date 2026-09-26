@@ -1,6 +1,6 @@
 # Homebrew cask
 
-`scripts/ecosystem-manifest.mjs cask` renders the versioned `station` cask
+`node scripts/ecosystem-manifest.mjs cask` renders the versioned `station` cask
 from a verified signed ecosystem manifest. The template is deliberately not a
 tap: checking it into this private repository neither reserves a Homebrew name
 nor writes to a public package manager.

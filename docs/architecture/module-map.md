@@ -1,5 +1,9 @@
 # Module map
 
+For the high-level reading path, start with the [system overview](../architecture.md)
+or [interactive learning atlas](../learn/README.md). This catalog owns the module
+explanations used by both the reader and the shipped Station Docs MCP.
+
 This is the contributor map for code that changes behaviour across a seam. Read it before restructuring a caller family. It records the Interface a caller and a test may use, where concrete Adapter choice happens, and the old shapes that must not return.
 
 ## Shared language
@@ -1232,4 +1236,3 @@ choices alongside passwords. Failed issuer establishment disables the external
 choice and its callback without granting authority or changing local passwords.
 The real HTTP issuer fixture in `local-account-oidc.test.ts` exercises verified
 identity, callback faults and local operation during issuer unavailability.
-

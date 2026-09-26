@@ -42,9 +42,9 @@ complements, and
   instead of dumping into chat.
 
 No `serverModule` — this plugin's entire API surface is core routes
-(`src-server/routes/knowledge-record-routes.ts`,
+(`src-server/routes/knowledge/knowledge-record-routes.ts`,
 `knowledge-index-routes.ts`'s `/index/search` extension, and, for the
-Neo4j-backed graph view, `src-server/routes/neo4j-graph-routes.ts`), consumed
+Neo4j-backed graph view, `src-server/routes/knowledge/neo4j-graph-routes.ts`), consumed
 directly.
 
 ## Dual-root demo: Obsidian + default-store (with Neo4j synced)
@@ -85,8 +85,8 @@ opt-in, read-side Neo4j graph view described in the main knowledge guide.
      -e NEO4J_AUTH=neo4j/localtestpass neo4j:5
    ```
 
-2. **Register the connection** (`src-server/knowledge-store/
-   neo4j-connection.ts`'s `Neo4jGraphViewConnectionConfig` — `uri` is
+2. **Register the connection** (`src-server/knowledge-store/neo4j-connection.ts`'s
+   `Neo4jGraphViewConnectionConfig` — `uri` is
    required; `username`/`password`/`database` are optional). There is no
    Settings UI for this yet, so registering today is a one-time,
    server-side call — illustrative shape (module path relative to the
@@ -120,7 +120,7 @@ opt-in, read-side Neo4j graph view described in the main knowledge guide.
 
    For the same exercise driven from `vitest` instead of `curl`, export
    `KNOWLEDGE_NEO4J_TEST_URL=neo4j://localhost:7687` and run
-   `npx vitest run src-server/knowledge-store/__tests__/neo4j-connection.test.ts` —
+   `npm run test:focused -- src-server/knowledge-store/__tests__/neo4j-connection.test.ts` —
    that suite is skipped (not silently passed) whenever the variable is unset.
 
 ## Integration points and known gaps
@@ -157,9 +157,9 @@ opt-in, read-side Neo4j graph view described in the main knowledge guide.
 ## Try it
 
 ```bash
-cd examples/meeting-notes
-npm install
-npm run build
+# From the Station repository root:
+npm run dependencies:ci
+npm run build --prefix examples/meeting-notes
 ```
 
 Install the built plugin the same way as any other `examples/*` plugin (see

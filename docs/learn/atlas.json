@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "work",
+      "title": "Projects and durable work",
+      "summary": "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.",
+      "docs": [
+        "docs/user/concepts.md",
+        "docs/design/portable-project-identity.md",
+        "docs/design/task-dispatcher.md",
+        "docs/reference/task-basis-mcp-app.md"
+      ],
+      "modules": [
+        "ProjectFileTransactions",
+        "ProjectIdentity",
+        "TaskDispatcher and TaskGraph",
+        "Whole Task Basis collection",
+        "Project session directory",
+        "StarterWorkRegistry"
+      ],
+      "questions": [
+        "Which record owns the work when no engine is running?",
+        "Can a workspace move without silently changing the Task's identity?",
+        "What does a failed or uncertain dispatch leave behind?"
+      ]
+    },
+    {
+      "id": "execution",
+      "title": "Sessions, engines, and recovery",
+      "summary": "How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.",
+      "docs": [
+        "docs/architecture.md#data-flow-chat-request",
+        "docs/reference/session-api.md",
+        "docs/design/orchestration-decomposition-map.md",
+        "docs/guides/agents.md",
+        "docs/guides/acp.md"
+      ],
+      "modules": [
+        "SessionQueryModule",
+        "ConversationSessionLineage",
+        "SessionCommandModule",
+        "SessionLifecycleModule",
+        "SessionTurnBoundaryAuthority",
+        "TurnDeduplicator",
+        "AdoptionLedger",
+        "RecoveryLedger and private CredentialApplicationFactory/Handle",
+        "CredentialRecoveryModule",
+        "OutboundDispatchModule",
+        "Session inventory Sources"
+      ],
+      "questions": [
+        "Where is the boundary between accepting a command and knowing an engine accepted it?",
+        "Can a reconnect replay output without replaying an external effect?",
+        "Which states distinguish failure, cancellation, and an unknown outcome?"
+      ]
+    },
+    {
+      "id": "surfaces",
+      "title": "Navigation and work surfaces",
+      "summary": "How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.",
+      "docs": [
+        "docs/guides/workspace-pane-authoring.md",
+        "docs/design/pane-host-contract.md",
+        "docs/guides/commands.md",
+        "docs/guides/responsive-ui.md"
+      ],
+      "modules": [
+        "DestinationRegistry",
+        "UnifiedSearchService",
+        "WorkspacePaneHostContributions",
+        "WorkspacePaneHostAdmission",
+        "WorkspacePaneHostActions",
+        "CollaborativeEditorPane",
+        "MobileDeviceHost"
+      ],
+      "questions": [
+        "Which interface owns navigation, and which owns the work behind a view?",
+        "Can a Pane be unavailable without losing its saved identity?",
+        "Which UI states are derived from the server versus retained on one Device?"
+      ]
+    },
+    {
+      "id": "connections",
+      "title": "Identity, Devices, and connection paths",
+      "summary": "How a person signs in, a Device pairs, and requests reach the right Station with the right authority.",
+      "docs": [
+        "docs/design/station-topology.md",
+        "docs/guides/connections.md",
+        "docs/guides/deployment-authentication.md",
+        "docs/guides/self-hosted-broker.md",
+        "docs/security/remote-access-threat-model.md"
+      ],
+      "modules": [
+        "DeploymentAuthentication",
+        "VirtualApplicationIngress",
+        "PendingPairingCompletion",
+        "ConnectionInspector",
+        "SecretBindingAdministration and IntegrationSecretResolver"
+      ],
+      "questions": [
+        "What does an account prove that a paired Device does not?",
+        "Does the same authorization run over direct and relayed requests?",
+        "Who owns a secret, its reference, and the authority to rotate it?"
+      ]
+    },
+    {
+      "id": "collaboration",
+      "title": "Shared work and remote execution",
+      "summary": "How shared documents, presence, execution placement, and machine-local state fit together—and which proofs remain separate.",
+      "docs": [
+        "docs/design/shared-working-state.md",
+        "docs/design/live-work-session.md",
+        "docs/guides/machine-relationships.md",
+        "docs/guides/home-transfer-controller.md",
+        "docs/reference/project-task-room-collaboration-acceptance.md"
+      ],
+      "modules": [
+        "SharedWorkingState",
+        "LiveWorkSession",
+        "SharedWorkingStateEditingCapability",
+        "Cloud move preparation",
+        "Evidence-gated and retained internal work"
+      ],
+      "questions": [
+        "Which facts are portable, and which belong to one Station home?",
+        "Does presence imply permission to edit or execute?",
+        "How is a possibly accepted remote effect reconciled after disconnection?"
+      ]
+    },
+    {
+      "id": "knowledge",
+      "title": "Knowledge and learning",
+      "summary": "How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.",
+      "docs": [
+        "docs/guides/knowledge.md",
+        "docs/plans/1364-owner-source-observation--grounding.md",
+        "examples/knowledge-library/README.md",
+        "examples/meeting-notes/README.md"
+      ],
+      "modules": [
+        "KnowledgeFileTransactions",
+        "KnowledgeSourceObservation",
+        "LearningReviewProjection"
+      ],
+      "questions": [
+        "Which content is the source of truth, and which is a rebuildable index?",
+        "What happens when an embedding or graph provider is unavailable?",
+        "Who decides whether a proposed learning is accepted?"
+      ]
+    },
+    {
+      "id": "extensions",
+      "title": "Plugins, contracts, and capabilities",
+      "summary": "How extensions declare contributions, receive grants, activate capabilities, and call Station through published contracts.",
+      "docs": [
+        "docs/guides/plugins.md",
+        "docs/reference/contracts.md",
+        "docs/reference/sdk.md",
+        "examples/README.md",
+        "docs/guides/distribution-profiles.md"
+      ],
+      "modules": [
+        "Registry trust policy decisions",
+        "AgentPluginLoader",
+        "PackageMcpAdmissionJournal",
+        "InstalledPluginInventory",
+        "PluginForegroundRuns",
+        "PluginCompositionModule",
+        "PluginGrantReconciliation",
+        "RegistrySupplyChainPolicy",
+        "LocalSkillMutationAuthority and SetupImportEffectJournal"
+      ],
+      "questions": [
+        "Is installed the same as admitted, granted, or active?",
+        "What can be withdrawn safely while work is running?",
+        "Does a plugin depend on a public contract or reach into an implementation?"
+      ]
+    },
+    {
+      "id": "background",
+      "title": "Scheduling, events, notifications, and voice",
+      "summary": "How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.",
+      "docs": [
+        "docs/guides/monitoring.md",
+        "docs/guides/web-push-notifications.md",
+        "docs/reference/usage-telemetry.md",
+        "docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1"
+      ],
+      "modules": [
+        "OperationalEventOutbox",
+        "OperationalEventDelivery",
+        "OperationalEventSubscriptions",
+        "ExtensionNotificationBindings",
+        "SchedulerLedger and BuiltinScheduler",
+        "NativeInvocationRuns",
+        "Monitoring history and Agent catalog reads"
+      ],
+      "questions": [
+        "Who owns retry, deduplication, and retention?",
+        "What survives a process restart?",
+        "Does a delivery receipt prove a person saw a notification?"
+      ]
+    },
+    {
+      "id": "operations",
+      "title": "Homes, native shells, and delivery",
+      "summary": "How a Station boots, stores state, runs under a supervisor, appears on native platforms, and receives updates.",
+      "docs": [
+        "docs/guides/development.md",
+        "docs/guides/deployment.md",
+        "docs/guides/native-shell-verification.md",
+        "docs/guides/release-rings.md",
+        "packages/cli/README.md"
+      ],
+      "modules": [
+        "DesktopStartupReadiness",
+        "JsonFileMutationAuthority",
+        "StationHomeArchive",
+        "StationHomeRecoveryPreflight",
+        "StationInstanceReconciler",
+        "RuntimeResourcePostureController",
+        "Transport and diagnostic leaf modules"
+      ],
+      "questions": [
+        "Which process owns this Station home and its ports?",
+        "What has been proven in code, in a package, and on a physical Device?",
+        "Can recovery inspect a home without changing it?"
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "Evidence, review, and governance",
+      "summary": "How a result is tied to a revision, what a gate actually proves, and how a missing proof remains visible.",
+      "docs": [
+        "docs/guides/testing.md",
+        "docs/reference/verification-receipts.md",
+        ".veritas/README.md",
+        "docs/guides/documentation.md",
+        "docs/plans/documentation-code-audit.md"
+      ],
+      "modules": [
+        "RevisionEvidenceModule",
+        "ActionOperationModule",
+        "ReviewEvidenceModule",
+        "VerificationCoordinator",
+        "Browser test evidence"
+      ],
+      "questions": [
+        "Does this receipt match the exact work and revision being claimed?",
+        "Is a passing check behavioral proof or only a structural guard?",
+        "Which claims still require a real provider, Device, or hosted run?"
+      ]
+    }
+  ]
+}
