@@ -16,6 +16,8 @@ interface BoardRouteAuthorizationDeps {
   };
   /** Per-request authority derivation — the SAME closure `runtime-routes.ts` builds once and reuses for every session-scoped route (`createAttachmentRoutes`'s `canReadSession`, `createConversationRoutes`'s `authorityFor`, etc.), never a second derivation. */
   readAuthorityForRequest: (request: Request) => SessionReadAuthority;
+  /** #2377 slice B: see {@link BoardRouteAuthorization.mayUseTaskBoard}. */
+  mayUseTaskBoard?: BoardRouteAuthorization['mayUseTaskBoard'];
 }
 
 /**
@@ -57,5 +59,6 @@ export function createOrchestrationBoardAuthorization(
       const task = deps.taskGraphService.readTask(taskId);
       return task !== null && task.projectId === projectId;
     },
+    ...(deps.mayUseTaskBoard ? { mayUseTaskBoard: deps.mayUseTaskBoard } : {}),
   };
 }
