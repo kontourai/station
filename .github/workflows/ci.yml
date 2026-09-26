@@ -427,3 +427,48 @@ jobs:
             exit 2
           fi
 
+  repo-scans:
+    name: Repository source scans
+    # #2176: suites that walk a whole source tree by path (REPO_SCAN_SUITES in
+    # scripts/test-impact-manifest.mjs). No import edge reaches them, so the
+    # changed-test selection in fast-checks never picks them, and a violation
+    # used to surface first in the merge queue's full corpus (#2553). They run
+    # here on every same-repository pull request, beside fast-checks rather
+    # than inside it, so they neither spend its twelve-minute budget nor wait
+    # on it. Not a required check (yet): a red here is feedback, and the
+    # merge-queue regression still runs the same suites.
+    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      contents: read
+    concurrency:
+      # Same identity rule as fast-checks: the head sha is part of it, so a
+      # run for an older commit can never cancel the current head's run.
+      group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: true
+    runs-on: ubuntu-22.04
+    # 53 suites measured at 73s wall on a dev host at load ~30 (82-125s at
+    # load ~110-200; transform and import are most of it); unmeasured on a
+    # hosted runner.
+    # The rest of the budget is install.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: npm run dependencies:ci
+
+      - name: Run repository source scans
+        run: npm run test:repo-scans

@@ -78,10 +78,11 @@ export interface AgentNotificationSessionContext {
  * the session STARTED with (`firstStartedMetadataOfThread`): later
  * reconfiguration events drop fields, the start record does not.
  *
- * Deliberately NOT read: `delegation` (its root/parent ids). For engines
- * other than Station's own, a child's delegation context is copied from the
- * delegating model's tool arguments (#2601), so it cannot namespace limits
- * or dedupe keys.
+ * Deliberately NOT read: `delegation` (its root/parent ids). Since #2601 a
+ * context this Station stamps is derived from the delegating session's own
+ * records, but one a peer Station forwarded is still only that peer's
+ * assertion, and sessions recorded before #2601 kept whatever the model
+ * wrote. Limits and dedupe keys stay keyed by the verified session alone.
  */
 export function agentNotificationSessionContext(
   startedMetadata: Record<string, unknown> | undefined,

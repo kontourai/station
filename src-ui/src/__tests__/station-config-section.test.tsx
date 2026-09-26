@@ -40,6 +40,10 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'registryUrl',
   'distributionProfile',
   'builtinAgentEngineConnectionId',
+  // Not in the dissolved card — added later for the host it configures:
+  // the local device helper the Device pane lists simulators/emulators
+  // through (env fallback STATION_MOBILE_DEVICE_HUB_URL).
+  'mobileDeviceHubUrl',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

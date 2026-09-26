@@ -109,6 +109,25 @@ describe('Agent schema validation', () => {
     );
   });
 
+  it('accepts the unattended opt-in as a string list, and only as one (#2613)', () => {
+    const spec = (unattendedAutoApprove: unknown) => ({
+      name: 'Scheduled Agent',
+      prompt: 'Prompt.',
+      tools: {
+        mcpServers: ['station-control'],
+        autoApprove: ['station-control_*'],
+        unattendedAutoApprove,
+      },
+    });
+
+    expect(() =>
+      validator.validateAgentSpec(spec(['station-control_list_agents'])),
+    ).not.toThrow();
+    expect(() => validator.validateAgentSpec(spec('*'))).toThrowError(
+      /must be array/,
+    );
+  });
+
   it('accepts an empty prompt for connected runtimes', () => {
     const spec = {
       name: 'Codex Runtime Chat',

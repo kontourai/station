@@ -1,7 +1,8 @@
 # Station push gateway
 
 A Cloudflare Worker at `https://push.kontourai.io` that forwards Station-signed
-agent-activity messages to Firebase Cloud Messaging (Android) and to APNs as
+agent-activity messages and sealed Station notifications to Firebase Cloud
+Messaging (Android), and agent activity to APNs as
 iOS Live Activity pushes. Design and threat model:
 [docs/design/notification-delivery.md](../../docs/design/notification-delivery.md).
 
@@ -22,11 +23,17 @@ narrow limit never spends a wider, shared budget.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `/v1/fcm/send` | `{ token, packageName, data, collapseKey? }` | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
+| `/v1/fcm/send` | `{ token, packageName, data, collapseKey?, priority? }` — `data.station_kind` is `agent_activity` or `station_notification`; `priority` (`high` default, or `normal`) only for a notification | 200 `sent`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 | `/v1/apns/live-activity`, start | `{ bundleId, environment, event: "start", pushToStartToken, registrationId, sealed, alert, timestamp, staleAt }` (no channel) | 200 `{ result: "sent", channelId, channelAuth }`, 410 `unregistered`, 422 `rejected`, 503 `unavailable` |
 | `/v1/apns/live-activity`, update | `{ bundleId, environment, event: "update", channelId, channelAuth, registrationId, sealed, alert, timestamp, staleAt }` | 200 `{ result: "sent" }` (plus a fresh `channelAuth` after secret rotation), 403 `channel-unauthorized`, 410 `channel-gone`, 422, 503 |
 | `/v1/apns/live-activity`, end | as update, with `dismissAt` instead of `staleAt` | as update |
 | `/v1/apns/channels` | `{ op: "delete", bundleId, environment, channelId, channelAuth }` | 200 `{ result: "deleted" }` (a channel Apple no longer has, `404 BadPath` on a delete, counts as deleted), 403 `channel-unauthorized`, 422, 503 |
+
+**Rollout order.** Deploy the gateway before a Station that sends
+`station_notification`: an older gateway answers such a message 400
+(`unsupported station_kind`) and the Station logs it as refused. Refusing
+unknown top-level keys on `/v1/fcm/send` breaks no deployed Station, which
+sends only `token`, `packageName` and `data` (a newer one adds `priority`).
 
 Rate-limit refusals are 429 `{ error: "rate limited" }` and malformed bodies
 400 `{ error: <reason> }` on every route.
