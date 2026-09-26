@@ -1398,18 +1398,24 @@ describe('station service dispatch', () => {
         enabled: true,
         present: true,
       });
-      const run = vi.fn((command: string, args: string[]) => {
-        if (command === 'systemctl' && args[1] === 'cat') {
-          return {
-            status: 0,
-            stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}`,
-          };
-        }
-        if (args[0] === '-l' && args[1] === '-c') {
-          return loginShellAnswer(loginPath());
-        }
-        return { status: 0, stdout: '' };
-      });
+      const run = vi.fn(
+        (
+          command: string,
+          args: string[],
+          _options?: Record<string, unknown>,
+        ) => {
+          if (command === 'systemctl' && args[1] === 'cat') {
+            return {
+              status: 0,
+              stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}`,
+            };
+          }
+          if (args[0] === '-l' && args[1] === '-c') {
+            return loginShellAnswer(loginPath());
+          }
+          return { status: 0, stdout: '' };
+        },
+      );
       await runServiceCommand(['install'], lifecycle(baseDir), {
         fs: serviceFs,
         platform: 'linux',
