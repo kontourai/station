@@ -21,17 +21,20 @@
  * An earlier draft wrapped this in `catch { return false }` — fail-*open* in
  * the one module written to prevent fail-open, since an unresolvable entry path
  * would make every gate silently do nothing and exit 0. A path that cannot be
- * resolved is a real problem and says so, with one exact exception.
+ * resolved is a real problem and says so: every realpath error throws,
+ * ENOENT included. Catching ENOENT would reopen the silent skip for a direct
+ * invocation whose `argv[1]` was rewritten (a preload) or whose script was
+ * deleted after load.
  *
- * When `realpathSync(argv[1])` fails with ENOENT or ENOTDIR, the answer is
- * `false`. Under `node -e` / `--input-type=module -e`, `argv[1]` is the first
- * positional argument (a version string such as `1.2.3` in
- * `.github/workflows/internal-testflight.yml`), not a script path, so a module
- * imported there must not crash at import. That is not fail-open: node only
- * runs a script it could open, so a directly invoked gate's `argv[1]` always
- * exists, and a path that does not exist cannot be this module. Every other
- * error (EACCES, ELOOP, …) still throws, and the module-side realpath stays
- * strict.
+ * ## Eval and print mode
+ *
+ * Under `node -e` / `--eval` / `-p` / `--print` / `-pe` (including
+ * `--input-type=module -e`) there is no entry module, and `argv[1]` is the
+ * first user positional argument — a version string such as `1.2.3` in
+ * `.github/workflows/internal-testflight.yml`. No module can be the entry
+ * point there, so the answer is `false` without reading `argv[1]` at all.
+ * That mode is read from `process.execArgv`, which node fills from the
+ * command line and never from the script.
  *
  * ## Windows and percent-encoding
  *
@@ -54,15 +57,15 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const EVAL_FLAG = /^(?:-e|-p|-pe|--eval|--print)(?:=|$)/;
+
+function evalMode() {
+  return process.execArgv.some((arg) => EVAL_FLAG.test(arg));
+}
+
 export function invokedDirectly(moduleUrl) {
+  if (evalMode()) return false;
   const entry = process.argv[1];
   if (!entry) return false;
-  let resolvedEntry;
-  try {
-    resolvedEntry = realpathSync(entry);
-  } catch (error) {
-    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return false;
-    throw error;
-  }
-  return resolvedEntry === realpathSync(fileURLToPath(moduleUrl));
+  return realpathSync(entry) === realpathSync(fileURLToPath(moduleUrl));
 }
