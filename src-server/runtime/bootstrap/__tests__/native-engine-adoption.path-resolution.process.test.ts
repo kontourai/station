@@ -275,7 +275,7 @@ posixOnly('the login-shell PATH capture adoption now awaits (#2663)', () => {
 
 /**
  * A launcher script in the shape npm installs: `#!/usr/bin/env node`. It
- * records that it ran, which it can only do if `env` found `node`.
+ * records the argv it ran with, which it can only do if `env` found `node`.
  */
 function writeNodeLauncher(dir: string, name: string, marker: string): string {
   mkdirSync(dir, { recursive: true });
@@ -284,7 +284,7 @@ function writeNodeLauncher(dir: string, name: string, marker: string): string {
     path,
     [
       '#!/usr/bin/env node',
-      `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.execPath);`,
+      `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join(' '));`,
       `process.stdout.write('{"payload":{"kind":"run_terminal","terminal":"completed","reason":null,"text":"ok"}}\\n');`,
       '',
     ].join('\n'),
@@ -358,6 +358,37 @@ posixOnly('engine spawns get the PATH the engine was found on (#2663)', () => {
         timeout: 15_000,
         interval: 25,
       });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  it('starts the `muse serve` host, the production transport, from the same launcher', async () => {
+    // station-runtime builds `new MuseAdapter({ serve: {} })`, so real
+    // sessions spawn `createMuseServeHost`, not the exec factory above.
+    const host = isolatedHost();
+    nodeOnlyInLocalBin(host);
+    writeNodeLauncher(join(host.home, '.local', 'bin'), 'muse', host.marker);
+    vi.resetModules();
+    const { MuseAdapter } = await import(
+      '../../../providers/adapters/muse-adapter.js'
+    );
+    const adapter = new MuseAdapter({
+      serve: {
+        dataHome: join(tempRoot(), 'muse-data'),
+        // The fake speaks no serve protocol; the session falls back to exec
+        // after this, and exec spawns nothing until a turn, which this case
+        // never sends. So a marker can only come from the serve host.
+        handshakeTimeoutMs: 1_500,
+      },
+    });
+    try {
+      await adapter.startSession({ provider: 'muse', threadId: 'serve-2663' });
+      await vi.waitFor(() => expect(existsSync(host.marker)).toBe(true), {
+        timeout: 10_000,
+        interval: 25,
+      });
+      expect(readFileSync(host.marker, 'utf-8')).toMatch(/^serve\b/);
     } finally {
       await adapter.stopAll();
     }

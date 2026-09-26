@@ -1,7 +1,16 @@
 import { EventEmitter } from 'node:events';
-import { delimiter } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { describe, expect, test, vi } from 'vitest';
+
+// #2663: the real `resolveAugmentedPathSync` starts the developer's own
+// `$SHELL -ic` PATH capture. A distinct value keeps this file hermetic and
+// makes a spawn env that dropped the augmentation observable.
+const AUGMENTED_PATH = vi.hoisted(() => '/augmented/by-test:/usr/bin');
+vi.mock('../auth/cli-auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../auth/cli-auth.js')>()),
+  resolveAugmentedPathSync: () => AUGMENTED_PATH,
+}));
+
 import {
   CodexAdapterTransport,
   codexSpawnEnv,
@@ -1009,19 +1018,17 @@ describe('codexSpawnEnv', () => {
       if (key === 'CODEX_HOME') continue;
       if (key === 'STATION_INTERNAL_API_TOKEN') continue;
       if (key === 'STATION_UI_BOOTSTRAP_TOKEN') continue;
-      // #2663: PATH is the augmented search PATH codex was resolved from;
-      // pinned below rather than as an exact copy.
+      // #2663: PATH is the augmented search PATH codex was resolved from.
       if (key === 'PATH') continue;
       expect(result[key]).toBe(process.env[key]);
     }
-    // The process PATH still leads, unchanged and in order: augmentation
-    // only appends the directories the binary lookup also searches.
-    const processDirs = [
-      ...new Set((process.env.PATH ?? '').split(delimiter).filter(Boolean)),
-    ];
-    expect(
-      (result.PATH ?? '').split(delimiter).slice(0, processDirs.length),
-    ).toEqual(processDirs);
+    expect(result.PATH).toBe(AUGMENTED_PATH);
+  });
+
+  test('a per-connection PATH still overrides the augmented one', () => {
+    expect(codexSpawnEnv({ PATH: '/connection/bin' }).PATH).toBe(
+      '/connection/bin',
+    );
   });
 
   test('returns a scrubbed copy, never the live process.env object', () => {

@@ -205,6 +205,12 @@ export async function resolveAugmentedPath(): Promise<string> {
 // directories: giving the child this PATH is what lets a
 // `#!/usr/bin/env node` launcher found through them find its `node` (#2663).
 // Async call sites use `augmentedSpawnEnv`, which awaits the capture.
+//
+// Until that capture lands (the first call in a process, or within ~5s of
+// it), this is only the process PATH plus the existing well-known install
+// dirs -- the same view the sync `findCliBinary` has at that moment, so the
+// binary and its PATH still agree, but an interpreter reachable only through
+// the interactive shell's PATH is not on it yet.
 export function resolveAugmentedPathSync(): string {
   void ensureLoginPathResolutionStarted();
   return combinedPathDirs().join(pathDelimiter());
