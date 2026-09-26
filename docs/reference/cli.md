@@ -1654,6 +1654,14 @@ override only that runtime leaf; shared saved-Station metadata remains under
 `STATION_ROOT`. `--temp-home` is rejected because a service needs a durable
 home. Every backend is per-user and requires no elevation.
 
+From a source checkout, `service install` refuses up front when the build
+stamp (`dist-server/station-build.json`, written by `station build` but not by
+`npm run build`) is missing or records a sha other than the checkout's `HEAD`;
+run `station build` and install again. It also refuses to register an instance
+other than the checkout's development instance into that development home when
+no `--home`, `--base`, or `STATION_HOME` is given; pass `--home=<dir>` for a
+durable service home.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
