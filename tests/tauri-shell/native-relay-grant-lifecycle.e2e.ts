@@ -441,11 +441,11 @@ async function main() {
     ) as { revision?: number; profiles?: Array<{ name?: string }> };
     assert.ok(
       Number.isSafeInteger(savedProfiles.revision),
-      'isolated saved Station profile store has no valid revision',
+      'isolated saved Station store has no valid revision',
     );
     assert.ok(
       savedProfiles.profiles?.some((profile) => profile.name === route.name),
-      'isolated saved Station profile disappeared before grant redemption',
+      'isolated saved Station disappeared before grant redemption',
     );
     expectedProfileRevision = savedProfiles.revision as number;
     console.log(

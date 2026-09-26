@@ -5395,7 +5395,7 @@ pub(crate) async fn station_native_relay_grant_redeem(
 ) -> Result<NativeRelayGrantRedemptionResult, String> {
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     if profile_name.is_empty() || profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let context = AppNativeRedemptionContextProvider::new(app.clone());
@@ -5426,7 +5426,7 @@ pub(crate) async fn station_native_relay_grant_status(
 ) -> Result<NativeRelayGrantState, String> {
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     if profile_name.is_empty() || profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let grants = native_relay_grant_vault();
@@ -5471,7 +5471,7 @@ pub(crate) async fn station_native_relay_grant_revoke(
 ) -> Result<NativeRelayGrantState, String> {
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     if profile_name.is_empty() || profile_name.len() > 256 {
-        return Err("The selected Station profile name is invalid.".into());
+        return Err("The selected saved Station name is invalid.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let grants = native_relay_grant_vault();
