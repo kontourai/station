@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  assertBuildSourceIsCheckout,
   obtainNodeDistribution,
   PORTABLE_SERVER_TARGETS,
   readPortableNodeRuntime,
@@ -107,11 +108,20 @@ describe('obtainNodeDistribution', () => {
     const cacheDir = makeTempDir('portable-node-cache-');
     const fetchImpl = responding('official node bytes');
     const target = fakeTarget('official node bytes');
-    const path = await obtainNodeDistribution(target, { cacheDir, fetchImpl });
-    expect(path).toBe(join(cacheDir, target.node.file));
-    expect(readFileSync(path, 'utf8')).toBe('official node bytes');
+    const bytes = await obtainNodeDistribution(target, {
+      cacheDir,
+      fetchImpl,
+    });
+    expect(bytes.toString('utf8')).toBe('official node bytes');
+    expect(readFileSync(join(cacheDir, target.node.file), 'utf8')).toBe(
+      'official node bytes',
+    );
     expect(fetchImpl).toHaveBeenCalledWith(target.node.url);
-    await obtainNodeDistribution(target, { cacheDir, fetchImpl });
+    const cached = await obtainNodeDistribution(target, {
+      cacheDir,
+      fetchImpl,
+    });
+    expect(cached.toString('utf8')).toBe('official node bytes');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -167,7 +177,7 @@ describe('obtainNodeDistribution', () => {
 
 describe('portable server archive workflow', () => {
   type Workflow = {
-    on: Record<string, unknown>;
+    on: Record<string, { branches?: string[]; paths?: string[] } | null>;
     permissions: Record<string, string>;
     jobs: {
       archive: {
@@ -203,10 +213,134 @@ describe('portable server archive workflow', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(workflow.on).sort()).toEqual([
       'pull_request_target',
+      'push',
       'workflow_dispatch',
     ]);
+    expect(workflow.on.push).toMatchObject({ branches: ['main'] });
     expect(source).not.toMatch(
       /secrets\.|id-token|attest-build-provenance|gh release/,
     );
+  });
+});
+
+describe('portable archive workflow paths filter', () => {
+  const workflow = load(
+    readFileSync(
+      join(repoRoot, '.github/workflows/portable-server-archives.yml'),
+      'utf8',
+    ),
+  ) as { on: Record<string, { paths?: string[] }> };
+  const paths = workflow.on.pull_request_target?.paths ?? [];
+  const covered = (file: string) =>
+    paths.some((pattern) =>
+      pattern.endsWith('/**')
+        ? file.startsWith(pattern.slice(0, -2))
+        : file === pattern,
+    );
+
+  /**
+   * Repository files the builder and the smoke reach through relative
+   * imports, followed transitively within scripts/ and the repository root
+   * (esbuild.config.mjs runs as the server build; scripts/station-cli.ts is
+   * the CLI the archive bundles). Imports into packages/ and src-server/ end
+   * the walk: those trees are covered by prefix, or deliberately left to
+   * ordinary CI (see the workflow's comment).
+   */
+  function localImportClosure(entries: string[]): string[] {
+    const seen = new Set<string>();
+    const visit = (file: string) => {
+      const relativePath = relative(repoRoot, file).split(sep).join('/');
+      if (seen.has(relativePath)) return;
+      if (relativePath.includes('/') && !relativePath.startsWith('scripts/'))
+        return;
+      seen.add(relativePath);
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(
+        /(?:from\s+|import\s*\(\s*|import\s+)['"](\.{1,2}\/[^'"]+)['"]/g,
+      )) {
+        let target = resolve(dirname(file), match[1]);
+        if (!existsSync(target) && target.endsWith('.js'))
+          target = `${target.slice(0, -3)}.ts`;
+        if (existsSync(target)) visit(target);
+      }
+    };
+    for (const entry of entries) visit(join(repoRoot, entry));
+    return [...seen].sort();
+  }
+
+  it('lists every local module the builder, the server build and the CLI bundle import', () => {
+    const closure = localImportClosure([
+      'scripts/build-portable-server-archive.mjs',
+      'scripts/smoke-portable-server-archive.mjs',
+      'esbuild.config.mjs',
+      'scripts/station-cli.ts',
+    ]);
+    // Pinned so the walk itself cannot silently lose its reach.
+    for (const known of [
+      'esbuild.config.mjs',
+      'scripts/lib/desktop-server-runtime.mjs',
+      'scripts/lib/free-ports.mjs',
+      'scripts/lib/portable-server-archive.mjs',
+      'scripts/lib/server-build-config.mjs',
+      'scripts/source-bootstrap.ts',
+      'scripts/station-cli-implementation.ts',
+    ]) {
+      expect(closure).toContain(known);
+    }
+    expect(closure.filter((file) => !covered(file))).toEqual([]);
+  });
+
+  it('lists the inputs that shape an archive without being imported', () => {
+    const required = [
+      '.github/workflows/portable-server-archives.yml',
+      '.nvmrc',
+      'config/portable-server-node-runtime.json',
+      'package.json',
+      'packages/cli/src/cli.ts',
+      'packaging/portable-server/bin/station.mjs',
+      'patches/any.patch',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'schemas/app.schema.json',
+    ];
+    expect(required.filter((file) => !covered(file))).toEqual([]);
+  });
+
+  it('runs on main for exactly the paths it runs on for pull requests', () => {
+    expect(workflow.on.push?.paths).toEqual(paths);
+  });
+});
+
+describe('assertBuildSourceIsCheckout', () => {
+  const HEAD = 'a'.repeat(40);
+  const gitWith =
+    (status: string) =>
+    (args: string[]): string =>
+      args[0] === 'rev-parse' ? `${HEAD}\n` : status;
+
+  it('accepts the clean checked-out HEAD, in either case', () => {
+    expect(() =>
+      assertBuildSourceIsCheckout({
+        sha: HEAD.toUpperCase(),
+        git: gitWith(''),
+      }),
+    ).not.toThrow();
+  });
+
+  it('refuses a SHA other than HEAD', () => {
+    expect(() =>
+      assertBuildSourceIsCheckout({ sha: 'b'.repeat(40), git: gitWith('') }),
+    ).toThrow(/is not the checked-out HEAD a{40}/);
+  });
+
+  it('refuses a working tree with uncommitted or untracked changes', () => {
+    expect(() =>
+      assertBuildSourceIsCheckout({
+        sha: HEAD,
+        git: gitWith(
+          ' M scripts/lib/portable-server-archive.mjs\n?? new.txt\n',
+        ),
+      }),
+    ).toThrow(/uncommitted changes[\s\S]*new\.txt/);
   });
 });

@@ -17,19 +17,68 @@ name: Portable server archives
 # explicit head-repository/head-SHA checkout that persists no credentials,
 # on ephemeral GitHub-hosted runners, under a read-only token.
 
+# Every input that changes an archive's bytes or its proof triggers a run.
+# scripts/__tests__/portable-server-archive.test.ts derives the builder's and
+# the smoke's local imports and fails if one is missing here, and holds push
+# and pull_request_target to the same list. Server, UI and shared package
+# sources are deliberately not listed: they change on most pull requests,
+# and ordinary CI owns them.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'schemas/**'
+      - 'config/portable-server-node-runtime.json'
+      - 'packaging/portable-server/**'
+      - 'packages/cli/**'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/smoke-portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/server-build-config.mjs'
   pull_request_target:
     paths:
       - '.github/workflows/portable-server-archives.yml'
+      - '.nvmrc'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'esbuild.config.mjs'
+      - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       - 'packaging/portable-server/**'
+      - 'packages/cli/**'
       - 'scripts/build-portable-server-archive.mjs'
       - 'scripts/smoke-portable-server-archive.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/station-cli.ts'
+      - 'scripts/station-cli-implementation.ts'
+      - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/container-release-metadata.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/server-build-config.mjs'
       - 'scripts/lib/elf-symbol-floor.mjs'
+      - 'scripts/lib/free-ports.mjs'
+      - 'scripts/lib/git-environment.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/server-build-config.mjs'
 
 permissions:
   contents: read
@@ -98,7 +147,13 @@ jobs:
         # deepest node_modules path crosses Windows MAX_PATH (#2484).
         run: npm run smoke:portable-server -- --archive "$RUNNER_TEMP/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}" --long-path
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Uploads only for main, dispatch, and same-repository pull requests. A
+      # fork's archive is never published even as a run artifact; for forks
+      # the smoke above is the whole proof. scripts/actionlint-gate.mjs pins
+      # this step exactly.
+      - name: Upload the archive and its descriptor
+        if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: station-server-${{ matrix.target }}
           path: |

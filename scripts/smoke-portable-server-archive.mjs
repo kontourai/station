@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // Proves a portable server archive runs on a host with no Node.js on PATH:
 // extract it, run its launcher with a scrubbed environment, check the
-// launcher's --version comes from the bundled runtime, then boot the server
-// on an isolated home and an OS-assigned port, probe it authenticated, and
-// stop it.
+// launcher's --version comes from the bundled runtime, then `station start`
+// through the archive's own CLI on an isolated home and OS-chosen ports,
+// probe the API (authenticated) and the UI origin, and `station stop`.
 //
 //   node scripts/smoke-portable-server-archive.mjs --archive <path> \
 //     [--work-dir <dir>] [--long-path] [--keep]
 //
 // --long-path extracts beneath a deliberately long directory so the deepest
 // node_modules file crosses Windows' 260-character MAX_PATH (#2484).
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   closeSync,
   existsSync,
@@ -30,7 +30,7 @@ import {
   highestSymbolVersion,
   symbolVersionFloor,
 } from './lib/elf-symbol-floor.mjs';
-import { runWindowsTaskkill } from './lib/owned-process.mjs';
+import { findFreePortBlock, findFreePortOutside } from './lib/free-ports.mjs';
 import {
   archiveTool,
   PORTABLE_ARCHIVE_ROOT,
@@ -39,7 +39,8 @@ import {
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
-const READY_TIMEOUT_MS = 90_000;
+// `station start` itself waits up to its own readiness budget.
+const START_TIMEOUT_MS = 300_000;
 const STOP_TIMEOUT_MS = 20_000;
 const POLL_MS = 250;
 // Ports the owner's own Stations use; a smoke must never answer on them.
@@ -125,22 +126,23 @@ function launcherInvocation(launcher, args) {
     : { command: launcher, args, options: {} };
 }
 
-function runLauncher(launcher, args, env, cwd) {
+function runLauncher(launcher, args, env, cwd, timeout = 30_000) {
   const { command, args: argv, options } = launcherInvocation(launcher, args);
   const result = spawnSync(command, argv, {
     ...options,
     cwd,
     env,
     encoding: 'utf8',
-    timeout: 30_000,
+    timeout,
     windowsHide: true,
   });
-  if (result.error) fail(`${launcher} ${args.join(' ')}: ${result.error}`);
+  const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
+  if (result.error) fail(`station ${shown}: ${result.error}`);
   log(
-    `$ station ${args.join(' ')} -> exit ${result.status}: ${result.stdout.trim()}`,
+    `$ station ${shown} -> exit ${result.status}:\n${redact(result.stdout.trim())}`,
   );
   if (result.status !== 0) {
-    fail(`launcher exited ${result.status}: ${result.stderr}`);
+    fail(`launcher exited ${result.status}: ${redact(result.stderr)}`);
   }
   return result.stdout.trim();
 }
@@ -182,116 +184,100 @@ function extract(archive, destination) {
   }
 }
 
-function readinessPort(output) {
-  for (const line of output.split(/\r?\n/)) {
-    try {
-      const event = JSON.parse(line);
-      if (event?.event === 'listening' && Number.isInteger(event.port)) {
-        return event.port;
-      }
-    } catch {
-      // Ordinary startup logs share stdout with the handshake.
-    }
-  }
-  return undefined;
+/** A launch receipt names a single-use sign-in link; never echo the token. */
+function redact(text) {
+  return text.replace(/(#station-ui-bootstrap=)[^\s]+/g, '$1<redacted>');
+}
+
+async function fetchChecked(url, headers = {}) {
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) fail(`${url} answered HTTP ${response.status}`);
+  return response;
 }
 
 async function getJson(url, headers = {}) {
-  const response = await fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok) fail(`${url} answered HTTP ${response.status}`);
-  return response.json();
+  return (await fetchChecked(url, headers)).json();
 }
 
-async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return { code: child.exitCode, signal: child.signalCode };
-  }
-  return new Promise((resolveExit) => {
-    const timer = setTimeout(() => resolveExit(null), timeoutMs);
-    child.once('exit', (code, signal) => {
-      clearTimeout(timer);
-      resolveExit({ code, signal });
-    });
-  });
-}
-
-async function bootAndProbe({ launcher, env, home, cwd, release }) {
-  const { command, args, options } = launcherInvocation(launcher, []);
-  const child = spawn(command, args, {
-    ...options,
-    cwd,
-    env: {
-      ...env,
-      PORT: '0',
-      STATION_STDOUT_HANDSHAKE: '1',
-      STATION_HOME: join(home, 'station-home'),
-      STATION_HOST: '127.0.0.1',
-      STATION_INSTANCE_ID: 'portable-smoke',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-  let output = '';
-  const collect = (chunk) => {
-    output = `${output}${chunk}`.slice(-64 * 1024);
-  };
-  child.stdout.on('data', collect);
-  child.stderr.on('data', collect);
-  const tail = () => output.split(/\r?\n/).slice(-40).join('\n');
+async function refusesConnections(port) {
   try {
-    const deadline = Date.now() + READY_TIMEOUT_MS;
-    let port;
-    while (Date.now() < deadline) {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        fail(
-          `server exited early (code ${child.exitCode}, signal ${child.signalCode}):\n${tail()}`,
-        );
-      }
-      port ??= readinessPort(output);
-      if (port !== undefined) {
-        if (RESERVED_PORTS.has(port))
-          fail(`server bound reserved port ${port}`);
-        try {
-          const live = await getJson(
-            `http://127.0.0.1:${port}/api/system/liveness`,
-          );
-          if (live?.live === true) break;
-        } catch {
-          // Still starting.
-        }
-      }
-      await new Promise((settle) => setTimeout(settle, POLL_MS));
-    }
-    if (port === undefined || Date.now() >= deadline) {
-      fail(`server was not live within ${READY_TIMEOUT_MS}ms:\n${tail()}`);
-    }
-    log(`live on http://127.0.0.1:${port} (pid ${child.pid})`);
+    await fetch(`http://127.0.0.1:${port}/`, {
+      signal: AbortSignal.timeout(2_000),
+    });
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * An OS-chosen server block (the server takes port..port+3: HTTP, terminal,
+ * voice, consent) and a UI port outside it, none of them the owner's.
+ */
+async function choosePorts() {
+  const serverPort = await findFreePortBlock(4);
+  const uiPort = await findFreePortOutside(serverPort, 4);
+  for (const port of [0, 1, 2, 3].map((n) => serverPort + n).concat(uiPort)) {
+    if (RESERVED_PORTS.has(port)) fail(`refusing reserved port ${port}`);
+  }
+  return { serverPort, uiPort };
+}
+
+/**
+ * Boots through the archive's own CLI, as a user would: `station start`
+ * spawns the server and the UI server with the bundled Node.js and returns
+ * once they answer. The default instance is the one whose build the archive
+ * ships (dist-server/, dist-ui/), so no build is attempted.
+ */
+async function bootAndProbe({ launcher, env, home, release }) {
+  const stationHome = join(home, 'station-home');
+  const { serverPort, uiPort } = await choosePorts();
+  const lifecycleEnv = { ...env, STATION_CHANNEL: release.channel };
+  const instance = ['--instance=default'];
+  let failure;
+  try {
+    runLauncher(
+      launcher,
+      [
+        'start',
+        ...instance,
+        `--base=${stationHome}`,
+        `--port=${serverPort}`,
+        `--ui-port=${uiPort}`,
+      ],
+      lifecycleEnv,
+      home,
+      START_TIMEOUT_MS,
+    );
+    const live = await getJson(
+      `http://127.0.0.1:${serverPort}/api/system/liveness`,
+    );
+    if (live?.live !== true)
+      fail(`server liveness answered ${JSON.stringify(live)}`);
+    log(`server live on http://127.0.0.1:${serverPort}`);
     const { credential } = JSON.parse(
-      readFileSync(
-        join(home, 'station-home', 'security', 'environment.json'),
-        'utf8',
-      ),
+      readFileSync(join(stationHome, 'security', 'environment.json'), 'utf8'),
     );
     if (typeof credential !== 'string') {
       fail('server did not persist an operator credential');
     }
     const authorization = { Authorization: `Bearer ${credential}` };
     const status = await getJson(
-      `http://127.0.0.1:${port}/api/system/status`,
+      `http://127.0.0.1:${serverPort}/api/system/status`,
       authorization,
     );
     log(`/api/system/status 200 (${Object.keys(status).length} fields)`);
-    const instance = await getJson(
-      `http://127.0.0.1:${port}/api/system/instance`,
+    const identity = await getJson(
+      `http://127.0.0.1:${serverPort}/api/system/instance`,
       authorization,
     );
     const observed = {
-      buildSha: instance.buildSha,
-      shaSource: instance.shaSource,
-      channel: instance.channel,
+      buildSha: identity.buildSha,
+      shaSource: identity.shaSource,
+      channel: identity.channel,
     };
     log(`/api/system/instance ${JSON.stringify(observed)}`);
     // The served bundle must be the one this archive's provenance names.
@@ -304,33 +290,46 @@ async function bootAndProbe({ launcher, env, home, cwd, release }) {
     if (observed.channel !== release.channel) {
       fail(`status channel ${observed.channel} is not ${release.channel}`);
     }
+    // The UI origin must serve the archive's built UI, not the API's own
+    // landing page, and proxy the API behind it.
+    const page = await (
+      await fetchChecked(`http://127.0.0.1:${uiPort}/`)
+    ).text();
+    if (!page.includes('<div id="root"')) {
+      fail(
+        `UI port ${uiPort} did not serve dist-ui's index.html:\n${page.slice(0, 400)}`,
+      );
+    }
+    log(
+      `UI http://127.0.0.1:${uiPort}/ serves dist-ui index.html (<div id="root">)`,
+    );
+    const proxied = await getJson(
+      `http://127.0.0.1:${uiPort}/api/system/liveness`,
+    );
+    if (proxied?.live !== true) fail('UI origin does not proxy the API');
+    log('UI origin proxies /api/system/liveness to the server');
   } catch (error) {
-    await stop(child);
-    throw error;
+    failure = error;
   }
-  const exit = await stop(child);
-  if (!exit)
-    fail(`server did not stop within ${STOP_TIMEOUT_MS}ms:\n${tail()}`);
-  log(`stopped: code ${exit.code}, signal ${exit.signal}`);
-  // POSIX launchers exec node, so SIGTERM reaches the server itself and a
-  // graceful shutdown exits 0. Windows has no SIGTERM; the tree is killed.
-  if (!WINDOWS && exit.code !== 0) {
-    fail(`server exited ${exit.code} after SIGTERM:\n${tail()}`);
+  // Stop even after a failed probe, so a smoke never leaves a server behind.
+  try {
+    runLauncher(launcher, ['stop', ...instance], lifecycleEnv, home);
+  } catch (error) {
+    failure ??= error;
   }
-}
-
-/** Stops the server and waits for it; a stuck server is killed outright. */
-async function stop(child) {
-  if (child.exitCode === null && child.signalCode === null) {
-    if (WINDOWS) await runWindowsTaskkill(child.pid, true);
-    else child.kill('SIGTERM');
+  if (failure) throw failure;
+  const deadline = Date.now() + STOP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (
+      (await refusesConnections(serverPort)) &&
+      (await refusesConnections(uiPort))
+    ) {
+      log(`stopped: ports ${serverPort} and ${uiPort} refuse connections`);
+      return;
+    }
+    await new Promise((settle) => setTimeout(settle, POLL_MS));
   }
-  const exit = await waitForExit(child, STOP_TIMEOUT_MS);
-  if (!exit) {
-    child.kill('SIGKILL');
-    await waitForExit(child, STOP_TIMEOUT_MS);
-  }
-  return exit;
+  fail(`server or UI still answering ${STOP_TIMEOUT_MS}ms after station stop`);
 }
 
 function isElf(path) {
@@ -430,7 +429,7 @@ async function main() {
     if (identity.platform !== `${process.platform}-${process.arch}`) {
       fail(`archive reports ${identity.platform} on this host`);
     }
-    await bootAndProbe({ launcher, env, home, cwd: home, release });
+    await bootAndProbe({ launcher, env, home, release });
     log('PASS');
   } finally {
     if (!values.keep) {

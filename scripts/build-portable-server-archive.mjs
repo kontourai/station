@@ -7,11 +7,18 @@
 //   node scripts/build-portable-server-archive.mjs --ref v0.0.0 \
 //     [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
 //     [--node-distribution <path to the pinned node-v*.tar.gz|zip>] [--keep-stage]
+//
+// The build refuses a --sha other than HEAD, and a dirty working tree.
+// --allow-unverified-source lifts that for tests and local experiments only;
+// such an archive's provenance is not the source of its bytes.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { buildPortableServerArchive } from './lib/portable-server-archive.mjs';
+import {
+  assertBuildSourceIsCheckout,
+  buildPortableServerArchive,
+} from './lib/portable-server-archive.mjs';
 
 const projectRoot = process.cwd();
 const { values } = parseArgs({
@@ -22,6 +29,7 @@ const { values } = parseArgs({
     'output-dir': { type: 'string' },
     'node-distribution': { type: 'string' },
     'keep-stage': { type: 'boolean', default: false },
+    'allow-unverified-source': { type: 'boolean', default: false },
   },
   strict: true,
 });
@@ -40,16 +48,18 @@ if (!values.ref) {
   );
   process.exit(1);
 }
-const sha = values.sha ?? git(['rev-parse', 'HEAD']);
-// Default to the commit time, like scripts/package-portable-release.sh, so a
-// rebuild of one commit claims one creation time.
-const createdAt =
-  values['created-at'] ??
-  new Date(
-    Number(git(['show', '-s', '--format=%ct', sha])) * 1000,
-  ).toISOString();
-
 try {
+  const sha = values.sha ?? git(['rev-parse', 'HEAD']);
+  // Default to the commit time, like scripts/package-portable-release.sh, so a
+  // rebuild of one commit claims one creation time.
+  const createdAt =
+    values['created-at'] ??
+    new Date(
+      Number(git(['show', '-s', '--format=%ct', sha])) * 1000,
+    ).toISOString();
+  if (!values['allow-unverified-source']) {
+    assertBuildSourceIsCheckout({ sha, git });
+  }
   const { archivePath, descriptorPath, descriptor } =
     await buildPortableServerArchive({
       projectRoot,

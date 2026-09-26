@@ -633,12 +633,54 @@ const MERGE_QUEUE_REGRESSION_WORKFLOW =
  */
 const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
 /**
- * #2675: the portable server archive check uploads the archive it built from
- * the candidate and smoked, so a reviewer can run the exact bytes. It is
- * packaging output only; nothing the read-only token can reach is included.
+ * #2675: the portable server archive check uploads the archive it built and
+ * smoked, so a reviewer can run the exact bytes. The one admitted upload is
+ * pinned exactly: the archive and its descriptor from the runner's temp
+ * output, never a workspace path or hidden files, and never from a fork's
+ * pull request.
  */
 const PORTABLE_SERVER_ARCHIVES_WORKFLOW =
   '.github/workflows/portable-server-archives.yml';
+const PORTABLE_SERVER_ARCHIVES_JOB = 'archive';
+const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
+  name: 'Upload the archive and its descriptor',
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
+  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  with: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    name: 'station-server-${{ matrix.target }}',
+    path:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}\n' +
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json\n',
+    'if-no-files-found': 'error',
+    'retention-days': 7,
+  },
+});
+
+function isExactPortableServerArchiveUpload(file, jobId, step) {
+  if (
+    file !== PORTABLE_SERVER_ARCHIVES_WORKFLOW ||
+    jobId !== PORTABLE_SERVER_ARCHIVES_JOB
+  )
+    return false;
+  const expected = PORTABLE_SERVER_ARCHIVE_UPLOAD;
+  const sameKeys = (actual, wanted) =>
+    JSON.stringify(Object.keys(actual ?? {}).sort()) ===
+    JSON.stringify(Object.keys(wanted).sort());
+  return (
+    sameKeys(step, expected) &&
+    step.name === expected.name &&
+    step.if === expected.if &&
+    step.uses === expected.uses &&
+    sameKeys(step.with, expected.with) &&
+    Object.entries(expected.with).every(
+      ([key, value]) => step.with[key] === value,
+    )
+  );
+}
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -2410,11 +2452,11 @@ function baseControlledPrWorkflowFindings(file, document) {
         !(
           (file === '.github/workflows/build-ios.yml' ||
             file === MERGE_QUEUE_REGRESSION_WORKFLOW ||
-            file === GALLERY_PR_WORKFLOW ||
-            file === PORTABLE_SERVER_ARCHIVES_WORKFLOW) &&
+            file === GALLERY_PR_WORKFLOW) &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isExactPortableServerArchiveUpload(file, jobId, step) &&
         !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
