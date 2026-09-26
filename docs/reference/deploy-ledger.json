@@ -1,5 +1,144 @@
 [
   {
+    "timestampUtc": "2026-09-26T16:24:11Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2460.3",
+    "sha": "3c43c43a71ba9908bcb1030326491320a0b90d1f",
+    "artifactBuiltAt": "2026-09-26T15:50:20.340Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36252766737",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36252766737)"
+    ],
+    "changelog": {
+      "previousSha": "a279a57fe966178b1fa26419fdc6a6fc4b6c35f7",
+      "groups": {
+        "feat": [
+          "[#2537](https://github.com/kontourai/station/pull/2537) feat(relay): add pre-grant Station key discovery and native trust foundations",
+          "[#2680](https://github.com/kontourai/station/pull/2680) feat(install): verify portable release manifests against pinned signing keys (#2675)",
+          "[#2670](https://github.com/kontourai/station/pull/2670) feat(notifications): Android FCM alerts via a sealed station_notification kind (#2588)",
+          "[#2638](https://github.com/kontourai/station/pull/2638) feat(notifications): desktop OS alerts from the delivery feed, with inbox attribution (#2587)",
+          "[#2666](https://github.com/kontourai/station/pull/2666) feat(ios): register iPhones for agent activity from the web layer (#2660)",
+          "[#2661](https://github.com/kontourai/station/pull/2661) feat(notifications): quiet other surfaces only while the focused document's stream is live (#2620)"
+        ],
+        "fix": [
+          "[#2692](https://github.com/kontourai/station/pull/2692) fix(ci): build the CLI bundle before repository source scans",
+          "[#2691](https://github.com/kontourai/station/pull/2691) fix(ios): drop Tauri-rendered signing keys before injecting the manual block",
+          "[#2593](https://github.com/kontourai/station/pull/2593) fix(guidance): in-app equivalents for CLI/env-var disclosures (device helper setting, workflows UI, reconnect)",
+          "[#2679](https://github.com/kontourai/station/pull/2679) fix(update): refuse in-app server updates under a supervisor; build through buildApplication (#2673, #2674)",
+          "[#2672](https://github.com/kontourai/station/pull/2672) fix(delegation): derive delegation lineage from the verified caller (#2601)",
+          "[#2668](https://github.com/kontourai/station/pull/2668) fix(connections): readiness honours a connection's env and configHome (proxy-routed Claude/Codex)",
+          "[#2667](https://github.com/kontourai/station/pull/2667) fix(approvals): make unattended tool use an explicit opt-in (#2613)",
+          "[#2651](https://github.com/kontourai/station/pull/2651) fix(verification): select unmodelled-input suites on the PR lane; run whole-tree scans per PR (#2176)",
+          "[#2662](https://github.com/kontourai/station/pull/2662) fix(orchestration): principal-only session ownership — no ownerless or OS-alias session access"
+        ],
+        "ci": [
+          "[#2664](https://github.com/kontourai/station/pull/2664) ci(ios): build, sign and audit the Live Activity in Beta and Nightly TestFlight (#2513)"
+        ],
+        "docs": [
+          "[#2629](https://github.com/kontourai/station/pull/2629) docs: adopt deslop skill and codify flake/queue operating rules"
+        ],
+        "other": [
+          "[#2687](https://github.com/kontourai/station/pull/2687) refactor(update): share the owned dependency-installer check",
+          "[#2669](https://github.com/kontourai/station/pull/2669) chore: remove references to an external product and gate them out",
+          "[#2645](https://github.com/kontourai/station/pull/2645) perf(ui): load slash built-ins and brand marks on demand (−6.3 KB entry JS)"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
+    "timestampUtc": "2026-09-26T16:24:09Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2460.3",
+    "sha": "3c43c43a71ba9908bcb1030326491320a0b90d1f",
+    "artifactBuiltAt": "2026-09-26T15:50:19.539Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36252766737",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36252766737)"
+    ],
+    "changelog": {
+      "previousSha": "a279a57fe966178b1fa26419fdc6a6fc4b6c35f7",
+      "groups": {
+        "feat": [
+          "[#2537](https://github.com/kontourai/station/pull/2537) feat(relay): add pre-grant Station key discovery and native trust foundations",
+          "[#2680](https://github.com/kontourai/station/pull/2680) feat(install): verify portable release manifests against pinned signing keys (#2675)",
+          "[#2670](https://github.com/kontourai/station/pull/2670) feat(notifications): Android FCM alerts via a sealed station_notification kind (#2588)",
+          "[#2638](https://github.com/kontourai/station/pull/2638) feat(notifications): desktop OS alerts from the delivery feed, with inbox attribution (#2587)",
+          "[#2666](https://github.com/kontourai/station/pull/2666) feat(ios): register iPhones for agent activity from the web layer (#2660)",
+          "[#2661](https://github.com/kontourai/station/pull/2661) feat(notifications): quiet other surfaces only while the focused document's stream is live (#2620)"
+        ],
+        "fix": [
+          "[#2692](https://github.com/kontourai/station/pull/2692) fix(ci): build the CLI bundle before repository source scans",
+          "[#2691](https://github.com/kontourai/station/pull/2691) fix(ios): drop Tauri-rendered signing keys before injecting the manual block",
+          "[#2593](https://github.com/kontourai/station/pull/2593) fix(guidance): in-app equivalents for CLI/env-var disclosures (device helper setting, workflows UI, reconnect)",
+          "[#2679](https://github.com/kontourai/station/pull/2679) fix(update): refuse in-app server updates under a supervisor; build through buildApplication (#2673, #2674)",
+          "[#2672](https://github.com/kontourai/station/pull/2672) fix(delegation): derive delegation lineage from the verified caller (#2601)",
+          "[#2668](https://github.com/kontourai/station/pull/2668) fix(connections): readiness honours a connection's env and configHome (proxy-routed Claude/Codex)",
+          "[#2667](https://github.com/kontourai/station/pull/2667) fix(approvals): make unattended tool use an explicit opt-in (#2613)",
+          "[#2651](https://github.com/kontourai/station/pull/2651) fix(verification): select unmodelled-input suites on the PR lane; run whole-tree scans per PR (#2176)",
+          "[#2662](https://github.com/kontourai/station/pull/2662) fix(orchestration): principal-only session ownership — no ownerless or OS-alias session access"
+        ],
+        "ci": [
+          "[#2664](https://github.com/kontourai/station/pull/2664) ci(ios): build, sign and audit the Live Activity in Beta and Nightly TestFlight (#2513)"
+        ],
+        "docs": [
+          "[#2629](https://github.com/kontourai/station/pull/2629) docs: adopt deslop skill and codify flake/queue operating rules"
+        ],
+        "other": [
+          "[#2687](https://github.com/kontourai/station/pull/2687) refactor(update): share the owned dependency-installer check",
+          "[#2669](https://github.com/kontourai/station/pull/2669) chore: remove references to an external product and gate them out",
+          "[#2645](https://github.com/kontourai/station/pull/2645) perf(ui): load slash built-ins and brand marks on demand (−6.3 KB entry JS)"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
+    "timestampUtc": "2026-09-26T16:21:23Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2460.36252766737",
+    "sha": "3c43c43a71ba9908bcb1030326491320a0b90d1f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36252766737",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2460.36252766737 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fe8660dd9bc0b4e5e69be8afdce3500befe49e3d",
+      "groups": {
+        "feat": [
+          "[#2537](https://github.com/kontourai/station/pull/2537) feat(relay): add pre-grant Station key discovery and native trust foundations"
+        ],
+        "fix": [
+          "[#2692](https://github.com/kontourai/station/pull/2692) fix(ci): build the CLI bundle before repository source scans",
+          "[#2691](https://github.com/kontourai/station/pull/2691) fix(ios): drop Tauri-rendered signing keys before injecting the manual block"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2687](https://github.com/kontourai/station/pull/2687) refactor(update): share the owned dependency-installer check",
+          "[#2669](https://github.com/kontourai/station/pull/2669) chore: remove references to an external product and gate them out"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-09-26T12:10:51Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2460.36238106182",
