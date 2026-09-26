@@ -517,7 +517,12 @@ pub(crate) async fn relay_client_grant_store(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_profile(&app.config().identifier, &locked.contents, &profile_name, &grant)?;
+                let owner = owner_for_profile(
+                    &app.config().identifier,
+                    &locked.contents,
+                    &profile_name,
+                    &grant,
+                )?;
                 store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
             },
         )
@@ -535,7 +540,12 @@ pub(crate) async fn relay_client_grant_revoke(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_route(&app.config().identifier, &locked.contents, &profile_name, &route)?;
+                let owner = owner_for_route(
+                    &app.config().identifier,
+                    &locked.contents,
+                    &profile_name,
+                    &route,
+                )?;
                 revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
             },
         )
@@ -553,7 +563,12 @@ pub(crate) async fn relay_client_grant_metadata(
         with_profile_and_vault(
             || locked_profile_store_for_app(&app),
             |locked| {
-                let owner = owner_for_route(&app.config().identifier, &locked.contents, &profile_name, &route)?;
+                let owner = owner_for_route(
+                    &app.config().identifier,
+                    &locked.contents,
+                    &profile_name,
+                    &route,
+                )?;
                 read_metadata(
                     &mut OsKeyring,
                     &RelayGrantBinding { route, owner },
@@ -623,8 +638,7 @@ fn owner_for_route(
         .clone()
         .ok_or_else(|| "saved Station has no client instance id".to_string())?;
     let owner = RelayGrantOwner {
-        channel: super::native_app_channel(app_identifier, cfg!(debug_assertions))
-            .to_string(),
+        channel: super::native_app_channel(app_identifier, cfg!(debug_assertions)).to_string(),
         client_instance_id,
     };
     validate_binding(&RelayGrantBinding {
@@ -664,7 +678,10 @@ mod tests {
             &relay_route("22222222-2222-4222-8222-222222222222"),
         )
         .expect("owner for the saved relay route");
-        assert_eq!(owner.client_instance_id, "33333333-3333-4333-8333-333333333333");
+        assert_eq!(
+            owner.client_instance_id,
+            "33333333-3333-4333-8333-333333333333"
+        );
         assert!(owner_for_route(
             "ai.kontour.station",
             RELAY_STORE,
