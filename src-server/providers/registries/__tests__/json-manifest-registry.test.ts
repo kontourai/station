@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,7 +20,10 @@ import { join, resolve } from 'node:path';
 import { listStationTempEntries } from '@kontourai/station-shared/temp-dir';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
-import { JsonManifestRegistryProvider } from '../json-manifest-registry.js';
+import {
+  JsonManifestRegistryProvider,
+  RegistrySourceConfinementError,
+} from '../json-manifest-registry.js';
 
 const repoRoot = process.cwd();
 const fixtureManifestPath = resolve(
@@ -1584,4 +1588,289 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
       );
     },
   );
+});
+
+describe('JsonManifestRegistryProvider source confinement', () => {
+  /**
+   * `<base>/registry-root/catalog/manifest.json`: the registry root is
+   * `<base>/registry-root` (the parent of the manifest directory, the root the
+   * shipped `examples/registry` catalogs use). `<base>/outside` holds a real
+   * plugin and integration the manifest must not be able to reach.
+   */
+  async function confinementLayout() {
+    // Physical base: on macOS the temp dir sits under the `/var` symlink, which
+    // would otherwise mask what the symlink cases are meant to prove.
+    const base = realpathSync(await makeProjectHome());
+    const root = resolve(base, 'registry-root');
+    const catalogDir = resolve(root, 'catalog');
+    const outside = resolve(base, 'outside');
+    const projectHome = resolve(base, 'home');
+    const writePlugin = (dir: string, name: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        resolve(dir, 'plugin.json'),
+        JSON.stringify({ name, version: '1.0.0' }),
+      );
+    };
+    const writeIntegration = (dir: string, id: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        resolve(dir, 'integration.json'),
+        JSON.stringify({ id, kind: 'mcp', transport: 'stdio', command: id }),
+      );
+    };
+    mkdirSync(catalogDir, { recursive: true });
+    mkdirSync(projectHome, { recursive: true });
+    writePlugin(resolve(outside, 'secret-plugin'), 'secret-plugin');
+    writeIntegration(resolve(outside, 'secret-tool'), 'secret-tool');
+    writePlugin(resolve(root, 'plugins', 'good-plugin'), 'good-plugin');
+    writeIntegration(resolve(root, 'tools', 'good-tool'), 'good-tool');
+    const manifestPath = resolve(catalogDir, 'manifest.json');
+    const provider = (
+      plugins: Array<{ id: string; source: string }>,
+      tools: Array<{ id: string; source: string }> = [],
+    ) => {
+      const entry = (item: { id: string; source: string }) => ({
+        ...item,
+        displayName: item.id,
+        description: item.id,
+        version: '1.0.0',
+      });
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          version: 1,
+          plugins: plugins.map(entry),
+          tools: tools.map(entry),
+        }),
+      );
+      return new JsonManifestRegistryProvider(manifestPath, projectHome);
+    };
+    return { base, root, outside, projectHome, provider };
+  }
+
+  async function expectPluginRefused(
+    provider: JsonManifestRegistryProvider,
+    projectHome: string,
+    id: string,
+    reason: RegExp,
+  ) {
+    const result = await provider.install(id);
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(reason);
+    expect(existsSync(resolve(projectHome, 'plugins', 'secret-plugin'))).toBe(
+      false,
+    );
+    const resolution = provider.resolvePackage(id);
+    await expect(resolution).rejects.toBeInstanceOf(
+      RegistrySourceConfinementError,
+    );
+    await expect(resolution).rejects.toThrow(reason);
+    // The catalog still lists the entry, with no source to act on.
+    const listed = (await provider.listAvailable()).find(
+      (item) => item.id === id,
+    );
+    expect(listed).toBeDefined();
+    expect(listed?.source).toBeUndefined();
+  }
+
+  test('refuses a relative source that escapes the registry root with ../', async () => {
+    const { projectHome, provider } = await confinementLayout();
+    await expectPluginRefused(
+      provider([{ id: 'escape', source: '../../outside/secret-plugin' }]),
+      projectHome,
+      'escape',
+      /resolves outside the registry root$/,
+    );
+  });
+
+  test('refuses an absolute source outside the registry root', async () => {
+    const { outside, projectHome, provider } = await confinementLayout();
+    await expectPluginRefused(
+      provider([{ id: 'absolute', source: resolve(outside, 'secret-plugin') }]),
+      projectHome,
+      'absolute',
+      /resolves outside the registry root$/,
+    );
+  });
+
+  test('refuses a symlink inside the registry root that points outside it', async () => {
+    const { root, outside, projectHome, provider } = await confinementLayout();
+    symlinkSync(outside, resolve(root, 'linked'));
+    await expectPluginRefused(
+      provider([{ id: 'linked', source: '../linked/secret-plugin' }]),
+      projectHome,
+      'linked',
+      /outside the registry root through a symlink/,
+    );
+    // A leaf that does not exist under the link (a git `#branch` source) is
+    // judged by its physical ancestor, not waved through.
+    await expectPluginRefused(
+      provider([{ id: 'linked-git', source: '../linked/repo.git#main' }]),
+      projectHome,
+      'linked-git',
+      /outside the registry root through a symlink/,
+    );
+  });
+
+  test('installs in-root relative and absolute sources (positive controls)', async () => {
+    const { root, projectHome, provider } = await confinementLayout();
+    const registry = provider([
+      { id: 'relative-good', source: '../plugins/good-plugin' },
+    ]);
+    await expect(registry.resolvePackage('relative-good')).resolves.toEqual({
+      source: resolve(root, 'plugins', 'good-plugin'),
+    });
+    await expect(registry.install('relative-good')).resolves.toMatchObject({
+      success: true,
+    });
+    expect(
+      existsSync(resolve(projectHome, 'plugins', 'good-plugin', 'plugin.json')),
+    ).toBe(true);
+    await expect(registry.uninstall('relative-good')).resolves.toMatchObject({
+      success: true,
+    });
+
+    const absolute = provider([
+      { id: 'absolute-good', source: resolve(root, 'plugins', 'good-plugin') },
+    ]);
+    await expect(absolute.install('absolute-good')).resolves.toMatchObject({
+      success: true,
+    });
+  });
+
+  test('refuses integration sources outside the registry root and reads in-root ones', async () => {
+    const { root, outside, provider } = await confinementLayout();
+    symlinkSync(outside, resolve(root, 'linked'));
+    const integrations = provider(
+      [],
+      [
+        { id: 'escape-tool', source: '../../outside/secret-tool' },
+        { id: 'absolute-tool', source: resolve(outside, 'secret-tool') },
+        { id: 'linked-tool', source: '../linked/secret-tool' },
+        { id: 'good-tool', source: '../tools/good-tool' },
+      ],
+    ).integrationRegistry();
+
+    for (const id of ['escape-tool', 'absolute-tool', 'linked-tool']) {
+      const result = await integrations.install(id);
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/outside the registry root/);
+      await expect(integrations.getToolDef(id)).resolves.toBeNull();
+    }
+    const listed = await integrations.listAvailable();
+    expect(
+      listed.filter((item) => item.source === undefined).map((i) => i.id),
+    ).toEqual(['escape-tool', 'absolute-tool', 'linked-tool']);
+
+    await expect(integrations.install('good-tool')).resolves.toMatchObject({
+      success: true,
+    });
+    await expect(integrations.getToolDef('good-tool')).resolves.toMatchObject({
+      id: 'good-tool',
+      command: 'good-tool',
+    });
+  });
+
+  test('refuses local paths and file: URLs from a network manifest', async () => {
+    const { outside } = await confinementLayout();
+    const secretPlugin = resolve(outside, 'secret-plugin');
+    const secretTool = resolve(outside, 'secret-tool');
+    const baseUrl = await serve((request, response) => {
+      if (request.url !== '/registry/manifest.json') {
+        response.writeHead(404).end();
+        return;
+      }
+      const entry = (id: string, source: string) => ({
+        id,
+        displayName: id,
+        description: id,
+        version: '1.0.0',
+        source,
+      });
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            entry('remote-absolute', secretPlugin),
+            entry('remote-file-url', `file://${secretPlugin}.git`),
+            entry('remote-relative', '../../outside/secret-plugin'),
+          ],
+          tools: [
+            entry('remote-absolute-tool', secretTool),
+            entry('remote-relative-tool', '../../outside/secret-tool'),
+          ],
+        }),
+      );
+    });
+    const projectHome = await makeProjectHome();
+    const provider = new JsonManifestRegistryProvider(
+      `${baseUrl}/registry/manifest.json`,
+      projectHome,
+    );
+
+    await expectPluginRefused(
+      provider,
+      projectHome,
+      'remote-absolute',
+      /network registry manifest cannot name a local path/,
+    );
+    await expectPluginRefused(
+      provider,
+      projectHome,
+      'remote-file-url',
+      /unsupported source protocol file:/,
+    );
+    // A relative source is a URL on the registry host, never a local path,
+    // and a non-git URL is not copied as though it were a directory.
+    await expect(provider.resolvePackage('remote-relative')).resolves.toEqual({
+      source: `${baseUrl}/outside/secret-plugin`,
+    });
+    const relative = await provider.install('remote-relative');
+    expect(relative.success).toBe(false);
+    expect(relative.message).toMatch(
+      /neither a git repository nor a local path/,
+    );
+    expect(existsSync(resolve(projectHome, 'plugins', 'secret-plugin'))).toBe(
+      false,
+    );
+
+    const integrations = provider.integrationRegistry();
+    const absoluteTool = await integrations.install('remote-absolute-tool');
+    expect(absoluteTool.success).toBe(false);
+    expect(absoluteTool.message).toMatch(
+      /network registry manifest cannot name a local path/,
+    );
+    await expect(
+      integrations.getToolDef('remote-absolute-tool'),
+    ).resolves.toBeNull();
+    // Served 404 by the registry host: nothing local is read.
+    await expect(
+      integrations.getToolDef('remote-relative-tool'),
+    ).resolves.toBeNull();
+  });
+
+  test.each([
+    ['examples/registry/manifest.json'],
+    ['examples/registry/default.json'],
+  ])('resolves every entry of %s inside its registry root', async (path) => {
+    const manifestPath = resolve(repoRoot, path);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      await makeProjectHome(),
+    );
+    const examplesRoot = resolve(repoRoot, 'examples');
+    for (const plugin of manifest.plugins as Array<{ id: string }>) {
+      const resolved = await provider.resolvePackage(plugin.id);
+      expect(resolved?.source.startsWith(`${examplesRoot}/`)).toBe(true);
+      expect(existsSync(resolve(resolved!.source, 'plugin.json'))).toBe(true);
+    }
+    const integrations = provider.integrationRegistry();
+    for (const tool of (manifest.tools ?? []) as Array<{ id: string }>) {
+      await expect(integrations.install(tool.id)).resolves.toMatchObject({
+        success: true,
+      });
+    }
+  });
 });
