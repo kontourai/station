@@ -1,10 +1,11 @@
 # Computer relationships: pairing vs. remote work
 
 Station's Connections hub has one **Add computer** entry point. It routes to
-device pairing or remote work over SSH based on what the user wants to do.
-The flows are not interchangeable — they differ in **direction**
+device pairing, remote work over SSH, or native saved broker-route preparation
+based on what the user wants to do. The flows differ in **direction**
 (who reaches whom), **trust model**, and **what becomes possible afterward**.
-This guide is the reference those three surfaces link back to.
+This guide explains those relationships; [Connections](connections.md) owns the
+current setup steps.
 
 For the pairing protocol itself (offers, credentials, revocation), see
 [docs/reference/connect.md](../reference/connect.md). This guide is about the
@@ -37,6 +38,15 @@ visibility layer** over the second relationship — not a third kind of
 access. The read-only-ness belongs to the view, not to the delegation
 itself; a delegated task is exactly as read-write as running it locally
 would be, it just runs somewhere else.
+
+**Save an encrypted broker route** — on native Desktop, **Add computer** can
+save a Station address, broker address, and exact Station enrollment. A separate
+invitation and out-of-band comparison can approve the Station signing key.
+Neither action connects the route, signs in, pairs a Device, or grants Project
+or compute access. Native application-route selection remains unavailable;
+the saved route cannot serve as an ordinary connection or CLI default yet.
+See [Connections](connections.md) for route storage, key approval, and the
+remaining native transport boundary.
 
 ## Relationship table
 
@@ -87,20 +97,33 @@ The list is read-only; the execution it is showing you is not.
 
 ## Project sharing is a separate relationship
 
-Project membership controls a person's participation, not the route their
-Device uses. The planned shared-Project flow lets an owner invite a coworker,
-choose view/discuss/edit/run/approval/admin access and revoke it later. The
-coworker can view Project-shared work without contributing a computer, checkout
-or provider credentials. Running work additionally requires an approved execution offer;
-membership does not open the owner's entire fleet or private work.
+Project membership controls a person's participation, separately from the route
+their Device uses. The account invitation and approved account-bound Device
+flow already provides restricted Project catalogue/detail views and bounded,
+read-only access to explicitly published shared Task lists, history, and
+documents. Current membership and publication are rechecked through response
+delivery. A collaborator does not need to contribute a computer, checkout, or
+provider credentials to read that shared work.
+
+The guest entry also mounts Project access controls. Administration requires
+the appropriate current membership plus a separately approved Device operate
+scope; the UI does not confer either. Base Project views remain metadata-only
+and omit local paths, provider/model configuration, knowledge settings, and
+layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
+and its linked source owners for the current guest boundaries.
+
+Shared editing and execution are separate capabilities. The broader target
+includes discuss/edit/run/approval/admin participation and approved execution
+offers; viewing a shared Task does not open the owner's fleet or private work.
 
 A Device connects to a Station and authenticates as a principal. Several
 Devices may represent one person through an explicitly approved binding; a
 network address or device display name never establishes that relationship.
 See [membership #488](https://github.com/kontourai/station/issues/488) and the
 [two-human acceptance journey #497](https://github.com/kontourai/station/issues/497).
-These are target capabilities, not an assertion that personal remote access
-already provides independent-human collaboration.
+The implemented read and administration surfaces do not establish the full
+independent-human journey. Physical two-person and browser/native qualification
+remain separate acceptance work.
 
 ## See also
 

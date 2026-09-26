@@ -214,9 +214,14 @@ after sign-in. Station attaches the verified account candidate and makes this
 intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
 Device for that request. Existing ordinary pairing requests remain available.
 
-The first collaborator profile is deliberately read-only. It admits account
-controls and membership-filtered Project catalogue/detail reads, sets
-`Cache-Control: no-store`, and binds response delivery to the exact local and
+The collaborator profile admits account controls, membership-filtered Project
+catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
+the shared-work list, history, and document. Shared work is read-only in this
+entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+admits those specific paths; the
+[shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
+independently require current membership and publication. Protected reads set
+`Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below are the only
 additional Project mutations admitted here. Unrelated personal configuration,
@@ -253,9 +258,11 @@ unauthorized. Self-demotion or self-revocation can still return the contentless
 and Project incarnation remain valid; this acknowledgement carries no protected
 member or token data. Already downloaded plaintext cannot be recalled.
 
-These are backend API capabilities. The invited-admin controls in the guest UI
-and the independent-person browser journey have separate qualification work;
-the backend tests do not establish that user journey.
+The [guest entry](../../src-ui/src/views/account/GuestDeviceOnboarding.tsx)
+mounts Project access controls as well as shared Task views. Showing those
+controls does not confer administration: current membership and the separately
+approved Device scope still govern each action. Independent-person browser and
+native qualification remain separate from backend and component-test evidence.
 
 For authenticated members, the existing Project catalogue/detail endpoints
 return `station.member-project/v1` views: Project ID, slug, name, optional icon
@@ -269,9 +276,11 @@ member/full-view union. Legacy `listProjects` and `getProject` refuse member
 projections rather than pretending they contain full configuration. Unknown
 versions, extra fields and malformed member views fail validation.
 
-The full browser/native UI, shared content, compute-offer and two-person journey
-remain owned by #483/#488. Tailnet member integration remains under #1513 and
-#488.
+Shared Task list/history/document reads are implemented separately from that
+restricted base Project projection. Shared editing and execution, compute-offer
+access, and the fully qualified two-person browser/native journey remain
+separate work under #483/#488 and #497. Tailnet member integration remains under
+#1513 and #488.
 
 ## Browser invitation entry
 
@@ -297,12 +306,16 @@ entry and clears its form state. An earlier acceptance finishing afterward clear
 only its own saved continuation, never the newly received invitation.
 
 After acceptance, this entry requests an immutable account-bound Device and
-shows only validated `station.member-project/v1` catalogue and detail metadata.
+shows validated `station.member-project/v1` catalogue and detail metadata.
 It rechecks the exact signed-in principal around each read, removes stale query
 authority when the Station or account changes, and returns to Device approval
 when that grant is revoked. It never mounts the personal Station provider tree
-or treats a personal Device receipt as guest access. Shared Task content,
-mutation and execution remain outside this metadata-only entry. Optional native opening, compatible
+or treats a personal Device receipt as guest access. Selecting a Project also
+opens bounded, read-only shared Task list/history/document views and the
+separately authorized Project access view. Shared content requires current
+publication and membership, revalidated through guarded response delivery;
+base Project metadata alone grants neither. Shared Task editing and execution
+remain outside this entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
 acceptance under #488 and #497. Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
