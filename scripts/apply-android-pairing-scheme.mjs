@@ -5,6 +5,7 @@ import {
   pairingSchemeForChannel,
   readChannelPlatformMatrix,
 } from './channel-platform-matrix.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const marker = '<!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->';
@@ -61,5 +62,5 @@ export function applyAndroidPairingScheme(channel, options = {}) {
   if (next !== source) writeFileSync(manifest, next);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename)
+if (invokedDirectly(import.meta.url))
   applyAndroidPairingScheme(process.argv[2]);

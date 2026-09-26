@@ -3,7 +3,7 @@
 // Error family instead of bespoke per-view variants). Follows the established
 // rename-inventory.mjs / noun-consistency-gate.mjs / unsaved-guard-gate.mjs
 // family (pure exported functions + a `main()` gated behind
-// `import.meta.url === file://process.argv[1]`, `git ls-files`-scoped,
+// `invokedDirectly(import.meta.url)`, `git ls-files`-scoped,
 // reasoned + staleness-checked exclusion lists), but adds the one new
 // ingredient this program needs: a checked-in numeric baseline
 // (scripts/state-primitives-baseline.json) that must only decrease — the
@@ -72,6 +72,7 @@ import {
   UI_SCAN_EXTENSIONS,
   UI_SCAN_ROOTS,
 } from './lib/gate-scope.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: bespoke empty-family count
@@ -1106,6 +1107,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

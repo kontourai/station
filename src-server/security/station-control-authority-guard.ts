@@ -13,8 +13,19 @@
  *
  * - a route no tool reaches is refused (`station_control_route_unmapped`),
  *   so a new route cannot become agent-reachable by default;
- * - a caller-less request may reach only read-only routes (decision 4);
- * - assurance, the operator role and person-only actions follow the table.
+ * - a caller-less request may reach only read-only routes whose answers
+ *   belong to no person (decision 4, read with decision 2);
+ * - assurance, the operator role, a recorded owner for principal-scoped
+ *   actions, and person-only actions follow the table.
+ *
+ * Slice B (decision 2): it also records who each internal request acts for
+ * (`station-control-request-authority.ts`) and withdraws the internal
+ * token's home-possession from every tool call except a bound operator's
+ * (`withdrawInternalHomePossession`). The orchestration principal resolver
+ * then answers with the calling session's recorded owner, so every session,
+ * conversation, Project and plugin read reads as that person, and no
+ * locality-keyed operator gate (unredacted logs, the Project operator check)
+ * reads an agent as the operator in person.
  *
  * Who it never sees: the operator's UI and every paired device authenticate
  * with their own credential and are stamped `kind:'credential'` (the CLI's UI
@@ -34,14 +45,20 @@
  * 2. {@link STATION_CONTROL_GUARD_CARVE_OUTS}, by exact method and path.
  */
 import type { MiddlewareHandler } from 'hono';
+import { PrincipalUnresolvedError } from '../services/identity/principal-resolver.js';
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
   type StationControlRefusal,
+  stationControlRefusal,
   stationControlRefusalBody,
 } from '../tools/station-control-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from './runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  withdrawInternalHomePossession,
+} from './runtime-request-security.js';
+import { bindStationControlRequestAuthority } from './station-control-request-authority.js';
 import {
   enableStationServerSelfAttestation,
   INTERNAL_SERVER_SELF_HEADER,
@@ -196,20 +213,39 @@ export function createStationControlAuthorityGuard(
     const request = c.req.raw;
     if (getRuntimeAuthenticatedRequestPrincipal(request)?.kind !== 'internal')
       return next();
+    const method = c.req.method;
+    const path = c.req.path;
     if (
       isStationServerSelfAttestation(
         request.headers.get(INTERNAL_SERVER_SELF_HEADER),
-      )
-    )
+      ) ||
+      isCarvedOut(method, path)
+    ) {
+      bindStationControlRequestAuthority(request, { kind: 'server' });
       return next();
-    const method = c.req.method;
-    const path = c.req.path;
-    if (isCarvedOut(method, path)) return next();
+    }
+    const caller = options.resolveCaller(request);
+    const boundOperator =
+      caller?.assurance === 'bound' &&
+      caller.principal?.elevationEligible === true &&
+      options.isOperatorPrincipal(caller.principal.id);
+    // Slice B: a tool call reads as its session's owner. Record who that is
+    // for the principal resolver and the read routes, and withdraw the
+    // internal token's home-possession unless the caller is a bound operator,
+    // so no locality-keyed operator gate (unredacted logs, Project operator
+    // checks) reads an agent as the operator in person.
+    bindStationControlRequestAuthority(
+      request,
+      caller
+        ? { kind: 'caller', caller, boundOperator }
+        : { kind: 'caller-less' },
+    );
+    if (!boundOperator) withdrawInternalHomePossession(request);
     const body = needsBody(method, path)
       ? await requestBody(request)
       : undefined;
     const refusal = authorizeStationControlRequest(method, path, {
-      caller: options.resolveCaller(request),
+      caller,
       isOperatorPrincipal: options.isOperatorPrincipal,
       body,
       retargetsGrantedJob: await retargetsGrantedJob(
@@ -219,7 +255,29 @@ export function createStationControlAuthorityGuard(
         body,
       ),
     });
-    if (!refusal) return next();
+    if (!refusal) {
+      await next();
+      // Slice B: a request that acts for no principal (caller-less, or a
+      // session with no recorded owner) may still reach a leaf whose route
+      // resolves the request principal (a dispatch read such as
+      // `GET /api/orchestration/sessions/read-model`). That resolution
+      // throws `PrincipalUnresolvedError`, which the app's error handler
+      // would answer as an internal error. Answer it with the typed refusal
+      // instead: it is a statement about the caller, not a server fault.
+      if (c.error instanceof PrincipalUnresolvedError) {
+        const typed = stationControlRefusal(
+          caller
+            ? 'station_control_role_required'
+            : 'station_control_caller_required',
+        );
+        options.onRefusal?.(typed, method, path);
+        c.res = new Response(JSON.stringify(stationControlRefusalBody(typed)), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return;
+    }
     options.onRefusal?.(refusal, method, path);
     return c.json(stationControlRefusalBody(refusal), 403);
   };

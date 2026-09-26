@@ -114,6 +114,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/changed-verification.test.ts',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
   'scripts/__tests__/guardrail-process-boundary.test.ts',
+  // #2682: a whole-tree scan of scripts/ and ops/ (in REPO_SCAN_SUITES) —
+  // it reads every tracked script, so no single pin could stand for it.
+  'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/publish-oidc-exchange-status.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/release-sbom-generation.test.ts',

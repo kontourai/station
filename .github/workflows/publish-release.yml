@@ -41,17 +41,22 @@ jobs:
       desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
       has_current_updater_manifest: ${{ steps.source.outputs.has_current_updater_manifest }}
       pointer_repair_only: ${{ steps.source.outputs.pointer_repair_only }}
+      policy_sha: ${{ steps.source.outputs.policy_sha }}
     env:
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+      # The only checkout of the moving default branch. Later jobs check out
+      # the commit recorded here, so every job runs one policy revision.
       - name: Check out default-branch release policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: release-policy
+          persist-credentials: false
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
@@ -67,7 +72,14 @@ jobs:
           ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP: ${{ inputs.allow_empty_updater_channel_bootstrap }}
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
-          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          # No checkout persists a credential, so this one fetch carries the
+          # read-only job token in process-scoped config only.
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          policy_sha=$(git -C release-policy rev-parse HEAD)
+          [[ "$policy_sha" =~ ^[0-9a-f]{40}$ ]]
           sha=$(git rev-list -n 1 "$RELEASE_TAG")
           tag_release=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft)
           tag_release_state=$(TAG_RELEASE="$tag_release" node -p 'JSON.parse(process.env.TAG_RELEASE).isDraft')
@@ -114,6 +126,7 @@ jobs:
             echo "desktop_updater_tag=$desktop_updater_tag"
             echo "has_current_updater_manifest=$has_current_updater_manifest"
             echo "pointer_repair_only=$pointer_repair_only"
+            echo "policy_sha=$policy_sha"
           } >> "$GITHUB_OUTPUT"
 
   publish:
@@ -143,11 +156,19 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
+      # Tags supply release CONTENT only. Every policy script this job runs
+      # comes from this default-branch checkout (the commit resolve pinned),
+      # so a tooling fix on main reaches old tags. Full history and no
+      # persisted credential match the nightly ledger commit-back, which runs
+      # in this checkout.
       - name: Check out default-branch release policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ needs.resolve.outputs.policy_sha }}
           path: release-policy
+          fetch-depth: 0
+          persist-credentials: false
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
@@ -162,11 +183,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets --pattern '*'
-          node scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
-          node scripts/release-sbom-predicates.mjs --assets-dir release-assets
+          node release-policy/scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
+          node release-policy/scripts/release-sbom-predicates.mjs --assets-dir release-assets
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-release-inventory.json")).sourceSha)' )" = "$RELEASE_SHA"
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-container-release.json")).createdAt)' )" = "$RELEASE_CREATED_AT"
-          scripts/verify-release-checksums.sh release-assets
+          release-policy/scripts/verify-release-checksums.sh release-assets
       - name: Derive the common frozen desktop provenance only after all package gates
         run: |
           set -euo pipefail
@@ -299,7 +320,7 @@ jobs:
           if [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
             feed_args+=("release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json")
           fi
-          scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
+          release-policy/scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
 
       # The tag-bound release is public before this pointer advances. Updater
       # archives are uploaded first and latest.json is a separate invocation,
@@ -406,7 +427,14 @@ jobs:
           set -euo pipefail
           [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           version="${RELEASE_TAG#v}"
-          record=(node scripts/deploy-ledger.mjs
+          # The ledger lives on main, so the record and commit-back run in the
+          # default-branch checkout. The helper spawns the record with that
+          # checkout as its cwd, hence the absolute path. The helper detaches
+          # onto the CURRENT origin/main before spawning, so the record runs
+          # main's newest appender, possibly newer than policy_sha. That is
+          # deliberate: the commit must be a fast-forward of main's current
+          # ledger, and the appender that understands that ledger is main's.
+          record=(node "$PWD/release-policy/scripts/deploy-ledger.mjs"
             --channel stable-desktop
             --version "$version"
             --sha "$RELEASE_SHA"
@@ -425,7 +453,8 @@ jobs:
           for asset in "${assets[@]}"; do
             record+=(--artifact "release-asset:$(basename "$asset")")
           done
-          node scripts/lib/deploy-ledger-commit.mjs \
+          node release-policy/scripts/lib/deploy-ledger-commit.mjs \
+            --repo-root release-policy \
             --commit-subject "docs(ledger): record stable-desktop $version from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`stable-desktop $version\` at \`$RELEASE_SHA\`" \
             --require-ancestor "$RELEASE_SHA" \
@@ -442,8 +471,8 @@ jobs:
         with:
           name: deploy-ledger-stable-${{ github.run_id }}
           path: |
-            docs/reference/deploy-ledger.json
-            docs/reference/deploy-ledger.md
+            release-policy/docs/reference/deploy-ledger.json
+            release-policy/docs/reference/deploy-ledger.md
           if-no-files-found: error
           retention-days: 14
 
@@ -474,6 +503,12 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 257
           persist-credentials: false
+      - name: Check out default-branch release policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.policy_sha }}
+          path: release-policy
+          persist-credentials: false
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
@@ -486,8 +521,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          node scripts/release-availability-driver.mjs
+          node release-policy/scripts/release-availability-driver.mjs
       - name: Project verified release availability
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/release-availability-driver.mjs --project
+        run: node release-policy/scripts/release-availability-driver.mjs --project

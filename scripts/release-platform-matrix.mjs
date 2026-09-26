@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const defaultRoot = resolve(import.meta.dirname, '..');
 const CHANNELS = ['development', 'nightly', 'preview', 'stable'];
@@ -287,7 +287,7 @@ export function main(argv = process.argv.slice(2), root = defaultRoot) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

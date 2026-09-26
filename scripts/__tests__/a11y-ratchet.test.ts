@@ -1,6 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { a11yEnabled, countViolations, evaluate } from '../a11y-ratchet.mjs';
+import {
+  a11yEnabled,
+  biomeLintInvocation,
+  countViolations,
+  evaluate,
+} from '../a11y-ratchet.mjs';
 
 describe('a11yEnabled', () => {
   it('is true only when the family is explicitly switched on', () => {
@@ -122,5 +128,36 @@ describe('lint scope', () => {
       expect(scoped).not.toContain(forbidden);
     }
     expect(scoped.trim()).not.toBe('biome check .');
+  });
+});
+
+// #2682: this gate never ran on Windows (its old entry guard never matched a
+// Windows path). Once it did, its `npx.cmd` spawn threw EINVAL there
+// (CVE-2024-27980 hardening). It must reach Biome without any PATH-resolved
+// shim: Biome's own JS launcher under the current Node.
+describe('biome invocation', () => {
+  it("runs Biome's JS launcher under the current Node, not a shim", () => {
+    const { command, args } = biomeLintInvocation();
+    expect(command).toBe(process.execPath);
+    expect(args[0]).toMatch(/[\\/]@biomejs[\\/]biome[\\/]bin[\\/]biome$/);
+    expect(existsSync(args[0] ?? '')).toBe(true);
+    expect(args[1]).toBe('lint');
+  });
+
+  it('measures the real tree with no PATH at all, run as the gate process', () => {
+    // An empty PATH is the POSIX stand-in for Windows refusing the .cmd shim:
+    // spawning `npx` fails here the way `npx.cmd` fails there.
+    const result = spawnSync(process.execPath, ['scripts/a11y-ratchet.mjs'], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: '' },
+      timeout: 120_000,
+      windowsHide: true,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).not.toContain('failed to run biome');
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(
+      /OK: \d+ violation\(s\), none above ceiling\./,
+    );
   });
 });

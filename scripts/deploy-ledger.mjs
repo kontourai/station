@@ -33,13 +33,14 @@
  * (checked-in text, pinned by tests), called by the workflows visibly.
  */
 
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CHANGELOG_GROUP_ORDER,
   deriveChangelogSlice,
 } from './deploy-changelog.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const DEPLOY_LEDGER_CHANNELS = Object.freeze([
   'nightly-android',
@@ -536,13 +537,10 @@ export function main(argv) {
   return 0;
 }
 
-// realpathSync both sides: an unresolved argv[1] under a symlinked workspace
+// invokedDirectly realpaths both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
 // feature exists to close.
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }
