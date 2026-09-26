@@ -9,7 +9,6 @@ import {
   removeInstance,
   replaceInstance,
 } from '@kontourai/station-shared/instance-registry';
-import { sanitizePath } from '@kontourai/station-shared/launch-path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
@@ -35,6 +34,11 @@ import {
   stopLaunchd,
   uninstallLaunchd,
 } from './service-launchd.js';
+import {
+  collectServicePathCandidates,
+  inspectServicePathDrift,
+  type ServicePathDrift,
+} from './service-path.js';
 import { renderServiceInstallRemedy } from './service-remedy.js';
 import { superviseService } from './service-run.js';
 import {
@@ -544,36 +548,13 @@ function restoreManifest(
 }
 
 export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
-  const shell = process.env.SHELL || '/bin/sh';
-  const marker = '__STATION_SERVICE_PATH__';
-  const result = run(
-    shell,
-    ['-l', '-c', `printf '${marker}%s${marker}\\n' "$PATH"`],
-    { env: process.env },
-  );
-  const match =
-    result.status === 0
-      ? result.stdout?.match(new RegExp(`${marker}(.*)${marker}`))
-      : null;
-  const nodeDir = dirname(fs.realpathSync(process.execPath));
-  const candidates = [
-    nodeDir,
-    ...(match?.[1] ?? process.env.PATH ?? '').split(':'),
-    '/usr/bin',
-    '/bin',
-    '/usr/sbin',
-    '/sbin',
-  ];
-  const sanitized = sanitizePath(candidates.join(':'), {
-    lstatSync: fs.lstatSync,
-    realpathSync: fs.realpathSync,
-  });
-  if (!sanitized.accepted.includes(nodeDir)) {
+  const { accepted, nodeDir } = collectServicePathCandidates(run, fs);
+  if (!accepted.includes(nodeDir)) {
     throw new Error(
       `Unsafe Node executable directory for service PATH: ${nodeDir}`,
     );
   }
-  return sanitized.accepted.join(':');
+  return accepted.join(':');
 }
 
 export function assertServiceIdentityAvailable(instanceId: string): void {
@@ -630,6 +611,7 @@ function redactRegistryForStatus(
 function renderStatus(
   state: InstanceState,
   scheduling: ServiceSchedulingPolicy,
+  servicePath: ServicePathDrift | null,
   remedy: string | null,
   json: boolean,
 ): void {
@@ -651,6 +633,7 @@ function renderStatus(
     manifest: state.manifestDetails,
     registry: state.registry,
     scheduling,
+    ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
   };
   if (json) {
@@ -688,6 +671,29 @@ function renderStatus(
     console.log(
       `scheduling     unknown (${scheduling.reason ?? 'policy could not be read'})`,
     );
+  }
+  if (servicePath?.status === 'current') {
+    console.log('service PATH   current (matches your login-shell PATH)');
+  } else if (servicePath?.status === 'drifted') {
+    console.log(
+      'service PATH   drifted (captured at install; a reinstall would capture a different PATH now)',
+    );
+    if (servicePath.missing.length > 0) {
+      console.log(
+        `               missing from the unit: ${servicePath.missing.join(', ')}`,
+      );
+    }
+    if (servicePath.stale.length > 0) {
+      console.log(
+        `               no longer captured: ${servicePath.stale.join(', ')}`,
+      );
+    }
+    console.log(
+      '               engines installed only in a missing directory can go undetected by the service; reinstall to recapture PATH',
+    );
+    if (remedy) console.log(`               run: ${remedy}`);
+  } else if (servicePath?.status === 'unknown') {
+    console.log(`service PATH   unknown (${servicePath.reason})`);
   }
   if (state.supervisor.error !== null) {
     console.log(`backend probe  unknown (${state.supervisor.error})`);
@@ -1352,10 +1358,21 @@ export async function runServiceCommand(
   const scheduling = inspectServiceSchedulingPolicy(existing ?? registration, {
     run,
   });
+  // Compared only for a managed install: without a manifest there is no unit
+  // Station wrote, so no captured PATH to speak about.
+  const servicePath = existing
+    ? inspectServicePathDrift(existing, { fs, run })
+    : null;
   const remedy = existing
     ? renderServiceInstallRemedy(existing, lifecycle.baseDir)
     : null;
-  renderStatus(observed, scheduling, remedy, args.includes('--json'));
+  renderStatus(
+    observed,
+    scheduling,
+    servicePath,
+    remedy,
+    args.includes('--json'),
+  );
   if (action === 'start' || action === 'stop') {
     if (observed.supervisor.error !== null) {
       process.exitCode = 1;

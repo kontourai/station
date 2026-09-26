@@ -1266,6 +1266,13 @@ describe('station service dispatch', () => {
         reason: 'plutil unavailable',
         status: 'unknown',
       },
+      // The same unreadable plist leaves the captured PATH unknown too.
+      servicePath: {
+        missing: [],
+        reason: 'the installed unit could not be read: plutil unavailable',
+        stale: [],
+        status: 'unknown',
+      },
       unit,
     });
     expect(process.exitCode).toBe(1);
@@ -1331,6 +1338,302 @@ describe('station service dispatch', () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  // #2663: the unit's PATH is frozen at install. These drive `service status`
+  // against the unit the real systemd/launchd writer renders, with the login
+  // shell answering in the exact marker shape `collectServicePathCandidates`
+  // asks for.
+  describe('service PATH drift (#2663)', () => {
+    const loginShellAnswer = (path: string) => ({
+      status: 0,
+      stdout: `__STATION_SERVICE_PATH__${path}__STATION_SERVICE_PATH__\n`,
+    });
+
+    async function installLinuxService(
+      baseDir: string,
+      loginPath: () => string,
+    ) {
+      const { renderSystemdUnit } = await vi.importActual<
+        typeof import('../commands/service-systemd.js')
+      >('../commands/service-systemd.js');
+      const unitPath = join(baseDir, 'station-service-test.service');
+      const registration = {
+        platform: 'linux' as const,
+        unitName: 'station-service-test.service',
+        unitPath,
+      };
+      systemdRegistration.mockReturnValue(registration);
+      installSystemd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderSystemdUnit({
+            instanceId,
+            lifecycle: input.lifecycle,
+            nodePath: input.nodePath,
+            repoPath: input.repoPath,
+            servicePath: input.servicePath,
+          }),
+        );
+        return {
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          nodePath: input.nodePath,
+          platform: 'linux',
+          repoPath: input.repoPath,
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitName: registration.unitName,
+          unitPath,
+        };
+      });
+      systemdStatus.mockReturnValue({
+        active: true,
+        enabled: true,
+        present: true,
+      });
+      const run = vi.fn((command: string, args: string[]) => {
+        if (command === 'systemctl' && args[1] === 'cat') {
+          return {
+            status: 0,
+            stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}`,
+          };
+        }
+        if (args[0] === '-l' && args[1] === '-c') {
+          return loginShellAnswer(loginPath());
+        }
+        return { status: 0, stdout: '' };
+      });
+      await runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'linux',
+        run,
+      });
+      return { run, unitPath };
+    }
+
+    let runServiceCommand: typeof import('../commands/service.js').runServiceCommand;
+    beforeEach(async () => {
+      ({ runServiceCommand } = await import('../commands/service.js'));
+    });
+
+    test('names login-shell directories the installed systemd unit lacks, and unit directories it no longer has', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = join(makeTempDir('station-service-home-'), '.local-bin');
+      mkdirSync(localBin);
+      const oldGeneration = makeTempDir('station-service-hm-old-');
+      let loginPath = `${oldGeneration}:/usr/bin:/bin`;
+      const { run, unitPath } = await installLinuxService(
+        baseDir,
+        () => loginPath,
+      );
+      const realLocalBin = nodeFs.realpathSync(localBin);
+      const realOldGeneration = nodeFs.realpathSync(oldGeneration);
+      // The fixture is the writer's own output: the unit carries the PATH the
+      // install captured, and not the directory added afterwards.
+      expect(readFileSync(unitPath, 'utf8')).toContain(realOldGeneration);
+      expect(readFileSync(unitPath, 'utf8')).not.toContain(realLocalBin);
+
+      loginPath = `${localBin}:/usr/bin:/bin`;
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const text = log.mock.calls.flat().join('\n');
+        expect(text).toContain(
+          'service PATH   drifted (captured at install; a reinstall would capture a different PATH now)',
+        );
+        expect(text).toContain(
+          `               missing from the unit: ${realLocalBin}`,
+        );
+        expect(text).toContain(
+          `               no longer captured: ${realOldGeneration}`,
+        );
+        expect(text).toContain(
+          '               run: station service install --instance=service-test',
+        );
+        // Drift is advice, not a health failure.
+        expect(process.exitCode).toBeUndefined();
+
+        await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        expect(
+          JSON.parse(String(log.mock.calls.at(-1)?.[0])).servicePath,
+        ).toEqual({
+          missing: [realLocalBin],
+          stale: [realOldGeneration],
+          status: 'drifted',
+        });
+        expect(process.exitCode).toBeUndefined();
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('reports current when the login-shell PATH still matches the unit', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = makeTempDir('station-service-bin-');
+      const { run } = await installLinuxService(
+        baseDir,
+        () => `${localBin}:/usr/bin:/bin`,
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run,
+        });
+        const text = log.mock.calls.flat().join('\n');
+        expect(text).toContain(
+          'service PATH   current (matches your login-shell PATH)',
+        );
+        expect(text).not.toContain('missing from the unit');
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    test('claims nothing when the login shell cannot be run and PATH is empty', async () => {
+      const baseDir = makeTempDir('station-service-test-');
+      const localBin = makeTempDir('station-service-bin-');
+      const { run } = await installLinuxService(
+        baseDir,
+        () => `${localBin}:/usr/bin:/bin`,
+      );
+      const { defaultRun } = await import('../commands/service.js');
+      // The real spawn of a shell that does not exist, with no PATH to fall
+      // back on: the comparison has no login-shell answer to stand on.
+      vi.stubEnv('SHELL', join(baseDir, 'no-such-shell'));
+      vi.stubEnv('PATH', '');
+      const absentShellRun = vi.fn(
+        (command: string, args: string[], options?: Record<string, unknown>) =>
+          args[0] === '-l' && args[1] === '-c'
+            ? defaultRun(command, args, options)
+            : run(command, args),
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run: absentShellRun,
+        });
+        expect(
+          absentShellRun.mock.calls.some(
+            ([command]) => command === join(baseDir, 'no-such-shell'),
+          ),
+        ).toBe(true);
+        expect(
+          JSON.parse(String(log.mock.calls.at(-1)?.[0])).servicePath,
+        ).toEqual({
+          missing: [],
+          reason: 'your login shell did not report its PATH',
+          stale: [],
+          status: 'unknown',
+        });
+        await runServiceCommand(['status'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'linux',
+          run: absentShellRun,
+        });
+        const text = log.mock.calls.flat().join('\n');
+        expect(text).toContain(
+          'service PATH   unknown (your login shell did not report its PATH)',
+        );
+        expect(text).not.toContain('missing from the unit');
+      } finally {
+        log.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
+
+    test.skipIf(process.platform !== 'darwin')(
+      'reads the PATH out of the real launchd plist with plutil',
+      async () => {
+        const { defaultRun } = await import('../commands/service.js');
+        const { renderLaunchdPlist } = await vi.importActual<
+          typeof import('../commands/service-launchd.js')
+        >('../commands/service-launchd.js');
+        const baseDir = makeTempDir('station-service-test-');
+        const unitPath = join(baseDir, 'installed.plist');
+        const registration = {
+          label: 'io.kontourai.station.service-test',
+          platform: 'darwin' as const,
+          unitPath,
+        };
+        launchdRegistration.mockReturnValue(registration);
+        installLaunchd.mockImplementation((instanceId, input) => {
+          writeFileSync(
+            unitPath,
+            renderLaunchdPlist({
+              instanceId,
+              label: registration.label,
+              lifecycle: input.lifecycle,
+              nodePath: input.nodePath,
+              repoPath: input.repoPath,
+              servicePath: input.servicePath,
+            }),
+          );
+          return {
+            host: input.lifecycle.host,
+            installedAt: '',
+            instanceId,
+            label: registration.label,
+            nodePath: input.nodePath,
+            platform: 'darwin',
+            repoPath: input.repoPath,
+            serverPort: input.lifecycle.serverPort,
+            uiPort: input.lifecycle.uiPort,
+            unitPath,
+          };
+        });
+        const addedLater = makeTempDir('station-service-bin-');
+        let loginPath = '/usr/bin:/bin';
+        const run = vi.fn(
+          (
+            command: string,
+            args: string[],
+            options?: Record<string, unknown>,
+          ) =>
+            command === 'plutil'
+              ? defaultRun(command, args, options)
+              : args[0] === '-l' && args[1] === '-c'
+                ? loginShellAnswer(loginPath)
+                : { status: 0, stdout: '' },
+        );
+        await runServiceCommand(['install'], lifecycle(baseDir), {
+          fs: serviceFs,
+          platform: 'darwin',
+          run,
+        });
+        loginPath = `${addedLater}:/usr/bin:/bin`;
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        try {
+          await runServiceCommand(['status', '--json'], lifecycle(baseDir), {
+            fs: serviceFs,
+            platform: 'darwin',
+            run,
+          });
+          expect(
+            JSON.parse(String(log.mock.calls.at(-1)?.[0])).servicePath,
+          ).toEqual({
+            missing: [nodeFs.realpathSync(addedLater)],
+            stale: [],
+            status: 'drifted',
+          });
+        } finally {
+          log.mockRestore();
+        }
+      },
+    );
   });
 
   test('rolls back the backend when manifest publication fails', async () => {
