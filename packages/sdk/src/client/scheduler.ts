@@ -492,5 +492,3 @@ export async function runJobWithReceipt(
     reason: 'missing_or_invalid_run_receipt',
   };
 }
-
-// scratch: #2707 selection measurement
