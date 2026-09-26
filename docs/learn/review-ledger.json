@@ -1036,12 +1036,12 @@
     },
     {
       "path": "docs/architecture/module-map.md",
-      "documentDigest": "16aa2e253f0d6c8ae9a708cb87b96c00f292509d1d750e6cab68e96e18bba037",
-      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "documentDigest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
       "kind": "current",
       "state": "partial",
-      "summary": "Reviewed and added KnowledgeStoreProvider and SqliteVecIndexProvider sections against registry/index/migration/search callers. Other module sections remain subject to the broader audit.",
-      "limits": "Two reviewed sections do not certify the complete module catalog; live provider, device, and deployment outcomes remain unverified.",
+      "summary": "Reviewed KnowledgeStoreProvider, SqliteVecIndexProvider, Workspace checkpoints, and Personal Work Board against their callers. Moved and qualified optional OIDC under its account owner. Other module sections remain subject to the broader audit.",
+      "limits": "Reviewed sections do not certify the full catalog. No live provider, physical device, deployed identity service, or exact pre-effect/post-effect snapshot guarantee.",
       "sources": [
         {
           "path": "src-server/knowledge-store/knowledge-store-provider.ts",
@@ -1058,11 +1058,57 @@
         {
           "path": "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
           "digest": "82dcb6c23161ba8866477fa1eca25b19f757f4d2b028d48f3f379c7424a4a371"
+        },
+        {
+          "path": "src-server/services/checkpoints/turn-checkpoint-capture.ts",
+          "digest": "160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940"
+        },
+        {
+          "path": "src-server/services/checkpoints/checkpoint-restore.ts",
+          "digest": "c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac"
+        },
+        {
+          "path": "src-server/services/orchestration/workspace-identity.ts",
+          "digest": "45229bf7dcb41fc8d92d45f2d023eee55a9a93a5be2b6407b79af7c564dcd632"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-store.ts",
+          "digest": "d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-resolver.ts",
+          "digest": "cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399"
+        },
+        {
+          "path": "src-server/routes/spatial-board.ts",
+          "digest": "461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "packages/sdk/src/spatial-board.ts",
+          "digest": "0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0"
+        },
+        {
+          "path": "src-ui/src/lib/queryDefaults.ts",
+          "digest": "ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae"
+        },
+        {
+          "path": "src-server/services/identity/local-account-provider.ts",
+          "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
+        },
+        {
+          "path": "src-server/services/identity/local-account-oidc.ts",
+          "digest": "9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d"
         }
       ],
       "checks": [
-        "Independent Knowledge review accepted the two added module sections.",
-        "Generated MCP checked: 93 topics from canonical inputs."
+        "Independent Knowledge, Work Board/checkpoint, and authentication source/delta reviews accepted.",
+        "Work Board/checkpoint selection: 64 tests across 5 files passed; independent capture selection: 17 tests passed.",
+        "OIDC fixture suite: 17 tests passed; bounded held-discovery probe confirmed startup dependency.",
+        "Generated MCP checked: 95 topics from canonical inputs."
       ]
     },
     {
@@ -1209,6 +1255,62 @@
       "checks": []
     },
     {
+      "path": "docs/guides/deployment-authentication.md",
+      "documentDigest": "002b93b162e73e290d671c6e00fd1ce15e7939606f7f531a55f4d098c01112cb",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed account/module composition, origins/endpoints, continuation boundaries, pinned-library OIDC verification/storage, and held-discovery startup behavior; corrected those claims.",
+      "limits": "Production IdPs, Windows ACL custody, public TLS, hosted tenant/device and independent-person journeys remain unverified. Dependency/fixture review does not establish full deployment acceptance.",
+      "sources": [
+        {
+          "path": "src-server/services/identity/deployment-authentication-loader.ts",
+          "digest": "8a1f644deecf950a6a47fd1ba28b168fe9fd1ddd086cfaa544413aab62265217"
+        },
+        {
+          "path": "src-server/services/identity/deployment-authentication-validation.ts",
+          "digest": "2e45b66f232289e2ecce9a06ba77d642b4cccf4a3d6c6f8601b0b6ca9581de3e"
+        },
+        {
+          "path": "src-server/services/identity/deployment-authentication-service.ts",
+          "digest": "3f33feb8c5c2ff85516e32a0ab9cfce0adcbf113bb5c1f220153fbee0706ceb3"
+        },
+        {
+          "path": "src-server/services/identity/local-account-provider.ts",
+          "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
+        },
+        {
+          "path": "src-server/services/identity/local-account-oidc.ts",
+          "digest": "9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d"
+        },
+        {
+          "path": "src-server/routes/system/deployment-authentication-routes.ts",
+          "digest": "7d303e6165fa4c0c11ffaf26b7c835881350eedf661365281705b7c075f866e7"
+        },
+        {
+          "path": "src-server/utils/private-sqlite.ts",
+          "digest": "2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "package.json",
+          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        }
+      ],
+      "checks": [
+        "Independent source and correction review accepted.",
+        "OIDC fixtures: 17 tests passed.",
+        "Local issuer probe: startup remained pending while discovery was held, then local login became available after a 503 response."
+      ]
+    },
+    {
       "path": "docs/guides/documentation.md",
       "documentDigest": "31eab27d7de12f1872a186eef04d48ba13c26cc436cda04ab9b504a65c8d8b13",
       "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
@@ -1221,8 +1323,8 @@
     },
     {
       "path": "docs/guides/knowledge.md",
-      "documentDigest": "7e34701bc008e8cff3d9f0e3729cf1f6fefd8b40c549e6ee34a82fdac21854ce",
-      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "documentDigest": "8342f95c957a3cc1128edc41066b3cd95892ccb130207043ee58db718ac2a334",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -1284,7 +1386,8 @@
       "checks": [
         "Independent source review and correction delta accepted.",
         "Knowledge focused selection: 156 tests across 13 files passed during this audit; subsequent comment edits emit identical JavaScript.",
-        "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit."
+        "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit.",
+        "Reviewed the corrected Neo4j README anchor and process-registration prerequisite after the example rewrite."
       ]
     },
     {
@@ -1405,6 +1508,64 @@
         "Independent final source delta accepted at document digest 90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c.",
         "Session roundtrip diagnostic fixtures: 8 tests passed.",
         "Codex source/follower and request-inspection route selection: 40 tests across 3 files passed."
+      ]
+    },
+    {
+      "path": "docs/security/remote-access-threat-model.md",
+      "documentDigest": "57e52e4dfaabb7eea33e7926e9afd9bc27599ad3372b3c4849f6f2bc96b0f766",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed socket/scope/SSH and account-auth route boundaries; corrected universal-route and credential-rotation assumptions while retaining historical qualifications.",
+      "limits": "The LAN/private-tailnet model does not qualify internet relays, production OIDC, Windows process/ACL behavior, or physical/two-person operation. Historical findings are not new runtime evidence.",
+      "sources": [
+        {
+          "path": "src-server/services/identity/deployment-authentication-loader.ts",
+          "digest": "8a1f644deecf950a6a47fd1ba28b168fe9fd1ddd086cfaa544413aab62265217"
+        },
+        {
+          "path": "src-server/services/identity/deployment-authentication-validation.ts",
+          "digest": "2e45b66f232289e2ecce9a06ba77d642b4cccf4a3d6c6f8601b0b6ca9581de3e"
+        },
+        {
+          "path": "src-server/services/identity/deployment-authentication-service.ts",
+          "digest": "3f33feb8c5c2ff85516e32a0ab9cfce0adcbf113bb5c1f220153fbee0706ceb3"
+        },
+        {
+          "path": "src-server/services/identity/local-account-provider.ts",
+          "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
+        },
+        {
+          "path": "src-server/services/identity/local-account-oidc.ts",
+          "digest": "9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d"
+        },
+        {
+          "path": "src-server/routes/system/deployment-authentication-routes.ts",
+          "digest": "7d303e6165fa4c0c11ffaf26b7c835881350eedf661365281705b7c075f866e7"
+        },
+        {
+          "path": "src-server/utils/private-sqlite.ts",
+          "digest": "2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "package.json",
+          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        }
+      ],
+      "checks": [
+        "Independent access and dependency-level authentication reviews accepted scoped corrections."
       ]
     },
     {
@@ -1650,6 +1811,32 @@
       "checks": []
     },
     {
+      "path": "docs/user/concepts.md",
+      "documentDigest": "dabc51c43a7799d48448b0cd6acd794fb319afe8e21236b9c62e53fbfe626620",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Checked the Project/Task/Session/turn distinction and corrected the claim that each continuation creates a Session.",
+      "limits": "This delta does not certify all terminal-readiness, data-transfer, observability, or other product claims on the concepts page.",
+      "sources": [
+        {
+          "path": "packages/sdk/src/client/execution.ts",
+          "digest": "617ec2ad2c57576b8b60d33e3e230ef88e89cd6ef6915244108e5b0c6818b3a9"
+        },
+        {
+          "path": "src-server/services/orchestration/session-command-module.ts",
+          "digest": "fc96b4fe4f900234c42fbafbab0c9ce1ae497d2a6d6bcdb5b4cfaa06e39e9f21"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        }
+      ],
+      "checks": [
+        "Independent continuation wording review accepted."
+      ]
+    },
+    {
       "path": "docs/user/contributing.md",
       "documentDigest": "2989d5d7583123f2c2951ca0ed0775d4f86793516aef4641a4b9c5786aa2dd14",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1659,6 +1846,293 @@
       "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "docs/user/work-board.md",
+      "documentDigest": "bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Traced pin identity/scope, pointer/keyboard handlers, narrow/coarse-pointer CSS, revision checks, one-snapshot Undo, cache/refresh behavior, and cleanup caller/store boundaries.",
+      "limits": "Source and mounted-fixture evidence. No physical touch, real multi-device conflict, visual geometry/contrast, or production performance qualification.",
+      "sources": [
+        {
+          "path": "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx",
+          "digest": "7865c6849c64ca4882b6ccea899b225c3751f8a233400d4ab0f2035a072627eb"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/SpatialBoardControls.tsx",
+          "digest": "c5d46d84bc00b03882898586246cb139685cd3f5b6f69e4851f9688fc6ec908f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/SpatialBoardPins.tsx",
+          "digest": "07f6649834d863ebf7b6d65d01f265a5f72e410f4b61c437fb2e72dde07f35df"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/SpatialBoardCanvas.tsx",
+          "digest": "1b34106fecbfc00b92f16f85cd6ee819df48bef9c6027f5d83bd0d2e18263659"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css",
+          "digest": "01517ae1d3bdc5538db800fd8727f7a386912eb74208f4ffc3c1eb036b4b7d58"
+        },
+        {
+          "path": "packages/sdk/src/spatial-board.ts",
+          "digest": "0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        },
+        {
+          "path": "src-ui/src/lib/queryDefaults.ts",
+          "digest": "ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae"
+        },
+        {
+          "path": "src-server/routes/spatial-board.ts",
+          "digest": "461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-store.ts",
+          "digest": "d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-owner-resolver.ts",
+          "digest": "723670ffd464128f489e17cb62bee951f5c8277c8363ce1ba415e7647f7af028"
+        }
+      ],
+      "checks": [
+        "Independent final source/wording delta accepted.",
+        "Work Board/checkpoint selection: 64 tests across 5 files passed, including mounted Board, store and routes.",
+        "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy."
+      ]
+    },
+    {
+      "path": "docs/user/workspace-checkpoints.md",
+      "documentDigest": "283e1c7e932c678bfc114407ffe72c9398b498020cb5a125426c5f7a4562a35a",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Traced queued capture, snapshot scope, settle-only chat visibility, preview truncation, caller/workspace/target checks, uncertain effects, and the separate CLI authentication/preview gaps.",
+      "limits": "Isolated Git and fixture evidence; no user-workspace restore, packaged/native journey, or exact pre-effect/post-effect guarantee. External filesystem writers are outside Station turn coordination.",
+      "sources": [
+        {
+          "path": "src-server/services/checkpoints/turn-checkpoint-capture.ts",
+          "digest": "160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940"
+        },
+        {
+          "path": "src-server/services/checkpoints/checkpoint-ref-store.ts",
+          "digest": "dd2caed0e2e6a42bb46d9fbbb17bc8277a9e3b0fadb54a7caa54d37eb7f114f7"
+        },
+        {
+          "path": "src-server/services/checkpoints/checkpoint-restore.ts",
+          "digest": "c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-service.ts",
+          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+        },
+        {
+          "path": "src-server/services/orchestration/workspace-identity.ts",
+          "digest": "45229bf7dcb41fc8d92d45f2d023eee55a9a93a5be2b6407b79af7c564dcd632"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "packages/sdk/src/client/checkpoint-restore.ts",
+          "digest": "89bd6872bffc0da802e7368d91ae60ee37e18eaf18e7188cc3f61831af4810f4"
+        },
+        {
+          "path": "src-ui/src/components/chat/CheckpointRestoreButton.tsx",
+          "digest": "a17fed2fc8f712386a4eb64756b500c32a1a712721c65b3f5dab1ee0ea033bab"
+        },
+        {
+          "path": "src-ui/src/components/chat/MessageBubble.tsx",
+          "digest": "6b3cef36e6c640992af76fd1062f5210cd24542dd6f7c0c8c63450681efda47b"
+        },
+        {
+          "path": "packages/cli/src/commands/checkpoints.ts",
+          "digest": "49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd"
+        },
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        }
+      ],
+      "checks": [
+        "Independent final source/wording delta accepted.",
+        "Work Board/checkpoint selection: 64 tests across 5 files passed; independent deferred-capture selection: 17 tests passed."
+      ]
+    },
+    {
+      "path": "examples/enterprise-layout/README.md",
+      "documentDigest": "2f96295f6e2d14c8086dbff61e8dd0388c662bca90780a0f2feae9b3d83e12d3",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed Knowledge-facing example instructions and public SDK/server callers, prerequisites, sample-only behavior, provenance/indexing and namespace limits where applicable.",
+      "limits": "No real install, live model/microphone/Neo4j, dual-adapter or native qualification. Two live Neo4j tests skipped. Ask root invalidation remains a candidate; inconclusive probes do not prove a defect. Other feature areas in broad example READMEs are not fully certified.",
+      "sources": [
+        {
+          "path": "examples/enterprise-layout/plugin.json",
+          "digest": "108f69275b930e47eeb045b44b15ef7e7783c9dbaa99c275f62787aa4909ca6d"
+        },
+        {
+          "path": "examples/enterprise-layout/src/data/notes-hooks.ts",
+          "digest": "f123828808e5dd7fe5e2cf3c1d240b75f85000e0008f71923f05f192ed188105"
+        },
+        {
+          "path": "src-server/routes/projects/projects.ts",
+          "digest": "d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847"
+        },
+        {
+          "path": "src-server/services/knowledge/knowledge-search.ts",
+          "digest": "ae111c58c926d5d43cf096b4ab199dab44495b996817bfc851a0fd4d2c012c31"
+        }
+      ],
+      "checks": [
+        "Independent example source/delta review accepted.",
+        "Example lane: 97 documentation and 284 behavior tests passed; two live Neo4j tests skipped.",
+        "Meeting Notes, Knowledge Library and Knowledge Docs Starter built through supported commands."
+      ]
+    },
+    {
+      "path": "examples/knowledge-docs-starter/README.md",
+      "documentDigest": "0c55a5b63d493ceb1b07e7cb124afabd30b7217a97c9af1d0a6bf7baf685615a",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed Knowledge-facing example instructions and public SDK/server callers, prerequisites, sample-only behavior, provenance/indexing and namespace limits where applicable.",
+      "limits": "No real install, live model/microphone/Neo4j, dual-adapter or native qualification. Two live Neo4j tests skipped. Ask root invalidation remains a candidate; inconclusive probes do not prove a defect. Other feature areas in broad example READMEs are not fully certified.",
+      "sources": [
+        {
+          "path": "examples/knowledge-docs-starter/plugin.json",
+          "digest": "2ef46955ac528996af8139e572f9b1ed4f35d300f8a6526becd0e68ed1b128f4"
+        },
+        {
+          "path": "examples/knowledge-docs-starter/src/index.tsx",
+          "digest": "7f3d327d7db11c0dfe6674c8006b9d83bd209266626b76aa9ec5c4353ef8635d"
+        },
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        },
+        {
+          "path": "packages/cli/src/commands/build.ts",
+          "digest": "fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55"
+        },
+        {
+          "path": "station",
+          "digest": "bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb"
+        }
+      ],
+      "checks": [
+        "Independent example source/delta review accepted.",
+        "Example lane: 97 documentation and 284 behavior tests passed; two live Neo4j tests skipped.",
+        "Meeting Notes, Knowledge Library and Knowledge Docs Starter built through supported commands."
+      ]
+    },
+    {
+      "path": "examples/knowledge-library/README.md",
+      "documentDigest": "254862ed6ce5166ebe5466c26b9a9931f814905caf0a12c4b0d543f65f1eced5",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed Knowledge-facing example instructions and public SDK/server callers, prerequisites, sample-only behavior, provenance/indexing and namespace limits where applicable.",
+      "limits": "No real install, live model/microphone/Neo4j, dual-adapter or native qualification. Two live Neo4j tests skipped. Ask root invalidation remains a candidate; inconclusive probes do not prove a defect. Other feature areas in broad example READMEs are not fully certified.",
+      "sources": [
+        {
+          "path": "examples/knowledge-library/plugin.json",
+          "digest": "56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318"
+        },
+        {
+          "path": "examples/knowledge-library/package.json",
+          "digest": "af08496158c8bb69108ac27ee7c1612834f1404eebfa25f7d22dccbce79a4990"
+        },
+        {
+          "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+          "digest": "e26842341c3435f76aa31a02c85c433e0b6069009daa31282d72444670932c3a"
+        },
+        {
+          "path": "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
+          "digest": "34a9a719b0fb5fdb63c5b23b853941237b2b51b1ac5ce595a67b1b14d6b735e9"
+        }
+      ],
+      "checks": [
+        "Independent example source/delta review accepted.",
+        "Example lane: 97 documentation and 284 behavior tests passed; two live Neo4j tests skipped.",
+        "Meeting Notes, Knowledge Library and Knowledge Docs Starter built through supported commands."
+      ]
+    },
+    {
+      "path": "examples/meeting-notes/README.md",
+      "documentDigest": "b4c0431e301f9b25309220578633831c6e3e6a67f05eea84af793fa438c410b7",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed Knowledge-facing example instructions and public SDK/server callers, prerequisites, sample-only behavior, provenance/indexing and namespace limits where applicable.",
+      "limits": "No real install, live model/microphone/Neo4j, dual-adapter or native qualification. Two live Neo4j tests skipped. Ask root invalidation remains a candidate; inconclusive probes do not prove a defect. Other feature areas in broad example READMEs are not fully certified.",
+      "sources": [
+        {
+          "path": "examples/meeting-notes/src/CaptureModal.tsx",
+          "digest": "1d2e79a7a10cb67fd9514a7fc9ccb2420028f349b50f3fdf95ae52a2a9c8ec4f"
+        },
+        {
+          "path": "examples/meeting-notes/src/AskPane.tsx",
+          "digest": "867ef11f37ef7237eeaa64f788f572860e62e2ff2ea31692a093f38417b437f8"
+        },
+        {
+          "path": "examples/meeting-notes/src/compile.ts",
+          "digest": "6a077dacddabd1f863eb5b99efba84730cd679b36894f7b75697df2e9e397f90"
+        },
+        {
+          "path": "src-server/routes/knowledge/knowledge-index-routes.ts",
+          "digest": "ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c"
+        },
+        {
+          "path": "src-server/knowledge-store/neo4j-connection.ts",
+          "digest": "e51086363cf97d52cdddd90125f23ba5ecda2ef237b48ff56273e8e7e5622b88"
+        }
+      ],
+      "checks": [
+        "Independent example source/delta review accepted.",
+        "Example lane: 97 documentation and 284 behavior tests passed; two live Neo4j tests skipped.",
+        "Meeting Notes, Knowledge Library and Knowledge Docs Starter built through supported commands."
+      ]
+    },
+    {
+      "path": "examples/meeting-transcription/README.md",
+      "documentDigest": "e801d1832b24214a14c26f44f8b78d73fd68c2b960e72425cb422e4b245ab129",
+      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed Knowledge-facing example instructions and public SDK/server callers, prerequisites, sample-only behavior, provenance/indexing and namespace limits where applicable.",
+      "limits": "No real install, live model/microphone/Neo4j, dual-adapter or native qualification. Two live Neo4j tests skipped. Ask root invalidation remains a candidate; inconclusive probes do not prove a defect. Other feature areas in broad example READMEs are not fully certified.",
+      "sources": [
+        {
+          "path": "examples/meeting-transcription/plugin.json",
+          "digest": "aa804e2b368ed0b54993478a6a83e5780e4146063b967bd19faaee79fd8970b3"
+        },
+        {
+          "path": "examples/meeting-transcription/src/index.ts",
+          "digest": "d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b"
+        },
+        {
+          "path": "examples/meeting-transcription/src/MeetingTranscriptionModal.tsx",
+          "digest": "a00e284e0e81c976cbbf077116d7ec2cde67a49b6cbe1edf916f81f522e37677"
+        }
+      ],
+      "checks": [
+        "Independent example source/delta review accepted.",
+        "Example lane: 97 documentation and 284 behavior tests passed; two live Neo4j tests skipped.",
+        "Meeting Notes, Knowledge Library and Knowledge Docs Starter built through supported commands."
+      ]
     },
     {
       "path": "packages/cli/CHANGELOG.md",

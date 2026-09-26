@@ -131,7 +131,7 @@ provenance verification and image promotion.
 
 ### Which verbs answer from which entry point
 
-Three tiers, per [the CLI product design](../design/cli-product.md):
+Current command availability, with background in the [CLI product design](../design/cli-product.md):
 
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
@@ -2005,13 +2005,14 @@ station environment peers remove <environment-id>
 
 - `environment show` prints the schema version, stable environment ID, and the
   non-secret marker `"credential":"configured"`.
-- `environment credential show` is the only reveal command. It prints the raw
+- `environment credential show` prints the raw
   credential so it can be entered in Station Connect's masked field. Do not
   redirect, log, screenshot, or paste this output into a URL.
 - `environment credential rotate` preserves the environment ID and replaces
   only the operator bootstrap credential after confirmation. Independently
   issued Device credentials remain valid until separately revoked or the
-  environment is reset.
+  environment is reset. Rotation also prints the replacement bootstrap
+  credential; protect its output in the same way as `credential show`.
 - `environment reset` rotates both the environment ID and credential. It prints
   only non-secret reset metadata; run the explicit credential show command to
   bootstrap a client afterward.

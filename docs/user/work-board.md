@@ -54,9 +54,7 @@ or error notice. Use **Retry resolution** when that lookup fails. These states
 are not copied status stored on the Board, and a linked item is not evidence
 that a gate passed or work is complete.
 
-For the implementation, follow the
-[Pane](../../src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx),
-[SDK queries and mutations](../../packages/sdk/src/spatial-board.ts), and
-[revisioned store](../../src-server/services/spatial-board/spatial-board-store.ts).
+For architecture and implementation evidence, follow the
+[Work Board module](https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#personal-work-board).
 The refresh and cleanup recommendations are tracked in
 [#2736](https://github.com/kontourai/station/issues/2736).
