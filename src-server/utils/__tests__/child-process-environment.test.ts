@@ -37,6 +37,21 @@ describe('childProcessEnvironment', () => {
     ).toEqual({ KEEP: 'yes' });
   });
 
+  it('does not pass the supervision markers to a child: a Station started from a terminal is not supervised (#2674)', () => {
+    const markers = {
+      STATION_SUPERVISOR_PID: '4242',
+      STATION_SUPERVISOR_BIRTH: 'birth-a',
+      STATION_SERVICE_MANAGED: '1',
+    };
+    expect(scrubBootInternalSecrets({ ...markers, KEEP: 'yes' })).toEqual({
+      KEEP: 'yes',
+    });
+    const env = childProcessEnvironment(markers);
+    expect(env).not.toHaveProperty('STATION_SUPERVISOR_PID');
+    expect(env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
+    expect(env).not.toHaveProperty('STATION_SERVICE_MANAGED');
+  });
+
   it('scrubs the internal API token and UI-bootstrap token from a copy', () => {
     process.env[INTERNAL_API_TOKEN_ENV] = 'server-internal-token';
     process.env[UI_BOOTSTRAP_TOKEN_ENV] = 'server-bootstrap-token';

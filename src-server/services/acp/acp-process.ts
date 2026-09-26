@@ -352,7 +352,10 @@ export class ACPProcess extends EventEmitter {
 
     const bin = await this.findCommand();
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
-    if (!bin) throw new Error(`${this.opts.command} not found on PATH`);
+    if (!bin)
+      throw new Error(
+        `Station could not start ${this.opts.command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then reconnect the engine.`,
+      );
 
     // archive#977: layer the login-shell-resolved PATH onto the spawned
     // process's own env too, not just Station's own binary lookup above --

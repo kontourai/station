@@ -102,7 +102,7 @@ function hubStatusLine(status: DeviceToolchainStatus): Line | undefined {
   if (status.hubSource === 'configured')
     return {
       tone: 'ready',
-      text: 'Using the device hub configured with STATION_MOBILE_DEVICE_HUB_URL.',
+      text: 'Using the device hub configured in Settings (Device helper URL).',
     };
   if (!status.hubEnabled && status.hub.state !== 'installing') return undefined;
   const install = installLine(status.hub, 'the device hub', {
