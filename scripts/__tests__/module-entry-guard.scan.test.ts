@@ -15,7 +15,8 @@
  * `process.argv` and realpaths real files, so a Windows argv/URL pair cannot
  * be fed to it on a POSIX host without adding a test-only injection seam, and
  * a helper test would still say nothing about a script that never calls the
- * helper. The scan covers every script, including new ones.
+ * helper. The scan reads every tracked or untracked, unignored code file, so
+ * a new script is scanned before it is committed.
  * `type-laundering-gate.process.test.ts` proves the helper's behavior on a
  * spaced path end to end.
  *

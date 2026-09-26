@@ -31,8 +31,9 @@
  * this replaced — a URL assembled from `process.argv[1]`, or
  * `new URL(import.meta.url).pathname` compared against it — failed on both,
  * and on Windows that made gates in the required portable-floor job exit 0
- * without running. `scripts/__tests__/module-entry-guard.scan.test.ts` keeps
- * those forms out of the tree.
+ * without running. `scripts/__tests__/module-entry-guard.scan.test.ts` rejects
+ * the textual forms of those checks; it does not see an aliased `argv` or a URL
+ * built in a helper.
  *
  * ## The remaining gap (station#1853)
  *
