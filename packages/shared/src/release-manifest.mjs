@@ -19,6 +19,7 @@ import {
   findPortableServerTarget,
   portableServerArchiveName,
 } from './portable-server-targets.mjs';
+import { STATION_RELEASE_RINGS } from './release-rings.generated.mjs';
 
 export const SHA256_HEX = /^[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
@@ -27,19 +28,15 @@ export const NODE_VERSION = new RegExp(`^${RELEASE}$`);
 export const KEY_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-// The installable release rings and whether each is a prerelease: a
-// prerelease ring's versions are X.Y.Z-<ring>.N, the one unlabelled ring owns
-// X.Y.Z. TODO(#2675): take this from config/channel-ports.json's
-// releaseRings once #2688 lands it, so the ring list has one source.
-const RELEASE_RINGS = { stable: false, preview: true, nightly: true };
-
 /**
- * Each channel owns exactly one version shape, so a payload cannot claim one
- * ring while carrying another ring's version.
+ * Each installable release ring (config/channel-ports.json's releaseRings)
+ * owns exactly one version shape: X.Y.Z-<ring>.N for a prerelease ring, X.Y.Z
+ * for the one unlabelled ring. A payload cannot claim one ring while carrying
+ * another ring's version.
  */
 export const CHANNEL_VERSION = Object.freeze(
   Object.fromEntries(
-    Object.entries(RELEASE_RINGS).map(([ring, prerelease]) => [
+    Object.entries(STATION_RELEASE_RINGS).map(([ring, { prerelease }]) => [
       ring,
       new RegExp(`^${RELEASE}${prerelease ? `-${ring}\\.([1-9][0-9]*)` : ''}$`),
     ]),

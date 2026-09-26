@@ -1,9 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
 import {
   CHANNEL_PORTS,
   checkGeneratedChannelPorts,
+  RELEASE_RINGS,
   syncGeneratedChannelPorts,
 } from '../channel-ports.mjs';
 
@@ -75,6 +77,30 @@ describe('channel port generation', () => {
     restoreGenerated = undefined;
   });
 
+  test('detects generated release-ring module drift and the manifest verifier reads the configured rings', () => {
+    const generated = resolve(
+      root,
+      'packages/shared/src/release-rings.generated.mjs',
+    );
+    const original = readFileSync(generated, 'utf8');
+    restoreGenerated = () => writeFileSync(generated, original);
+    writeFileSync(
+      generated,
+      original.replace('prerelease: true', 'prerelease: false'),
+    );
+    expect(() => checkGeneratedChannelPorts()).toThrow(/stale/);
+    syncGeneratedChannelPorts();
+    expect(() => checkGeneratedChannelPorts()).not.toThrow();
+    restoreGenerated = undefined;
+
+    const rings = RELEASE_RINGS as Record<string, { prerelease: boolean }>;
+    expect(Object.keys(CHANNEL_VERSION)).toEqual(Object.keys(rings));
+    for (const [ring, { prerelease }] of Object.entries(rings)) {
+      expect(CHANNEL_VERSION[ring].test('1.2.3')).toBe(!prerelease);
+      expect(CHANNEL_VERSION[ring].test(`1.2.3-${ring}.4`)).toBe(prerelease);
+    }
+  });
+
   test('projects every release channel port block into Station-owned installer consumers', () => {
     const installer = readFileSync(resolve(root, 'install.sh'), 'utf8');
 
@@ -97,7 +123,7 @@ describe('channel port generation', () => {
         uiPort,
       ]).toEqual(expectedBlocks[channel]);
     }
-    for (const channel of ['stable', 'beta'] as const) {
+    for (const channel of ['stable', 'beta', 'nightly'] as const) {
       const { serverPort, uiPort } = channelPorts[channel];
       expect(installer).toContain(`runtime_server_port=${serverPort}`);
       expect(installer).toContain(`runtime_ui_port=${uiPort}`);
