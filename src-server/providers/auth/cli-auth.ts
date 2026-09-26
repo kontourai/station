@@ -124,6 +124,13 @@ export async function resolveLoginShellPath(): Promise<string> {
     const { stdout } = await execFile(shell, ['-ic', script], {
       encoding: 'utf-8',
       timeout: LOGIN_PATH_RESOLVE_TIMEOUT_MS,
+      // #2663: an INTERACTIVE shell ignores SIGTERM, Node's default kill
+      // signal, so with it this timeout killed nothing and the capture
+      // settled only when the shell chose to exit. Measured on macOS:
+      // `zsh -ic` and `bash -ic` running an 8s command under a 1s timeout
+      // settled at ~8s with SIGTERM and at ~1s with SIGKILL. Native-engine
+      // adoption now awaits this capture, so the bound has to be real.
+      killSignal: 'SIGKILL',
       windowsHide: true,
     });
     return extractSentinelValue(stdout);
