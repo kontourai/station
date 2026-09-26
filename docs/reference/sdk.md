@@ -2389,10 +2389,9 @@ Creates a layout context for use in layout plugins. Used internally by `LayoutPr
 
 ## Refused requests
 
-A client fetcher that reads a Station response envelope throws
 `StationHttpError` (exported from `@kontourai/station-sdk` and
-`@kontourai/station-sdk/client`) when the request is refused. Branch on its
-fields, never on the message text:
+`@kontourai/station-sdk/client`) is the error a refused Station request
+throws. Branch on its fields, never on the message text:
 
 ```ts
 class StationHttpError extends Error {
@@ -2403,6 +2402,15 @@ class StationHttpError extends Error {
 }
 ```
 
+Today every field is carried by a fetcher built on `readEnvelopeOrThrow`: the
+integration, review and workspace pane host action fetchers. `readEnvelopeOrThrow(response)`
+throws this error for a non-2xx response or for a body that is not
+`success: true`. A body that is not JSON keeps its status on a non-2xx; on a
+2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
+throw their own errors — some a `StationHttpError` without `details`, some a
+plain `Error` or a family-specific subclass — and move onto the same fields
+in later releases, keeping their subclasses (#2708).
+
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
   is `200`, so a status check such as `status === 404` stays exact.
@@ -2411,17 +2419,12 @@ class StationHttpError extends Error {
   non-string code is absent.
 - `details` is present when the body carried one. For a validation refusal it
   is `{ formErrors, fieldErrors }`.
-- The message follows one order: the validation sentences in
-  `details.formErrors` and `details.fieldErrors`, a string `error`, the object
-  `error`'s `message`, then its `code`, the top-level `message`, and then the
-  fetcher's fallback. `apiErrorMessage(body, fallback)` applies the same rule
-  to a body a caller has already parsed.
-
-`readEnvelopeOrThrow(response)` throws this error for a non-2xx response or a
-body that is not `success: true`. A body that is not JSON keeps its status on
-a non-2xx; on a 2xx it is a protocol failure and throws a plain `Error`. The
-remaining client families move onto the same error in later releases, and
-their existing error subclasses stay (#2708).
+- The message is a summary — a string `error`, the object `error`'s
+  `message`, then its `code`, the top-level `message`, then the fetcher's
+  fallback — followed by the validation sentences, each named by its field:
+  `Validation failed: command Required, name Required`. The Station CLI prints
+  the same sentence. `apiErrorMessage(body, fallback)` applies this rule to a
+  body a caller has already parsed.
 
 ## Utilities
 
