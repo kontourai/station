@@ -120,8 +120,8 @@ describe('useNotificationOsAlerts (#2587)', () => {
   });
 
   test('neither polls the feed nor posts blocking alerts off a desktop native host (browser tabs keep toasts only)', async () => {
-    // A mobile native host is silenced because a foreground post there is
-    // silence; a browser has no native notifier at all.
+    // A mobile webview is frozen when backgrounded, so a foreground post there
+    // is silence; a browser has no native notifier at all.
     notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
     for (const host of [
       { isTauri: true, isDesktop: false, isMobile: true },
@@ -141,7 +141,7 @@ describe('useNotificationOsAlerts (#2587)', () => {
     await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
   });
 
-  test('does not query notifications where alerts are disabled, and polls every 10s where they are', () => {
+  test('disables the notifications query where alerts are off, and sets a 10s refetch interval where they are on', () => {
     // The query is the recurring cost the blocking channel adds; losing
     // `enabled` would make every browser tab fetch notifications every 10s.
     platform.current = { isTauri: false, isDesktop: true, isMobile: false };

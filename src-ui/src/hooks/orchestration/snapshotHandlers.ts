@@ -547,8 +547,8 @@ export interface ApplyOrchestrationSnapshotOptions {
    * connect (including first-ever mount) also sends. A snapshot only
    * carries per-session STATUS fields (`planSnapshot` above) — never the
    * turns that happened during the gap — so a currently-open chat's
-   * message transcript needs an explicit full
-   * refetch or it stays stale forever. Omitted/false keeps this a pure
+   * message transcript needs an explicit full refetch or it stays stale
+   * forever. Omitted/false keeps this a pure
    * status sync, exactly matching pre-archive#1225 behavior (a first connect has
    * nothing stale to refresh — `ChatDock`'s own mount-time
    * `rehydrateSessions` already covers that case).
