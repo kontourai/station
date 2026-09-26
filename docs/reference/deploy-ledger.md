@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-26T06:19:12Z | nightly-npm | 0.6.0-nightly.2460.36218473798 | `73b5db6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36218473798) |
 | 2026-09-25T23:08:06Z | nightly-desktop | 0.1.11-nightly.2459.3 | `a279a57` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36191456945) |
 | 2026-09-25T23:08:02Z | nightly-android | 0.1.11-nightly.2459.3 | `a279a57` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36191456945) |
 | 2026-09-25T22:16:16Z | nightly-npm | 0.6.0-nightly.2459.36191456945 | `a279a57` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36191456945) |
@@ -156,6 +157,47 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-26T06:19:12Z · nightly-npm · 0.6.0-nightly.2460.36218473798
+
+- Ship SHA: `73b5db6ff8728a1bc9e5f722f91161ad98885a7d`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2460.36218473798 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a279a57` ([full sha](https://github.com/kontourai/station/commit/a279a57fe966178b1fa26419fdc6a6fc4b6c35f7)):
+
+**Features**
+
+- [#2680](https://github.com/kontourai/station/pull/2680) feat(install): verify portable release manifests against pinned signing keys (#2675)
+- [#2670](https://github.com/kontourai/station/pull/2670) feat(notifications): Android FCM alerts via a sealed station_notification kind (#2588)
+- [#2638](https://github.com/kontourai/station/pull/2638) feat(notifications): desktop OS alerts from the delivery feed, with inbox attribution (#2587)
+- [#2666](https://github.com/kontourai/station/pull/2666) feat(ios): register iPhones for agent activity from the web layer (#2660)
+- [#2661](https://github.com/kontourai/station/pull/2661) feat(notifications): quiet other surfaces only while the focused document's stream is live (#2620)
+
+**Fixes**
+
+- [#2593](https://github.com/kontourai/station/pull/2593) fix(guidance): in-app equivalents for CLI/env-var disclosures (device helper setting, workflows UI, reconnect)
+- [#2679](https://github.com/kontourai/station/pull/2679) fix(update): refuse in-app server updates under a supervisor; build through buildApplication (#2673, #2674)
+- [#2672](https://github.com/kontourai/station/pull/2672) fix(delegation): derive delegation lineage from the verified caller (#2601)
+- [#2668](https://github.com/kontourai/station/pull/2668) fix(connections): readiness honours a connection's env and configHome (proxy-routed Claude/Codex)
+- [#2667](https://github.com/kontourai/station/pull/2667) fix(approvals): make unattended tool use an explicit opt-in (#2613)
+- [#2651](https://github.com/kontourai/station/pull/2651) fix(verification): select unmodelled-input suites on the PR lane; run whole-tree scans per PR (#2176)
+- [#2662](https://github.com/kontourai/station/pull/2662) fix(orchestration): principal-only session ownership — no ownerless or OS-alias session access
+
+**CI / workflow**
+
+- [#2664](https://github.com/kontourai/station/pull/2664) ci(ios): build, sign and audit the Live Activity in Beta and Nightly TestFlight (#2513)
+
+**Docs**
+
+- [#2629](https://github.com/kontourai/station/pull/2629) docs: adopt deslop skill and codify flake/queue operating rules
+
+**Other**
+
+- [#2645](https://github.com/kontourai/station/pull/2645) perf(ui): load slash built-ins and brand marks on demand (−6.3 KB entry JS)
 
 ## 2026-09-25T23:08:06Z · nightly-desktop · 0.1.11-nightly.2459.3
 
