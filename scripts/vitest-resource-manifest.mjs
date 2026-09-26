@@ -509,6 +509,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2822: shells out to the packaging dry-run and the publish
   // boundary script, so it spawns children like its install-script sibling.
   'scripts/__tests__/ecosystem-manifest.test.ts',
+  // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
+  // single-shot children for each golden vector.
+  'scripts/__tests__/release-manifest-vectors.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',

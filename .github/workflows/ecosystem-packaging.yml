@@ -6,6 +6,8 @@ on:
       - 'install.sh'
       - 'packaging/**'
       - 'scripts/ecosystem-manifest.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/portable-server-targets.mjs'
       - 'scripts/ecosystem-publish-boundary.sh'
       - 'scripts/exercise-ecosystem-packaging-dry-run.sh'
       - 'scripts/__tests__/ecosystem-manifest.test.ts'

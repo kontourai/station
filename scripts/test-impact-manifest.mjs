@@ -541,6 +541,22 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
+  // reaches them only through that CLI as a child process, which the import
+  // graph cannot see. (The vectors test imports them directly.)
+  ...[
+    'packages/shared/src/release-manifest.mjs',
+    'packages/shared/src/portable-server-targets.mjs',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+      reason:
+        'the release-manifest signer CLI imports this module; its tests ' +
+        'reach it only through the CLI child process (#2675)',
+    }),
+  ),
   // The generator loads its sources through a computed specifier (so the
   // scripts typecheck never follows it into `.tsx`), and `--check` reads the
   // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
@@ -686,7 +702,10 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/ecosystem-manifest.mjs',
     related: true,
-    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    tests: Object.freeze([
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({

@@ -6,7 +6,6 @@ import {
   generateKeyPairSync,
   type KeyObject,
   sign,
-  verify,
 } from 'node:crypto';
 import {
   chmodSync,
@@ -23,6 +22,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { platformPayload } from './fixtures/release-manifest-v2.js';
 
 const root = resolve(import.meta.dirname, '../..');
 const script = join(root, 'scripts/ecosystem-manifest.mjs');
@@ -451,9 +451,11 @@ const GOLDEN_PAYLOAD = {
     },
   },
 };
-// The exact bytes both the signer (ecosystem-manifest.mjs) and the verifier
-// (install.sh) must derive from GOLDEN_PAYLOAD: recursively sorted keys, no
-// whitespace. Written out, not computed, so neither side can drift alone.
+// The exact bytes install.sh must derive from GOLDEN_PAYLOAD: recursively
+// sorted keys, no whitespace. Written out, not computed, so it cannot drift
+// alone. GOLDEN_PAYLOAD is the pre-#2675 schema 2 shape (artifacts.portable)
+// that install.sh reads until slice B2; the signer's per-platform golden
+// vector is in release-manifest-vectors.test.ts.
 const GOLDEN_CANONICAL = `{"artifacts":{"portable":{"name":"station-portable.tar.gz","sha256":"${'ab'.repeat(32)}","url":"file:///nonexistent/station-golden/station-portable.tar.gz"}},"channel":"nightly","publishedAt":"2026-09-25T00:00:00.000Z","releaseTag":"v0.7.0-nightly.12","schemaVersion":2,"sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"0.7.0-nightly.12"}`;
 const GOLDEN_SIGNATURE =
   '0qCbEHmy8XP5SdwwyAlY4fJKYqX3c4ypu+hvwCDDPUSokVaEXa5lQ0ttKUJZWDygzVZzbJa2Xamwd5QeKLOdDw==';
@@ -540,7 +542,8 @@ exit 0
 let manifestSequence = 0;
 
 /**
- * Signs a v2 manifest for `archive` with the fixture's test key. The channel
+ * Signs an installer-shape v2 manifest for `archive` with the fixture's test
+ * key. The channel
  * follows the version (preview for `-preview.N`, otherwise stable).
  */
 function signManifest(
@@ -549,8 +552,6 @@ function signManifest(
   archive: string,
   overrides: { channel?: string; keyId?: string; url?: string } = {},
 ): string {
-  const manifests = join(fixture.dir, 'manifests');
-  mkdirSync(manifests, { recursive: true });
   manifestSequence += 1;
   const payloadPath = join(
     fixture.dir,
@@ -576,31 +577,16 @@ function signManifest(
       },
     })}\n`,
   );
-  const manifestPath = join(manifests, `${version}-${manifestSequence}.json`);
-  const created = run(
-    [
-      'create',
-      '--payload',
-      payloadPath,
-      '--private-key',
-      fixture.privateKeyPath,
-      '--key-id',
-      'station-fixture-signer',
-      '--allow-unpinned-key',
-      '--output',
-      manifestPath,
-    ],
-    { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
+  // install.sh reads the pre-#2675 schema 2 shape (artifacts.portable) until
+  // slice B2 moves it to per-platform archives. The signer no longer emits
+  // that shape, so this fixture signs it directly. The keyId labels which
+  // pinned entry's policy applies; the bytes are the fixture key's (through
+  // the test-only key override).
+  return signRawManifest(
+    fixture,
+    JSON.parse(readFileSync(payloadPath, 'utf8')),
+    overrides.keyId ?? RELEASE_KEY_ID,
   );
-  expect(created.status, created.stderr).toBe(0);
-  // keyId is envelope metadata, outside the signed payload. Relabelling it
-  // here lets a fixture key stand in for a pinned key's bytes (through the
-  // test-only override) while the installer's keyId and channel policy
-  // still applies to the pinned entry the label names.
-  const envelope = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  envelope.keyId = overrides.keyId ?? RELEASE_KEY_ID;
-  writeFileSync(manifestPath, `${JSON.stringify(envelope, null, 2)}\n`);
-  return manifestPath;
 }
 
 /**
@@ -728,50 +714,31 @@ describe('pinned manifest signing keys', () => {
       );
   });
 
-  it('pins signer and installer canonicalization to one golden vector', () => {
+  it('pins installer canonicalization to one golden vector', () => {
     const dir = makeTempDir('station-manifest-golden-');
     const privateKey = goldenPrivateKey();
-    const publicKey = createPublicKey(privateKey);
-    const privatePath = join(dir, 'golden-private.pem');
     const publicPath = join(dir, 'golden-public.pem');
     writeFileSync(
-      privatePath,
-      privateKey.export({ format: 'pem', type: 'pkcs8' }),
-    );
-    writeFileSync(
       publicPath,
-      publicKey.export({ format: 'pem', type: 'spki' }),
+      createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }),
     );
-    const payloadPath = join(dir, 'payload.json');
-    writeFileSync(payloadPath, JSON.stringify(GOLDEN_PAYLOAD));
+    // The signature over the written-out canonical bytes, not over a
+    // computed canonical form: install.sh accepts it only if it derives the
+    // same bytes from GOLDEN_PAYLOAD.
+    const signature = sign(
+      null,
+      Buffer.from(GOLDEN_CANONICAL),
+      privateKey,
+    ).toString('base64');
+    expect(signature).toBe(GOLDEN_SIGNATURE);
     const manifestPath = join(dir, 'golden.json');
-    const created = run(
-      [
-        'create',
-        '--payload',
-        payloadPath,
-        '--private-key',
-        privatePath,
-        '--key-id',
-        'station-golden-vector',
-        '--allow-unpinned-key',
-        '--output',
-        manifestPath,
-      ],
-      { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
-    );
-    expect(created.status, created.stderr).toBe(0);
-    const envelope = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    // Signer: signs exactly GOLDEN_CANONICAL.
-    expect(
-      verify(
-        null,
-        Buffer.from(GOLDEN_CANONICAL),
-        publicKey,
-        Buffer.from(envelope.signature, 'base64'),
-      ),
-    ).toBe(true);
-    expect(envelope.signature).toBe(GOLDEN_SIGNATURE);
+    const envelope = {
+      schemaVersion: 1,
+      algorithm: 'ed25519',
+      keyId: 'station-golden-vector',
+      payload: GOLDEN_PAYLOAD,
+      signature,
+    };
 
     // Verifier: install.sh accepts the golden signature. Every verification
     // failure has its own message; this one is the channel comparison that
@@ -811,12 +778,35 @@ describe('pinned manifest signing keys', () => {
         ],
       }),
     );
-    const archive = buildArchive(fixture, '1.2.3');
+    const payloadPath = join(fixture.dir, 'payload.json');
+    writeFileSync(
+      payloadPath,
+      JSON.stringify(
+        platformPayload({
+          channel: 'stable',
+          version: '1.2.3',
+          releaseTag: 'v1.2.3',
+        }),
+      ),
+    );
+    let sequence = 0;
     const verifyAs = (keyId: string) => {
-      const manifestPath = signManifest(fixture, '1.2.3', archive, { keyId });
-      return run(['verify', '--manifest', manifestPath, '--keys', table], {
-        STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1',
-      });
+      sequence += 1;
+      const manifestPath = join(fixture.dir, `manifest-${sequence}.json`);
+      const created = run([
+        'create',
+        '--payload',
+        payloadPath,
+        '--private-key',
+        fixture.privateKeyPath,
+        '--key-id',
+        keyId,
+        '--allow-unpinned-key',
+        '--output',
+        manifestPath,
+      ]);
+      expect(created.status, created.stderr).toBe(0);
+      return run(['verify', '--manifest', manifestPath, '--keys', table]);
     };
     const good = verifyAs('station-fixture-release');
     expect(good.status, good.stderr).toBe(0);
@@ -836,7 +826,7 @@ describe('pinned manifest signing keys', () => {
   it('refuses to sign a channel the pinned key id is not authorized for', () => {
     const fixture = makeInstallFixture('station-manifest-sign-policy-');
     const payloadPath = join(fixture.dir, 'payload.json');
-    writeFileSync(payloadPath, JSON.stringify(GOLDEN_PAYLOAD));
+    writeFileSync(payloadPath, JSON.stringify(platformPayload()));
     const result = run(
       [
         'create',
@@ -1177,11 +1167,25 @@ describe('install.sh public manifest verification', () => {
     );
     expect(good.status, good.stderr).toBe(0);
 
-    // The signer refuses to emit such a manifest in the first place.
+    // The signer refuses to emit such a URL in the first place.
+    const signerPayload = platformPayload({
+      channel: 'stable',
+      version: '1.2.3',
+      releaseTag: 'v1.2.3',
+    });
+    const [first, ...rest] = signerPayload.artifacts as Array<
+      Record<string, unknown>
+    >;
     const payloadPath = join(fixture.dir, 'newline-payload.json');
     writeFileSync(
       payloadPath,
-      JSON.stringify(payload(`${href}\n${digest(archive)}`, digest(archive))),
+      JSON.stringify({
+        ...signerPayload,
+        artifacts: [
+          { ...first, url: `${first.url}\n${digest(archive)}` },
+          ...rest,
+        ],
+      }),
     );
     const signed = run(
       [
@@ -1198,7 +1202,9 @@ describe('install.sh public manifest verification', () => {
       { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
     );
     expect(signed.status).toBe(1);
-    expect(signed.stderr).toContain('invalid portable artifact descriptor');
+    expect(signed.stderr).toContain(
+      'platform artifact darwin-arm64 url is not a canonical HTTPS URL',
+    );
   });
 
   it('replaces an install whose version cannot be read only when explicitly requested', {
@@ -1245,7 +1251,7 @@ describe('install.sh public manifest verification', () => {
   it('refuses to sign under an unpinned key id without --allow-unpinned-key', () => {
     const fixture = makeInstallFixture('station-manifest-unpinned-');
     const payloadPath = join(fixture.dir, 'payload.json');
-    writeFileSync(payloadPath, JSON.stringify(GOLDEN_PAYLOAD));
+    writeFileSync(payloadPath, JSON.stringify(platformPayload()));
     const args = [
       'create',
       '--payload',
