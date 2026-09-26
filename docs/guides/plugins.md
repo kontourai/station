@@ -932,9 +932,29 @@ Grants are stored in `<STATION_HOME>/plugin-grants.json` and revoked on plugin r
 
 Trusted permissions are not granted from plugin-rendered UI. Station opens a
 short-lived, host-owned review page that lists the exact requested capabilities.
-Approving enables the plugin's trusted server behavior; denying leaves its server
-module unloaded. You can revisit an installed plugin from **Plugins**, select it,
-and choose **Review Permissions**.
+Approval records a durable grant against the reviewed code and then requests
+runtime reconciliation. The [host approval route](../../src-server/routes/plugins/plugin-host-approval-routes.ts)
+returns the reconciliation status, operation ID, generation, and any effects or
+failures; it can report `incomplete`, including when the runtime is unavailable.
+Recorded approval therefore does not establish that the server module or
+providers are active. Inspect the reconciliation result and current plugin
+status before treating trusted behavior as available. Denial does not grant the
+requested permissions. You can revisit an installed plugin from **Plugins**,
+select it, and choose **Review Permissions**.
+
+Recorded permissions and currently effective permissions can also differ after
+the code changes. The [grant derivation](../../src-server/services/plugins/plugin-permissions.ts)
+compares the installed bytes with the reviewed content digest. Changed or
+unreadable content sets `contentBinding: "changed"` and puts every recorded
+permission in `withheld`, including passive permissions; those grants no longer
+authorize the current code. The
+[Permissions panel](../../src-ui/src/views/plugin-management/PluginPermissionsSection.tsx)
+explains that state. A fresh approval or installation/update must bind the
+current readable bytes before permissions apply again; approving one permission
+does not restore all previously withheld permissions. When current content is
+readable, older grants without a recorded digest are explicitly `unverified`
+and retain their effect under the migration policy until a later approval or
+update binds them.
 
 ### Managing Grants via API
 
