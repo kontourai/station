@@ -300,7 +300,7 @@ jobs:
           [[ "$extension_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
           cp "$extension_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$extension_uuid.mobileprovision"
       - name: Import the Notification Service extension profile bound to this channel
-        if: steps.live_activity.outputs.notification_enabled == 'true'
+        if: steps.live_activity.outputs.enabled == 'true'
         run: |
           set -euo pipefail
           notification_bundle_id='${{ steps.live_activity.outputs.notification_bundle_id }}'
