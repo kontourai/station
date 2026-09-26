@@ -283,7 +283,11 @@ async function bootAndProbe({ launcher, env, home, release }) {
       START_TIMEOUT_MS,
     );
     const announced = /Station home: (.+) \(/.exec(started)?.[1];
-    if (!announced || realpathSync(announced) !== realpathSync(stationHome)) {
+    if (
+      !announced ||
+      !existsSync(stationHome) ||
+      realpathSync(announced) !== realpathSync(stationHome)
+    ) {
       fail(
         `station start chose home ${announced}; a ${release.channel} archive owns ${stationHome}`,
       );
