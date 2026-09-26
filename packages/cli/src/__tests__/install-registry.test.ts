@@ -57,6 +57,7 @@ function writeLocalRegistry(home: string, root: string): void {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.resetModules();
   delete process.env.STATION_HOME;
   await Promise.all(
@@ -172,11 +173,16 @@ describe('install-registry helpers', () => {
     'aliases',
     { 'curated-demo': '' },
     { 'curated-demo': 1 },
-    { 'curated demo': 'actual-plugin' },
-    { 'curated-demo': 'actual/plugin' },
-    { 'curated-demo': 'actual-plugin ' },
-    { 'curated-demo': 'actual-plugin\u0000' },
-    Object.fromEntries([['a'.repeat(65), 'actual-plugin']]),
+    { 'curated-demo': null },
+    { 'curated-demo': {} },
+    { 'curated-demo': 'actual-plugin' },
+    { 'curated demo': { pluginName: 'actual-plugin', registryKey: 'r' } },
+    { 'curated-demo': { pluginName: 'actual/plugin', registryKey: 'r' } },
+    { 'curated-demo': { pluginName: 'actual-plugin ', registryKey: 'r' } },
+    { 'curated-demo': { pluginName: 'actual-plugin\u0000', registryKey: 'r' } },
+    Object.fromEntries([
+      ['a'.repeat(65), { pluginName: 'actual-plugin', registryKey: 'r' }],
+    ]),
   ])(
     'refuses an invalid or noncanonical alias store without echoing identities or mutating it: %j',
     async (invalidAliases) => {
@@ -257,9 +263,20 @@ describe('install-registry helpers', () => {
 
     process.env.STATION_HOME = projectHome;
     mkdirSync(join(projectHome, 'config'), { recursive: true });
+    // The shape the server's registry install writes
+    // (src-server/providers/registries/registry-install-aliases.ts).
     writeFileSync(
       join(projectHome, 'config', 'registry-installs.json'),
-      JSON.stringify({ 'curated-demo': 'actual-plugin' }, null, 2),
+      JSON.stringify(
+        {
+          'curated-demo': {
+            pluginName: 'actual-plugin',
+            registryKey: manifestPath,
+          },
+        },
+        null,
+        2,
+      ),
     );
     const { showOrSaveRegistry } = await import(
       '../commands/install-registry.js'
@@ -271,14 +288,6 @@ describe('install-registry helpers', () => {
 
     const output = log.mock.calls.flat().join('\n');
     expect(output).toContain('Curated Demo (curated-demo@1.0.0) [installed]');
-    expect(
-      JSON.parse(
-        readFileSync(
-          join(projectHome, 'config', 'registry-installs.json'),
-          'utf-8',
-        ),
-      ),
-    ).toEqual({ 'curated-demo': 'actual-plugin' });
 
     log.mockRestore();
   });

@@ -166,6 +166,12 @@ function emptyRegistryInstallAliases(): Record<string, string> {
   return Object.create(null) as Record<string, string>;
 }
 
+/**
+ * Registry id -> installed plugin directory name, read from the alias store
+ * the server's registry install writes
+ * (`src-server/providers/registries/registry-install-aliases.ts`): each value
+ * is a record carrying `pluginName` alongside its registry ownership.
+ */
 function readRegistryInstallAliases(): Record<string, string> {
   let raw: string;
   try {
@@ -188,7 +194,11 @@ function readRegistryInstallAliases(): Record<string, string> {
   }
 
   const aliases = emptyRegistryInstallAliases();
-  for (const [registryId, pluginName] of Object.entries(parsed)) {
+  for (const [registryId, record] of Object.entries(parsed)) {
+    const pluginName =
+      typeof record === 'object' && record !== null
+        ? (record as { pluginName?: unknown }).pluginName
+        : undefined;
     if (!isCanonicalPluginId(registryId) || !isCanonicalPluginId(pluginName)) {
       throw new RegistryInstallAliasesUnavailableError();
     }
