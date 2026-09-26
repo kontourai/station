@@ -85,8 +85,8 @@ const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
 
 /**
  * Session ids name the principal Station recorded for the session: the
- * operator as a recorded owner, another person, or the operator only by
- * inference (never elevation-eligible).
+ * operator as a recorded owner, another person, or no recorded owner at all
+ * (since #2662 a session without a recorded owner has no acting principal).
  */
 const resolveRecord: StationControlCallerRecordResolver = (sessionId) => {
   const principal = sessionId.startsWith('op-')
@@ -96,12 +96,7 @@ const resolveRecord: StationControlCallerRecordResolver = (sessionId) => {
       }
     : sessionId.startsWith('person-')
       ? { id: 'human:local:someone-else', source: 'session-owner' as const }
-      : sessionId.startsWith('inferred-')
-        ? {
-            id: LOCAL_OPERATOR_PRINCIPAL_ID,
-            source: 'ownerless-single-operator' as const,
-          }
-        : undefined;
+      : undefined;
   return {
     ...(principal ? { principal } : {}),
     localProjectId: 'local-project-a',
@@ -478,7 +473,7 @@ const ROWS: readonly Row[] = [
     expect: {
       'bound op-': 'allowed',
       'bound person-': 'station_control_role_required',
-      'bound inferred-': 'station_control_role_required',
+      'bound ownerless-': 'station_control_role_required',
       'delegated-custody op-': 'station_control_assurance_insufficient',
       'bearer-exposed op-': 'station_control_assurance_insufficient',
       'pooled none': 'station_control_caller_required',
