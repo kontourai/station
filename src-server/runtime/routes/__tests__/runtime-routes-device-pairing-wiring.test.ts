@@ -12,11 +12,11 @@
  * (It replaces source-text checks that an `audit:` key appeared within a few
  * hundred characters of each call site.)
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
@@ -82,21 +82,18 @@ const PORT = 4321;
 const DEVICE_PEER = '198.51.100.42';
 
 describe('runtime routes: device pairing security wiring', () => {
-  const directories: string[] = [];
+  const makeTempDir = trackTempDirs();
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
   afterEach(() => {
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
     ingress.ports = [];
     ingress.origins = undefined;
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
   });
 
   async function compose() {
     process.env.ALLOWED_ORIGINS = ORIGIN;
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-wiring-'));
-    directories.push(homeDir);
+    const homeDir = makeTempDir('station-pairing-wiring-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
     const pairing = new DevicePairingService({
       homeDir,
