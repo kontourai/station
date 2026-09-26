@@ -13,6 +13,7 @@ import {
   headingId,
   validateCatalog,
 } from './lib/documentation-model.mjs';
+import { compileDocumentationReviews } from './lib/documentation-review.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,6 +34,16 @@ export function learningHref(
   sourceFiles = new Set(),
 ) {
   const safe = defaultUrlTransform(href);
+  for (const ref of ['main', revision]) {
+    const prefix = `${repository}/blob/${ref}/`;
+    if (!safe.startsWith(prefix)) continue;
+    const [pathname, fragment = ''] = safe.slice(prefix.length).split('#');
+    const file = decodeURIComponent(pathname);
+    if (files.has(file))
+      return `#doc=${encodeURIComponent(file)}${fragment ? `&section=${encodeURIComponent(decodeURIComponent(fragment))}` : ''}`;
+    if (sourceFiles.has(file) && textSource.test(file))
+      return sourceSnapshotHref(file);
+  }
   if (!safe || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(safe)) return safe;
   const [pathname, fragment = ''] = safe.split('#');
   const destination = pathname
@@ -201,6 +212,16 @@ export async function buildLearningGuide({ check = false } = {}) {
         throw new Error(`Missing learning section: ${reference}`);
     }
   }
+  const reviews = await compileDocumentationReviews(
+    JSON.parse(
+      await readFile(path.join(root, 'docs/learn/review-ledger.json'), 'utf8'),
+    ),
+    new Map(documents.map((doc) => [doc.path, doc.digest])),
+    sourceFiles,
+    (file) => readFile(path.join(root, file)),
+    { requireFresh: check },
+  );
+  for (const doc of documents) doc.reviewRecord = reviews.get(doc.path) ?? null;
   const data = {
     revision,
     dirty: Boolean(git(['status', '--porcelain'])),
@@ -215,6 +236,9 @@ export async function buildLearningGuide({ check = false } = {}) {
     sourcePaths: [
       ...new Set([
         ...files,
+        ...[...reviews.values()].flatMap((review) =>
+          review.sources.map((source) => source.path),
+        ),
         ...documents.flatMap((doc) =>
           [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map(
             (match) => decodeURIComponent(match[1]),
@@ -269,7 +293,7 @@ export async function buildLearningGuide({ check = false } = {}) {
     );
     await writeFile(
       path.join(output, 'inventory.json'),
-      `${JSON.stringify({ revision, documents: documents.map(({ path: file, digest, review }) => ({ path: file, digest, review })) }, null, 2)}\n`,
+      `${JSON.stringify({ revision, documents: documents.map(({ path: file, digest, review, reviewRecord }) => ({ path: file, digest, review, reviewRecord })) }, null, 2)}\n`,
     );
     for (const file of data.sourcePaths) {
       if (!sourceFiles.has(file))

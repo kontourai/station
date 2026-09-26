@@ -67,12 +67,12 @@ explanation; correction; remaining limitation. Also inspect inbound links,
 duplicated explanations, glossary consistency, diagram edges, failure paths,
 and external prerequisites.
 
-No document is marked fully reviewed yet. The findings below establish only
-the named claims and corrections, not every claim in their containing pages.
-The reader shows this limit above each document. As the audit progresses,
-record each file's review scope and disposition, source revision, supporting
-code/tests, and remaining unchecked claims. A proposal or historical design
-must be identified before readers encounter its description of behavior.
+The [review ledger](../learn/review-ledger.json) records each inspected file's
+purpose, review scope, source revision, supporting code/tests, and limits.
+Classification is separate from source review. Most documents still await a
+complete source review; individual findings below do not verify their entire
+containing page. The reader shows this limit above each document and flags
+records whose document or supporting code has changed.
 
 ## Abstraction review
 
@@ -135,6 +135,48 @@ existing interface when it already hides the relevant complexity.
 | The glossary says every lease claim increments the epoch | `LiveSurfaceControlLeaseState.setHolder` separately updates epoch and fence; release/reclaim and continuing-holder tests exercise the distinction | Explain both counters, stale-input refusal, and the live-human restriction; shorten the source comment while retaining D2/S3 regression rationale |
 | The CLI README says nearly all operations are HTTP and its help always matches admission | Existing-service control invokes OS service managers; `bundledAvailabilityNote` lists all of `service` despite `assertCommandAvailable` admitting status/start/stop | Correct the README's local-operation scope and document the help discrepancy; the help implementation still needs correction |
 | The glossary treats every wrong-version home as requiring reset | `ensureStationHomeSchemaSync` refuses future versions with `STATION_HOME_SCHEMA_DOWNGRADE_REFUSED`; `stationHomeSchemaNeedsReset` does not select them | Distinguish legacy/invalid homes, current bootstrap, and newer-schema refusal; do not imply the empty production registry provides migrations |
+| Entry-point docs say detection never creates an engine connection | `StationRuntime` calls `adoptDetectedNativeEngines`; candidates include Claude, Codex, and Muse, and registry adoption respects recorded removal | Distinguish startup adoption from discovery and sign-in in README, setup, and Connections |
+| Context files repeat retired Agent types, virtual Agents, engine labels, and incomplete lifecycle states | Persisted `AgentRegistry`, `EngineCapabilityMatrix`, and `SESSION_LIFECYCLE_STATES` | Replace the root's duplicate glossary with responsibility routes; correct the runtime and extension contexts, including `idle` and per-engine delivery |
+| Introductory promises imply all Tasks automatically finish through gates | `attachFlowRunForSessionStart` leaves workspaces without valid Flow definitions unbound; Starter launch records `NOT_VERIFIED` independently of dispatch | Explain execution, review, and gate results as separate facts; retain the constitution as policy rather than claiming universal implementation |
+| First-use instructions bury actions in implementation details | Starter registry, owner adapters, first-run UI, and composer reference expansion | Keep concise user actions; preserve exact retry, correlation, and receipt behavior in `docs/guides/starter-work.md` with source and test routes |
+
+### Entry-point and context review
+
+The first-use review passed 144 tests across Starter registry/module/owner and
+route behavior, first-run choices and saving, and composer mentions. A separate
+79-test run covered native-engine adoption and the engine capability matrix.
+These are fixture-backed behavior checks, not a live engine, device, or release
+claim. Code inspection also corrected file-mention wording: the sender expands
+a project-relative selection into a quoted full workspace path.
+
+The review ledger currently distinguishes release-intent notes and dated
+changelogs from current contributor instructions. Policy and ADR classification
+preserves their intent without treating goals, original observations, or
+publication plans as current runtime guarantees. No percentage derived from
+these classifications represents completed semantic coverage.
+
+### Notification and privacy follow-through
+
+The privacy inventory now describes iOS Live Activity cards, ordinary Android
+and iOS notification pushes, encrypted content versus visible routing metadata,
+and configured vector-provider data. Its Markdown outputs were regenerated;
+Apple's generated privacy manifest bytes did not change. The 52 focused
+privacy/FCM/APNs tests passed. Tauri iOS context checks reported ten checked,
+none skipped or failed; no physical Apple or Android device was attached.
+
+Public policy publication and store-console disclosures remain outside this
+local result. Source code establishes transport fields and gates, not a
+third-party provider's retention or linkage practices. The existing store
+classifications need owner review against those practices before a disclosure
+submission; [Apple's guidance](https://developer.apple.com/app-store/app-privacy-details/)
+includes third-party linkage in that assessment. No store submission or public
+policy publication was performed by this audit.
+
+The [abstraction review](../architecture/abstraction-review.md#notification-alert-suppression-has-two-different-owners)
+records a separate, executed classification difference between FCM and APNs.
+The FCM comment now states that difference; its emitted executable code is
+unchanged. Selecting a common suppression policy requires a behavior change,
+not an editorial cleanup.
 
 ### Browser and lease evidence, 2026-09-26
 

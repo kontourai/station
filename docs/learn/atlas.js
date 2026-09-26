@@ -135,8 +135,33 @@ function showDocument(doc, section, module) {
     atlas.groups.find((entry) => entry.modules.includes(module.title));
   breadcrumbs.innerHTML = `<a href="#">Station</a> / ${group ? `<a href="${groupHref(group.id)}">${escapeText(group.title)}</a> / ` : ''}${escapeText(module?.title ?? doc.title)}`;
   const sourcePath = doc.path.split('/').map(encodeURIComponent).join('/');
-  readingStatus.innerHTML = `<p class="review-status"><strong>Full review pending.</strong> This page has not been verified in full against the code. <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="sources/${sourcePath}.txt">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
-    <p class="provenance">${escapeText(doc.path)} · ${escapeText(doc.review)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p></details>`;
+  const review = doc.reviewRecord;
+  const kindLabels = {
+    current: 'Current guide',
+    historical: 'Historical record',
+    design: 'Design decision',
+    policy: 'Policy',
+    'release-note': 'Release note',
+    generated: 'Generated reference',
+    fixture: 'Test fixture',
+  };
+  const stateLabels = {
+    classified: 'Purpose checked',
+    partial: 'Partially reviewed',
+    'source-reviewed': 'Reviewed against code',
+    'needs-review': 'Review out of date',
+  };
+  const reviewTitle = review
+    ? `${kindLabels[review.kind]} · ${stateLabels[review.state]}`
+    : 'Full review pending';
+  const reviewText = review
+    ? `${review.summary} ${review.state === 'needs-review' ? 'The document or its supporting code changed after this review. ' : ''}${review.limits}`
+    : 'This page has not been verified in full against the code.';
+  const evidence = review
+    ? `<p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="sources/${source.path.split('/').map(encodeURIComponent).join('/')}.txt">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
+    : '';
+  readingStatus.innerHTML = `<p class="review-status"><strong>${escapeText(reviewTitle)}.</strong> ${escapeText(reviewText)} <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="sources/${sourcePath}.txt">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
+    <p class="provenance">${escapeText(doc.path)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p>${evidence}</details>`;
   article.className = 'view-document';
   article.innerHTML = module?.html ?? doc.html;
   const prefix = module ? moduleHref(module.id) : documentHref(doc.path);

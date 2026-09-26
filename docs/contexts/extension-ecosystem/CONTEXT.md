@@ -5,15 +5,18 @@ Extension Ecosystem covers how Station is extended by plugins, registry items, p
 ## Language
 
 **Plugin**:
-Target v1: an Agent Plugins package with portable skills/MCP plus optional Station-owned
-Pane, agent, provider, knowledge, setting, and server contributions under
-`io.kontourai.station`.
+An extension package. Station supports legacy packages and Agent Plugins `1.0`
+packages. The latter can supply portable skills/MCP plus Station-specific
+contributions under `io.kontourai.station`.
 _Avoid_: integration if it contributes more than tools
 
 **Plugin manifest**:
-Target v1: the closed portable root `plugin.json`. Station host declarations live only in
-`extensions["io.kontourai.station"]`; portable skills and MCP use their fixed
-package locations. The current legacy loader has not completed this migration.
+For Agent Plugins `1.0`, the closed portable root is `plugin.json`. Station
+declarations live in `extensions["io.kontourai.station"]`; skills and MCP have
+their own package locations. The [manifest loader](../../../src-server/services/plugins/plugin-manifest-loader.ts)
+recognizes both `legacy` and `agent-plugin-1.0`. Use the
+[format reference](../../reference/agent-plugins.md), not the old migration plan,
+to choose a package shape.
 _Avoid_: package metadata
 
 **Plugin provider**:
@@ -37,11 +40,15 @@ The state model for draft, installable, installed, disabled, update available, o
 _Avoid_: install status if update/removal matters
 
 **Capability**:
-Something Station can attach to a Station agent: skills, integrations, tools, and commands.
+An authored instruction, tool source, or other feature an Agent can use.
+Actual delivery depends on the engine's
+[capability matrix](../../../packages/contracts/src/engine-capability-matrix.ts)
+and the permissions and transport involved.
 _Avoid_: feature when assignment semantics matter
 
 **Integration**:
-An MCP server or similar tool source that exposes tools to Station agents.
+An MCP server or similar tool source. Its availability to an Agent depends on
+the selected engine and tool-delivery policy.
 _Avoid_: plugin if it only contributes tools
 
 **Tool**:
@@ -78,6 +85,16 @@ _Avoid_: direct execution
 - A registry item becomes available before it becomes active in any project, agent, or pane composition.
 - station-control exposes platform mutations; governed sessions should turn those mutations into receipts.
 - MCP-UI panels are rendered through Station's host, but tools still route through Station-mediated policy and approval.
+
+## Implementation route
+
+Read [plugin authoring](../../guides/plugins.md) for supported contributions.
+Trace a package through the [manifest reader](../../../src-server/services/plugins/plugin-manifest-loader.ts),
+[portable component loader](../../../src-server/services/plugins/agent-plugin-loader.ts),
+[install consent](../../../src-server/services/plugins/plugin-install-consent.ts),
+and [provider loader](../../../src-server/providers/plugin-provider-loader.ts).
+Installing bytes, granting permission, and publishing a provider are different
+operations. Their failure and revocation paths must be reviewed together.
 
 ## Flagged Ambiguities
 

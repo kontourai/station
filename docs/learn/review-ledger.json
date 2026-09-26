@@ -1,0 +1,1407 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "path": ".agents/skills/deslop/SKILL.md",
+      "documentDigest": "521aa2103808681bada092a1de9ce495a97d8023e71cf123021ce8204526c6cc",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".agents/skills/security-triage/SKILL.md",
+      "documentDigest": "975c377164bef3b757e2bc78f88ebf20f16a123450c965f6e2deda7ad50c8535",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".agents/skills/tauri-v2-build/SKILL.md",
+      "documentDigest": "60720ca8ee12e49a775a3707db7ade1bce7a27b0a05b7c4f3ebe90c0a1e935cb",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".agents/skills/tauri-v2-build/references/platform-proof.md",
+      "documentDigest": "167b9d385dc0b30d1e712da462367ed096a0715fb1649393d3f4788962270cc4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/README.md",
+      "documentDigest": "381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
+      "limits": "This verifies contributor instructions and the local release planner; it does not publish a package.",
+      "sources": [
+        {
+          "path": "scripts/check-changesets.mjs",
+          "digest": "715f234b8c8e740728db04e91df3245c6c54780dbbf1b5efe9b48f9a94b96550"
+        },
+        {
+          "path": "scripts/run-ci-fast.mjs",
+          "digest": "724e2914f8dd266b6f884a31ec955be451abf1868b358cd9e076b7ba910c2fe7"
+        },
+        {
+          "path": ".changeset/config.json",
+          "digest": "f9e8c5a4c74425adbff4891af4de563d68bee61b94032c209f7112d9ec1f8cee"
+        },
+        {
+          "path": "pnpm-workspace.yaml",
+          "digest": "e101a202d035469d94011b568c05b558f02914e050a1fb94ff8639e68c721891"
+        }
+      ],
+      "checks": [
+        "npm run changesets:check \u2014 71 retained changesets form a valid release plan."
+      ]
+    },
+    {
+      "path": ".changeset/application-session-continuation.md",
+      "documentDigest": "f2d295e83ac382988049aeb1c5f84c1d29527bb34e87d90b32173b0564474b84",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/authority-query-persistence.md",
+      "documentDigest": "9ca5bce06ae118830ce763df74dd9a2e7f4a6d41eb62d50ba61b8bd4c5c9c383",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/bound-input-file-replies.md",
+      "documentDigest": "552aedc731d79569ddceb7e4e5be3625ec670336c61f56213aedc68dc839d096",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/bounded-monitoring-catalog.md",
+      "documentDigest": "e2dea861bd6457e323ff417cb947e945fa141073e1a001e8340a95f875adb257",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/cancel-account-session-reads.md",
+      "documentDigest": "7631d756d7e28187d3fcd14eae2865def387e0e1d2ec6db02ac0fcaf648def4e",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/channel-home-source-seal.md",
+      "documentDigest": "9091d10a49c3f71e9fd2fc465eb60be2de72748d93b8be264e17508cbebce990",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/chat-563-composer-runtime.md",
+      "documentDigest": "c7a415e91f28be3c28c842d6d534d35e6cd10f3f0960d6b30354b8c89ab4501d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/chat-history-profile-edits.md",
+      "documentDigest": "f53771ccb294e0d34faddd1ca50e4a243763d5404cc9017d26ad4c3cc21b7a0d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/chat-regression-cli-help.md",
+      "documentDigest": "239a595b5882f55fc94422914b4fcea4c8f0282417fa1ab7eb0d747530491090",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/cloud-move-preparation.md",
+      "documentDigest": "c80785d84c2ab1d583c9898a5f409cf7c8cbbed9d322ca8090745f204c7b7a96",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/cloud-project-import.md",
+      "documentDigest": "a00714c7d1e45483e10ee63e43ee221be998591382bbf0875175ea94e0d6cab4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/cloud-target-preflight.md",
+      "documentDigest": "4a75161e3cf1fe81de6631acb94749dfb4b6c24bc804526464b1aeb6047c8783",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/code-health-transport-boundaries.md",
+      "documentDigest": "3ba99a6584e23439265936bcd002ad7b9b4a3bf2391f9e38b22e4b2e42441ab9",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/connection-proof-contract.md",
+      "documentDigest": "2b3e31b70721ab8e6865f2678454f2dfd3236044dd7fec30262f431067768dc1",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/contracts-qualified-plugin-agent.md",
+      "documentDigest": "98e34cd2889755443813720148b24b84bdbcc3c11c5d8ab7482877cc4fd0f1c7",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/conversation-pull-request-links.md",
+      "documentDigest": "0fcfcafc258f383ce66ae7e8033513ba14d59336152a3423f62e7cae8e2dc262",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/delegate-wait-2264.md",
+      "documentDigest": "85afe1278512503dc331048c75180d3d70819e395dcac24357963578327b4c0d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/delegation-attempt-claims-capability.md",
+      "documentDigest": "6fcefab715232f321dfe762d190c7e276ef131704cc4a693a9eabb7c4b0d0146",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/delegation-attempt-claims-sdk.md",
+      "documentDigest": "2f33946c34a2e3c3c3bf92258dbb7d806605e1d40e171a0fb66875df1b78e712",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/deployment-authentication-contract.md",
+      "documentDigest": "8987886997ee9387a72eaf94c5685b780a056eefd659bd6b19181b760264e201",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/device-connection-trust.md",
+      "documentDigest": "be58d833f34cea5ea2a6a67369e6f8105a1c9351d050f99f94028d53c4c13b9d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/engine-sign-in-device-scope.md",
+      "documentDigest": "ac729c6617562d10b8f4f3d20c990d992b1b94e5f017e6ea647c49cb4135eeb5",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/feedback-analysis-freshness.md",
+      "documentDigest": "7f1b9208c538ceb6e57f483258a0c68fa132208742adf896c2b04e03c9325322",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/gcp-development-preview.md",
+      "documentDigest": "ac01c0cca414279612ab3dd1598f0cce4f2d4cec4648430957682060f287745e",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/home-control-session-http.md",
+      "documentDigest": "9863ab72a5a274aae824eb8b988aecc2c38cf296aaea699ed5021efc4690cf13",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/home-control-session-scope.md",
+      "documentDigest": "fac0b66ed2d120691a42e2beb5f5131ae396c81e5866a1f4f3190107053a488a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/home-recovery-disclosure.md",
+      "documentDigest": "abcf7b2bc4422bd10e6b8d78359f1e38c0aa0feb3e74b4c42fed2071cb5d6545",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/home-reference-recovery.md",
+      "documentDigest": "56042f9449c9bb95318ef413f3f502f0b28ab8257facaed8d983b90207a69717",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/invited-project-administration.md",
+      "documentDigest": "2fa36dfcec965741cfa020fd475db904bcb42c1bbe355614e8bb955a59fbbba9",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/layout-header-can-launch-prompts.md",
+      "documentDigest": "cd2172c4873f33bb613b0718aef4171ea2e351ffe0d51f0517c4504d8523ee0f",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/local-account-oidc.md",
+      "documentDigest": "d09f49018ab64d38287853b80f64036c2512a203d23b83c7faea4871908c31bc",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/mobile-device-inspection.md",
+      "documentDigest": "cec64fe786be5604c5ec0cc90a0dd29ee469cbbc6982b15a4f26c6138ce0f19a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/muse-delegate-status-idle-only.md",
+      "documentDigest": "c647d8b80d94d630f90ac5685c192ea27e7cbb6d3292df9c5134c206281b9b28",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/muse-hold-turn-background-work.md",
+      "documentDigest": "ca78e41f42b8205619e9a54168f77cc7ed937837788409d2dfb6853c7e8844b1",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/muse-idle-only-supervision.md",
+      "documentDigest": "f8b615741771101cc9b7f0fe7686f9e8f5426955252fe78d86f9a1451596b8e1",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/muse-no-default-idle-bound.md",
+      "documentDigest": "7eecc16b03cf7130272e3c757ca2044047ed409092b436adb1ae61f2ac97a46f",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/native-key-candidate-courier.md",
+      "documentDigest": "7af7169c8bf941a09b23bdf6ef21f985a1eefe4f8c9991dc4552e462a98fa130",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/native-pion-signaling.md",
+      "documentDigest": "a2a034ddbe2806b9c3610cd398dd5db41d930be9dd046cb4b8771b31f42a157c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/native-session-continuation-context.md",
+      "documentDigest": "6088af193c762111f7a11663e4a329d0ef05125ec031ed2fa4d4709bee0885d7",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/person-binding-pilot.md",
+      "documentDigest": "25a1f78a30a008af880cd8378606a741a8c0a69fe65bf2532df3cfae51f31d59",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/pnpm-workspace-install-safety.md",
+      "documentDigest": "229d1854a6ff72162b2393355b5b4c75a5d66e3a00a4222ab442bdc7f84fe489",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/portable-continuation-incarnation.md",
+      "documentDigest": "c386fe38698d258dde891215353f684978435a9b624c807b3c39c5c375cf5cf3",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/portable-project-attachment.md",
+      "documentDigest": "df4b04b5798216c98ec6817ff7e9889c7a7998a0e4ec7e535ca9b57f78f096f9",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/portable-project-execution-roots.md",
+      "documentDigest": "9584c7d54ae2428fbc5c1beab757a48abef41a4365ad665f4e4705bc8927494a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/portable-receiver-intent.md",
+      "documentDigest": "b82eff1758260aaf991f4f58766b438d32e16159ee3293770127aac62bbe9d0f",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/portable-workspace-packages.md",
+      "documentDigest": "00352a48c0a1cf0726f265a1ee2607a7b4c9673d45d52bd90f60f7316f6f844a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/project-account-invitations.md",
+      "documentDigest": "c51ed216536489315223b235cbe4dc7e06996e46006f8cb1f49fb28577612082",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/project-execution-root-edit.md",
+      "documentDigest": "271d290adb047b15a413338b203fa6e8d6957f93e2ac9a91fd8136c0c1882994",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/project-identity-cli.md",
+      "documentDigest": "1f174e78f693014e8f97a398f40e825c1195dc8a1742f2866cab3dcb2a959723",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/project-placement-ui-480.md",
+      "documentDigest": "b88310f0d0789b52eb49ae5a57516818d279a96dcd7103352dd3074816453687",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/project-task-sharing-controls.md",
+      "documentDigest": "6c4ecf123ce7913e8c4c5b7f922daea21913c7226d9083f5e77251794f5ab982",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/provider-plan-quota-2265.md",
+      "documentDigest": "1397a96f9bfd78b486eac31fa1c06b05969613ee509d883af16b7748f62d9d48",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/pull-request-review.md",
+      "documentDigest": "1ceb5dce41cc1712aa129d9c8da0a97f0b98fa25b10036c2ddc6648077047e66",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/resume-sse-cursor.md",
+      "documentDigest": "e7f656dc8c76964119410bcd28f2886e295905a7ea2f4eba3cf385d066ba0b4d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/scoped-project-queries.md",
+      "documentDigest": "f21fa1fedb94c8fe4f54138ee7d072703ea5fc7631da7f67216797e769d57b7c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/sdk-account-validation-dependency.md",
+      "documentDigest": "d41c6386f9130e4d271357adb473116fbeedf91a5db75711a2441d5e9221309f",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/sdk-typed-host-contexts.md",
+      "documentDigest": "4fa99398deb6e8b98b3d0cb446fbf3800fd53d3d7950da48ae114ec4cbcd14eb",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/self-hosted-broker-scope.md",
+      "documentDigest": "e78653dfdd7459731e9cd44e955bada2f1115865e8c27084389a1acb1e015893",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/self-hosted-browser-transport.md",
+      "documentDigest": "ab28b79cff5b506236d12395530172539433d260fbd58224ec1ab88731331796",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/shared-project-account-devices.md",
+      "documentDigest": "0c0025ba9bbc96a2629978d2b84937419d6ad1a731754859747cc8f9441440a1",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/shared-task-authorized-reads.md",
+      "documentDigest": "dae990c6cd7267f477cd889bbb017fd03e8d80f973daeb5657d915f94cd34656",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/skill-origin-project-scope.md",
+      "documentDigest": "bf713373c5016553857ef3f4579017be5bea389d0b0981580e3650d5ddba1f66",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/skill-writable-projection.md",
+      "documentDigest": "3deaef95e6b3c8a7b8f6e737e0e7dcfdd8f5661c863b46707dbe00509e67758c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/snapshot-current-session.md",
+      "documentDigest": "085bb144612f26b6b53fe4a0eccf22fc131ebb028c7e0223f3b4f1cf65c87f08",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/snapshot-open-requests.md",
+      "documentDigest": "52499c37bbaa734fb14c8666ba9c021743490dfb45cd6695e5087c710f7176c0",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/snapshot-runtime-error.md",
+      "documentDigest": "a0cca1040f682c6baa35d728e84c8bd964698c7f36a70a8c450e5398330d9df4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/snapshot-settled-child-work.md",
+      "documentDigest": "d2f2100e407e16b66eaf66fda7ef524fb224ccff1fd3cd3b420db40437def591",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/source-answer-quotation.md",
+      "documentDigest": "e240772ab205b10409486652b4c713b7fc4e82fdec91281e43df2f0f948562a5",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/trailing-orchestration-activity.md",
+      "documentDigest": "026cfc6177fe7bc822b864bda7a21740cfd00731493e972a93e583aaa1d26bea",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/verified-registry-authoring.md",
+      "documentDigest": "ce2b8a2cdea9d9072464e35bcc3aeee8ee82cf348646d8ab62d5ad91af56df90",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".changeset/workspace-package-verification.md",
+      "documentDigest": "e8edc3e1011db9ecb58b3e60086c316551487ad50cb52372c4030cef8ec9b682",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Release intent for the package versions named in this changeset.",
+      "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "documentDigest": "24a6430112252f4319df92deb31476798da923455e52a6434d3ee8f980c21aed",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "documentDigest": "a8f9ce630f2daf074a964211919a0c1c097c5808e9136c8027ebdf182a13c327",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "documentDigest": "0083a11f501fac0d6ea76cf3e18498afcf7c79932618842d520569c967ec625a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "SECURITY.md",
+      "documentDigest": "d04b0cb8af704fac894241b85f3fd422e448070339fc3b14029c86a14446e44d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0001-consume-kontour-primitives-through-public-contracts.md",
+      "documentDigest": "1ac8c7439b01cfcc5da749bf3d46b2138501a4d10e78e75732debe4a46cfc3cd",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0002-use-two-agent-types.md",
+      "documentDigest": "ae50ebe41e49f9920b37b6df1872d109a05de9533c0cce4ed9e3182c71809eb2",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0003-require-evidence-gated-completion.md",
+      "documentDigest": "44cad56016e9488cbca842566d3287b0b4cf850b30536a48e7066a23d6b26593",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0004-keep-core-foundational-and-make-verticals-plugins.md",
+      "documentDigest": "552f9a32af13fff61dabb93a2d499c7c9e165307ec913e0c521c273180a304b3",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0005-require-a-second-consumer-before-extraction.md",
+      "documentDigest": "436df740a02c154e0a8b31ad94a0f405b6c8781a4ea5f8042deb7b4628a478a4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0006-keep-console-and-station-split.md",
+      "documentDigest": "2aea637ff90adff2a8de035d1c4e504f32394f24b60a79165aecdcab57712355",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0007-render-mcp-ui-in-an-open-hardened-host.md",
+      "documentDigest": "4a59bfa6a7f378fa289c13b679b46f776056171057ac83790e52432201a47451",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0008-drive-acp-through-the-canonical-adapter-seam.md",
+      "documentDigest": "82ba1903b63bdc92f4fa7d00b01c01f5049a1c9467f3ae98bc8d93c536c23a91",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md",
+      "documentDigest": "fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Architecture decision record; preserve its rationale and stated scope.",
+      "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0017-browser-preview-host.md",
+      "documentDigest": "103727f9fa56a0ab6db46c12b5faf2cd1a922c0883589331f486ad74ab944eb8",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
+      "documentDigest": "e2c26ed636abec13ade37890506ff0650f60b977288c8cfa04347ea06ef67197",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/design/browser-preview-host-spike.md",
+      "documentDigest": "f33a88254386fb82803361a67c0d751fe748c40a04234ca10f167f44e2593d93",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/design/browser-preview-pane-mvp.md",
+      "documentDigest": "16b956674d8b3f38255fc5e297aa37fb8aa0fdc5adea9bc79a134adb139de2a4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/guides/contributing.md",
+      "documentDigest": "6bca909837219c3da219fa3609141596032db0fabc46cb2629b73e88eba331f3",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/reference/api-summary.md",
+      "documentDigest": "6f7cc874b9ec86a158514b996c6da61666a977b72ac4d86db8fc037e9e3e6c55",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Checked that the page routes readers to a static OpenAPI subset and actual route/auth owners, without promising a live OpenAPI endpoint or complete route coverage.",
+      "limits": "Individual API behavior and deployed availability require their own route and runtime review.",
+      "sources": [
+        {
+          "path": "src-server/openapi/spec.ts",
+          "digest": "5762b9679616cfbb1a326f8d465d43138d1ff0ec4b9f9019b0786a543addb20d"
+        },
+        {
+          "path": "scripts/generate-openapi.ts",
+          "digest": "c42ee96928d177a114cd9c545afeb179673f99d96b8a380ac93ec0a3b137dc82"
+        },
+        {
+          "path": "scripts/__tests__/public-doc-contract-examples.test.ts",
+          "digest": "8a50498ae6b2e46f6ba15189674cae36d293bfae4439b563850d98bdcbfa2013"
+        }
+      ],
+      "checks": [
+        "Documentation foundations: static OpenAPI bytes match buildOpenApiSpec(); included in the passed docs:truth:gate run."
+      ]
+    },
+    {
+      "path": "docs/reference/endpoints.md",
+      "documentDigest": "5c4e0813b4121a8df3220b50d2da5d0f87883bd2af70c0eb04bc93291d8172d4",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Checked that the page routes readers to a static OpenAPI subset and actual route/auth owners, without promising a live OpenAPI endpoint or complete route coverage.",
+      "limits": "Individual API behavior and deployed availability require their own route and runtime review.",
+      "sources": [
+        {
+          "path": "src-server/openapi/spec.ts",
+          "digest": "5762b9679616cfbb1a326f8d465d43138d1ff0ec4b9f9019b0786a543addb20d"
+        },
+        {
+          "path": "scripts/generate-openapi.ts",
+          "digest": "c42ee96928d177a114cd9c545afeb179673f99d96b8a380ac93ec0a3b137dc82"
+        },
+        {
+          "path": "scripts/__tests__/public-doc-contract-examples.test.ts",
+          "digest": "8a50498ae6b2e46f6ba15189674cae36d293bfae4439b563850d98bdcbfa2013"
+        }
+      ],
+      "checks": [
+        "Documentation foundations: static OpenAPI bytes match buildOpenApiSpec(); included in the passed docs:truth:gate run."
+      ]
+    },
+    {
+      "path": "docs/strategy/constitution.md",
+      "documentDigest": "2faf5b0f6906745b48784ec4d9abf5301ed8f79cb022860aaf060b847e524f80",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Human-owned product principles and design constraints.",
+      "limits": "Goals such as plugin/core parity and evidence-gated work are expectations, not proof that every current feature meets them. Policy text is preserved; implementation must be checked independently.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-001-readiness-gate-wiring/report.md",
+      "documentDigest": "4a6ba5461da1cd425c0a07888b0928bbe767286586324cb024f8c151bbd3f452",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-002-command-evidence-helper/report.md",
+      "documentDigest": "312a9affa5ed01a6ef6761b62bc9c6ed720abfe4c2972e6fcb63d86a0135a72d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-003-trusted-producers-session/report.md",
+      "documentDigest": "8ba17a5bab9905da2b459ea7f205d8a595cdb0588aa1661fde138500c2ed7c27",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-004-survey-workbench-plugin/report.md",
+      "documentDigest": "637bc487b803fa280d1c6fbf2c674f3f4b4b4b2f2f8a52fac2fae60d5b64978a",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-005-trust-surfaces/report.md",
+      "documentDigest": "1fc883820d4bbbb2a30e0424ec5901a3eb4baa18a7b19866ae4dc31a2c32af75",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-006-console-kit-adoption/report.md",
+      "documentDigest": "4f7e2f433fcaeaae2c88f0bdf07bd4b6770ccee99da017d1d9f5b215b906aa5d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-007-native-policy-enforcement/report.md",
+      "documentDigest": "88dc24f1c73120e9b9fc4bf5fe7bb3fc75f5d0c3bad4e41228be8025f92551fd",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-008-sidecars-and-skills/report.md",
+      "documentDigest": "bf1ff889a7b4b6df9c6aca3d85bc82782fc3515d8d180be7b351ad0ad3f1d732",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-009-gated-platform-mutations/report.md",
+      "documentDigest": "d02df33c02d31e2360d4b63110a49012af430ec2dc0bb584c80ab207dabc7d4e",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-010-console-emission/report.md",
+      "documentDigest": "1d7ae1b9f7d46da221ca14569840bba9e0facbd964f4f696e9fb4bb5d78b0fca",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-011-the-rename/report.md",
+      "documentDigest": "2f1606082b639155eef5b4ee8a4fb55905107492d9de47499e967376d4ee067e",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-012-remove-compat-shims/report.md",
+      "documentDigest": "52081b5aec7fab4c55686702d6b1d09a9d058d864d3e936814f1f2c869a3ad5c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-013-product-hardening/report.md",
+      "documentDigest": "67c6657f7c1c4acd62036820688ce4cf61c99a9689583afc1a63138db574b6d3",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-014-side-panel-redesign/report.md",
+      "documentDigest": "9c0203a9ce044b0fb16732fac699c49fe51bbbda72c62210f875efce6c974c7c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-015-product-icons/report.md",
+      "documentDigest": "8466a8a7c175aa3c1bf7a20e56c10718f94269606effa68fdf2cd5fb73c029b1",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-016-consume-kontourai-ui/report.md",
+      "documentDigest": "f87fdbb45daa8bf4b54c2c9a46c38ddd7a3450c3544a814585e6f51730ffb129",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-017-acp-canonical-cutover/report.md",
+      "documentDigest": "90c989a98b92d2c4dfb6e304626ff8252646790993e7fa1b3b41451d85704954",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-018-brian-media-client-preflight/report.md",
+      "documentDigest": "d4506cd9aa18ccab4167447375fe7ca4fe46b6f9f23c900d516988fa16f5964f",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-019-product-truth/report.md",
+      "documentDigest": "59e01684fbf759a4b0238f96c24f3946db0d76bb8049c6e13b2b5e54fc16af5d",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/dogfood-019-task-experiences/report.md",
+      "documentDigest": "aa807efe66d8f7f56c9bf749df3b1ffa0b3755df12c76d0bfc463139fd0acf82",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+      "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/strategy/dogfood/first-run-ritual.md",
+      "documentDigest": "730252b225d365d0ce6b221a0a6599492d956e5bfbfd6a7f1ef7eb6eadb48013",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/user/contributing.md",
+      "documentDigest": "2989d5d7583123f2c2951ca0ed0775d4f86793516aef4641a4b9c5786aa2dd14",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "packages/cli/CHANGELOG.md",
+      "documentDigest": "8be3eb354dadb954c5655114d61869f75a16a6d7786f4bccc92de0dba8c1f555",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Versioned package changelog retained as release history.",
+      "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "packages/contracts/CHANGELOG.md",
+      "documentDigest": "e579762198f760e21a31799153062f7d5d4691f5c0635c88546cfca3338f91b0",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Versioned package changelog retained as release history.",
+      "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "packages/sdk/CHANGELOG.md",
+      "documentDigest": "ee7105ec74e303a7bed5f5091293d27bd709709aee3e7dac775f018f1850129b",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Versioned package changelog retained as release history.",
+      "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "packages/shared/CHANGELOG.md",
+      "documentDigest": "87b0e26e8c52fa13b6211c91ad017f11538997b0636486c530b301a8db15dd9c",
+      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Versioned package changelog retained as release history.",
+      "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
+      "sources": [],
+      "checks": []
+    }
+  ]
+}

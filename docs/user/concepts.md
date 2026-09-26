@@ -64,12 +64,14 @@ continuation is a Session attached to that Task.
 - A **receipt** records what ran, what passed or failed, and what remains
   unverified.
 
-Station keeps these beside the work so a confident answer is not mistaken for
-a verified outcome.
+Station can keep these beside the work through its workflow and evidence
+integrations. Task status, a completed agent run, and a passed gate are separate
+facts; inspect the recorded evidence rather than inferring one from another.
 
 Example: a test result is evidence. The rule requiring that test is a gate. The
-record saying which command ran and whether it passed is the receipt. If the
-test fails, a route-back sends the work to the step that can fix it.
+record saying which command ran and whether it passed is the receipt. A
+workflow can use a route-back to send a failed test result to the step that
+can fix it.
 
 - A **degraded capability** is a bounded feature Station runs without,
   reported with a specific reason and remediation instead of failing silently

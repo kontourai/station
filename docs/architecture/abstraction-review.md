@@ -39,6 +39,29 @@ audit.
 
 ## Investigation candidates
 
+### Notification alert suppression has two different owners
+
+The Android [FCM channel](../../src-server/services/notifications/delivery/fcm-alert-channel.ts)
+has a private `isCardAlerted` predicate. The iOS
+[APNs channel](../../src-server/services/notifications/delivery/apns-alert-channel.ts)
+uses [card-alerted-categories](../../src-server/services/notifications/delivery/card-alerted-categories.ts).
+The shared predicate requires an explicit `onActivityCard: true` marker and
+recognizes a registry approval tied to an orchestration thread. The FCM copy
+uses the older category/session-kind rule without that marker.
+
+This is a confirmed policy difference, not just similar-looking code. Calling
+both channels' public `accepts` method with an `approval-request`, runtime
+Session ID, orchestration request kind, and no activity-card marker yields
+`false` for FCM and `true` for APNs at the audited revision. That observation
+tests classification only; it does not prove a missing or duplicate alert on
+a real phone.
+
+Next implementation review: trace the notification writers and audience rules,
+decide the intended cross-platform suppression rule, and place it behind one
+owner with tests for ephemeral Sessions and registry twins. Changing that rule
+would change behavior, so this documentation pass records the difference and
+corrects the stale “same rule” comment without choosing a policy silently.
+
 ### Composition owners are difficult to learn as a single page
 
 At the baseline, `station-runtime.ts` has 4,947 lines, `runtime-routes.ts` has

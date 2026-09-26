@@ -34,6 +34,14 @@ source inspection, an executed test, a real provider/device journey, or an
 observed release. A link to an existing source file proves location, not the
 claim beside it. Mark missing evidence explicitly.
 
+The learning reader's [review ledger](../learn/review-ledger.json) records
+document purpose separately from source review. A source-reviewed record needs
+the checked claims, code owners, executed checks, and limits. Its document and
+source hashes make later changes visible; they are not evidence of accuracy by
+themselves. Revisit the affected claims before refreshing a stale record. Never
+mark a file reviewed merely because it appears in the inventory or has valid
+links. Historical evidence and policy goals keep their own classifications.
+
 ## Make the application learnable
 
 The reading path is product purpose → system overview → subsystem or user

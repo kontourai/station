@@ -42,6 +42,12 @@ unreviewed set. Do not report an inventory, source-path scan, or passing gate as
 a complete semantic review. Preserve useful historical records with their
 status and successor rather than making old evidence appear current.
 
+Update the [review ledger](../../../docs/learn/review-ledger.json) after the
+review, recording scope, code/test owners, checks, and limits. Keep document
+classification separate from source review. A changed document or supporting
+source invalidates the recorded review; inspect that change before replacing
+its hashes. Do not turn a hash refresh into automatic approval of the prose.
+
 For a diagram, trace every behavioral edge and boundary; label optional paths
 and distinguish request, event, and storage flows. Check rendered output and
 keyboard navigation for interactive learning pages, including deep links,

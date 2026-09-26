@@ -1,0 +1,125 @@
+# How Starter Work connects first steps to real work
+
+Starter Work is the small set of first-use actions offered by Home and the
+attached-session view. Each action points to an ordinary Task, Session,
+approval, review receipt, or Scheduler run. It does not create another work
+system or treat completing a tutorial as proof that work passed a gate.
+
+The catalog and launch behavior are owned by
+[`StarterRegistry`](../../src-server/services/starter-work/starter-registry.ts).
+The [route](../../src-server/routes/starter-work.ts) validates the request;
+[`StarterWorkModule`](../../src-server/services/starter-work/starter-work-module.ts)
+keeps the durable correlation. Runtime composition mounts this personal-home
+feature only where those owners are available. Hosted tenant execution has no
+personal-home Starter route.
+
+The technical behavior below accompanies the shorter
+[user instructions](../user/getting-started.md#start-your-first-task).
+
+## Start Your First Task
+
+When Home offers **Start your first task**, it appears only after the durable
+first-run decision is completed and Station has confirmed a real Project. The
+action opens that Project's ordinary Task form; it does not create a second
+onboarding task type. After creation, Station validates and correlates the
+exact existing Task and Project, then
+requests the ordinary Task dispatcher once. If the Agent is deferred or
+unavailable, Station creates no Task and shows the recoverable readiness reason;
+retrying reuses the same project-scoped launch identity. After a launch starts,
+a response loss or indeterminate dispatch is **NOT_VERIFIED** — Station never
+retries that effect automatically. Replaying the same identity returns the
+durable Task/outcome or an indeterminate fence instead of creating a second
+Task. The exact Task remains reopenable, and its Session, run, and receipt
+owners remain the source for progress rather than Task status. If correlation
+cannot be confirmed, the Task still opens with a retry link; retrying that link
+never creates another Task.
+
+1. Open a local project.
+2. Create a Task for durable work, or start a direct chat for an immediate
+   conversation.
+3. Choose the Station agent or External agent you want to use.
+4. Keep gate state, evidence, route-backs, and receipts with the work as it
+   progresses.
+
+If the workspace is not ready, Station keeps the relevant Connections action
+visible. Run `station doctor` for a local diagnosis.
+
+
+## Continue an Attached Session
+
+Open the terminal Session in **Activity**, then choose **Continue in Station**.
+Claude and Codex create independent children, so the original terminal Session
+can keep running. Codex starts from the latest completed turn Station has
+observed; wait for a completed turn if the action is disabled. Station also
+shows a reason when the engine or source configuration is unavailable.
+
+An attached terminal Session stays read only. The first eligible **Continue in
+Station** action launches the bounded `continue-session` Starter: Station
+validates the exact source Session, reuses the orchestration adoption ledger
+with one stable operation identity, and opens the exact Station-owned child
+returned by that owner. Retrying an uncertain response reuses that identity
+rather than forking another child. Once the one-time starter is bound, later
+continuations use the ordinary owner action and do not overwrite its
+correlation. The adoption command receipt is inspectable, but it proves only
+that continuation was admitted; useful-work completion remains `NOT_VERIFIED`
+until the Session's own evidence says otherwise.
+If Station cannot read the one-time correlation state, it starts no
+continuation; retry after that read recovers instead of guessing an owner path.
+
+
+## Inspect Approval And Review Evidence
+
+After first run, Home also offers owner-backed inspection cards when Station
+can identify a real approval notification or independent-review receipt. The
+approval action opens that exact Notifications row without approving or
+denying it. The review action opens the exact Project and receipt tuple in
+that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
+Another Project's receipt with the same ID is never substituted. Older
+`/review-queue?receipt=...&project=...` links redirect there; the global
+`/review-queue` page itself was retired in favour of the per-Project layout,
+and a link that names no Project opens Notifications instead.
+
+These are one-time Starter correlations, not completion checkboxes. Response
+loss reuses a deterministic operation identity, reopening a bound card keeps
+the original target, and every later observation reads Approval Inbox or
+ReviewEvidence again. Missing, stale, unavailable, and `NOT_VERIFIED` owner
+states remain visible. A reviewed receipt is evidence input only and does not
+by itself satisfy a gate.
+
+
+## Run A Scheduled Readiness Check
+
+Home can create the canonical disabled `station-starter-check` job and run it
+once through the real Scheduler. The job stays disabled unless you explicitly
+enable its daily schedule. Station binds the exact Scheduler run before the
+Agent can be invoked, so a lost response or retry opens the same receipt and
+never starts another check. If Station restarts after binding but before the
+Agent begins, **Resume exact check** reuses the operation identity stored in
+that binding; it does not create a replacement run. Failed or indeterminate
+checks offer **Inspect receipt**, not automatic retry. A completed check proves
+execution only; read
+its findings and decide what to do rather than treating completion as a passed
+gate.
+
+For example, open a repository as a Project, create a Task named “Update the
+documentation,” and choose a ready External agent. That work's first execution
+is a Session. Reopen the Task later to see its files, evidence, and receipts
+together. For a one-off question that does not need that durable history, use a
+direct chat instead.
+
+
+## Follow the implementation
+
+| Responsibility | Code | Focused evidence |
+| --- | --- | --- |
+| First-run choice and saving optional answers | [FirstRunHomeChapter](../../src-ui/src/components/first-run/FirstRunHomeChapter.tsx), [AboutYouStep](../../src-ui/src/components/first-run/AboutYouStep.tsx) | [First-run tests](../../src-ui/src/components/first-run/__tests__/FirstRunHomeChapter.test.tsx), [answer tests](../../src-ui/src/components/first-run/__tests__/AboutYouStep.test.tsx) |
+| Catalog, readiness, dispatch, and replay | [StarterRegistry](../../src-server/services/starter-work/starter-registry.ts) | [Registry tests](../../src-server/services/starter-work/__tests__/starter-registry.test.ts) |
+| Durable one-time binding and operation state | [StarterWorkModule](../../src-server/services/starter-work/starter-work-module.ts) | [Module tests](../../src-server/services/starter-work/__tests__/starter-work-module.test.ts) |
+| Continuation through the existing adoption command | [Starter Session owner](../../src-server/services/starter-work/starter-session-owner.ts) | [Session-owner tests](../../src-server/services/starter-work/__tests__/starter-session-owner.test.ts) |
+| Approval and review observations | [Owner adapter](../../src-server/services/starter-work/starter-owner-adapter.ts) | [Owner-adapter tests](../../src-server/services/starter-work/__tests__/starter-owner-adapter.test.ts) |
+| Input validation and HTTP outcomes | [Starter routes](../../src-server/routes/starter-work.ts) | [Route tests](../../src-server/routes/__tests__/starter-work.routes.test.ts) |
+
+These tests cover local state, caller behavior, and failure handling with test
+dependencies. They do not prove a live engine completed useful work or a
+particular device displayed it. Follow the exact Task, Session, or Scheduler
+receipt for that evidence.

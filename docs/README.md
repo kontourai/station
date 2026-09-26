@@ -68,6 +68,7 @@ clearly mark the stale document.
 ## Repository Documentation
 
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.

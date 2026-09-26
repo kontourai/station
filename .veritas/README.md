@@ -1,6 +1,14 @@
 # Veritas For Station
 
-Station is governed by `@kontourai/veritas`: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The baseline contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.
+Station is governed by `@kontourai/veritas`. The
+[Repo Map](repo-map.json) declares work areas and evidence checks; the
+[Repo Standards](repo-standards/default.repo-standards.json) declare requirements.
+Authority settings and attestations protect changes to those standards.
+Durable configuration stays under `.veritas/`; generated evidence, feedback,
+and recommendations go under `.kontourai/veritas/`. The
+[0.3-to-0.5 migration record](../docs/strategy/veritas/migration-0.5-record.md)
+is retained as history. Use the current configuration files above for the
+active contract.
 
 ## Gate
 

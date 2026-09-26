@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -20,6 +21,7 @@ import {
   extractModules,
   validateCatalog,
 } from '../lib/documentation-model.mjs';
+import { compileDocumentationReviews } from '../lib/documentation-review.mjs';
 
 // docs/README.md indexed roughly half the docs tree when this was written —
 // 17 ADRs and eight whole directories were unreachable from the map that calls
@@ -89,6 +91,101 @@ describe('docs index reachability', () => {
 });
 
 describe('learning atlas', () => {
+  it('keeps recorded document reviews bound to their actual document and source bytes', async () => {
+    const files = new Set(tracked([]));
+    const ledger = JSON.parse(
+      readFileSync('docs/learn/review-ledger.json', 'utf8'),
+    );
+    const documents = new Map(
+      [...files]
+        .filter((file) => /\.(md|mdx|markdown)$/i.test(file))
+        .map((file) => [
+          file,
+          createHash('sha256').update(readFileSync(file)).digest('hex'),
+        ]),
+    );
+    const reviews = await compileDocumentationReviews(
+      ledger,
+      documents,
+      files,
+      async (file: string) => readFileSync(file),
+      { requireFresh: true },
+    );
+    expect(reviews.size).toBe(ledger.records.length);
+    expect(reviews.size).toBeGreaterThan(0);
+  });
+
+  it('invalidates review status when either the document or its code changes', async () => {
+    const digest = (text: string) =>
+      createHash('sha256').update(text).digest('hex');
+    const record = {
+      path: 'guide.md',
+      kind: 'current',
+      state: 'source-reviewed',
+      documentDigest: digest('Guide'),
+      sourceRevision: 'a'.repeat(40),
+      summary: 'Checked the caller and failure path.',
+      limits: 'No live provider was exercised.',
+      sources: [{ path: 'owner.ts', digest: digest('code') }],
+      checks: ['Focused caller test passed.'],
+    };
+    const docs = new Map([['guide.md', digest('Guide')]]);
+    const files = new Set(['guide.md', 'owner.ts']);
+    const ledger = { version: 1, records: [record] };
+    const read = async () => 'code';
+    expect(
+      (await compileDocumentationReviews(ledger, docs, files, read)).get(
+        'guide.md',
+      )?.state,
+    ).toBe('source-reviewed');
+    const changedCode = await compileDocumentationReviews(
+      ledger,
+      docs,
+      files,
+      async () => 'changed code',
+    );
+    expect(changedCode.get('guide.md')).toMatchObject({
+      state: 'needs-review',
+      changed: ['owner.ts'],
+    });
+    await expect(
+      compileDocumentationReviews(
+        ledger,
+        docs,
+        files,
+        async () => 'changed code',
+        { requireFresh: true },
+      ),
+    ).rejects.toThrow('Documentation review needs refresh');
+    const changedDoc = new Map([['guide.md', digest('Changed guide')]]);
+    expect(
+      (await compileDocumentationReviews(ledger, changedDoc, files, read)).get(
+        'guide.md',
+      )?.state,
+    ).toBe('needs-review');
+    await expect(
+      compileDocumentationReviews(ledger, docs, new Set(['guide.md']), read),
+    ).rejects.toThrow('Invalid review source');
+    await expect(
+      compileDocumentationReviews(
+        { version: 1, records: [record, record] },
+        docs,
+        files,
+        read,
+      ),
+    ).rejects.toThrow('duplicate reviewed document');
+    expect(
+      (
+        await compileDocumentationReviews(
+          { version: 1, records: [] },
+          docs,
+          files,
+          read,
+        )
+      ).size,
+    ).toBe(0);
+  });
+
   it('keeps example headings inside code fences out of the navigation tree', () => {
     const source =
       '## Boundary\n\n```markdown\n## Example only\n```\n\n~~~md\n## Another example\n~~~\n\n## Recovery\n\nRefuse stale work.';
@@ -191,6 +288,19 @@ describe('learning atlas', () => {
 
   it('keeps Markdown links in the reader while source links use the recorded revision', () => {
     const files = new Set(['docs/guide.md', 'README.md', 'docs/café notes.md']);
+    expect(
+      learningHref(
+        'https://github.com/kontourai/station/blob/main/docs/guide.md#read',
+        'README.md',
+        files,
+        'abc',
+      ),
+    ).toBe('#doc=docs%2Fguide.md&section=read');
+    const oldRevision =
+      'https://github.com/kontourai/station/blob/older/docs/guide.md#read';
+    expect(learningHref(oldRevision, 'README.md', files, 'abc')).toBe(
+      oldRevision,
+    );
     expect(
       learningHref('../README.md#setup', 'docs/guide.md', files, 'abc'),
     ).toBe('#doc=README.md&section=setup');

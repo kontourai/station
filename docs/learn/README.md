@@ -1,5 +1,19 @@
 # Learn Station
 
+## Review status
+
+Each document has a visible review note. The
+[review ledger](review-ledger.json) distinguishes current explanations, dated
+history, design, policy, release notes, generated records, and fixtures.
+Classification describes the document's purpose; it is not verification of its
+runtime claims. Unlisted documents remain unreviewed.
+
+A record states its review scope, supporting source files, checks, and limits.
+It binds the reviewed Markdown and code to content hashes. If either changes,
+the reader shows **Review out of date** and the documentation checks require the
+record to be revisited. Refresh those hashes only after reviewing the changed
+claim and evidence; changing a hash by itself is not a review.
+
 Explore Station from responsibilities to interfaces to implementation. Start
 with [the product concepts](../user/concepts.md) and
 [system overview](../architecture.md), then choose a branch below. The detailed

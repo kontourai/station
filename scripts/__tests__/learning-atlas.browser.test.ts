@@ -171,6 +171,22 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await browserExpect(page.getByRole('status')).toContainText(
     '0 concepts and 0 documents',
   );
+  await page.goto('http://atlas.test/#doc=docs%2Fstrategy%2Fconstitution.md');
+  await browserExpect(page.locator('.review-status')).toContainText(
+    'Policy · Purpose checked',
+  );
+  await browserExpect(page.locator('.review-status')).toContainText(
+    'not proof that every current feature meets them',
+  );
+  await page.goto('http://atlas.test/#doc=docs%2Fuser%2Fgetting-started.md');
+  await page
+    .getByRole('article')
+    .getByRole('link', { name: 'Starter Work guide', exact: true })
+    .click();
+  await browserExpect(
+    page.getByRole('article').getByRole('heading', { level: 1 }),
+  ).toHaveText('How Starter Work connects first steps to real work');
+  expect(page.url()).toContain('#doc=docs%2Fguides%2Fstarter-work.md');
   expect(errors).toEqual([]);
 }, 30_000);
 

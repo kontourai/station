@@ -119,19 +119,11 @@ const HIDDEN_BODY = 'You have a new notification';
  * Whether the agent-activity card already announces this notification, so
  * this channel skips it and one event is not alerted twice on a phone.
  *
- * MIRROR of `isCardAlerted` in
- * `src-server/services/notifications/delivery/card-alerted-categories.ts`
- * (#2589, the iOS alert channel); the two are to be unified at merge. Same
- * rule: the card is built from orchestration sessions only and alerts on an
- * approval or input entry and a finished, stopped or failed turn, so a
- * record is card-alerted only when its category is one of those AND the
- * record itself says it is about an orchestration session
- * (`metadata.sessionKind === 'runtime'` with a `metadata.sessionId`, and
- * `metadata.requestKind`, when present, is `'orchestration'`). A registry
- * approval (`sessionKind: 'managed'`, `requestKind: 'registry'`) never
- * appears on the card and must still alert; so does anything the record
- * does not identify as orchestration-backed (a duplicate beats a silenced
- * alert).
+ * FCM still uses the legacy category/session rule. The APNs predicate in
+ * `card-alerted-categories.ts` additionally requires `onActivityCard` and
+ * recognizes registry twins (#2589); these are no longer equivalent.
+ * Reconcile the writers and intended policy before sharing either predicate.
+ * See docs/architecture/abstraction-review.md for the observed difference.
  */
 const CARD_ALERTED_CATEGORIES: ReadonlySet<string> = new Set([
   'approval-request',

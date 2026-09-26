@@ -1,6 +1,7 @@
 # Evidence Governance Context
 
-Evidence Governance covers how Station turns agent work into receipts, gate verdicts, readiness state, and governance outcomes.
+This area connects execution records to reviews, configured gates, and
+repository readiness. Ordinary chat is not automatically a gated Flow run.
 
 ## Language
 
@@ -33,7 +34,10 @@ A human-accepted override of missing or failing evidence. Exceptions are explici
 _Avoid_: skip
 
 **Readiness evidence**:
-Evidence derived from Veritas merge readiness and attached to Flow as a Station-asserted governance claim.
+Evidence derived from Veritas readiness and attached to Flow as a
+Station-asserted `governance.merge-readiness` claim. The bridge uses `assumed`
+for a ready result; it does not relabel a Station assertion as independently
+verified evidence.
 _Avoid_: Veritas MCP evidence
 
 **Trust bundle**:
@@ -71,6 +75,21 @@ _Avoid_: compliance folder
 - Surface owns trust bundle and trust report semantics; Station renders them.
 - Flow Agents policy classes shape process discipline before, during, and after agent work.
 - Veritas shadow is the working-tree governance readiness check for Station itself.
+
+## Implementation route
+
+- [Flow completion](../../../src-server/services/flow/orchestration-flow-gate.ts)
+  connects a Session to an available workspace definition and evaluates its gates.
+- [Readiness bridge](../../../src-server/services/flow/flow-readiness-bridge.ts)
+  attaches the Veritas record using the claim semantics above.
+- [Readiness service](../../../src-server/services/evidence/veritas-readiness-service.ts)
+  runs or reads the configured CLI evidence.
+- [Command evidence](../../../src-server/services/flow/flow-command-evidence-bridge.ts)
+  and [review attachment](../../../src-server/services/evidence/flow-review-evidence-attachment.ts)
+  have separate input and attribution rules.
+
+The [module map](../../architecture/module-map.md) links behavior tests. Read
+the actual receipt and its source revision before interpreting a summary badge.
 
 ## Flagged Ambiguities
 

@@ -227,13 +227,19 @@ Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Engines. Use
 4. Read the single result: **Ready**, **Setup needed**, **Unavailable**, or **Off**. If it is
    not Ready, use the offered retry, edit, or choose-another-engine action before closing.
 
-Detection only says that Station observed a possible local engine; it does not configure it,
-read its secrets, or guarantee that it is ready. The UI names the concrete engine, such as
+Discovery reports a possible local engine; it does not guarantee readiness.
+Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
+persist their default Agents. Automatic adoption respects an engine's recorded
+removal and refuses an identity already bound to another connection. It does
+not sign the engine in. See
+[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+and the [Agent registry](../../src-server/domain/agent-registry.ts).
+The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
 
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
-one there explicitly connects the Engine and creates its External agent together; detection itself
-remains read-only until that action.
+one there explicitly connects the Engine and creates its External agent together.
+That discovery action is separate from the automatic startup adoption above.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:

@@ -1,11 +1,11 @@
 # Station
 
-**The agent workspace where work ships with receipts.**
+**An agent workspace for projects, execution, and evidence.**
 
 Station is Kontour's open-source, local-first workspace for agent work. Bring
 your agents, projects, and devices together, hand a Task to the agent you
-choose, and keep the gates, evidence, and receipts beside the work so "done"
-means proven rather than asserted.
+choose, and keep execution history, files, review evidence, and receipts beside
+the work. A completed run and a passed review are separate facts.
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
@@ -14,19 +14,17 @@ means proven rather than asserted.
 [Contributing](CONTRIBUTING.md)
 
 > **Status:** open source under active development (Apache-2.0). Run Station
-> from source on macOS or Linux today, or try the macOS Nightly desktop build.
+> from source on macOS or Linux, or try a Nightly desktop build.
 > A verified installer ships with the first stable release. See
 > [Get Station](#get-station).
 
 ## Why Station
 
-Most agent tools stop at an answer or a diff. Station keeps the work and the
-reason it is allowed to advance together.
+Station brings several parts of agent work into one workspace:
 
-- **Evidence over confidence** — work ends as passed gates with fresh
-  evidence, an exception a person explicitly accepted, or `NOT_VERIFIED`
-  stated plainly. Gate outcomes, missing evidence, route-backs, and receipts
-  stay beside the work instead of being reconstructed from a transcript.
+- **Evidence beside the work** — inspect gate results, missing evidence,
+  review receipts, and exceptions where the configured workflow provides them.
+  Creating or completing a Task does not by itself prove a gate passed.
 - **Supported engines, one workspace** — run Station agents on a local or
   hosted model, or connect supported agent CLIs and compatible custom engines
   as External agents. Each engine keeps its own behavior and tool loop;
@@ -42,8 +40,8 @@ reason it is allowed to advance together.
   computers, and export endpoints carry your data only when you configure
   and use them; desktop builds also check their release feed for updates.
 - **Built to extend** — plugins add layouts, agents, tools, knowledge,
-  connections, skills, and purpose-built work surfaces on the same SDK the
-  core uses.
+  connections, skills, and work surfaces through the public SDK and extension
+  contracts. Private core services are not part of that plugin API.
 
 ## What people use it for
 
@@ -54,7 +52,7 @@ reason it is allowed to advance together.
 | Use agents without a cloud account | Point a Station agent at a local model server. Inference stays on this machine, and every other data-carrying connection is one you add yourself. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
 | Run Station on a server you control | Build the container image from this checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. |
-| Build a purpose-built work surface | Write a plugin: a review workbench, a release console, a domain-specific layout. Plugins get the same primitives as the core. |
+| Build a purpose-built work surface | Write a plugin using the public SDK: a review workbench, a release console, or a domain-specific layout. |
 
 ## Get Station
 
@@ -75,17 +73,21 @@ Open the UI address the command prints, then follow
 [First steps](#first-steps). The [developer guide](docs/guides/development.md)
 covers instances, ports, temporary homes, and the desktop app build.
 
-### Nightly desktop build (macOS, Apple silicon)
+### Nightly desktop build
 
-A rolling [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop)
-is published from `main` for testers. It installs alongside a stable Station
-and updates through its own channel. Expect rough edges; it is not a stable
-release.
+The [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop)
+carries macOS Apple silicon and Windows x64 builds for testers. Choose an asset
+for your platform and check its version; retained assets can belong to earlier
+builds. Nightly has its own install and update channel. See the
+[Nightly guide](docs/guides/nightly.md) for supported paths and limitations.
 
 ### Verified installer (when a stable release is published)
 
-Stable and beta portable releases are signed GitHub release rings. No ring has
-been published yet. Once one exists, the bootstrap below verifies the release's
+Stable and beta portable releases use signed GitHub release rings. Check the
+[release list](https://github.com/kontourai/station/releases) and
+[release-ring guide](docs/guides/release-rings.md) for current availability;
+desktop updater channel tags are not portable release rings. For an available
+ring, the bootstrap below verifies the release's
 GitHub OIDC attestation and SHA-256 receipt before installing under
 `~/.station/installs/stable`, linking `station` into `~/.local/bin`, and
 opening the UI at `http://localhost:18000`. It requires Node.js 24.x, npm 10
@@ -105,22 +107,23 @@ uninstall.
 
 The repository ships a `Dockerfile` and `docker-compose.yml`. Station serves
 its UI, API, and streaming from one origin on port 3000 and persists its home
-in a named volume. Build the image from this checkout today: the Compose
-file's default published image is not yet available for anonymous pulls. The
+in a named volume. You can build the image from this checkout and select it
+with `STATION_IMAGE`; Compose otherwise names `ghcr.io/kontourai/station:latest`.
+The existence of that default does not establish registry availability. The
 [deployment guide](docs/guides/deployment.md) covers the source build, binding
 a workspace directory, and running it behind your own authenticated ingress.
 
 ## First steps
 
 1. Open **Connections** and choose **Add model connection** (a local or
-   hosted model service) or **Add engine** (an installed agent CLI). Station
-   detects what is already on the machine but never connects anything without
-   you.
+   hosted model service) or **Add engine** (an installed agent CLI). Startup
+   can register supported native CLIs and their default Agents; check their
+   readiness before starting work. The [Connections guide](docs/guides/connections.md)
+   lists the engines and adoption rules.
 2. Open a local project.
 3. Start a direct chat for a quick question, or create a Task for work you
    want to keep.
-4. Watch gate state, evidence, route-backs, and receipts accumulate beside the
-   Task.
+4. Follow the Task's execution and inspect the evidence its workflow records.
 
 If something is not ready, Station keeps the setup action visible. Run
 `station doctor` for a local diagnosis. The

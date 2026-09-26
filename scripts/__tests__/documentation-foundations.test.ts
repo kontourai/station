@@ -37,6 +37,7 @@ function manifestFields(contract: string): string[] {
 describe('documentation foundations', () => {
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
     const guide = read('docs/user/getting-started.md');
+    const starterGuide = read('docs/guides/starter-work.md');
     const installer = read('install.sh');
     const channels = JSON.parse(read('config/channel-ports.json')) as {
       channels: Record<
@@ -90,7 +91,12 @@ describe('documentation foundations', () => {
       expect(starterRegistry).toContain(sourceFact);
     expect(layoutContract).toContain("slug: 'review'");
     expect(layoutContract).toContain('export function projectReviewLayoutHref');
-    expect(guide).toContain('`/projects/<slug>/layouts/review?receipt=...`');
+    expect(guide).toContain(
+      'https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md',
+    );
+    expect(starterGuide).toContain(
+      '`/projects/<slug>/layouts/review?receipt=...`',
+    );
     expect(guide).toContain(
       `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
     );
