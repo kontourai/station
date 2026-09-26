@@ -62,6 +62,8 @@ interface DiagnosticOperation {
   readonly controller: AbortController;
   readonly startupComplete: Promise<void>;
   cancel(reason: unknown): void;
+  cancellation?: unknown;
+  startupError?: unknown;
   peer?: DiagnosticPeer;
   retirement?: Promise<void>;
 }
@@ -158,13 +160,12 @@ export function createNativeV2PionDiagnosticAdapter(
       const startupComplete = new Promise<void>((resolve) => {
         finishStartup = resolve;
       });
-      let cancellation: unknown;
       const operation: DiagnosticOperation = {
         controller,
         startupComplete,
         cancel: (reason) => {
-          if (cancellation !== undefined) return;
-          cancellation = reason;
+          if (operation.cancellation !== undefined) return;
+          operation.cancellation = reason;
           if (operation.peer) {
             operation.retirement = retirePeer(operation.peer);
             void operation.retirement.catch(() => {});
@@ -175,6 +176,12 @@ export function createNativeV2PionDiagnosticAdapter(
       };
       operations.add(operation);
       const abortFromCaller = () => operation.cancel(signal.reason);
+      let callerListenerRemoved = false;
+      const removeCallerListener = () => {
+        if (callerListenerRemoved) return;
+        callerListenerRemoved = true;
+        signal.removeEventListener('abort', abortFromCaller);
+      };
       signal.addEventListener('abort', abortFromCaller, { once: true });
       if (signal.aborted) abortFromCaller();
       let peer: DiagnosticPeer | undefined;
@@ -183,14 +190,14 @@ export function createNativeV2PionDiagnosticAdapter(
         if (disposed) return;
         disposed = true;
         operation.cancel(new Error('native_pion_diagnostic_peer_retired'));
-        signal.removeEventListener('abort', abortFromCaller);
+        removeCallerListener();
         if (peer) {
           operation.retirement ??= retirePeer(peer);
           await operation.retirement;
         }
       };
       const assertOperationCurrent = () => {
-        if (cancellation !== undefined) throw cancellation;
+        if (operation.cancellation !== undefined) throw operation.cancellation;
         assertCurrent(captured, controller.signal);
       };
 
@@ -224,10 +231,10 @@ export function createNativeV2PionDiagnosticAdapter(
         peers.add(peer);
         peerSignals.set(peer, controller.signal);
         finishStartup();
-        void peer.cleanupComplete.then(
-          () => peers.delete(peer!),
-          () => {},
-        );
+        void peer.cleanupComplete.then(() => {
+          peers.delete(peer!);
+          removeCallerListener();
+        }, removeCallerListener);
         assertOperationCurrent();
 
         const offerSha256 = await connectionDescriptionDigest(offer.offerSdp);
@@ -260,6 +267,7 @@ export function createNativeV2PionDiagnosticAdapter(
           dispose,
         };
       } catch (error) {
+        if (!peer) operation.startupError = error;
         finishStartup();
         try {
           await dispose();
@@ -271,7 +279,6 @@ export function createNativeV2PionDiagnosticAdapter(
         }
         throw error;
       } finally {
-        signal.removeEventListener('abort', abortFromCaller);
         operations.delete(operation);
       }
     },
@@ -297,11 +304,17 @@ export function createNativeV2PionDiagnosticAdapter(
           );
           const errors: unknown[] = [];
           for (const operation of pending) {
-            if (!operation.retirement) continue;
-            try {
-              await operation.retirement;
-            } catch (error) {
-              errors.push(error);
+            if (
+              operation.startupError !== undefined &&
+              operation.startupError !== operation.cancellation
+            )
+              errors.push(operation.startupError);
+            if (operation.retirement) {
+              try {
+                await operation.retirement;
+              } catch (error) {
+                errors.push(error);
+              }
             }
           }
           for (const peer of [...peers]) {

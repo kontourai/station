@@ -147,7 +147,7 @@ describe('native v2 Pion diagnostic adapter', () => {
       f.trust,
       caller.signal,
     );
-    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(removeListener).not.toHaveBeenCalled();
     expect(runtime.activePeerCount).toBe(1);
     expect(f.issued).toHaveLength(1);
     const binding = f.issued[0]!;
@@ -169,6 +169,7 @@ describe('native v2 Pion diagnostic adapter', () => {
       stationFingerprint: STATION_FP,
     });
     await result.dispose();
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
     expect(f.closeCalls).toBe(1);
     expect(runtime.activePeerCount).toBe(0);
     expect(runtime.retiringPeerCount).toBe(0);
@@ -358,5 +359,72 @@ describe('native v2 Pion diagnostic adapter', () => {
     expect(closeCalls).toBe(0);
     expect(runtime.activePeerCount).toBe(0);
     expect(runtime.retiringPeerCount).toBe(0);
+  });
+
+  test('close reports a startup cleanup failure from an in-flight launch', async () => {
+    const f = await fixture();
+    let rejectStartup!: (reason: unknown) => void;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const startupFailure = new AggregateError(
+      [new Error('pion launch failed'), new Error('pion cleanup failed')],
+      'pion_adapter_startup_cleanup_failed',
+    );
+    const runtime = createNativeV2PionDiagnosticAdapter(f.input, {
+      startAdapter: (options: { signal: AbortSignal }) => {
+        return new Promise((_resolve, reject) => {
+          rejectStartup = reject;
+          signalStarted();
+          options.signal.addEventListener('abort', () => {}, { once: true });
+        });
+      },
+    } as unknown as NativeV2PionDiagnosticAdapterDependencies);
+    const answering = runtime.adapter.answer(
+      f.offer,
+      f.trust,
+      new AbortController().signal,
+    );
+    await started;
+    const closing = runtime.close().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await Promise.resolve();
+    rejectStartup(startupFailure);
+    await expect(answering).rejects.toBe(startupFailure);
+    const closeError = await closing;
+    expect(closeError).toBeInstanceOf(AggregateError);
+    expect((closeError as AggregateError).message).toBe(
+      'native_pion_diagnostic_close_failed',
+    );
+    expect((closeError as AggregateError).errors).toContain(startupFailure);
+    expect(runtime.activePeerCount).toBe(0);
+    expect(runtime.retiringPeerCount).toBe(0);
+  });
+
+  test('caller abort after answer retires the established peer', async () => {
+    const f = await fixture();
+    const runtime = createNativeV2PionDiagnosticAdapter(
+      f.input,
+      f.dependencies,
+    );
+    const caller = new AbortController();
+    const result = await runtime.adapter.answer(
+      f.offer,
+      f.trust,
+      caller.signal,
+    );
+    expect(runtime.activePeerCount).toBe(1);
+    caller.abort(new Error('connector_withdrawn'));
+    // The retained abort listener starts close immediately; this mock rejects
+    // if the actual Pion process signal was aborted before graceful close.
+    expect(f.closeCalls).toBe(1);
+    await result.dispose();
+    expect(runtime.activePeerCount).toBe(0);
+    expect(runtime.retiringPeerCount).toBe(0);
+    expect(f.closeCalls).toBe(1);
+    await runtime.close();
   });
 });
