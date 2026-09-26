@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { resolveVerificationToolchain } from './lib/test-reliability.mjs';
 import {
   __verificationCoordinatorInternals,
@@ -1012,5 +1012,4 @@ async function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  process.exitCode = await main();
+if (invokedDirectly(import.meta.url)) process.exitCode = await main();

@@ -365,6 +365,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: spawns the repo-scans runner through a symlink (`--list`, no
   // Vitest child) to prove its entrypoint guard reaches the runner.
   'scripts/__tests__/run-repo-scan-suites.test.ts',
+  // #2682: runs real `node` entry points from temp paths with a space, a `%`
+  // and a symlink to prove `invokedDirectly` reaches the script body.
+  // Bounded single-shot children per case.
+  'scripts/__tests__/module-entry.test.ts',
+  // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
+  // child process with an empty PATH to prove it needs no npx shim.
+  'scripts/__tests__/a11y-ratchet.test.ts',
+  // #2682: asks the real fallow CLI (`<subcommand> --help`, no writes) to
+  // accept each baseline invocation as built.
+  'scripts/__tests__/fallow-baseline.test.ts',
+  // #2682: the real-tree half — one `git ls-files` over scripts/ and ops/.
+  'scripts/__tests__/module-entry.scan.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -744,6 +756,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
+  // #2663: real lookup against a temp HOME — may spawn a fake `$SHELL -ic`,
+  // and launches a fake `muse` through the production MuseAdapter spawn.
+  'src-server/runtime/bootstrap/__tests__/native-engine-adoption.path-resolution.process.test.ts',
   // station#3218: builds the store-integrity probe exactly as
   // `esbuild.config.mjs` does and runs that bundle as a REAL child against
   // real corrupt bytes, so its 0/1/2/3 exit contract is proven by an actual

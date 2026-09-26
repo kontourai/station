@@ -37,12 +37,12 @@
 // replacing those glyphs with real icons.
 //
 // Follows the ratchet family in this directory (pure exported helpers +
-// a `main()` gated behind `import.meta.url === file://process.argv[1]`,
+// a `main()` gated behind `invokedDirectly(import.meta.url)`,
 // `git ls-files`-scoped).
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertCoverageIntegrity,
   assertScanScope,
@@ -186,9 +186,6 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

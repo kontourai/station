@@ -15,14 +15,14 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import {
   ACCOUNT_DISABLED_HEADING,
   ACCOUNT_DISABLED_REASON,
   parseE2EDisabledLines,
 } from './lib/account-requirement.mjs';
 import { projectLatestE2EEvidence } from './lib/e2e-latest-evidence.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedProcess,
   registerProcessSignal,
@@ -901,10 +901,7 @@ export async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error.stack ?? error);
     process.exitCode = 1;

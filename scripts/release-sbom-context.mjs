@@ -7,6 +7,7 @@ import {
   expectedLifecyclePurls,
   npmPurl,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { readPnpmDependencyGraph } from './lib/pnpm-dependency-graph.mjs';
 import { releaseVariants } from './lib/release-artifacts.mjs';
 import { canonicalJson } from './lib/release-sboms.mjs';
@@ -193,7 +194,7 @@ export function releaseDependencyLifecycle({
   };
 }
 
-if (process.argv[1]?.endsWith('release-sbom-context.mjs'))
+if (invokedDirectly(import.meta.url))
   try {
     const assetsDir = resolve(option('--assets-dir'));
     const tag = option('--tag');

@@ -1,4 +1,5 @@
 import { writeFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const INTERNAL_TESTFLIGHT_ENVIRONMENTS = Object.freeze({
   stable: 'native-release',
@@ -130,7 +131,7 @@ function option(args, name) {
   return index < 0 ? undefined : args[index + 1];
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const repository = option(process.argv, 'repository');
   const output = option(process.argv, 'output');
   if (!repository || !output)

@@ -12,6 +12,7 @@
  * Usage: node scripts/check-android-16kb-alignment.mjs <path-to.apk>
  */
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REQUIRED_ALIGNMENT = 0x4000;
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
@@ -495,4 +496,4 @@ function main() {
   }
 }
 
-if (process.argv[1]?.endsWith('check-android-16kb-alignment.mjs')) main();
+if (invokedDirectly(import.meta.url)) main();
