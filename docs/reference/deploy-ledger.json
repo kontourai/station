@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-09-26T16:21:23Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2460.36252766737",
+    "sha": "3c43c43a71ba9908bcb1030326491320a0b90d1f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36252766737",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2460.36252766737 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fe8660dd9bc0b4e5e69be8afdce3500befe49e3d",
+      "groups": {
+        "feat": [
+          "[#2537](https://github.com/kontourai/station/pull/2537) feat(relay): add pre-grant Station key discovery and native trust foundations"
+        ],
+        "fix": [
+          "[#2692](https://github.com/kontourai/station/pull/2692) fix(ci): build the CLI bundle before repository source scans",
+          "[#2691](https://github.com/kontourai/station/pull/2691) fix(ios): drop Tauri-rendered signing keys before injecting the manual block"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2687](https://github.com/kontourai/station/pull/2687) refactor(update): share the owned dependency-installer check",
+          "[#2669](https://github.com/kontourai/station/pull/2669) chore: remove references to an external product and gate them out"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-09-26T12:10:51Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2460.36238106182",
