@@ -36,7 +36,9 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 |-------|-------------|
 | `name` | Display name |
 | `prompt` | System instructions (supports `{{key}}` template variables) |
-| `model` | Bedrock model ID — falls back to `defaultModel` in app.json |
+| `model` | Station-engine model preference; see resolution order below |
+| `execution.agentConnectionId` | Saved engine/model connection binding; resolved by the server |
+| `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
 
@@ -68,7 +70,9 @@ protocol-version field, and there is no era selector to maintain.
 
 ### Guardrails
 
-Guardrails constrain model inference per agent:
+For the Station engine, guardrails constrain model inference per Agent. External
+engines apply only the controls their adapter and live capabilities support; a
+Station guardrail declaration does not establish external enforcement:
 
 ```json
 {
@@ -89,25 +93,38 @@ Guardrails constrain model inference per agent:
 
 ## Agent Lifecycle
 
-The runtime loads and manages agents through a defined lifecycle:
+For Station-engine Agents, the native runtime loads and manages this lifecycle.
+External-engine Agents use the canonical [Session API](../reference/session-api.md)
+and their own adapter; they are not entries in this native `activeAgents` loop:
 
 ```
 load → MCP connect → ready → chat → reload
 ```
 
-1. **load** — `station-runtime.ts` reads `agent.json`, resolves the Bedrock model, and creates a memory adapter for the agent's conversation history
+1. **load** — `station-runtime.ts` reads the Agent configuration and resolves its connection and model. Model preference is `execution.modelId` → `spec.model` → connection default → app `defaultModel`; the selected connection determines the provider, not a hardcoded Bedrock choice. The native runtime creates the Agent's conversation memory adapter.
 2. **MCP connect** — for each distinct entry in `tools.mcpServers`, Station owns one negotiated MCP connection, loads the raw tool schemas and metadata, and shares that connection across agents that use the integration
 3. **ready** — the agent is registered in `activeAgents` and available for requests
 4. **chat** — `POST /api/agents/:slug/chat` streams a response; the runtime creates an `InjectableStream` to interleave approval events with model output
 5. **reload** — `reloadAgents()` prepares the replacement connection set, publishes the new agents, and retires superseded connections without a full restart
 
-Health is checked every 60 seconds and emitted as `agent-health` monitoring events.
+Read health through the Agent health endpoint. This guide does not promise a
+periodic `agent-health` event. The model-resolution owner is
+`src-server/runtime/plugins/runtime-provider-resolution.ts`.
+
+`POST /api/agents/:id/chat` is the Station-engine route. For an external-engine
+Agent it returns HTTP 409 with guidance to use `POST /api/orchestration/chat`;
+it does not forward or redispatch that request. Use the canonical Session API
+when a client must support either engine kind.
 
 ---
 
 ## Tool Approval Flow
 
-Tools not in `autoApprove` pause the stream and request user confirmation before executing.
+In attended Station-engine chat on the per-Agent route, tools not otherwise
+approved pause for user confirmation. This section describes that route’s
+legacy SSE approval transport. Canonical orchestration clients instead read
+`request.opened` and send `respondToRequest` through the
+[Session API](../reference/session-api.md#respondtorequest).
 
 Flow:
 1. `beforeToolCall` hook fires — checks `autoApprove` list via `isAutoApproved()`
@@ -193,7 +210,9 @@ source for the live row.
 
 ## Agent Hooks
 
-`agent-hooks.ts` provides framework-agnostic lifecycle hooks wired into whichever runtime adapter is active. Hooks receive typed context objects — no framework imports.
+`agent-hooks.ts` provides framework-agnostic hooks for the Station engine’s
+native framework adapters. External engine adapters own their own event and
+approval paths; these hooks do not establish external policy enforcement.
 
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
@@ -209,7 +228,8 @@ source for the live row.
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/agents/:slug/chat` | Streaming chat (SSE) |
+| `POST /api/agents/:slug/chat` | Station-engine streaming chat (SSE); external engines return 409 |
+| `POST /api/orchestration/chat` | Canonical Environment + Agent execution entry for either engine kind |
 | `POST /agents/:slug/invoke` | Silent tool invocation (no stream) |
 | `POST /agents/:slug/invoke/stream` | Streaming invoke with optional JSON schema output |
 | `GET /agents/:slug/tools` | List tools with full schemas |
@@ -316,7 +336,7 @@ Never use hardcoded hex colors. Use CSS variables from `src-ui/src/index.css` (`
 Never use `window.confirm()` or `window.alert()`. Always use the `ConfirmModal` component for destructive or significant actions:
 
 ```tsx
-import { ConfirmModal } from '@/components/ConfirmModal';
+import { ConfirmModal } from '@/components/modals/ConfirmModal';
 
 <ConfirmModal
   isOpen={showConfirm}
@@ -337,17 +357,18 @@ This ensures consistent theming, accessibility, and UX across all confirmation f
 Always use the `AgentIcon` component — never manually check icon URLs or render `<img>` tags for agent icons:
 
 ```tsx
-import { AgentIcon } from '@/components/AgentIcon';
+import { AgentIcon } from '@/components/icons/AgentIcon';
 <AgentIcon agent={agent} size={20} />
 ```
 
 ### ACP Connection Detection
 
-Never hardcode ACP connection prefixes (e.g., `startsWith('kiro-')`). Use
-`agent.source === 'acp'` from the Agents list when code must distinguish this
-connection method. ACP metadata (`planUrl`, `planLabel`, `connectionName`) is
-available on Agent configs for dynamic UI. User-facing copy names the engine;
-it does not present ACP as an agent category.
+Never infer an engine from Agent ID prefixes. The current Agent catalog exposes
+`engineId`, `engineDisplayName`, and `engineConnectionType`; use
+`engineConnectionType === 'acp'` when the connection method matters. The saved
+connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
+`source` discriminator. Execution requests name the Agent and let the server
+resolve that binding. User-facing copy names the engine.
 
 ### Plugin Workflow
 
