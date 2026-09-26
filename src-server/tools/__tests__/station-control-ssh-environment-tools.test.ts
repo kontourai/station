@@ -329,6 +329,25 @@ describe('station-control SSH environment management tools', () => {
     expect(createTunnel).toHaveBeenCalledTimes(1);
   });
 
+  test('connect_ssh_environment forwards a failed connect envelope with polling false instead of polling', async () => {
+    const createTunnel = vi.fn();
+    const service = serviceWithAdapter(createTunnel);
+    await service.initialize();
+    const app = createSshEnvironmentRoutes(service);
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(bridgeFetch(app));
+    const tools = await registerTools();
+
+    const result = toolBody(
+      await tools.connect_ssh_environment({ id: 'missing' }),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: 'SSH environment not found',
+      polling: false,
+    });
+    expect(createTunnel).not.toHaveBeenCalled();
+  });
+
   test('create_ssh_environment surfaces the shared route validation failure for a flag-like hostAlias without reaching the service', async () => {
     const service = serviceWithAdapter(vi.fn());
     await service.initialize();
