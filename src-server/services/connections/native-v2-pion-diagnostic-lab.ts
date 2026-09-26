@@ -42,6 +42,7 @@ export function createNativeV2PionDiagnosticLab(
     pion.adapter,
   );
   let closeTask: Promise<void> | undefined;
+  let retirementTask: Promise<void> | undefined;
   let closed = false;
   return Object.freeze({
     register(signal: AbortSignal) {
@@ -58,10 +59,13 @@ export function createNativeV2PionDiagnosticLab(
     close(signal: AbortSignal) {
       if (!closeTask) {
         closed = true;
-        closeTask = (async () => {
+        retirementTask ??= pion.close();
+        const attempt = (async () => {
           const withdrawal = connector.withdraw(signal);
-          const retirement = pion.close();
-          const results = await Promise.allSettled([withdrawal, retirement]);
+          const results = await Promise.allSettled([
+            withdrawal,
+            retirementTask,
+          ]);
           const errors = results.flatMap((result) =>
             result.status === 'rejected' ? [result.reason] : [],
           );
@@ -71,6 +75,10 @@ export function createNativeV2PionDiagnosticLab(
               'native_pion_diagnostic_lab_close_failed',
             );
         })();
+        closeTask = attempt;
+        void attempt.catch(() => {
+          if (closeTask === attempt) closeTask = undefined;
+        });
       }
       return closeTask;
     },

@@ -96,6 +96,7 @@ async function fixture() {
   const withdraw = vi.spyOn(client, 'withdraw').mockResolvedValue();
   let messages: string[] = [];
   let onReadMessages: (() => void) | undefined;
+  let onClose: (() => void) | undefined;
   let closeCalls = 0;
   const startAdapter = vi.fn(async (options: Record<string, unknown>) => {
     expect(options.profile).toBe('diagnosticEcho');
@@ -117,6 +118,7 @@ async function fixture() {
       close: async () => {
         closeCalls++;
         resolveCleanup();
+        onClose?.();
         if ((options.signal as AbortSignal).aborted)
           throw new Error('pion_close_after_abort');
       },
@@ -158,6 +160,9 @@ async function fixture() {
     },
     onReadMessages(callback: () => void) {
       onReadMessages = callback;
+    },
+    onClose(callback: () => void) {
+      onClose = callback;
     },
     get closeCalls() {
       return closeCalls;
@@ -225,6 +230,25 @@ describe('native v2 Pion diagnostic lab composition', () => {
     await lab.close(signal);
   });
 
+  test('revocation during peer disposal prevents a successful echo result', async () => {
+    const f = await fixture();
+    f.answerNative.mockImplementation(async () => {
+      f.setMessages(['station echo probe']);
+    });
+    f.onClose(() => f.trustOwner.revoke());
+    const lab = createNativeV2PionDiagnosticLab(f.input, {
+      startAdapter: f.startAdapter as never,
+    });
+    const signal = new AbortController().signal;
+    await lab.register(signal);
+    await expect(lab.pollNative(signal)).rejects.toThrow(
+      'broker_connector_trust_retired',
+    );
+    expect(lab.activePeerCount).toBe(0);
+    expect(f.closeCalls).toBe(1);
+    await lab.close(signal);
+  });
+
   test('rejects diagnostic echo payloads above the per-message bound and closes the peer', async () => {
     const f = await fixture();
     f.answerNative.mockImplementation(async () => {
@@ -241,5 +265,26 @@ describe('native v2 Pion diagnostic lab composition', () => {
     expect(lab.activePeerCount).toBe(0);
     expect(f.closeCalls).toBe(1);
     await lab.close(signal);
+  });
+
+  test('retries remote withdrawal after a failed close without repeating local retirement', async () => {
+    const f = await fixture();
+    f.withdraw
+      .mockRejectedValueOnce(new Error('withdrawal outcome unknown'))
+      .mockResolvedValue();
+    const lab = createNativeV2PionDiagnosticLab(f.input, {
+      startAdapter: f.startAdapter as never,
+    });
+    const signal = new AbortController().signal;
+    await lab.register(signal);
+    await expect(lab.close(signal)).rejects.toThrow(
+      'native_pion_diagnostic_lab_close_failed',
+    );
+    expect(() => lab.pollNative(signal)).toThrow(
+      'native_pion_diagnostic_lab_closed',
+    );
+    await expect(lab.close(signal)).resolves.toBeUndefined();
+    expect(f.withdraw).toHaveBeenCalledTimes(2);
+    expect(f.startAdapter).not.toHaveBeenCalled();
   });
 });

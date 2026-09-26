@@ -372,6 +372,7 @@ export class SelfHostedBrokerConnector {
             );
             current();
             await this.#dispose(result);
+            current();
           }
         } catch (error) {
           await this.#dispose(result);
