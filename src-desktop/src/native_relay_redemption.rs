@@ -3225,6 +3225,57 @@ mod tests {
     }
 
     #[test]
+    fn native_signal_diagnostic_ipc_accepts_only_bounded_saved_profile_inputs() {
+        let open: NativeRelaySignalDiagnosticOpenInput =
+            serde_json::from_value(serde_json::json!({
+                "profileName": "Local",
+                "expectedProfileRevision": 7,
+                "nonce": "signal-nonce-01",
+                "offerSdp": "v=0\r\no=- diagnostic\r\n",
+            }))
+            .unwrap();
+        assert!(validate_diagnostic_open_input(&open).is_ok());
+
+        let mut extra = serde_json::json!({
+            "profileName": "Local",
+            "expectedProfileRevision": 7,
+            "nonce": "signal-nonce-01",
+            "offerSdp": "v=0",
+        });
+        extra["grantBearer"] = serde_json::json!("never-renderer-owned");
+        assert!(serde_json::from_value::<NativeRelaySignalDiagnosticOpenInput>(extra).is_err());
+
+        let mut too_large = open.clone();
+        too_large.offer_sdp = "s".repeat(MAX_NATIVE_SIGNAL_SDP_BYTES + 1);
+        assert!(validate_diagnostic_open_input(&too_large).is_err());
+        let mut bad_nonce = open;
+        bad_nonce.nonce = "../route".into();
+        assert!(validate_diagnostic_open_input(&bad_nonce).is_err());
+    }
+
+    #[test]
+    fn native_signal_diagnostic_read_ipc_rejects_transport_and_auth_fields() {
+        let input: NativeRelaySignalDiagnosticReadInput =
+            serde_json::from_value(serde_json::json!({
+                "profileName": "Local",
+                "expectedProfileRevision": 7,
+                "nonce": "signal-nonce-01",
+            }))
+            .unwrap();
+        assert!(validate_diagnostic_read_input(&input).is_ok());
+
+        for field in ["brokerUrl", "privateKey", "grantBearer", "projectId"] {
+            let mut value = serde_json::json!({
+                "profileName": "Local",
+                "expectedProfileRevision": 7,
+                "nonce": "signal-nonce-01",
+            });
+            value[field] = serde_json::json!("must-not-cross-ipc");
+            assert!(serde_json::from_value::<NativeRelaySignalDiagnosticReadInput>(value).is_err());
+        }
+    }
+
+    #[test]
     fn native_signal_service_uses_fixed_proven_requests_and_returns_secret_free_dtos() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let grants = stored_signal_grant(&prepared);
@@ -3250,6 +3301,10 @@ mod tests {
             .open(&open_request)
             .unwrap();
         assert_eq!(opened.expires_at, NOW + 30_000);
+        assert_eq!(
+            serde_json::to_value(&opened).unwrap(),
+            serde_json::json!({ "expiresAt": NOW + 30_000 })
+        );
         let (path, body, valid_proof) = open_transport.observed.lock().unwrap().clone().unwrap();
         assert_eq!(path, OPEN_PATH);
         assert!(valid_proof);
@@ -3285,6 +3340,14 @@ mod tests {
         assert_eq!(
             answer.station_proof.as_deref(),
             Some("opaque-station-proof")
+        );
+        assert_eq!(
+            serde_json::to_value(&answer).unwrap(),
+            serde_json::json!({
+                "answerSdp": "v=0\r\no=- station-answer\r\n",
+                "stationProof": "opaque-station-proof",
+                "expiresAt": NOW + 30_000,
+            })
         );
         let (path, _body, valid_proof) = read_transport.observed.lock().unwrap().clone().unwrap();
         assert_eq!(path, READ_PATH);
@@ -5507,6 +5570,26 @@ pub(crate) struct NativeRelaySignalReadRequest {
     pub(crate) nonce: String,
 }
 
+/// Exact IPC input for the opt-in signaling diagnostic. It intentionally has
+/// no bearer, key, broker URL, or application payload fields.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelaySignalDiagnosticOpenInput {
+    profile_name: String,
+    expected_profile_revision: u64,
+    nonce: String,
+    offer_sdp: String,
+}
+
+/// Exact IPC input for polling a previously opened diagnostic offer.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeRelaySignalDiagnosticReadInput {
+    profile_name: String,
+    expected_profile_revision: u64,
+    nonce: String,
+}
+
 /// Secret-free broker receipt; it contains no URL, bearer, or signing key.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -6330,4 +6413,111 @@ pub(crate) async fn station_native_relay_grant_cleanup_retry(
     })
     .await
     .map_err(|_| "Station could not retry native relay cleanup.".to_owned())?
+}
+
+/// Opens a broker offer for the native signaling diagnostic only. The main
+/// local app WebView supplies a saved profile selector and bounded SDP; all
+/// grant credentials, proof signing, and broker routing stay in the host.
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_signal_diagnostic_open(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticOpenInput,
+) -> Result<NativeRelaySignalOpened, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if validate_diagnostic_open_input(&request).is_err() {
+        return Err("The native relay signaling diagnostic request is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let proof_keys = NativeRelayProofKeyVault::new();
+        let http = UreqNativeBrokerTransport::new();
+        let grants = native_relay_grant_vault();
+        NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+            .open(&NativeRelaySignalOpenRequest {
+                profile_name: request.profile_name,
+                expected_profile_revision: request.expected_profile_revision,
+                nonce: request.nonce,
+                offer_sdp: request.offer_sdp,
+            })
+            .map_err(map_signal_diagnostic_error)
+    })
+    .await
+    .map_err(|_| "Station could not open the native relay signaling diagnostic.".to_owned())?
+}
+
+/// Reads the answer for an existing diagnostic offer. The result contains
+/// signaling material only and never redeems or exposes a grant credential.
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_signal_diagnostic_read(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticReadInput,
+) -> Result<NativeRelaySignalAnswer, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if validate_diagnostic_read_input(&request).is_err() {
+        return Err("The native relay signaling diagnostic request is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let proof_keys = NativeRelayProofKeyVault::new();
+        let http = UreqNativeBrokerTransport::new();
+        let grants = native_relay_grant_vault();
+        NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+            .read(&NativeRelaySignalReadRequest {
+                profile_name: request.profile_name,
+                expected_profile_revision: request.expected_profile_revision,
+                nonce: request.nonce,
+            })
+            .map_err(map_signal_diagnostic_error)
+    })
+    .await
+    .map_err(|_| "Station could not read the native relay signaling diagnostic.".to_owned())?
+}
+
+fn valid_diagnostic_profile_name(profile_name: &str) -> bool {
+    !profile_name.trim().is_empty() && profile_name.len() <= 256
+}
+
+fn validate_diagnostic_open_input(
+    request: &NativeRelaySignalDiagnosticOpenInput,
+) -> Result<(), ()> {
+    if !valid_diagnostic_profile_name(&request.profile_name)
+        || !valid_safe_id(&request.nonce)
+        || request.offer_sdp.is_empty()
+        || request.offer_sdp.as_bytes().len() > MAX_NATIVE_SIGNAL_SDP_BYTES
+    {
+        return Err(());
+    }
+    Ok(())
+}
+
+fn validate_diagnostic_read_input(
+    request: &NativeRelaySignalDiagnosticReadInput,
+) -> Result<(), ()> {
+    if !valid_diagnostic_profile_name(&request.profile_name) || !valid_safe_id(&request.nonce) {
+        return Err(());
+    }
+    Ok(())
+}
+
+fn map_signal_diagnostic_error(error: NativeRedemptionError) -> String {
+    match error {
+        NativeRedemptionError::StaleProfile => {
+            "The selected saved Station changed; refresh it before using the diagnostic.".into()
+        }
+        NativeRedemptionError::StationTrustRequired => {
+            "The selected Station has not been approved for native relay access.".into()
+        }
+        NativeRedemptionError::StationTrustUnavailable => {
+            "Station could not verify approved native relay trust.".into()
+        }
+        NativeRedemptionError::GrantExpired => {
+            "The saved native relay grant has expired or is near expiry.".into()
+        }
+        NativeRedemptionError::BrokerRejected => {
+            "The relay broker rejected or returned an invalid diagnostic response.".into()
+        }
+        _ => "Station could not complete native relay signaling diagnostics.".into(),
+    }
 }
