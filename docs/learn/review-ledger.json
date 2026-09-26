@@ -13,6 +13,19 @@
       "checks": []
     },
     {
+      "path": ".agents/skills/documentation-audit/SKILL.md",
+      "documentDigest": "6d2eb75c6d5fa8a9db0fe83c5dc3eebad91de807c90810a9d2edf7c39961048a",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+      "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+      "sources": [],
+      "checks": [
+        "Documentation-audit skill quick_validate.py passed."
+      ]
+    },
+    {
       "path": ".agents/skills/security-triage/SKILL.md",
       "documentDigest": "975c377164bef3b757e2bc78f88ebf20f16a123450c965f6e2deda7ad50c8535",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -72,7 +85,7 @@
         }
       ],
       "checks": [
-        "npm run changesets:check \u2014 71 retained changesets form a valid release plan."
+        "npm run changesets:check — 71 retained changesets form a valid release plan."
       ]
     },
     {
@@ -858,12 +871,12 @@
     },
     {
       "path": ".github/pull_request_template.md",
-      "documentDigest": "24a6430112252f4319df92deb31476798da923455e52a6434d3ee8f980c21aed",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "documentDigest": "1bf6c5d67ef440fc3baeb21f819b909ee74a1e73a473ade203b114eec722fd87",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
       "kind": "policy",
       "state": "classified",
-      "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
-      "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+      "summary": "Reviewed required handoff fields, including the issue-to-documentation follow-through for fixed limitations.",
+      "limits": "A PR template prompts evidence and review; its presence does not enforce behavioral accuracy.",
       "sources": [],
       "checks": []
     },
@@ -1022,6 +1035,37 @@
       "checks": []
     },
     {
+      "path": "docs/architecture/module-map.md",
+      "documentDigest": "16aa2e253f0d6c8ae9a708cb87b96c00f292509d1d750e6cab68e96e18bba037",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed and added KnowledgeStoreProvider and SqliteVecIndexProvider sections against registry/index/migration/search callers. Other module sections remain subject to the broader audit.",
+      "limits": "Two reviewed sections do not certify the complete module catalog; live provider, device, and deployment outcomes remain unverified.",
+      "sources": [
+        {
+          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
+          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
+        },
+        {
+          "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+          "digest": "96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6"
+        },
+        {
+          "path": "src-server/routes/knowledge/knowledge-index-routes.ts",
+          "digest": "ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c"
+        },
+        {
+          "path": "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
+          "digest": "82dcb6c23161ba8866477fa1eca25b19f757f4d2b028d48f3f379c7424a4a371"
+        }
+      ],
+      "checks": [
+        "Independent Knowledge review accepted the two added module sections.",
+        "Generated MCP checked: 93 topics from canonical inputs."
+      ]
+    },
+    {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "f33a88254386fb82803361a67c0d751fe748c40a04234ca10f167f44e2593d93",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1044,6 +1088,116 @@
       "checks": []
     },
     {
+      "path": "docs/guides/acp.md",
+      "documentDigest": "813cd34efe7ab8f05db92df68c0e1bc8d8f9f023f5285172c2f2d9faccae811e",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Reviewed current ACP Agent binding, canonical execution seam, guarded cursor restoration, credentials/refusal behavior, extension notifications, and current probe outcomes.",
+      "limits": "Dated Kiro observations remain historical. This record does not rerun a live ACP engine or establish vendor compatibility for every advertised extension.",
+      "sources": [
+        {
+          "path": "src-server/providers/adapters/acp-adapter.ts",
+          "digest": "d7c6a65ba2a2874e7aabb850da93c493ea060a79874c6777721a0950ff860b4a"
+        },
+        {
+          "path": "src-server/providers/adapters/acp-adapter-events.ts",
+          "digest": "f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427"
+        },
+        {
+          "path": "src-server/services/acp/acp-probe.ts",
+          "digest": "7a91bac3e7d7fd693285d50c20990448323f1db7e3c0ba97edde486b0d8de86c"
+        },
+        {
+          "path": "src-shared/extension-notification-bindings.ts",
+          "digest": "323f6a777874a9725cb5a077759cb79b429c62b8c0401bf373acb68e88db569f"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        }
+      ],
+      "checks": [
+        "Independent Session/ACP source and correction review accepted.",
+        "Session/ACP implementation lane: 51 tests across 5 files passed during this audit; fixture evidence only."
+      ]
+    },
+    {
+      "path": "docs/guides/agents.md",
+      "documentDigest": "de3a6c60020c33c40df7048d425db03acec462a0613750afabe9b2c6b51b943b",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions.",
+      "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
+      "sources": [
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/services/orchestration/session-command-module.ts",
+          "digest": "fc96b4fe4f900234c42fbafbab0c9ce1ae497d2a6d6bcdb5b4cfaa06e39e9f21"
+        },
+        {
+          "path": "src-server/services/orchestration/attached-session-adoption.ts",
+          "digest": "bec1e418aca9e3e6c4ac0be535e72357dfa9403464f70246c69d44090791879d"
+        },
+        {
+          "path": "src-server/services/orchestration/attached-session-follow-service.ts",
+          "digest": "2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c"
+        },
+        {
+          "path": "src-server/providers/adapters/codex-adapter.ts",
+          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+        },
+        {
+          "path": "src-server/providers/adapters/claude-adapter.ts",
+          "digest": "0e6f692f175ca9f13c648ee165685c22aa7cc78d35680d5bce8ddb76f23160af"
+        },
+        {
+          "path": "src-server/providers/adapters/acp-adapter.ts",
+          "digest": "d7c6a65ba2a2874e7aabb850da93c493ea060a79874c6777721a0950ff860b4a"
+        },
+        {
+          "path": "src-server/providers/sessions/codex-rollout-session-source.ts",
+          "digest": "35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9"
+        },
+        {
+          "path": "src-server/providers/sessions/claude-transcript-session-source.ts",
+          "digest": "d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d"
+        },
+        {
+          "path": "src-server/services/projects/attention-projection.ts",
+          "digest": "b1ae045cdbe0b8cf3a73ce5f126f6e9a11f54074ec7aaed8e04284ea3a057625"
+        },
+        {
+          "path": "src-server/services/flow/survey-flow-review-service.ts",
+          "digest": "7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e"
+        },
+        {
+          "path": "src-ui/src/components/attention/AttentionCard.tsx",
+          "digest": "ed07cb944c1f39922d56fe2e35938f6b57ab8130f5093861460156787d097558"
+        },
+        {
+          "path": "packages/contracts/src/agent.ts",
+          "digest": "09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22"
+        },
+        {
+          "path": "src-server/runtime/plugins/runtime-provider-resolution.ts",
+          "digest": "6db69bcb24089dd9eb9aa8d754df1fdcd4536e951d3dbe2371da2c007be2dd85"
+        },
+        {
+          "path": "packages/sdk/src/providers.tsx",
+          "digest": "c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b"
+        }
+      ],
+      "checks": [
+        "Independent final source delta accepted at document digest de3a6c60020c33c40df7048d425db03acec462a0613750afabe9b2c6b51b943b.",
+        "Session diagnostic and importer/follower/request-inspection selections passed (8 and 40 tests)."
+      ]
+    },
+    {
       "path": "docs/guides/contributing.md",
       "documentDigest": "6bca909837219c3da219fa3609141596032db0fabc46cb2629b73e88eba331f3",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1053,6 +1207,85 @@
       "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "docs/guides/documentation.md",
+      "documentDigest": "31eab27d7de12f1872a186eef04d48ba13c26cc436cda04ab9b504a65c8d8b13",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+      "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+      "sources": [],
+      "checks": []
+    },
+    {
+      "path": "docs/guides/knowledge.md",
+      "documentDigest": "7e34701bc008e8cff3d9f0e3729cf1f6fefd8b40c549e6ee34a82fdac21854ce",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
+      "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
+      "sources": [
+        {
+          "path": "src-server/services/knowledge/knowledge-service.ts",
+          "digest": "ed5b4adef24f9f7be62eed1af9ed6d586f96228a6e599427cf335c622328bbed"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
+          "digest": "eae8c0416ce087086fa5adf0304a8e269de3d377ab52dfdee67a6b805f62c96a"
+        },
+        {
+          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
+          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
+        },
+        {
+          "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+          "digest": "96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6"
+        },
+        {
+          "path": "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
+          "digest": "82dcb6c23161ba8866477fa1eca25b19f757f4d2b028d48f3f379c7424a4a371"
+        },
+        {
+          "path": "src-server/routes/knowledge/knowledge-index-routes.ts",
+          "digest": "ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c"
+        },
+        {
+          "path": "src-server/knowledge-store/adapters/default-store.ts",
+          "digest": "1de28c69e2811e342e2d2763c3f78f3eaee22ccc89b4527c1c8b014a61f62507"
+        },
+        {
+          "path": "src-server/knowledge-store/adapters/obsidian-store.ts",
+          "digest": "211c2048f206d3ddd19be67fdbd4ed1b5f48e2df85bc80d3d12a774cef9c24b6"
+        },
+        {
+          "path": "src-server/knowledge-store/neo4j-connection.ts",
+          "digest": "e51086363cf97d52cdddd90125f23ba5ecda2ef237b48ff56273e8e7e5622b88"
+        },
+        {
+          "path": "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
+          "digest": "34a9a719b0fb5fdb63c5b23b853941237b2b51b1ac5ce595a67b1b14d6b735e9"
+        },
+        {
+          "path": "src-ui/src/views/project-settings/KnowledgeSection.tsx",
+          "digest": "456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744"
+        },
+        {
+          "path": "examples/meeting-notes/src/CaptureModal.tsx",
+          "digest": "1d2e79a7a10cb67fd9514a7fc9ccb2420028f349b50f3fdf95ae52a2a9c8ec4f"
+        },
+        {
+          "path": "packages/contracts/src/knowledge-store.ts",
+          "digest": "a972016054857898a06f86515bf22ca9198b419ae3018e29c878b047fcfa5c9b"
+        }
+      ],
+      "checks": [
+        "Independent source review and correction delta accepted.",
+        "Knowledge focused selection: 156 tests across 13 files passed during this audit; subsequent comment edits emit identical JavaScript.",
+        "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit."
+      ]
     },
     {
       "path": "docs/reference/api-summary.md",
@@ -1104,6 +1337,74 @@
       ],
       "checks": [
         "Documentation foundations: static OpenAPI bytes match buildOpenApiSpec(); included in the passed docs:truth:gate run."
+      ]
+    },
+    {
+      "path": "docs/reference/session-api.md",
+      "documentDigest": "90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c",
+      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
+      "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
+      "sources": [
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/services/orchestration/session-command-module.ts",
+          "digest": "fc96b4fe4f900234c42fbafbab0c9ce1ae497d2a6d6bcdb5b4cfaa06e39e9f21"
+        },
+        {
+          "path": "src-server/services/orchestration/attached-session-adoption.ts",
+          "digest": "bec1e418aca9e3e6c4ac0be535e72357dfa9403464f70246c69d44090791879d"
+        },
+        {
+          "path": "src-server/services/orchestration/attached-session-follow-service.ts",
+          "digest": "2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c"
+        },
+        {
+          "path": "src-server/providers/adapters/codex-adapter.ts",
+          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+        },
+        {
+          "path": "src-server/providers/adapters/claude-adapter.ts",
+          "digest": "0e6f692f175ca9f13c648ee165685c22aa7cc78d35680d5bce8ddb76f23160af"
+        },
+        {
+          "path": "src-server/providers/adapters/acp-adapter.ts",
+          "digest": "d7c6a65ba2a2874e7aabb850da93c493ea060a79874c6777721a0950ff860b4a"
+        },
+        {
+          "path": "src-server/providers/sessions/codex-rollout-session-source.ts",
+          "digest": "35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9"
+        },
+        {
+          "path": "src-server/providers/sessions/claude-transcript-session-source.ts",
+          "digest": "d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d"
+        },
+        {
+          "path": "src-server/services/projects/attention-projection.ts",
+          "digest": "b1ae045cdbe0b8cf3a73ce5f126f6e9a11f54074ec7aaed8e04284ea3a057625"
+        },
+        {
+          "path": "src-server/services/flow/survey-flow-review-service.ts",
+          "digest": "7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e"
+        },
+        {
+          "path": "src-ui/src/components/attention/AttentionCard.tsx",
+          "digest": "ed07cb944c1f39922d56fe2e35938f6b57ab8130f5093861460156787d097558"
+        },
+        {
+          "path": "scripts/session-api-roundtrip.mjs",
+          "digest": "6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c"
+        }
+      ],
+      "checks": [
+        "Independent final source delta accepted at document digest 90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c.",
+        "Session roundtrip diagnostic fixtures: 8 tests passed.",
+        "Codex source/follower and request-inspection route selection: 40 tests across 3 files passed."
       ]
     },
     {
