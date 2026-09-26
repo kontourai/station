@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocketServer } from 'ws';
 import { inspectProcessFingerprint as recordProcessFingerprint } from '../../packages/cli/src/commands/platform.js';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { attachVoiceWebSocket } from '../../src-server/routes/operations/voice.js';
 import { TerminalWebSocketServer } from '../../src-server/services/terminal/terminal-ws-server.js';
 import {
@@ -144,6 +145,8 @@ function currentProcessFingerprint(pid = process.pid) {
 }
 
 describe('dogfood authenticated health', () => {
+  const makeTempDir = trackTempDirs();
+
   it('runs the CLI entrypoint when invoked through a symlink', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-health-symlink-'));
     const link = join(root, 'health-link.mjs');
@@ -173,10 +176,7 @@ describe('dogfood authenticated health', () => {
     // runs that copy. Reproduce that shape: nothing beside it, no repo tree
     // above it. A relative import of repo modules fails here at load time
     // with ERR_MODULE_NOT_FOUND before main() ever runs.
-    const bin = join(
-      mkdtempSync(join(tmpdir(), 'station-health-installed-')),
-      'bin',
-    );
+    const bin = join(makeTempDir('station-health-installed-'), 'bin');
     mkdirSync(bin, { mode: 0o700 });
     const installed = join(bin, 'station-dogfood-health.mjs');
     copyFileSync(
