@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import {
   decodeProvisioningProfile,
   inspectAppStoreDistributionProfile,
 } from './check-ios-store-profile.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertRepositoryVersion,
   nativeIdentifierForChannel,
@@ -145,18 +145,7 @@ export function localIosReleasePreflight({
   };
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   let result;
   try {

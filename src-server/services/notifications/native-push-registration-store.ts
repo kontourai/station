@@ -57,7 +57,18 @@ const ANDROID_KEYS = COMMON_KEYS;
  */
 const ANDROID_OPTIONAL_KEYS = ['alerted', 'cardShown'];
 const IOS_KEYS = [...COMMON_KEYS, 'apnsEnvironment'];
-const IOS_OPTIONAL_KEYS = ['activity', 'alerted', 'channelDeletes'];
+/**
+ * `alertToken` (#2589) is written only when the phone sent one, so a record
+ * without it is byte-identical to what earlier Stations wrote. One that has
+ * it makes the whole iOS file unreadable to a Station built before it (the
+ * file is read strictly, like `cardShown` in the Android file).
+ */
+const IOS_OPTIONAL_KEYS = [
+  'activity',
+  'alerted',
+  'alertToken',
+  'channelDeletes',
+];
 /** Alert ids remembered per registration; the phone itself keeps 64. */
 const ALERTED_MAX = 128;
 const ALERT_ID_PATTERN = /^[0-9a-f]{64}$/;
@@ -65,7 +76,10 @@ const REGISTRATION_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
 /** 32 bytes, base64url without padding. */
 const PAYLOAD_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const THUMBPRINT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-/** An ActivityKit push-to-start token: whole bytes, lowercase hex. */
+/**
+ * An ActivityKit push-to-start token or an APNs device token: whole bytes,
+ * lowercase hex, exactly the gateway's bound.
+ */
 const IOS_TOKEN_PATTERN = /^(?:[0-9a-f]{2}){32,100}$/;
 /**
  * An APNs broadcast channel id: standard base64 as Apple issues it, and
@@ -215,6 +229,9 @@ function isValidIosRequest(
     ) &&
     (record.apnsEnvironment === 'production' ||
       record.apnsEnvironment === 'sandbox') &&
+    (record.alertToken === undefined ||
+      (typeof record.alertToken === 'string' &&
+        IOS_TOKEN_PATTERN.test(record.alertToken))) &&
     record.platform === 'ios'
   );
 }
@@ -782,6 +799,11 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
             packageName: request.packageName,
             platform: 'ios',
             apnsEnvironment: request.apnsEnvironment,
+            // Every registration restates it: a phone that no longer sends
+            // one (notifications turned off) stops getting alerts.
+            ...(request.alertToken !== undefined
+              ? { alertToken: request.alertToken }
+              : {}),
             ...kept,
             ...(sameTopic && existing.activity
               ? { activity: { ...existing.activity } }
@@ -792,6 +814,22 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
       },
       now,
     );
+  }
+
+  /**
+   * Drops a registration's alert token after APNs said it no longer reaches
+   * the app, leaving its Live Activity alone. Only while `expectedAlertToken`
+   * is still the stored one: a phone that re-registered with a fresh token
+   * meanwhile keeps it. Returns whether it dropped one.
+   */
+  clearAlertToken(deviceId: string, expectedAlertToken: string): boolean {
+    const registrations = this.read();
+    const current = registrations.get(deviceId);
+    if (!current || current.alertToken !== expectedAlertToken) return false;
+    const { alertToken: _dropped, ...rest } = current;
+    registrations.set(deviceId, rest);
+    this.write(registrations);
+    return true;
   }
 
   /** Retired registrations still to be ended or cleaned up, oldest first. */

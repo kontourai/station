@@ -29,7 +29,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_LOCK_MAX_AGE_MS = 30 * 60 * 1000;
 const REMOTE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -3036,7 +3036,27 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   fail(`unknown dogfood command: ${command}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/**
+ * Is this module the process entry point? Realpath-resolves both sides, as
+ * `scripts/lib/module-entry.mjs`'s `invokedDirectly` does; not imported,
+ * because ops/dogfood/install-macos.zsh installs this file on its own as the
+ * supervisor runner, where no scripts/lib exists beside it.
+ */
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let real;
+  try {
+    real = realpathSync(path.resolve(entry));
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR', 'ENAMETOOLONG'].includes(error?.code))
+      return false;
+    throw error;
+  }
+  return real === realpathSync(fileURLToPath(import.meta.url));
+}
+
+if (invokedDirectly()) {
   try {
     await main();
   } catch (error) {

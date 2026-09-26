@@ -11,8 +11,11 @@ export {
   type BrowserConnectionTrustStore,
   type BrowserIceProvider,
   type BrowserIceSnapshot,
+  type BrowserPionConnectionIdentity,
+  type BrowserPionConnectionIdentityProvider,
   type BrowserPionConnectionSnapshot,
   createBrowserPionConnection,
+  type PionSignalingClient,
 } from './browserPionConnection.js';
 export {
   delayBrowserTransport,

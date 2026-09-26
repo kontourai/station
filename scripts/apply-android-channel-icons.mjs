@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const ANDROID_ICON_CHANNELS = ['stable', 'dev', 'beta', 'nightly'];
@@ -143,9 +144,6 @@ export function applyAndroidChannelIcons(
   }
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   applyAndroidChannelIcons(process.argv[2]);
 }

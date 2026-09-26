@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
   CI_FAST_TIMEOUT_MS,
@@ -96,6 +96,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
@@ -820,5 +821,4 @@ export function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href)
-  main();
+if (invokedDirectly(import.meta.url)) main();

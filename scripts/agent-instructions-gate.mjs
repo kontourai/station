@@ -21,6 +21,7 @@ import {
   SCOPES,
   scopeForPath,
 } from './agent-instructions-manifest.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const IMPORT = /^\s*@([^\s]+)\s*$/gm;
@@ -484,7 +485,7 @@ export function instructionGateErrors({
   return errors;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const errors = instructionGateErrors();
   if (errors.length) {
     console.error(

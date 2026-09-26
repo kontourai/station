@@ -1,7 +1,18 @@
-import { STATION_CHANNEL_PORTS_DATA } from './channel-ports.generated.js';
+import {
+  STATION_CHANNEL_PORTS_DATA,
+  STATION_RELEASE_RINGS_DATA,
+} from './channel-ports.generated.js';
 
 export const STATION_CHANNEL_PORTS = STATION_CHANNEL_PORTS_DATA;
 export type StationChannel = keyof typeof STATION_CHANNEL_PORTS;
+
+/**
+ * Installable release rings and the runtime channel each installs as
+ * (`preview` installs as `beta`). A prerelease ring's tags are
+ * `vX.Y.Z-<ring>.N`; the non-prerelease ring owns `vX.Y.Z`.
+ */
+export const STATION_RELEASE_RINGS = STATION_RELEASE_RINGS_DATA;
+export type StationReleaseRing = keyof typeof STATION_RELEASE_RINGS;
 export const DEFAULT_STATION_CHANNEL: StationChannel = 'development';
 
 export function resolveStationChannel(raw?: string): StationChannel {

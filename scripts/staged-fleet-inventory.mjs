@@ -3,11 +3,11 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import schema from '../schemas/staged-fleet-inventory.schema.json' with {
   type: 'json',
 };
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -381,7 +381,7 @@ export function main(argv = process.argv.slice(2)) {
     'usage: staged-fleet-inventory.mjs <assert-plan PLAN DIGEST|stage-receipt INPUT ASSETS|assert-stage-receipt RECEIPT ASSETS|admit-fixed PLAN RECEIPT ASSETS>',
   );
 }
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

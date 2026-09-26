@@ -37,6 +37,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const BASELINE = join(root, 'scripts', 'stored-path-expansion-baseline.json');
@@ -357,12 +358,6 @@ async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  join(
-    fileURLToPath(new URL('.', import.meta.url)),
-    'stored-path-expansion-guard.mjs',
-  ) === process.argv[1]
-) {
+if (invokedDirectly(import.meta.url)) {
   await main();
 }

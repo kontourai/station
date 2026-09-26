@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyAndroidInsets } from './lib/android-window-insets.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED_ANDROID = join('src-desktop', 'gen', 'android', 'app');
@@ -250,10 +251,7 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
   return { namespace, activityPath, bridgePath };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const result = applyAndroidNativeBootstrap();
   console.log(
     `Android native credential bootstrap applied to ${result.namespace}.`,

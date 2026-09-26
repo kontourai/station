@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   runFallowAnalysis,
   summarizeFallowReports,
@@ -180,10 +180,7 @@ async function runCodeHealthGate(root, baseRef) {
   return result;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args.length > 1 || (args.length && !args[0].startsWith('--base=')))

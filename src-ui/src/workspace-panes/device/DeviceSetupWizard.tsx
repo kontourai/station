@@ -24,8 +24,6 @@ import './DeviceSetupWizard.css';
  * readiness, and agent access. Each switch is the consent for what its step
  * says it installs; nothing is fetched until a switch is turned on. Every
  * status line is the server's derived state, polled while it moves.
- *
- * Adapted from t3code's `DeviceSetup.tsx` (MIT, © 2026 T3 Tools Inc.).
  */
 
 const STEPS = ['Device hub', 'Simulators', 'Agent access'] as const;

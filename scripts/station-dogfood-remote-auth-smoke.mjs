@@ -7,8 +7,8 @@ import {
   openSync,
   readFileSync,
 } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import WebSocket from 'ws';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const AUTH_CLOSE_CODE = 4401;
 const PROTOCOL_VERSION = 1;
@@ -257,7 +257,7 @@ async function main(argv = process.argv.slice(2)) {
   console.log(JSON.stringify(result));
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

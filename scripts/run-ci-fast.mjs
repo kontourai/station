@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
@@ -117,6 +116,8 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
+  // Names Station must not reference, in any tracked file.
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help topics must have a `###` heading in docs/reference/cli.md
   // (scripts/cli-doc-parity.mjs). Pure source read, no build, ~50ms. Until
   // this joined the lane, the CLI↔docs contract was enforced ONLY by the
@@ -338,5 +339,4 @@ export function runCiFastCli({
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  process.exitCode = runCiFastCli();
+if (invokedDirectly(import.meta.url)) process.exitCode = runCiFastCli();

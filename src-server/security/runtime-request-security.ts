@@ -615,6 +615,30 @@ export function bindRuntimeLocalOperator(
   return local;
 }
 
+/**
+ * #2377 slice B: the per-boot internal token carries home-possession because
+ * Station minted it for its own process, so every consumer of
+ * {@link isBoundRuntimeLocalOperator} and of the principal's `locality`
+ * (unredacted logs, the operator-only Project and membership gates, the
+ * orchestration principal resolver's local-operator path) read any internal
+ * request as the operator. A station-control tool call is an agent acting for
+ * its session's owner, not the operator in person, so the station-control
+ * authority guard withdraws that fact for every internal request except
+ * Station's own server code and a bound operator caller. It re-stamps the
+ * principal without `locality` and re-binds the local-operator flags from
+ * it, at the one write point, so every consumer moves together.
+ *
+ * A no-op for anything but an internal principal: a real credential's
+ * locality is a mint-time fact about that credential and is never withdrawn.
+ */
+export function withdrawInternalHomePossession(request: Request): void {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.kind !== 'internal') return;
+  const { locality: _withdrawn, ...withoutLocality } = principal;
+  setRuntimeAuthenticatedRequestPrincipal(request, withoutLocality);
+  bindRuntimeLocalOperator(request);
+}
+
 /** Bound by the auth boundary; absent means redact (fail closed). */
 export function isBoundRuntimeLocalOperator(request: Request): boolean {
   return boundLocalOperator.get(request) === true;

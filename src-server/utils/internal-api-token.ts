@@ -49,6 +49,19 @@ export const INTERNAL_PROXY_PEER_HEADER = 'x-station-proxy-peer';
  */
 export const INTERNAL_PROXY_FORWARDED_HOST_HEADER =
   'x-station-proxy-forwarded-host';
+/**
+ * The orchestration thread a Station-agent relay turn belongs to (#2589).
+ * Set only by the Station-agent adapter's `/chat` relay, which republishes
+ * every tool-approval request of that stream as the thread's own
+ * `request.opened`. `/chat` accepts it only from a direct internal caller
+ * (trusted {@link INTERNAL_API_TOKEN_HEADER} AND
+ * {@link INTERNAL_PROXY_CALLER_HEADER} `local`: the UI proxy forces
+ * `remote`, and strips this header too, so a browser cannot claim it) and
+ * only when it names the
+ * request's own conversation.
+ */
+export const INTERNAL_ORCHESTRATION_THREAD_HEADER =
+  'x-station-orchestration-thread';
 export const INTERNAL_API_TOKEN_ENV = 'STATION_INTERNAL_API_TOKEN';
 
 export interface VerifiedIngressIdentity {
