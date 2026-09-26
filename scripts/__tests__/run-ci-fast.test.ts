@@ -144,16 +144,9 @@ describe('bounded ci:fast runner', () => {
       // generator succeed on this tree", and the typecheck aggregate below
       // resolves its output.
       [process.execPath, ['scripts/generate-basis-mcp-apps.mjs']],
+      // Readiness owns repo-governance and style-standard checks. The policy
+      // gate remains direct because readiness classifies it as optional.
       ['npm', ['run', 'verification:policy:gate']],
-      // The governance proof, biome, and Veritas readiness. Each was
-      // composed only by the nightly full-regression gate or by a per-machine
-      // pre-push hook, so a violation of any of the three could not be
-      // observed on a pull request; two governance breaks reached main on
-      // 2026-09-14 while the Nightly that owned them was itself red.
-      ['npm', ['run', 'proof:repo-governance']],
-      ['npm', ['run', 'lint:check']],
-      // Ordered after the two evidence-checks it re-executes, so a failure in
-      // either reports under its own name first.
       ['npm', ['run', 'veritas:readiness']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
