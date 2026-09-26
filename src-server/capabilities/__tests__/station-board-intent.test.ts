@@ -52,9 +52,9 @@ describe('resolveAndExecuteStationBoardIntent', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  // POST /intent passes untrusted JSON straight through; only resolution
-  // rejects an intent whose authority is absent or partial. Pinned here
-  // because a console-core upgrade could relax that silently.
+  // Outside hosted mode, POST /intent checks only `id` and `kind` and passes
+  // the untrusted `authority` through; resolution alone rejects an absent or
+  // partial one. Pinned here because a console-core upgrade could relax that.
   test.each([
     ['absent', {}],
     ['empty', { authority: {} }],
