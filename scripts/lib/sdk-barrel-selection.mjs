@@ -1165,19 +1165,103 @@ function runtimeImportKey(path, source) {
  * module only inside another module's function body is not traced.
  */
 function topLevelUseOf(graph, changed) {
-  // Does importing `name` from `target` bind something `changed` provides?
-  // Resolved through any re-exporter, not only the barrels.
-  const provides = (target, name) =>
-    target === changed ||
-    graph.resolveBarrelName(target, name).includes(changed);
+  // Does importing `name` from `target` bind something whose value comes
+  // from `changed`? Walks the re-export chain like resolveName, but fails
+  // CLOSED: a star it cannot enumerate, or a module it cannot read, counts
+  // as providing. A local `const`/`let`/`var` export counts when its
+  // initializer reads a binding that itself provides (`export const g = f`
+  // with `f` imported from the changed module). A local function or class
+  // does not: its body runs only when called — the documented two-hop gap.
+  const cache = new Map();
+  const providesAt = (module, name, seen) => {
+    if (module === changed) return true;
+    const key = `${module}\0${name}`;
+    if (cache.has(key)) return cache.get(key);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    const answer = providesUncached(module, name, seen);
+    cache.set(key, answer);
+    return answer;
+  };
+  const providesUncached = (module, name, seen) => {
+    const table = graph.exportsOf(module);
+    if (!table) return true;
+    if (table.local.has(name)) return localValueProvides(module, name, seen);
+    const entry = table.named.get(name);
+    if (entry) {
+      const target = graph.resolveSpecifier(module, entry.specifier);
+      if (target === null) return false;
+      if (target === UNKNOWN) return true;
+      if (entry.name === null) return namespaceProvides(target, seen);
+      return providesAt(target, entry.name, seen);
+    }
+    if (name === 'default') return false;
+    for (const specifier of table.stars) {
+      const target = graph.resolveSpecifier(module, specifier);
+      // An external or unresolvable star could be where the name lives.
+      if (target === null || target === UNKNOWN) return true;
+      if (providesAt(target, name, seen)) return true;
+    }
+    return false;
+  };
+  const localValueProvides = (module, name, seen) => {
+    const source = graph.sources.get(module);
+    if (source === undefined) return true;
+    const file = parse(module, source);
+    const importedFrom = new Map();
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      const clause = statement.importClause;
+      if (!clause || clause.isTypeOnly) continue;
+      const target = graph.resolveSpecifier(
+        module,
+        statement.moduleSpecifier.text,
+      );
+      if (target === null) continue;
+      if (clause.name) importedFrom.set(clause.name.text, [target, 'default']);
+      const bindings = clause.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings))
+        importedFrom.set(bindings.name.text, [target, null]);
+      else if (bindings)
+        for (const element of bindings.elements)
+          if (!element.isTypeOnly)
+            importedFrom.set(element.name.text, [
+              target,
+              (element.propertyName ?? element.name).text,
+            ]);
+    }
+    const readsProvider = (node) =>
+      [...referencedIdentifiers(node)].some((identifier) => {
+        const source = importedFrom.get(identifier);
+        if (!source) return false;
+        const [target, importedName] = source;
+        if (target === UNKNOWN) return true;
+        return importedName === null
+          ? namespaceProvides(target, seen)
+          : providesAt(target, importedName, seen);
+      });
+    for (const statement of file.statements) {
+      if (name === 'default' && ts.isExportAssignment(statement))
+        return readsProvider(statement.expression);
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations)
+        if (
+          bindingNames(declaration.name, []).includes(name) &&
+          declaration.initializer
+        )
+          return readsProvider(declaration.initializer);
+    }
+    return false;
+  };
+  const provides = (target, name) => providesAt(target, name, new Set());
   // A namespace import binds every export; a star re-export is not
   // enumerated here, so it counts.
-  const namespaceProvides = (target) => {
+  const namespaceProvides = (target, seen = new Set()) => {
     if (target === changed) return true;
     const table = graph.exportsOf(target);
     if (!table || table.stars.length) return true;
     return [...table.local, ...table.named.keys()].some((name) =>
-      provides(target, name),
+      providesAt(target, name, seen),
     );
   };
   for (const [importer, fileEdges] of graph.edges) {

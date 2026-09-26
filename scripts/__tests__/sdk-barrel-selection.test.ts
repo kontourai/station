@@ -555,6 +555,67 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       },
     );
 
+    test.each([
+      [
+        'a namespace import of a star re-exporter',
+        "export * from './client/scheduler';",
+        "import * as m from './mid';\nregistry.push(m.listJobs());",
+      ],
+      [
+        'a default import of a renamed default re-export',
+        "export { listJobs as default } from './client/scheduler';",
+        "import g from './mid';\nregistry.push(g());",
+      ],
+      [
+        'a name behind a star next to an external star',
+        "export * from './client/scheduler';\nexport * from 'some-package';",
+        "import { listJobs } from './mid';\nregistry.push(listJobs());",
+      ],
+      [
+        'a name behind a star next to an unresolvable star',
+        "export * from './client/scheduler';\nexport * from './missing';",
+        "import { listJobs } from './mid';\nregistry.push(listJobs());",
+      ],
+      [
+        'a name only an unresolvable star could provide',
+        "export * from './missing';",
+        "import { listJobs } from './mid';\nregistry.push(listJobs());",
+      ],
+      [
+        'a local const alias of an imported binding',
+        "import { listJobs } from './client/scheduler';\nexport const g = listJobs;",
+        "import { g } from './mid';\nregistry.push(g());",
+      ],
+    ])(
+      'a top-level use through %s keeps whole-barrel',
+      (_label, mid, registration) => {
+        const result = decide(
+          {
+            'packages/sdk/src/mid.ts': mid,
+            'packages/sdk/src/registration.ts': registration,
+          },
+          SDK_SOURCES[SCHEDULER],
+        );
+        expect(result.paths).toEqual([SCHEDULER]);
+        expect(result.decisions[0].reason).toMatch(
+          /registration\.ts line \d+ uses it in a top-level side effect/,
+        );
+      },
+    );
+
+    test('a local const that does not read the import is not a use (control)', () => {
+      const result = decide(
+        {
+          'packages/sdk/src/mid.ts':
+            "import { listJobs } from './client/scheduler';\nexport const g = () => 1;\nexport const h = listJobs;",
+          'packages/sdk/src/registration.ts':
+            "import { g } from './mid';\nregistry.push(g());",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].disposition).toBe('refined');
+    });
+
     test('a top-level side effect that does not use it does not (control)', () => {
       const result = decide(
         {
