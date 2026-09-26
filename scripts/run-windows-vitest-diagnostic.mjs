@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { redactVerificationValue } from './lib/verification-redaction.mjs';
 
 export const WINDOWS_VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
@@ -151,4 +151,4 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

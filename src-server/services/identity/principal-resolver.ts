@@ -84,6 +84,7 @@ import {
   isPrincipalRef,
   LOCAL_OPERATOR_PROVIDER,
   LOCAL_OPERATOR_SUBJECT,
+  PRINCIPAL_KINDS,
   PRINCIPAL_UNRESOLVED_CODE,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
@@ -320,4 +321,40 @@ export function resolvePrincipal(
       ? 'personal-mode request carries no verified identity and no home-possession authority fact'
       : 'hosted request carries no verified identity and no bound tenant context',
   );
+}
+
+/**
+ * #2377 slice B: the principal a station-control tool call acts for — the
+ * owner Station RECORDED for the calling session (`session.started`'s
+ * `metadata.userId`, read back through `resolveSessionActingPrincipal`).
+ *
+ * This is the second sanctioned place the reserved local-operator id is
+ * named, and the authority fact is the server's own ownership record: the
+ * id was stamped from an authenticated caller when the session started, and
+ * the station-control caller re-derives it from a verified per-session
+ * token, never from a header, body or tool argument. Any recorded id is
+ * described, not minted anew, so it must already satisfy the principal
+ * grammar; one that does not fails closed. The display is cosmetic.
+ */
+export function principalForRecordedSessionOwner(
+  id: string,
+  options: Pick<ResolvePrincipalOptions, 'resolveOperatorDisplay'> = {},
+): PrincipalRef {
+  const kind = PRINCIPAL_KINDS.find((candidate) =>
+    id.startsWith(`${candidate}:`),
+  );
+  const display =
+    id === LOCAL_OPERATOR_PRINCIPAL_ID
+      ? (options.resolveOperatorDisplay?.() ?? DEFAULT_OPERATOR_DISPLAY)
+      : id.slice(id.lastIndexOf(':') + 1).trim() || id;
+  const principal: PrincipalRef = Object.freeze({
+    id,
+    kind: kind ?? 'human',
+    display,
+  });
+  if (!kind || !isPrincipalRef(principal))
+    throw new PrincipalUnresolvedError(
+      'the calling session records an owner that is not a principal id',
+    );
+  return principal;
 }

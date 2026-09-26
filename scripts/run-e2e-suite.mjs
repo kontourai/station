@@ -20,7 +20,6 @@ import {
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 import {
@@ -47,6 +46,7 @@ import {
   findPreferredPortBlock,
   findPreferredPortOutside,
 } from './lib/free-ports.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedProcess,
   terminateSuiteExecution,
@@ -2444,10 +2444,7 @@ async function main() {
 // import `sweepInterruptedBuildDirs` from here; without this guard that import
 // launched the whole e2e runner inside Vitest, and its process.exit(1) surfaced
 // as an unhandled rejection that failed verify:static with every test passing.
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

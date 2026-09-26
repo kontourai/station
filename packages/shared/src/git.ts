@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 
 /**
@@ -23,6 +23,28 @@ function git(args: string, cwd: string): string {
     windowsHide: true,
     env: gitEnv(),
   }).trim();
+}
+
+/**
+ * The full HEAD sha of the checkout at `cwd`, bounded by `timeoutMs` so a
+ * wedged git (credential helper, lock, network filesystem) cannot stall a
+ * caller that runs unattended, such as a service supervisor. Uses the same
+ * GIT_DIR/GIT_WORK_TREE-scrubbed environment as the helpers above. Throws when
+ * git fails, times out, or answers with something that is not a sha.
+ */
+export function readGitHeadSha(cwd: string, timeoutMs = 5_000): string {
+  const sha = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    env: gitEnv(),
+    timeout: timeoutMs,
+  }).trim();
+  if (!/^[0-9a-f]{40,64}$/i.test(sha)) {
+    throw new Error(`git rev-parse HEAD returned ${JSON.stringify(sha)}`);
+  }
+  return sha;
 }
 
 /**

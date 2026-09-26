@@ -39,9 +39,11 @@ import {
  *
  * Skipped where it has nothing to add: tools not in the table (the browser
  * tools, whose own refusal is unchanged), route-enforced tools (`notify_user`
- * answers `caller-required` itself), read-only tools (any caller, or none,
- * may read in slice A), and tools that call no route (`install_plugin`
- * only explains).
+ * answers `caller-required` itself), reads of data that belongs to no person
+ * (any caller, or none, may read them), and tools that call no route
+ * (`install_plugin` only explains). A principal-scoped or operator-wide read
+ * is checked (slice B): a caller-less or owner-less session learns why here,
+ * whatever envelope the tool's SDK call would have put the server's code in.
  */
 function withToolSideRefusal<
   Callback extends (input: never, ...rest: never[]) => unknown,
@@ -50,7 +52,7 @@ function withToolSideRefusal<
   if (
     !policy ||
     policy.enforcedBy === 'route' ||
-    policy.toolClass === 'read-only' ||
+    (policy.toolClass === 'read-only' && policy.role === 'none') ||
     policy.routes.length === 0
   )
     return callback;

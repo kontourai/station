@@ -2,7 +2,11 @@
 set -euo pipefail
 
 feed=${1:-}
-node scripts/native-update-feed.mjs validate-config
+# Resolve the feed tool beside this script, not from the cwd: the release
+# workflow runs this from its default-branch policy checkout inside a tag
+# checkout, and the tag's copy must not be the one executed.
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+node "$script_dir/native-update-feed.mjs" validate-config
 custom_feed=false
 if [[ -n "${VITE_NATIVE_APP_UPDATE_FEED_URL:-}" ]]; then
   test -n "$feed" || { echo "Configured native update feed requires a staged feed file" >&2; exit 1; }
@@ -71,7 +75,7 @@ if [[ "${STATION_TEST_SIGNAL:-}" == TERM ]]; then kill -TERM $$; fi
 if [[ "${STATION_TEST_SIGNAL:-}" == INT ]]; then kill -INT $$; fi
 
 set +e
-node scripts/native-update-feed.mjs deploy "$feed"
+node "$script_dir/native-update-feed.mjs" deploy "$feed"
 deploy_status=$?
 set -e
 if [[ "$deploy_status" == 75 ]]; then

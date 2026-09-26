@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { invokedDirectly } from './lib/module-entry.mjs';
 // Apple requires the iOS 26 SDK for App Store uploads since April 28, 2026.
 // https://developer.apple.com/news/upcoming-requirements/
 export function assertIosStoreSdk(version) {
@@ -13,7 +14,7 @@ export function assertIosStoreSdk(version) {
   }
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (invokedDirectly(import.meta.url)) {
   if (process.argv.length !== 3)
     throw new Error('Expected one iOS SDK version');
   assertIosStoreSdk(process.argv[2]);

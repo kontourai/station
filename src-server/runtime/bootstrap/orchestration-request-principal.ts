@@ -19,6 +19,7 @@ import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-c
 import { getCachedUser } from '../../routes/system/auth.js';
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
@@ -27,6 +28,7 @@ import type { VerifiedIdentity } from '../../services/identity/identity-source.j
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
   PrincipalUnresolvedError,
+  principalForRecordedSessionOwner,
   resolvePrincipal as resolveStationPrincipal,
 } from '../../services/identity/principal-resolver.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -140,6 +142,29 @@ export function createOrchestrationRequestPrincipalResolver(
   };
   return memoizePerRequest((c) => {
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    // #2377 slice B (decision 2): a station-control tool call acts for the
+    // owner Station recorded for its session, at every assurance level, not
+    // for the operator the internal token's home-possession used to name. A
+    // caller-less internal request (a pooled child, a bare copy of the token)
+    // acts for no one. Station's own server code, and a composition with no
+    // authority guard, keep the internal principal's resolution below.
+    if (runtimePrincipal?.kind === 'internal') {
+      const agent = stationControlRequestAuthority(c.req.raw);
+      if (agent?.kind === 'caller-less')
+        throw new PrincipalUnresolvedError(
+          'a station-control request without a verified calling session acts for no principal',
+        );
+      if (agent?.kind === 'caller') {
+        const ownerId = agent.caller.principal?.id;
+        if (!ownerId)
+          throw new PrincipalUnresolvedError(
+            'the calling session has no recorded owner',
+          );
+        return principalForRecordedSessionOwner(ownerId, {
+          resolveOperatorDisplay: () => getCachedUser().alias,
+        });
+      }
+    }
     const operatorAuthority =
       runtimePrincipal?.locality === 'home-possession'
         ? { locality: runtimePrincipal.locality }

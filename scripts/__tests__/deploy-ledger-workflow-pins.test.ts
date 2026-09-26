@@ -373,8 +373,19 @@ describe('the stable release ledger record', () => {
     expect(publishStep).toBeGreaterThanOrEqual(0);
     expect(ledgerStep).toBeGreaterThan(publishStep);
     const step = stepBlock(publishRelease, STABLE_LEDGER_STEP);
-    expect(step).toContain(COMMIT_SCRIPT);
-    expect(step).toContain(LEDGER_SCRIPT);
+    // The stable ledger records from the default-branch policy checkout
+    // (#2676): the ledger lives on main, and the tag's copies are frozen.
+    // The helper spawns the record with that checkout as its cwd, so the
+    // record path is absolute and the commit-back root is the checkout.
+    expect(step).toContain(
+      'node release-policy/scripts/lib/deploy-ledger-commit.mjs',
+    );
+    expect(step).toContain('--repo-root release-policy');
+    expect(step).toContain(
+      'record=(node "$PWD/release-policy/scripts/deploy-ledger.mjs"',
+    );
+    expect(step).not.toContain(COMMIT_SCRIPT);
+    expect(step).not.toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel stable-desktop');
     // MED-1: the sha every producer built and every attestation names is
     // needs.resolve.outputs.sha — the reviewer's swap to github.sha went
@@ -420,6 +431,11 @@ describe('the stable release ledger record', () => {
     );
     const retain = stepBlock(publishRelease, LEDGER_RETAIN_STEP);
     expect(retain).toContain('continue-on-error: true');
+    // The record writes into the policy checkout, so that is what to retain.
+    expect(retain).toContain(
+      'release-policy/docs/reference/deploy-ledger.json',
+    );
+    expect(retain).toContain('release-policy/docs/reference/deploy-ledger.md');
     expect(retain).toContain('always()');
   });
 });

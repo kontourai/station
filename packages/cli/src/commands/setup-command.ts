@@ -4,11 +4,9 @@ import type {
   PairSavedStationResult,
 } from './environment.js';
 import {
-  CWD,
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
   resolveLifecycleHomeTarget,
-  resolveLifecycleInstanceId,
 } from './helpers.js';
 import {
   isLocalSelfAuthCandidate,
@@ -157,6 +155,11 @@ export async function runSetupCommand(
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       throw new Error('--port must be an integer from 1 to 65535.');
     }
+    // The home comes from the same resolution the service install performs
+    // on these args. `--base` is forwarded only when the user gave one
+    // (station#2689): synthesizing it made an implicit development home look
+    // explicit, so the install named the service `default` inside
+    // `instances/dev/<dev id>`.
     const baseDir = resolveLifecycleHomeTarget({
       baseDir: valueFlag(flags, 'base'),
     }).projectHome;
@@ -167,7 +170,6 @@ export async function runSetupCommand(
         .map(
           ([flag, value]) => `--${flag}${value === true ? '' : `=${value}`}`,
         ),
-      ...(flags.has('base') ? [] : [`--base=${baseDir}`]),
       ...(flags.has('port') ? [] : [`--port=${port}`]),
       ...(flags.has('ui-port') ? [] : [`--ui-port=${uiPort}`]),
     ];
@@ -183,13 +185,10 @@ export async function runSetupCommand(
         configurationState: 'configured',
         verifiedBinding: true,
         localService: {
-          instanceId: resolveLifecycleInstanceId({
-            cwd: CWD,
-            instanceName: valueFlag(flags, 'instance'),
-            projectHome: baseDir,
-            serverPort: Number(port),
-            uiPort: Number(uiPort),
-          }),
+          // The service the install actually registered (station#2689): a
+          // re-run from a checkout keeps an existing `default` service, so
+          // the id is not re-derived here.
+          instanceId: installation.instanceId,
           baseDir,
           serverPort: Number(port),
           uiPort: Number(uiPort),

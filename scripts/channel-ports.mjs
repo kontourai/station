@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const contract = JSON.parse(
@@ -193,7 +194,7 @@ export function checkGeneratedChannelPorts() {
   }
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   if (process.argv[2] === '--sync-desktop') syncGeneratedChannelPorts();
   else if (process.argv[2] === '--check') checkGeneratedChannelPorts();
   else

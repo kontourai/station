@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const SUPPORTED_NODE_MAJOR = 24;
 export const SUPPORTED_NODE_RANGE = '24.x';
@@ -30,7 +30,7 @@ export function assertManifestContract(
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   try {
     assertManifestContract();
     assertSupportedNode();

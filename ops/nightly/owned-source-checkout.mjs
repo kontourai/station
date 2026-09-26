@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 function runGit(args) {
   return execFileSync('git', args, {
@@ -165,18 +165,7 @@ export function prepareOwnedNightlySourceCheckout({
   return sourceSha;
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   const [sourceCheckout, ownedCheckout, ownedRoot] = process.argv.slice(2);
   if (!sourceCheckout || !ownedCheckout || !ownedRoot) {
     console.error(

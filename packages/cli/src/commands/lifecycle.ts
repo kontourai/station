@@ -38,7 +38,7 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
-import { resolveGitInfo } from '@kontourai/station-shared/git';
+import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -2969,15 +2969,16 @@ export function validatePackagedReleaseManifest(
   };
 }
 
+/** Bound on every checkout HEAD read (stamp writer and checker). */
+const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
     const git = resolveGitInfo(CWD);
-    const sha = execSync('git rev-parse HEAD', {
-      cwd: git.gitRoot,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    }).trim();
+    // station#2689: the same scrubbed, bounded read `checkSourceBuildStamp`
+    // uses, so an inherited GIT_DIR cannot make the stamp this writes
+    // disagree with the HEAD it is later checked against.
+    const sha = readGitHeadSha(git.gitRoot, SOURCE_HEAD_READ_TIMEOUT_MS);
     const manifest = validateBuildManifest({
       sha,
       // Detached release checkouts report `HEAD`; the promotion runner can
@@ -3030,6 +3031,89 @@ export function readBuildManifest(
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * station#2689: whether this source checkout's build stamp can back a managed
+ * boot. `start()` pins the supervisor's expected sha to `station-build.json`
+ * (`'unknown'` when absent) while the server reports its esbuild-baked sha, so
+ * a bundle built by `npm run build` — which never writes the stamp — fails
+ * every boot with "managed boot identity mismatch". A stamp whose sha differs
+ * from HEAD records a build of other sources.
+ *
+ * Scoped to source checkouts (`.git` present, as a directory or a linked
+ * worktree's file). A packaged release has no checkout HEAD to compare
+ * against; its provenance is `.station-release.json`, validated by the
+ * packaged install/upgrade path, and is not judged here.
+ *
+ * HEAD is read with a bounded, scrubbed git call. When it cannot be read,
+ * a present stamp is `unverifiable` (no verdict) and a missing one carries
+ * `headError`: a rebuild could not stamp it either, because `buildApplication`
+ * derives the stamp from the same HEAD.
+ */
+export type SourceBuildStampCheck =
+  | { status: 'not-source-checkout' }
+  | { status: 'current' }
+  | { status: 'unverifiable'; manifestPath: string; headError: string }
+  | { status: 'missing'; manifestPath: string; headError?: string }
+  | {
+      status: 'mismatch';
+      manifestPath: string;
+      stampSha: string;
+      headSha: string;
+    };
+
+export function checkSourceBuildStamp(
+  instanceId: string,
+): SourceBuildStampCheck {
+  if (!existsSync(join(CWD, '.git'))) return { status: 'not-source-checkout' };
+  const manifestPath = getBuildManifestPath(resolveBuildPaths(instanceId));
+  const stamp = readBuildManifest(instanceId);
+  let headSha: string | undefined;
+  let headError: string | undefined;
+  try {
+    headSha = readGitHeadSha(CWD, SOURCE_HEAD_READ_TIMEOUT_MS);
+  } catch (error) {
+    headError = error instanceof Error ? error.message : String(error);
+  }
+  if (!stamp) {
+    return headError === undefined
+      ? { status: 'missing', manifestPath }
+      : { status: 'missing', manifestPath, headError };
+  }
+  if (headSha === undefined) {
+    return { status: 'unverifiable', manifestPath, headError: headError! };
+  }
+  if (stamp.sha !== headSha) {
+    return { status: 'mismatch', manifestPath, stampSha: stamp.sha, headSha };
+  }
+  return { status: 'current' };
+}
+
+/** True when a `buildApplication` run can repair the stamp. */
+export function sourceBuildStampNeedsRebuild(
+  check: SourceBuildStampCheck,
+): boolean {
+  return (
+    check.status === 'mismatch' ||
+    (check.status === 'missing' && check.headError === undefined)
+  );
+}
+
+/** Why the stamp cannot back a managed boot, or null when nothing is wrong. */
+export function describeSourceBuildStampProblem(
+  check: SourceBuildStampCheck,
+): string | null {
+  switch (check.status) {
+    case 'missing':
+      return check.headError === undefined
+        ? `build stamp ${check.manifestPath} is missing or invalid (a plain \`npm run build\` does not write it)`
+        : `build stamp ${check.manifestPath} is missing or invalid, and the checkout HEAD cannot be read (${check.headError}), so no build can write it`;
+    case 'mismatch':
+      return `build stamp ${check.manifestPath} records sha ${check.stampSha}, but the checkout HEAD is ${check.headSha}`;
+    default:
+      return null;
   }
 }
 
@@ -3404,6 +3488,10 @@ export async function waitForIdentity(
   let extensionsUsed = 0;
   let lastFailure = 'No response received';
   let lastKind: IdentityWaitFailureKind | null = null;
+  // station#2689: which triple fields differed on the last mismatch, and both
+  // values. Kept out of `lastFailure` so the parenthesised reason stays the
+  // exact phrase `classifyStartFailure` (scripts/run-e2e-suite.mjs) matches.
+  let lastMismatchDetail = '';
   while (true) {
     if (Date.now() >= deadline) {
       // Last-attempt-only by design: a mismatch followed by a refused connect
@@ -3453,6 +3541,7 @@ export async function waitForIdentity(
         }
         lastFailure = 'managed boot identity mismatch';
         lastKind = 'identity-mismatch';
+        lastMismatchDetail = describeIdentityMismatch(expected, actual);
       } else {
         lastFailure = `${response.status} ${response.statusText}`.trim();
         lastKind = classifyIdentityWaitStatus(response.status);
@@ -3468,7 +3557,29 @@ export async function waitForIdentity(
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
-  throw new Error(`Timed out waiting for ${url} (${lastFailure})`);
+  throw new Error(
+    `Timed out waiting for ${url} (${lastFailure})${
+      lastKind === 'identity-mismatch' ? `: ${lastMismatchDetail}` : ''
+    }`,
+  );
+}
+
+const IDENTITY_TRIPLE_FIELDS = ['sha', 'bootId', 'instanceId'] as const;
+
+/** `sha expected "a", got "b"; …` for each identity field that differed. */
+function describeIdentityMismatch(
+  expected: { instanceId: string; sha: string; bootId: string },
+  actual: Partial<typeof expected>,
+): string {
+  const show = (value: unknown) => JSON.stringify(value) ?? 'nothing';
+  return IDENTITY_TRIPLE_FIELDS.filter(
+    (field) => actual[field] !== expected[field],
+  )
+    .map(
+      (field) =>
+        `${field} expected ${show(expected[field])}, got ${show(actual[field])}`,
+    )
+    .join('; ');
 }
 
 async function probeIdentityOnce(
