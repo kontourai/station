@@ -58,12 +58,16 @@ const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_NATIVE_SIGNAL_SDP_BYTES: usize = 128 * 1024;
 const MAX_NATIVE_SIGNAL_PROOF_BYTES: usize = 4096;
-const MAX_NATIVE_SIGNAL_LIFETIME_MS: u64 = 30 * 1000;
+const NATIVE_BROKER_SIGNAL_OFFER_LIFETIME_MS: u64 = 30 * 1000;
+// The proof may be 30 seconds old and the broker's clock can therefore place
+// a 30-second offer as far as 60 seconds ahead of this host's current time.
+// Keep one second for integer-second proof timestamps and millisecond expiry.
+const MAX_NATIVE_SIGNAL_RESPONSE_HORIZON_MS: u64 = 61 * 1000;
 // The broker accepts request proofs up to 30 seconds old. Include that
 // maximum client clock lag, the fixed 15-second transport timeout, and a
 // one-second rounding margin so its 30-second offer cannot outlive the grant.
 const NATIVE_SIGNAL_BROKER_PROOF_CLOCK_LAG_MS: u64 = 30 * 1000;
-const MIN_NATIVE_SIGNAL_OPEN_GRANT_LIFETIME_MS: u64 = MAX_NATIVE_SIGNAL_LIFETIME_MS
+const MIN_NATIVE_SIGNAL_OPEN_GRANT_LIFETIME_MS: u64 = NATIVE_BROKER_SIGNAL_OFFER_LIFETIME_MS
     + (BROKER_REQUEST_TIMEOUT.as_secs() * 1000)
     + NATIVE_SIGNAL_BROKER_PROOF_CLOCK_LAG_MS
     + 1000;
@@ -3292,6 +3296,56 @@ mod tests {
     }
 
     #[test]
+    fn native_signal_accepts_broker_expiry_with_clock_ten_seconds_ahead() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let open_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_OPENED_VERSION,
+                "expiresAt": NOW + 40_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        let opened = native_signal_service(&prepared, &open_transport, &grants).open(
+            &NativeRelaySignalOpenRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-clock-offset-01".to_owned(),
+                offer_sdp: "v=0\r\no=- native-diagnostic\r\n".to_owned(),
+            },
+        );
+        assert_eq!(opened.unwrap().expires_at, NOW + 40_000);
+
+        let read_transport = NativeSignalTransport {
+            authority: prepared.authority.clone(),
+            status: 200,
+            response_body: serde_json::to_vec(&serde_json::json!({
+                "version": NATIVE_SIGNAL_ANSWER_VERSION,
+                "answerSdp": null,
+                "stationProof": null,
+                "expiresAt": NOW + 40_000,
+            }))
+            .unwrap(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        let answer = native_signal_service(&prepared, &read_transport, &grants).read(
+            &NativeRelaySignalReadRequest {
+                profile_name: "Local".to_owned(),
+                expected_profile_revision: 7,
+                nonce: "signal-clock-offset-01".to_owned(),
+            },
+        );
+        assert_eq!(answer.unwrap().expires_at, NOW + 40_000);
+    }
+
+    #[test]
     fn native_signal_service_rechecks_profile_after_broker_response() {
         let prepared = prepared("https://broker.example".to_owned(), 7);
         let grants = stored_signal_grant(&prepared);
@@ -5591,7 +5645,7 @@ where
         let now = (self.now)();
         if receipt.version != NATIVE_SIGNAL_OPENED_VERSION
             || receipt.expires_at <= now
-            || receipt.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_LIFETIME_MS)
+            || receipt.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_RESPONSE_HORIZON_MS)
             || receipt.expires_at > grant.expires_at
         {
             return Err(NativeRedemptionError::BrokerRejected);
@@ -5648,7 +5702,7 @@ where
                 proof.is_empty() || proof.as_bytes().len() > MAX_NATIVE_SIGNAL_PROOF_BYTES
             })
             || answer.expires_at <= now
-            || answer.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_LIFETIME_MS)
+            || answer.expires_at > now.saturating_add(MAX_NATIVE_SIGNAL_RESPONSE_HORIZON_MS)
             || answer.expires_at > grant.expires_at
         {
             return Err(NativeRedemptionError::BrokerRejected);
