@@ -78,8 +78,8 @@ function probePortFreeOnHost(port: number, host: string): Promise<boolean> {
       // A port genuinely in use is EADDRINUSE; a privileged bind is EACCES.
       // Any other error (e.g. ::1 not available on this host) means this
       // interface cannot decide occupancy, so it must not veto an otherwise
-      // free port — probing wildcards that way is what made t3code's runner
-      // walk away from free ports.
+      // free port — treating such errors as "in use" makes the runner skip
+      // ports that are actually free.
       const code = error.code;
       resolvePromise(code !== 'EADDRINUSE' && code !== 'EACCES');
     });

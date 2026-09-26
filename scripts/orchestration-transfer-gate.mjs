@@ -8,11 +8,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   gitLocationKeys,
   sanitizedGitEnvironment,
 } from './lib/git-environment.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
   findReusableBaseline,
@@ -642,7 +642,7 @@ export function runTransferGate(options = parseArgs(process.argv.slice(2))) {
   return withTransferGitEnvironment(() => runTransferGateInner(options));
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     runTransferGate();
   } catch (error) {

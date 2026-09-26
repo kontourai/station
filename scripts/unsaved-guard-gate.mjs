@@ -60,6 +60,7 @@
 //      list easy to extend.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: no bare confirm()/prompt() or window.confirm()/window.prompt()
@@ -130,6 +131,7 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/ProjectSettingsView.tsx',
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',
+  'src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx',
   'src-ui/src/views/KnowledgeConnectionView.tsx',
   'src-ui/src/views/AgentConnectionView.tsx',
   'src-ui/src/views/ProviderSettingsView.tsx',
@@ -345,6 +347,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

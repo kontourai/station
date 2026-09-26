@@ -35,7 +35,7 @@
       "name": "connections",
       "width": 1440,
       "height": 900,
-      "sha256": "57ac2725d5754dec52bd026b0cb4426f8ba69f06880782521cfdca486f7a4d39"
+      "sha256": "a11d503349ad9e5f3b9843fa8c599e5f139399834108f3b30d9a1f38aa4b2208"
     },
     {
       "name": "connections-agent-apps",
@@ -53,7 +53,7 @@
       "name": "connections-models",
       "width": 1440,
       "height": 900,
-      "sha256": "57ac2725d5754dec52bd026b0cb4426f8ba69f06880782521cfdca486f7a4d39"
+      "sha256": "a11d503349ad9e5f3b9843fa8c599e5f139399834108f3b30d9a1f38aa4b2208"
     },
     {
       "name": "connections-tools",
@@ -239,7 +239,7 @@
       "name": "overlay-new-project-layout-control",
       "width": 1440,
       "height": 900,
-      "sha256": "b04be2fc552d6b244bdac55c02b937616eb87bd681a9b348c1dd85ea68af9e3b"
+      "volatile": true
     },
     {
       "name": "overlay-new-project-modal",

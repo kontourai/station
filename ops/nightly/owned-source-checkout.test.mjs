@@ -86,10 +86,23 @@ describe('owned Nightly source checkout', () => {
   it('advances twice from remote main without switching or cleaning the user checkout', () => {
     const subject = fixture();
     const userHead = git(['rev-parse', 'HEAD'], subject.source);
-    const cli = join(subject.root, 'owned source checkout cli.mjs');
+    // Laid out as in the checkout: the CLI imports its entry guard from
+    // ../../scripts/lib (#2682).
+    const cli = join(
+      subject.root,
+      'ops',
+      'nightly',
+      'owned source checkout cli.mjs',
+    );
+    mkdirSync(join(subject.root, 'ops', 'nightly'), { recursive: true });
+    mkdirSync(join(subject.root, 'scripts', 'lib'), { recursive: true });
     copyFileSync(
       resolve(import.meta.dirname, 'owned-source-checkout.mjs'),
       cli,
+    );
+    copyFileSync(
+      resolve(import.meta.dirname, '../../scripts/lib/module-entry.mjs'),
+      join(subject.root, 'scripts', 'lib', 'module-entry.mjs'),
     );
     const first = execFileSync(
       process.execPath,

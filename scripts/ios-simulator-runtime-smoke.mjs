@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const DEFAULT_RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
@@ -550,10 +550,7 @@ async function main(argv = process.argv.slice(2)) {
   console.log(JSON.stringify(receipt, null, 2));
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
     console.error(
       `ios-simulator-runtime-smoke: ${error instanceof Error ? error.message : String(error)}`,

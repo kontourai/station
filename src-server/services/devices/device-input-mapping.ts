@@ -9,8 +9,8 @@ import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-d
  * Pure mappings from live-surface input to the device hub's input protocol
  * (#1970). Nothing here sends anything; the producer does.
  *
- * The hub's two helpers speak different protocols (from t3code's
- * packages/client-runtime/src/device/stream.ts and the hub's own sources):
+ * The hub's two helpers speak different protocols (from the hub's own
+ * sources):
  * - iOS (serve-sim helper socket): binary `[tag][json]` packets. Touch
  *   `{type:'begin'|'move'|'end', x, y}` in the RAW framebuffer's unit square,
  *   hardware button `{button}`, key `{type:'down'|'up', usage}` (a USB HID
@@ -19,9 +19,10 @@ import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-d
  *   buttons `{type:'home'|'back'|'recents'|'power'}`, key
  *   `{type:'key', keycode, action}`, text `{type:'text', text}`.
  *
- * Adapted from t3code (MIT License, Copyright (c) 2026 T3 Tools Inc.):
- * the HID usage table, the Android keycode table and the rotated-point
- * remap (`rawPoint`).
+ * The key tables hold standard values: USB HID usage IDs (Keyboard/Keypad
+ * page) for iOS and Android `KeyEvent` keycodes. The point mapping
+ * (`surfacePointToRawUnit`) is plain geometry: undo the viewer's rotation to
+ * address the unrotated framebuffer.
  */
 
 export const IOS_MSG_TOUCH = 0x03;

@@ -7,6 +7,7 @@ import { readPluginManifest } from '@kontourai/station-shared/parsers';
 import {
   admitStationRuntimeHome,
   resolveStationRuntimeContext,
+  runtimeChannelFromEnvironment,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 
@@ -205,6 +206,43 @@ export function resolveLifecycleInstanceId(
     .slice(0, 12);
 
   return `instance-${hash}`;
+}
+
+/**
+ * station#2689: this source checkout's development instance id, or undefined
+ * outside the development channel. The launcher (scripts/source-bootstrap.ts)
+ * derives it from the checkout path and exports it as STATION_INSTANCE_ID; the
+ * implicit development home is `<STATION_ROOT>/instances/dev/<this id>`.
+ */
+export function sourceCheckoutDevInstanceId(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  if (runtimeChannelFromEnvironment(env) !== 'dev') return undefined;
+  const id = env.STATION_INSTANCE_ID?.trim();
+  return id ? normalizeInstanceName(id) : undefined;
+}
+
+/**
+ * The instance id a SERVICE command acts on. Identical to
+ * `resolveLifecycleInstanceId` except in one case: no explicit `--instance`
+ * and an implicit home on the development channel. That home is the
+ * checkout's development instance home, so the service takes that instance's
+ * name rather than `default` (or a port-derived `instance-<hash>`), and the
+ * machine-wide unit name agrees with the home it runs. Every service action
+ * resolves through here, so install, status, start, stop and uninstall keep
+ * addressing the same service.
+ */
+export function resolveServiceInstanceId(
+  options: LifecycleInstanceIdentityOptions & {
+    homeSource: LifecycleHomeSource;
+    env?: NodeJS.ProcessEnv;
+  },
+): string {
+  if (!options.instanceName?.trim() && options.homeSource === 'default') {
+    const devInstanceId = sourceCheckoutDevInstanceId(options.env);
+    if (devInstanceId) return devInstanceId;
+  }
+  return resolveLifecycleInstanceId(options);
 }
 
 export function getInstanceStatePath(instanceId: string, cwd = CWD): string {

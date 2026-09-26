@@ -1,7 +1,3 @@
-// Adapted from T3 Code (https://github.com/pingdotgg/t3code,
-// apps/mobile/modules/t3-agent-notifications), MIT License,
-// Copyright (c) 2026 T3 Tools Inc.
-
 package io.kontourai.station.agentactivity
 
 import javax.crypto.AEADBadTagException
@@ -11,34 +7,41 @@ import javax.crypto.spec.SecretKeySpec
 import org.json.JSONException
 import org.json.JSONObject
 
-/**
- * The Android-free half of an agent-activity card: what the payload says and
- * what the card should read. Kept free of android.* so it runs in plain JVM
- * unit tests; AgentActivityPresentation turns it into a notification.
+/*
+ * The plain-JVM half of an agent-activity card: reading a push and deciding
+ * what its card says. Nothing here touches android.*, so all of it runs in
+ * the JVM unit tests; AgentActivityPresentation and AgentNotifications turn
+ * these decisions into notifications.
  *
- * Payload wire format (FCM data message, all values strings):
- * - `station_kind` = `agent_activity`
- * - `device_id`, `user_id`: the registration id and Station id from `configure`
- * - `station_key`: stamped by the push gateway; must equal the Station key
- *   thumbprint from `configure` (see [acceptsPush])
- * - `updated_at`: epoch millis; stale or reordered messages are dropped
- * - `active`: `true` while any agent is working or waiting on the user
- * - `activity_phase`: one of [ActivityPhase.wire]
- * - `activity_line_0`..`activity_line_4`: `status\ttitle\tproject`, ordered by the sender.
- *   Required: unlike T3's format there is no title/body fallback, so a payload
- *   without a valid row renders as a bare "Agent activity" card.
- * - `activity_active_count`, `activity_attention_count`: optional totals
- * - `activity_expires_at`: optional absolute expiry, epoch millis
- * - `activity_session_id`, `activity_project_slug`: optional; the session row 0
- *   names, which a tap on the card opens (see [sessionRoute])
- * - `alert_id`, `alert_title`, `alert_body`: optional one-shot attention alert.
- * - `alert_session_id`, `alert_project_slug`: optional; the session a
- *   single-session alert names
- *   While the app is in the foreground the alert is recorded as seen and not
- *   posted, on the premise that the web layer shows its own notice. The
- *   sender cannot know the app is in the foreground, so the web layer must
- *   surface the same attention events from its own server stream.
+ * A push is an FCM data message whose values are all strings. Routing fields
+ * travel in the clear; everything else is inside `sealed` (see [openPush]).
+ *
+ * | Field | Meaning |
+ * | --- | --- |
+ * | `station_kind` | always `agent_activity` |
+ * | `device_id` | the registration id `configure` stored |
+ * | `user_id` | the Station id `configure` stored |
+ * | `station_key` | stamped by the push gateway; must equal the stored Station key thumbprint ([acceptsPush]) |
+ * | `updated_at` | epoch millis; a push too far from the phone's clock is dropped whole; one older than the last applied update has its card update ignored (its alert is still handled) |
+ * | `active` | `true` while an agent is working or waiting on the user |
+ * | `activity_phase` | an [ActivityPhase.wire] value |
+ * | `activity_line_0` .. `activity_line_4` | `status<TAB>title<TAB>project`, in the sender's order |
+ * | `activity_active_count`, `activity_attention_count` | optional totals, since only five rows travel |
+ * | `activity_expires_at` | optional absolute expiry, epoch millis |
+ * | `activity_session_id`, `activity_project_slug` | optional; the session a tap on the card opens ([sessionRoute]) |
+ * | `alert_id`, `alert_title`, `alert_body` | optional one-shot attention alert |
+ * | `alert_session_id`, `alert_project_slug` | optional; the session a single-session alert opens |
+ *
+ * Rows are the only source of card text: a payload with no usable row reads
+ * as a bare "Agent activity" card rather than borrowing text from elsewhere.
+ *
+ * An alert that arrives while the app is in the foreground is recorded as
+ * seen and not posted, because the web layer shows its own notice. The
+ * sender cannot tell the app is open, so the web layer must raise the same
+ * attention events from its own server stream.
  */
+
+/** One agent thread as the card lists it. */
 internal data class ActivityRow(val status: String, val title: String, val project: String)
 
 /**
@@ -158,100 +161,255 @@ internal fun openPush(
   return card - routing.toSet() + routing.mapNotNull { key -> data[key]?.let { key to it } }
 }
 
+
+/** How far `updated_at` may sit from the phone's clock, either way. */
 internal const val MAX_MESSAGE_AGE_MS = 10 * 60 * 1000L
 
 /**
- * Whether a push speaks for the Station this phone registered with. The key
- * pin is what stops someone else's Station, which can also get a signature
- * past the gateway, from writing on this phone's cards.
+ * True when a push names this phone's registration, its Station, and the
+ * Station key the gateway verified. Pinning the key is what keeps another
+ * Station — which can also get a signature past the gateway — off this
+ * phone's cards.
  */
-internal fun acceptsPush(registration: Registration?, data: Map<String, String>): Boolean =
-  registration != null &&
-    data["device_id"] == registration.id &&
+internal fun acceptsPush(registration: Registration?, data: Map<String, String>): Boolean {
+  if (registration == null) return false
+  return data["device_id"] == registration.id &&
     data["user_id"] == registration.stationId &&
     data["station_key"] == registration.stationKey
+}
 
-internal fun isFresh(updatedAt: Long, now: Long): Boolean =
-  now - updatedAt in -MAX_MESSAGE_AGE_MS..MAX_MESSAGE_AGE_MS
+internal fun isFresh(updatedAt: Long, now: Long): Boolean {
+  val skew = now - updatedAt
+  return skew >= -MAX_MESSAGE_AGE_MS && skew <= MAX_MESSAGE_AGE_MS
+}
 
-internal enum class ActivityPhase(
-  val wire: String,
-  /** Row status label, as the sender writes it in `activity_line_N`. */
-  val status: String,
-  /** The status-bar chip text. Android truncates short critical text aggressively. */
-  val chip: String,
+/**
+ * Where an agent thread is. [wire] is the `activity_phase` value; [status]
+ * is the label the sender writes at the front of an `activity_line_N` row.
+ */
+internal enum class ActivityPhase(val wire: String, val status: String) {
+  STARTING("starting", "Connecting"),
+  RUNNING("running", "Working"),
+  APPROVAL("waiting_for_approval", "Approval"),
+  INPUT("waiting_for_input", "Input"),
+  STALE("stale", "Waiting"),
+  COMPLETED("completed", "Done"),
+  FAILED("failed", "Failed");
+
+  /**
+   * Status-bar chip text. Kept to one short word because Android cuts the
+   * promoted chip off after a few characters.
+   */
+  val chip: String
+    get() = when (this) {
+      STARTING, RUNNING -> "Working"
+      APPROVAL -> "Approve"
+      INPUT -> "Answer"
+      else -> status
+    }
+
+  /** The card's primary button: the verb the user is being asked for, else Open. */
   val action: String
-) {
-  STARTING("starting", "Connecting", "Working", "Open"),
-  RUNNING("running", "Working", "Working", "Open"),
-  APPROVAL("waiting_for_approval", "Approval", "Approve", "Approve"),
-  INPUT("waiting_for_input", "Input", "Answer", "Answer"),
-  STALE("stale", "Waiting", "Waiting", "Open"),
-  COMPLETED("completed", "Done", "Done", "Open"),
-  FAILED("failed", "Failed", "Failed", "Open");
+    get() = when (this) {
+      APPROVAL -> "Approve"
+      INPUT -> "Answer"
+      else -> "Open"
+    }
 
-  val needsUser get() = this == APPROVAL || this == INPUT
-  val finished get() = this == COMPLETED || this == FAILED
+  val needsUser: Boolean get() = this == APPROVAL || this == INPUT
+  val finished: Boolean get() = this == COMPLETED || this == FAILED
 
   companion object {
-    fun forStatus(status: String) = entries.firstOrNull { it.status == status }
-    fun forWire(wire: String) = entries.firstOrNull { it.wire == wire }
+    private val byWire = entries.associateBy { it.wire }
+    private val byStatus = entries.associateBy { it.status }
+
+    fun forWire(wire: String): ActivityPhase? = byWire[wire]
+    fun forStatus(status: String): ActivityPhase? = byStatus[status]
   }
 }
 
+/** Rows the sender may include; slots past this are ignored. */
 internal const val MAX_ROWS = 5
+private const val STATUS_CHARS = 40
+private const val TEXT_CHARS = 120
 
-/** The sender orders rows; the card never reorders them. Malformed rows are dropped. */
-internal fun activityRows(data: Map<String, String>): List<ActivityRow> =
-  (0 until MAX_ROWS).mapNotNull {
-    val parts = data["activity_line_$it"]?.split('\t', limit = 3) ?: return@mapNotNull null
-    if (parts.size != 3 || parts[1].isBlank()) {
-      null
-    } else {
-      ActivityRow(parts[0].take(40), parts[1].take(120), parts[2].take(120))
-    }
+/**
+ * The card's rows, in the order the sender wrote them (the card never
+ * re-sorts). A slot that is missing, lacks three tab-separated fields, or
+ * has a blank title is skipped; overlong fields are cut.
+ */
+internal fun activityRows(data: Map<String, String>): List<ActivityRow> {
+  val rows = ArrayList<ActivityRow>(MAX_ROWS)
+  for (slot in 0 until MAX_ROWS) {
+    val line = data["activity_line_$slot"] ?: continue
+    val fields = line.split('\t', limit = 3)
+    if (fields.size < 3) continue
+    val (status, title, project) = fields
+    if (title.isBlank()) continue
+    rows.add(ActivityRow(status.take(STATUS_CHARS), title.take(TEXT_CHARS), project.take(TEXT_CHARS)))
   }
-
-internal fun activityPhase(data: Map<String, String>, rows: List<ActivityRow>): ActivityPhase? =
-  data["activity_phase"]?.takeIf { it.isNotBlank() }?.let { ActivityPhase.forWire(it) }
-    ?: rows.firstOrNull()?.let { ActivityPhase.forStatus(it.status) }
-
-/** What the card says, derived only from the payload. */
-internal class ActivityModel(data: Map<String, String>, val active: Boolean) {
-  val rows = activityRows(data)
-  val hero = rows.firstOrNull()
-  val phase = activityPhase(data, rows)
-  val activeCount = data["activity_active_count"]?.toIntOrNull()?.coerceAtLeast(0)
-    ?: rows.count { ActivityPhase.forStatus(it.status)?.finished != true }
-  val attentionCount = data["activity_attention_count"]?.toIntOrNull()?.coerceAtLeast(0)
-    ?: rows.count { ActivityPhase.forStatus(it.status)?.needsUser == true }
-  val failedCount = rows.count { it.status == ActivityPhase.FAILED.status }
-  val threadCount = activeCount + rows.count { ActivityPhase.forStatus(it.status)?.finished == true }
-  val singleProject = rows.map { it.project }.distinct().size == 1
-
-  val summary: String = when {
-    hero == null -> "Agent activity"
-    rows.size == 1 -> hero.title
-    attentionCount == 1 -> "1 needs you"
-    attentionCount > 1 -> "$attentionCount need you"
-    activeCount > 0 && failedCount > 0 -> "$failedCount failed"
-    activeCount > 0 -> "$activeCount working"
-    failedCount > 0 -> "Finished, $failedCount failed"
-    else -> "All finished"
-  }
-
-  /** Null when finished: a finished card is not promoted, so it has no chip. */
-  val chip: String? = when {
-    !active -> null
-    phase == null -> "Active"
-    phase == ActivityPhase.RUNNING && activeCount > 1 ->
-      "${if (activeCount > 9) "9+" else activeCount} live"
-    else -> phase.chip
-  }
-
-  /** Null when finished: the card swipes away and a tap opens the app. */
-  val action: String? = if (active) phase?.action ?: "Open" else null
+  return rows
 }
+
+/**
+ * The card's overall phase: `activity_phase` when it names a known phase,
+ * otherwise whatever the first row's status label maps to.
+ */
+internal fun activityPhase(data: Map<String, String>, rows: List<ActivityRow>): ActivityPhase? {
+  val declared = data["activity_phase"].orEmpty()
+  if (declared.isNotBlank()) {
+    ActivityPhase.forWire(declared)?.let { return it }
+  }
+  val lead = rows.firstOrNull() ?: return null
+  return ActivityPhase.forStatus(lead.status)
+}
+
+private fun Map<String, String>.total(key: String): Int? = this[key]?.toIntOrNull()?.coerceAtLeast(0)
+
+/** Everything the card shows, worked out from the payload alone. */
+internal class ActivityModel(data: Map<String, String>, val active: Boolean) {
+  val rows: List<ActivityRow> = activityRows(data)
+  val hero: ActivityRow? = rows.firstOrNull()
+  val phase: ActivityPhase? = activityPhase(data, rows)
+
+  private val rowPhases = rows.map { ActivityPhase.forStatus(it.status) }
+  private val finishedRows = rowPhases.count { it?.finished == true }
+
+  /** The sender's totals win: they cover threads beyond the five rows. */
+  val activeCount: Int = data.total("activity_active_count") ?: (rows.size - finishedRows)
+  val attentionCount: Int = data.total("activity_attention_count") ?: rowPhases.count { it?.needsUser == true }
+  val failedCount: Int = rows.count { it.status == ActivityPhase.FAILED.status }
+  val threadCount: Int = activeCount + finishedRows
+  val singleProject: Boolean = rows.map { it.project }.toSet().size == 1
+
+  /** The card title: the thread itself when there is one, else a count of what matters most. */
+  val summary: String = describe()
+
+  /** Chip text while the card is live; a finished card is not promoted and has none. */
+  val chip: String? = if (active) chipText() else null
+
+  /** The primary button while the card is live; a finished card only needs its tap. */
+  val action: String? = if (active) phase?.action ?: "Open" else null
+
+  private fun describe(): String {
+    val only = hero ?: return "Agent activity"
+    if (rows.size == 1) return only.title
+    if (attentionCount > 0) return if (attentionCount == 1) "1 needs you" else "$attentionCount need you"
+    if (failedCount > 0) return if (activeCount > 0) "$failedCount failed" else "Finished, $failedCount failed"
+    return if (activeCount > 0) "$activeCount working" else "All finished"
+  }
+
+  private fun chipText(): String {
+    val current = phase ?: return "Active"
+    if (current == ActivityPhase.RUNNING && activeCount > 1) {
+      val shown = if (activeCount > 9) "9+" else activeCount.toString()
+      return "$shown live"
+    }
+    return current.chip
+  }
+}
+
+/** One line of the card body: a status label, the thread, and an optional dimmed suffix. */
+internal data class CardLine(val status: String, val text: String, val suffix: String)
+
+/** The card's text, before Android styling is applied. */
+internal data class CardText(
+  val title: String,
+  /** Colour the title with the phase only when it reports an outcome or a request. */
+  val accentTitle: Boolean,
+  /** Below the title on a multi-thread card: the shared project, then a count. */
+  val subText: String?,
+  val lines: List<CardLine>
+)
+
+internal fun ActivityModel.cardText(): CardText {
+  val multi = rows.size > 1
+  // A plain "3 working" stays neutral so the accent keeps meaning something.
+  val accent = multi && phase != null && phase != ActivityPhase.RUNNING && phase != ActivityPhase.STARTING
+  val subText = if (!multi) {
+    null
+  } else {
+    val parts = mutableListOf<String>()
+    val project = rows[0].project
+    if (singleProject && project.isNotBlank()) parts.add(project)
+    parts.add(if (activeCount > 0) "$activeCount active" else "$threadCount threads")
+    parts.joinToString(" · ")
+  }
+  val lines = when {
+    rows.isEmpty() -> emptyList()
+    // The title already names a lone thread, so its line carries the project instead.
+    !multi -> listOf(CardLine(rows[0].status, rows[0].project, ""))
+    else -> rows.map { CardLine(it.status, it.title, if (singleProject) "" else it.project) }
+  }
+  return CardText(summary, accent, subText, lines)
+}
+
+/** How many alert ids a registration remembers, so delivery retries are recognised. */
+internal const val SEEN_ALERT_HISTORY = 64
+
+/**
+ * The alert history after seeing [alertId], or null when the id is already
+ * in [history] (a delivery retry). History is newline-joined, oldest first,
+ * and keeps the most recent [SEEN_ALERT_HISTORY] ids.
+ */
+internal fun rememberAlert(history: String?, alertId: String): String? {
+  val seen = history?.split('\n') ?: emptyList()
+  if (seen.contains(alertId)) return null
+  return (seen.takeLast(SEEN_ALERT_HISTORY - 1) + alertId).joinToString("\n")
+}
+
+/** A card with no explicit expiry lives this long after its update while active. */
+internal const val RUNNING_LIFETIME_MS = 2 * 60 * 60 * 1000L
+/** No card outlives this, whatever expiry it asks for. */
+internal const val MAX_LIFETIME_MS = 24 * 60 * 60 * 1000L
+
+/** What a registration remembers about its ongoing card between pushes. */
+internal data class CardMemory(
+  val lastUpdate: Long,
+  val lastActive: Boolean,
+  val dismissed: Boolean,
+  /** Whether the user turned ongoing cards on for this registration. */
+  val ongoingEnabled: Boolean
+)
+
+/** What one accepted status update does to the ongoing card. */
+internal sealed class CardStep {
+  /** Older than an update already applied: change nothing. */
+  object Stale : CardStep()
+
+  /** Expired, or ongoing cards are off: take the card down and forget any dismissal. */
+  object Remove : CardStep()
+
+  /** The user dismissed this run; keep it down. */
+  object KeepDismissed : CardStep()
+
+  /** Post (or refresh) the card, to time out after [remainingMs]. */
+  data class Post(val remainingMs: Long) : CardStep()
+}
+
+/**
+ * Decides [CardStep] for an update. Expiry is absolute — `activity_expires_at`
+ * when the sender gives one, else [RUNNING_LIFETIME_MS] after an active
+ * update — so a replayed push cannot keep a finished card or an abandoned
+ * host alive. Dismissing a run also dismisses its finished card; only a new
+ * run (inactive to active) brings the card back.
+ */
+internal fun planCard(
+  memory: CardMemory,
+  updatedAt: Long,
+  active: Boolean,
+  expiresAtField: String?,
+  now: Long
+): CardStep {
+  if (updatedAt < memory.lastUpdate) return CardStep.Stale
+  val expiresAt = expiresAtField?.toLongOrNull() ?: if (active) updatedAt + RUNNING_LIFETIME_MS else 0L
+  val remainingMs = minOf(expiresAt - now, MAX_LIFETIME_MS)
+  if (remainingMs <= 0 || !memory.ongoingEnabled) return CardStep.Remove
+  val newRun = active && !memory.lastActive
+  if (memory.dismissed && !newRun) return CardStep.KeepDismissed
+  return CardStep.Post(remainingMs)
+}
+
 
 /**
  * The contract grammar for a session id or project slug

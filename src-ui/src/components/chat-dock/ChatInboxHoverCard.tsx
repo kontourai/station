@@ -50,9 +50,8 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 }
 
 /**
- * The inbox row's hover card: the metadata T3 Code shows for a session —
- * project, machine, branch, engine, status, pull requests — plus Station's
- * own basis inventory for the row's session.
+ * The inbox row's hover card: the session's metadata — project, machine,
+ * branch, engine, status, pull requests — plus its basis inventory.
  *
  * Display-only by contract: `pointer-events: none` and `role="tooltip"`, so
  * the card never intercepts the pointer (moving across rows never fights an

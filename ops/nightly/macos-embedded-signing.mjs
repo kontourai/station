@@ -7,7 +7,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 export const EMBEDDED_MACHO_FIND_MAX_BUFFER = 64 * 1024 * 1024;
 export const EMBEDDED_MACHO_PHASE_LABEL_MAX_LENGTH = 160;
@@ -651,18 +651,7 @@ export function sealEmbeddedMacosMachO(app, identity, options = {}) {
   return files.map((file) => relative(canonicalApp, file));
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
+if (invokedDirectly(import.meta.url)) {
   const [app, identity] = process.argv.slice(2);
   if (!app || !identity)
     throw new Error('Expected <app> <Developer ID identity>.');
