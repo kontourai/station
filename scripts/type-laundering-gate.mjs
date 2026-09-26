@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASELINE_PATH = 'scripts/type-laundering-baseline.json';
 const UPSTREAM_BASELINE_REF = 'origin/main';
@@ -225,6 +226,6 @@ function main(argv) {
   if (result.errors.length) process.exitCode = 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main(process.argv.slice(2));
 }

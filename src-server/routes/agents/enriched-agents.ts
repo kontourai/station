@@ -227,9 +227,11 @@ function isProvenChatEvidence(connection: RuntimeConnectionSummary): boolean {
 /**
  * The refusal for a connection whose evidence has not proven a chat turn:
  * name the missing proof, the engine's own observation, and the supported
- * action — for an ACP engine the free handshake retry (`station acp
- * connections reconnect <id>`), since a billable smoke does not flip its
- * probe gate.
+ * action — for an ACP engine the free handshake retry, since a billable smoke
+ * does not flip its probe gate. The sentence names both paths to it: the
+ * connection's setup page in Station (where the Reconnect action lives) and
+ * the equivalent CLI command for callers reading this through the SDK rather
+ * than the UI.
  */
 function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
   const engine = connection.name?.trim() || 'This agent\u2019s engine';
@@ -239,7 +241,7 @@ function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
     : 'No live engine observation is available.';
   const action =
     connection.type === 'acp'
-      ? `Retry the engine handshake with: station acp connections reconnect ${connection.id}.`
+      ? `Reconnect the engine from its setup page in Station's Connections (or run: station acp connections reconnect ${connection.id}), then retry.`
       : 'Run the connection\u2019s explicit smoke, then retry.';
   return `${engine} has not yet proved it can complete a chat turn. ${observed} ${action}`;
 }

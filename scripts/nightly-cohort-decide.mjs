@@ -19,9 +19,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { appendFileSync } from 'node:fs';
 import { DEPLOY_LEDGER_JSON_PATH } from './deploy-ledger.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   decideNativeCohort,
   NO_COHORT_NEEDED,
@@ -162,11 +162,8 @@ export function main(argv, { readLedger = readLedgerFromGit } = {}) {
   return 0;
 }
 
-// realpathSync both sides so a symlinked workspace cannot make this import
+// invokedDirectly realpaths both sides so a symlinked workspace cannot make this import
 // as a module and exit 0 without deciding anything.
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

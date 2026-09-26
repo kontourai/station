@@ -16,6 +16,11 @@ import { createLocalAccountAdministrationRoutes } from '../../routes/system/loca
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
+import {
+  isPrincipalScopedAgentRequest,
+  stationControlRequestAuthority,
+} from '../../security/station-control-request-authority.js';
 import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
@@ -70,6 +75,7 @@ import type { LoadedDeploymentAuthentication } from '../../services/identity/dep
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
+  isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import {
@@ -170,6 +176,7 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
       );
 }
 
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
@@ -181,7 +188,9 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -366,10 +375,14 @@ import {
   resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
-import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
+import {
+  principalKey,
+  UnattendedGrantStore,
+} from '../../services/agents/unattended-grant-store.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { BoardStore } from '../../services/board/board-store.js';
 import { CheckpointIndexStore } from '../../services/checkpoints/checkpoint-index-store.js';
@@ -1106,6 +1119,45 @@ export function isProjectMemberDraftLease(method: string, path: string) {
  */
 const ATTACHMENT_CANDIDATE_THREADS_PER_REQUEST = 4;
 
+/**
+ * #2377 slice A: an in-process entry point Station itself drives (a person's
+ * chat, a webhook, a pane action), run as server code so its own loopback
+ * calls carry the server-self attestation. See `runAsStationServer` —
+ * including why slice C must enforce dispatch at these routes.
+ */
+function stationServerEntry<Args extends unknown[], Result>(
+  operation: (...args: Args) => Result,
+): (...args: Args) => Result {
+  return (...args) => runAsStationServer(() => operation(...args));
+}
+
+/**
+ * #2377 slice A (M1): whether changing `changes` on the job named `jobName`
+ * changes what a job that holds live unattended grants runs. Exported so a
+ * test can drive it against a real grant store.
+ */
+export async function jobEditRetargetsGrantedWork(
+  jobName: string,
+  changes: Record<string, unknown>,
+  listJobs: () => Promise<readonly SchedulerJob[]>,
+  grants: Pick<UnattendedGrantStore, 'listGrants'>,
+): Promise<boolean> {
+  const job = (await listJobs()).find(
+    (candidate) => candidate.name === jobName,
+  );
+  if (!job) return false;
+  const changed = Object.entries(changes).some(
+    // Structural comparison: `monitor` is an object (and `null` removes it).
+    ([field, value]) => JSON.stringify(job[field]) !== JSON.stringify(value),
+  );
+  const jobId = job.unattendedPrincipal?.jobId;
+  if (!changed || !jobId) return false;
+  const key = principalKey({ kind: 'scheduled-job', jobId });
+  return grants
+    .listGrants()
+    .some((grant) => grant.principalKey === key && !grant.revokedAt);
+}
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -1462,11 +1514,40 @@ export function configureRuntimeRoutes(
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
     next: () => Promise<void>,
   ) => {
-    conversationRequestAuthorities.set(
-      c.req.raw,
-      conversationReadAuthorityForContext(c),
-    );
+    let authority: ReturnType<typeof conversationReadAuthorityForContext>;
+    try {
+      authority = conversationReadAuthorityForContext(c);
+    } catch (error) {
+      // #2377 slice B: a station-control request that acts for no principal
+      // (caller-less, or a session with no recorded owner) reaches only the
+      // reads that are not principal-scoped (`GET /agents`, say); the guard
+      // refused every principal-scoped one before this. It binds no
+      // authority, so a route that asks for one still fails closed.
+      if (
+        error instanceof PrincipalUnresolvedError &&
+        isPrincipalScopedAgentRequest(c.req.raw)
+      )
+        return next();
+      throw error;
+    }
+    conversationRequestAuthorities.set(c.req.raw, authority);
     await next();
+  };
+  /**
+   * #2377 slice B: the principal a principal-scoped station-control request
+   * acts for (its session's recorded owner), `null` when it acts for no one
+   * (caller-less, or no recorded owner), and `undefined` for every other
+   * request (the operator's clients, devices, a bound operator caller,
+   * Station's own server code), which keeps its own rules.
+   */
+  const agentOwnerIdForRequest = (
+    request: Request,
+  ): string | null | undefined => {
+    if (!isPrincipalScopedAgentRequest(request)) return undefined;
+    const agent = stationControlRequestAuthority(request);
+    return agent?.kind === 'caller'
+      ? (agent.caller.principal?.id ?? null)
+      : null;
   };
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
   // (below, at the Task-room `requestAuthority` deps literal) receives only a
@@ -1539,6 +1620,54 @@ export function configureRuntimeRoutes(
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
   });
+  // Station #90 lane D (station #122): a station-control tool's verified caller
+  // names a session; the principal it acts for, its project and its
+  // conversation come from these records, never from the request.
+  const resolveStationControlCallerRecord =
+    createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            context.orchestrationService.resolveSessionActingPrincipal(
+              threadId,
+            ),
+          firstStartedMetadataOfThread: (threadId) =>
+            context.orchestrationService.firstStartedMetadataOfThread(threadId),
+        },
+        eventStore: context.orchestrationEventStore,
+        getProject: (slug) => context.storageAdapter.getProject(slug),
+      }),
+    );
+  // #2377 slice A: every request the boundary above stamped `kind:'internal'`
+  // (every station-control tool call, and Station's own server code) is
+  // decided here from the station-control authority table, before any route
+  // is mounted. The operator's UI and paired devices are never internal.
+  context.app.use(
+    '*',
+    createStationControlAuthorityGuard({
+      resolveCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      isOperatorPrincipal: (principalId) =>
+        principalId === LOCAL_OPERATOR_PRINCIPAL_ID,
+      // A person's unattended grants are keyed by the job; an agent must not
+      // change what a granted job runs. Read at request time: both are
+      // composed further down. A store read that throws fails closed.
+      retargetsGrantedJob: (jobName, changes) =>
+        jobEditRetargetsGrantedWork(
+          jobName,
+          changes,
+          () => schedulerService.listJobs(),
+          unattendedGrantStore,
+        ),
+      onRefusal: (refusal, method, path) =>
+        context.logger.warn(
+          `station-control authority refused ${method} ${path}: ${refusal.code}`,
+        ),
+    }),
+  );
   // #2561: every route family below decides a session or conversation read
   // (or records an owner that a later session read compares against), so it
   // must use the request's principal, exactly like the chat routes bound
@@ -1935,24 +2064,6 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
-  // Station #90 lane D (station #122): a station-control tool's verified caller
-  // names a session; the principal it acts for, its project and its
-  // conversation come from these records, never from the request.
-  const resolveStationControlCallerRecord =
-    createStationControlCallerRecordResolver(
-      stationControlCallerRecordSources({
-        orchestrationService: {
-          resolveSessionActingPrincipal: (threadId) =>
-            context.orchestrationService.resolveSessionActingPrincipal(
-              threadId,
-            ),
-          firstStartedMetadataOfThread: (threadId) =>
-            context.orchestrationService.firstStartedMetadataOfThread(threadId),
-        },
-        eventStore: context.orchestrationEventStore,
-        getProject: (slug) => context.storageAdapter.getProject(slug),
-      }),
-    );
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );
@@ -2231,6 +2342,8 @@ export function configureRuntimeRoutes(
       pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
       logger: context.logger,
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      canSeePlugin: (c, pluginId) =>
+        canSeePluginForRequest(c as never, pluginId),
     }),
   );
   // #2323 S4: whether a Project folder still holds an installed local
@@ -2660,11 +2773,27 @@ export function configureRuntimeRoutes(
   // Mobile devices (#1969 snapshots, #1970 live sessions, toolchain and
   // shares): personal operator hosts only, never a shared tenant.
   if (isPersonalHost) {
+    // The device helper address resolves through the settings registry —
+    // this Station's stored config, then the STATION_MOBILE_DEVICE_HUB_URL
+    // environment variable — instead of a direct env read, so the Settings
+    // row ("Device helper URL", with its provenance badge) and the Device
+    // pane's setup copy name the same source the runtime actually consults.
+    // Live config first (a user can change the setting between boots); the
+    // boot snapshot is the fallback when no live reader answers.
+    const configuredDeviceHub = resolveEffectiveAppSetting(
+      'mobileDeviceHubUrl',
+      { config: context.getLiveAppConfig?.() ?? context.appConfig },
+    );
+    const configuredDeviceHubUrl =
+      typeof configuredDeviceHub?.value === 'string' &&
+      configuredDeviceHub.value.trim()
+        ? configuredDeviceHub.value.trim()
+        : undefined;
     // #1970: Station's own supervised hub. An explicitly configured hub URL
     // still wins; the managed one is started on demand, never at boot.
     const devices = new DeviceToolchainService({
       stationHome: context.configLoader.getProjectHomeDir(),
-      configuredHubUrl: process.env.STATION_MOBILE_DEVICE_HUB_URL,
+      configuredHubUrl: configuredDeviceHubUrl,
     });
     deviceToolchainService = devices;
     // D12: devices belong to the operator; admins/owners of a Project use
@@ -2729,7 +2858,7 @@ export function configureRuntimeRoutes(
     const deviceHosts = createDeviceHostResolver({
       local: deviceHubEndpointFromToolchain(
         devices,
-        explicitDeviceHubEndpoint(process.env.STATION_MOBILE_DEVICE_HUB_URL),
+        explicitDeviceHubEndpoint(configuredDeviceHubUrl),
       ),
       remote: hostRegistry,
     });
@@ -3049,6 +3178,7 @@ export function configureRuntimeRoutes(
     '/api/ui',
     createUICommandRoutes(context.eventBus, {
       isHostedDeployment: () => hostedTenantRegistry !== undefined,
+      navigationAudience: agentOwnerIdForRequest,
     }),
   );
   context.app.route(
@@ -3430,10 +3560,12 @@ export function configureRuntimeRoutes(
     createInboundWebhookRoutes({
       homeDir: context.configLoader.getProjectHomeDir(),
       logger: context.logger,
-      startTurn: createWebhookTurnStarter({
-        readAuthorityFor: readAuthorityForExecution,
-        orchestrationService: context.orchestrationService,
-      }),
+      startTurn: stationServerEntry(
+        createWebhookTurnStarter({
+          readAuthorityFor: readAuthorityForExecution,
+          orchestrationService: context.orchestrationService,
+        }),
+      ),
     }),
   );
   // Current-host composer staging is intentionally process-local: unfinished
@@ -3544,11 +3676,12 @@ export function configureRuntimeRoutes(
       },
       listCheckpointRestoreEvents: (threadId) =>
         checkpointRestoreService.listEvents(threadId),
-      delegateTask: (input) =>
+      delegateTask: stationServerEntry((input) =>
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -3601,11 +3734,12 @@ export function configureRuntimeRoutes(
         }
         return projectDelegationAttemptClaim(record, input.attemptId);
       },
-      executeForegroundMessage: (input) =>
+      executeForegroundMessage: stationServerEntry((input) =>
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       // #2601: a dispatch's delegation context comes from its verified
       // caller's own session, never from the tool arguments in its body.
       resolveRequestDelegation: createRequestDelegationResolver(
@@ -3633,11 +3767,12 @@ export function configureRuntimeRoutes(
           references,
           binding,
         ),
-      handoffConversation: (input) =>
+      handoffConversation: stationServerEntry((input) =>
         handoffExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       reserveConversationContextBoundary: (input) =>
         context.orchestrationService.reserveConversationContextBoundary(
           input.conversationId,
@@ -3673,47 +3808,55 @@ export function configureRuntimeRoutes(
       projectDefaultEnvironment: createProjectDefaultEnvironmentCallback(
         context.projectService,
       ),
-      continueForegroundMessage: (input) =>
+      continueForegroundMessage: stationServerEntry((input) =>
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      discoverDelegationOptions,
-      continueDelegatedTask: (input) =>
+      ),
+      discoverDelegationOptions: stationServerEntry(discoverDelegationOptions),
+      continueDelegatedTask: stationServerEntry((input) =>
         continueDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      respondToDelegatedTaskRequest: (input) =>
+      ),
+      respondToDelegatedTaskRequest: stationServerEntry((input) =>
         respondToDelegatedTaskRequest(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      interruptDelegatedTask: (input) =>
+      ),
+      interruptDelegatedTask: stationServerEntry((input) =>
         interruptDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      listDelegatedTasks: (input) =>
+      ),
+      listDelegatedTasks: stationServerEntry((input) =>
         listDelegatedTasks(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      observeDelegatedTask: (input) =>
+      ),
+      observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      refreshDelegatedTaskActivity: (input) =>
+      ),
+      refreshDelegatedTaskActivity: stationServerEntry((input) =>
         refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
-      observeDelegatedTaskEvents: (input) =>
+      ),
+      observeDelegatedTaskEvents: stationServerEntry((input) =>
         observeDelegatedTaskEvents(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      ),
       presence: context.orchestrationStreamPresence,
       hostedTenantRegistry,
     }),
@@ -4181,7 +4324,57 @@ export function configureRuntimeRoutes(
     }
     if (account && account.kind !== 'absent')
       throw new ProjectMembershipRefusal('forbidden');
+    // #2377 slice B (decision 2): a station-control tool call sees the
+    // Projects its session's owner would see. An account principal's own
+    // requests are admitted by membership (above), so work acting for one is
+    // too, through the same authority: `current()` reads the principal the
+    // Project guards record from the orchestration resolver, which answers
+    // with the session's recorded owner. The operator and a device principal
+    // are unrestricted in their own requests and stay so. A caller-less or
+    // owner-less agent request never reaches a Project read (the guard
+    // refuses it); if one did, it fails closed here.
+    const ownerId = agentOwnerIdForRequest(request);
+    if (ownerId !== undefined) {
+      if (ownerId === null) throw new ProjectMembershipRefusal('forbidden');
+      if (isDeploymentAccountPrincipalId(ownerId)) {
+        if (!context.projectMembership)
+          throw new ProjectMembershipRefusal('forbidden');
+        return projectMembershipAuthority(request);
+      }
+    }
     return undefined;
+  };
+  /**
+   * #2377 slice B: whether a station-control agent request may take
+   * `action` in the Project named by `projectRef` (its id or slug), for a
+   * surface outside the Project routes (the Task board). The same rule as
+   * `authenticatedProjectMember`: an agent acting for an account principal
+   * holds exactly that principal's membership; any other owner is
+   * unrestricted, as in its own requests. Any other request: allowed here.
+   */
+  const agentOwnerMayUseProject = (
+    request: Request,
+    projectRef: string,
+    action: 'view' | 'edit',
+  ): boolean => {
+    const ownerId = agentOwnerIdForRequest(request);
+    if (ownerId === undefined) return true;
+    if (ownerId === null) return false;
+    if (!isDeploymentAccountPrincipalId(ownerId)) return true;
+    if (!context.projectMembership) return false;
+    try {
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(ownerId)
+        .some(
+          ({ scope, member }) =>
+            (scope.localProjectId === projectRef ||
+              scope.localProjectSlug === projectRef) &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    } catch {
+      return false;
+    }
   };
   const requireAuthenticatedProjectRead = async (
     request: Request,
@@ -4214,10 +4407,16 @@ export function configureRuntimeRoutes(
         c.req.raw,
         resolveOrchestrationRequestPrincipal(c),
       );
-      const restricted = await requireAuthenticatedProjectRead(
-        c.req.raw,
-        c.req.param('slug'),
-      );
+      // #2377 slice B scopes an agent's Project READS; what an agent may
+      // write or run in a Project is dispatch's (slice C), so its non-read
+      // requests keep today's path here.
+      const agentWrite =
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        isPrincipalScopedAgentRequest(c.req.raw);
+      const restricted = agentWrite
+        ? false
+        : await requireAuthenticatedProjectRead(c.req.raw, c.req.param('slug'));
       if (
         restricted &&
         c.req.method !== 'GET' &&
@@ -5113,6 +5312,23 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
+      // #2377 slice B: a station-control agent's hits follow its session
+      // owner's access to each root. Every other caller is unchanged.
+      mayReadHitRoot: (request, root) => {
+        const ownerId = agentOwnerIdForRequest(request);
+        if (ownerId === undefined) return true;
+        if (ownerId === null) return false;
+        // Re-read record by record as the owner (`bindRequestReadAuthority`).
+        if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) return true;
+        if (root.scope.kind === 'project')
+          return agentOwnerMayUseProject(
+            request,
+            root.scope.projectSlug,
+            'view',
+          );
+        // The personal store is the operator's own.
+        return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      },
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),
@@ -5270,6 +5486,7 @@ export function configureRuntimeRoutes(
       queryEventsFromDisk: context.queryEventsFromDisk,
       projectHomeDir: context.configLoader.getProjectHomeDir(),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
+      eventOwnerForRequest: agentOwnerIdForRequest,
       canReadMonitoringEvent: (event, authority) => {
         const sessionId = monitoringSessionIdentity(event);
         return sessionId
@@ -5514,6 +5731,8 @@ export function configureRuntimeRoutes(
         orchestrationService: context.orchestrationService,
         taskGraphService: context.taskGraphService,
         readAuthorityForRequest: conversationReadAuthorityForRequest,
+        mayUseTaskBoard: (projectId, request, action) =>
+          agentOwnerMayUseProject(request, projectId, action),
       }),
     ),
   );

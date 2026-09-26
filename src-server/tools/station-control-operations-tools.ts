@@ -532,7 +532,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). The local operator (this tool's process-local hop, the operator credential, a same-origin UI-bootstrap / local-grant session) receives unredacted lines; pairing credentials receive the same redacted bytes as before, including over loopback.",
+    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])

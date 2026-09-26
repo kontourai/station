@@ -1,0 +1,16 @@
+{
+  "keys": [
+    {
+      "keyId": "station-portable-nightly-2026-09",
+      "algorithm": "ed25519",
+      "publicKeySpkiPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAH74uCwGmcJFftH+reVCJjJysQRRON2k0mTUoDBf14OM=\n-----END PUBLIC KEY-----\n",
+      "channels": ["nightly"]
+    },
+    {
+      "keyId": "station-portable-release-2026-09",
+      "algorithm": "ed25519",
+      "publicKeySpkiPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk8YKOCVgKcXsNNMjkGwYOfE53pV1zrajakwI91oxbPo=\n-----END PUBLIC KEY-----\n",
+      "channels": ["stable", "preview"]
+    }
+  ]
+}

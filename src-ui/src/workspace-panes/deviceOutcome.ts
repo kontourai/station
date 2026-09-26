@@ -33,12 +33,12 @@ export const DEVICE_HOST_FAILURE_COPY: Record<
   'not-configured': {
     title: 'Set up device inspection',
     description:
-      'This Station is not running a device hub yet, so it cannot list simulators or emulators. Choose Set up devices and Station installs and runs one for you, or point STATION_MOBILE_DEVICE_HUB_URL at a hub you run yourself and restart Station — see docs/guides/mobile-device-workspace.md.',
+      'This Station is not running a device hub yet, so it cannot list simulators or emulators. Choose Set up devices and Station installs and runs one for you, or set the Device helper URL setting — in Settings, under Station host — to a hub you run yourself and restart Station.',
   },
   'invalid-configuration': {
     title: 'The configured device helper address was refused',
     description:
-      'Station only accepts a loopback address on a high port — http://127.0.0.1:<port>, and not port 3000 or 3141. Correct STATION_MOBILE_DEVICE_HUB_URL and restart Station.',
+      'Station only accepts a loopback address on a high port — http://127.0.0.1:<port>, and not port 3000 or 3141. Correct the Device helper URL setting in Settings, under Station host, and restart Station.',
   },
   'hub-unavailable': {
     title: 'The device helper did not answer',

@@ -1,6 +1,6 @@
 import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HREF = /\shref=["']([^"']+)["']/g;
 const EXTERNAL_TARGET = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
@@ -78,7 +78,7 @@ export async function checkGeneratedPageLinks(options = {}) {
   throw new Error(`Broken generated Pages links:\n${detail}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (invokedDirectly(import.meta.url)) {
   const files = process.argv.slice(2);
   const selectedFiles =
     files.length > 0 ? files : await findGeneratedHtmlFiles();

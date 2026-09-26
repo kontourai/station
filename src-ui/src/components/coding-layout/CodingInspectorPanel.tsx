@@ -137,6 +137,7 @@ function SetupCta({
   error,
   docsUrl,
   command,
+  commandNote,
 }: {
   label: string;
   helper?: string;
@@ -146,6 +147,12 @@ function SetupCta({
   docsUrl: string;
   /** When set, show a copyable command instead of a one-click action. */
   command?: string;
+  /**
+   * Why the copy-command fallback exists instead of the one-click action, so
+   * the bare command does not read as an instruction to leave the app for a
+   * terminal the reader may not have open.
+   */
+  commandNote?: string;
 }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
@@ -160,6 +167,9 @@ function SetupCta({
     <div className="coding-inspector__cta">
       {command ? (
         <>
+          {commandNote && (
+            <p className="coding-inspector__cta-note">{commandNote}</p>
+          )}
           <code className="coding-inspector__cta-command">{command}</code>
           <div className="coding-inspector__cta-row">
             <button
@@ -314,6 +324,7 @@ export function ReadinessInspectorContent({
               label="Set up readiness"
               docsUrl={VERITAS_DOCS_URL}
               command={result?.command ?? 'npx veritas init --non-interactive'}
+              commandNote="The Veritas CLI is not installed in this workspace yet, so Station cannot run the setup for you. Copy the command below into a terminal in this project — it downloads the CLI and scaffolds a .veritas/ directory (it writes files to your project)."
             />
           ) : (
             <SetupCta

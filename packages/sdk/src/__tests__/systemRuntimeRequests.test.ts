@@ -407,7 +407,60 @@ describe('systemRuntimeRequests', () => {
         provenanceIssue: null,
         technicalDetail: null,
         selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableCode: null,
       });
+    });
+
+    it('keeps a known self-update refusal code and its reason (#2674)', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          installKind: 'source-checkout',
+          applyMethod: 'git-pull',
+          updateAvailable: true,
+          behind: 1,
+          ahead: 0,
+          selfUpdateUnavailableCode: 'service-managed',
+          selfUpdateUnavailableReason: 'this server runs under the service',
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.selfUpdateUnavailableCode).toBe('service-managed');
+      expect(status.selfUpdateUnavailableReason).toBe(
+        'this server runs under the service',
+      );
+    });
+
+    it('keeps the supervised refusal code', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          updateAvailable: true,
+          selfUpdateUnavailableCode: 'supervised',
+          selfUpdateUnavailableReason: 'a supervising process runs this server',
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.selfUpdateUnavailableCode).toBe('supervised');
+    });
+
+    it('reads an unknown self-update refusal code as unknown, keeping its reason', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          installKind: 'source-checkout',
+          applyMethod: 'git-pull',
+          updateAvailable: true,
+          selfUpdateUnavailableCode: 'some-future-code',
+          selfUpdateUnavailableReason: 'a future refusal',
+        }),
+      } as Response);
+
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.selfUpdateUnavailableCode).toBeNull();
+      expect(status.selfUpdateUnavailableReason).toBe('a future refusal');
     });
 
     it('rejects a non-boolean updateAvailable instead of trusting it', async () => {

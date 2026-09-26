@@ -913,6 +913,11 @@ describe('registry-backed enriched Agent routes', () => {
     expect(writer.unavailableReason).toContain(initializeFailure);
     // The supported first action for a command-backed ACP engine is the free
     // handshake retry, not a billable smoke (which does not flip the gate).
+    // The UI path is named first; the CLI command stays for SDK callers who
+    // are not reading this in a UI at all.
+    expect(writer.unavailableReason).toContain(
+      'Reconnect the engine from its setup page',
+    );
     expect(writer.unavailableReason).toContain(
       'station acp connections reconnect opencode',
     );
@@ -1107,6 +1112,9 @@ describe('registry-backed enriched Agent routes', () => {
       'has not yet proved it can complete a chat turn',
     );
     expect(refusal.reason).toContain(probeFailure);
+    expect(refusal.reason).toContain(
+      'Reconnect the engine from its setup page',
+    );
     expect(refusal.reason).toContain('station acp connections reconnect');
     expect(refusal.reason).not.toContain(
       'A live model or capability catalog is available',

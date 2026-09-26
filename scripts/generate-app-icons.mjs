@@ -63,7 +63,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -73,6 +72,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
 import { canonicalizeIcns } from './lib/icns.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRAND_DIR = join(ROOT, 'assets', 'brand');
@@ -600,15 +600,4 @@ async function main() {
   );
 }
 
-function isMainModule() {
-  try {
-    return (
-      process.argv[1] &&
-      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) await main();
+if (invokedDirectly(import.meta.url)) await main();

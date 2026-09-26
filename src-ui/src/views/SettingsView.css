@@ -449,10 +449,8 @@
 /* ── Section Cards ── */
 /* #2144 slice 7: the heading sits ABOVE the card, and the card holds only
    rows. `PageSection` draws its border, radius and fill on the outer element
-   with the header inside it; both products this page was compared against
-   (T3 Code `settingsLayout.tsx:196-229`, Kiro Crew `settings.tsx:306-358`)
-   put the section title outside the bordered surface, which is a large part
-   of why their pages read lighter at the same row count. Scoped to
+   with the header inside it. Putting the section title outside the bordered
+   surface makes the page read lighter at the same row count. Scoped to
    `.settings__section` so `PageSection`'s other hosts keep their card. The
    `#section-<id>` anchor, its focus outline and its scroll margin stay on the
    outer element, so deep links land and pulse exactly where they did. */

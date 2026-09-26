@@ -1,7 +1,7 @@
 /**
  * Automatic adoption of detected native engines (archive#1575).
  *
- * A machine with the claude/codex CLI on PATH gets its engine connection and
+ * A machine with the claude/codex/muse CLI installed gets its engine connection and
  * same-ID default Agent created without a trip through the Providers UI.
  * Detection is retried on a short backoff because CLI probes race server
  * startup under load — the original defect was a one-shot bootstrap that
@@ -83,20 +83,21 @@ export function nativeEngineAdoptionDetection(
 const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
 
 /**
- * Ceiling for one candidate's PATH probe (station#1815).
+ * Ceiling for one candidate's install probe (station#1815).
  *
  * Sized against the first backoff step, not equal to an attempt's duration:
  * candidates are probed SEQUENTIALLY, so an attempt in which all three expire
  * takes three ceilings before the next delay even begins. What the ceiling
- * bounds is one locator, and what it is for is that a locator nobody will
- * read the answer of must not stay alive — that is what gave the adoption a
- * writer the runtime could not account for at shutdown.
+ * bounds is how long one probe is waited for, so a probe nobody will read
+ * the answer of cannot hold the window open — that is what gave the adoption
+ * a writer the runtime could not account for at shutdown. Since #2663 the
+ * probe is `findCliBinaryAsync`; the only child behind it is the shared
+ * login-shell PATH capture, which kills itself at 5s, below this ceiling.
  *
  * An expired probe settles as 'absent' for this attempt and is retried by the
- * next one. That is the one thing 'absent' cannot distinguish: the ceiling
- * kills the locator and `detectCliOnPath` reports the same `false` a locator
- * that genuinely said no reports, so this window has no way to tell them
- * apart. Recorded here rather than papered over — the retry is what limits
+ * next one. That is the one thing 'absent' cannot distinguish: through
+ * `detectCliOnPath` an expired probe reports the same `false` as a lookup
+ * that genuinely said no, so this window has no way to tell them apart. Recorded here rather than papered over — the retry is what limits
  * the cost, not the label.
  */
 export const ADOPTION_PROBE_TIMEOUT_MS = 10_000;
@@ -289,8 +290,9 @@ export async function adoptDetectedNativeEngines(
         // not an answer about the host — it is the cancellation arriving
         // through the answer channel. The guard above this `try` covers only
         // the few instructions between candidates; an abort lands inside the
-        // `which` child for the probe's whole duration, which is where it
-        // actually happens.
+        // probe (whose first call in a process awaits the login-shell PATH
+        // capture, #2663) for its whole duration, which is where it actually
+        // happens.
         if (deps.signal?.aborted) {
           // A `true` here IS an observation, and the window is stopping
           // before it can act on it — assigned rather than left to the
@@ -304,7 +306,7 @@ export async function adoptDetectedNativeEngines(
           break;
         }
         if (!found) {
-          // An uncancelled falsy answer. Not "not on PATH" — see the summary
+          // An uncancelled falsy answer. Not "not installed" — see the summary
           // docblock: this window cannot tell a locator that said no from one
           // the ceiling killed. Left unresolved either way, so the next
           // attempt can still find it.

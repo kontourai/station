@@ -532,7 +532,8 @@ describe('settings catalog completeness', () => {
     // operator's SSH device hosts). #90 D9: +1 (chat-auto-float-browser,
     // the float-over-chat's auto-show preference). #2511: +1
     // (open-last-station, mobile-only, so not in this desktop render).
-    expect(SETTINGS_CATALOG).toHaveLength(57);
+    // Device helper URL: +1 (the local helper the Device pane dials).
+    expect(SETTINGS_CATALOG).toHaveLength(58);
   });
 
   /**

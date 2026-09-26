@@ -2822,17 +2822,22 @@ backup manifest contents.
 
 `requestCoreUpdateStatus(apiBase?, signal?)` validates `GET
 /api/system/core-update` responses instead of casting them. Alongside the
-existing fields, `CoreUpdateStatus` carries four optional diagnostics:
+existing fields, `CoreUpdateStatus` carries five optional diagnostics:
 `serverIdentity` (the answering server's identity triple, from
 `@kontourai/station-contracts/system-status`), `provenanceIssue`
 (`'missing' | 'invalid-stamp'`, the typed reason the server's install
 provenance resolver minted), `technicalDetail` (the provenance detail or
 caught comparison diagnostic — filesystem paths live here, not in
-`message`), and `selfUpdateUnavailableReason` (why a desktop bundle refuses
-git-based self-update). The parser rejects a non-boolean `updateAvailable`
+`message`), `selfUpdateUnavailableReason` (why the server refuses to apply an
+update to itself, as text: a desktop bundle's self-update eligibility, or a
+source checkout running under a supervisor — the installed service or another
+supervising process), and
+`selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
+for the installed launchd/systemd service, `'supervised'` when only a
+supervisor PID is present). The parser rejects a non-boolean `updateAvailable`
 and malformed supplied counts, normalizes a malformed identity or an unknown
-provenance code to unavailable (`null` — an unknown code never reads as
-`'missing'`), accepts responses from older servers that omit the new fields
+provenance or refusal code to unavailable (`null` — an unknown code never
+reads as a specific one; the refusal text still accompanies it), accepts responses from older servers that omit the new fields
 entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
 HTTP status throws a `StationHttpError` before the body can read as success;
 a genuine `error` field still throws a plain `Error` with the server's
