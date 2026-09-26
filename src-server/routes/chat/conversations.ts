@@ -41,6 +41,7 @@ import * as ConversationManager from '../../runtime/conversation/conversation-ma
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
@@ -1463,6 +1464,18 @@ export function createConversationRoutes(
 
       if (!adapter) {
         return c.json({ success: false, error: 'Agent not found' }, 404);
+      }
+      // #2377 slice B: a station-control agent deletes only a conversation
+      // its session's owner owns (a bound operator caller is not scoped).
+      // The file store deletes by id alone, so the owner is compared here,
+      // before it, and a conversation of anyone else's reads as absent.
+      if (isPrincipalScopedAgentRequest(c.req.raw)) {
+        const stored = await adapter.getConversation(conversationId);
+        if (!stored || stored.userId !== authority.userId)
+          return c.json(
+            { success: false, error: 'Conversation not found' },
+            404,
+          );
       }
       if (
         await sessionMessageReader?.readSessionConversation(

@@ -53,6 +53,34 @@ const DECISION_1_BOUND_OPERATOR = [
   'reindex_knowledge',
   'migrate_knowledge',
 ];
+// Decision 2 (slice B): operator-wide reads — Station-wide data no single
+// person's view contains — need a bound caller acting for the operator.
+const DECISION_2_OPERATOR_READS = [
+  'get_job_logs',
+  'get_achievements',
+  'get_ssh_environment',
+];
+// Decision 2 (slice B): reads scoped to the principal the caller's session
+// acts for. Transcribed from the slice B brief, independently of the table.
+const DECISION_2_PRINCIPAL_READS = [
+  'list_conversations',
+  'get_conversation_messages',
+  'board_read',
+  'get_basis',
+  'get_task_basis',
+  'get_session_inventory',
+  'list_plugins',
+  'read_monitoring_events',
+  'navigate_to',
+  'list_projects',
+  'get_project',
+  'list_project_layouts',
+  'get_usage',
+  'search_knowledge',
+  'get_review_request',
+  'list_review_receipts',
+  'get_review_receipt',
+];
 // Decision 3: answering a worker's request needs bound + Project approve;
 // until slice C adds the Project path, only the bound operator.
 const DECISION_3_BOUND_OPERATOR = ['respond_to_task_request'];
@@ -129,6 +157,67 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
+  test('decision 2: operator-wide reads need a bound operator caller', () => {
+    for (const name of DECISION_2_OPERATOR_READS) {
+      const policy = STATION_CONTROL_TOOL_POLICY[
+        name as keyof typeof STATION_CONTROL_TOOL_POLICY
+      ] as StationControlToolPolicy;
+      expect([name, policy.assurance, policy.role, policy.toolClass]).toEqual([
+        name,
+        'bound',
+        'operator',
+        'read-only',
+      ]);
+    }
+  });
+
+  test('decision 2: principal-scoped reads need a caller whose session has a recorded owner', () => {
+    for (const name of DECISION_2_PRINCIPAL_READS) {
+      const policy = STATION_CONTROL_TOOL_POLICY[
+        name as keyof typeof STATION_CONTROL_TOOL_POLICY
+      ] as StationControlToolPolicy;
+      expect([name, policy.toolClass, policy.assurance]).toEqual([
+        name,
+        'read-only',
+        'any',
+      ]);
+      expect([name, ['self', 'project'].includes(policy.role)]).toEqual([
+        name,
+        true,
+      ]);
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, { caller: null })?.code,
+      ]).toEqual([name, 'station_control_caller_required']);
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, {
+          caller: { assurance: 'bearer-exposed' },
+        })?.code,
+      ]).toEqual([name, 'station_control_role_required']);
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, {
+          caller: CALLERS['bound-other-person'],
+          isOperatorPrincipal,
+        }),
+      ]).toEqual([name, undefined]);
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, {
+          caller: {
+            assurance: 'bearer-exposed',
+            principal: {
+              id: 'human:local:someone-else',
+              elevationEligible: true,
+            },
+          },
+          isOperatorPrincipal,
+        }),
+      ]).toEqual([name, undefined]);
+    }
+  });
+
   test('no operator mutation accepts less than a bound caller', () => {
     for (const [name, policy] of TABLE)
       if (policy.role === 'operator')
@@ -155,6 +244,7 @@ describe('station-control authority table: the owner decisions', () => {
     expect(operator.sort()).toEqual(
       [
         ...DECISION_1_BOUND_OPERATOR,
+        ...DECISION_2_OPERATOR_READS,
         ...DECISION_3_BOUND_OPERATOR,
         ...DECISION_1_PERSON_ONLY,
       ].sort(),
@@ -175,11 +265,11 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
-  test('decision 4: a caller-less request reaches exactly the read-only tools', () => {
+  test('decision 4 with decision 2: a caller-less request reaches exactly the reads of nobody’s data', () => {
     for (const [name, policy] of TABLE) {
       if (policy.enforcedBy === 'route') continue;
       const refusal = evaluateStationControlPolicy(policy, { caller: null });
-      if (policy.toolClass === 'read-only')
+      if (policy.toolClass === 'read-only' && policy.role === 'none')
         expect([name, refusal]).toEqual([name, undefined]);
       else
         expect([name, refusal?.code]).toEqual([
@@ -193,19 +283,32 @@ describe('station-control authority table: the owner decisions', () => {
 });
 
 describe('station-control authority table: no label nothing computes', () => {
-  test('every role the central guard does not enforce names the slice that will', () => {
+  test('every self and project role is one the guard evaluates: an owner is required', () => {
     for (const [name, policy] of [
       ...TABLE,
       ...Object.entries(STATION_CONTROL_INFRASTRUCTURE_POLICY),
     ] as [string, StationControlToolPolicy][]) {
-      if (policy.role === 'self' || policy.role === 'project')
-        expect([name, policy.tightenedBy ?? policy.enforcedBy]).not.toEqual([
-          name,
-          undefined,
-        ]);
+      if (policy.role !== 'self' && policy.role !== 'project') continue;
+      if (policy.enforcedBy === 'route') continue;
+      // A caller with no recorded owner acts for no one.
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, {
+          caller: { assurance: 'bound' },
+        })?.code,
+      ]).toEqual([name, 'station_control_role_required']);
       if (policy.role === 'project')
         expect([name, policy.projectAction]).not.toEqual([name, undefined]);
     }
+  });
+
+  test('every remaining tightenedBy tag names an open slice; slice B names none', () => {
+    for (const [name, policy] of [
+      ...TABLE,
+      ...Object.entries(STATION_CONTROL_INFRASTRUCTURE_POLICY),
+    ] as [string, StationControlToolPolicy][])
+      for (const slice of policy.tightenedBy ?? [])
+        expect([name, ['C', 'D'].includes(slice)]).toEqual([name, true]);
   });
 
   test('every entry that owns a leaf shared with dispatch names slice C', () => {
@@ -226,15 +329,14 @@ describe('station-control authority table: no label nothing computes', () => {
     expect(missing).toEqual([]);
   });
 
-  test('read-only entries accept any caller and are never person-only', () => {
+  test('read-only entries are never person-only; only the operator-wide reads need more than any caller', () => {
     for (const [name, policy] of TABLE) {
       if (policy.toolClass !== 'read-only') continue;
-      expect([name, policy.assurance, policy.personOnly]).toEqual([
+      expect([name, policy.personOnly]).toEqual([name, 'never']);
+      expect([name, policy.assurance]).toEqual([
         name,
-        'any',
-        'never',
+        DECISION_2_OPERATOR_READS.includes(name) ? 'bound' : 'any',
       ]);
-      expect([name, policy.role]).not.toEqual([name, 'operator']);
     }
   });
 
@@ -274,8 +376,8 @@ describe('station-control authority table: shared leaves', () => {
     // moves that server-side.
     connect_ssh_environment: [
       'POST /api/environments/ssh/:id/connect',
-      // get_ssh_environment is a read.
-      'GET /api/environments/ssh/:id',
+      // Slice B: get_ssh_environment is an operator-wide read, so its leaf
+      // is no longer looser than this entry.
     ],
     // Every leaf is shared with dispatch (slice C).
     list_delegation_targets: DISPATCH_LEAVES,
@@ -283,22 +385,15 @@ describe('station-control authority table: shared leaves', () => {
     // shares (slice C). The respond COMMAND on /commands is held to a bound
     // operator by the leaf's own rule, not by this entry.
     respond_to_task_request: DISPATCH_LEAVES,
-    // Its status poll is get_review_request's read.
-    run_independent_review: [
-      'GET /api/projects/:projectSlug/reviews/requests/:requestId',
-    ],
+    // Slice B: its status poll, get_review_request, now needs a recorded
+    // owner too, so it no longer loosens this entry.
   };
-  // Every dispatch tool shares three read leaves with a read-only tool:
-  // the SSH list (list_delegation_environments), a Project read
-  // (get_project) and, for the two that navigate, navigate_to.
+  // Every dispatch tool shares the SSH list with a caller-less read
+  // (list_delegation_environments). Slice B: the Project read (get_project)
+  // and navigate_to are principal-scoped, so they no longer admit the
+  // caller-less request dispatch refuses.
   for (const name of SLICE_C_DISPATCH)
-    EXPECTED_WEAKENED[name] = [
-      'GET /api/environments/ssh',
-      'GET /api/projects/:slug',
-      ...(name === 'send_message' || name === 'delegate_task'
-        ? ['POST /api/ui']
-        : []),
-    ];
+    EXPECTED_WEAKENED[name] = ['GET /api/environments/ssh'];
 
   test('the complete list of tool routes the guard enforces more loosely than the tool', () => {
     const weakened: Record<string, string[]> = {};

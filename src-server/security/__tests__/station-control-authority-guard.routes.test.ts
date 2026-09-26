@@ -1120,15 +1120,18 @@ function everyToolRoute() {
 }
 
 describe('every tool route, table-driven through the real boundary', () => {
-  test('the raw internal token: reads and route-enforced leaves pass, every other leaf refuses', async () => {
+  test('the raw internal token: reads of nobody’s data and route-enforced leaves pass, every other leaf refuses', async () => {
     const outcomes: Record<string, string> = {};
     const expected: Record<string, string> = {};
     for (const { method, path, owners } of everyToolRoute()) {
       const key = `${method} ${path}`;
-      // Independent of the evaluator: the rule as decision 4 states it.
+      // Independent of the evaluator: the rule as decision 4 states it, read
+      // with decision 2 (slice B): a caller-less request acts for no one, so
+      // it reads only what no person's view scopes.
       expected[key] = owners.some(
         (owner) =>
-          owner.toolClass === 'read-only' || owner.enforcedBy === 'route',
+          (owner.toolClass === 'read-only' && owner.role === 'none') ||
+          owner.enforcedBy === 'route',
       )
         ? 'passed'
         : owners.every((owner) => owner.personOnly === 'always')

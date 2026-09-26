@@ -22,14 +22,22 @@
  * file, so it imports no service — only the reserved operator-id constants
  * from the contracts package, which import nothing themselves.
  *
- * What slice A enforces centrally, and what it only records:
- *  - enforced: caller presence (decision 4: a caller-less internal request
- *    may reach only read-only routes), assurance, the operator role
- *    (decision 1), and person-only actions;
- *  - recorded, not enforced here: `role: 'self'` and `role: 'project'`.
- *    Every such entry names the slice that will enforce it
- *    (`tightenedBy`); the classification test refuses an unenforced role
- *    without one, so the table cannot carry a label nothing computes.
+ * What the guard enforces centrally:
+ *  - caller presence (decision 4: a caller-less internal request may reach
+ *    only read-only routes that are not principal-scoped), assurance, the
+ *    operator role (decisions 1 and 2), and person-only actions;
+ *  - for `role: 'self'` and `role: 'project'` (slice B): a verified caller
+ *    whose session has a recorded owner. The SCOPE itself is enforced where
+ *    the data is: the guard records who the request acts for
+ *    (`security/station-control-request-authority.ts`), the orchestration
+ *    principal resolver answers with the session's recorded owner instead of
+ *    the operator, and every session, conversation, Project and plugin read
+ *    already keys on that principal (decision 2).
+ *
+ * An entry whose owner-decided policy a later slice still owes names it
+ * (`tightenedBy`); the classification test refuses a `self`/`project` role
+ * the guard cannot evaluate, so the table cannot carry a label nothing
+ * computes.
  */
 
 import {
@@ -61,11 +69,13 @@ export type StationControlAssuranceRequirement =
  * - `operator`: the caller's principal is the Station operator AND
  *   `elevationEligible` (a recorded session owner, never an inferred one).
  *   Enforced centrally in slice A.
- * - `project`: a Project action on the caller's own session-record Project
- *   (`projectAction`). Recorded; enforced by the named slice.
- * - `self`: scoped to the caller's own session or principal. Recorded;
- *   enforced by the named slice.
- * - `none`: no principal requirement beyond the assurance.
+ * - `project`: a Project action (`projectAction`) held by the principal the
+ *   caller's session acts for. The guard requires that principal; the Project
+ *   routes decide the action for it (slice B: `view`; slice C: `execute`).
+ * - `self`: scoped to the caller's own session or principal. The guard
+ *   requires that principal; the route reads as it (slice B).
+ * - `none`: no principal requirement beyond the assurance, and nothing the
+ *   route returns is principal-scoped, so a caller-less request may read it.
  */
 export type StationControlRoleRequirement =
   | 'operator'
@@ -139,10 +149,11 @@ export interface StationControlToolPolicy {
   /**
    * The later #2377 slice that tightens this entry. Present on every entry
    * that carries today's effective policy rather than the owner's decided
-   * one: B = read scoping + log redaction, C = dispatch scoping and
-   * server-side cross-Station forwarding, D = built-in engine identity.
+   * one: C = dispatch scoping and server-side cross-Station forwarding,
+   * D = built-in engine identity. (Slice B, read scoping and log redaction,
+   * is enforced and names no entry.)
    */
-  readonly tightenedBy?: readonly ('B' | 'C' | 'D')[];
+  readonly tightenedBy?: readonly ('C' | 'D')[];
   /**
    * `route`: the route handler already authorizes the verified caller itself
    * (`notify_user`'s `/api/notifications/agent`), so the central guard lets
@@ -162,7 +173,10 @@ const put = (
 ): StationControlRoute => ({ method: 'PUT', path, ...(rule ? { rule } : {}) });
 const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
 
-/** Any verified caller may read; a caller-less request may too (decision 4). */
+/**
+ * Any verified caller may read; a caller-less request may too (decision 4),
+ * because nothing it returns is principal-scoped.
+ */
 const READ: Pick<
   StationControlToolPolicy,
   'assurance' | 'role' | 'toolClass' | 'personOnly'
@@ -181,6 +195,34 @@ const OPERATOR_MUTATION: Pick<
   assurance: 'bound',
   role: 'operator',
   toolClass: 'mutating',
+  personOnly: 'never',
+};
+
+/**
+ * Decision 2: an operator-wide read (Station-wide data no single person's
+ * view contains) needs a bound caller acting for the operator.
+ */
+const OPERATOR_READ: Pick<
+  StationControlToolPolicy,
+  'assurance' | 'role' | 'toolClass' | 'personOnly'
+> = {
+  assurance: 'bound',
+  role: 'operator',
+  toolClass: 'read-only',
+  personOnly: 'never',
+};
+
+/**
+ * Decision 2: a read scoped to the principal the caller's session acts for.
+ * The route answers with that principal's view.
+ */
+const SELF_READ: Pick<
+  StationControlToolPolicy,
+  'assurance' | 'role' | 'toolClass' | 'personOnly'
+> = {
+  assurance: 'any',
+  role: 'self',
+  toolClass: 'read-only',
   personOnly: 'never',
 };
 
@@ -252,34 +294,33 @@ export const STATION_CONTROL_TOOL_POLICY = {
   create_agent: { ...OPERATOR_MUTATION, routes: [post('/agents')] },
   update_agent: { ...OPERATOR_MUTATION, routes: [put('/agents/:slug')] },
   delete_agent: { ...OPERATOR_MUTATION, routes: [del('/agents/:slug')] },
+  // The conversation routes read as the session's owner.
   list_conversations: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/agents/:slug/conversations')],
   },
   get_conversation_messages: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/agents/:slug/conversations/:conversationId/messages')],
   },
+  // Only the owner's own conversation, unless the caller is a bound
+  // operator (`routes/chat/conversations.ts`).
   delete_conversation: {
     assurance: 'any',
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
   // ── board ──────────────────────────────────────────────────────────────
+  // A session face is the owner's when the owner may read the session; a
+  // Task face follows the owner's Project access (`board-route-authorization.ts`).
   board_pin: {
     assurance: 'any',
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/board/pin')],
   },
   board_unpin: {
@@ -287,7 +328,6 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/board/unpin')],
   },
   board_move: {
@@ -295,13 +335,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/board/move')],
   },
   board_read: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/api/board')],
   },
 
@@ -317,24 +354,28 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/api/registry/skills/:id')],
   },
   update_skill: { ...OPERATOR_MUTATION, routes: [put('/api/skills/:name')] },
+  // Slice B: a skill's run and outcome counters are one Station-wide tally
+  // with no per-person state to scope, and they reveal nothing back but the
+  // counts. Any verified caller may bump them (a caller-less one may not:
+  // they are writes).
   track_skill_run: {
     assurance: 'any',
-    role: 'self',
+    role: 'none',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/skills/:name/run')],
   },
   record_skill_outcome: {
     assurance: 'any',
-    role: 'self',
+    role: 'none',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/skills/:name/outcome')],
   },
 
   // ── operations: independent review ─────────────────────────────────────
+  // The review reads sit behind the Project read guard, which admits an
+  // account principal only to Projects it may view (`runtime-routes.ts`).
   run_independent_review: {
     assurance: 'any',
     role: 'project',
@@ -348,24 +389,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ],
   },
   get_review_request: {
-    ...READ,
+    ...SELF_READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews/requests/:requestId')],
   },
   list_review_receipts: {
-    ...READ,
+    ...SELF_READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews')],
   },
   get_review_receipt: {
-    ...READ,
+    ...SELF_READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: ['B'],
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
   },
 
@@ -385,10 +423,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...READ,
     routes: [get('/scheduler/jobs/preview-schedule')],
   },
+  // Decision 2: scheduled jobs are the operator's Station-wide work (no job
+  // records a person), so their run output is an operator-wide read.
   get_job_logs: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...OPERATOR_READ,
     routes: [get('/scheduler/jobs/:target/logs')],
   },
   update_job: {
@@ -420,45 +458,45 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // ── operations: system, models, logs, monitoring ───────────────────────
   system_status: { ...READ, routes: [get('/api/system/status')] },
   list_models: { ...READ, routes: [get('/api/models')] },
+  // Decision 2: every caller reads the redacted rendering; only a bound
+  // operator caller keeps the internal token's home-possession and so the
+  // unredacted one (`withdrawInternalHomePossession`).
   read_logs: {
     ...READ,
-    // Decision 2 (slice B): unredacted lines only for a bound operator.
-    tightenedBy: ['B'],
     routes: [get('/api/diagnostics/logs')],
   },
+  // The owner's own rows; another person's rows need a bound operator
+  // (`routes/operations/monitoring.ts`).
   read_monitoring_events: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/monitoring/events')],
   },
+  // Delivered only to the owner's own Station clients (`/events`).
   navigate_to: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [NAVIGATE_ROUTE],
   },
 
   // ── operations: projects ───────────────────────────────────────────────
+  // The Projects the owner may view: an account principal sees its member
+  // Projects, exactly as its own requests do (`runtime-routes.ts`).
   list_projects: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/api/projects')],
   },
   get_project: {
-    ...READ,
+    ...SELF_READ,
     role: 'project',
     projectAction: 'view',
-    // Its leaf is also shared with dispatch (slice C).
-    tightenedBy: ['B', 'C'],
+    // Its leaf is also shared with dispatch (slice C), which reaches it with
+    // any verified caller and so is only as strict as dispatch until then.
+    tightenedBy: ['C'],
     routes: [get('/api/projects/:slug')],
   },
   list_project_layouts: {
-    ...READ,
+    ...SELF_READ,
     role: 'project',
     projectAction: 'view',
-    tightenedBy: ['B'],
     routes: [get('/api/projects/:slug/layouts')],
   },
 
@@ -507,10 +545,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...OPERATOR_MUTATION,
     routes: [post('/api/environments/ssh')],
   },
+  // Decision 2: a saved SSH environment is the operator's Station-wide
+  // configuration. Its leaf is shared with `connect_ssh_environment` (slice
+  // C), so the leaf stays as strict as that entry.
   get_ssh_environment: {
-    ...READ,
-    // Decision 2 (slice B): an operator read.
-    tightenedBy: ['B'],
+    ...OPERATOR_READ,
     routes: [get('/api/environments/ssh/:id')],
   },
   connect_ssh_environment: {
@@ -534,26 +573,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // ── operations: config, analytics, knowledge ───────────────────────────
   get_config: { ...READ, routes: [get('/config/app')] },
   update_config: { ...OPERATOR_MUTATION, routes: [put('/config/app')] },
+  // The owner's own usage receipts.
   get_usage: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/api/analytics/usage')],
   },
+  // Decision 2: achievements are computed from every person's lifetime
+  // usage on this Station, an operator-wide aggregate.
   get_achievements: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...OPERATOR_READ,
     routes: [get('/api/analytics/achievements')],
   },
   reindex_knowledge: {
     ...OPERATOR_MUTATION,
     routes: [post('/api/knowledge/index/rebuild')],
   },
+  // Session-backed hits are re-read as the owner; local-source records need
+  // the local operator in person.
   search_knowledge: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [post('/api/knowledge/index/search')],
   },
   migrate_knowledge: {
@@ -579,10 +617,9 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   list_providers: { ...READ, routes: [get('/api/providers')] },
   create_provider: { ...PERSON_ONLY, routes: [post('/api/providers')] },
+  // The plugins visible to the owner (`PluginVisibilityService`).
   list_plugins: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [get('/api/plugins')],
   },
   // Guidance only: it answers from the tool and calls nothing.
@@ -593,12 +630,14 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [],
   },
+  // A proposal is an ask a person completes; the route answers an agent
+  // with only its id and status, and an update/remove proposal names only a
+  // plugin visible to the owner (`plugin-proposal-routes.ts`).
   propose_plugin_install: {
     assurance: 'any',
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
   validate_plugin: { ...READ, routes: [post('/api/plugins/validate')] },
@@ -611,7 +650,6 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
   remove_plugin: {
@@ -619,33 +657,27 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'self',
     toolClass: 'mutating',
     personOnly: 'never',
-    tightenedBy: ['B'],
     routes: [post('/api/plugin-proposals')],
   },
 
   // ── basis + session inventory (MCP App tools) ──────────────────────────
+  // Each reads its sessions and Tasks with the owner's session authority.
   get_basis: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [
       get('/api/orchestration/sessions/:sessionId/turns/:turnId/basis'),
       get('/api/tasks/:taskId/basis'),
     ],
   },
   get_task_basis: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [
       post('/api/tasks/:taskId/basis/app-read'),
       del('/api/tasks/:taskId/basis/app-read'),
     ],
   },
   get_session_inventory: {
-    ...READ,
-    role: 'self',
-    tightenedBy: ['B'],
+    ...SELF_READ,
     routes: [
       post('/api/orchestration/sessions/:sessionId/inventory/app-read'),
       del('/api/orchestration/sessions/:sessionId/inventory/app-read'),
@@ -723,7 +755,7 @@ export function stationControlRefusalBody(refusal: StationControlRefusal): {
 
 const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
   station_control_caller_required:
-    "This action needs a verified calling session, and this engine's station-control connection does not carry one. Only read-only station-control tools work without it.",
+    "This action needs a verified calling session, and this engine's station-control connection does not carry one. Without one, only read-only station-control tools whose answers belong to no particular person work.",
   station_control_assurance_insufficient:
     "This action needs a credential that stayed inside Station. This engine's station-control credential could have been copied by another process, so Station will not take this action on its word. Ask the person to do it in Station, or run it from an engine Station hosts in-process.",
   station_control_role_required:
@@ -800,8 +832,9 @@ export function personOnlyApplies(
  *
  * Order: a person-only action is refused whoever asks (no agent can take it,
  * so "ask the person" is the actionable answer even for a caller-less
- * request); then a caller-less request may only read (decision 4); then the
- * assurance; then the operator role.
+ * request); then a caller-less request may only read what is not
+ * principal-scoped (decision 4); then the assurance; then a recorded owner
+ * for a principal-scoped action; then the operator role.
  */
 export function evaluateStationControlPolicy(
   policy: StationControlToolPolicy,
@@ -812,12 +845,21 @@ export function evaluateStationControlPolicy(
     return stationControlRefusal('station_control_person_only');
   const caller = context.caller;
   if (!caller) {
-    return policy.toolClass === 'read-only'
+    // Decision 4, read with decision 2 (slice B): a caller-less request acts
+    // for no one, so it may read only what is not principal-scoped.
+    return policy.toolClass === 'read-only' && policy.role === 'none'
       ? undefined
       : stationControlRefusal('station_control_caller_required');
   }
   if (ASSURANCE_RANK[caller.assurance] < REQUIREMENT_RANK[policy.assurance])
     return stationControlRefusal('station_control_assurance_insufficient');
+  // Decision 2: a principal-scoped action reads or writes as the principal
+  // the session acts for; a session with no recorded owner acts for no one.
+  if (
+    (policy.role === 'self' || policy.role === 'project') &&
+    !caller.principal
+  )
+    return stationControlRefusal('station_control_role_required');
   if (policy.role === 'operator') {
     const principal = caller.principal;
     const isOperator =
