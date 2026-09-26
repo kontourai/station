@@ -56,9 +56,9 @@ import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import ts from 'typescript';
 
-export const SDK_SOURCE_PREFIX = 'packages/sdk/src/';
-export const SDK_PACKAGE_NAME = '@kontourai/station-sdk';
-export const SDK_BARREL_PATHS = Object.freeze([
+const SDK_SOURCE_PREFIX = 'packages/sdk/src/';
+const SDK_PACKAGE_NAME = '@kontourai/station-sdk';
+const SDK_BARREL_PATHS = Object.freeze([
   'packages/sdk/src/index.ts',
   'packages/sdk/src/client/index.ts',
 ]);
@@ -101,7 +101,7 @@ function isSdkPath(path) {
 }
 
 /** SDK source a barrel can reach: not a test, test helper, or declaration. */
-export function isSdkSourceModule(path) {
+function isSdkSourceModule(path) {
   return (
     isSdkPath(path) &&
     CODE_FILE.test(path) &&
@@ -151,7 +151,7 @@ function isImportMetaGlob(node) {
  * Runtime module references of one file, as written.
  * `names: null` means the importer depends on the whole target module.
  */
-export function collectModuleReferences(path, source) {
+function collectModuleReferences(path, source) {
   const file = parse(path, source);
   const references = [];
   let opaque = false;
@@ -242,7 +242,7 @@ function hasModifier(node, kind) {
  * `export { a as b } from` or an import that is re-exported), and star
  * re-export specifiers.
  */
-export function collectExports(path, source) {
+function collectExports(path, source) {
   const file = parse(path, source);
   const local = new Set();
   const named = new Map();
@@ -570,7 +570,7 @@ function resolveCandidates(target, fileSet) {
  * Returns null for a module outside the SDK, and UNKNOWN for an SDK
  * reference that cannot be resolved (a directory, an unexported subpath).
  */
-export function resolveSdkSpecifier(importer, specifier, context) {
+function resolveSdkSpecifier(importer, specifier, context) {
   const { fileSet, sdkExports } = context;
   if (
     specifier === SDK_PACKAGE_NAME ||
