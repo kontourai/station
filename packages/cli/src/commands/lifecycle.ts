@@ -38,7 +38,7 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
-import { resolveGitInfo } from '@kontourai/station-shared/git';
+import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -3009,37 +3009,88 @@ export function readBuildManifest(
 }
 
 /**
- * station#2689: why this source checkout's build stamp cannot back a managed
- * boot, or null when it can. `start()` pins the supervisor's expected sha to
- * `station-build.json` (`'unknown'` when absent) while the server reports its
- * esbuild-baked sha, so a bundle built by `npm run build` — which never writes
- * the stamp — fails every boot with "managed boot identity mismatch". A stamp
- * whose sha differs from HEAD records a build of other sources.
+ * station#2689: whether this source checkout's build stamp can back a managed
+ * boot. `start()` pins the supervisor's expected sha to `station-build.json`
+ * (`'unknown'` when absent) while the server reports its esbuild-baked sha, so
+ * a bundle built by `npm run build` — which never writes the stamp — fails
+ * every boot with "managed boot identity mismatch". A stamp whose sha differs
+ * from HEAD records a build of other sources.
  *
- * Scoped to source checkouts (`.git` present). A packaged release has no
- * checkout HEAD to compare against; its provenance is `.station-release.json`,
- * validated by the packaged install/upgrade path, and is not judged here.
+ * Scoped to source checkouts (`.git` present, as a directory or a linked
+ * worktree's file). A packaged release has no checkout HEAD to compare
+ * against; its provenance is `.station-release.json`, validated by the
+ * packaged install/upgrade path, and is not judged here.
+ *
+ * HEAD is read with a bounded, scrubbed git call. When it cannot be read,
+ * a present stamp is `unverifiable` (no verdict) and a missing one carries
+ * `headError`: a rebuild could not stamp it either, because `buildApplication`
+ * derives the stamp from the same HEAD.
  */
-export function sourceBuildStampProblem(instanceId: string): string | null {
-  if (!existsSync(join(CWD, '.git'))) return null;
+export type SourceBuildStampCheck =
+  | { status: 'not-source-checkout' }
+  | { status: 'current' }
+  | { status: 'unverifiable'; manifestPath: string; headError: string }
+  | { status: 'missing'; manifestPath: string; headError?: string }
+  | {
+      status: 'mismatch';
+      manifestPath: string;
+      stampSha: string;
+      headSha: string;
+    };
+
+const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
+export function checkSourceBuildStamp(
+  instanceId: string,
+): SourceBuildStampCheck {
+  if (!existsSync(join(CWD, '.git'))) return { status: 'not-source-checkout' };
   const manifestPath = getBuildManifestPath(resolveBuildPaths(instanceId));
   const stamp = readBuildManifest(instanceId);
-  if (!stamp) {
-    return `build stamp ${manifestPath} is missing or invalid (a plain \`npm run build\` does not write it)`;
-  }
-  let headSha: string;
+  let headSha: string | undefined;
+  let headError: string | undefined;
   try {
-    headSha = resolveSourceBuildManifest().sha;
-  } catch {
-    // No verdict rather than a problem: a supervisor whose PATH lacks git
-    // would otherwise rebuild (and fail to stamp) on every restart, although
-    // the present stamp may well match the bundle it serves.
-    return null;
+    headSha = readGitHeadSha(CWD, SOURCE_HEAD_READ_TIMEOUT_MS);
+  } catch (error) {
+    headError = error instanceof Error ? error.message : String(error);
+  }
+  if (!stamp) {
+    return headError === undefined
+      ? { status: 'missing', manifestPath }
+      : { status: 'missing', manifestPath, headError };
+  }
+  if (headSha === undefined) {
+    return { status: 'unverifiable', manifestPath, headError: headError! };
   }
   if (stamp.sha !== headSha) {
-    return `build stamp ${manifestPath} records sha ${stamp.sha}, but the checkout HEAD is ${headSha}`;
+    return { status: 'mismatch', manifestPath, stampSha: stamp.sha, headSha };
   }
-  return null;
+  return { status: 'current' };
+}
+
+/** True when a `buildApplication` run can repair the stamp. */
+export function sourceBuildStampNeedsRebuild(
+  check: SourceBuildStampCheck,
+): boolean {
+  return (
+    check.status === 'mismatch' ||
+    (check.status === 'missing' && check.headError === undefined)
+  );
+}
+
+/** Why the stamp cannot back a managed boot, or null when nothing is wrong. */
+export function describeSourceBuildStampProblem(
+  check: SourceBuildStampCheck,
+): string | null {
+  switch (check.status) {
+    case 'missing':
+      return check.headError === undefined
+        ? `build stamp ${check.manifestPath} is missing or invalid (a plain \`npm run build\` does not write it)`
+        : `build stamp ${check.manifestPath} is missing or invalid, and the checkout HEAD cannot be read (${check.headError}), so no build can write it`;
+    case 'mismatch':
+      return `build stamp ${check.manifestPath} records sha ${check.stampSha}, but the checkout HEAD is ${check.headSha}`;
+    default:
+      return null;
+  }
 }
 
 function resolveBuildTarget(options: BuildOptions = {}) {

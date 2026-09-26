@@ -206,7 +206,7 @@ Flags skip the prompt and name the path directly:
 | Flag | Effect when nothing is running |
 |------|--------------------------------|
 | `--inline` | Start inline in this terminal |
-| `--service` | Install and start a background service |
+| `--service` | Install and start a background service (from a source checkout, the checkout's development instance; see [`service`](#service)) |
 | `--temp-home` | Start against a throwaway temp home |
 | `--port=<n>` / `--ui-port=<n>` | Ports for the started instance |
 | `--consent-port=<n>` | Consent-listener port (default: server port + 3, station#3677) |
@@ -535,7 +535,10 @@ station setup import detect|preview|review-targets|apply|receipt|rollback [targe
 ```
 
 Local setup is checkout-only because it installs Station under launchd,
-systemd, or Windows Task Scheduler before creating the default Station. A
+systemd, or Windows Task Scheduler before creating the default Station.
+Without `--instance` or `--base` it installs the checkout's development
+instance in its home (see [`service`](#service)), and the saved Station
+records that same instance, home, and ports. A
 failed install saves no Station. Existing setup can select an unpaired
 Station deliberately or reuse the ordinary pairing pipeline with `--pair`.
 Hosted setup pairs with `https://station.kontourai.io` and selects it only after
@@ -1654,13 +1657,26 @@ override only that runtime leaf; shared saved-Station metadata remains under
 `STATION_ROOT`. `--temp-home` is rejected because a service needs a durable
 home. Every backend is per-user and requires no elevation.
 
-From a source checkout, `service install` refuses up front when the build
-stamp (`dist-server/station-build.json`, written by `station build` but not by
-`npm run build`) is missing or records a sha other than the checkout's `HEAD`;
-run `station build` and install again. It also refuses to register an instance
-other than the checkout's development instance into that development home when
-no `--home`, `--base`, or `STATION_HOME` is given; pass `--home=<dir>` for a
-durable service home.
+From a source checkout (the development channel), a service installed
+without `--instance` and without `--home`, `--base`, or `STATION_HOME` is
+the checkout's development instance: it is named with the checkout's
+development instance id and runs in that instance's home and on its ports.
+This covers `station service install`, `station setup local`, the launcher's
+`--service` flag, and its "Install and start a background service" choice.
+An explicit `--instance=<name>` other than that id, with no explicit home,
+is refused: `--instance=<dev id>` names the service after its home,
+`--instance=<name> --base=<dev home>` keeps an existing service where it is,
+and `--instance=<name> --home=<dir>` gives it its own durable home.
+
+Before registering, a source-checkout install checks the build stamp
+(`dist-server/station-build.json`, or `dist-server-<instance>/` for a named
+instance), which `station build` writes and `npm run build` does not. When the
+stamp is missing or records a sha other than the checkout's `HEAD`, install
+rebuilds first, as it does for a stale bundle, and refuses, naming
+`station build`, only if the stamp still does not match. If git cannot read
+`HEAD`, a missing stamp is refused without building, because the build could
+not write one. `station service run` rebuilds on the same conditions. Packaged
+installs (no `.git`) are not checked.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse

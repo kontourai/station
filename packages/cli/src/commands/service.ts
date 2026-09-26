@@ -12,23 +12,24 @@ import {
 import { sanitizePath } from '@kontourai/station-shared/launch-path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
-import {
-  runtimeChannelFromEnvironment,
-  spawnedStationRoot,
-} from '@kontourai/station-shared/runtime-path-resolver';
+import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
   DEFAULT_INSTANCE_ID,
   type LifecycleHomeSource,
   resolveLifecycleInstanceId,
+  resolveServiceInstanceId,
+  sourceCheckoutDevInstanceId,
 } from './helpers.js';
 import {
   buildApplication,
+  checkSourceBuildStamp,
   collectInstanceStatus,
+  describeSourceBuildStampProblem,
   isBuildStale,
   resolveBuildPaths,
-  sourceBuildStampProblem,
+  sourceBuildStampNeedsRebuild,
   stop,
 } from './lifecycle.js';
 import {
@@ -280,7 +281,18 @@ async function prepareServiceBuild(
   // generated hash for custom home/ports) — never re-derived here, or the
   // preflight builds the wrong instance's artifacts and the cold build lands
   // back inside the readiness window.
-  if (isBuildStale(resolveBuildPaths(instanceId))) {
+  // station#2689: an mtime-current bundle is not enough. Without a stamp that
+  // matches HEAD the supervised boot expects a different sha than the server
+  // reports, and the install burns its whole readiness budget on "managed
+  // boot identity mismatch" before rolling back. Rebuild through
+  // buildApplication (which writes the stamp), exactly as for a stale bundle
+  // and as the supervisor does, then refuse before any backend mutation if
+  // the stamp still cannot back the boot.
+  const before = checkSourceBuildStamp(instanceId);
+  const build =
+    isBuildStale(resolveBuildPaths(instanceId)) ||
+    sourceBuildStampNeedsRebuild(before);
+  if (build) {
     await buildApplication({
       baseDir: lifecycle.baseDir,
       instanceName: instanceId,
@@ -288,19 +300,16 @@ async function prepareServiceBuild(
       uiPort: lifecycle.uiPort,
     });
   }
-  // station#2689: an mtime-current bundle is not enough. Without a stamp that
-  // matches HEAD the supervised boot expects a different sha than the server
-  // reports, and the install burns its whole readiness budget on "managed
-  // boot identity mismatch" before rolling back. Refuse before any backend
-  // mutation instead.
-  const stampProblem = sourceBuildStampProblem(instanceId);
+  const stampProblem = describeSourceBuildStampProblem(
+    build ? checkSourceBuildStamp(instanceId) : before,
+  );
   if (stampProblem) {
-    const build =
+    const buildCommand =
       instanceId === DEFAULT_INSTANCE_ID
         ? 'station build'
         : `station build --instance=${instanceId}`;
     throw new Error(
-      `Cannot install Station user service ${instanceId}: ${stampProblem}. Run \`${build}\` in ${CWD}, then rerun \`station service install\`.`,
+      `Cannot install Station user service ${instanceId}: ${stampProblem}${build ? ' (after rebuilding)' : ''}. Run \`${buildCommand}\` in ${CWD}, then rerun \`station service install\`.`,
     );
   }
 }
@@ -599,26 +608,29 @@ export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
 
 /**
  * station#2689: from a source checkout the launcher selects the development
- * channel and writes this checkout's derived identity to STATION_INSTANCE_ID
- * (scripts/source-bootstrap.ts), so with no --home/--base/STATION_HOME the
- * default home is `<STATION_ROOT>/instances/dev/<that id>`. A service
- * registered under any OTHER name (e.g. `--instance=default`) would bind a
- * machine-wide unit name to one worktree's development home. Refuse rather
- * than install that silently; the dev instance's own name stays allowed.
+ * channel and exports this checkout's derived instance id (see
+ * `sourceCheckoutDevInstanceId`), so with no --home/--base/STATION_HOME the
+ * home is `<STATION_ROOT>/instances/dev/<that id>`. With no --instance the
+ * service simply takes that id (`resolveServiceInstanceId`). An EXPLICIT
+ * --instance naming anything else contradicts that home — it would bind a
+ * machine-wide unit name such as `default` to one worktree's development
+ * home — so the install refuses and says how to state what was meant.
  */
 function assertInstallDoesNotBorrowDevHome(
   instanceId: string,
   lifecycle: ServiceLifecycleArgs,
 ): void {
+  if (!lifecycle.instanceName?.trim()) return;
   if (lifecycle.homeSource !== 'default') return;
-  if (runtimeChannelFromEnvironment(process.env) !== 'dev') return;
-  const devInstanceId = process.env.STATION_INSTANCE_ID?.trim();
-  if (instanceId === devInstanceId) return;
+  const devInstanceId = sourceCheckoutDevInstanceId();
+  if (!devInstanceId || instanceId === devInstanceId) return;
   throw new Error(
     [
       `Refusing to install Station user service ${instanceId} into this source checkout's development home ${lifecycle.baseDir}.`,
-      `That home belongs to the development instance ${devInstanceId ?? '(unknown)'}; it was chosen because no --home, --base, or STATION_HOME was given.`,
-      `Pass --home=<dir> (or --base=<dir>) to give the service its own durable home${devInstanceId ? `, or --instance=${devInstanceId} to run this checkout's development instance as a service` : ''}.`,
+      `That home belongs to the development instance ${devInstanceId}; it was chosen because no --home, --base, or STATION_HOME was given.`,
+      `  --instance=${devInstanceId}  names the service after the home it runs in.`,
+      `  --instance=${instanceId} --base=${lifecycle.baseDir}  keeps an existing ${instanceId} service where it is.`,
+      `  --instance=${instanceId} --home=<dir>  moves the ${instanceId} service to its own durable home (data in the current home is not copied).`,
     ].join('\n'),
   );
 }
@@ -752,8 +764,9 @@ export function inspectServiceInstallation(
   }
   const fs = dependencies.fs ?? nodeFs;
   const run = dependencies.run ?? defaultRun;
-  const instanceId = resolveLifecycleInstanceId({
+  const instanceId = resolveServiceInstanceId({
     cwd: CWD,
+    homeSource: lifecycle.homeSource,
     instanceName: lifecycle.instanceName,
     projectHome: lifecycle.baseDir,
     serverPort: lifecycle.serverPort,
@@ -946,8 +959,9 @@ export async function runServiceCommand(
   const run = dependencies.run ?? defaultRun;
   const hardenPaths =
     dependencies.hardenWindowsPaths ?? hardenWindowsPathsTrusted;
-  const instanceId = resolveLifecycleInstanceId({
+  const instanceId = resolveServiceInstanceId({
     cwd: CWD,
+    homeSource: lifecycle.homeSource,
     instanceName: lifecycle.instanceName,
     projectHome: lifecycle.baseDir,
     serverPort: lifecycle.serverPort,
@@ -1028,7 +1042,8 @@ export async function runServiceCommand(
     // ONE-OWNER PRE-CHECK (station#3047): refuse before any backend mutation
     // when the registry id is held by a LIVE process this install does not
     // own — ordinarily a CLI `station start` under the shared default id
-    // (both surfaces resolve ids through resolveLifecycleInstanceId).
+    // (both surfaces resolve ids through resolveLifecycleInstanceId, except
+    // the development-checkout case handled just below).
     // Proceeding used to upsert-merge over that entry, inheriting the CLI
     // process's pid/birth into a `type: 'service'` chimera that flipped
     // Desktop's home-ownership decision. Dead entries do not refuse — the
@@ -1047,6 +1062,33 @@ export async function runServiceCommand(
     ) {
       throw new Error(
         `Instance id '${instanceId}' is owned by a live process (pid ${registryEntry.pid}, type '${registryEntry.type}'${registryEntry.checkout ? `, from ${registryEntry.checkout}` : ''}). Stop it first (\`station stop --instance=${instanceId}\` from its checkout) or install under a distinct --instance name.`,
+      );
+    }
+    // station#2689: a source-checkout service without --instance takes the
+    // development instance id (resolveServiceInstanceId), but `station start`
+    // from the same checkout still registers this very home under the
+    // lifecycle id (`default`). The check above no longer sees that entry, so
+    // look it up too: a live one is a foreign writer on the same home.
+    const lifecycleInstanceId = resolveLifecycleInstanceId({
+      cwd: CWD,
+      instanceName: lifecycle.instanceName,
+      projectHome: lifecycle.baseDir,
+      serverPort: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+    });
+    const lifecycleEntry =
+      lifecycleInstanceId === instanceId
+        ? null
+        : (readInstanceRegistry(lifecycle.baseDir).instances[
+            lifecycleInstanceId
+          ] ?? null);
+    if (
+      lifecycleEntry &&
+      lifecycleEntry.type !== 'service' &&
+      entryOwnedByLiveProcess(lifecycleEntry)
+    ) {
+      throw new Error(
+        `Station home ${lifecycle.baseDir} is in use by instance '${lifecycleInstanceId}' (pid ${lifecycleEntry.pid}, type '${lifecycleEntry.type}'${lifecycleEntry.checkout ? `, from ${lifecycleEntry.checkout}` : ''}), which service '${instanceId}' would share. Stop it first (\`station stop --instance=${lifecycleInstanceId}\` from its checkout).`,
       );
     }
     // service run builds stale artifacts before it can publish an identity.

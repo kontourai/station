@@ -8,7 +8,7 @@ import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
   resolveLifecycleHomeTarget,
-  resolveLifecycleInstanceId,
+  resolveServiceInstanceId,
 } from './helpers.js';
 import {
   isLocalSelfAuthCandidate,
@@ -157,9 +157,15 @@ export async function runSetupCommand(
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       throw new Error('--port must be an integer from 1 to 65535.');
     }
-    const baseDir = resolveLifecycleHomeTarget({
+    // The home and its SOURCE come from the same resolution the service
+    // install performs on these args. `--base` is forwarded only when the
+    // user gave one (station#2689): synthesizing it turned an implicit
+    // development home into an explicit one, so the install named the
+    // service `default` inside `instances/dev/<dev id>`.
+    const homeTarget = resolveLifecycleHomeTarget({
       baseDir: valueFlag(flags, 'base'),
-    }).projectHome;
+    });
+    const baseDir = homeTarget.projectHome;
     const uiPort = valueFlag(flags, 'ui-port', String(DEFAULT_UI_PORT))!;
     const serviceArgs = [
       ...[...flags.entries()]
@@ -167,7 +173,6 @@ export async function runSetupCommand(
         .map(
           ([flag, value]) => `--${flag}${value === true ? '' : `=${value}`}`,
         ),
-      ...(flags.has('base') ? [] : [`--base=${baseDir}`]),
       ...(flags.has('port') ? [] : [`--port=${port}`]),
       ...(flags.has('ui-port') ? [] : [`--ui-port=${uiPort}`]),
     ];
@@ -183,8 +188,9 @@ export async function runSetupCommand(
         configurationState: 'configured',
         verifiedBinding: true,
         localService: {
-          instanceId: resolveLifecycleInstanceId({
+          instanceId: resolveServiceInstanceId({
             cwd: CWD,
+            homeSource: homeTarget.source,
             instanceName: valueFlag(flags, 'instance'),
             projectHome: baseDir,
             serverPort: Number(port),

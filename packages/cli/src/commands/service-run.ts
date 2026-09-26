@@ -7,11 +7,13 @@ import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
   type CollectedInstanceStatus,
+  checkSourceBuildStamp,
   collectInstanceStatus,
+  describeSourceBuildStampProblem,
   findListeningPidsForPorts,
   isBuildStale,
   resolveBuildPaths,
-  sourceBuildStampProblem,
+  sourceBuildStampNeedsRebuild,
   start,
   stop,
 } from './lifecycle.js';
@@ -154,12 +156,25 @@ export async function superviseService(
   const collect = dependencies.collect ?? collectInstanceStatus;
   const needsBuildForInstance =
     dependencies.needsBuildForInstance ??
-    // station#2689: a bundle whose build stamp is missing or names another
-    // sha boots into "managed boot identity mismatch" on every restart, the
-    // same KeepAlive loop as a stale bundle, so it is rebuilt the same way.
-    ((name: string) =>
-      isBuildStale(resolveBuildPaths(name)) ||
-      sourceBuildStampProblem(name) !== null);
+    ((name: string) => {
+      if (isBuildStale(resolveBuildPaths(name))) return true;
+      // station#2689: a bundle whose build stamp is missing or names another
+      // sha boots into "managed boot identity mismatch" on every restart, the
+      // same KeepAlive loop as a stale bundle, so it is rebuilt the same way.
+      const stamp = checkSourceBuildStamp(name);
+      if (sourceBuildStampNeedsRebuild(stamp)) return true;
+      // Missing, but HEAD is unreadable: buildApplication stamps from that
+      // same HEAD, so a rebuild would run for minutes and then throw — on
+      // every KeepAlive restart. Say so once per boot and start as-is; the
+      // boot then fails fast on its identity check, naming the sha.
+      const problem = describeSourceBuildStampProblem(stamp);
+      if (problem) {
+        console.error(
+          `Station service ${name}: not rebuilding — ${problem}. Make git able to read HEAD for this checkout, then run \`station build${name === 'default' ? '' : ` --instance=${name}`}\`.`,
+        );
+      }
+      return false;
+    });
   const exit = dependencies.exit ?? ((code) => process.exit(code));
   const publishServiceLiveness =
     dependencies.publishServiceLiveness ??

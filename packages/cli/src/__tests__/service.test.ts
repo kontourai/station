@@ -26,7 +26,7 @@ const buildApplication = vi.fn();
 const collectInstanceStatus = vi.fn();
 const isBuildStale = vi.fn();
 const resolveBuildPaths = vi.fn();
-const sourceBuildStampProblem = vi.fn();
+const checkSourceBuildStamp = vi.fn();
 const stop = vi.fn();
 const installLaunchd = vi.fn();
 const launchdRegistration = vi.fn();
@@ -55,7 +55,9 @@ vi.mock('../commands/lifecycle.js', () => ({
   collectInstanceStatus,
   isBuildStale,
   resolveBuildPaths,
-  sourceBuildStampProblem,
+  checkSourceBuildStamp,
+  describeSourceBuildStampProblem: () => null,
+  sourceBuildStampNeedsRebuild: () => false,
   stop,
 }));
 vi.mock('../commands/service-launchd.js', () => ({
@@ -114,7 +116,7 @@ beforeEach(() => {
   process.exitCode = undefined;
   vi.clearAllMocks();
   isBuildStale.mockReturnValue(false);
-  sourceBuildStampProblem.mockReturnValue(null);
+  checkSourceBuildStamp.mockReturnValue({ status: 'current' });
   resolveBuildPaths.mockReturnValue({ server: 'dist-server', ui: 'dist-ui' });
   collectInstanceStatus.mockResolvedValue({
     found: true,
@@ -952,9 +954,10 @@ describe('station service dispatch', () => {
 
   // station#2689: from a source checkout the launcher selects the development
   // channel and exports the checkout's derived dev identity, so a home left to
-  // its default is that dev instance's home. `--instance=default` there used
-  // to register a machine-wide `default` unit against one worktree's dev home.
-  describe('development-home guard (station#2689)', () => {
+  // its default is that dev instance's home. The entry-point suite
+  // (service-dev-home-entry-points.test.ts) drives these through the real
+  // parsers; this block pins the service-layer rule itself.
+  describe('development-home identity (station#2689)', () => {
     const devInstanceId = 'dev-release-0d57e82-1a2b3c4d';
     const devLifecycle = (baseDir: string, instanceName?: string) => ({
       ...lifecycle(baseDir),
@@ -969,7 +972,10 @@ describe('station service dispatch', () => {
         fs: serviceFs,
         platform: 'darwin',
         run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
-      });
+      }).then(
+        () => null,
+        (error: Error) => error,
+      );
     };
 
     beforeEach(() => {
@@ -988,7 +994,7 @@ describe('station service dispatch', () => {
       vi.unstubAllEnvs();
     });
 
-    test('refuses a non-dev instance name on the implicit dev home before touching it', async () => {
+    test('refuses an explicit non-dev instance on the implicit dev home before touching it', async () => {
       const devHome = join(
         makeTempDir('station-service-test-'),
         'instances',
@@ -996,44 +1002,104 @@ describe('station service dispatch', () => {
         devInstanceId,
       );
 
-      const failure = await install(devLifecycle(devHome, 'default')).then(
-        () => null,
-        (error: Error) => error,
-      );
+      const failure = await install(devLifecycle(devHome, 'default'));
 
       expect(
         failure,
         'install must refuse the borrowed dev home',
       ).toBeInstanceOf(Error);
-      expect(failure?.message).toContain(
-        `Refusing to install Station user service default into this source checkout's development home ${devHome}.`,
+      expect(failure!.message).toBe(
+        [
+          `Refusing to install Station user service default into this source checkout's development home ${devHome}.`,
+          `That home belongs to the development instance ${devInstanceId}; it was chosen because no --home, --base, or STATION_HOME was given.`,
+          `  --instance=${devInstanceId}  names the service after the home it runs in.`,
+          `  --instance=default --base=${devHome}  keeps an existing default service where it is.`,
+          '  --instance=default --home=<dir>  moves the default service to its own durable home (data in the current home is not copied).',
+        ].join('\n'),
       );
-      expect(failure?.message).toContain('--home=<dir>');
-      expect(failure?.message).toContain(`--instance=${devInstanceId}`);
       // Refused before the home schema was established or a backend touched.
       expect(nodeFs.existsSync(devHome)).toBe(false);
       expect(installLaunchd).not.toHaveBeenCalled();
     });
 
-    test('still installs the dev instance under its own name, an explicit home, or a non-dev channel', async () => {
-      const devHome = makeTempDir('station-service-test-');
-      await install(devLifecycle(devHome, devInstanceId));
+    test('without --instance the service takes the dev id, including a port-derived id', async () => {
+      await install(devLifecycle(makeTempDir('station-service-test-')));
+      expect(installLaunchd).toHaveBeenLastCalledWith(
+        devInstanceId,
+        expect.anything(),
+      );
+      // Custom ports would otherwise hash to `instance-<hash>`.
+      await install({
+        ...devLifecycle(makeTempDir('station-service-test-')),
+        serverPort: 45_111,
+        uiPort: 45_222,
+      });
+      expect(installLaunchd).toHaveBeenLastCalledWith(
+        devInstanceId,
+        expect.objectContaining({
+          lifecycle: expect.objectContaining({
+            serverPort: 45_111,
+            uiPort: 45_222,
+          }),
+        }),
+      );
+    });
+
+    test('keeps explicit dev id, explicit home, and non-dev channel installs as named', async () => {
+      await install(
+        devLifecycle(makeTempDir('station-service-test-'), devInstanceId),
+      );
       expect(installLaunchd).toHaveBeenLastCalledWith(
         devInstanceId,
         expect.anything(),
       );
 
-      const explicitHome = makeTempDir('station-service-test-');
-      await install({ ...lifecycle(explicitHome), instanceName: 'default' });
+      await install({
+        ...lifecycle(makeTempDir('station-service-test-')),
+        instanceName: 'default',
+      });
       expect(installLaunchd).toHaveBeenLastCalledWith(
         'default',
         expect.anything(),
       );
 
       vi.stubEnv('STATION_CHANNEL', 'stable');
-      const stableHome = makeTempDir('station-service-test-');
-      await install(devLifecycle(stableHome, 'default'));
+      await install(
+        devLifecycle(makeTempDir('station-service-test-'), 'default'),
+      );
+      expect(installLaunchd).toHaveBeenLastCalledWith(
+        'default',
+        expect.anything(),
+      );
       expect(installLaunchd).toHaveBeenCalledTimes(3);
+    });
+
+    test('refuses when `station start` already owns the same dev home under the lifecycle id', async () => {
+      // `./station start` from this checkout registers the dev home as
+      // `default`; the dev-id service would be a second writer on it.
+      const devHome = makeTempDir('station-service-test-');
+      const { CWD, resolveLifecycleInstanceId } = await import(
+        '../commands/helpers.js'
+      );
+      const lifecycleId = resolveLifecycleInstanceId({
+        cwd: CWD,
+        projectHome: devHome,
+        serverPort: 3242,
+        uiPort: 5274,
+      });
+      ensureStationHomeSchemaSync(devHome);
+      upsertInstance(
+        lifecycleId,
+        { port: 4000, type: 'worktree', pid: process.pid, checkout: '/co' },
+        devHome,
+      );
+
+      const failure = await install(devLifecycle(devHome));
+
+      expect(failure?.message).toBe(
+        `Station home ${devHome} is in use by instance '${lifecycleId}' (pid ${process.pid}, type 'worktree', from /co), which service '${devInstanceId}' would share. Stop it first (\`station stop --instance=${lifecycleId}\` from its checkout).`,
+      );
+      expect(installLaunchd).not.toHaveBeenCalled();
     });
   });
 
