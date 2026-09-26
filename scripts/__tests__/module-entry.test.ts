@@ -139,6 +139,24 @@ describe('invokedDirectly from a real node entry point (#2682)', () => {
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('imported');
   });
+
+  test('does not run the body, or throw, when imported with no argv[1] (node -e)', () => {
+    const scripts = installProbes(realTempDir());
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `await import(${JSON.stringify(pathToFileURL(join(scripts, 'probe.mjs')).href)}); console.log('imported');`,
+      ],
+      { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+    );
+    expect({ status: result.status, stderr: result.stderr }).toEqual({
+      status: 0,
+      stderr: '',
+    });
+    expect(result.stdout.trim()).toBe('imported');
+  });
 });
 
 describe('invokedDirectly decisions', () => {
