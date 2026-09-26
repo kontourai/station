@@ -291,6 +291,11 @@ async function bootAndProbe({ launcher, env, home, release }) {
     if (!stopEphemeral) fail('station start --temp-home named no stop command');
     runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
     await waitUntilClosed([serverPort, uiPort]);
+    // `stop` leaves the temporary home itself behind; the smoke owns it.
+    const temporaryHome = /Station home: (.+) \(--temp-home\)/.exec(
+      ephemeral,
+    )?.[1];
+    if (temporaryHome) rmSync(temporaryHome, { recursive: true, force: true });
     const started = runLauncher(
       launcher,
       ['start', `--port=${serverPort}`, `--ui-port=${uiPort}`],

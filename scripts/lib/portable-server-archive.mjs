@@ -300,7 +300,7 @@ export function stationCliBundleOptions(projectRoot, outfile) {
 /**
  * @param {string} projectRoot
  * @param {string} stageRoot
- * @param {() => Promise<{ build: (options: object) => Promise<unknown> }>} [loadEsbuild]
+ * @param {() => Promise<{ build: (options: { outfile: string }) => Promise<unknown> }>} [loadEsbuild]
  */
 export async function bundleStationCli(
   projectRoot,
