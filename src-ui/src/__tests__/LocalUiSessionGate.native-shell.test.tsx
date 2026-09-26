@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
+import ts from 'typescript';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const platform = vi.hoisted(() => ({ isTauri: false }));
@@ -59,6 +60,58 @@ describe('LocalUiSessionGate native shell boundary', () => {
       'protected tree',
     );
     expect(gateMounts).toEqual(['http://station.test']);
+  });
+
+  // main.tsx is the entrypoint and cannot be mounted here, so its composition
+  // is read as syntax: the gate the tests above render must be the one the
+  // entry wraps the protected tree in, bound to the local Station origin.
+  test('main.tsx wraps the protected tree in PlatformSessionGate at the local Station origin', () => {
+    const file = resolve(import.meta.dirname, '../main.tsx');
+    const source = ts.createSourceFile(
+      file,
+      readFileSync(file, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const gates: ts.JsxElement[] = [];
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isJsxElement(node) &&
+        node.openingElement.tagName.getText(source) === 'PlatformSessionGate'
+      )
+        gates.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    expect(gates).toHaveLength(1);
+    const [gate] = gates;
+
+    const apiBase = gate.openingElement.attributes.properties.find(
+      (attribute): attribute is ts.JsxAttribute =>
+        ts.isJsxAttribute(attribute) &&
+        attribute.name.getText(source) === 'apiBase',
+    );
+    const value = apiBase?.initializer;
+    expect(
+      value &&
+        ts.isJsxExpression(value) &&
+        value.expression &&
+        ts.isIdentifier(value.expression)
+        ? value.expression.text
+        : undefined,
+    ).toBe('localUiApiBase');
+
+    // The protected tree: the authority provider sits INSIDE the gate.
+    const inside: string[] = [];
+    const collect = (node: ts.Node) => {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+        inside.push(node.tagName.getText(source));
+      ts.forEachChild(node, collect);
+    };
+    for (const child of gate.children) collect(child);
+    expect(inside).toContain('AuthorityQueryProvider');
+    expect(inside).toContain('App');
   });
 
   test('waits for local access resolution before seeding web boot data', () => {
