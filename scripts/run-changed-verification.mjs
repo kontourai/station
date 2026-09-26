@@ -42,6 +42,7 @@ import {
   loadProductLawManifest,
   productLawDispositions,
 } from './lib/product-laws.mjs';
+import { refineSdkBarrelRelatedPaths } from './lib/sdk-barrel-selection.mjs';
 import {
   collectVerificationProvenance,
   writeReceiptSecurely,
@@ -260,10 +261,37 @@ export async function runOwnedChangedCommand(
   }
 }
 
+/**
+ * `base` enables SDK barrel-aware seeds (#2707): a changed SDK module is
+ * replaced by the files whose imports actually reach it, rather than by
+ * every importer of the SDK barrels that re-export it. Without a base the
+ * paths go to Vitest unchanged.
+ *
+ * @param {string} root
+ * @param {string[]} relatedPaths
+ * @param {object} [options]
+ * @param {string} [options.base] merge base the changed paths were diffed from
+ * @param {typeof refineSdkBarrelRelatedPaths} [options.refine]
+ * @param {(decision: any) => void} [options.reportRefinement]
+ * @param {(...args: any[]) => Promise<any>} [options.run]
+ * @param {AbortSignal} [options.signal]
+ * @param {number} [options.timeoutMs]
+ */
 export async function discoverRelatedTestFiles(
   root,
   relatedPaths,
   {
+    base,
+    refine = refineSdkBarrelRelatedPaths,
+    reportRefinement = (decision) => {
+      process.stderr.write(
+        `[test:changed] SDK barrel selection: ${decision.path} ${
+          decision.disposition === 'refined'
+            ? `-> ${decision.seeds} import seed(s)`
+            : `kept whole (${decision.reason})`
+        }\n`,
+      );
+    },
     run = runOwnedChangedCommand,
     signal,
     timeoutMs = RELATED_DISCOVERY_TIMEOUT_MS,
@@ -275,13 +303,18 @@ export async function discoverRelatedTestFiles(
     throw new Error('Related Vitest discovery timeout is invalid');
   let result;
   try {
+    const refined = refine(root, relatedPaths, { base });
+    for (const decision of refined.decisions) reportRefinement(decision);
+    // Every refined path reached no file outside SDK source: nothing imports
+    // it, which is discovery's empty answer, not a failure.
+    if (refined.paths.length === 0) return [];
     result = await run(
       process.execPath,
       [
         '--input-type=module',
         '--eval',
         RELATED_DISCOVERY_SOURCE,
-        ...relatedPaths.map((path) => resolve(root, path)),
+        ...refined.paths.map((path) => resolve(root, path)),
       ],
       {
         cwd: root,
@@ -1399,6 +1432,9 @@ export async function runChangedVerification(
           discoverRelatedFiles ??
           ((discoveryRoot, relatedPaths) =>
             discoverRelatedTestFiles(discoveryRoot, relatedPaths, {
+              // The merge base, not the ref: purity and exported names are
+              // compared against the tree this diff was taken from.
+              base: changed.mergeBase,
               run,
               signal,
             })),
