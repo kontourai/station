@@ -70,7 +70,9 @@ vi.mock('../../../components/PathAutocomplete', () => ({
 }));
 
 const { NewPluginModal } = await import('../NewPluginModal');
-const { WORKTREE_OVERRIDE_REFUSED } = await import('../useNewPluginFlow');
+const { INSUFFICIENT_SCOPE_REFUSED, WORKTREE_OVERRIDE_REFUSED } = await import(
+  '../useNewPluginFlow'
+);
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -330,6 +332,47 @@ test('when this device may not set the override, it says so plainly', async () =
   expect((await screen.findByRole('alert')).textContent).toBe(
     WORKTREE_OVERRIDE_REFUSED,
   );
+  expect(mutateJsonMock).not.toHaveBeenCalled();
+});
+
+// #2708: the runtime's scope refusal now reaches the error with its code
+// (`insufficient_scope`). With the override sent it is still the override
+// refusal; without it, it gets a sentence rather than the raw token.
+test('a runtime insufficient_scope 403 with the override sent is the override refusal', async () => {
+  stationConfig.value = { defaultWorkspaceIsolation: 'worktree' };
+  createProjectMock.mockRejectedValue(
+    Object.assign(new Error('insufficient_scope'), {
+      status: 403,
+      code: 'insufficient_scope',
+    }),
+  );
+  renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    WORKTREE_OVERRIDE_REFUSED,
+  );
+  expect(mutateJsonMock).not.toHaveBeenCalled();
+});
+
+test('a runtime insufficient_scope 403 without the override reads as a sentence, not the token', async () => {
+  stationConfig.value = { defaultWorkspaceIsolation: 'shared' };
+  createProjectMock.mockRejectedValue(
+    Object.assign(new Error('insufficient_scope'), {
+      status: 403,
+      code: 'insufficient_scope',
+    }),
+  );
+  renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toBe(INSUFFICIENT_SCOPE_REFUSED);
+  expect(alert.textContent).not.toContain('insufficient_scope');
   expect(mutateJsonMock).not.toHaveBeenCalled();
 });
 
