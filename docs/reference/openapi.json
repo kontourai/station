@@ -10,7 +10,9 @@
       "get": {
         "operationId": "getAppConfig",
         "summary": "Get application configuration",
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -26,7 +28,9 @@
       "put": {
         "operationId": "updateAppConfig",
         "summary": "Update application configuration",
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -54,7 +58,9 @@
       "get": {
         "operationId": "listAgents",
         "summary": "List enriched agents",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -77,7 +83,9 @@
       "post": {
         "operationId": "createAgent",
         "summary": "Create an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -105,7 +113,9 @@
       "put": {
         "operationId": "updateAgent",
         "summary": "Update an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -131,7 +141,9 @@
       "delete": {
         "operationId": "deleteAgent",
         "summary": "Delete an agent",
-        "tags": ["agents"],
+        "tags": [
+          "agents"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -159,7 +171,9 @@
       "get": {
         "operationId": "listIntegrations",
         "summary": "List integrations",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -175,7 +189,9 @@
       "post": {
         "operationId": "createIntegration",
         "summary": "Create or update an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -203,7 +219,9 @@
       "get": {
         "operationId": "getIntegration",
         "summary": "Get an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -219,7 +237,9 @@
       "put": {
         "operationId": "updateIntegration",
         "summary": "Update an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -245,7 +265,9 @@
       "delete": {
         "operationId": "deleteIntegration",
         "summary": "Delete an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -273,7 +295,9 @@
       "post": {
         "operationId": "reconnectIntegration",
         "summary": "Reconnect an integration",
-        "tags": ["integrations"],
+        "tags": [
+          "integrations"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -301,7 +325,9 @@
       "get": {
         "operationId": "listSkills",
         "summary": "List installed skills",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -319,7 +345,9 @@
       "get": {
         "operationId": "getSkill",
         "summary": "Get a skill (resolves a legacy identifier)",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -335,7 +363,9 @@
       "put": {
         "operationId": "updateSkill",
         "summary": "Update a local skill, including its command and variables",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -364,7 +394,9 @@
       "delete": {
         "operationId": "deleteSkill",
         "summary": "Remove an installed skill",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -392,7 +424,9 @@
       "post": {
         "operationId": "createLocalSkill",
         "summary": "Create a local skill package",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -426,7 +460,9 @@
       "post": {
         "operationId": "importSkills",
         "summary": "Import markdown files as local skills",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -460,7 +496,9 @@
       "post": {
         "operationId": "trackSkillRun",
         "summary": "Track a skill run",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -494,7 +532,9 @@
       "post": {
         "operationId": "recordSkillOutcome",
         "summary": "Record skill outcome quality",
-        "tags": ["skills"],
+        "tags": [
+          "skills"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -538,7 +578,9 @@
       "get": {
         "operationId": "listRegistryPlugins",
         "summary": "List available registry plugins",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -556,7 +598,9 @@
       "get": {
         "operationId": "listInstalledRegistryPlugins",
         "summary": "List installed registry plugins",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -574,7 +618,9 @@
       "post": {
         "operationId": "installRegistryPlugin",
         "summary": "Install a plugin from the registry",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -588,6 +634,9 @@
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Installed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -605,10 +654,15 @@
       "delete": {
         "operationId": "uninstallRegistryPlugin",
         "summary": "Uninstall a registry plugin",
-        "tags": ["registry"],
+        "tags": [
+          "registry"
+        ],
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -633,7 +687,9 @@
       "get": {
         "operationId": "listPlugins",
         "summary": "List installed plugins",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -651,7 +707,9 @@
       "post": {
         "operationId": "previewPluginInstall",
         "summary": "Preview a plugin before install",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -682,7 +740,9 @@
       "post": {
         "operationId": "validatePlugin",
         "summary": "Check a local plugin folder for authoring errors without installing, copying, or building it (local absolute paths only)",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -710,7 +770,9 @@
       "post": {
         "operationId": "installPlugin",
         "summary": "Install a plugin from a source",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -724,6 +786,9 @@
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Installed over an existing plugin; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -741,7 +806,9 @@
       "get": {
         "operationId": "checkPluginUpdates",
         "summary": "Check installed plugins for updates",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -759,7 +826,9 @@
       "get": {
         "operationId": "previewPluginRecovery",
         "summary": "Inspect retained plugin recovery and fresh permission requirements",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -793,7 +862,9 @@
       "post": {
         "operationId": "recoverPlugin",
         "summary": "Recover a retained plugin with freshly reviewed permission revisions",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -809,7 +880,7 @@
             "description": "Success"
           },
           "202": {
-            "description": "Recovery accepted; runtime activation is still pending"
+            "description": "Recovery accepted; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -840,10 +911,15 @@
       "post": {
         "operationId": "updatePlugin",
         "summary": "Update an installed plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Updated; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -871,10 +947,15 @@
       "delete": {
         "operationId": "deletePlugin",
         "summary": "Delete an installed plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -895,11 +976,259 @@
         }
       ]
     },
+    "/api/plugins/{name}/command-effects": {
+      "post": {
+        "operationId": "admitPluginCommandEffect",
+        "summary": "Admit one plugin palette command effect for a browser document",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Plugin commands are unavailable on hosted deployments"
+          },
+          "404": {
+            "description": "The plugin is absent or not visible to the caller"
+          },
+          "409": {
+            "description": "Refused: expired request, changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled or conflicting request"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects or permissions are unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/command-effects/settlements": {
+      "post": {
+        "operationId": "settlePluginCommandEffects",
+        "summary": "Record how a browser document settled its plugin command effects",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Plugin commands are unavailable on hosted deployments"
+          },
+          "409": {
+            "description": "At least one item conflicts with an earlier terminal outcome"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      }
+    },
+    "/api/plugins/command-effects/withdrawals": {
+      "get": {
+        "operationId": "listPluginCommandWithdrawals",
+        "summary": "List open plugin command withdrawals, then the most recent closed ones (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can read withdrawals"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      }
+    },
+    "/api/plugins/command-effects/uncaptured": {
+      "get": {
+        "operationId": "listUncapturedPluginCommandEffects",
+        "summary": "List outstanding plugin command effects no withdrawal captured (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can read outstanding effects"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      }
+    },
+    "/api/plugins/command-effects/effects/{effectId}/abandon": {
+      "post": {
+        "operationId": "abandonPluginCommandEffect",
+        "summary": "Abandon an aged outstanding effect no withdrawal captured (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can abandon effects"
+          },
+          "404": {
+            "description": "Outstanding effect not found"
+          },
+          "409": {
+            "description": "The effect is captured by a withdrawal (resolve it instead) or is still too recent"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "effectId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/command-effects/withdrawals/{id}": {
+      "get": {
+        "operationId": "getPluginCommandWithdrawal",
+        "summary": "Read a plugin command effect withdrawal (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can read withdrawals"
+          },
+          "404": {
+            "description": "Withdrawal not found"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/command-effects/withdrawals/{id}/resolve": {
+      "post": {
+        "operationId": "resolvePluginCommandWithdrawal",
+        "summary": "Accept an indeterminate withdrawal (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can resolve withdrawals"
+          },
+          "404": {
+            "description": "Withdrawal not found"
+          },
+          "409": {
+            "description": "The withdrawal is not indeterminate"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "/api/plugins/reload": {
       "post": {
         "operationId": "reloadPlugins",
         "summary": "Reload installed plugin providers",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -917,7 +1246,9 @@
       "get": {
         "operationId": "getPluginProviders",
         "summary": "Get provider state for a plugin",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -945,7 +1276,9 @@
       "get": {
         "operationId": "getPluginOverrides",
         "summary": "Get plugin override state",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "responses": {
           "200": {
             "description": "Success"
@@ -961,7 +1294,9 @@
       "put": {
         "operationId": "updatePluginOverrides",
         "summary": "Update plugin override state",
-        "tags": ["plugins"],
+        "tags": [
+          "plugins"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1041,7 +1376,9 @@
             "maxLength": 10
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": true,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1109,7 +1446,11 @@
           },
           "transport": {
             "type": "string",
-            "enum": ["stdio", "sse", "streamable-http"]
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ]
           },
           "command": {
             "type": "string"
@@ -1178,7 +1519,11 @@
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["jsonrpc", "http", "command"]
+                "enum": [
+                  "jsonrpc",
+                  "http",
+                  "command"
+                ]
               },
               "path": {
                 "type": "string"
@@ -1190,7 +1535,9 @@
             "additionalProperties": false
           }
         },
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1214,7 +1561,11 @@
           },
           "transport": {
             "type": "string",
-            "enum": ["stdio", "sse", "streamable-http"]
+            "enum": [
+              "stdio",
+              "sse",
+              "streamable-http"
+            ]
           },
           "command": {
             "type": "string"
@@ -1283,7 +1634,11 @@
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["jsonrpc", "http", "command"]
+                "enum": [
+                  "jsonrpc",
+                  "http",
+                  "command"
+                ]
               },
               "path": {
                 "type": "string"
@@ -1303,7 +1658,10 @@
         "properties": {
           "dataPolicy": {
             "type": "string",
-            "enum": ["preserve", "retain-and-reset"]
+            "enum": [
+              "preserve",
+              "retain-and-reset"
+            ]
           },
           "expectedInstallation": {
             "anyOf": [
@@ -1343,7 +1701,9 @@
                         "pattern": "^sha256:[0-9a-f]{64}$"
                       }
                     },
-                    "required": ["digest"],
+                    "required": [
+                      "digest"
+                    ],
                     "additionalProperties": false
                   }
                 },
@@ -1453,7 +1813,10 @@
                 "maxItems": 256
               }
             },
-            "required": ["permissions", "contentDigest"],
+            "required": [
+              "permissions",
+              "contentDigest"
+            ],
             "additionalProperties": false
           },
           "proposalId": {
@@ -1461,7 +1824,9 @@
             "format": "uuid"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1573,11 +1938,18 @@
                 "maxItems": 256
               }
             },
-            "required": ["grantRevision", "permissions", "contentDigest"],
+            "required": [
+              "grantRevision",
+              "permissions",
+              "contentDigest"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["recoveryRevision", "consent"],
+        "required": [
+          "recoveryRevision",
+          "consent"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1590,7 +1962,9 @@
             "maxLength": 4096
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1602,7 +1976,9 @@
             "minLength": 1
           }
         },
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1653,7 +2029,9 @@
                 "type": "boolean"
               }
             },
-            "required": ["enabled"],
+            "required": [
+              "enabled"
+            ],
             "additionalProperties": false
           },
           "variables": {
@@ -1675,7 +2053,9 @@
                   "maxLength": 2000
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "additionalProperties": false
             },
             "maxItems": 50
@@ -1688,7 +2068,12 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "enum": ["agent", "plugin", "user", "asset"]
+                    "enum": [
+                      "agent",
+                      "plugin",
+                      "user",
+                      "asset"
+                    ]
                   },
                   "agentSlug": {
                     "type": "string"
@@ -1698,7 +2083,9 @@
                   },
                   "action": {
                     "type": "string",
-                    "enum": ["provider-capability-to-skill"]
+                    "enum": [
+                      "provider-capability-to-skill"
+                    ]
                   },
                   "convertedAt": {
                     "type": "string"
@@ -1708,7 +2095,10 @@
                     "properties": {
                       "kind": {
                         "type": "string",
-                        "enum": ["skill", "provider-capability"]
+                        "enum": [
+                          "skill",
+                          "provider-capability"
+                        ]
                       },
                       "id": {
                         "type": "string"
@@ -1718,7 +2108,12 @@
                       },
                       "owner": {
                         "type": "string",
-                        "enum": ["user", "registry", "plugin", "provider"]
+                        "enum": [
+                          "user",
+                          "registry",
+                          "plugin",
+                          "provider"
+                        ]
                       },
                       "providerId": {
                         "type": "string"
@@ -1727,11 +2122,18 @@
                         "type": "string"
                       }
                     },
-                    "required": ["kind", "id", "name", "owner"],
+                    "required": [
+                      "kind",
+                      "id",
+                      "name",
+                      "owner"
+                    ],
                     "additionalProperties": false
                   }
                 },
-                "required": ["kind"],
+                "required": [
+                  "kind"
+                ],
                 "additionalProperties": false
               },
               "updatedFrom": {
@@ -1744,7 +2146,10 @@
             "$ref": "#/components/schemas/SkillCreate/properties/provenance/properties/createdFrom"
           }
         },
-        "required": ["name", "body"],
+        "required": [
+          "name",
+          "body"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1767,14 +2172,19 @@
                   "maxLength": 100000
                 }
               },
-              "required": ["filename", "content"],
+              "required": [
+                "filename",
+                "content"
+              ],
               "additionalProperties": false
             },
             "minItems": 1,
             "maxItems": 50
           }
         },
-        "required": ["files"],
+        "required": [
+          "files"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1783,10 +2193,15 @@
         "properties": {
           "outcome": {
             "type": "string",
-            "enum": ["success", "failure"]
+            "enum": [
+              "success",
+              "failure"
+            ]
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
@@ -1837,7 +2252,9 @@
                 "type": "boolean"
               }
             },
-            "required": ["enabled"],
+            "required": [
+              "enabled"
+            ],
             "additionalProperties": false
           },
           "variables": {
@@ -1859,7 +2276,9 @@
                   "maxLength": 2000
                 }
               },
-              "required": ["name"],
+              "required": [
+                "name"
+              ],
               "additionalProperties": false
             },
             "maxItems": 50
@@ -1872,7 +2291,12 @@
                 "properties": {
                   "kind": {
                     "type": "string",
-                    "enum": ["agent", "plugin", "user", "asset"]
+                    "enum": [
+                      "agent",
+                      "plugin",
+                      "user",
+                      "asset"
+                    ]
                   },
                   "agentSlug": {
                     "type": "string"
@@ -1882,7 +2306,9 @@
                   },
                   "action": {
                     "type": "string",
-                    "enum": ["provider-capability-to-skill"]
+                    "enum": [
+                      "provider-capability-to-skill"
+                    ]
                   },
                   "convertedAt": {
                     "type": "string"
@@ -1892,7 +2318,10 @@
                     "properties": {
                       "kind": {
                         "type": "string",
-                        "enum": ["skill", "provider-capability"]
+                        "enum": [
+                          "skill",
+                          "provider-capability"
+                        ]
                       },
                       "id": {
                         "type": "string"
@@ -1902,7 +2331,12 @@
                       },
                       "owner": {
                         "type": "string",
-                        "enum": ["user", "registry", "plugin", "provider"]
+                        "enum": [
+                          "user",
+                          "registry",
+                          "plugin",
+                          "provider"
+                        ]
                       },
                       "providerId": {
                         "type": "string"
@@ -1911,11 +2345,18 @@
                         "type": "string"
                       }
                     },
-                    "required": ["kind", "id", "name", "owner"],
+                    "required": [
+                      "kind",
+                      "id",
+                      "name",
+                      "owner"
+                    ],
                     "additionalProperties": false
                   }
                 },
-                "required": ["kind"],
+                "required": [
+                  "kind"
+                ],
                 "additionalProperties": false
               },
               "updatedFrom": {

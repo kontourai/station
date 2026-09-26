@@ -29,12 +29,15 @@
  * the real route registrations in `src-server/routes/plugins/` and fails in
  * both directions:
  * a literal segment Station mounts and this list does not name, and a name
- * here that Station no longer mounts. That scan is why this list has eight
+ * here that Station no longer mounts. That scan is why this list has ten
  * entries rather than the two an unaided reading would produce — and it is
  * what caught `visibility`, which #2095 mounted and did not reserve.
  */
 export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'check-updates',
+  // kontourai/station#1419 mounts `/api/plugins/command-effects/**`
+  // (plugin-command-effect-routes.ts) for settlements and withdrawals.
+  'command-effects',
   'fetch',
   'home-role',
   'host-approvals',

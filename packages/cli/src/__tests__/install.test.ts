@@ -552,6 +552,41 @@ describe('plugin CLI API authority', () => {
     );
   });
 
+  test('says a removal is still winding down when Station answers 202 with outstanding command effects', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        {
+          success: true,
+          commandEffects: {
+            withdrawalId: 'pcw-1',
+            status: 'winding-down',
+            outstanding: 2,
+          },
+        },
+        { status: 202 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    await remove('demo', parsed);
+    expect(vi.mocked(console.log)).toHaveBeenLastCalledWith(
+      '✅ Removed demo through Station. 2 plugin command effects are still winding down (withdrawal pcw-1).',
+    );
+  });
+
+  test('says completion cannot be confirmed when Station could not record the withdrawal', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        { success: true, commandEffectsUnavailable: true },
+        { status: 202 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    await remove('demo', parsed);
+    expect(vi.mocked(console.log)).toHaveBeenLastCalledWith(
+      '✅ Removed demo through Station. Its plugin command effects could not be recorded, so completion cannot be confirmed.',
+    );
+  });
+
   test('does not report removal when Station refuses an alias and rejected-directory collision', async () => {
     authenticatedFetch.mockResolvedValue(
       Response.json(

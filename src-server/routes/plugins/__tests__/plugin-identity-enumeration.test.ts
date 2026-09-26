@@ -103,6 +103,11 @@ const { registerPluginInstallRoutes } = await import(
 const { registerPluginLifecycleRoutes } = await import(
   '../plugin-lifecycle-routes.js'
 );
+const { registerPluginCommandEffectRoutes } = await import(
+  '../plugin-command-effect-routes.js'
+);
+const { createPluginCommandEffectService, FilePluginCommandEffectStore } =
+  await import('../../../services/plugins/plugin-command-effects.js');
 const { createRegistryRoutes } = await import('../registry.js');
 const { createProjectRoutes } = await import('../../projects/projects.js');
 const { FileStorageAdapter } = await import(
@@ -335,7 +340,21 @@ const FACTORY_SPIES = {
   createRegistryRoutes: vi.fn(createRegistryRoutes),
   registerPluginInstallRoutes: vi.fn(registerPluginInstallRoutes),
   registerPluginLifecycleRoutes: vi.fn(registerPluginLifecycleRoutes),
+  registerPluginCommandEffectRoutes: vi.fn(registerPluginCommandEffectRoutes),
 } as const;
+
+function commandEffectApp(dir: string, principal: PrincipalRef): Hono {
+  const app = new HonoApp();
+  FACTORY_SPIES.registerPluginCommandEffectRoutes(app, {
+    effects: createPluginCommandEffectService({
+      store: new FilePluginCommandEffectStore(dir),
+    }),
+    resolution: { resolvePrincipal: () => principal },
+    isHostedDeployment: () => false,
+    admission: { admit: vi.fn() } as never,
+  });
+  return app;
+}
 
 const DRIVERS: Record<
   string,
@@ -416,6 +435,36 @@ const DRIVERS: Record<
         visibility: { resolvePrincipal: () => principal },
       } as never);
       return { app, path: '/check-updates' };
+    },
+  },
+  'GET /api/plugins/command-effects/withdrawals': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => ({
+      app: commandEffectApp(dir, principal),
+      path: '/command-effects/withdrawals',
+    }),
+  },
+  'GET /api/plugins/command-effects/uncaptured': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => ({
+      app: commandEffectApp(dir, principal),
+      path: '/command-effects/uncaptured',
+    }),
+  },
+  'GET /api/plugins/command-effects/withdrawals/:id': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => {
+      const app = new HonoApp();
+      const effects = createPluginCommandEffectService({
+        store: new FilePluginCommandEffectStore(dir),
+      });
+      FACTORY_SPIES.registerPluginCommandEffectRoutes(app, {
+        effects,
+        resolution: { resolvePrincipal: () => principal },
+        isHostedDeployment: () => false,
+        admission: { admit: vi.fn() } as never,
+      });
+      return { app, path: '/command-effects/withdrawals/pcw-unknown' };
     },
   },
   'POST /api/plugins/reload': {
@@ -512,6 +561,12 @@ const ELSEWHERE = new Map<string, string>([
   [
     'GET /api/plugins/home-role/candidates',
     'src-server/routes/plugins/__tests__/plugin-home-role-routes.test.ts',
+  ],
+  // A POST: its "L1" case drives the real admission route and asserts an
+  // invisible plugin's refusal is byte-identical to an absent one's.
+  [
+    'POST /api/plugins/:name/command-effects',
+    'src-server/routes/plugins/__tests__/plugin-command-effect-lifecycle.test.ts',
   ],
 ]);
 

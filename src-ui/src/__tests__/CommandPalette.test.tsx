@@ -13,6 +13,7 @@ import {
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commandFrecencyStorage } from '../components/command-frecency-storage';
 import {
@@ -21,6 +22,7 @@ import {
   rankCommands,
 } from '../components/command-palette-utils';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { navigationStore } from '../contexts/navigation-store';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
@@ -33,6 +35,7 @@ import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 let agentsMock: any[] = [];
 let projectsMock: any[] = [];
 let skillsMock: any[] = [];
+let pluginsMock: any[] = [];
 let paneCatalogMock: any = {
   descriptors: [],
   instances: [],
@@ -85,6 +88,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useProjectsQuery: () => ({ data: projectsMock }),
   useSkillsQuery: () => ({ data: skillsMock }),
   useMessageSearchQuery: () => ({ data: messageSearchMock }),
+  // #1418/#1419: keep the plugin command rows' source inert here too, rather
+  // than letting the real hook fetch in a test with no server.
+  usePluginsQuery: () => ({ data: pluginsMock }),
   // Pane availability consumes deployment facts through the public SDK; this
   // palette test deliberately keeps that independent query inert.
   useServerCapabilitiesQuery: () => ({ data: undefined }),
@@ -112,17 +118,43 @@ const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
-    navigate: navigateMock,
-    setProject: setProjectMock,
-    setDockState: setDockStateMock,
-    selectedProject: 'alpha',
-    selectedProjectLayout: selectedProjectLayoutMock,
-  }),
+  // #1418/#1419 review, MEDIUM: `activeChat`/`activeConversation`/
+  // `isDockOpen` are read live off the REAL navigationStore singleton
+  // (subscribed, so a test's `navigationStore.setActiveChat`/`setDockState`
+  // call is observed) — the palette's seed-composer availability now
+  // depends on them. Every action stays the existing static spy.
+  useNavigation: () => {
+    const snapshot = useSyncExternalStore(
+      navigationStore.subscribe,
+      navigationStore.getSnapshot,
+      navigationStore.getSnapshot,
+    );
+    return {
+      navigate: navigateMock,
+      setProject: setProjectMock,
+      setDockState: setDockStateMock,
+      selectedProject: 'alpha',
+      selectedProjectLayout: selectedProjectLayoutMock,
+      activeChat: snapshot.activeChat,
+      activeConversation: snapshot.activeConversation,
+      isDockOpen: snapshot.isDockOpen,
+    };
+  },
 }));
 vi.mock('../contexts/RegionModelContext', () => ({}));
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceMock,
+}));
+
+// #1418/#1419: the coordinator itself is unit-tested against a scripted
+// transport (plugin-command-effect-coordinator.test.ts). Here the palette's
+// OWN wiring is under test — which target/context it builds, and what its
+// `apply` closure does — so the coordinator is a plain capture point.
+const pluginCommandRunMock = vi.hoisted(() => vi.fn());
+vi.mock('../components/plugin-command-effect-transport', () => ({
+  getPluginCommandEffectCoordinator: () => ({
+    runCommand: pluginCommandRunMock,
+  }),
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -193,6 +225,8 @@ afterEach(() => {
   agentsMock = [];
   projectsMock = [];
   skillsMock = [];
+  pluginsMock = [];
+  pluginCommandRunMock.mockReset();
   paneCatalogMock = { descriptors: [], instances: [], availability: [] };
   selectedProjectLayoutMock = null;
   messageSearchMock = { matches: [], instances: [] };
@@ -1375,5 +1409,343 @@ describe('CommandPalette return focus (station#1245)', () => {
     expect(list.hasAttribute('tabindex')).toBe(false);
     list.remove();
     destination.remove();
+  });
+});
+
+describe('CommandPalette plugin commands (#1418/#1419)', () => {
+  const NAVIGATE_COMMAND = {
+    version: '1.0' as const,
+    id: 'demo.open-agents',
+    title: 'Open Agents (demo)',
+    intent: { kind: 'navigate' as const, surfaceId: 'agents' },
+  };
+
+  test('projects a ready plugin command and dispatches it to the coordinator with its target and context', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [NAVIGATE_COMMAND],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    const option = screen.getByRole('option', { name: /Open Agents \(demo\)/ });
+    fireEvent.click(option);
+
+    // `run()` dispatches through a dynamic import of the coordinator module;
+    // it resolves a couple of microtask ticks after the click.
+    await vi.waitFor(() =>
+      expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+    );
+    const call = pluginCommandRunMock.mock.calls[0][0];
+    expect(typeof call.apiBase).toBe('string');
+    expect(call).toMatchObject({
+      pluginId: 'demo',
+      commandId: 'demo.open-agents',
+      installationGeneration: 'gen-1',
+      target: { kind: 'destination', destinationId: 'agents' },
+      context: { projectSlug: 'alpha' },
+    });
+  });
+
+  test('stays visible with its exact reason when a command is unavailable, and never dispatches it', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        // No installationGeneration: the installation could not be confirmed.
+        commands: [NAVIGATE_COMMAND],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    const option = screen.getByRole('option', {
+      name: /Open Agents \(demo\)/,
+    });
+    expect(option.textContent).toContain(
+      'The current plugin command installation could not be confirmed.',
+    );
+    fireEvent.click(option);
+    // A synchronous check is not enough to prove nothing was dispatched: the
+    // real dispatch path resolves a dynamic import a few microtask ticks
+    // later, so give it the same room to (not) happen.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pluginCommandRunMock).not.toHaveBeenCalled();
+  });
+
+  test('the navigate apply closure aborts under an active unsaved-changes guard, without navigating', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [NAVIGATE_COMMAND],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    fireEvent.click(
+      screen.getByRole('option', { name: /Open Agents \(demo\)/ }),
+    );
+    await vi.waitFor(() =>
+      expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+    );
+    const { apply } = pluginCommandRunMock.mock.calls[0][0];
+
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('test-guard'),
+      () => {
+        throw new Error(
+          'the async confirm-and-continue flow must never run for a plugin command',
+        );
+      },
+    );
+    try {
+      const applied = apply({ kind: 'navigate', destinationId: 'agents' });
+      expect(applied).toBe(false);
+      expect(navigateMock).not.toHaveBeenCalled();
+      expect(showSurfaceMock).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+
+    // With no guard registered, the same receipt content applies and
+    // navigates for real.
+    const applied = apply({ kind: 'navigate', destinationId: 'agents' });
+    expect(applied).toBe(true);
+    expect(navigateMock).toHaveBeenCalledWith('/agents');
+  });
+
+  test('the navigate apply closure still applies under a registered guard when the target is the pathname already showing (#1418/#1419 review, MEDIUM)', async () => {
+    window.history.replaceState({}, '', '/agents');
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [NAVIGATE_COMMAND],
+        permissions: { granted: [] },
+      },
+    ];
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(
+        screen.getByRole('option', { name: /Open Agents \(demo\)/ }),
+      );
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const { apply } = pluginCommandRunMock.mock.calls[0][0];
+
+      // Registered, but `navigate()` itself would never consult a guard for
+      // a same-pathname target — the predicate answers for the ACTUAL
+      // target, not "is any guard registered anywhere".
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('same-pathname-guard'),
+        () => {},
+      );
+      try {
+        const applied = apply({ kind: 'navigate', destinationId: 'agents' });
+        expect(applied).toBe(true);
+        expect(navigateMock).toHaveBeenCalledWith('/agents');
+      } finally {
+        unregister();
+      }
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  test('the navigate apply closure reveals a regionSurface destination without ever consulting a registered guard', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [
+          {
+            version: '1.0' as const,
+            id: 'demo.open-activity',
+            title: 'Open Activity (demo)',
+            intent: { kind: 'navigate' as const, surfaceId: 'activity' },
+          },
+        ],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    fireEvent.click(
+      screen.getByRole('option', { name: /Open Activity \(demo\)/ }),
+    );
+    await vi.waitFor(() =>
+      expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+    );
+    const { apply } = pluginCommandRunMock.mock.calls[0][0];
+
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('region-surface-guard'),
+      () => {
+        throw new Error(
+          'showSurface must never consult a navigation guard: it does not go through navigate() at all',
+        );
+      },
+    );
+    try {
+      const applied = apply({ kind: 'navigate', destinationId: 'activity' });
+      expect(applied).toBe(true);
+      expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+      expect(navigateMock).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  test("seed-composer captures the navigationStore-active chat's draft and applies through its CAS", async () => {
+    activeChatsStore.initChat('chat-1', {
+      agentSlug: 'demo-agent',
+      agentName: 'Demo',
+      title: 'Chat 1',
+    });
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [
+          {
+            version: '1.0' as const,
+            id: 'demo.seed',
+            title: 'Draft with demo',
+            intent: { kind: 'seed-composer' as const, text: 'Hello from demo' },
+          },
+        ],
+        permissions: { granted: [] },
+      },
+    ];
+    try {
+      act(() => {
+        navigationStore.setActiveChat('chat-1');
+        navigationStore.setDockState(true);
+      });
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Draft with demo/ }));
+
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const call = pluginCommandRunMock.mock.calls[0][0];
+      expect(call).toMatchObject({
+        pluginId: 'demo',
+        commandId: 'demo.seed',
+        target: { kind: 'composer', sessionId: 'chat-1' },
+        context: { projectSlug: 'alpha', activeChatSessionId: 'chat-1' },
+      });
+      const applied = call.apply({
+        kind: 'seed-composer',
+        sessionId: 'chat-1',
+        text: 'Hello from demo',
+      });
+      expect(applied).toBe(true);
+      expect(activeChatsStore.getSnapshot()['chat-1'].input).toBe(
+        'Hello from demo',
+      );
+    } finally {
+      activeChatsStore.removeChat('chat-1');
+      act(() => {
+        navigationStore.setActiveChat(null);
+        navigationStore.setDockState(false);
+      });
+    }
+  });
+
+  test('seed-composer is unavailable with no open chat, unavailable while the dock is closed, and — with several chats open — available only for and seeding the navigationStore-active one (#1418/#1419 review, MEDIUM)', async () => {
+    pluginsMock = [
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationGeneration: 'gen-1',
+        commands: [
+          {
+            version: '1.0' as const,
+            id: 'demo.seed',
+            title: 'Draft with demo',
+            intent: { kind: 'seed-composer' as const, text: 'Hello' },
+          },
+        ],
+        permissions: { granted: [] },
+      },
+    ];
+    await renderCommandPalette();
+    open();
+    expect(
+      screen.getByRole('option', { name: /Draft with demo/ }).textContent,
+    ).toContain('Open a chat before staging this command in the composer.');
+
+    activeChatsStore.initChat('chat-1', {
+      agentSlug: 'demo-agent',
+      agentName: 'Demo',
+      title: 'Chat 1',
+    });
+    activeChatsStore.initChat('chat-2', {
+      agentSlug: 'demo-agent',
+      agentName: 'Demo',
+      title: 'Chat 2',
+    });
+    try {
+      // Two chats open, neither named active by navigationStore: still
+      // unavailable — this never guesses among several open chats.
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'Draft with demo' },
+      });
+      expect(
+        screen.getByRole('option', { name: /Draft with demo/ }).textContent,
+      ).toContain('Open a chat before staging this command in the composer.');
+
+      // navigationStore names chat-2 active, but no Chat surface is showing
+      // it (dock closed): still unavailable.
+      act(() => {
+        navigationStore.setActiveChat('chat-2');
+      });
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'Draft with demo' },
+      });
+      expect(
+        screen.getByRole('option', { name: /Draft with demo/ }).textContent,
+      ).toContain('Open a chat before staging this command in the composer.');
+
+      // The dock opens: now available, and it seeds chat-2 specifically —
+      // never chat-1, the other chat that happens to be open.
+      act(() => {
+        navigationStore.setDockState(true);
+      });
+      fireEvent.click(screen.getByRole('option', { name: /Draft with demo/ }));
+      await vi.waitFor(() =>
+        expect(pluginCommandRunMock).toHaveBeenCalledTimes(1),
+      );
+      const call = pluginCommandRunMock.mock.calls[0][0];
+      expect(call).toMatchObject({
+        target: { kind: 'composer', sessionId: 'chat-2' },
+        context: { projectSlug: 'alpha', activeChatSessionId: 'chat-2' },
+      });
+    } finally {
+      activeChatsStore.removeChat('chat-1');
+      activeChatsStore.removeChat('chat-2');
+      act(() => {
+        navigationStore.setActiveChat(null);
+        navigationStore.setDockState(false);
+      });
+    }
   });
 });

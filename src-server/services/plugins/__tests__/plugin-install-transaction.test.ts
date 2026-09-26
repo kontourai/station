@@ -41,6 +41,10 @@ import {
   createPluginActivationSession,
 } from '../plugin-activation-composition.js';
 import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../plugin-command-effects.js';
+import {
   computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
@@ -78,6 +82,10 @@ import {
   readPluginDependencyOwnership,
   readPluginGrantState,
 } from '../plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../plugin-runtime-artifact.js';
 import {
   fetchPluginSource,
   installPluginDependency,
@@ -741,6 +749,47 @@ describe('dependency approval from the real preview route', () => {
       expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
     },
   );
+
+  test('H3: removing a parent withdraws command effects of the legacy dependency it owned, and reports them', async () => {
+    const { root, parent, installDeps, consent } = await fixture('declarative');
+    delete consent.dependencyApprovals;
+    await installPluginFromSource(parent, [], installDeps, { consent });
+    const dependency = capturePluginRuntimeArtifact(
+      installDeps.pluginsDir,
+      'dependency',
+    );
+    expect(dependency).not.toBeNull();
+    const effects = createPluginCommandEffectService({
+      store: new FilePluginCommandEffectStore(root),
+    });
+    const admitted = await effects.recordAdmission({
+      principalId: 'local-operator',
+      pluginId: 'dependency',
+      installationGeneration: pluginInstallationGeneration(dependency!),
+      requiresPluginServer: false,
+      commandId: 'dependency.open',
+      target: { kind: 'destination', destinationId: 'plugins' },
+      content: { kind: 'navigate', destinationId: 'plugins' },
+      documentId: 'document-dependency',
+      documentKey: 'k'.repeat(43),
+      requestId: 'request-dependency',
+      issuedAt: Date.now(),
+    });
+    if (admitted.kind !== 'admitted') throw new Error(admitted.reason);
+    const removed = await uninstallInstalledPlugin('parent', installDeps);
+    expect(existsSync(join(root, 'plugins', 'dependency'))).toBe(false);
+    expect(removed.commandEffects).toBeUndefined();
+    expect(removed.dependencyCommandEffects).toEqual([
+      expect.objectContaining({ status: 'winding-down', outstanding: 1 }),
+    ]);
+    await expect(
+      effects.withdrawal(removed.dependencyCommandEffects![0]!.withdrawalId),
+    ).resolves.toMatchObject({
+      pluginId: 'dependency',
+      causes: ['removal'],
+      outstandingEffectIds: [admitted.receipt.effectId],
+    });
+  });
 
   test('preserves the named declarative dependency policy without an individual approval', async () => {
     const { parent, installDeps, consent } = await fixture('declarative');

@@ -546,6 +546,26 @@ class NavigationStore {
   }
 
   /**
+   * A synchronous read for a caller that must not open the async
+   * confirm-and-continue flow `navigate()` runs when a guard is registered
+   * for the SAME target (kontourai/station#1418, #1419: a plugin-command
+   * navigation settles `aborted` with a notice instead of prompting, so the
+   * local effect stays one synchronous step).
+   *
+   * Shares the exact predicate `navigate()` itself uses to decide whether to
+   * consult guards at all, extracted here so the two cannot drift (#1418/
+   * #1419 review, MEDIUM: a caller that asked "is any guard registered,
+   * anywhere" over-aborted for a same-pathname target navigate() would have
+   * let straight through, and for a `showSurface` destination navigate()
+   * never even runs for).
+   */
+  wouldNavigationGuardBlock(pathname: string): boolean {
+    if (this.navigationGuards.size === 0) return false;
+    const target = parseNavigationTarget(pathname, window.location.href);
+    return target.pathname !== window.location.pathname;
+  }
+
+  /**
    * `owner` names the surface whose content the guard protects (a dock
    * pane's surface id, `UnsavedGuardOwnerContext`), so a surface-scoped exit
    * can ask only that surface's guards (`runNavigationGuards`'s `owner`).
@@ -699,8 +719,7 @@ class NavigationStore {
     const target = parseNavigationTarget(pathname, window.location.href);
     if (
       !this.navigationGuardBypass &&
-      target.pathname !== window.location.pathname &&
-      this.navigationGuards.size > 0
+      this.wouldNavigationGuardBlock(pathname)
     ) {
       this.runNavigationGuards(() => {
         this.navigationGuardBypass = true;

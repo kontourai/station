@@ -46,6 +46,46 @@ describe('ActiveChatsStore', () => {
     vi.useRealTimers();
   });
 
+  test('composer draft capabilities are revision-bound and single-use', () => {
+    const store = new ActiveChatsStore({ storage: new MemoryStorage() });
+    store.initChat('chat');
+    store.updateChat('chat', { input: 'original' });
+    const prior = store.captureComposerDraft('chat')!;
+    store.updateChat('chat', { input: 'changed' });
+    store.updateChat('chat', { input: 'original' });
+    expect(prior.replaceInputIfUnchanged('stale')).toBe(false);
+    const current = store.captureComposerDraft('chat')!;
+    store.updateChat('chat', { hasUnread: true });
+    expect(current.replaceInputIfUnchanged('fresh')).toBe(true);
+    expect(current.replaceInputIfUnchanged('twice')).toBe(false);
+    expect(store.getSnapshot().chat.input).toBe('fresh');
+  });
+
+  test.each(['clear', 'history', 'attachments', 'replacement'])(
+    'invalidates captured composer draft after %s',
+    (operation) => {
+      const store = new ActiveChatsStore({ storage: new MemoryStorage() });
+      store.initChat('chat');
+      store.updateChat('chat', {
+        input: 'original',
+        inputHistory: ['history'],
+      });
+      const draft = store.captureComposerDraft('chat')!;
+      if (operation === 'clear') store.clearInput('chat');
+      if (operation === 'history') {
+        store.navigateHistoryUp('chat');
+        store.navigateHistoryDown('chat');
+      }
+      if (operation === 'attachments')
+        store.updateChat('chat', { attachments: [] });
+      if (operation === 'replacement') {
+        store.removeChat('chat');
+        store.initChat('chat');
+      }
+      expect(draft.replaceInputIfUnchanged('stale')).toBe(false);
+    },
+  );
+
   test('rehydrates persisted session metadata', () => {
     const storage = new MemoryStorage();
     storage.setItem(

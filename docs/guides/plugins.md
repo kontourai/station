@@ -141,7 +141,7 @@ All fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
-| `commands` | PluginCommandContribution[] | no | Inert palette-command declarations; registration alone grants no execution authority |
+| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
@@ -168,7 +168,8 @@ a plugin installed under one of those names would find Station's routes inside
 the namespace it believes it owns. Install refuses these names outright:
 
 ```
-check-updates   fetch   home-role   host-approvals   install   preview   reload
+check-updates   command-effects   fetch   home-role   host-approvals
+install         preview           reload   visibility
 ```
 
 The list is derived from Station's actual route registrations rather than kept

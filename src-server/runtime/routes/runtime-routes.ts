@@ -466,6 +466,7 @@ import {
 import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
+import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
@@ -496,6 +497,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
@@ -770,6 +772,8 @@ export interface ConfigureRuntimeRoutesContext {
    */
   delegationAttemptClaims: import('../../services/orchestration/delegation-attempt-claim-store.js').DelegationAttemptClaimStore;
   orchestrationEventStore?: EventStore;
+  /** Runtime's notification-bearing durable operational-event publisher. */
+  operationalEventPublisher?: OperationalEventPublisher;
   pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
@@ -2309,6 +2313,38 @@ export function configureRuntimeRoutes(
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
         reconcileEventSubscriptions: () =>
           context.pluginOperationalEventSubscriptions.reconcile(),
+        commandEffects: {
+          // F6 (kontourai/station#1419): hosted deployments keep refusing.
+          isHostedDeployment: () => hostedTenantRegistry !== undefined,
+          publishAudit: (event) => {
+            const outcome = context.operationalEventPublisher?.append(event);
+            return (
+              outcome?.kind === 'appended' || outcome?.kind === 'duplicate'
+            );
+          },
+          // M5 (kontourai/station#1419): answered for the CALLER. Sessions go
+          // through the same read predicate every other session read uses.
+          resolveRequirement: createPluginCommandRequirementResolver({
+            canReadSession: (sessionId, authority) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                readAuthorityForRequest(authority),
+              ),
+            projectExists: (slug) => {
+              try {
+                return Boolean(context.projectService.getProject(slug));
+              } catch {
+                return false;
+              }
+            },
+            taskInProject: (taskId, projectSlug) => {
+              const task = context.taskGraphService.readTask(taskId);
+              return Boolean(
+                task && (!projectSlug || task.projectId === projectSlug),
+              );
+            },
+          }),
+        },
         // #2067. The SAME memoized, fail-closed resolver every other
         // identity-bearing route in this file reads, so `GET /api/plugins`
         // projects onto the request's own caller and no header or body can

@@ -8,6 +8,7 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
  */
 
 import { join } from 'node:path';
+import type { OperationalEventEnvelope } from '@kontourai/station-contracts/operational-event';
 import { Hono } from 'hono';
 import {
   disposeRetainedPreparedPluginProviders,
@@ -19,6 +20,14 @@ import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  createPluginCommandEffectAdmission,
+  type PluginCommandEffectAdmissionDeps,
+} from '../../services/plugins/plugin-command-effect-admission.js';
+import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../../services/plugins/plugin-command-effects.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import {
   publishGrantedPluginProviderGeneration,
@@ -32,9 +41,11 @@ import { quiescePluginPublicServerModule } from '../../services/plugins/plugin-p
 import {
   capturePluginRuntimeArtifact,
   capturePluginRuntimeArtifactAsync,
+  pluginInstallationGeneration,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
+import { registerPluginCommandEffectRoutes } from './plugin-command-effect-routes.js';
 import { registerPluginConfigRoutes } from './plugin-config-routes.js';
 import { registerPluginHomeRoleRoutes } from './plugin-home-role-routes.js';
 import { registerPluginHostApprovalRoutes } from './plugin-host-approval-routes.js';
@@ -87,6 +98,22 @@ export function createPluginRoutes(
       kind: 'applied' | 'unavailable';
     }>;
     /**
+     * kontourai/station#1418: plugin command effect admission. Absent, the
+     * routes still refuse unattributed callers and record nothing.
+     */
+    commandEffects?: {
+      isHostedDeployment(): boolean;
+      publishAudit?(event: OperationalEventEnvelope): boolean;
+      producerVersion?: string;
+      onSettlementConflict?(): void;
+      resolveRequirement: PluginCommandEffectAdmissionDeps['resolveRequirement'];
+      /** Test seam: runs inside every lock and lease just before the append. */
+      beforeRecord?: PluginCommandEffectAdmissionDeps['beforeRecord'];
+      /** Test seams for withdrawal age; production uses the wall clock. */
+      now?(): Date;
+      indeterminateAfterMs?: number;
+    };
+    /**
      * #2323 S5: the plugin lifecycle proposal store install, update and
      * remove complete. Absent, those routes report a named proposal as
      * still open rather than guessing.
@@ -128,7 +155,7 @@ export function createPluginRoutes(
     return {
       installed: !!artifact,
       installationGeneration: artifact
-        ? JSON.stringify([artifact.generation ?? null, artifact.digest])
+        ? pluginInstallationGeneration(artifact)
         : null,
     };
   };
@@ -257,6 +284,37 @@ export function createPluginRoutes(
           reconcileSubscriptions: runtime.reconcileEventSubscriptions,
         })
       : undefined;
+
+  const commandEffects = createPluginCommandEffectService({
+    store: new FilePluginCommandEffectStore(projectHomeDir),
+    publishAudit: runtime?.commandEffects?.publishAudit,
+    producerVersion: runtime?.commandEffects?.producerVersion,
+    onSettlementConflict: runtime?.commandEffects?.onSettlementConflict,
+    now: runtime?.commandEffects?.now,
+    indeterminateAfterMs: runtime?.commandEffects?.indeterminateAfterMs,
+  });
+  registerPluginCommandEffectRoutes(app, {
+    effects: commandEffects,
+    resolution: runtime?.visibility
+      ? { resolvePrincipal: runtime.visibility.resolvePrincipal }
+      : undefined,
+    // No composed runtime means no attributable, audited caller: refuse.
+    isHostedDeployment: () =>
+      runtime?.commandEffects?.isHostedDeployment() ?? true,
+    admission: createPluginCommandEffectAdmission({
+      pluginsDir,
+      projectHomeDir,
+      journal: runtime?.packageMcpJournal,
+      effects: commandEffects,
+      canSeePlugin: (principal, pluginId) =>
+        runtime?.visibility?.service.canSee(principal, pluginId) ?? false,
+      resolveRequirement: async (input) =>
+        runtime?.commandEffects
+          ? runtime.commandEffects.resolveRequirement(input)
+          : 'unavailable',
+      beforeRecord: runtime?.commandEffects?.beforeRecord,
+    }),
+  });
 
   // Literal reserved-segment routes (`/home-role/**`) must register before
   // any `/:name` catch-all: Hono matches in registration order, and the

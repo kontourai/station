@@ -90,6 +90,12 @@ import {
   pluginActivationDescriptorDigest,
 } from './plugin-activation-plan.js';
 import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
+import {
+  type PluginCommandEffectResponseFields,
+  type PluginCommandWithdrawalCapture,
+  pluginCommandEffectFields,
+  withdrawPluginCommandEffects,
+} from './plugin-command-effects.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -163,6 +169,7 @@ import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
 } from './plugin-public-server.js';
+import { pluginInstallationGeneration } from './plugin-runtime-artifact.js';
 import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
@@ -452,6 +459,10 @@ export function installationHostFor(
 
 export interface InstalledPluginResult extends PluginInstallResult {
   lifecycle?: Awaited<ReturnType<PluginInstallationService['install']>>;
+  /** Present when installing over the plugin withdrew outstanding command effects. */
+  commandEffects?: PluginCommandEffectResponseFields['commandEffects'];
+  dependencyCommandEffects?: PluginCommandEffectResponseFields['dependencyCommandEffects'];
+  commandEffectsUnavailable?: true;
   success: true;
   plugin: {
     name: string;
@@ -518,6 +529,8 @@ interface RemovedDependencyBackup {
   commit?: () => void;
   manifest: PluginManifest;
   grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
+  /** The command effects this dependency's removal withdrew. */
+  commandEffects?: PluginCommandEffectResponseFields;
 }
 
 const completedGrantRollbacks = new WeakSet<PluginGrantMutationScope>();
@@ -1471,7 +1484,7 @@ async function removeOwnedDependencyLifecycles(options: {
               options.projectHomeDir,
               dependency.id,
             );
-            await uninstallInstalledPlugin(
+            const dependencyRemoval = await uninstallInstalledPlugin(
               dependency.id,
               options.managedDeps!,
               {
@@ -1493,6 +1506,11 @@ async function removeOwnedDependencyLifecycles(options: {
               grantSnapshot,
               restoreManaged,
               commit,
+              // The nested uninstall captured inside the dependency's own
+              // content lock; its summary rides up to the parent response.
+              commandEffects: pluginCommandEffectFields({ kind: 'none' }, [
+                dependencyRemoval,
+              ]),
             });
             return;
           }
@@ -1553,6 +1571,15 @@ async function removeOwnedDependencyLifecycles(options: {
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
             await removePluginHostRecord(options.projectHomeDir, dependency.id);
+            // LP-W (dependency removal): inside this dependency's content lock,
+            // after its tree and grants are gone. Never vetoes the removal.
+            backup.commandEffects = pluginCommandEffectFields(
+              await withdrawPluginCommandEffects(options.projectHomeDir, {
+                pluginId: dependency.id,
+                cause: 'removal',
+                captures: () => true,
+              }),
+            );
             forgetRegistryInstallsForPlugin(
               options.projectHomeDir,
               dependency.id,
@@ -2347,6 +2374,12 @@ export async function removeDependencyTreesCreatedByThisInstall(
   createdPluginDigests?: ReadonlyMap<string, string>,
   journal?: PackageMcpAdmissionJournal,
   activationSession?: PluginActivationSession,
+  /**
+   * When supplied, a created dependency removed here withdraws its outstanding
+   * command effects inside its content lock. The failed install answers with
+   * an error, so the withdrawal is reported through the operator's list.
+   */
+  projectHomeDir?: string,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   // Recursive creation records postorder (leaf before its dependent). Undo in
@@ -2398,7 +2431,15 @@ export async function removeDependencyTreesCreatedByThisInstall(
           return;
         }
         const handled = await rollbackLifecycle?.(name);
-        if (handled !== true) rmSync(target, { recursive: true, force: true });
+        if (handled !== true) {
+          rmSync(target, { recursive: true, force: true });
+          if (projectHomeDir)
+            await withdrawPluginCommandEffects(projectHomeDir, {
+              pluginId: name,
+              cause: 'removal',
+              captures: () => true,
+            });
+        }
       });
       try {
         await Promise.race([
@@ -4037,6 +4078,27 @@ async function installPluginFromSourceUnderContext(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        // LP-W (update, kontourai/station#1419): the replaced generation's
+        // tree and grants are gone and this holds the content lock command
+        // admission takes. Effects admitted against any other generation are
+        // captured. Ledger trouble is reported, never a veto of the install.
+        let commandEffects: PluginCommandWithdrawalCapture = { kind: 'none' };
+        if (hadExistingPlugin) {
+          const digest =
+            permissionArtifact?.digest ??
+            computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+          const current = digest
+            ? pluginInstallationGeneration({
+                generation: managedLifecycle?.selected.generation,
+                digest,
+              })
+            : null;
+          commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+            pluginId: pluginName,
+            cause: 'update',
+            captures: (effect) => effect.installationGeneration !== current,
+          });
+        }
         const droppedDependencyOwnership = retainedDependencyOwnership.filter(
           (entry) => !approvedDependencyIds.has(entry.id),
         );
@@ -4188,6 +4250,10 @@ async function installPluginFromSourceUnderContext(
         return {
           success: true,
           ...(managedLifecycle ? { lifecycle: managedLifecycle } : {}),
+          ...pluginCommandEffectFields(
+            commandEffects,
+            retiredDependencyBackups.map((backup) => backup.commandEffects),
+          ),
           plugin: {
             name: pluginName,
             displayName: manifest.displayName,
@@ -4247,6 +4313,7 @@ async function installPluginFromSourceUnderContext(
               createdPluginDigests,
               deps.packageMcpJournal,
               options?.activationSession,
+              projectHomeDir,
             ),
         );
         await rollbackOwnedGrants(grantScope);
@@ -4482,7 +4549,9 @@ async function uninstallInstalledPluginUnderContext(
   name: string,
   deps: PluginInstallTransactionDeps,
   recovery?: PluginRemovalRecovery,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<
+  { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
+> {
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4516,7 +4585,9 @@ async function uninstallPluginUnderPublication(
   installedPluginName: string,
   recovery?: PluginRemovalRecovery,
   requestGrants?: PluginGrantRevisionSnapshot,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<
+  { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
+> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
   const captured = deps.packageMcpJournal
     ? captureLocalPluginInstallation(
@@ -4815,6 +4886,15 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
+    // LP-W (removal, kontourai/station#1419): the plugin's authority is gone
+    // and this still holds its content lock, which command admission takes.
+    // Ledger trouble is reported as commandEffectsUnavailable; it never vetoes
+    // or rolls back the removal (owner decision F1).
+    const commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+      pluginId: pluginName,
+      cause: 'removal',
+      captures: () => true,
+    });
 
     eventBus?.emit('plugins:removed', {
       name: pluginName,
@@ -4828,7 +4908,14 @@ async function uninstallPluginUnderPublication(
     };
     if (recovery) recovery.capture(compensateRemoval, finishRemoval);
     else finishRemoval();
-    return { success: true, ...(lifecycle ? { lifecycle } : {}) };
+    return {
+      success: true,
+      ...(lifecycle ? { lifecycle } : {}),
+      ...pluginCommandEffectFields(
+        commandEffects,
+        removedDependencyBackups.map((backup) => backup.commandEffects),
+      ),
+    };
   } catch (error) {
     try {
       await compensateRemoval();

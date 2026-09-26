@@ -122,6 +122,11 @@ import {
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  isPluginCommandEffectCookieAuthEligible,
+  notifyPluginCommandEffectAuthoritySwitch,
+  notifyPluginCommandEffectCookieAuthEligibility,
+} from '../components/plugin-command-effect-switch-signal';
 import { SkeletonBlock } from '../components/state';
 import {
   useConnectionSwitchScope,
@@ -249,6 +254,24 @@ export function AuthorityQueryProvider({
     ? credentialAuthorityGeneration(connectionId)
     : 0;
 
+  // #1418/#1419 review, MEDIUM: this is the one place that already holds
+  // `credentialState`, `profile.isTauri`, and the active connection's broker
+  // route together, so the plugin-command-effect coordinator's `pagehide`
+  // keepalive eligibility is derived here and pushed through the same
+  // always-loaded signal seam `notifyPluginCommandEffectAuthoritySwitch`
+  // already uses (the coordinator itself may not be loaded yet).
+  const pluginCommandEffectCookieAuthEligible =
+    isPluginCommandEffectCookieAuthEligible({
+      isTauri: profile.isTauri,
+      credentialState,
+      hasBrokerRoute: Boolean(activeConnection?.brokerRoute),
+    });
+  useEffect(() => {
+    notifyPluginCommandEffectCookieAuthEligibility(
+      pluginCommandEffectCookieAuthEligible,
+    );
+  }, [pluginCommandEffectCookieAuthEligible]);
+
   const observationEnabled =
     activeConnection !== null && requestScope !== undefined;
   // The scope this key's fetch is bound to, snapshotted from the render that
@@ -357,6 +380,9 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearConversationActivity();
+      // #1418/#1419: a different Station's ledger is not this document's to
+      // settle. Flush what the old identity owes, then mint a fresh one.
+      notifyPluginCommandEffectAuthoritySwitch();
       window.dispatchEvent(
         new CustomEvent('station:orchestration-authority-change', {
           detail: apiBase,

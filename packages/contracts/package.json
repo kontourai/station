@@ -101,6 +101,7 @@
     "./principal": "./src/principal.ts",
     "./proposed-change": "./src/proposed-change.ts",
     "./plugin": "./src/plugin.ts",
+    "./plugin-command-effect": "./src/plugin-command-effect.ts",
     "./plugin-draft": "./src/plugin-draft.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",

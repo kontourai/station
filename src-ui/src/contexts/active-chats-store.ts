@@ -40,6 +40,8 @@ export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
   private listeners = new Set<() => void>();
   private snapshot = this.chats;
+  /** Ephemeral draft occurrence tokens; never persisted or reused after removal. */
+  private draftRevisions = new Map<string, object>();
   private readonly storageKey: string;
   private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   private getBackendMessages: (
@@ -181,6 +183,24 @@ export class ActiveChatsStore {
 
   getSnapshot = () => this.snapshot;
 
+  /** Capture a single-use seed capability for this exact composer draft. */
+  captureComposerDraft(sessionId: string) {
+    if (!this.chats[sessionId]) return null;
+    const revision = this.draftRevisions.get(sessionId) ?? {};
+    this.draftRevisions.set(sessionId, revision);
+    return Object.freeze({
+      replaceInputIfUnchanged: (input: string): boolean => {
+        if (
+          !this.chats[sessionId] ||
+          this.draftRevisions.get(sessionId) !== revision
+        )
+          return false;
+        this.updateChat(sessionId, { input });
+        return true;
+      },
+    });
+  }
+
   /**
    * Locate the durable chat that owns an execution-session event. Runtime
    * events intentionally retain their exact child `threadId`; this lookup is
@@ -309,6 +329,7 @@ export class ActiveChatsStore {
     this.chats[sessionId] = this.withKnownActivity(
       createDefaultChatState(metadata, this.now()),
     );
+    this.draftRevisions.set(sessionId, {});
     this.notify(true);
   }
 
@@ -340,6 +361,13 @@ export class ActiveChatsStore {
       if (newest) {
         this.activityByConversation.set(newest.conversationId, newest);
       }
+    }
+    if (
+      Object.hasOwn(updates, 'input') ||
+      Object.hasOwn(updates, 'attachments') ||
+      Object.hasOwn(updates, 'attachmentStages')
+    ) {
+      this.draftRevisions.set(targetSessionId!, {});
     }
     // review: a bounded queue that discards silently is the same
     // loss the ceiling exists to make safe. Say what was dropped, with the
@@ -378,6 +406,7 @@ export class ActiveChatsStore {
 
   removeChat(sessionId: string) {
     delete this.chats[sessionId];
+    this.draftRevisions.delete(sessionId);
     // A chat re-created under the same id is a different chat, and is owed its
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
@@ -403,6 +432,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = clearInputState(current);
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 
@@ -416,6 +446,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = next;
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 
@@ -429,6 +460,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = next;
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 

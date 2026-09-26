@@ -20,6 +20,7 @@ import { capturePluginConfigurationMutation } from './plugin-configuration-activ
 
 import { join } from 'node:path';
 import { type Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
@@ -35,6 +36,7 @@ import {
 } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { settlePluginCommandEffectsForResponse } from '../../services/plugins/plugin-command-effects.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
@@ -388,13 +390,20 @@ export function createRegistryRoutes(
         source: 'plugin',
         outcome: mutation.value.success ? 'success' : 'failed',
       });
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
@@ -506,13 +515,20 @@ export function createRegistryRoutes(
               );
             }
           }
+          // LP-C: the lifecycle released its locks; wait briefly for settlements.
+          const settled = await settlePluginCommandEffectsForResponse(
+            pluginInstallDeps!.projectHomeDir,
+            mutation.value,
+            configurationMutationStatus(mutation.activation, 200),
+          );
           return c.json(
             {
               ...mutation.value,
+              ...settled.fields,
               success: mutation.activation?.status !== 'pending',
               ...configurationActivationPayload(mutation.activation),
             },
-            configurationMutationStatus(mutation.activation, 200),
+            settled.status as ContentfulStatusCode,
           );
         } catch (error: unknown) {
           const message =
@@ -869,9 +885,18 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        mutation.value.success
+          ? configurationMutationStatus(mutation.activation, 200)
+          : 500,
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           // Activation can only narrow a successful install. It must never
           // turn the installer's `success: false` into a 200/success response:
           // that false success makes Registry optimistically mark the card
@@ -880,9 +905,7 @@ export function createRegistryRoutes(
             mutation.value.success && mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        mutation.value.success
-          ? configurationMutationStatus(mutation.activation, 200)
-          : 500,
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))
@@ -1003,13 +1026,20 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       const message =

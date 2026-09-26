@@ -173,6 +173,34 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
       'Reports the loaded count and the pending plugin ids after reconciling the whole install directory. Reloading is a maintenance action a collaborator cannot take, and the pending list is the inventory.',
   },
   {
+    method: 'POST',
+    path: '/api/plugins/:name/command-effects',
+    disposition: 'projected',
+    rationale:
+      'Runs a command of the plugin the CALLER named. Admission checks the caller can see that plugin before any read, and an invisible plugin answers `not-found` exactly as an absent one does, so the response discloses nothing about plugins outside the caller\u2019s projection.',
+  },
+  {
+    method: 'GET',
+    path: '/api/plugins/command-effects/withdrawals',
+    disposition: 'operator-only',
+    rationale:
+      'Lists every open command effect withdrawal and recent closed ones, each naming the `pluginId` whose lifecycle change caused it. Only the operator can act on a withdrawal, so a collaborator is refused rather than projected.',
+  },
+  {
+    method: 'GET',
+    path: '/api/plugins/command-effects/uncaptured',
+    disposition: 'operator-only',
+    rationale:
+      'Lists outstanding command effects no withdrawal captured, with their `pluginId` and principal. Abandoning one is an operator action, so the list is refused to a collaborator rather than projected.',
+  },
+  {
+    method: 'GET',
+    path: '/api/plugins/command-effects/withdrawals/:id',
+    disposition: 'operator-only',
+    rationale:
+      'Reports a command effect withdrawal, including the `pluginId` whose lifecycle change caused it. Withdrawals follow operator lifecycle actions and only the operator may resolve one, so a collaborator is refused rather than projected.',
+  },
+  {
     method: 'GET',
     path: '/api/plugins/home-role',
     disposition: 'projected',

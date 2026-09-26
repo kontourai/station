@@ -2468,6 +2468,14 @@ flag, because a flag would be a second copy of the projection that a client
 could reassemble an inventory from. A caller this Station cannot attribute to a
 principal gets `400` with the principal-unresolved code, never a default list.
 
+A record whose `installationReadiness.state` is `ready` also carries
+`commands` (the validated command declarations, possibly empty) and an opaque
+`installationGeneration`. A plugin command request echoes that generation; it
+identifies the exact installed content and grants nothing. A pending or
+unavailable installation omits both fields. When the manifest's command
+declarations failed validation, `commands` is empty and
+`commandsRejected: { reason }` says why; the plugin itself still loads.
+
 **Response**:
 ```json
 {
@@ -2478,6 +2486,16 @@ principal gets `400` with the principal-unresolved code, never a default list.
       "version": "1.0.0",
       "description": "A plugin",
       "hasBundle": true,
+      "installationReadiness": { "state": "ready" },
+      "commands": [
+        {
+          "version": "1.0",
+          "id": "my-plugin.open-plugins",
+          "title": "Open plugins",
+          "intent": { "kind": "navigate", "surfaceId": "plugins" }
+        }
+      ],
+      "installationGeneration": "[\"incarnation-id\",\"content-digest\"]",
       "layout": { "slug": "my-layout" },
       "agents": [{ "slug": "assistant" }],
       "providers": [],
@@ -2492,6 +2510,137 @@ principal gets `400` with the principal-unresolved code, never a default list.
   ]
 }
 ```
+
+---
+
+### Plugin Command Effects
+```http
+POST /plugins/:name/command-effects
+POST /plugins/command-effects/settlements
+GET  /plugins/command-effects/withdrawals
+GET  /plugins/command-effects/withdrawals/:id
+POST /plugins/command-effects/withdrawals/:id/resolve
+GET  /plugins/command-effects/uncaptured
+POST /plugins/command-effects/effects/:effectId/abandon
+```
+
+A plugin command row in the palette grants nothing (kontourai/station#1418).
+Before a browser document applies an argument-free `navigate` or
+`seed-composer` command it asks Station to admit the effect:
+
+```json
+{
+  "documentId": "document-4f2c9a",
+  "documentKey": "<random per-document secret, 32-256 base64url characters>",
+  "requestId": "request-0001",
+  "issuedAt": 1789600000000,
+  "installationGeneration": "<from GET /plugins>",
+  "commandId": "my-plugin.open-plugins",
+  "target": { "kind": "destination", "destinationId": "plugins" },
+  "context": { "projectSlug": "demo" }
+}
+```
+
+`200` returns `{ "receipt": { effectId, requestId, pluginId, commandId,
+installationGeneration, effect } }`, where `effect` is what Station read from
+the installed declaration (`navigate` with a destination id, or
+`seed-composer` with a session id and text).
+
+- **Identity.** Admission is idempotent on `documentId` + `requestId` within
+  the caller's principal and `documentKey`; another principal or document key
+  never collides with it.
+- **Request window.** `issuedAt` is the document's clock in epoch
+  milliseconds. A request more than five minutes from Station's clock, in
+  either direction, is refused with `request-expired`.
+- **Visibility.** A plugin the caller cannot see answers exactly as an absent
+  one (`404`).
+- **Requirements.** `active-chat` and `session` are satisfied only by a session
+  the caller can read (the same predicate every session read uses); one it
+  cannot read is `requirement-not-satisfied`, exactly like one that does not
+  exist. `project` and `task` are checked against existence, the same authority
+  Station's project and task routes answer any caller with.
+- **Refusals.** `409` with a `reason`: `request-expired`,
+  `generation-changed`, `command-not-declared`, `command-not-executable`,
+  `target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
+  `capacity`, `cancelled`, or `request-conflict`. `400` is `invalid-request`;
+  `503` means the ledger or grants are unavailable.
+- **Capacity.** At most 16 outstanding effects per principal, 8 per plugin and
+  64 in total. A full bound refuses new admissions with `capacity`; it never
+  evicts an outstanding effect.
+- **Hosted deployments** refuse every route here with `403`.
+
+The document reports how it ended each effect with up to 16 items of
+`{ requestId, effectId?, outcome }`, where `outcome` is `applied`, `aborted`,
+`cancelled` or `abandoned`. Per-item results:
+
+| Status | Meaning |
+| --- | --- |
+| `settled` | This item recorded the effect's first terminal state. |
+| `already-settled` | The same outcome was already recorded. |
+| `cancel-recorded` | No admission exists yet (a `cancelled` without `effectId`); a later admission of that request is refused. |
+| `cancel-refused` | No admission exists and this document's cancels are at capacity. Nothing was recorded; retry once the admission lands. |
+| `recorded-late` | The operator already closed the effect; the report is counted, never applied. |
+| `conflict` | A different terminal outcome was already recorded. Any conflict makes the response `409`. |
+| `not-found` | No effect for this principal, document key, document and request, or the `effectId` does not match. |
+
+A recorded cancel is kept for ten minutes (twice the request window): after
+that no admission it could match can still be accepted. At most 16 cancels per
+principal and document key, 64 per principal and 256 in total are kept; a new
+cancel past a bound is refused rather than displacing one.
+
+#### Withdrawal on lifecycle changes
+
+Removing, updating or installing over a plugin (through `/plugins` or
+`/registry/plugins`), and withdrawing `plugin.server` from it (revocation, a
+grant or host approval against changed content), capture the plugin's
+outstanding effects. The change commits at once and is never refused or rolled
+back because of command effects.
+
+- When the change captured something, the response carries
+  `commandEffects: { withdrawalId, status, outstanding }`, and
+  `dependencyCommandEffects` lists the same summary for dependencies the change
+  removed. The response is `202` until every captured effect settles and `200`
+  once all have.
+- **One open withdrawal per plugin.** A later change to a plugin whose
+  withdrawal is still open joins it: its newly captured effects and its cause
+  are added and the same `withdrawalId` is answered. A completed or closed
+  withdrawal is never reopened; a later capture starts a new one.
+- When the withdrawal could not be recorded (the ledger cannot be read or
+  written), the change still commits and the response is `202` with
+  `commandEffectsUnavailable: true` and no summary. That is never completion.
+- `status` is `completed` (every captured effect settled with document or
+  Station proof), `winding-down` (effects outstanding, newest capture younger
+  than the wait), `indeterminate` (still outstanding after the wait; not
+  terminal) or `closed-indeterminate` (an operator resolved this withdrawal and
+  accepted that its outstanding effects' outcomes are unknown; never a
+  completed state, and later reports are still counted).
+- A host approval carries the summary in its `reconciliation` projection.
+  `GET /plugins/host-approvals/:id` re-reads it from the ledger, and the
+  reconciliation never reads `completed` while the effects are outstanding
+  (`winding-down`); a closed-indeterminate withdrawal makes it `incomplete`
+  with a `command-effects` failure stage, as does one that could not be
+  recorded.
+
+The operator (every other caller receives `403`) lists withdrawals — every
+open one, then the 16 most recent closed ones — and reads one (at most 16
+outstanding effect ids). `POST …/:id/resolve` with
+`{ "disposition": "accept-indeterminate" }` is accepted only for an
+`indeterminate` withdrawal (`409` otherwise) and abandons exactly its
+outstanding effects.
+
+`GET /plugins/command-effects/uncaptured` lists outstanding effects no open
+withdrawal captured, with `abandonable: true` once one is older than the wait.
+`POST /plugins/command-effects/effects/:effectId/abandon` abandons such an
+effect: `404` when it is not outstanding, `409` with `reason: "captured"`
+(and its `withdrawalId`; resolve that instead) or `reason: "too-recent"`.
+
+Admissions and settlements are also recorded as
+`station.plugin-command.execution/v1` operational events carrying `effectId`,
+`principalId`, `pluginId`, `installationGeneration`, `commandId`, `target` and
+`outcome` (never effect content), plus `settledBy` for a settlement and
+`disposition: "conflict" | "late"` for a report that did not become the
+effect's state. The ledger is written first: a crash between the two can leave
+a recorded admission or settlement with no event.
 
 ---
 

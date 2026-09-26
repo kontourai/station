@@ -17,6 +17,10 @@ import {
   closePluginActivationSession,
   createPluginActivationSession,
 } from '../../../services/plugins/plugin-activation-composition.js';
+import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../../../services/plugins/plugin-command-effects.js';
 import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
@@ -29,6 +33,10 @@ import {
 } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../../../services/plugins/plugin-runtime-artifact.js';
 import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
@@ -347,6 +355,49 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
     expect(
       f.installDeps.packageMcpJournal.currentInstallation('leaf').state,
     ).toBe('not-observed');
+  });
+
+  test('H3: removing a parent withdraws command effects of its managed dependencies through their nested removals', async () => {
+    const f = await fixture();
+    await installPluginFromSource(f.parent, [], f.installDeps, {
+      consent: f.consent,
+    });
+    const child = capturePluginRuntimeArtifact(
+      f.installDeps.pluginsDir,
+      'child',
+      f.installDeps.packageMcpJournal,
+    );
+    expect(child).not.toBeNull();
+    const effects = createPluginCommandEffectService({
+      store: new FilePluginCommandEffectStore(f.root),
+    });
+    const admitted = await effects.recordAdmission({
+      principalId: 'local-operator',
+      pluginId: 'child',
+      installationGeneration: pluginInstallationGeneration(child!),
+      requiresPluginServer: false,
+      commandId: 'child.open',
+      target: { kind: 'destination', destinationId: 'plugins' },
+      content: { kind: 'navigate', destinationId: 'plugins' },
+      documentId: 'document-managed-child',
+      documentKey: 'k'.repeat(43),
+      requestId: 'request-managed-child',
+      issuedAt: Date.now(),
+    });
+    if (admitted.kind !== 'admitted') throw new Error(admitted.reason);
+    const removed = await uninstallInstalledPlugin('parent', f.installDeps);
+    expect(
+      f.installDeps.packageMcpJournal.currentInstallation('child').state,
+    ).toBe('not-observed');
+    expect(removed.dependencyCommandEffects).toEqual([
+      expect.objectContaining({ status: 'winding-down', outstanding: 1 }),
+    ]);
+    await expect(
+      effects.withdrawal(removed.dependencyCommandEffects![0]!.withdrawalId),
+    ).resolves.toMatchObject({
+      pluginId: 'child',
+      outstandingEffectIds: [admitted.receipt.effectId],
+    });
   });
 
   test('canonical nested installation refuses cycles before adopting the parent', async () => {
