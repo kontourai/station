@@ -79,7 +79,7 @@ describe('iOS App Store signing config', () => {
     expect(
       template
         .split('\n')
-        .filter((line) => line.startsWith('      DEVELOPMENT_TEAM:')),
+        .filter((line: string) => line.startsWith('      DEVELOPMENT_TEAM:')),
     ).toHaveLength(1);
     expect(template).toContain('DEVELOPMENT_TEAM: TEAMID1234');
     // The signed spec parses strictly with unique keys.
