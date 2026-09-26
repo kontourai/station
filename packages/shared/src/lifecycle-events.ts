@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { setTimeout as sleepAsync } from 'node:timers/promises';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
+  describeProcessBirthProbe,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintCached,
   lookupProcessBirthFingerprintCachedAsync,
@@ -745,6 +746,18 @@ function* ownBirthGen(
   return null;
 }
 
+function missingOwnBirthError(
+  purpose: 'guard' | 'lock',
+  options: FileMutationLockOptions,
+): Error {
+  const probe = options.birthFingerprint
+    ? 'injected birth fingerprint'
+    : describeProcessBirthProbe();
+  return new Error(
+    `process birth fingerprint is required for ${purpose} ownership: ${probe} returned no start time for pid ${process.pid}`,
+  );
+}
+
 function* guardedDeleteLockGen(
   lock: string,
   observed: LockInspection,
@@ -754,10 +767,7 @@ function* guardedDeleteLockGen(
   // Own-pid, fail-closed: retry spurious lookup failures (#1057). Injected
   // fingerprints (tests) stay single-call.
   const birth = yield* ownBirthGen(options);
-  if (!birth)
-    throw new Error(
-      'process birth fingerprint is required for guard ownership',
-    );
+  if (!birth) throw missingOwnBirthError('guard', options);
   const guardPath = `${lock}.guard`;
   const guard = publishGuard(lock, observed, birth);
   if (!guard) return false;
@@ -809,8 +819,7 @@ function* acquireGen(
   // fingerprints (tests) stay single-call; the in-loop reclaim lookups stay
   // single-attempt (their null is fail-safe).
   const birth = yield* ownBirthGen(options);
-  if (!birth)
-    throw new Error('process birth fingerprint is required for lock ownership');
+  if (!birth) throw missingOwnBirthError('lock', options);
   const token = randomUUID();
   const temporary = `${lock}.${token}.tmp`;
   const deadline = Date.now() + timeoutMs;

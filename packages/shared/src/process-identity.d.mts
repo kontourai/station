@@ -21,6 +21,8 @@ export type ProcessIdentityDependencies = {
   now?: () => number;
   retryDelayMs?: number;
   deadlineMs?: number;
+  /** Environment used to resolve Windows PowerShell's System32 path. */
+  env?: NodeJS.ProcessEnv;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,
@@ -32,6 +34,10 @@ export function lookupProcessBirthFingerprint(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): string | null;
+export function describeProcessBirthProbe(
+  platform?: NodeJS.Platform,
+  env?: NodeJS.ProcessEnv,
+): string;
 export const PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS: number;
 export type ProcessIdentityAsyncDependencies = Omit<
   ProcessIdentityDependencies,

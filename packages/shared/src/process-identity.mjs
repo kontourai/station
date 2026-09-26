@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
@@ -74,13 +75,18 @@ function windowsCreationDateCommand(pid) {
   ].join('; ');
 }
 
+// Windows PowerShell ships at a fixed System32 location that a minimal or
+// service-manager PATH does not include, so the default probe never relies
+// on PATH lookup (#2675). `pwsh.exe` (PowerShell 7) has no fixed location and
+// stays a PATH-resolved retry shell.
 function windowsCreationDateProbe(
   pid,
   timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
-  command = 'powershell.exe',
+  command,
+  env,
 ) {
   return {
-    command,
+    command: command ?? windowsSystemUtilityPath('powershell', env),
     args: [
       '-NoProfile',
       '-NonInteractive',
@@ -102,20 +108,46 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
-function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell) {
+function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell, env) {
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
     shell,
+    env,
   );
   const output = exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
 
-async function windowsCreationDateFingerprintAsync(pid, exec, timeoutMs) {
-  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
+async function windowsCreationDateFingerprintAsync(pid, exec, timeoutMs, env) {
+  const { command, args, options } = windowsCreationDateProbe(
+    pid,
+    timeoutMs,
+    undefined,
+    env,
+  );
   const output = await exec(command, args, options);
   return canonicalWindowsCreationDate(output);
+}
+
+/**
+ * Name the probe `lookupProcessBirthFingerprint` runs by default on this
+ * platform, so a caller that must fail closed on a null birth can say which
+ * lookup produced nothing (#2675) instead of only that one was required.
+ */
+export function describeProcessBirthProbe(
+  platform = process.platform,
+  env = process.env,
+) {
+  if (platform === 'win32') {
+    try {
+      return `Windows PowerShell probe (${windowsSystemUtilityPath('powershell', env)})`;
+    } catch (error) {
+      return `Windows PowerShell probe (${error?.message ?? error})`;
+    }
+  }
+  if (platform === 'linux') return '/proc/<pid>/stat probe';
+  return '`ps -o lstart=` probe';
 }
 
 /**
@@ -184,6 +216,7 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
         exec,
         timeoutMs,
         dependencies.windowsShell,
+        dependencies.env,
       );
     }
     if (platform === 'linux') {
@@ -253,7 +286,12 @@ export async function lookupProcessBirthFingerprintAsync(
   } = dependencies;
   try {
     if (platform === 'win32') {
-      return await windowsCreationDateFingerprintAsync(pid, exec, timeoutMs);
+      return await windowsCreationDateFingerprintAsync(
+        pid,
+        exec,
+        timeoutMs,
+        dependencies.env,
+      );
     }
     if (platform === 'linux') {
       return lookupProcessBirthFingerprint(pid, { platform, readFile });
@@ -422,7 +460,8 @@ export function resolveOwnProcessIdentity(pid, dependencies = {}) {
       // A legacy PowerShell startup failure should not consume both attempts
       // on the same host. PowerShell 7 reads the identical direct handle and
       // emits the same normalized timestamp within the existing deadline.
-      windowsShell: attempt === 0 ? 'powershell.exe' : 'pwsh.exe',
+      // Attempt 0 uses the default absolute Windows PowerShell path.
+      windowsShell: attempt === 0 ? undefined : 'pwsh.exe',
       timeoutMs: Math.min(scheduledTimeoutMs, remainingMs),
     });
     if (probe.state !== 'unavailable' || attempt === attempts - 1) {

@@ -335,7 +335,9 @@ describe('lifecycle event journal', () => {
         { ...identity, type: 'started', timestamp: new Date().toISOString() },
         { lockOptions: { birthFingerprint: () => null } },
       ),
-    ).toThrow('birth fingerprint is required');
+    ).toThrow(
+      /birth fingerprint is required for lock ownership: injected birth fingerprint returned no start time for pid \d+/,
+    );
     expect(readdirSync(root)).toEqual([]);
   });
 
@@ -641,11 +643,15 @@ describe('exact Windows process identity', () => {
   it('preserves the shared Windows CIM fingerprint as a round-trip UTC ISO value', () => {
     const legacyIso = '2025-08-03T00:00:00.0000000Z';
     const exec = vi.fn(() => `${legacyIso}\n`);
-    expect(lookupProcessBirthFingerprint(42, { platform: 'win32', exec })).toBe(
-      legacyIso,
-    );
+    expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+      }),
+    ).toBe(legacyIso);
     expect(exec).toHaveBeenCalledWith(
-      'powershell.exe',
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
       expect.arrayContaining([
         '-Command',
         expect.stringContaining(
