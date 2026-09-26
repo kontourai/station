@@ -279,11 +279,14 @@ describe('forms that depend on the whole barrel stay selected', () => {
 
   test('a name found in two star re-exports is ambiguous and keeps the whole barrel', () => {
     const path = 'src-ui/src/__tests__/ambiguous.test.ts';
-    const seeds = seedsFor(BOARD, {
+    const overrides = {
       [SCHEDULER]: `${SDK_SOURCES[SCHEDULER]}\nexport function fetchBoard() {}`,
       [path]: "import { fetchBoard } from '@kontourai/station-sdk/client';",
-    });
-    expect(seeds).toContain(path);
+    };
+    // Checked from the SECOND provider in star order: picking the first
+    // match (board.ts) would silently drop it here.
+    expect(seedsFor(SCHEDULER, overrides)).toContain(path);
+    expect(seedsFor(BOARD, overrides)).toContain(path);
   });
 
   test('a name no module provides keeps the whole barrel', () => {
