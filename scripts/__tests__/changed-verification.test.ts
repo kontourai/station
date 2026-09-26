@@ -28,10 +28,12 @@ import {
 } from '../run-changed-verification.mjs';
 import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
+  buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
   SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
+  UNMODELLED_INPUT_EDGES,
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
@@ -91,6 +93,9 @@ const skippedReport = readFileSync(
 // the production mapping, not another projection of that mapping.
 const EXPECTED_GOVERNED_READERS = {
   '.github/workflows/**': [
+    'scripts/__tests__/android-channel-release-generation.test.ts',
+    'scripts/__tests__/android-firebase-workflow-env.test.ts',
+    'scripts/__tests__/android-network-policy.test.ts',
     'scripts/__tests__/backlog-priority-policy.test.ts',
     'scripts/__tests__/ci-workflow-contract.test.ts',
     'scripts/__tests__/ci-workflow-governance.test.ts',
@@ -189,6 +194,56 @@ describe('changed verification selection', () => {
    * dropping `supplemental` loses the lane, and dropping the edge loses the
    * named test.
    */
+  test('the unmodelled-input edges only add their suites (#2176)', () => {
+    // Each edge's path is compared against the same manifest WITHOUT these
+    // edges: related paths, lanes and escalation must be identical and the
+    // tests exactly the old tests plus the edge's own, so no edge can trade
+    // the import graph (or a contracts escalation) for one named suite.
+    const without = TEST_IMPACT_MANIFEST.filter(
+      (edge) => !UNMODELLED_INPUT_EDGES.includes(edge),
+    );
+    expect(without).toHaveLength(
+      TEST_IMPACT_MANIFEST.length - UNMODELLED_INPUT_EDGES.length,
+    );
+    // Pinned by count, independently: the loop below is satisfied by an
+    // empty list.
+    expect(UNMODELLED_INPUT_EDGES).toHaveLength(10);
+    for (const edge of UNMODELLED_INPUT_EDGES) {
+      expect(edge.supplemental, edge.pattern).toBe(true);
+      const path = edge.pattern.endsWith('/**')
+        ? `${edge.pattern.slice(0, -2)}plugin.json`
+        : edge.pattern;
+      const before = selectChangedVerification([path], without);
+      const after = selectChangedVerification([path]);
+      expect(after.relatedPaths, path).toEqual(before.relatedPaths);
+      expect(after.lanes, path).toEqual(before.lanes);
+      expect(after.escalated, path).toBe(before.escalated);
+      expect(
+        after.tests.map((entry) => entry.path),
+        path,
+      ).toEqual(
+        [
+          ...new Set([
+            ...before.tests.map((entry) => entry.path),
+            ...(edge.tests ?? []),
+          ]),
+        ].sort(),
+      );
+    }
+    // And the settings generator's inputs, named independently of the
+    // manifest, each reach its suite.
+    for (const path of [
+      'src-ui/src/views/settings/settings-catalog.ts',
+      'src-ui/src/views/settings/settings-deep-link.ts',
+      'packages/contracts/src/settings-registry.ts',
+      'packages/contracts/src/device-settings.ts',
+      'src-server/generated/settings-registry.json',
+    ])
+      expect(
+        selectChangedVerification([path]).tests.map((entry) => entry.path),
+        path,
+      ).toContain('scripts/__tests__/gen-settings-registry.test.ts');
+  });
   test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
     const selection = selectChangedVerification([
       'packages/contracts/src/layout.ts',
@@ -220,7 +275,25 @@ describe('changed verification selection', () => {
           },
         ]
       : [];
-    expect(selection.tests).toEqual(supplementalVocabulary);
+    // The shell files are also read by path by the chrome-notice scan
+    // (#2176); the UI fixture is one of them.
+    const supplementalShellChrome = [
+      'src-ui/src/App.tsx',
+      'src-ui/src/main.tsx',
+    ].includes(path)
+      ? [
+          {
+            path: 'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+            reasons: [
+              `suite reads this file by path, outside the import graph (#2176): ${path}`,
+            ],
+          },
+        ]
+      : [];
+    expect(selection.tests).toEqual([
+      ...supplementalShellChrome,
+      ...supplementalVocabulary,
+    ]);
     expect(selection.lanes).toEqual([]);
     expect(selection.escalated, reason).toBe(false);
   });
@@ -382,6 +455,19 @@ describe('changed verification selection', () => {
       scenarios.e2eContract.ordinaryScript,
     ]);
     expect(selection.lanes).toEqual([]);
+  });
+  test('a root package.json change escalates and still names its readers (#2176)', () => {
+    // Before, its ordinary doc-example edge cancelled the escalation, so a
+    // package.json-only change completed on one documentation suite.
+    const selection = selectChangedVerification(['package.json']);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+    expect(selection.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/public-doc-contract-examples.test.ts',
+        'scripts/__tests__/basis-mcp-apps.test.ts',
+      ]),
+    );
   });
   test('uses a bounded named gate for docs and fails closed for risky selection', () => {
     expect(
@@ -1080,6 +1166,132 @@ describe('changed verification selection', () => {
     expect(summary).toContain(
       '[test:changed] remedy: declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
     );
+  });
+  function emptyDiscoveryRun() {
+    // Discovery answers `[]`; every Vitest child passes. So the only thing
+    // that can make the result provisional is the empty-discovery decision.
+    return vi.fn(async (_command: string, args: string[]) => {
+      const ok = {
+        status: 0,
+        signal: null,
+        stderr: '',
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      };
+      if (args.includes('--eval')) return { ...ok, stdout: '[]' };
+      const outputFile = args.find((arg) => arg.startsWith('--outputFile='));
+      if (outputFile)
+        writeFileSync(outputFile.slice('--outputFile='.length), passingReport);
+      return { ...ok, stdout: '' };
+    });
+  }
+  function runWithEmptyDiscovery(paths: string[]) {
+    return runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+  }
+  const EMPTY_RELATED_REMEDY =
+    'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file';
+  // Covered only by a GLOB edge: the src-ui copy ratchet scans every UI file.
+  const GLOB_ONLY = 'src-ui/src/views/settings/utils.ts';
+  // Named EXACTLY by a derived path-read pin (#1807): the ratchet test reads
+  // this baseline file's text. Real discovery finds no importer of it.
+  const EXACT_PIN = 'scripts/claim-fixture-baseline.json';
+  test('preconditions: one path is covered only by a glob edge, the other by an exact pin', () => {
+    const manifest = buildTestImpactManifest({ root: process.cwd() });
+    const glob = selectChangedVerification([GLOB_ONLY], manifest);
+    expect(glob.relatedPaths).toEqual([GLOB_ONLY]);
+    expect(glob.ownedRelatedPaths).toEqual([]);
+    expect(glob.tests.map((entry) => entry.path)).toContain(
+      'src-ui/src/__tests__/station-vocabulary.test.ts',
+    );
+    const pin = selectChangedVerification([EXACT_PIN], manifest);
+    expect(pin.relatedPaths).toEqual([EXACT_PIN]);
+    expect(pin.ownedRelatedPaths).toEqual([EXACT_PIN]);
+    expect(pin.tests.map((entry) => entry.path)).toContain(
+      'scripts/__tests__/claim-fixture-ratchet.test.ts',
+    );
+  });
+  test('a glob-only test does not satisfy an empty related discovery (#2176)', async () => {
+    const result = await runWithEmptyDiscovery([GLOB_ONLY]);
+    // The ratchet still runs...
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      './src-ui/src/__tests__/station-vocabulary.test.ts',
+    );
+    // ...but the file is an open obligation, exactly as with no glob edge.
+    // Before #2176 this was exit 0 and a `completed` receipt.
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.receipt.terminal.status).toBe('provisional');
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${GLOB_ONLY}; ${EMPTY_RELATED_REMEDY}`,
+        ],
+      },
+    ]);
+    expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+  });
+  test('an exact path-read pin covers its file when discovery is empty (#2176)', async () => {
+    // A ratchet-baseline bump has no importer by construction; the pin test
+    // IS its coverage, so it must not go provisional.
+    const result = await runWithEmptyDiscovery([EXACT_PIN]);
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      './scripts/__tests__/claim-fixture-ratchet.test.ts',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.emptyRelatedSelection).toBeUndefined();
+  });
+  test('an empty discovery for a mixed set escalates only the uncovered path (#2176)', async () => {
+    // Discovery is one call for the whole set; when it returns nothing, each
+    // path is judged by whether an edge names it exactly.
+    const result = await runWithEmptyDiscovery([EXACT_PIN, GLOB_ONLY]);
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${GLOB_ONLY}; ${EMPTY_RELATED_REMEDY}`,
+        ],
+      },
+    ]);
+    expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+    expect(result.executed.flatMap((execution) => execution.command)).toEqual(
+      expect.arrayContaining([
+        './scripts/__tests__/claim-fixture-ratchet.test.ts',
+        './src-ui/src/__tests__/station-vocabulary.test.ts',
+      ]),
+    );
+  });
+  test('an empty related discovery still escalates a path with no supplemental test', async () => {
+    const path = 'src-server/routes/chat/chat.ts';
+    const result = await runWithEmptyDiscovery([path]);
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.selection.lanes.map(({ id }) => id)).toEqual(['test-full']);
+  });
+  test('a path whose own edge names tests is covered by them when its discovery is empty', async () => {
+    // The other direction: a spawned-not-imported script has no importer by
+    // construction, and its own edge's test IS its coverage. Escalating it
+    // would make every such script change provisional.
+    const path = 'scripts/build-desktop.mjs';
+    expect(selectChangedVerification([path]).ownedRelatedPaths).toEqual([path]);
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [path] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.emptyRelatedSelection).toBeUndefined();
   });
   test('keeps discovery output it could not have produced an infrastructure failure', async () => {
     // The fail-closed half of #1757: an empty array is an answer, but output

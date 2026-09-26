@@ -171,10 +171,33 @@ fn android_build_carries_firebase_identity(values: [Option<&str>; 4]) -> bool {
         .all(|value| value.is_some_and(|value| !value.trim().is_empty()))
 }
 
-/// Closed-app push is the Android agent-activity plugin (FCM through the
-/// Kontour push gateway). Enabled means this build CAN register; whether a
-/// Station sends anything depends on the person turning it on.
-fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapabilityStatus {
+/// The iOS plugin's native half is compiled only with
+/// STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs); the plugin
+/// crate is a dependency on mobile targets only.
+fn ios_live_activity_built() -> bool {
+    #[cfg(target_os = "ios")]
+    return tauri_plugin_station_agent_activity::IOS_LIVE_ACTIVITY_BUILT;
+    #[cfg(not(target_os = "ios"))]
+    return false;
+}
+
+/// Closed-app push is the agent-activity plugin: FCM through the Kontour push
+/// gateway on Android, Live Activities over APNs on iOS. Enabled means this
+/// build CAN register; whether a Station sends anything depends on the person
+/// turning it on. On iOS the plugin's own `status` still says whether the
+/// build is signed for push, which the web layer checks before offering it.
+fn remote_push_capability(
+    android: bool,
+    firebase_identity: bool,
+    ios_live_activity: bool,
+) -> NativeCapabilityStatus {
+    if ios_live_activity {
+        return NativeCapabilityStatus {
+            id: "remote-push",
+            state: "enabled",
+            reason: "This iOS build carries the Live Activity plugin; agent activity on this phone can be turned on in Settings when the build is signed for push.",
+        };
+    }
     match (android, firebase_identity) {
         (true, true) => NativeCapabilityStatus {
             id: "remote-push",
@@ -189,7 +212,7 @@ fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapab
         (false, _) => NativeCapabilityStatus {
             id: "remote-push",
             state: "unsupported",
-            reason: "Closed-app push is available only in the Android app; iOS Live Activities and APNs are not built yet.",
+            reason: "Closed-app push needs the Android app or an iOS build with the Live Activity half.",
         },
     }
 }
@@ -295,6 +318,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
             option_env!("STATION_FIREBASE_PROJECT_ID"),
             option_env!("STATION_FIREBASE_SENDER_ID"),
         ]),
+        ios_live_activity_built(),
     ));
 
     NativeCapabilityReport {
@@ -17648,14 +17672,17 @@ mod tests {
     }
 
     #[test]
-    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity() {
-        let state = |android, identity| remote_push_capability(android, identity).state;
+    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity_or_an_ios_live_activity_build() {
+        let state = |android, identity| remote_push_capability(android, identity, false).state;
         assert_eq!(state(true, true), "enabled");
         assert_eq!(state(true, false), "unsupported");
         assert_eq!(state(false, true), "unsupported");
         assert_eq!(state(false, false), "unsupported");
+        assert_eq!(remote_push_capability(false, false, true).state, "enabled");
+        // Off every host this test runs on: only an iOS build sets it.
+        assert!(!ios_live_activity_built());
         assert_eq!(
-            remote_push_capability(true, false).reason,
+            remote_push_capability(true, false, false).reason,
             "This build has no push configuration."
         );
 

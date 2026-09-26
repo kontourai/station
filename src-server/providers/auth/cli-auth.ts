@@ -283,9 +283,22 @@ export async function runCliCommand(
   command: string,
   args: string[],
   signal?: AbortSignal,
+  /**
+   * Per-connection env (station#2072) layered over the augmented env, so a
+   * readiness probe sees the variables the engine is launched with. An
+   * empty-string value masks the inherited one; TMPDIR stays Station's.
+   */
+  envOverlay?: Record<string, string>,
 ): Promise<CliCommandResult | null> {
   try {
-    const env = await augmentedSpawnEnv();
+    const augmented = await augmentedSpawnEnv();
+    const env = envOverlay
+      ? scrubBootInternalSecrets({
+          ...augmented,
+          ...envOverlay,
+          TMPDIR: augmented.TMPDIR,
+        })
+      : augmented;
     const { stdout, stderr } = await execFile(command, args, {
       encoding: 'utf-8',
       // User-managed launchers may resolve the real CLI through mise/npx.
