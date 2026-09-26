@@ -16,7 +16,7 @@ import {
   INTERNAL_SERVER_SELF_HEADER,
   runAsStationServer,
   stationServerScopeHeaders,
-} from '../../utils/internal-api-token.js';
+} from '../../security/station-server-scope.js';
 import {
   __resetStationControlStdioCallerCredentialForTests,
   controlRequestOptions,

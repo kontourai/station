@@ -4,11 +4,13 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
+  outsideStationServerScope,
+  stationServerScopeHeaders,
+} from '../security/station-server-scope.js';
+import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  outsideStationServerScope,
-  stationServerScopeHeaders,
 } from '../utils/internal-api-token.js';
 
 let runtimeControlApiBase: string | undefined;

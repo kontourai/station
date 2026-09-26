@@ -41,12 +41,12 @@ import {
   stationControlRefusalBody,
 } from '../tools/station-control-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from './runtime-request-security.js';
 import {
   enableStationServerSelfAttestation,
   INTERNAL_SERVER_SELF_HEADER,
   isStationServerSelfAttestation,
-} from '../utils/internal-api-token.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from './runtime-request-security.js';
+} from './station-server-scope.js';
 
 /**
  * Internal requests that reach Station without a station-control caller and

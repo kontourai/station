@@ -69,18 +69,20 @@ import {
   withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import {
-  __resetStationServerSelfAttestationForTests,
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  INTERNAL_SERVER_SELF_HEADER,
-  runAsStationServer,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   createStationControlAuthorityGuard,
   STATION_CONTROL_GUARD_CARVE_OUTS,
 } from '../station-control-authority-guard.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  INTERNAL_SERVER_SELF_HEADER,
+  runAsStationServer,
+} from '../station-server-scope.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
 
