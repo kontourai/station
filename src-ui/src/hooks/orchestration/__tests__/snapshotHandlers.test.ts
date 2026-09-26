@@ -739,9 +739,6 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
   });
 });
 
-// The chat-status fold an ordinary snapshot writes: moved here from
-// `orchestration-helpers.test.ts`, which reached it only through a
-// test-only wrapper around the plan.
 describe('applyOrchestrationSnapshot chat-status sync', () => {
   beforeEach(() => {
     rehydrateChatSession.mockClear();
@@ -819,7 +816,7 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     expect(updates['thread-live']).toHaveProperty('requestedModel');
   });
 
-  test('snapshot running status with no open turn does not re-strand the chat (#1034)', () => {
+  test('snapshot running status with no open turn does not re-strand the chat (archive#1034)', () => {
     const idleChat = {
       provider: 'claude',
       orchestrationSessionStarted: true,
@@ -829,7 +826,7 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
       {
         sessions: [
           // Process alive, turn finished — the reconnect case that used to
-          // reintroduce the stuck "Working…" shell (#1005's second channel).
+          // reintroduce the stuck "Working…" shell (archive#1005's second channel).
           {
             provider: 'claude',
             threadId: 'thread-a',
@@ -869,17 +866,17 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
       status: 'sending',
     });
     // Legacy payload without hasActiveTurn: the display fields keep the
-    // conservative #1034 defaults, but the long-lived fold is NOT seeded —
+    // conservative archive#1034 defaults, but the long-lived fold is NOT seeded —
     // persisting the assumption would let an attach-only 'running' re-engage
-    // the shell with nothing ever clearing it (#1076 closure round).
+    // the shell with nothing ever clearing it (archive#1076 closure round).
     expect(byThread['thread-c']).not.toHaveProperty('orchestrationTurnOpen');
   });
 
-  // #1076: the snapshot reseeds the client turn fold even when the provider
+  // archive#1076: the snapshot reseeds the client turn fold even when the provider
   // process status is NOT 'running' — a reconnect during an in-turn approval
   // projects status 'ready' with hasActiveTurn true, and the next live
   // 'running' state-change must be able to re-engage the shell.
-  test('snapshot reseeds orchestrationTurnOpen during an in-turn approval reconnect (#1076)', () => {
+  test('snapshot reseeds orchestrationTurnOpen during an in-turn approval reconnect (archive#1076)', () => {
     const updates = applyOrdinarySnapshot(
       {
         sessions: [
