@@ -1001,6 +1001,10 @@ describe('station service dispatch', () => {
         (error: Error) => error,
       );
 
+      expect(
+        failure,
+        'install must refuse the borrowed dev home',
+      ).toBeInstanceOf(Error);
       expect(failure?.message).toContain(
         `Refusing to install Station user service default into this source checkout's development home ${devHome}.`,
       );
