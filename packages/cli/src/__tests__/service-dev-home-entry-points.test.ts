@@ -446,6 +446,30 @@ describe('an existing checkout service in the dev home keeps being the one addre
     ).toMatchObject({ instanceId: 'default', baseDir: dev.devHome });
   });
 
+  test("another checkout's service in a shared dev home is not adopted", async () => {
+    // STATION_DEV_INSTANCE seeds let worktrees share one dev home on purpose.
+    const { dev, runCli, errors } = await withLegacyDefaultService();
+    const manifestPath = join(dev.devHome, 'service', 'default.json');
+    const manifest = JSON.parse(nodeFs.readFileSync(manifestPath, 'utf8'));
+    nodeFs.writeFileSync(
+      manifestPath,
+      JSON.stringify({ ...manifest, repoPath: '/some/other/checkout' }),
+      { mode: 0o600 },
+    );
+
+    await runCli(['service', 'install']);
+
+    expect(installSystemd).toHaveBeenLastCalledWith(
+      dev.devInstanceId,
+      expect.anything(),
+    );
+    expect(manifests(dev.devHome)).toEqual([
+      'default.json',
+      `${dev.devInstanceId}.json`,
+    ]);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   test('several services for this checkout in one home refuse and list them', async () => {
     const { dev, runCli } = await withLegacyDefaultService();
     await runCli(['service', 'install', `--instance=${dev.devInstanceId}`]);
