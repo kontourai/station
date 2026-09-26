@@ -438,9 +438,9 @@ describe('FcmAlertChannel through the delivery router', () => {
   // #2588/#2589: Android leaves to the card exactly what the shared
   // `isCardAlerted` does, which reads the `onActivityCard` mark. The records
   // below are shaped as approval-inbox.ts and turn-completion-notifications.ts
-  // write them; each carried one differs from a skipped one only in what the
-  // writer decided (the mark), so a rule keyed on category or session kind
-  // alone fails here.
+  // write them. The two orchestration approvals, and the two registry twins,
+  // differ only in the mark, so a rule keyed on category, session kind or the
+  // relay's thread id alone fails here.
   const orchestrationApproval = (id: string, onActivityCard: boolean) =>
     notification({
       id,

@@ -678,7 +678,8 @@ the route answers 503. The gateway is deployed by hand
   phone alert channels (this one and Android's) read the stamp: the two
   records of a Station-agent approval are still two notifications
   everywhere else. The exclusion does not look at the phone: with Live
-  Activities (or the Android card) turned off, the card-announced notifications raise no alert at all (the inbox keeps them).
+  Activities (or the Android card) turned off, the card-announced
+  notifications raise no alert at all (the inbox keeps them).
   Info-level notifications are not carried either (fixed text for them would
   say nothing).
 - **Channel.** `ApnsAlertChannel` (`delivery/apns-alert-channel.ts`) is the
